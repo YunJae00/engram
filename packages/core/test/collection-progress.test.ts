@@ -159,3 +159,14 @@ it.each(['Sign in', '로그인', 'Log in', 'security screen', '보안 화면', '
   expect(ledger.finish()).toMatchObject({ status: 'partial', summary: expect.stringContaining('No access barrier was observed') })
   expect(ledger.finish()?.summary).not.toContain('Blocked by a permission or security screen')
 })
+
+
+it('requires another reading approach and complete scope before a partial finish', async () => {
+  const { COLLECTION_RULE } = await import('../src/collection-progress.js')
+  const { sessionRules } = await import('../src/agent-session-shape.js')
+  for (const text of [COLLECTION_RULE, sessionRules({ engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false })]) {
+    expect(text).toContain('try it once another way')
+    expect(text).toContain('go through all of them in this turn without asking to continue')
+    expect(text).toContain('Partial is for a real barrier')
+  }
+})

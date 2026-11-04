@@ -23,20 +23,20 @@ const tools: AgentTool[] = [
   { name: 'ask_person', description: 'ask', argsSchema: { type: 'object', properties: { question: { type: 'string' } } }, run: async (args) => formatAsk(String(args['question']), ['A', 'B']) },
 ]
 
-it('accepts the fresh phase checkpoint at the execution allowance boundary', async () => {
+it('keeps the hard session cap even with a fresh phase checkpoint', async () => {
   const engine = sessionBrain(async (job) => {
     const plan = job.tools.find((tool) => tool.name === 'task_plan')!
     const read = job.tools.find((tool) => tool.name === 'read_desktop')!
     await plan.run({ phases: ['Prepare workspace', 'Verify changes'] })
     for (let index = 0; index < SESSION_MAX_CALLS - 1; index++) await read.run({})
-    expect(await plan.run({ evidenceStep: SESSION_MAX_CALLS, finding: 'The requested workspace is visible' })).toContain('"completed":1')
+    expect(await plan.run({ evidenceStep: SESSION_MAX_CALLS, finding: 'The requested workspace is visible' })).toContain('No more calls')
     await read.run({})
     await plan.run({ evidenceStep: SESSION_MAX_CALLS + 2, finding: 'Requested result visible' })
     return { answer: 'Verified' }
   })
   const result = await runToolSession({ engine: { ...engine, desktopToolIsolation: true }, workdir: WORKDIR, tools: [{ name: 'read_desktop', description: 'read', argsSchema: {}, run: async () => 'Observed workspace' }] }, 'Perform requested changes')
-  expect(result.steps).toHaveLength(SESSION_MAX_CALLS + 3)
-  expect(result.stopped).toBeUndefined()
+  expect(result.steps).toHaveLength(SESSION_MAX_CALLS)
+  expect(result.stopped).toBe('calls')
   expect(result.incomplete).toBeUndefined()
 })
 

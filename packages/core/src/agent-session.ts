@@ -20,7 +20,7 @@ import { pageDelta } from './page-delta.js'
 import { TASK_TOKEN_BUDGET } from './delegated-tasks.js'
 
 
-export const SESSION_MAX_CALLS = 80
+export const SESSION_MAX_CALLS = 120
 const CALL_CEILING = 300
 const REPEAT_GUARDED = new Set(['press', 'type_text', 'choose', 'press_point', 'page_steps', 'hover', 'reveal'])
 const RECEIPT_ACTIONS = new Set(['press', 'press_point', 'press_key', 'type_text', 'choose', 'page_steps', 'page_do', 'page_each', 'upload_file'])

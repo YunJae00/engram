@@ -28,9 +28,10 @@ import { flog } from './flog.js'
 import { freshResultReadback } from './task-result-state.js'
 
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
+export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
 export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
+const AUTO_CONTINUE_MAX = 3
 const WORTH_KEEPING_STEPS = 3
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
@@ -68,6 +69,9 @@ export function taskRunner(deps: {
   const declined = new Map<string, Set<string>>()
   const trails = new Map<string, TurnStep[]>()
   const handedBack = new Set<string>()
+  const continuations = new Map<string, { count: number; reason: string }>()
+  const verifyAttempts = new Set<string>()
+  const verifyNext = new Set<string>()
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
@@ -106,20 +110,37 @@ export function taskRunner(deps: {
       if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
-      else if (deps.offered?.(channelOf(t))) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
+      else if (deps.offered?.(channelOf(t)) && !outcome.unfinished && !pending.length && (!outcome.check || t.verified)) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
-      else if (outcome.check && !t.verified && !outcome.asked) { t.state = 'waiting'; logTask(t, 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.') }
+      else if (outcome.check && !t.verified && !outcome.unfinished) {
+        if (!verifyAttempts.has(id) && !extra?.verification) {
+          verifyAttempts.add(id); verifyNext.add(id)
+          logTask(t, 'Retrying unresolved result checks once')
+        } else { t.state = 'waiting'; logTask(t, 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.') }
+      }
+      else if (extra?.verification && !outcome.check && !outcome.unfinished) {
+        t.state = 'waiting'; t.verified = false; t.verificationIssue = 'The verification turn ended without a result check.'
+        logTask(t, t.verificationIssue)
+      }
       else if (outcome.unfinished) {
-        t.state = 'waiting'
-        logTask(t, 'The turn ended with unfinished work; waiting for your next instruction.')
-      } else { t.state = 'done'; logTask(t, 'Done') }
+        const reason = (outcome.unfinishedReason || outcome.answer).trim()
+        const previous = continuations.get(id)
+        if (previous?.reason === reason || (previous?.count ?? 0) >= AUTO_CONTINUE_MAX || /_denied|requires manual control|Blocked by a permission or security screen|권한 또는 보안 화면|sign[ -]in|로그인/i.test(reason)) {
+          t.state = 'waiting'
+          logTask(t, 'The turn ended with unfinished work; waiting for your next instruction.')
+        } else {
+          const count = (previous?.count ?? 0) + 1
+          continuations.set(id, { count, reason })
+          logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
+        }
+      } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     return after
   }
 
-  const nextReason = (task: DelegatedTask): Reason => task.approvals.some(a => a.answer && !a.settled) ? 'approved' : 'limit'
+  const nextReason = (task: DelegatedTask): Reason => task.approvals.some(a => a.answer && !a.settled) ? 'approved' : verifyNext.delete(task.id) ? 'verify' : 'limit'
 
   async function takeDecisions(task: DelegatedTask): Promise<string> {
     const decided = task.approvals.filter(a => a.answer && !a.settled)
@@ -132,7 +153,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -163,7 +184,7 @@ export function taskRunner(deps: {
         owners.set(channel, id)
         if (why === 'approved' && task.approvals.some(a => a.answer && !a.settled)) note = await takeDecisions(task)
         const history = (await readBotTranscript(paths, task.botId)).map((one) => ({ role: one.role, text: one.text }))
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true })
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' ? { verification: { result: task.result ?? '' } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }
