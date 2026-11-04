@@ -66,14 +66,12 @@ test('connected conversations deliver visible results with isolated work surface
       await expect.poll(() => page.locator('.bubble-msg.assistant .answer-actions').count()).toBe(await page.locator('.bubble-msg.assistant').count())
       if (await page.getByTestId('tour-skip').isVisible()) await page.getByTestId('tour-skip').click()
       await page.screenshot({ path: join(data, `session-${index}-result.png`) })
-      const preview = page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
+      const preview = page.getByTestId('preview-card')
       if (index === 2) {
         await expect(preview).toHaveAttribute('data-lane', `bot-${calculator.id}`)
         await expect(preview).toHaveCount(1)
       }
       if (await preview.isVisible()) {
-        const expand = page.getByTestId('preview-card-collapsed')
-        if (await expand.isVisible()) await expand.click()
         await expect(preview.locator('img').first()).toBeVisible()
         await page.screenshot({ path: join(data, `session-${index}-preview.png`) })
         await page.getByTestId(`bot-${browser.id}`).click()

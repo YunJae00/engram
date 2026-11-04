@@ -33,7 +33,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
     if (choice && !frames.some(frame => frame.id === choice)) setChoice(undefined)
   }, [choice, frames])
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
-  const collapsed = view.collapsed || state === 'waiting' || Boolean(attention)
+  const collapsed = view.collapsed
   useEffect(() => {
     setAppPreviewVisible(lane, Boolean(frame) && !view.hidden && !collapsed, busy)
   }, [lane, Boolean(frame), view.hidden, collapsed, busy])
@@ -74,7 +74,7 @@ export function PreviewCard({ frames, busy, state, lang, lane, compact, onOpenWe
           event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button')[frames.indexOf(next)]?.focus()
         }} />)}</nav>}
         {status === 'working' ? <LoaderCircle size={12} className="computer-spinner" aria-hidden /> : <Icon size={12} aria-hidden />}
-        <span className="preview-card-label" role="status">{title} · {frame.current && activity ? activity : words[status]}</span>
+        <span className="preview-card-label" role="status">{title} · {frame.current && activity && status !== 'waiting' ? activity : words[status]}</span>
         {frame.stream && busy && <span className="preview-card-stale">{words.live}</span>}
         {(!frame.stream || !busy) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>

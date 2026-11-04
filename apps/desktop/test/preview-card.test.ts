@@ -39,10 +39,10 @@ it.each([true, false])('starts expanded regardless of whether the turn is busy (
   expect(html).toContain('Last snapshot')
   expect(html).not.toContain('data-testid="preview-card-collapsed"')
 })
-it('preserves temporary folding during approval waits and attention', () => {
+it('stays expanded with a waiting label during approval waits and attention', () => {
   const render = (state: 'recorded' | 'waiting') => renderToStaticMarkup(createElement(PreviewCard, { frames: [appPreviewFrame(frame)], busy: false, state, lang: 'en', lane: 'unit-wait', compact: false }))
-  expect(render('waiting')).toContain('data-testid="preview-card-collapsed"')
+  expect(render('waiting')).toContain('Document · Needs you')
   pane.attention = true
-  try { expect(render('recorded')).toContain('data-testid="preview-card-collapsed"') }
+  try { expect(render('recorded')).toContain('Document · Needs you') }
   finally { pane.attention = false }
 })

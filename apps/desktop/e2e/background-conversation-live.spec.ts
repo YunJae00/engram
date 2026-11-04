@@ -63,7 +63,7 @@ test('a connected conversation edits an owned app while another conversation rec
     const focusLosses = await app.evaluate(() => (globalThis as unknown as { focusLosses: number }).focusLosses)
     expect(focusLosses).toBe(0)
     await page.getByTestId(`bot-${worker.id}`).click()
-    const preview = page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
+    const preview = page.getByTestId('preview-card')
     await expect(preview).toHaveAttribute('data-lane', `bot-${worker.id}`)
     await page.screenshot({ path: join(data, 'worker-expanded.png') })
     await expect(page.getByTestId('preview-card')).toBeVisible()

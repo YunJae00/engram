@@ -42,8 +42,5 @@ export async function closeTestApp(app: ElectronApplication | undefined): Promis
 }
 
 export async function expandPreview(page: Page | Locator): Promise<void> {
-  await expect(page.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
-  const pill = page.getByTestId('preview-card-collapsed')
-  if (await pill.isVisible()) await pill.click()
   await expect(page.getByTestId('preview-card')).toBeVisible()
 }

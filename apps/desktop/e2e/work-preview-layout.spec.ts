@@ -40,7 +40,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
     await page.getByTestId(`bot-${bots[0]!.id}`).click()
     const full = page.locator('.bots-chat')
     const preview = full.getByTestId('preview-card')
-    await expect(full.getByTestId('preview-card-collapsed')).toBeVisible()
+    await expect(preview).toBeVisible()
     await expect(full.getByTestId('task-approvals')).toBeVisible()
     const check = async (chat: Locator, name: string) => {
       const pane = chat.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')
@@ -132,7 +132,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
       }
       await preview.getByRole('button', { name: 'Collapse preview' }).click()
       await emit([{ type: 'desktop:preview', frames }])
-      await expect(full.getByTestId('preview-card-collapsed')).toBeVisible()
+      await expect(preview).toBeVisible()
       await expect(preview.locator('canvas, img')).toHaveCount(0)
       await check(full, `${theme}-collapsed`)
       await full.getByTestId('preview-card-collapsed').click()
@@ -166,7 +166,7 @@ test('app preview stays inside full, split, minimized and expanded conversations
       await expect(mini).not.toContainText('Owned app 2')
       await check(mini, `${theme}-split`)
       await emit([{ type: 'press:ask', channel: lane, words: 'Confirm local action', host: 'example.test' }])
-      await expect(mini.getByTestId('preview-card-collapsed')).toBeVisible()
+      await expect(mini.getByTestId('preview-card')).toBeVisible()
       for (const width of [620, 948, 1400]) {
         await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 600), width)
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)

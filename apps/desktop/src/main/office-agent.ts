@@ -2,7 +2,7 @@ import { officeTools, type AgentTool, type OfficeOp } from 'core'
 import { officeWorkPreview } from './work-preview.js'
 import { screen } from 'electron'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
-import { assertDesktopTurnNotStopped, endDesktopTurn } from './desktop-control.js'
+import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
 
 // A new deck or document is composed as a file with a designed layout, not
@@ -43,7 +43,6 @@ export function officeAgentTools(lane: string): AgentTool[] {
     const run = async () => {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
-      endDesktopTurn(lane)
       const finish = officeWorkPreview(lane, op)
       try {
         if (op.startsWith('outlook.') || op === 'excel.workbooks') {
