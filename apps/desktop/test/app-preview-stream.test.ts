@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 const { open, previewStream, streamEvent } = vi.hoisted(() => ({ open: vi.fn(), previewStream: vi.fn().mockResolvedValue(undefined), streamEvent: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewStreamEvent: streamEvent, desktopPreviewStream: previewStream } }))
+vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewVisible: vi.fn().mockResolvedValue(undefined), desktopPreviewStreamEvent: streamEvent, desktopPreviewStream: previewStream } }))
 vi.mock('../src/renderer/src/lib/desktopStream.js', () => ({ openDesktopStream: open }))
 import { appPreviewStream, appPreviewFor, syncAppPreviewStreams, setAppPreviewVisible } from '../src/renderer/src/lib/appPreviewStream.js'
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
@@ -93,7 +93,7 @@ it('closes capture when the card is hidden or its conversation is left', async (
   syncAppPreviewStreams([], vi.fn())
 })
 
-it('closes capture after a turn, keeps its image, and restarts on the next busy turn', async () => {
+it('keeps capture after a turn until the deck is hidden', async () => {
   const stop = vi.fn()
   open.mockResolvedValue({ getTracks: () => [{ stop }], getVideoTracks: () => [] })
   const video = { readyState: 2, videoWidth: 320, videoHeight: 200, play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
@@ -103,25 +103,26 @@ it('closes capture after a turn, keeps its image, and restarts on the next busy 
   vi.stubGlobal('requestAnimationFrame', (callback: () => void) => { paint = callback; return 1 })
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
   const binding = { lane: 'bot-turn', source: 'window:42:0', name: 'Owned', readable: true }
-  setAppPreviewVisible(binding.lane, true, true)
+  setAppPreviewVisible(binding.lane, true)
   syncAppPreviewStreams([binding], vi.fn())
   await Promise.resolve()
   const preview = appPreviewFor(binding.lane)!
   preview.source(vi.fn())
   await Promise.resolve(); paint()
-  setAppPreviewVisible(binding.lane, true, false)
-  expect(stop).toHaveBeenCalledOnce()
-  expect(previewStream).toHaveBeenLastCalledWith(binding.lane, false)
+  setAppPreviewVisible(binding.lane, true)
+  expect(stop).not.toHaveBeenCalled()
+  expect(previewStream).toHaveBeenLastCalledWith(binding.lane, true)
   expect(appPreviewFor(binding.lane)).toBe(preview)
-  expect(preview.live).toBe(false)
+  expect(preview.live).toBe(true)
   expect(preview.image).toBe('data:image/jpeg;base64,last')
   syncAppPreviewStreams([binding], vi.fn())
   expect(open).toHaveBeenCalledTimes(1)
-  setAppPreviewVisible(binding.lane, true, true)
+  setAppPreviewVisible(binding.lane, true)
   await Promise.resolve()
-  expect(open).toHaveBeenCalledTimes(2)
+  expect(open).toHaveBeenCalledTimes(1)
   expect(appPreviewFor(binding.lane)?.live).toBe(true)
   setAppPreviewVisible(binding.lane, false)
+  expect(stop).toHaveBeenCalledOnce()
   syncAppPreviewStreams([], vi.fn())
 })
 
@@ -157,4 +158,38 @@ it('exhausts five retries and replaces the failed stream on the next sync', asyn
   syncAppPreviewStreams([binding], vi.fn())
   expect(appPreviewFor(binding.lane)).not.toBe(preview)
   setAppPreviewVisible(binding.lane, false); syncAppPreviewStreams([], vi.fn()); vi.useRealTimers()
+})
+
+it('tries a hidden window source once and leaves native polling in charge after failure', async () => {
+  vi.useFakeTimers()
+  open.mockRejectedValue(new Error('source missing'))
+  vi.stubGlobal('document', { visibilityState: 'visible', createElement: () => ({ pause: vi.fn() }), addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const binding = { lane: 'bot-hidden', source: 'window:42:0', name: 'Owned', readable: true, hiddenByEngram: 200 }
+  setAppPreviewVisible(binding.lane, true)
+  syncAppPreviewStreams([binding], vi.fn())
+  await vi.advanceTimersByTimeAsync(30000)
+  syncAppPreviewStreams([binding], vi.fn())
+  expect(open).toHaveBeenCalledTimes(1)
+  expect(appPreviewFor(binding.lane)?.exhausted).toBe(true)
+  expect(streamEvent).toHaveBeenCalledWith(binding.lane, { event: 'failed', reason: 'hidden-window-source-unavailable: source missing', attempt: 0 })
+  setAppPreviewVisible(binding.lane, false)
+})
+
+it('keeps the lane live while either its conversation or mission deck is visible', async () => {
+  const stop = vi.fn()
+  open.mockResolvedValue({ getTracks: () => [{ stop }], getVideoTracks: () => [] })
+  vi.stubGlobal('document', { visibilityState: 'visible', createElement: () => ({ pause: vi.fn() }), addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const binding = { lane: 'bot-shared', source: 'window:42:0', name: 'Owned', readable: true }
+  setAppPreviewVisible(binding.lane, true, 'conversation')
+  setAppPreviewVisible(binding.lane, true, 'mission')
+  syncAppPreviewStreams([binding], vi.fn())
+  await Promise.resolve()
+  setAppPreviewVisible(binding.lane, false, 'conversation')
+  expect(stop).not.toHaveBeenCalled()
+  expect(appPreviewFor(binding.lane)?.live).toBe(true)
+  setAppPreviewVisible(binding.lane, false, 'mission')
+  expect(stop).toHaveBeenCalledOnce()
+  expect(appPreviewFor(binding.lane)).toBeUndefined()
 })

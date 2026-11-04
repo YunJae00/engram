@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
+import { DesktopHost } from '../src/main/desktop-host.js'
 
 interface HostDouble { closed: boolean; close(): void; revoke(reason?: string): void }
 const fake = vi.hoisted(() => ({
@@ -21,7 +22,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
+import { rememberHiddenApp, refreshHiddenApp, showDesktopApp, releaseDesktop, rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -217,4 +218,55 @@ it('unminimizes only the selected minimized window during binding', async () => 
   expect(fake.request.mock.calls.filter(([method]) => method === 'inspectWindow')).toEqual([
     ['inspectWindow', { window: '102', pid: 202, unminimize: true }],
   ])
+})
+
+it('restores only apps launched hidden, on release and on Show app', async () => {
+  const attached = await bindDesktopForLane(lane)
+  releaseDesktop(lane)
+  expect(fake.request).not.toHaveBeenCalledWith('unhideApp', expect.anything())
+  const launched = await bindDesktopForLane(lane)
+  const launcher = attached.host
+  rememberHiddenApp(lane, launched.pid, launcher)
+  launched.hiddenByEngram = launched.pid
+  await showDesktopApp(lane)
+  expect(fake.request).toHaveBeenCalledWith('unhideApp', { pid: launched.pid, activate: true })
+  expect(launched.hiddenByEngram).toBeUndefined()
+  fake.request.mockClear()
+  rememberHiddenApp(lane, launched.pid, launcher)
+  releaseDesktop(lane)
+  await Promise.resolve()
+  expect(fake.request).toHaveBeenCalledWith('unhideApp', { pid: launched.pid, activate: false })
+})
+it('clears hidden ownership when the person unhides and leaves their app visible on release', async () => {
+  const held = await bindDesktopForLane(lane)
+  rememberHiddenApp(lane, held.pid, held.host)
+  held.hiddenByEngram = held.pid
+  fake.request.mockResolvedValueOnce({ hidden: false })
+  await refreshHiddenApp(held)
+  expect(held.hiddenByEngram).toBeUndefined()
+  releaseDesktop(lane)
+  expect(fake.request).not.toHaveBeenCalledWith('unhideApp', expect.anything())
+})
+it('awaits restoration of a hidden launch even before its first app_read binding', async () => {
+  const held = await bindDesktopForLane(lane)
+  rememberHiddenApp(other, 201, held.host)
+  await closeDesktopAccess()
+  expect(fake.request).toHaveBeenCalledWith('unhideApp', { pid: 201, activate: false })
+})
+
+it('keeps a newly launched app hidden when it replaces an older app binding in the lane', async () => {
+  const older = await bindDesktopForLane(lane)
+  rememberHiddenApp(lane, 201, older.host)
+  const next = await bindDesktopForLane(lane, { app: 'Notepad' })
+  expect(next.hiddenByEngram).toBe(201)
+  expect(fake.request).not.toHaveBeenCalledWith('unhideApp', expect.anything())
+  await closeDesktopAccess()
+})
+
+it('restores an unbound hidden launch when the lane reads a different app instead', async () => {
+  await bindDesktopForLane(lane)
+  rememberHiddenApp(lane, 201, new DesktopHost(() => undefined))
+  await bindDesktopForLane(lane, { app: 'Excel' })
+  expect(fake.request).toHaveBeenCalledWith('unhideApp', { pid: 201, activate: false })
+  await closeDesktopAccess()
 })

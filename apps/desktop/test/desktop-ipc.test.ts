@@ -22,7 +22,7 @@ vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => 
 vi.mock('../src/main/desktop-access.js', () => ({
   captureSource: deps.capture, desktopOwner: () => deps.owner, desktopVisible: () => deps.visible,
   desktopBindings: () => deps.bindings, desktopWindows: async () => [],
-  chooseDesktop: vi.fn(), releaseDesktop: vi.fn(), setDesktopReadAccess: vi.fn(),
+  showDesktopApp: vi.fn(), chooseDesktop: vi.fn(), releaseDesktop: vi.fn(), setDesktopReadAccess: vi.fn(),
 }))
 vi.mock('../src/main/desktop-control.js', () => ({
   desktopControlStatus: () => ({ state: 'idle' }), readControlledDesktop: deps.read,

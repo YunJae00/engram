@@ -3,7 +3,7 @@ import type { FrameSource } from '../components/FrameScreen.js'
 import { api } from '../api.js'
 import { openDesktopStream } from './desktopStream.js'
 
-export function appPreviewStream(lane: string, changed: () => void) {
+export function appPreviewStream(lane: string, changed: () => void, hidden = false) {
   const controller = new AbortController()
   const video = document.createElement('video')
   const canvas = document.createElement('canvas')
@@ -61,9 +61,10 @@ export function appPreviewStream(lane: string, changed: () => void) {
   }
   const failed = (why: string, ended = false) => {
     if (controller.signal.aborted) return
-    reason = why; playback++; setLive(false); stopPainting(); video.pause()
+    reason = hidden ? `hidden-window-source-unavailable: ${why}` : why; playback++; setLive(false); stopPainting(); video.pause()
     const held = stream; stream = undefined; video.srcObject = null
     held?.getTracks().forEach(track => track.stop())
+    if (hidden) { exhausted = true; reconnecting = false }
     event(ended ? 'ended' : 'failed', reason); schedule(); changed()
   }
   const visibility = () => { update(); if (!live && reason) schedule(); else if (!stream && eligible()) start() }
@@ -115,27 +116,31 @@ export function appPreviewStream(lane: string, changed: () => void) {
 
 const streams = new Map<string, { source: string; stopped: boolean; stream: ReturnType<typeof appPreviewStream> }>()
 const visible = new Set<string>()
-const working = new Set<string>()
+const holders = new Map<string, Set<string>>()
 let currentBindings: DesktopBindingDto[] = []
 let notify = () => {}
-export function setAppPreviewVisible(lane: string, showing: boolean, busy = true): void {
-  if (visible.has(lane) === showing && working.has(lane) === (showing && busy)) return
-  if (showing) visible.add(lane); else visible.delete(lane)
-  if (showing && busy) working.add(lane); else working.delete(lane)
+export function setAppPreviewVisible(lane: string, showing: boolean, owner = lane): void {
+  const held = holders.get(lane) ?? new Set<string>()
+  if (showing) held.add(owner); else held.delete(owner)
+  if (held.size) holders.set(lane, held); else holders.delete(lane)
+  const next = held.size > 0
+  if (visible.has(lane) === next) return
+  if (next) visible.add(lane); else visible.delete(lane)
+  void api.desktopPreviewVisible(lane, next).catch(() => {})
   syncAppPreviewStreams(currentBindings, notify)
   notify()
 }
 export function syncAppPreviewStreams(bindings: DesktopBindingDto[], changed: () => void): void {
   currentBindings = bindings
   notify = changed
-  bindings = bindings.filter(item => visible.has(item.lane)).map(item => ({ ...item, stopped: item.stopped || !working.has(item.lane) }))
+  bindings = bindings.filter(item => visible.has(item.lane))
   for (const [lane, held] of streams) {
     const binding = bindings.find(item => item.lane === lane && item.readable && item.source === held.source)
-    if (!binding || held.stopped && !binding.stopped || held.stream.exhausted && !binding.stopped) { held.stream.close(); streams.delete(lane) }
+    if (!binding || held.stopped && !binding.stopped || held.stream.exhausted && !binding.stopped && !binding.hiddenByEngram) { held.stream.close(); streams.delete(lane) }
     else if (binding.stopped && !held.stopped) { held.stream.close(); held.stopped = true }
   }
   for (const binding of bindings) if (binding.readable && !binding.stopped && !streams.has(binding.lane)) {
-    streams.set(binding.lane, { source: binding.source, stopped: false, stream: appPreviewStream(binding.lane, changed) })
+    streams.set(binding.lane, { source: binding.source, stopped: false, stream: appPreviewStream(binding.lane, changed, !!binding.hiddenByEngram) })
   }
 }
 export function appPreviewFor(lane: string) { return streams.get(lane)?.stream }

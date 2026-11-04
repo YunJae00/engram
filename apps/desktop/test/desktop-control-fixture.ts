@@ -5,16 +5,17 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const deps = vi.hoisted(() => ({
   bindings: new Map<string, unknown>(),
-  launch: vi.fn(), remember: vi.fn(), bind: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
+  hidden: vi.fn(), closeLaunch: vi.fn(), launch: vi.fn(), remember: vi.fn(), bind: vi.fn(), changed: vi.fn(), broadcast: vi.fn(),
   overlay: { show: vi.fn(), prepare: vi.fn(), update: vi.fn(), hide: vi.fn(), pointer: vi.fn() },
   cursor: { x: 10, y: 10 },
   release: undefined as ((lane: string, reason: string) => void) | undefined,
 }))
-vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: class { request = deps.launch; close() {} } }))
+vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: class { request = deps.launch; close = deps.closeLaunch } }))
 vi.mock('electron', () => ({ screen: { getCursorScreenPoint: () => ({ ...deps.cursor }), screenToDipPoint: (point: { x: number; y: number }) => point } }))
 vi.mock('../src/main/desktop-access.js', () => ({
   desktopForeground: async () => ({ pid: 99, title: 'Previous' }),
   rememberOpenedForeground: deps.remember,
+  rememberHiddenApp: deps.hidden,
   desktopBinding: (lane: string) => deps.bindings.get(lane),
   bindDesktopForLane: deps.bind,
   desktopChanged: deps.changed,
@@ -70,6 +71,8 @@ beforeEach(async () => {
   })
   deps.launch.mockReset()
   deps.remember.mockReset()
+  deps.hidden.mockReset()
+  deps.closeLaunch.mockReset()
   deps.changed.mockReset()
   deps.broadcast.mockReset()
   for (const spy of Object.values(deps.overlay)) spy.mockReset()
