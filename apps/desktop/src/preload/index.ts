@@ -49,6 +49,7 @@ const api: EngramApi = {
   artifactOpen: (id) => ipcRenderer.invoke('artifact:open', id),
   artifactRead: (id) => ipcRenderer.invoke('artifact:read', id),
   desktopPreviews: lane => ipcRenderer.invoke('desktop:previews', lane),
+  desktopPreviewStreamEvent: (lane, detail) => ipcRenderer.invoke('desktop:previewStreamEvent', lane, detail),
   desktopPreviewStream: (lane, live) => ipcRenderer.invoke('desktop:previewStream', lane, live),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),

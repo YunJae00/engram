@@ -10,8 +10,9 @@ const deps = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(), captureHandler: undefined as CaptureHandler | undefined,
   owner: undefined as { webContents: Sender } | undefined, visible: true,
   bindings: [] as { lane: string; source: string; name: string; readable: boolean }[],
-  media: vi.fn(), capture: vi.fn(), read: vi.fn(), start: vi.fn(), stop: vi.fn(),
+  flog: vi.fn(), media: vi.fn(), capture: vi.fn(), read: vi.fn(), start: vi.fn(), stop: vi.fn(),
 }))
+vi.mock('../src/main/flog.js', () => ({ flog: deps.flog }))
 vi.mock('electron', () => ({
   systemPreferences: { getMediaAccessStatus: deps.media },
   ipcMain: { handle: (name: string, handler: IpcHandler) => deps.handlers.set(name, handler) },
@@ -55,6 +56,7 @@ beforeEach(async () => {
   vi.resetModules()
   vi.useFakeTimers()
   vi.setSystemTime(0)
+  deps.flog.mockReset()
   deps.media.mockReset().mockReturnValue('granted')
   deps.handlers.clear()
   deps.captureHandler = undefined
@@ -251,4 +253,19 @@ it('denies with null without a callback exception or unhandled rejection', async
     expect(callback).toHaveBeenCalledExactlyOnceWith(null)
     expect(unhandled).not.toHaveBeenCalled()
   } finally { process.off('unhandledRejection', unhandled) }
+})
+
+
+it('records stream events and capture denial reasons', async () => {
+  call('desktop:previewStreamEvent', lane, { event: 'retry', reason: 'track-ended', attempt: 1 })
+  expect(deps.flog).toHaveBeenCalledWith('desktop-stream', JSON.stringify({ lane, event: 'retry', reason: 'track-ended', attempt: 1 }))
+  expect(() => call('desktop:previewStreamEvent', lane, { event: 'bogus' })).toThrow('Invalid')
+  deps.visible = false
+  expect(() => prepare()).toThrow('Show Engram')
+  expect(deps.flog.mock.calls.some(([, data]) => JSON.parse(data).reason === 'Show Engram before starting a window view.')).toBe(true)
+  deps.visible = true
+  prepare(); deps.capture.mockRejectedValue(new Error('Window inspection failed'))
+  const callback = capture(); await flush()
+  expect(callback).toHaveBeenCalledWith(null)
+  expect(deps.flog.mock.calls.some(([, data]) => JSON.parse(data).reason === 'Window inspection failed')).toBe(true)
 })
