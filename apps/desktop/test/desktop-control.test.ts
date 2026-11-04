@@ -410,10 +410,17 @@ describe('opening apps', () => {
   })
   it.each([false, true])('reports foreground changes honestly when restored is %s', async restored => {
     deps.bind.mockRejectedValueOnce(new Error('No open window matches "Editor".'))
-    deps.launch.mockResolvedValue({ foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
+    deps.launch.mockResolvedValue({ opened: true, hiddenMs: 40, cycles: 1, windowVerified: true, foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
     const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
     expect(result).toMatchObject({ opened: true, alreadyOpen: false, foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
-    expect(result.hint).toBe(restored ? 'The app came to the front for a moment and the previous window was restored.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; read it with app_read.')
+    expect(result.hint).toBe(restored ? 'The app came to the front for 40 ms and was hidden back; the window is open behind the current one. Read it with app_read.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; observe the app before proceeding.')
+  })
+  it('reopens a running process without a window and reports unverified windows honestly', async () => {
+    deps.bind.mockRejectedValueOnce(new Error('No open window matches "Editor".'))
+    deps.launch.mockResolvedValue({ opened: true, alreadyOpen: true, windowVerified: false, foregroundChanged: false, foregroundRestored: true, hiddenMs: 0, cycles: 0 })
+    const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
+    expect(result).toMatchObject({ opened: true, alreadyOpen: true, windowVerified: false, hiddenMs: 0, cycles: 0 })
+    expect(result.hint).toContain('No app window was verified yet')
   })
   it('preserves ambiguous and denied binding errors without launching', async () => {
     deps.bind.mockRejectedValueOnce(new Error('Several windows match "Editor".'))

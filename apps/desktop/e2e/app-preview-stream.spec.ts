@@ -20,7 +20,10 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
     const page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
     await page.addInitScript(() => {
+      const counts = { opened: 0, closed: 0 }
+      Object.assign(window, { streamCounts: counts })
       navigator.mediaDevices.getDisplayMedia = async () => {
+        counts.opened++
         const canvas = document.createElement('canvas')
         canvas.width = 320; canvas.height = 200
         const context = canvas.getContext('2d')!
@@ -29,6 +32,9 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
         let frame = 0
         const timer = setInterval(() => { context.fillStyle = `rgb(${frame++ % 255}, 80, 120)`; context.fillRect(0, 0, 320, 200) }, 40)
         stream.getVideoTracks()[0]!.addEventListener('ended', () => clearInterval(timer))
+        const track = stream.getVideoTracks()[0]!
+        const stop = track.stop.bind(track)
+        track.stop = () => { counts.closed++; clearInterval(timer); stop() }
         return stream
       }
     })
@@ -57,6 +63,21 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
     await expect(painted).toBeVisible({ timeout: 2000 })
     await expect(page.getByTestId('preview-card')).toContainText('Live')
     await expect(page.getByTestId('bots-input')).toBeFocused()
+    // A newer web card covers the app in the same lane; capture must stay open.
+    await app.evaluate(({ BrowserWindow }, lane) => {
+      const contents = BrowserWindow.getAllWindows()[0]!.webContents
+      contents.send('engram:event', { type: 'comet:step', channel: lane, line: 'read_open_page: Preview' })
+      contents.send('engram:event', { type: 'agent:frame', lane, url: 'https://example.test/stream', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', width: 320, height: 200 })
+    }, lane)
+    const deck = page.getByTestId('preview-deck')
+    await expect(deck.locator('[data-position]')).toHaveCount(2)
+    await expect(deck.locator('[data-position="0"]')).toHaveAttribute('data-frame', `${lane}:web:https://example.test/stream`)
+    await expect(deck.getByRole('button', { name: 'Owned stream', exact: true }).locator('img')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { streamCounts: { opened: number; closed: number } }).streamCounts)).toEqual({ opened: 1, closed: 0 })
+    await deck.getByRole('button', { name: 'Owned stream', exact: true }).press('Enter')
+    await expect(painted).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { streamCounts: { opened: number; closed: number } }).streamCounts)).toEqual({ opened: 1, closed: 0 })
+
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:done', channel: lane, text: 'Done.' }), lane)
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
     await expect(page.getByTestId('preview-card')).toContainText('Last snapshot')

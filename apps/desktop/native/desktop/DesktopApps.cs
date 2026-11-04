@@ -29,17 +29,43 @@ internal static class DesktopApps
         return Regex.IsMatch(identity, @"^[A-Za-z0-9.\-_]+![A-Za-z0-9.\-_]+$")
             || (!string.IsNullOrEmpty(target) && Path.IsPathRooted(target) && string.Equals(Path.GetExtension(target), ".exe", StringComparison.OrdinalIgnoreCase));
     }
-    internal static object Launch(string name, Action open, Func<IntPtr> foreground, Func<IntPtr, bool> restore)
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr behind, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr data);
+    private delegate bool WindowCallback(IntPtr window, IntPtr data);
+    private static int Pid(IntPtr window) { uint pid; GetWindowThreadProcessId(window, out pid); return (int)pid; }
+    private static bool Matches(IntPtr window, string target, HashSet<int> prior)
+    {
+        var pid = Pid(window);
+        if (pid <= 0) return false;
+        if (!prior.Contains(pid)) return true;
+        try { using (var process = System.Diagnostics.Process.GetProcessById(pid)) return !string.IsNullOrEmpty(target) && string.Equals(process.MainModule.FileName, target, StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
+    }
+    internal static object Launch(string name, Action open, Func<IntPtr> foreground, Func<IntPtr, bool> restore,
+        Func<IntPtr, bool> matches, Func<bool> windowVerified, Action<IntPtr, IntPtr> behind, Action<int> wait)
     {
         var previous = foreground();
         var before = WindowGuard.ForegroundInfo(previous);
         try { open(); }
         catch { if (foreground() != previous) restore(previous); throw; }
-        var changed = foreground() != previous;
-        var restored = changed && restore(previous);
-        return new { requested = true, name = name, title = name, requiresObservation = true,
-            before = before, after = WindowGuard.ForegroundInfo(foreground()),
-            foregroundChanged = changed, foregroundRestored = restored };
+        var changed = false;
+        var cycles = 0;
+        var hiddenMs = 0L;
+        var guardStarted = System.Diagnostics.Stopwatch.StartNew();
+        for (var poll = 0; poll < 60 && guardStarted.ElapsedMilliseconds < 3000; poll++)
+        {
+            wait(50);
+            var current = foreground();
+            if (current == previous || !matches(current)) continue;
+            changed = true; cycles++;
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            if (!restore(previous)) { behind(current, previous); restore(previous); }
+            hiddenMs += 50 + started.ElapsedMilliseconds;
+        }
+        return new { requested = true, opened = true, alreadyOpen = false, name = name, title = name, requiresObservation = true,
+            before = before, after = WindowGuard.ForegroundInfo(foreground()), windowVerified = windowVerified(),
+            hiddenMs = hiddenMs, cycles = cycles, foregroundChanged = changed, foregroundRestored = foreground() == previous };
     }
     private static object Visit(string wanted, Func<bool> permitted)
     {
@@ -72,8 +98,19 @@ internal static class DesktopApps
                     else if (wanted == id)
                     {
                         if (!permitted()) throw new InvalidOperationException("The app launch was cancelled.");
+                        var prior = new HashSet<int>();
+                        foreach (var process in System.Diagnostics.Process.GetProcesses()) { using (process) prior.Add(process.Id); }
+                        var previousPid = Pid(DesktopNative.GetForegroundWindow());
+                        Func<IntPtr, bool> matches = window => Matches(window, target, prior);
                         return Launch(name, delegate { Call(item, "InvokeVerb", false, "open"); },
-                            DesktopNative.GetForegroundWindow, DesktopNative.RestoreForeground);
+                            DesktopNative.GetForegroundWindow, DesktopNative.RestoreForeground, window => Pid(window) != previousPid && matches(window),
+                            delegate {
+                                var found = false;
+                                EnumWindows(delegate(IntPtr window, IntPtr unused) { if (matches(window)) found = true; return !found; }, IntPtr.Zero);
+                                return found;
+                            },
+                            delegate(IntPtr window, IntPtr previous) { SetWindowPos(window, previous, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010); },
+                            System.Threading.Thread.Sleep);
                     }
                 }
                 finally { Release(item); }

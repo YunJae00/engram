@@ -60,12 +60,17 @@ internal static class DesktopSelfTest
             var foreground = new IntPtr(10);
             var restores = 0;
             Func<IntPtr, bool> restoreLaunch = delegate(IntPtr window) { restores++; foreground = window; return true; };
-            dynamic quietLaunch = DesktopApps.Launch("Owned", delegate { }, delegate { return foreground; }, restoreLaunch);
-            Check(!quietLaunch.foregroundChanged && !quietLaunch.foregroundRestored && restores == 0, "Background app launch preserves foreground without activation");
-            dynamic activeLaunch = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, restoreLaunch);
+            dynamic quietLaunch = DesktopApps.Launch("Owned", delegate { }, delegate { return foreground; }, restoreLaunch, window => window == new IntPtr(20), () => true, (window, previous) => { }, ms => { });
+            Check(!quietLaunch.foregroundChanged && quietLaunch.foregroundRestored && restores == 0, "Background app launch preserves foreground without activation");
+            dynamic activeLaunch = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, restoreLaunch, window => window == new IntPtr(20), () => true, (window, previous) => { }, ms => { });
             Check(activeLaunch.foregroundChanged && activeLaunch.foregroundRestored && foreground == new IntPtr(10) && restores == 1, "Self-activating app launch restores the previous foreground");
-            dynamic failedRestore = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, delegate { return false; });
+            dynamic failedRestore = DesktopApps.Launch("Owned", delegate { foreground = new IntPtr(20); }, delegate { return foreground; }, delegate { return false; }, window => window == new IntPtr(20), () => false, (window, previous) => { }, ms => { });
             Check(failedRestore.foregroundChanged && !failedRestore.foregroundRestored, "Launch restoration failures are reported honestly");
+            foreground = new IntPtr(10);
+            var polls = 0;
+            dynamic delayedLaunch = DesktopApps.Launch("Owned", delegate { }, delegate { return foreground; }, restoreLaunch,
+                window => window == new IntPtr(20), () => true, (window, previous) => { }, ms => { if (++polls == 2) foreground = new IntPtr(20); });
+            Check(delayedLaunch.foregroundChanged && delayedLaunch.foregroundRestored && delayedLaunch.cycles == 1 && polls == 60 && delayedLaunch.windowVerified, "Delayed activation on the second poll is guarded");
             var postedPoint = QuietPostedInput.ClientPoint(new System.Windows.Rect(-1200, 100, 80, 40), -1280, 80).ToInt32();
             Check((short)(postedPoint & 0xffff) == 120 && (short)(postedPoint >> 16) == 40, "Posted clicks convert screen bounds to client coordinates");
             var negativePoint = QuietPostedInput.ClientPoint(new System.Windows.Rect(-40, -30, 10, 10), 0, 0).ToInt32();

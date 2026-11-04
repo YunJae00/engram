@@ -13,12 +13,12 @@ beforeEach(() => {
   endDesktopTurn('bot-launch')
   vi.clearAllMocks()
   setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: true }))
-  fake.request.mockResolvedValue({ requested: true })
+  fake.request.mockResolvedValue({ requested: true, opened: true })
 })
 
 it('launches only through an isolated engine and requires observation afterward', async () => {
   expect(await openDesktopApp('bot-launch', 'calculator')).toContain('does not prove')
-  expect(await openDesktopApp('bot-launch', 'calculator')).toContain('foreground control requires an approval card')
+  expect(await openDesktopApp('bot-launch', 'calculator')).toContain('No app window was verified yet')
   expect(fake.request).toHaveBeenCalledWith('openApp', { app: 'calculator' })
   expect(fake.close).toHaveBeenCalledTimes(2)
   setDesktopEngineResolver(async () => ({ id: 'claude', desktopToolIsolation: false }))
@@ -45,9 +45,19 @@ it('reports launch acceptance separately from window verification', async () => 
   expect(JSON.parse(await openDesktopApp('bot-launch', 'calculator'))).toMatchObject({ opened: true, windowVerified: false })
 })
 
-it('records launch foreground restoration and retains the prior app for first binding', async () => {
-  fake.request.mockResolvedValue({ requested: true, pid: 42, previousFrontPid: 99, foregroundRestored: true })
+it('records launch foreground restoration without retaining the prior app once restored', async () => {
+  fake.request.mockResolvedValue({ requested: true, opened: true, pid: 42, previousFrontPid: 99, foregroundChanged: true, foregroundRestored: true })
+  await openDesktopApp('bot-launch', 'calculator')
+  expect(fake.remember).not.toHaveBeenCalled()
+  expect(fake.flog).toHaveBeenCalledWith('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane: 'bot-launch', tool: 'open_app' }))
+})
+it('retains the prior app for first binding only when the launch is still in front', async () => {
+  fake.request.mockResolvedValue({ requested: true, opened: true, pid: 42, previousFrontPid: 99, foregroundChanged: true, foregroundRestored: false })
   await openDesktopApp('bot-launch', 'calculator')
   expect(fake.remember).toHaveBeenCalledWith('bot-launch', expect.objectContaining({ pid: 42, previousFrontPid: 99 }))
-  expect(fake.flog).toHaveBeenCalledWith('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane: 'bot-launch', tool: 'open_app' }))
+  fake.remember.mockClear(); fake.flog.mockClear()
+  fake.request.mockResolvedValue({ requested: true, opened: true, pid: 43, previousFrontPid: 99, foregroundChanged: false, foregroundRestored: true, windowVerified: true })
+  await openDesktopApp('bot-launch', 'calculator')
+  expect(fake.remember).not.toHaveBeenCalled()
+  expect(fake.flog).not.toHaveBeenCalledWith('harness', expect.stringContaining('foreground-restored'))
 })

@@ -105,6 +105,7 @@ struct Snapshot {
     let focus: AXUIElement?
     let complete: Bool
     let at = Date()
+    var captureSafe: Bool { complete || !controls.contains { $0.secret } }
 }
 func transparentGroup(role: String, name: String, value: String, identifier: String, actionable: Bool) -> Bool {
     role == kAXGroupRole && name.isEmpty && value.isEmpty && identifier.isEmpty && !actionable
@@ -157,12 +158,12 @@ func requireCurrent(_ snapshot: Snapshot, target: Target) throws {
 }
 func catalog() -> [(id: String, name: String, url: URL, aliases: [String])] {
     var result: [(String, String, URL, [String])] = []
-    for root in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+    for root in ["/Applications", "/System/Applications", "/System/Cryptexes/App/System/Applications", NSHomeDirectory() + "/Applications"] {
         guard let iterator = FileManager.default.enumerator(at: URL(fileURLWithPath: root), includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { continue }
         for case let url as URL in iterator {
             if url.pathExtension == "app" {
                 iterator.skipDescendants()
-                guard let bundle = Bundle(url: url), let identity = bundle.bundleIdentifier else { continue }
+                guard let bundle = Bundle(url: url.resolvingSymlinksInPath()), let identity = bundle.bundleIdentifier else { continue }
                 let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? url.deletingPathExtension().lastPathComponent
                 if sensitive(name) || sensitive(identity) { continue }
                 let id = SHA256.hash(data: Data(url.path.utf8)).map { String(format: "%02x", $0) }.joined()

@@ -12,7 +12,7 @@ import type { FrameSource } from './FrameScreen.js'
 
 export type PreviewFrame = {
   id: string; source: 'app' | 'web'; title: string; at: number; image?: string; stream?: FrameSource
-  live?: boolean; reconnecting?: boolean
+  live?: boolean; reconnecting?: boolean; connecting?: boolean
   activity?: string
   phase: 'activity' | 'ready' | 'waiting' | 'delayed' | 'no-snapshot' | 'unavailable' | 'empty'
   onPaint?(): void
@@ -80,7 +80,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     if (!frame) { frame = { id, source: 'app', title: binding.name, at: Date.now(), phase: 'waiting' }; frames.push(frame) }
     const stream = appPreviewFor(lane)
     if (stream?.reason === 'screen_recording_denied') { frame.reason = stream.reason; if (!frame.image) frame.phase = 'unavailable' }
-    if (stream) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting }
+    if (stream) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting; frame.connecting = stream.connecting }
     if (stream?.live) { frame.stream = stream.source; frame.phase = 'ready'; frame.image = undefined }
     else if (stream?.image) { frame.image = stream.image; frame.at = stream.at; frame.phase = 'ready' }
   }

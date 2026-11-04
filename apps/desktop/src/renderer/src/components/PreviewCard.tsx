@@ -28,7 +28,7 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
   const snapshot = `${words.lastSnapshot} · ${words.snapshotAge(age)}`
   const activity = frame.activity && (lang === 'ko' ? GROUP_KO[frame.activity] ?? frame.activity : frame.activity)
-  const message = frame.phase === 'activity' ? words.officeActivity : frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
+  const message = frame.connecting ? words.firstFrame : frame.phase === 'activity' ? words.officeActivity : frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
     : frame.reason === 'screen_recording_denied' ? words.screenPermission : frame.reason === 'capture_unsafe' ? words.captureUnsafe
     : frame.phase === 'unavailable' ? words.unavailable : words.firstFrame
   const open = () => {

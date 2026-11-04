@@ -62,3 +62,13 @@ it.each(['en', 'ko'] as const)('labels stopped streams and reconnection in %s wi
   expect(render(false)).toContain(words.lastSnapshot)
   expect(render(false)).not.toContain(words.stoppedFrame)
 })
+
+it.each(['en', 'ko'] as const)('shows connecting instead of stale capture-unsafe while a stream starts in %s', lang => {
+  const render = (connecting: boolean) => renderToStaticMarkup(createElement(PreviewCard, {
+    frame: { ...appPreviewFrame({ ...frame, data: undefined, captureState: 'unavailable', captureReason: 'capture_unsafe' }), stream: () => () => {}, live: false, connecting },
+    busy: true, state: 'recorded', lang, lane: 'unit-connecting', compact: false, onCollapse() {}, onHide() {},
+  }))
+  expect(render(true)).toContain(threadWords(lang).workPreview.firstFrame)
+  expect(render(true)).not.toContain(threadWords(lang).workPreview.captureUnsafe)
+  expect(render(false)).toContain(threadWords(lang).workPreview.captureUnsafe)
+})

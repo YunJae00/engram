@@ -46,6 +46,11 @@ final class Connection: @unchecked Sendable {
                 posted.setIntegerValueField(.eventSourceUserData, value: input.marker)
                 let intervention = input.state().intervention
                 let target = Target(id: 1, pid: 100, element: AXUIElementCreateApplication(100), title: "Owned self-test")
+                let safeNode = Control(id: "0", element: target.element, role: kAXTextFieldRole, name: "Text", secret: false, bounds: nil, enabled: true, settable: false, pressable: false)
+                let secretNode = Control(id: "1", element: target.element, role: kAXTextFieldRole, name: "Password", secret: true, bounds: nil, enabled: true, settable: false, pressable: false)
+                precondition(Snapshot(target: target, bounds: .zero, controls: [safeNode], focus: nil, complete: false).captureSafe)
+                precondition(!Snapshot(target: target, bounds: .zero, controls: [safeNode, secretNode], focus: nil, complete: false).captureSafe)
+                precondition(Snapshot(target: target, bounds: .zero, controls: [secretNode], focus: nil, complete: true).captureSafe)
                 let grant = UUID().uuidString
                 let lease = try input.bind(target, grant: grant, intervention: intervention)
                 input.receiveInput(.keyDown, event: posted)

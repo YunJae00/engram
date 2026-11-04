@@ -37,7 +37,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   useEffect(() => { setView(preferences.get(lane) ?? { collapsed: false, hidden: false }); setSelected(undefined); images.current.clear() }, [lane])
   const snapshot = useCallback((id: string, image: string) => { images.current.set(id, image) }, [])
   const frame = frames.find(frame => frame.id === ordered[0])
-  const live = previewAppVisible(frame, view)
+  const live = frames.some(item => previewAppVisible(item, view))
   useEffect(() => { setAppPreviewVisible(lane, live, busy) }, [lane, live, busy])
   useEffect(() => () => setAppPreviewVisible(lane, false), [lane])
   useEffect(() => {
