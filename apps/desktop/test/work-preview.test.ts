@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ bindings: new Map(), keptOut: vi.fn(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-vi.mock('../src/main/desktop-access.js', () => ({ refreshHiddenApp: vi.fn(), restoreHiddenApp: vi.fn(), releaseDesktop: vi.fn(), desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
+vi.mock('../src/main/desktop-access.js', () => ({ refreshHiddenApp: vi.fn(async (binding: DesktopBinding) => binding), restoreHiddenApp: vi.fn(), releaseDesktop: vi.fn(), desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
 vi.mock('../src/main/desktop-image.js', () => ({ previewImage: fake.image }))
 vi.mock('../src/main/engine-health.js', () => ({ tapBroadcast: fake.tap }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: (bitmap: Buffer) => ({ toJPEG: () => bitmap }), createFromBuffer: () => ({ isEmpty: () => false, getSize: () => ({ width: 20, height: 20 }), toBitmap: () => Buffer.alloc(1600, 255), resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))

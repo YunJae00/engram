@@ -40,6 +40,20 @@ final class Connection: @unchecked Sendable {
                 precondition(!sensitiveControl(kAXStaticTextRole, "", "password"))
                 precondition(sensitiveControl(kAXTextFieldRole, kAXSecureTextFieldSubrole, "Message"))
                 precondition(sensitiveControl(kAXGroupRole, "", "Sign in"))
+                var pixels = [UInt8](repeating: 0, count: 96 * 96 * 4)
+                func previewFixture(_ mode: Int) -> CGImage {
+                    for y in 0..<96 { for x in 0..<96 {
+                        let offset = (y * 96 + x) * 4
+                        let color: [UInt8] = mode == 0 ? [0, 0, 0, 0] : y < 40 ? [255, 0, 0, 255] : mode == 1 ? [255, 255, 255, 255] : x < 32 ? [255, 0, 0, 255] : x < 64 ? [0, 255, 0, 255] : [0, 0, 255, 255]
+                        for channel in 0..<4 { pixels[offset + channel] = color[channel] }
+                    } }
+                    return pixels.withUnsafeMutableBytes { bytes in
+                        CGContext(data: bytes.baseAddress, width: 96, height: 96, bitsPerComponent: 8, bytesPerRow: 96 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+                    }
+                }
+                precondition(!previewHasDrawn(previewFixture(0)))
+                precondition(!previewHasDrawn(previewFixture(1)))
+                precondition(previewHasDrawn(previewFixture(2)))
                 let input = InputMonitor()
                 let initial = input.inputVersion(100)
                 let posted = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)!

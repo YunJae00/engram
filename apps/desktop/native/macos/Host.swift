@@ -90,7 +90,7 @@ final class DesktopHost {
                 guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32 else { return nil }
                 do {
                     let window = try resolveWindow(id, pid: 0)
-                    return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "hidden": NSRunningApplication(processIdentifier: window.pid)?.isHidden ?? false, "minimized": window.minimized]
+                    return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "bounds": rectangle(try window.bounds), "title": window.title, "foreground": window.foreground, "hidden": NSRunningApplication(processIdentifier: window.pid)?.isHidden ?? false, "minimized": window.minimized]
                 } catch {
                     guard String(describing: error).hasPrefix("This application surface requires manual control"),
                           let pid = item[kCGWindowOwnerPID as String] as? Int32,
@@ -126,7 +126,7 @@ final class DesktopHost {
                 NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
                 guard AXUIElementPerformAction(window.element, kAXRaiseAction as CFString) == .success else { throw DesktopFailure("The window could not be activated") }
             }
-            return ["window": String(window.id), "pid": window.pid, "title": window.title, "minimized": window.minimized,
+            return ["mainWindow": mainWindowID(window.pid).map { String($0) } ?? "", "window": String(window.id), "pid": window.pid, "title": window.title, "minimized": window.minimized,
                     "hidden": NSRunningApplication(processIdentifier: window.pid)?.isHidden ?? false, "foreground": window.foreground, "foregroundRestored": foregroundRestored, "bounds": rectangle(try window.bounds), "visualBounds": rectangle(try window.bounds)]
         }
         if method == "quietState" { return state(window) }

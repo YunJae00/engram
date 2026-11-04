@@ -12,7 +12,9 @@ const deps = vi.hoisted(() => ({
 }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: class { request = deps.launch; close = deps.closeLaunch } }))
 vi.mock('electron', () => ({ screen: { getCursorScreenPoint: () => ({ ...deps.cursor }), screenToDipPoint: (point: { x: number; y: number }) => point } }))
+vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-access.js', () => ({
+  rememberLaunchedApp: vi.fn(), refreshHiddenApp: async (binding: DesktopBinding) => binding,
   desktopForeground: async () => ({ pid: 99, title: 'Previous' }),
   rememberOpenedForeground: deps.remember,
   rememberHiddenApp: deps.hidden,

@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 
 const native = vi.hoisted(() => ({ open: vi.fn(), create: vi.fn(), close: vi.fn(async () => {}) }))
 vi.mock('../src/main/native-browser.js', () => ({
-  nativeBrowserEnabled: () => true, isNativeContext: () => true, isNativePage: () => true,
+  nativeBrowserPid: () => 500, nativeBrowserEnabled: () => true, isNativeContext: () => true, isNativePage: () => true,
   openNativeBrowser: native.open, createNativePage: native.create, closeNativeBrowser: native.close,
   nativeOpener: async () => null,
 }))
@@ -13,7 +13,7 @@ vi.mock('../src/main/available-memory.js', () => ({ availableMemory: () => 8e9 }
 vi.mock('../src/main/memory-plan.js', () => ({ reserveRoom: () => () => {} }))
 vi.mock('../src/main/stalled-scripts.js', () => ({ watchStalledScripts: () => {} }))
 vi.mock('../src/main/page-downloads.js', () => ({ watchDownloads: () => () => {}, takeDownloads: () => [] }))
-import { addAgentPage, agentBrowserRunning, closeAgentBrowser, ensureAgentPage, laneOf } from '../src/main/agent-browser.js'
+import { addAgentPage, agentBrowserPids, agentBrowserRunning, closeAgentBrowser, ensureAgentPage, laneOf } from '../src/main/agent-browser.js'
 
 const page = () => Object.assign(new EventEmitter(), { isClosed: () => false, url: () => 'about:blank' }) as unknown as Page
 afterEach(async () => { await closeAgentBrowser({ force: true }); vi.useRealTimers(); vi.clearAllMocks() })
@@ -61,4 +61,17 @@ it('joins a pending browser shutdown instead of repeatedly completing new quit r
     expect(agentBrowserRunning()).toBe(true)
   } finally { finish(); await Promise.all([first, second]) }
   expect(agentBrowserRunning()).toBe(false)
+})
+
+it('exports the native host and browser child pids and clears them on close', async () => {
+  const detach = vi.fn(async () => {})
+  const send = vi.fn(async () => ({ processInfo: [{ id: 501, type: 'browser' }, { id: 502, type: 'renderer' }] }))
+  const context = Object.assign(new EventEmitter(), { pages: () => [page()], browser: () => ({ newBrowserCDPSession: async () => ({ send, detach }) }) })
+  native.open.mockResolvedValue(context)
+  await ensureAgentPage('pids')
+  expect(await agentBrowserPids()).toEqual([500, 501, 502])
+  expect(send).toHaveBeenCalledWith('SystemInfo.getProcessInfo')
+  expect(detach).toHaveBeenCalledOnce()
+  await closeAgentBrowser({ force: true })
+  expect(await agentBrowserPids()).toEqual([])
 })

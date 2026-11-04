@@ -2,7 +2,7 @@ import type { QuietPressOptions } from 'core'
 import { sparseDesktopTree, SCREEN_HINT } from './desktop-sparse.js'
 import { appNameMatch, type DesktopReadOptions } from 'core'
 import type { QuietObservationDto, QuietPressResultDto, QuietReadResultDto, QuietSetResultDto, QuietStateDto } from '../shared/desktop.js'
-import { bindDesktopForLane, desktopBinding, type DesktopBinding } from './desktop-access.js'
+import { bindDesktopForLane, desktopBinding, refreshHiddenApp, type DesktopBinding } from './desktop-access.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import type { DesktopMethod } from './desktop-host.js'
 import { showWorkPreview } from './work-preview.js'
@@ -133,7 +133,7 @@ export function quietSnapshot(snapshot: string): QuietObservationDto | undefined
 export function quietControlName(snapshot: string, control: string): string | undefined { return named.get(snapshot)?.controls.find(item => item.id === control)?.name }
 
 export async function quietScan(lane: string, app: string, find: string | undefined, signal?: AbortSignal, options: DesktopReadOptions = {}): Promise<QuietObservationDto> {
-  const binding = await windowFor(lane, app, signal)
+  const binding = await refreshHiddenApp(await windowFor(lane, app, signal))
   showWorkFrame(binding)
   const result = await request<QuietObservationDto>(binding, 'quietScan', { ...options, ...(find ? { find } : {}) }, signal)
   signal?.throwIfAborted()

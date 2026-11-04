@@ -19,11 +19,11 @@ export function setWorkPreviewVisible(lane: string, showing: boolean): void {
   if (showing) visible.add(lane); else visible.delete(lane)
   const refresh = async (lane: string) => {
     if (refreshing.has(lane)) return
-    const binding = desktopBinding(lane)
+    let binding = desktopBinding(lane)
     if (!binding || binding.stopped || binding.host.closed || !binding.readable) return
     refreshing.add(lane)
     try {
-      await refreshHiddenApp(binding)
+      binding = await refreshHiddenApp(binding)
       if (visible.has(lane) && !streaming.has(lane)) showWorkPreview(binding, false)
     } catch (error) {
       flog('desktop-preview', String(error))
