@@ -89,11 +89,12 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       const back = full.getByTestId('preview-deck').getByRole('button', { name, exact: true })
       await expect.poll(() => back.locator('..').evaluate(element => {
         const matrix = new DOMMatrix(getComputedStyle(element).transform)
-        return { rotated: Math.abs(matrix.b) > 0.02, offset: Math.abs(matrix.e) > 3, raised: matrix.f < -5 }
-      })).toEqual({ rotated: true, offset: true, raised: true })
+        return { rotated: Math.abs(matrix.b) >= 0.02, offset: matrix.e <= -20, raised: matrix.f <= -20 }
+      })).toEqual({ rotated: false, offset: true, raised: true })
       const front = await full.getByTestId('preview-deck').locator('[data-position="0"]').boundingBox()
       const behind = await back.boundingBox()
       expect(front!.y - behind!.y).toBeGreaterThanOrEqual(20)
+      expect(front!.x - behind!.x).toBeGreaterThanOrEqual(20)
       await expect(back.locator('.preview-deck-title')).toBeVisible()
       const exposed = () => back.evaluate(element => {
         const box = element.getBoundingClientRect()
