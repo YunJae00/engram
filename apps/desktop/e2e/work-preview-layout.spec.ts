@@ -87,8 +87,20 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
     }
     const promote = async (name: string) => {
       const back = full.getByTestId('preview-deck').getByRole('button', { name, exact: true })
-      await expect.poll(async () => (await preview.boundingBox())!.y - (await back.boundingBox())!.y).toBeGreaterThan(8)
-      await back.click({ position: { x: 100, y: 3 } })
+      await expect.poll(() => back.locator('..').evaluate(element => {
+        const matrix = new DOMMatrix(getComputedStyle(element).transform)
+        return { rotated: Math.abs(matrix.b) > 0.02, offset: Math.abs(matrix.e) > 3, raised: matrix.f < -5 }
+      })).toEqual({ rotated: true, offset: true, raised: true })
+      const exposed = () => back.evaluate(element => {
+        const box = element.getBoundingClientRect()
+        for (let y = box.top + 2; y < box.top + 24; y += 2) for (let x = box.left + 8; x < box.right - 8; x += 8) {
+          if (element.contains(document.elementFromPoint(x, y))) return { x, y }
+        }
+        return null
+      })
+      await expect.poll(exposed).not.toBeNull()
+      const point = (await exposed())!
+      await page.mouse.click(point.x, point.y)
     }
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme)
