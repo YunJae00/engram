@@ -42,3 +42,22 @@ describe('desktop app launch tools', () => {
     expect(open).toHaveBeenCalledOnce()
   })
 })
+
+
+it('attaches an open app before reading the launch catalog', async () => {
+  const attach = vi.fn().mockResolvedValue('{"alreadyOpen":true}')
+  const apps = vi.fn(), open = vi.fn()
+  const launch = desktopTools({ attach, apps, open, read: async () => '' }).find(tool => tool.name === 'open_app')!
+  expect(await launch.run({ app: 'Teams' }, { task: 'Read Teams' })).toBe('{"alreadyOpen":true}')
+  expect(attach).toHaveBeenCalledWith('Teams', undefined)
+  expect(apps).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled()
+})
+it('resolves opaque app IDs to names for attachment before launching', async () => {
+  const id = 'b'.repeat(64), attach = vi.fn().mockResolvedValueOnce('').mockResolvedValueOnce('{"alreadyOpen":true}')
+  const apps = vi.fn().mockResolvedValue(JSON.stringify([{ id, name: 'Teams' }]))
+  const open = vi.fn()
+  const launch = desktopTools({ attach, apps, open, read: async () => '' }).find(tool => tool.name === 'open_app')!
+  expect(await launch.run({ app: id }, { task: 'Read Teams' })).toContain('alreadyOpen')
+  expect(attach).toHaveBeenLastCalledWith('Teams', undefined)
+  expect(open).not.toHaveBeenCalled()
+})

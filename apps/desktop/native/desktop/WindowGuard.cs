@@ -58,6 +58,15 @@ internal sealed class WindowGuard : IDisposable
         "wsl", "putty", "ssh", "regedit", "mmc", "taskmgr", "systemsettings", "control", "mshta", "rundll32"
     };
 
+    internal static object ForegroundInfo(IntPtr window)
+    {
+        uint pid;
+        GetWindowThreadProcessId(window, out pid);
+        var title = new StringBuilder(1024);
+        GetWindowText(window, title, title.Capacity);
+        return new { pid = (int)pid, title = title.ToString() };
+    }
+
     internal static bool ProtectedApplication(string name) { return ProtectedNames.Contains(name); }
 
     internal WindowGuard(int owner)
