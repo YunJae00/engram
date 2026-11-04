@@ -49,9 +49,9 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
       </div>
       <div className="preview-card-caption">
         {status === 'working' ? <LoaderCircle size={12} className="computer-spinner" aria-hidden /> : <Icon size={12} aria-hidden />}
-        <span className="preview-card-label" role="status">{frame.hiddenByEngram ? `${words.runningHidden} · ${title}` : `${title} · ${frame.current && activity && status !== 'waiting' ? activity : words[status]}`}</span>
-        {frame.stream && busy && (frame.live !== false || frame.reconnecting || hasImage) && <span className="preview-card-stale">{frame.live === false ? frame.reconnecting ? words.reconnecting : `${words.stoppedFrame} · ${new Date(frame.at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false })}` : words.live}</span>}
-        {(!frame.stream || !busy) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
+        <span className="preview-card-label" role="status">{frame.hiddenByEngram ? `${words.runningHidden} · ${title}${status === 'waiting' ? ` · ${words.waiting}` : ''}` : `${title} · ${frame.current && activity && status !== 'waiting' ? activity : words[status]}`}</span>
+        {frame.stream && (busy || frame.live || frame.reconnecting) && (frame.live !== false || frame.reconnecting || hasImage) && <span className="preview-card-stale">{frame.live === false ? frame.reconnecting ? words.reconnecting : `${words.stoppedFrame} · ${new Date(frame.at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false })}` : words.live}</span>}
+        {(!frame.stream || !busy && !frame.live && !frame.reconnecting) && (hasImage || paints.current.has(frame.id)) && <span className="preview-card-stale">{frame.phase === 'delayed' ? words.delayed : snapshot}</span>}
       </div>
     </div>
   </aside>

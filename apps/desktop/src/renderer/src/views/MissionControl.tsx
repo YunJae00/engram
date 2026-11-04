@@ -183,7 +183,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
               {chooser(index)}
               <div className="mission-tile-body" key={bot.id} data-chat-open={!chatFolded} data-web-open={webOpen}>
                 <OrbitSurface lane={cometChannel(bot.id)} name={bot.name} busy={['running', 'waiting'].includes(statusOf(bot))} open={() => open(bot.id)} onLiveChange={(live, url) => setPages(previous => { if (live ? previous.get(bot.id) === url : !previous.has(bot.id)) return previous; const next = new Map(previous); if (live) next.set(bot.id, url); else next.delete(bot.id); return next })} />
-                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat previewTile={{ url: !webOpen ? pages.get(bot.id) : undefined, frames: framesOf(cometChannel(bot.id)), onOpen: () => showPage(bot.id, true) }} botId={bot.id} webOpen={webOpen} onToggleWeb={() => showPage(bot.id, !webOpen)} /></div>
+                <div className="mission-chat-slot" id={`mission-chat-${index}`} aria-hidden={chatFolded} ref={(node) => { if (node) node.inert = chatFolded }}><MiniChat active={!chatFolded} previewTile={{ url: !webOpen ? pages.get(bot.id) : undefined, frames: framesOf(cometChannel(bot.id)), onOpen: () => showPage(bot.id, true) }} botId={bot.id} webOpen={webOpen} onToggleWeb={() => showPage(bot.id, !webOpen)} /></div>
               </div>
             </article>
           )

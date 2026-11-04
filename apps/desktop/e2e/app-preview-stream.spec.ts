@@ -80,7 +80,8 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
 
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:done', channel: lane, text: 'Done.' }), lane)
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
-    await expect(page.getByTestId('preview-card')).toContainText('Last snapshot')
+    await expect(page.getByTestId('preview-card')).toContainText('Live')
+    expect(await page.evaluate(() => (window as unknown as { streamCounts: { opened: number; closed: number } }).streamCounts)).toEqual({ opened: 1, closed: 0 })
     await expect(page.getByTestId('preview-card').locator('canvas[data-painted], img')).toBeVisible()
     await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'press:ask', channel: lane, words: 'Confirm local action', host: 'example.test' }), lane)
     await expect(page.getByTestId('preview-card')).toBeVisible()

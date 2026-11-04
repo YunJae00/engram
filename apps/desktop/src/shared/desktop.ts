@@ -98,6 +98,7 @@ export interface DesktopApi {
   desktopPreviews(lane: string): Promise<WorkPreviewDto[]>
   desktopPreviewStreamEvent(lane: string, detail: { event: 'start' | 'live' | 'retry' | 'failed' | 'ended'; reason?: string; attempt?: number }): Promise<void>
   desktopShowApp(lane: string): Promise<void>
+  desktopPreviewVisible(lane: string, visible: boolean): Promise<void>
   desktopPreviewStream(lane: string, live: boolean): Promise<void>
   desktopAvailable(): Promise<boolean>
   desktopVisible(): Promise<boolean>

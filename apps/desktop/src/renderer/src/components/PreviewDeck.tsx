@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { AppWindow } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { useWebPane } from '../lib/webPane.js'
@@ -20,10 +20,11 @@ export function previewNeighbor(frames: PreviewFrame[], id: string, direction: n
 export function previewAppVisible(frame: PreviewFrame | undefined, view: { hidden: boolean; collapsed: boolean }): boolean {
   return frame?.source === 'app' && frame.phase !== 'activity' && !view.hidden && !view.collapsed
 }
-export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWeb }: {
+export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWeb, active = true }: {
   frames: PreviewFrame[]; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
-  lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void
+  lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean
 }) {
+  const presence = useId()
   const words = threadWords(lang).workPreview
   const { attention } = useWebPane(lane)
   const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: false, hidden: false })
@@ -38,8 +39,13 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   const snapshot = useCallback((id: string, image: string) => { images.current.set(id, image) }, [])
   const frame = frames.find(frame => frame.id === ordered[0])
   const live = frames.some(item => previewAppVisible(item, view))
-  useEffect(() => { setAppPreviewVisible(lane, live, busy) }, [lane, live, busy])
-  useEffect(() => () => setAppPreviewVisible(lane, false), [lane])
+  useEffect(() => {
+    const update = () => {
+      setAppPreviewVisible(lane, live && active && document.visibilityState !== 'hidden', presence)
+    }
+    update(); document.addEventListener('visibilitychange', update)
+    return () => { document.removeEventListener('visibilitychange', update); setAppPreviewVisible(lane, false, presence) }
+  }, [lane, live, active, presence])
   useEffect(() => {
     if (selected && !frames.some(frame => frame.id === selected)) setSelected(undefined)
     for (const id of images.current.keys()) if (!frames.some(frame => frame.id === id)) images.current.delete(id)

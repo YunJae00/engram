@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ bindings: new Map(), keptOut: vi.fn(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
+vi.mock('../src/main/desktop-access.js', () => ({ refreshHiddenApp: vi.fn(), restoreHiddenApp: vi.fn(), releaseDesktop: vi.fn(), desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
 vi.mock('../src/main/desktop-image.js', () => ({ previewImage: fake.image }))
 vi.mock('../src/main/engine-health.js', () => ({ tapBroadcast: fake.tap }))
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: (bitmap: Buffer) => ({ toJPEG: () => bitmap }), createFromBuffer: () => ({ isEmpty: () => false, getSize: () => ({ width: 20, height: 20 }), toBitmap: () => Buffer.alloc(1600, 255), resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))
@@ -230,7 +230,11 @@ it('skips snapshot requests and deferred refreshes while streaming and resumes a
     await vi.advanceTimersByTimeAsync(2100)
     request.mockClear()
     showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
-    expect(request).toHaveBeenCalledOnce()
+    if (reset === 'error') expect(request).not.toHaveBeenCalled()
+    else expect(request).toHaveBeenCalled()
+    setWorkPreviewStream(held.lane, false)
+    await vi.advanceTimersByTimeAsync(2101)
+    expect(request).toHaveBeenCalled()
   }
 })
 
@@ -279,4 +283,49 @@ it('limits successful capture logs to once per lane per thirty seconds', async (
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
   expect(successes()).toHaveLength(2)
   expect(JSON.parse(String(successes()[1]![1]))).toMatchObject({ lane: held.lane, source: held.source, stage: 'observe', stages: { observe: 0 }, reason: 'ok' })
+})
+
+it('polls visible bound cards every 1.5 seconds after the turn, stopping when hidden or disconnected', async () => {
+  const { showWorkPreview, setWorkPreviewVisible } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  showWorkPreview(held)
+  setWorkPreviewVisible(held.lane, true)
+  await vi.advanceTimersByTimeAsync(1)
+  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
+  fake.image.mockClear()
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(fake.image).toHaveBeenCalledTimes(2)
+  setWorkPreviewVisible(held.lane, false)
+  fake.image.mockClear()
+  await vi.advanceTimersByTimeAsync(4500)
+  expect(fake.image).not.toHaveBeenCalled()
+  setWorkPreviewVisible(held.lane, true)
+  await vi.advanceTimersByTimeAsync(1)
+  fake.bindings.delete(held.lane)
+  fake.image.mockClear()
+  await vi.advanceTimersByTimeAsync(4500)
+  expect(fake.image).not.toHaveBeenCalled()
+})
+
+
+it('restores a hidden app only after three consecutive transparent captures and resets the streak', async () => {
+  const { showWorkPreview } = await import('../src/main/work-preview.js')
+  const { restoreHiddenApp } = await import('../src/main/desktop-access.js')
+  const held = binding(1)
+  held.hiddenByEngram = 200
+  const transparent = new Error('The hidden window has not drawn a preview yet.')
+  async function capture(error?: Error) {
+    if (error) fake.image.mockRejectedValueOnce(error)
+    showWorkPreview(held)
+    await vi.advanceTimersByTimeAsync(2100)
+  }
+  await capture(transparent); await capture(transparent)
+  expect(restoreHiddenApp).not.toHaveBeenCalled()
+  await capture()
+  await capture(transparent); await capture(new Error('other failure'))
+  await capture(transparent); await capture(transparent)
+  expect(restoreHiddenApp).not.toHaveBeenCalled()
+  await capture(transparent)
+  expect(restoreHiddenApp).toHaveBeenCalledExactlyOnceWith(held.lane, false)
+  expect(flog).toHaveBeenCalledWith('desktop-preview', expect.stringContaining('"reason":"hidden-fallback"'))
 })

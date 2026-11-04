@@ -56,7 +56,7 @@ export async function previewImage(binding: DesktopBinding, signal: AbortSignal,
   if (observation.captureSafe === false) throw new Error("This window's accessibility scan was incomplete.")
   imageGeometry(observation)
   stage('capture')
-  const captured = await binding.host.request<{ basis: string; bounds: DesktopObservationDto['bounds']; width: number; height: number; data: string }>('capture', { window: binding.window, pid: binding.pid, snapshot: observation.snapshot }, signal, preview ? { preview: true } : {})
+  const captured = await binding.host.request<{ basis: string; bounds: DesktopObservationDto['bounds']; width: number; height: number; data: string }>('capture', { window: binding.window, pid: binding.pid, snapshot: observation.snapshot, preview: true }, signal, preview ? { preview: true } : {})
   stage('verify')
   signal.throwIfAborted()
   if (desktopBinding(binding.lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed before the screenshot was ready.')
@@ -64,6 +64,7 @@ export async function previewImage(binding: DesktopBinding, signal: AbortSignal,
     || typeof captured.data !== 'string' || captured.data.length > 470000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(captured.data)) throw new Error('This window did not provide verified screenshot geometry.')
   const source = nativeImage.createFromBuffer(Buffer.from(captured.data, 'base64')), size = source.getSize(), bitmap = source.toBitmap()
   if (source.isEmpty() || size.width !== captured.width || size.height !== captured.height || ![size.width, size.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= 4096) || bitmap.length !== size.width * size.height * 4) throw new Error('This window returned an invalid screenshot.')
+  if (!bitmap.some((byte, index) => index % 4 === 3 && byte !== 0)) throw new Error('The hidden window has not drawn a preview yet.')
   const bounds = observation.captureBounds!
   for (const rect of observation.protectedBounds ?? []) {
     const left = Math.max(0, Math.floor((rect.x - bounds.x) / bounds.width * size.width) - 8)

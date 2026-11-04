@@ -1,5 +1,5 @@
 import { flog } from './flog.js'
-import { setWorkPreviewStream, workPreviews } from './work-preview.js'
+import { setWorkPreviewVisible, setWorkPreviewStream, workPreviews } from './work-preview.js'
 import { ipcMain, session, systemPreferences, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopHost } from './desktop-host.js'
@@ -32,6 +32,7 @@ export function registerDesktopIpc(): void {
   handle('desktop:visible', desktopVisible)
   handle('desktop:previews', workPreviews)
   handle('desktop:showApp', showDesktopApp)
+  handle('desktop:previewVisible', setWorkPreviewVisible)
   handle('desktop:previewStream', setWorkPreviewStream)
   handle('desktop:previewStreamEvent', (lane: string, detail: { event: string; reason?: string; attempt?: number }) => {
     if (typeof lane !== 'string' || !/^bot-[a-zA-Z0-9_-]{1,140}$/.test(lane) || !detail || !['start', 'live', 'retry', 'failed', 'ended'].includes(detail.event)

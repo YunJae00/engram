@@ -81,7 +81,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     frame.hiddenByEngram = binding.hiddenByEngram
     const stream = appPreviewFor(lane)
     if (stream?.reason === 'screen_recording_denied') { frame.reason = stream.reason; if (!frame.image) frame.phase = 'unavailable' }
-    if (stream) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting; frame.connecting = stream.connecting }
+    if (stream && (!binding.hiddenByEngram || stream.live || stream.connecting)) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting; frame.connecting = stream.connecting }
     if (stream?.live) { frame.stream = stream.source; frame.phase = 'ready'; frame.image = undefined }
     else if (stream?.image) { frame.image = stream.image; frame.at = stream.at; frame.phase = 'ready' }
   }
