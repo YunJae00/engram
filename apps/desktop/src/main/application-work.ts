@@ -1,3 +1,4 @@
+import { flog } from './flog.js'
 import { screen } from 'electron'
 import { DesktopHost } from './desktop-host.js'
 import { hideControlOverlay, overlayStatus, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
@@ -33,7 +34,7 @@ function applicationStatus(held: Activity, target: WindowInfo): DesktopControlSt
   if (!visibleBounds || !Object.values(visibleBounds).every(Number.isFinite) || visibleBounds.width <= 0 || visibleBounds.height <= 0) throw new Error('The application window has no valid bounds')
   const rect = Object.fromEntries(Object.entries(visibleBounds).map(([key, value]) => [key, Math.round(value)])) as Bounds
   const bounds = target.minimized && held.status?.application ? held.status.application.bounds : screen.screenToDipRect(null, rect)
-  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized, nativeFrame: true } }
+  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized && target.foreground, nativeFrame: true } }
 }
 
 async function track(held: Activity, revision: number): Promise<void> {
@@ -47,7 +48,10 @@ async function track(held: Activity, revision: number): Promise<void> {
     const target = await held.host.request<WindowInfo>('inspectWindow', { window: held.target.window, pid: held.target.pid })
     if (active !== held || held.revision !== revision || held.controller.signal.aborted) return
     const status = applicationStatus(held, target)
-    if (JSON.stringify(status) !== JSON.stringify(held.status)) { held.status = status; updateControlOverlay(status) }
+    if (JSON.stringify(status) !== JSON.stringify(held.status)) {
+      if (held.status?.application?.visible !== status.application?.visible) await held.host.request(status.application?.visible ? 'applicationFrame' : 'applicationFrameHide', { window: target.window, pid: target.pid })
+      held.status = status; updateControlOverlay(status)
+    }
     held.timer = setTimeout(() => void track(held, revision), 100)
   } catch {
     if (active === held && held.revision === revision) stopApplicationWork('The application window could no longer be verified.')
@@ -71,25 +75,19 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       let target = await held.host.request<WindowInfo>('inspectWindow', { window, pid: 0 })
       combined.throwIfAborted()
       const entering = held.target?.window !== target.window || held.target.pid !== target.pid
-      // Bringing the window forward lets the person watch; Windows refuses it
-      // while they work in another app. Document commands are bound to the
-      // verified window, so a refused foreground does not stop the work.
-      if (entering && (!target.foreground || target.minimized)) {
-        try { target = await held.host.request<WindowInfo>('activateWindow', { window: target.window, pid: target.pid }) }
-        catch (error) {
-          if (!/foreground/i.test(error instanceof Error ? error.message : String(error))) throw error
-          target = await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
-        }
-      }
+      if (entering && target.minimized) target = await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid, unminimize: true })
+      flog('desktop-foreground', JSON.stringify({ lane, tool: 'document', app: name, restored: false }))
       combined.throwIfAborted()
       if (entering && target.minimized) throw new Error('The application window is minimized and could not be restored.')
       if (active !== held) throw new Error('Application work changed before the window was ready')
+      const hadFrame = held.status?.application?.visible
       held.target = target
       held.name = name
       held.status = applicationStatus(held, target)
       await prepareControlOverlay(held.status)
       combined.throwIfAborted()
-      await held.host.request('applicationFrame', { window: target.window, pid: target.pid })
+      if (held.status.application?.visible) await held.host.request('applicationFrame', { window: target.window, pid: target.pid })
+      else if (hadFrame) await held.host.request('applicationFrameHide', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
       const input = await held.host.request<{ escaped: boolean }>('inputState', {})
       if (input.escaped) { stopApplicationWork(); combined.throwIfAborted() }

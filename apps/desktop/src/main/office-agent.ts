@@ -59,7 +59,7 @@ export function officeAgentTools(lane: string): AgentTool[] {
           return await officeRun(op, args, signal, () => assertDesktopTurnNotStopped(lane))
         }
         const work = applicationWork(lane, signal)
-        try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), work.show) }
+        try { return await officeRun(op, args, work.signal, () => assertDesktopTurnNotStopped(lane), process.platform === 'win32' ? undefined : work.show) }
         catch (error) { clearApplicationWork(lane); throw error }
       } finally { finish() }
     }

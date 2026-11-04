@@ -146,6 +146,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
       if (restore) openedForeground.delete(lane)
       const receipt = await host.request<{ foregroundRestored?: boolean }>('inspectWindow', { window: target.window, pid: target.pid,
         ...(target.minimized ? { unminimize: true } : {}), ...(restore ? { restoreForegroundPid: restore.previousFrontPid } : {}) })
+      flog('desktop-foreground', JSON.stringify({ lane, tool: 'restoreForeground', app: target.title, restored: receipt.foregroundRestored === true }))
       if (receipt.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'app_read' }))
     }
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')

@@ -178,6 +178,7 @@ export class DesktopHost {
     if (!METHODS.has(method)) throw new Error('Unsupported computer action.')
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('Invalid computer action.')
     if (!UNSCOPED.has(method) && (typeof args['window'] !== 'string' || !/^\d{1,20}$/.test(args['window']) || !Number.isSafeInteger(args['pid']) || Number(args['pid']) < 0)) throw new Error('Choose a valid app window.')
+    if (method === 'activateWindow') flog('desktop-foreground', JSON.stringify({ lane: args['lane'] ?? null, tool: method, app: args['app'] ?? args['window'], restored: false }))
     if (method === 'stop') this.invalidate('Computer action was cancelled by Stop.')
     if (this.ended) throw new Error('Computer access ended. Reconnect the window to continue.')
     if (this.pending.size >= 32) throw new Error('Too many desktop requests are in flight.')
