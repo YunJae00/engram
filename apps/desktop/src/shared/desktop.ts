@@ -1,6 +1,6 @@
 export interface WorkPreviewDto { id: string; lane: string; title: string; at: number; data?: string; unavailable?: boolean; current?: boolean; activity?: string; captureState?: 'activity' | 'waiting' | 'delayed' | 'ready' | 'unavailable' | 'no-snapshot'; captureReason?: 'screen_recording_denied' | 'capture_unsafe' | 'capture_unavailable' }
 export interface DesktopWindowDto { aliases?: string[]; id: string; name: string; foreground?: boolean }
-export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean }
+export interface DesktopBindingDto { lane: string; source: string; name: string; readable: boolean; stopped?: boolean; hiddenByEngram?: number }
 export interface DesktopNodeDto {
   id: string
   depth?: number
@@ -97,6 +97,7 @@ export interface DesktopControlStatusDto {
 export interface DesktopApi {
   desktopPreviews(lane: string): Promise<WorkPreviewDto[]>
   desktopPreviewStreamEvent(lane: string, detail: { event: 'start' | 'live' | 'retry' | 'failed' | 'ended'; reason?: string; attempt?: number }): Promise<void>
+  desktopShowApp(lane: string): Promise<void>
   desktopPreviewStream(lane: string, live: boolean): Promise<void>
   desktopAvailable(): Promise<boolean>
   desktopVisible(): Promise<boolean>

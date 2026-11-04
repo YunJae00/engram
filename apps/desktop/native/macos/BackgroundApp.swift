@@ -24,7 +24,22 @@ extension DesktopHost {
         }
         let before = frontInfo()
         let appPath = entry.url.resolvingSymlinksInPath().path
-        let alreadyOpen = NSWorkspace.shared.runningApplications.contains { $0.bundleURL?.resolvingSymlinksInPath().path == appPath }
+        func mainWindow(_ pid: pid_t) -> [String: Any]? {
+            let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
+            return windows.filter { item in
+                guard (item[kCGWindowOwnerPID as String] as? Int32) == pid, (item[kCGWindowLayer as String] as? Int) == 0,
+                      let raw = item[kCGWindowBounds as String] as? NSDictionary, let bounds = CGRect(dictionaryRepresentation: raw) else { return false }
+                return bounds.width > 100 && bounds.height > 100
+            }.max { lhs, rhs in
+                func area(_ item: [String: Any]) -> Double {
+                    guard let raw = item[kCGWindowBounds as String] as? NSDictionary, let bounds = CGRect(dictionaryRepresentation: raw) else { return 0 }
+                    return bounds.width * bounds.height
+                }
+                return area(lhs) < area(rhs)
+            }
+        }
+        let existing = NSWorkspace.shared.runningApplications.first { $0.bundleURL?.resolvingSymlinksInPath().path == appPath }
+        let alreadyOpen = existing.map { mainWindow($0.processIdentifier) != nil } ?? false
         let started = ProcessInfo.processInfo.systemUptime
         var launched: NSRunningApplication?
         var launchFinished = false
@@ -37,26 +52,37 @@ extension DesktopHost {
         var lastActivation = started
         var lastSample = started
         var hidden: NSRunningApplication?
-        var unhiddenAt: Double?
-        func hasWindow(_ pid: pid_t) -> Bool {
-            let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []
-            return windows.contains { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }
-        }
+        var userUnhidden = false
+        var hiddenInput: UInt64?
+        var hiddenConfirmed = false
+        var probeStarted: Double?
+        var probeTimer: Timer?
+        var drawsHidden = false
+        var hiddenFallback = false
         // Start watching before the launch callback: PWAs can activate before it arrives.
         let timer = Timer(timeInterval: 0.02, repeats: true) { timer in
             let now = ProcessInfo.processInfo.systemUptime
             let front = NSWorkspace.shared.frontmostApplication
             let targetFront = front != nil && (front?.processIdentifier == launched?.processIdentifier || front?.bundleURL?.resolvingSymlinksInPath().path == appPath)
+            if hidden?.isHidden == true { hiddenConfirmed = true }
+            if hiddenConfirmed, let app = hidden, !app.isHidden, let version = hiddenInput, self.monitor.state().intervention != version {
+                userUnhidden = true
+                self.hiddenApps.remove(app.processIdentifier)
+                hidden = nil
+            }
             if targetFront {
                 changed = true
                 lastActivation = now
                 if foregroundSince == nil { foregroundSince = lastSample }
-                if cycles < 3, let front = front, hidden?.processIdentifier != front.processIdentifier {
+                if !userUnhidden { _ = restoreForeground(previous) }
+                if !alreadyOpen, !userUnhidden, !hiddenFallback, let front = front, !front.isHidden {
                     _ = front.hide()
                     cycles += 1
                     hidden = front
+                    self.hiddenApps.insert(front.processIdentifier)
+                    hiddenInput = self.monitor.state().intervention
+                    _ = restoreForeground(previous)
                     launched = front
-                    unhiddenAt = nil
                 }
             } else if let since = foregroundSince {
                 let duration = (now - since) * 1000
@@ -65,28 +91,49 @@ extension DesktopHost {
                 foregroundSince = nil
             }
             lastSample = now
-            let windowVerified = launched.map { hasWindow($0.processIdentifier) } ?? false
-            if let app = hidden, windowVerified && now - lastActivation >= 1 {
-                app.unhide()
-                hidden = nil
-                unhiddenAt = now
+            let windowVerified = launched.map { mainWindow($0.processIdentifier) != nil } ?? false
+            if !alreadyOpen, !userUnhidden, !hiddenFallback, hidden == nil, let app = launched, windowVerified {
+                _ = app.hide()
+                hidden = app
+                self.hiddenApps.insert(app.processIdentifier)
+                hiddenInput = self.monitor.state().intervention
             }
-            let settled = windowVerified && hidden == nil && now - (unhiddenAt ?? started) >= 0.5 && now - started >= 3
+            if !alreadyOpen, !userUnhidden, !hiddenFallback, !drawsHidden, let app = hidden, app.isHidden, windowVerified {
+                if probeStarted == nil {
+                    probeStarted = now
+                    let probe = Timer(timeInterval: 0.05, repeats: true) { timer in
+                        guard let target = hidden, target.isHidden, !userUnhidden, !hiddenFallback else { timer.invalidate(); return }
+                        drawsHidden = (mainWindow(target.processIdentifier)?[kCGWindowAlpha as String] as? Double ?? 0) > 0
+                        if drawsHidden { timer.invalidate() }
+                    }
+                    probeTimer = probe
+                    RunLoop.main.add(probe, forMode: .common)
+                }
+                if !drawsHidden && (now - probeStarted! >= 2 || now - started >= 6) {
+                    hiddenFallback = true
+                    self.hiddenApps.remove(app.processIdentifier)
+                    _ = app.unhide()
+                    hidden = nil
+                    _ = restoreForeground(previous)
+                }
+            }
+            let settled = windowVerified && (alreadyOpen || userUnhidden || hiddenFallback || (drawsHidden && launched?.isHidden == true)) && now - lastActivation >= 1 && now - started >= 3
             guard (launchFinished && (launchError != nil || settled)) || now - started >= 6 else { return }
             timer.invalidate()
-            hidden?.unhide()
+            probeTimer?.invalidate()
             if let since = foregroundSince {
                 let duration = (now - since) * 1000
                 hiddenMs += duration
                 if firstFlashMs == nil { firstFlashMs = duration }
             }
-            if previous?.processIdentifier != launched?.processIdentifier,
+            if !userUnhidden, previous?.processIdentifier != launched?.processIdentifier,
                previous?.bundleURL?.resolvingSymlinksInPath().path != appPath,
                NSWorkspace.shared.frontmostApplication?.processIdentifier != previous?.processIdentifier { _ = restoreForeground(previous) }
             if let error = launchError { completion(.failure(error)); return }
             let restored = NSWorkspace.shared.frontmostApplication?.processIdentifier == previous?.processIdentifier
             completion(.success(["requested": true, "opened": true, "name": entry.name, "requiresObservation": true,
-                "alreadyOpen": alreadyOpen, "title": entry.name, "before": before, "after": frontInfo(),
+                "hiddenFallback": hiddenFallback ? "no-draw-while-hidden" : "",
+                "hidden": !alreadyOpen && !userUnhidden && !hiddenFallback && (launched?.isHidden ?? false), "alreadyOpen": alreadyOpen, "title": entry.name, "before": before, "after": frontInfo(),
                 "previousFrontPid": previous?.processIdentifier ?? 0, "pid": launched?.processIdentifier ?? 0,
                 "windowVerified": windowVerified, "foregroundChanged": changed, "foregroundRestored": restored,
                 "hiddenMs": Int(hiddenMs.rounded()), "firstFlashMs": Int((firstFlashMs ?? 0).rounded()), "cycles": cycles]))

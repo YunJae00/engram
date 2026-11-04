@@ -82,6 +82,10 @@ final class Connection: @unchecked Sendable {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let host = DesktopHost()
+        signal(SIGTERM, SIG_IGN)
+        let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        termination.setEventHandler { host.restoreHiddenApps(); exit(0) }
+        termination.resume()
         host.monitor.revoked = { lease, reason in
             connection.send(["type": "revoked", "lease": lease, "reason": reason])
             DispatchQueue.main.async { host.frame.hide(); host.documents.removeAll(); host.snapshots.removeAll() }
@@ -91,7 +95,7 @@ final class Connection: @unchecked Sendable {
         let watchdog = DispatchSource.makeTimerSource(queue: .global())
         watchdog.schedule(deadline: .now() + 1, repeating: 1)
         watchdog.setEventHandler {
-            if getppid() != owner || kill(owner, 0) != 0 { host.monitor.stop("Owner exited"); exit(0) }
+            if getppid() != owner || kill(owner, 0) != 0 { DispatchQueue.main.async { host.restoreHiddenApps(); host.monitor.stop("Owner exited"); exit(0) } }
         }
         watchdog.resume()
         connection.send(["type": "ready", "protocol": 2, "control": true])
@@ -130,7 +134,7 @@ final class Connection: @unchecked Sendable {
                     } catch { finish(.failure(error)) }
                 }
             }
-            connection.cancel(); host.monitor.stop("Connection closed"); exit(0)
+            connection.cancel(); DispatchQueue.main.async { host.restoreHiddenApps(); host.monitor.stop("Connection closed"); exit(0) }
         }
         app.run()
     }

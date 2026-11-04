@@ -7,11 +7,44 @@ import { broadcast } from './engine-health.js'
 
 export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
-interface NativeWindow { barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
+interface NativeWindow { hidden?: boolean; barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
 const openedForeground = new Map<string, { pid: number; previousFrontPid: number }>()
 export function rememberOpenedForeground(lane: string, result: { pid?: number; previousFrontPid?: number }): void {
   if (result.pid && result.previousFrontPid) openedForeground.set(lane, { pid: result.pid, previousFrontPid: result.previousFrontPid })
 }
+const hiddenApps = new Map<string, { pid: number; host: DesktopHost }>()
+const restoring = new Set<Promise<unknown>>()
+export function rememberHiddenApp(lane: string, pid: number, host: DesktopHost): void {
+  restoreHiddenApp(lane)
+  hiddenApps.set(lane, { pid, host })
+}
+export function restoreHiddenApp(lane: string, activate = false): Promise<unknown> | undefined {
+  const owned = hiddenApps.get(lane)
+  if (!owned) return
+  hiddenApps.delete(lane)
+  const binding = bindings.get(lane)
+  if (binding) { delete binding.hiddenByEngram; changed() }
+  const restore = owned.host.request('unhideApp', { pid: owned.pid, activate }).catch(error => flog('desktop-unhide', String(error))).finally(() => {
+    owned.host.close(); restoring.delete(restore)
+  })
+  restoring.add(restore)
+  return restore
+}
+export async function showDesktopApp(lane: string): Promise<void> {
+  bound(lane)
+  await restoreHiddenApp(lane, true)
+  changed()
+}
+export async function refreshHiddenApp(binding: Binding): Promise<void> {
+  const state = await binding.host.request<{ hidden?: boolean }>('inspectWindow', { window: binding.window, pid: binding.pid })
+  if (binding.hiddenByEngram && state.hidden === false && bindings.get(binding.lane) === binding) {
+    const owned = hiddenApps.get(binding.lane)
+    hiddenApps.delete(binding.lane); delete binding.hiddenByEngram
+    owned?.host.close()
+    changed()
+  }
+}
+export function desktopRestoring(): boolean { return hiddenApps.size > 0 || restoring.size > 0 }
 const bindings = new Map<string, Binding>()
 const choices = new Map<string, number>()
 let generation = 0
@@ -48,11 +81,18 @@ export function desktopOwner(): BrowserWindow | undefined { return owner && !own
 export function desktopVisible(): boolean { const window = desktopOwner(); return Boolean(window?.isVisible() && !window.isMinimized()) }
 const changed = () => broadcast({ type: 'desktop:changed' })
 export function desktopBindings(): DesktopBindingDto[] {
-  return [...bindings.values()].map(({ lane, source, name, readable, stopped }) => ({ lane, source, name, readable, stopped }))
+  return [...bindings.values()].map(({ lane, source, name, readable, stopped, hiddenByEngram }) => ({ lane, source, name, readable, stopped, ...(hiddenByEngram ? { hiddenByEngram } : {}) }))
 }
-export function closeDesktopAccess(): void { generation++; openedForeground.clear(); for (const key of [...bindings.keys()]) releaseDesktop(key); closeCatalogHost() }
+export async function closeDesktopAccess(): Promise<void> {
+  generation++; openedForeground.clear()
+  for (const key of [...hiddenApps.keys()]) restoreHiddenApp(key)
+  for (const key of [...bindings.keys()]) releaseDesktop(key)
+  closeCatalogHost()
+  await Promise.allSettled([...restoring])
+}
 export function releaseDesktop(lane: string): void {
   openedForeground.delete(lane)
+  restoreHiddenApp(lane)
   releaseControl(lane, 'The app window was disconnected.')
   choices.set(lane, (choices.get(lane) ?? 0) + 1)
   bindings.get(lane)?.host.close()
@@ -160,10 +200,17 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     // A window stays with a chat only while that chat is working in it.
     if (taken && laneWorking(taken.lane)) throw new Error(`"${target.title}" belongs to another chat right now.`)
     if (taken) releaseDesktop(taken.lane)
+    const hiddenApp = hiddenApps.get(lane)
+    if (hiddenApp && hiddenApp.pid !== target.pid) restoreHiddenApp(lane)
+    else if (hiddenApp && target.hidden === false) {
+      hiddenApps.delete(lane); if (current) delete current.hiddenByEngram
+      hiddenApp.host.close()
+    }
     if (current?.window === target.window && current.host === host) { current.readable = true; current.name = target.title || current.name; current.aliases = target.aliases; return current }
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     if (current && current.host !== host) current.host.close()
-    const binding: Binding = { lane, source: `window:${target.window}:0`, name: target.title, aliases: target.aliases, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
+    const hiddenByEngram = hiddenApps.get(lane)?.pid === target.pid && target.hidden !== false ? target.pid : undefined
+    const binding: Binding = { hiddenByEngram, lane, source: `window:${target.window}:0`, name: target.title, aliases: target.aliases, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
     bindings.set(lane, binding)
     changed()
     return binding
@@ -187,6 +234,7 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
     // Recheck after enumeration so concurrent selections cannot share a window.
     if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
+    restoreHiddenApp(lane)
     releaseControl(lane, 'The selected app window changed.')
     bindings.get(lane)?.host.close()
     const binding: Binding = { lane, source: sourceId, name: identity.title || sourceId, readable: false, window, pid: identity.pid, host, stopped: false, revision: 0 }

@@ -413,7 +413,7 @@ describe('opening apps', () => {
     deps.launch.mockResolvedValue({ opened: true, hiddenMs: 40, cycles: 1, windowVerified: true, foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
     const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
     expect(result).toMatchObject({ opened: true, alreadyOpen: false, foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
-    expect(result.hint).toBe(restored ? 'The app came to the front for 40 ms and was hidden back; the window is open behind the current one. Read it with app_read.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; observe the app before proceeding.')
+    expect(result.hint).toBe(restored ? 'The app came to the front for 40 ms and was hidden back; The app stays hidden from the screen. Read it with app_read; the person watches the preview card.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; observe the app before proceeding.')
   })
   it('reopens a running process without a window and reports unverified windows honestly', async () => {
     deps.bind.mockRejectedValueOnce(new Error('No open window matches "Editor".'))
@@ -438,4 +438,15 @@ it('reads the window attached by open_app without searching for the app name aga
   expect(deps.bind).not.toHaveBeenCalled()
   expect(held.request).toHaveBeenCalledExactlyOnceWith('observe', { window: '100', pid: 200 })
   expect(deps.launch).not.toHaveBeenCalled()
+})
+
+
+it('does not retain the launch host or hidden ownership when native drawing falls back to behind mode', async () => {
+  deps.bind.mockRejectedValueOnce(new Error('No open window matches "Editor".'))
+  deps.launch.mockResolvedValue({ opened: true, pid: 200, hidden: false, hiddenFallback: 'no-draw-while-hidden', windowVerified: true, foregroundRestored: true })
+  const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
+  expect(result).toMatchObject({ hidden: false, hiddenFallback: 'no-draw-while-hidden' })
+  expect(result.hint).toContain('The app does not draw while hidden, so it stays open behind the current window; the person sees it in the preview card.')
+  expect(deps.hidden).not.toHaveBeenCalled()
+  expect(deps.closeLaunch).toHaveBeenCalledOnce()
 })

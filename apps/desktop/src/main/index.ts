@@ -41,7 +41,7 @@ import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
 import { configuredVaultRoot, openVaultContext, resolveEngines, saveVaultRoot, type VaultContext } from './vault.js'
 import { finishWorkspaceDeletion, registerWorkspaceIpc } from './workspaces.js'
-import { closeDesktopAccess, setDesktopOwner } from './desktop-access.js'
+import { closeDesktopAccess, desktopRestoring, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
 import { closeOfficeHost, primeOffice } from './office-host.js'
@@ -794,13 +794,14 @@ app.on('before-quit', (event) => {
   flog('quit', `before-quit native=${nativeBrowserRunning()} dev=${developersRunning()} runtime=${runtimeProcessesRunning()}`)
   stopSemantic()
   stopDesktopControl('Engram is closing.')
-  closeDesktopAccess()
+  const restoringApps = desktopRestoring()
+  const restoredApps = closeDesktopAccess()
   quitting = true
-  if (agentBrowserRunning() || nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
+  if (restoringApps || agentBrowserRunning() || nativeBrowserRunning() || developersRunning() || runtimeProcessesRunning()) {
     event.preventDefault()
     abortAllChat()
     // Whatever is still open gets a bounded chance; the quit itself is not held hostage.
-    void Promise.allSettled([closeAgentBrowser({ force: true }), stopDevelopers()]).finally(stopRuntimeProcesses).finally(() => app.quit())
+    void Promise.allSettled([restoredApps, closeAgentBrowser({ force: true }), stopDevelopers()]).finally(stopRuntimeProcesses).finally(() => app.quit())
   }
 })
 

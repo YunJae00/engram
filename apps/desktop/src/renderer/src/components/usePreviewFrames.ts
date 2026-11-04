@@ -12,7 +12,7 @@ import type { FrameSource } from './FrameScreen.js'
 
 export type PreviewFrame = {
   id: string; source: 'app' | 'web'; title: string; at: number; image?: string; stream?: FrameSource
-  live?: boolean; reconnecting?: boolean; connecting?: boolean
+  hiddenByEngram?: number; live?: boolean; reconnecting?: boolean; connecting?: boolean
   activity?: string
   phase: 'activity' | 'ready' | 'waiting' | 'delayed' | 'no-snapshot' | 'unavailable' | 'empty'
   onPaint?(): void
@@ -78,6 +78,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     const id = `${lane}:${binding.source}`
     let frame = frames.find(item => item.id === id)
     if (!frame) { frame = { id, source: 'app', title: binding.name, at: Date.now(), phase: 'waiting' }; frames.push(frame) }
+    frame.hiddenByEngram = binding.hiddenByEngram
     const stream = appPreviewFor(lane)
     if (stream?.reason === 'screen_recording_denied') { frame.reason = stream.reason; if (!frame.image) frame.phase = 'unavailable' }
     if (stream) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting; frame.connecting = stream.connecting }

@@ -2,6 +2,11 @@ import AppKit
 import ApplicationServices
 
 final class DesktopHost {
+    var hiddenApps = Set<pid_t>()
+    func restoreHiddenApps() {
+        for pid in hiddenApps { NSRunningApplication(processIdentifier: pid)?.unhide() }
+        hiddenApps.removeAll()
+    }
     let monitor = InputMonitor()
     let frame = ApplicationFrame()
     var snapshots: [String: Snapshot] = [:]
@@ -69,6 +74,14 @@ final class DesktopHost {
             let current = monitor.state()
             return ["intervention": String(current.intervention), "idleMs": current.idle, "escaped": current.escaped, "working": current.lease != nil]
         }
+        if method == "unhideApp" {
+            guard let pid = request["pid"] as? Int32, pid > 0, let activate = request["activate"] as? Bool else { throw DesktopFailure("Choose a valid app") }
+            guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return ["hidden": false] }
+            hiddenApps.remove(pid)
+            app.unhide()
+            if activate { app.activate(options: []) }
+            return ["hidden": app.isHidden]
+        }
         if method == "listApps" { return catalog().map { ["id": $0.id, "name": $0.name, "aliases": $0.aliases] as [String: Any] } }
         if method == "listWindows" {
             guard AXIsProcessTrusted() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Accessibility") }
@@ -77,7 +90,7 @@ final class DesktopHost {
                 guard item[kCGWindowLayer as String] as? Int == 0, let id = item[kCGWindowNumber as String] as? UInt32 else { return nil }
                 do {
                     let window = try resolveWindow(id, pid: 0)
-                    return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "minimized": window.minimized]
+                    return ["aliases": appAliases(url: NSRunningApplication(processIdentifier: window.pid)?.bundleURL), "window": String(id), "pid": window.pid, "title": window.title, "foreground": window.foreground, "hidden": NSRunningApplication(processIdentifier: window.pid)?.isHidden ?? false, "minimized": window.minimized]
                 } catch {
                     guard String(describing: error).hasPrefix("This application surface requires manual control"),
                           let pid = item[kCGWindowOwnerPID as String] as? Int32,
@@ -109,11 +122,12 @@ final class DesktopHost {
             if method == "activateWindow" {
                 guard !monitor.state().escaped else { throw DesktopFailure("Escape pressed") }
                 AXUIElementSetAttributeValue(window.element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                NSRunningApplication(processIdentifier: window.pid)?.unhide()
                 NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
                 guard AXUIElementPerformAction(window.element, kAXRaiseAction as CFString) == .success else { throw DesktopFailure("The window could not be activated") }
             }
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "minimized": window.minimized,
-                    "foreground": window.foreground, "foregroundRestored": foregroundRestored, "bounds": rectangle(try window.bounds), "visualBounds": rectangle(try window.bounds)]
+                    "hidden": NSRunningApplication(processIdentifier: window.pid)?.isHidden ?? false, "foreground": window.foreground, "foregroundRestored": foregroundRestored, "bounds": rectangle(try window.bounds), "visualBounds": rectangle(try window.bounds)]
         }
         if method == "quietState" { return state(window) }
         if method == "quietScan" || method == "observe" {
@@ -174,7 +188,8 @@ final class DesktopHost {
             let grant = try text(request, "grant", limit: 64)
             guard UUID(uuidString: grant) != nil, !monitor.state().escaped else { throw DesktopFailure("Fresh control approval is required") }
             let current = monitor.state().intervention
-            NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+            NSRunningApplication(processIdentifier: window.pid)?.unhide()
+                NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
             AXUIElementPerformAction(window.element, kAXRaiseAction as CFString)
             prepared = (grant, current, window.id)
             return ["intervention": String(current)]

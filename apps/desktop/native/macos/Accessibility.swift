@@ -60,8 +60,8 @@ struct Target {
 }
 func resolveWindow(_ id: CGWindowID, pid: pid_t) throws -> Target {
     guard AXIsProcessTrusted() else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Accessibility") }
-    guard let windows = CGWindowListCopyWindowInfo([.optionIncludingWindow], id) as? [[String: Any]],
-          let info = windows.first, let owner = info[kCGWindowOwnerPID as String] as? Int32,
+    guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]],
+          let info = windows.first(where: { ($0[kCGWindowNumber as String] as? UInt32) == id }), let owner = info[kCGWindowOwnerPID as String] as? Int32,
           owner > 0, owner != getpid(), owner != getppid(), pid == 0 || owner == pid,
           let application = NSRunningApplication(processIdentifier: owner),
           application.activationPolicy == .regular,
