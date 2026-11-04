@@ -67,7 +67,7 @@ test('a connected conversation edits an owned app while another conversation rec
     await expect(preview).toHaveAttribute('data-lane', `bot-${worker.id}`)
     await page.screenshot({ path: join(data, 'worker-expanded.png') })
     await expect(page.getByTestId('preview-card')).toBeVisible()
-    await expect(preview.getByRole('tab')).toHaveCount(2)
+    await expect(page.getByTestId('preview-deck').locator('[data-position]')).toHaveCount(2)
     await expect(preview.locator('img')).toHaveCount(1)
     await expect(preview.locator('img').first()).toBeVisible()
     await page.screenshot({ path: join(data, 'worker-result.png') })

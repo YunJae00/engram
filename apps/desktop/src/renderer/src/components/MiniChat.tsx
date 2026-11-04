@@ -12,7 +12,7 @@ import { ThreadOffers } from './ThreadOffers.js'
 import { ChatComposer } from './ChatComposer.js'
 import { ModelPicker } from './ModelPicker.js'
 import { Globe } from 'lucide-react'
-import { PreviewCard } from './PreviewCard.js'
+import { PreviewDeck } from './PreviewDeck.js'
 import { usePreviewFrames, type PreviewTile } from './usePreviewFrames.js'
 import { CometMessages } from './CometMessages.js'
 
@@ -50,7 +50,7 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile }: { botId: 
   const status = thread.busy ? pendingStatus(threadT(threadLang(thread.messages)), thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''
   return (
     <div className="mini-chat" data-testid={`mini-chat-${botId}`}>
-      <PreviewCard frames={frames} compact onOpenWeb={previewTile?.onOpen} key={botId} lane={cometChannel(botId)} busy={thread.busy} lang={threadLang(thread.messages)} state={thread.messages.at(-1)?.error ? 'stopped' : thread.offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
+      <PreviewDeck frames={frames} compact onOpenWeb={previewTile?.onOpen} key={botId} lane={cometChannel(botId)} busy={thread.busy} lang={threadLang(thread.messages)} state={thread.messages.at(-1)?.error ? 'stopped' : thread.offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
       <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
         <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={(label) => void send(label)} onResend={() => void resendFailedCometMessage(api, cometThreads, botId)}>
