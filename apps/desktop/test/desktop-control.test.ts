@@ -396,3 +396,39 @@ it.each(['deadline', 'cancel'])('ends a desktop lease wait on %s without taking 
   await vi.advanceTimersByTimeAsync(0)
   expect(grants(second.request)).toHaveLength(0)
 })
+
+
+describe('opening apps', () => {
+  it('attaches an already open app without launching it or taking foreground control', async () => {
+    const held = binding()
+    const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
+    expect(result).toMatchObject({ alreadyOpen: true, opened: false, title: 'Editor', foregroundChanged: false, hint: 'The app was already open; it was not launched again. Read it with app_read.' })
+    expect(held.value.readable).toBe(true)
+    expect(deps.launch).not.toHaveBeenCalled()
+    expect(deps.remember).not.toHaveBeenCalled()
+    expect(grants(held.request)).toHaveLength(0)
+  })
+  it.each([false, true])('reports foreground changes honestly when restored is %s', async restored => {
+    deps.bind.mockRejectedValueOnce(new Error('No open window matches "Editor".'))
+    deps.launch.mockResolvedValue({ foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
+    const result = JSON.parse(await control.openDesktopApp(lane, 'Editor'))
+    expect(result).toMatchObject({ opened: true, alreadyOpen: false, foregroundChanged: true, foregroundRestored: restored, title: 'Editor' })
+    expect(result.hint).toBe(restored ? 'The app came to the front for a moment and the previous window was restored.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; read it with app_read.')
+  })
+  it('preserves ambiguous and denied binding errors without launching', async () => {
+    deps.bind.mockRejectedValueOnce(new Error('Several windows match "Editor".'))
+    await expect(control.openDesktopApp(lane, 'Editor')).rejects.toThrow('Several windows')
+    expect(deps.launch).not.toHaveBeenCalled()
+  })
+})
+
+
+it('reads the window attached by open_app without searching for the app name again', async () => {
+  const held = binding(lane, '100', 'Teams')
+  await control.openDesktopApp(lane, 'Teams')
+  deps.bind.mockClear()
+  expect((await control.readControlledDesktop(lane)).snapshot).toBe('snapshot-1')
+  expect(deps.bind).not.toHaveBeenCalled()
+  expect(held.request).toHaveBeenCalledExactlyOnceWith('observe', { window: '100', pid: 200 })
+  expect(deps.launch).not.toHaveBeenCalled()
+})

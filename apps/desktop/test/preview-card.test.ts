@@ -7,6 +7,7 @@ vi.mock('../src/renderer/src/lib/webPane.js', () => ({ useWebPane: () => pane, w
 vi.mock('../src/renderer/src/api.js', () => ({ api: {} }))
 vi.mock('../src/renderer/src/lib/agentMirrorLive.js', () => ({ agentMirror: {} }))
 import { appPreviewFrame } from '../src/renderer/src/components/usePreviewFrames.js'
+import { PreviewCard } from '../src/renderer/src/components/PreviewCard.js'
 import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
 import { threadWords } from '../src/renderer/src/lib/threadLang.js'
 
@@ -45,4 +46,19 @@ it('stays expanded with a waiting label during approval waits and attention', ()
   pane.attention = true
   try { expect(render('recorded')).toContain('Document · Needs you') }
   finally { pane.attention = false }
+})
+
+
+it.each(['en', 'ko'] as const)('labels stopped streams and reconnection in %s without changing completed snapshots', lang => {
+  const words = threadWords(lang).workPreview
+  const render = (busy: boolean, reconnecting = false, live = false) => renderToStaticMarkup(createElement(PreviewCard, {
+    frame: { ...appPreviewFrame(frame), stream: () => () => {}, live, reconnecting },
+    busy, state: 'recorded', lang, lane: 'unit-stream', compact: false, onCollapse() {}, onHide() {},
+  }))
+  expect(render(true)).toContain(words.stoppedFrame)
+  expect(render(true)).toContain(new Date(frame.at).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false }))
+  expect(render(true, true)).toContain(words.reconnecting)
+  expect(render(true, false, true)).toContain(words.live)
+  expect(render(false)).toContain(words.lastSnapshot)
+  expect(render(false)).not.toContain(words.stoppedFrame)
 })

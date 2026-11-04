@@ -111,6 +111,11 @@ export async function desktopWindows(): Promise<DesktopWindowDto[]> {
   if (!DesktopHost.available()) return []
   return (await nativeWindows(catalogHost())).filter(one => !one.protected).map((one) => ({ id: `window:${one.window}:0`, name: one.title, ...(one.aliases ? { aliases: one.aliases } : {}), ...(one.foreground ? { foreground: true } : {}) }))
 }
+export async function desktopForeground(): Promise<{ pid: number; title: string } | null> {
+  const result = await catalogHost().request<{ windows?: NativeWindow[] }>('listWindows', {})
+  const front = result?.windows?.find(one => one.foreground)
+  return front ? { pid: front.pid, title: front.title } : null
+}
 async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const own = new Set(BrowserWindow.getAllWindows().map((window) => window.getNativeWindowHandle().readBigUInt64LE().toString()))
   const result = await host.request<{ windows?: NativeWindow[] }>('listWindows', {})

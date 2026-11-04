@@ -32,11 +32,14 @@ internal static class DesktopApps
     internal static object Launch(string name, Action open, Func<IntPtr> foreground, Func<IntPtr, bool> restore)
     {
         var previous = foreground();
+        var before = WindowGuard.ForegroundInfo(previous);
         try { open(); }
         catch { if (foreground() != previous) restore(previous); throw; }
         var changed = foreground() != previous;
-        return new { requested = true, name = name, requiresObservation = true,
-            foregroundChanged = changed, foregroundRestored = changed && restore(previous) };
+        var restored = changed && restore(previous);
+        return new { requested = true, name = name, title = name, requiresObservation = true,
+            before = before, after = WindowGuard.ForegroundInfo(foreground()),
+            foregroundChanged = changed, foregroundRestored = restored };
     }
     private static object Visit(string wanted, Func<bool> permitted)
     {

@@ -29,6 +29,7 @@ export type DesktopSequenceAction = DesktopAction | DesktopGuardedAction
 export interface DesktopCourier {
   windows?(signal?: AbortSignal): Promise<string>
   apps?(signal?: AbortSignal): Promise<string>
+  attach?(app: string, signal?: AbortSignal): Promise<string>
   open?(app: string, signal?: AbortSignal): Promise<string>
   read(signal?: AbortSignal, app?: string, options?: DesktopReadOptions): Promise<string>
   look?(signal?: AbortSignal, app?: string): Promise<ToolOutcome>
@@ -178,8 +179,21 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
       if (!plainRecord(args) || !exactKeys(args, ['app']) || typeof args['app'] !== 'string' || !args['app'].trim() || args['app'].length > APP_CAP || /[\\/:*?"<>|&;$`]/.test(args['app'])) return 'open_app takes app: the app name or bundle identity, or an ID an earlier open_app answer gave. Paths and commands are not accepted.'
       try {
         const asked = args['app'].trim()
-        if (/^[a-f0-9]{64}$/.test(asked)) return await open(asked, context.signal)
+        const opaque = /^[a-f0-9]{64}$/.test(asked)
+        if (courier.attach) {
+          const attached = await courier.attach(asked, context.signal)
+          if (attached) return attached
+        }
+        if (opaque && !courier.attach) return await open(asked, context.signal)
         const listed = JSON.parse(await apps(context.signal)) as { id: string; name: string; aliases?: string[] }[]
+        if (opaque) {
+          const entry = listed.find(app => app.id === asked)
+          if (entry && courier.attach) {
+            const attached = await courier.attach(entry.name, context.signal)
+            if (attached) return attached
+          }
+          return await open(asked, context.signal)
+        }
         const wanted = asked.toLocaleLowerCase()
         const exact = listed.filter(app => appNameMatch(app, wanted, true))
         const near = exact.length ? exact : listed.filter(app => appNameMatch(app, wanted))

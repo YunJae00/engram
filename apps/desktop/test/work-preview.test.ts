@@ -1,12 +1,13 @@
+import { flog } from '../src/main/flog.js'
 import type { DesktopBinding } from '../src/main/desktop-access.js'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const fake = vi.hoisted(() => ({ bindings: new Map(), keptOut: vi.fn(), send: vi.fn(), image: vi.fn(), window: vi.fn(), tap: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/desktop-access.js', () => ({ desktopOwner: () => ({ webContents: { send: fake.send } }), desktopBinding: (lane: string) => fake.bindings.get(lane), keptOut: fake.keptOut }))
-vi.mock('../src/main/desktop-image.js', () => ({ desktopImage: fake.image }))
+vi.mock('../src/main/desktop-image.js', () => ({ previewImage: fake.image }))
 vi.mock('../src/main/engine-health.js', () => ({ tapBroadcast: fake.tap }))
-vi.mock('electron', () => ({ nativeImage: { createFromBuffer: () => ({ resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))
+vi.mock('electron', () => ({ nativeImage: { createFromBitmap: (bitmap: Buffer) => ({ toJPEG: () => bitmap }), createFromBuffer: () => ({ isEmpty: () => false, getSize: () => ({ width: 20, height: 20 }), toBitmap: () => Buffer.alloc(1600, 255), resize: () => ({ toDataURL: () => 'data:image/jpeg;base64,safe' }) }) }, app: { once: vi.fn() }, BrowserWindow: fake.window }))
 beforeEach(() => { vi.useFakeTimers(); vi.resetModules(); vi.clearAllMocks(); fake.bindings.clear(); fake.image.mockResolvedValue({ image: { mimeType: 'image/jpeg', data: 'safe' } }) })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 function binding(i: number): DesktopBinding {
@@ -144,7 +145,7 @@ it('keeps the last frame stale after refresh timeout', async () => {
   const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
   const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(3000)
   const at = workPreviews(held.lane)[0]!.at
-  fake.image.mockImplementation((_binding, _observe, signal: AbortSignal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason))))
+  fake.image.mockImplementation((_binding, signal: AbortSignal) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason))))
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(5001)
   expect(workPreviews(held.lane)[0]).toMatchObject({ at, data: 'data:image/jpeg;base64,safe', current: false })
 })
@@ -190,11 +191,11 @@ it('protects every attempt until the lane has its first frame', async () => {
   const held = binding(1)
   const request = vi.fn().mockRejectedValue(Object.assign(new Error('yield'), { name: 'PreviewPreempted' }))
   Object.assign(held.host, { request })
-  fake.image.mockImplementation((_binding, observe) => observe())
+  fake.image.mockImplementation((binding, signal, preview) => binding.host.request('observe', { mode: 'skeleton' }, signal, preview ? { preview: true } : {}))
   showWorkPreview(held)
   await vi.advanceTimersByTimeAsync(6301)
   expect(request.mock.calls.slice(0, 4).map(call => call[3])).toEqual([{}, {}, {}, {}])
-  expect(fake.image.mock.calls.slice(0, 4).map(call => call[3])).toEqual([false, false, false, false])
+  expect(fake.image.mock.calls.slice(0, 4).map(call => call[2])).toEqual([false, false, false, false])
   await vi.advanceTimersByTimeAsync(2100)
   expect(request.mock.calls[4]?.[3]).toEqual({})
 })
@@ -205,7 +206,7 @@ it('skips snapshot requests and deferred refreshes while streaming and resumes a
   const held = binding(1)
   const request = vi.fn().mockResolvedValue({})
   Object.assign(held.host, { request })
-  fake.image.mockImplementation(async (_binding, observe) => { await observe(); return { image: { data: 'safe' } } })
+  fake.image.mockImplementation(async (binding, signal, preview) => { await binding.host.request('observe', { mode: 'skeleton' }, signal, preview ? { preview: true } : {}); return { image: { data: 'safe' } } })
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
   showWorkPreview(held) // Queue a refresh during the existing capture cooldown.
   request.mockClear(); fake.image.mockClear()
@@ -239,4 +240,43 @@ it('retains snapshots beyond three minutes but expires imageless activity', asyn
   officeWorkPreview(held.lane, 'outlook.mail')
   await vi.advanceTimersByTimeAsync(181000)
   expect(workPreviews(held.lane)).toEqual([expect.objectContaining({ data: 'data:image/jpeg;base64,safe' })])
+})
+
+
+it('uses one observation and one capture for a masked preview', async () => {
+  const { previewImage } = await vi.importActual<typeof import('../src/main/desktop-image.js')>('../src/main/desktop-image.js')
+  const held = binding(1), bounds = { x: 0, y: 0, width: 20, height: 20 }
+  const request = vi.fn().mockResolvedValueOnce({ snapshot: 'safe', bounds, captureBounds: bounds, truncated: false, captureSafe: true, protectedBounds: [{ x: 5, y: 5, width: 1, height: 1 }] })
+    .mockResolvedValueOnce({ basis: 'client-physical', bounds, width: 20, height: 20, data: 'c2FmZQ==' })
+  Object.assign(held.host, { request })
+  const result = await previewImage(held, new AbortController().signal)
+  expect(request.mock.calls.map(call => call[0])).toEqual(['observe', 'capture'])
+  expect(request.mock.calls[0]?.[1]).toMatchObject({ mode: process.platform === 'win32' ? 'skeleton' : 'full' })
+  const pixels = Buffer.from(result.image!.data, 'base64')
+  expect([...pixels.subarray(0, 4)]).toEqual([32, 32, 32, 255])
+  expect([...pixels.subarray(1596)]).toEqual([255, 255, 255, 255])
+})
+it('rejects an unsafe skeleton scan before capture with capture_unsafe', async () => {
+  const { previewImage } = await vi.importActual<typeof import('../src/main/desktop-image.js')>('../src/main/desktop-image.js')
+  const { previewFailureReason } = await import('../src/main/work-preview.js')
+  const held = binding(1), request = vi.fn().mockResolvedValue({ captureSafe: false })
+  Object.assign(held.host, { request })
+  const error = await previewImage(held, new AbortController().signal).catch(error => error)
+  expect(previewFailureReason(error)).toBe('capture_unsafe')
+  expect(request.mock.calls.map(call => call[0])).toEqual(['observe'])
+})
+
+
+it('limits successful capture logs to once per lane per thirty seconds', async () => {
+  const { showWorkPreview } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  await vi.advanceTimersByTimeAsync(3000)
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  const successes = () => vi.mocked(flog).mock.calls.filter(([tag, data]) => tag === 'desktop-preview' && JSON.parse(String(data)).reason === 'ok')
+  expect(successes()).toHaveLength(1)
+  await vi.advanceTimersByTimeAsync(30000)
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  expect(successes()).toHaveLength(2)
+  expect(JSON.parse(String(successes()[1]![1]))).toMatchObject({ lane: held.lane, source: held.source, stage: 'observe', stages: { observe: 0 }, reason: 'ok' })
 })

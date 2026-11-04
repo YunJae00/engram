@@ -4,7 +4,7 @@ import { screen } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction, type DesktopReadOptions, type Engine } from 'core'
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
-import { bindDesktopForLane, rememberOpenedForeground, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
+import { bindDesktopForLane, desktopForeground, rememberOpenedForeground, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -102,7 +102,7 @@ export function stopDesktopForLane(lane: string, reason = 'This chat stopped.', 
   if (lease.state().lane === lane || active?.binding.lane === lane || startingLane === lane || launching?.lane === lane) stopDesktopControl(reason, resumable)
 }
 
-export async function openDesktopApp(lane: string, app: string, signal?: AbortSignal): Promise<string> {
+export async function openDesktopApp(lane: string, app: string, signal?: AbortSignal, attachOnly = false): Promise<string> {
   const epoch = cancellation
   signal?.throwIfAborted()
   const engine = await engineForControl(lane)
@@ -110,19 +110,40 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   if (stoppedTurns.has(lane) || epoch !== cancellation) throw stoppedError(lane)
   if (engine?.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   if (launching || starting || (active && active.binding.lane !== lane)) throw new Error('Another desktop operation is in progress.')
+  const before = await desktopForeground()
+  signal?.throwIfAborted()
+  if (epoch !== cancellation) throw stoppedError(lane)
+  try {
+    const binding = await bindDesktopForLane(lane, { app })
+    signal?.throwIfAborted()
+    if (epoch !== cancellation) throw stoppedError(lane)
+    const after = await desktopForeground()
+    signal?.throwIfAborted()
+    if (epoch !== cancellation) throw stoppedError(lane)
+    flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, before, after, restored: false, changed: false, alreadyOpen: true }))
+    return JSON.stringify({ alreadyOpen: true, opened: false, window: binding.window, pid: binding.pid, title: binding.name, windowVerified: true, foregroundChanged: false, foregroundRestored: false, hint: 'The app was already open; it was not launched again. Read it with app_read.' })
+  } catch (error) {
+    if (!(error instanceof Error && error.message.startsWith('No open window matches '))) throw error
+  }
+  if (attachOnly) return ''
+  signal?.throwIfAborted()
+  if (epoch !== cancellation) throw stoppedError(lane)
   const host = new DesktopHost()
   const pending = { lane, host }
   launching = pending
   const abort = () => host.close()
   signal?.addEventListener('abort', abort, { once: true })
   try {
-    const result = await host.request<{ pid?: number; previousFrontPid?: number; foregroundRestored?: boolean }>('openApp', { app })
-    flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, restored: result?.foregroundRestored === true }))
+    const result = await host.request<{ pid?: number; previousFrontPid?: number; foregroundRestored?: boolean; foregroundChanged?: boolean; alreadyOpen?: boolean; title?: string; name?: string; before?: unknown; after?: unknown }>('openApp', { app })
+    flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, before: result?.before ?? before, after: result?.after ?? await desktopForeground(), restored: result?.foregroundRestored === true, changed: result?.foregroundChanged === true, alreadyOpen: result?.alreadyOpen === true }))
     if (result?.foregroundRestored) flog('harness', JSON.stringify({ kind: 'host', operation: 'foreground-restored', lane, tool: 'open_app' }))
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
-    if (result) rememberOpenedForeground(lane, result)
-    return JSON.stringify({ opened: true, windowVerified: false, foregroundRestored: result?.foregroundRestored, hint: 'Apps open in the background without taking the person’s screen; results appear in the preview card, and foreground control requires an approval card. The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.' })
+    if (result && !result.alreadyOpen) rememberOpenedForeground(lane, result)
+    const hint = result?.alreadyOpen ? 'The app was already open; it was not launched again. Read it with app_read.'
+      : result?.foregroundChanged ? result.foregroundRestored ? 'The app came to the front for a moment and the previous window was restored.' : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; read it with app_read.'
+      : 'Apps open in the background without taking the person’s screen; results appear in the preview card, and foreground control requires an approval card. The system accepted the launch request. Read it with app_read using a word of its name; a launch request alone does not prove the app is ready.'
+    return JSON.stringify({ opened: !result?.alreadyOpen, alreadyOpen: result?.alreadyOpen === true, windowVerified: false, foregroundChanged: result?.foregroundChanged === true, foregroundRestored: result?.foregroundRestored === true, title: result?.title ?? result?.name ?? app, hint })
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined

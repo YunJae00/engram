@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ request: vi.fn(), close: vi.fn(), remember: vi.fn(), flog: vi.fn() }))
 vi.mock('electron', () => ({ screen: {} }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: class { request = fake.request; close = fake.close } }))
-vi.mock('../src/main/desktop-access.js', () => ({ rememberOpenedForeground: fake.remember, setDesktopReleaseHook: vi.fn(), desktopChanged: vi.fn(), desktopBinding: vi.fn() }))
+vi.mock('../src/main/desktop-access.js', () => ({ desktopForeground: async () => ({ pid: 99, title: "Previous" }), bindDesktopForLane: async () => { throw new Error('No open window matches "calculator".') }, rememberOpenedForeground: fake.remember, setDesktopReleaseHook: vi.fn(), desktopChanged: vi.fn(), desktopBinding: vi.fn() }))
 vi.mock('../src/main/desktop-overlay.js', () => ({ hideControlOverlay: vi.fn() }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: fake.flog }))
