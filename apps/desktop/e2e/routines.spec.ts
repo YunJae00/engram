@@ -47,6 +47,19 @@ test.beforeAll(async () => {
       ENGRAM_AGENT_CDP: String(CDP_PORT),
     },
   })
+  // Replay uses tiny local pages; memory admission has its own unit and UI tests.
+  await app.evaluate(() => {
+    const os = process.getBuiltinModule('node:os') as typeof import('node:os')
+    os.freemem = () => 3e9
+    const childProcess = process.getBuiltinModule('node:child_process') as typeof import('node:child_process')
+    const execute = childProcess.execFileSync
+    childProcess.execFileSync = ((file: string, ...args: unknown[]) => {
+      if (file === '/usr/bin/vm_stat') return 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free: 183106.\nPages speculative: 0.\nPages inactive: 0.\n'
+      return Reflect.apply(execute, childProcess, [file, ...args])
+    }) as typeof execute
+    const modules = process.getBuiltinModule('node:module') as typeof import('node:module')
+    modules.syncBuiltinESMExports()
+  })
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))

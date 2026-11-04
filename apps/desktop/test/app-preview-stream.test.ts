@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-const { open, previewStream } = vi.hoisted(() => ({ open: vi.fn(), previewStream: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewStreamEvent: vi.fn().mockResolvedValue(undefined), desktopPreviewStream: previewStream } }))
+const { open, previewStream, streamEvent } = vi.hoisted(() => ({ open: vi.fn(), previewStream: vi.fn().mockResolvedValue(undefined), streamEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../src/renderer/src/api.js', () => ({ api: { desktopPreviewStreamEvent: streamEvent, desktopPreviewStream: previewStream } }))
 vi.mock('../src/renderer/src/lib/desktopStream.js', () => ({ openDesktopStream: open }))
 import { appPreviewStream, appPreviewFor, syncAppPreviewStreams, setAppPreviewVisible } from '../src/renderer/src/lib/appPreviewStream.js'
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
@@ -56,6 +56,7 @@ it('paints within two seconds, pauses without subscribers, and holds the stream 
   expect(preview.image).toBe('data:image/jpeg;base64,frame')
   syncAppPreviewStreams([{ ...binding, stopped: true }], changed)
   expect(appPreviewFor('bot-test')?.image).toBe('data:image/jpeg;base64,frame')
+  expect(streamEvent).toHaveBeenCalledWith(expect.any(String), { event: 'ended', reason: 'closed', attempt: 0 })
   expect(stop).toHaveBeenCalledOnce()
   expect(previewStream.mock.calls).toEqual([['bot-test', true], ['bot-test', false], ['bot-test', true], ['bot-test', false]])
   setAppPreviewVisible('bot-test', false)

@@ -54,7 +54,7 @@ final class DesktopHost {
         let protected = result.controls.filter { $0.secret }.compactMap { $0.bounds }
         return ["mode": skeleton ? "skeleton" : "full", "snapshot": result.id, "scope": focusedOnly ? "focus" : "window", "bounds": rectangle(result.bounds), "captureBounds": rectangle(result.bounds),
             "focusedEditable": focus?.settable ?? false, "focusedControl": focus.map { String(CFHash($0.element)) } ?? "",
-            "protectedBounds": protected.map(rectangle), "truncated": !result.complete, "captureSafe": result.complete,
+            "protectedBounds": protected.map(rectangle), "truncated": !result.complete, "captureSafe": result.captureSafe,
             "nodes": result.controls.filter { !focusedOnly || (focus != nil && CFEqual($0.element, focus!.element)) }.compactMap { node -> [String: Any]? in
                 guard let bounds = node.bounds else { return nil }
                 return ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "e" + node.id, "runtimeId": String(CFHash(node.element)), "name": node.name, "controlType": node.role, "value": node.value,

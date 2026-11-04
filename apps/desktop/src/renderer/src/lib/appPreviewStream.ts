@@ -98,9 +98,12 @@ export function appPreviewStream(lane: string, changed: () => void) {
     get reconnecting() { return reconnecting },
     get reason() { return reason },
     get live() { return live },
+    get connecting() { return !controller.signal.aborted && !live && !reason },
     get at() { return at },
     get image() { return last ? `data:image/jpeg;base64,${last}` : undefined },
     close() {
+      if (controller.signal.aborted) return
+      event('ended', 'closed')
       controller.abort(); clearTimeout(retry); reconnecting = false; playback++; setLive(false); stopPainting(); listeners.clear()
       document.removeEventListener('visibilitychange', visibility)
       video.pause(); video.srcObject = null

@@ -105,6 +105,7 @@ struct Snapshot {
     let focus: AXUIElement?
     let complete: Bool
     let at = Date()
+    var captureSafe: Bool { complete || !controls.contains { $0.secret } }
 }
 func transparentGroup(role: String, name: String, value: String, identifier: String, actionable: Bool) -> Bool {
     role == kAXGroupRole && name.isEmpty && value.isEmpty && identifier.isEmpty && !actionable
