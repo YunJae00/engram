@@ -38,7 +38,7 @@ it('does not refresh timestamps without a captured image and marks failed captur
   await vi.advanceTimersByTimeAsync(3000); fake.image.mockRejectedValue(new Error('protected window'))
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
   expect(workPreviews(held.lane)[0]).toMatchObject({ at, unavailable: true })
-  expect(workPreviews(held.lane)[0]?.data).toBeUndefined()
+  expect(workPreviews(held.lane)[0]?.data).toBe('data:image/jpeg;base64,safe')
 })
 it('drops delayed images after the target changes or access is revoked', async () => {
   let finish!: (value: unknown) => void
@@ -308,24 +308,27 @@ it('polls visible bound cards every 1.5 seconds after the turn, stopping when hi
 })
 
 
-it('restores a hidden app only after three consecutive transparent captures and resets the streak', async () => {
-  const { showWorkPreview } = await import('../src/main/work-preview.js')
-  const { restoreHiddenApp } = await import('../src/main/desktop-access.js')
+it('pauses hidden previews without restoring or recapturing the window', async () => {
+  const { showWorkPreview, setWorkPreviewVisible, workPreviews } = await import('../src/main/work-preview.js')
+  const { refreshHiddenApp, restoreHiddenApp } = await import('../src/main/desktop-access.js')
   const held = binding(1)
-  held.hiddenByEngram = 200
-  const transparent = new Error('The hidden window has not drawn a preview yet.')
-  async function capture(error?: Error) {
-    if (error) fake.image.mockRejectedValueOnce(error)
-    showWorkPreview(held)
-    await vi.advanceTimersByTimeAsync(2100)
-  }
-  await capture(transparent); await capture(transparent)
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  const frame = workPreviews(held.lane)[0]?.data
+  vi.mocked(refreshHiddenApp).mockImplementation(async binding => { binding.previewPaused = true; return binding })
+  fake.image.mockClear()
+  setWorkPreviewVisible(held.lane, true)
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(fake.image).not.toHaveBeenCalled()
   expect(restoreHiddenApp).not.toHaveBeenCalled()
-  await capture()
-  await capture(transparent); await capture(new Error('other failure'))
-  await capture(transparent); await capture(transparent)
-  expect(restoreHiddenApp).not.toHaveBeenCalled()
-  await capture(transparent)
-  expect(restoreHiddenApp).toHaveBeenCalledExactlyOnceWith(held.lane, false)
-  expect(flog).toHaveBeenCalledWith('desktop-preview', expect.stringContaining('"reason":"hidden-fallback"'))
+  expect(workPreviews(held.lane)[0]?.data).toBe(frame)
+})
+
+it('does not republish unchanged preview frames during idle reads', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1)
+  showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  fake.send.mockClear()
+  workPreviews(held.lane); workPreviews(held.lane)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fake.send).not.toHaveBeenCalled()
 })

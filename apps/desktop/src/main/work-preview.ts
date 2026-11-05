@@ -1,10 +1,13 @@
+import { PreviewRetry } from './preview-retry.js'
 import { app, nativeImage } from 'electron'
-import { desktopBinding, desktopOwner, refreshHiddenApp, restoreHiddenApp, releaseDesktop, keptOut, type DesktopBinding } from './desktop-access.js'
+import { desktopBinding, desktopOwner, refreshHiddenApp, releaseDesktop, keptOut, type DesktopBinding } from './desktop-access.js'
 import type { WorkPreviewDto } from '../shared/desktop.js'
 import { previewImage } from './desktop-image.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
+const retry = new PreviewRetry()
+let published: WorkPreviewDto[] = []
 const entries = new Map<string, WorkPreviewDto>()
 const owners = new Map<string, DesktopBinding>()
 const valid = new Map<string, () => boolean>()
@@ -18,15 +21,17 @@ export function setWorkPreviewVisible(lane: string, showing: boolean): void {
   if (typeof lane !== 'string' || !/^bot-[a-zA-Z0-9_-]{1,140}$/.test(lane) || typeof showing !== 'boolean') throw new Error('Invalid preview visibility.')
   if (showing) visible.add(lane); else visible.delete(lane)
   const refresh = async (lane: string) => {
-    if (refreshing.has(lane)) return
+    if (refreshing.has(lane) || !retry.ready(lane)) return
     let binding = desktopBinding(lane)
     if (!binding || binding.stopped || binding.host.closed || !binding.readable) return
     refreshing.add(lane)
     try {
       binding = await refreshHiddenApp(binding)
+      if (binding.previewPaused) { retry.fail(lane); return }
       if (visible.has(lane) && !streaming.has(lane)) showWorkPreview(binding, false)
     } catch (error) {
-      flog('desktop-preview', String(error))
+      retry.fail(lane)
+      if (retry.log(lane, String(error))) flog('desktop-preview', String(error))
       if (desktopBinding(lane) === binding && /window is unavailable|window no longer exists/i.test(String(error))) releaseDesktop(lane)
     }
     finally { refreshing.delete(lane) }
@@ -39,7 +44,6 @@ const streaming = new Set<string>()
 const streamOwners = new Map<string, DesktopBinding>()
 const preemptions = new Map<string, number>()
 const lastSuccess = new Map<string, number>()
-const transparentFailures = new WeakMap<DesktopBinding, number>()
 const lastCapture = new Map<string, number>()
 let timer: ReturnType<typeof setInterval> | undefined
 let quitting = false
@@ -74,7 +78,12 @@ function publish(pruneOnly = false): void {
   }
   if (pruneOnly && count === entries.size) return
   const owner = desktopOwner()
-  if (owner) owner.webContents.send('engram:event', { type: 'desktop:preview', frames: [...entries.values()].reverse() })
+  const frames = [...entries.values()].reverse()
+  const changed = frames.length !== published.length || frames.some((frame, i) => Object.keys(frame).length !== Object.keys(published[i] ?? {}).length || Object.entries(frame).some(([key, value]) => published[i]?.[key as keyof WorkPreviewDto] !== value))
+  if (owner && changed) {
+    published = frames.map(frame => ({ ...frame }))
+    owner.webContents.send('engram:event', { type: 'desktop:preview', frames })
+  }
   if (!entries.size) { clearInterval(timer); timer = undefined }
 }
 export function workPreviews(lane: string): WorkPreviewDto[] {
@@ -83,7 +92,7 @@ export function workPreviews(lane: string): WorkPreviewDto[] {
 }
 export function closeWorkPreview(): void {
   clearInterval(polling); polling = undefined; visible.clear()
-  quitting = true; lastSuccess.clear(); active.clear(); preemptions.clear(); streaming.clear(); streamOwners.clear()
+  quitting = true; retry.clear(); published = []; lastSuccess.clear(); active.clear(); preemptions.clear(); streaming.clear(); streamOwners.clear()
   for (const id of entries.keys()) remove(id)
   clearInterval(timer); timer = undefined
 }
@@ -97,6 +106,7 @@ function hookPreviewEvents(): void {
           streaming.delete(lane); streamOwners.delete(lane)
         }
       }
+      if (event.type === 'chat:token' && event.reset) retry.reset(event.channel)
       if ((event.type === 'chat:done' || event.type === 'chat:error') && event.channel) {
         active.delete(event.channel); preemptions.delete(event.channel)
         for (const [id, frame] of entries) if (frame.lane === event.channel) {
@@ -127,6 +137,7 @@ export function officeWorkPreview(lane: string, op: string): () => void {
 export function showWorkPreview(binding: DesktopBinding, working = true): void {
   if (quitting || keptOut(binding.name) || desktopBinding(binding.lane) !== binding || binding.host.closed || binding.stopped || !binding.readable) return
   hookPreviewEvents()
+  if (working && !active.has(binding.lane)) retry.reset(binding.lane)
   if (working) active.add(binding.lane)
   const key = `${binding.lane}:${binding.source}`
   if (owners.has(key) && owners.get(key) !== binding || valid.has(key) && !valid.get(key)!()) remove(key)
@@ -142,10 +153,10 @@ export function showWorkPreview(binding: DesktopBinding, working = true): void {
   const laneEntries = [...entries.values()].filter(frame => frame.lane === binding.lane)
   for (const oldest of laneEntries.slice(0, -4)) remove(oldest.id)
   while (entries.size > 64) remove(entries.keys().next().value!)
-  if (entry.captureReason !== 'capture_unsafe') entry.captureState = entry.data ? 'delayed' : 'waiting'
+  if (!entry.data && !entry.captureReason) entry.captureState = 'waiting'
   publish()
   if (!timer) timer = setInterval(() => publish(true), 1000).unref()
-  if (streaming.has(binding.lane) || pending.has(key)) return
+  if (binding.previewPaused || !retry.ready(binding.lane) || streaming.has(binding.lane) || pending.has(key)) return
   if (entry.data && binding.host.busy && (preemptions.get(binding.lane) ?? 0) < 3 || Date.now() - (lastCapture.get(key) ?? 0) < (visible.has(binding.lane) ? 1400 : 2000) || pending.size >= 2) {
     if (!deferred.has(key)) deferred.set(key, setTimeout(() => {
       deferred.delete(key)
@@ -153,6 +164,8 @@ export function showWorkPreview(binding: DesktopBinding, working = true): void {
     }, visible.has(binding.lane) ? 1500 : 2100).unref())
     return
   }
+  entry.captureState = entry.data ? 'delayed' : 'waiting'
+  publish()
   const controller = new AbortController()
   pending.set(key, controller); lastCapture.set(key, Date.now())
   const started = Date.now()
@@ -165,7 +178,7 @@ export function showWorkPreview(binding: DesktopBinding, working = true): void {
   void previewImage(binding, controller.signal, !protectedCapture, nextStage).then(result => {
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding || !valid.get(key)?.() || controller.signal.aborted || quitting) return
     preemptions.delete(binding.lane)
-    transparentFailures.delete(binding)
+    retry.reset(binding.lane)
     stages[stage] = Date.now() - stageStarted
     if (Date.now() - (lastSuccess.get(binding.lane) ?? -Infinity) >= 30_000) {
       lastSuccess.set(binding.lane, Date.now())
@@ -181,16 +194,9 @@ export function showWorkPreview(binding: DesktopBinding, working = true): void {
     else preemptions.delete(binding.lane)
     const reason = preempted ? 'work-priority' : controller.signal.aborted ? 'cancelled-or-expired' : previewFailureReason(error)
     stages[stage] = Date.now() - stageStarted
-    flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, stage, stages, reason }))
+    if (!preempted) retry.fail(binding.lane)
+    if (retry.log(binding.lane, reason)) flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, ms: Date.now() - started, stage, stages, reason }))
     if (entries.get(key) !== entry || desktopBinding(binding.lane) !== binding) return
-    if (!controller.signal.aborted && binding.hiddenByEngram && String(error).includes('has not drawn a preview yet')) {
-      const failures = (transparentFailures.get(binding) ?? 0) + 1
-      transparentFailures.set(binding, failures)
-      if (failures === 3) {
-        void restoreHiddenApp(binding.lane, false)
-        flog('desktop-preview', JSON.stringify({ lane: binding.lane, source: binding.source, reason: 'hidden-fallback' }))
-      }
-    } else transparentFailures.delete(binding)
     if (preempted || controller.signal.aborted) {
       entry.current = false
       entry.captureState = entry.data ? 'delayed' : 'no-snapshot'
@@ -199,7 +205,7 @@ export function showWorkPreview(binding: DesktopBinding, working = true): void {
         if ((active.has(binding.lane) || visible.has(binding.lane)) && valid.get(key)?.()) showWorkPreview(binding, active.has(binding.lane))
       }, visible.has(binding.lane) ? 1500 : 2100).unref())
     } else {
-      delete entry.data; entry.unavailable = true; entry.captureState = 'unavailable'; entry.captureReason = previewFailureReason(error)
+      entry.unavailable = true; entry.captureState = 'unavailable'; entry.captureReason = previewFailureReason(error)
     }
   }).finally(() => {
     clearTimeout(timeout)
