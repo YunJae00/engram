@@ -215,7 +215,9 @@ describe('a quiet press', () => {
       expect(result).toContain('snapshot ' + 'b'.repeat(32))
       expect(committed).not.toHaveBeenCalled()
       expect(observed).toHaveBeenCalledOnce()
-      fake.quietSnapshot.mockReturnValue(await fake.quietScan())
+      const sendingView = { ...await fake.quietScan(), controls: [...(await fake.quietScan()).controls.map((item: object) => ({ ...item, value: 'Hello' })), { id: 'c9', runtimeId: 'send', type: 'Button', name: 'Send', enabled: true, can: { press: true } }] }
+      fake.quietSnapshot.mockReturnValue(sendingView)
+      fake.quietScan.mockResolvedValue(sendingView)
       const sending = press.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c9' }, Object.assign({ task: 'Send it', onCommitted: committed }, { approveAppAction: async () => true }))
       await vi.advanceTimersByTimeAsync(400)
       await sending
@@ -276,7 +278,7 @@ it('preserves the Accessibility permission boundary in the model observation', a
 it('does not treat a requested read or a model press argument as approval to send', async () => {
   const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
   const committed = vi.fn()
-  fake.quietSnapshot.mockReturnValue({ window: '42', pid: 55, title: 'Fixture', controls: [], texts: [] })
+  fake.quietSnapshot.mockReturnValue({ window: '42', pid: 55, title: 'Fixture', controls: [{ id: 'c9', type: 'Edit', name: 'Send', value: 'Draft', can: { set: true } }], texts: [] })
   const result = await press.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c9' }, { task: 'Read the conversation', onCommitted: committed })
   expect(JSON.parse(result)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe' })
   expect(fake.quietPress).not.toHaveBeenCalled()
@@ -292,7 +294,7 @@ it('returns a stale reference instead of requesting permission when a control di
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
 
-it('does not press when the target conversation changes during approval', async () => {
+it('rejects a snapshot without the consequential target before requesting approval', async () => {
   const before = { window: '42', pid: 55, title: 'Fixture', controls: [], texts: [{ id: 't1', text: 'Recipient A' }] }
   fake.quietSnapshot.mockReturnValue(before)
   fake.quietScan.mockResolvedValue({ ...before, texts: [{ id: 't1', text: 'Recipient B' }] })
@@ -300,7 +302,7 @@ it('does not press when the target conversation changes during approval', async 
   const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
   const result = await press.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c9' }, Object.assign({ task: 'Send if approved' }, { approveAppAction }))
   expect(JSON.parse(result)).toMatchObject({ error: 'stale_snapshot', delivery: 'not_delivered' })
-  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
+  expect(approveAppAction).not.toHaveBeenCalled()
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
 
@@ -379,12 +381,12 @@ it('rejects hands approval before a complete quiet target search of a truncated 
   expect(fake.start).not.toHaveBeenCalled()
 })
 it.each([['Enter', 'c3'], ['Control+Enter', 'c3'], ['Enter', 'c9'], ['Control+Enter', 'c9']])('requires send approval for %s on editors and send controls', async (key, control) => {
-  fake.quietSnapshot.mockReturnValue({ controls: [{ id: control, type: 'Edit', value: 'Draft', can: { set: control === 'c3' } }], texts: [] })
+  fake.quietSnapshot.mockReturnValue({ controls: [{ id: control, type: 'Edit', name: control === 'c3' ? 'Message' : 'Send', value: 'Draft', can: { set: true } }], texts: [] })
   const approveAppAction = vi.fn(async () => false)
   const tool = desktopAgentTools('bot-one').find(item => item.name === 'app_press')!
   const result = await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control, key }, Object.assign({ task: 'Send' }, { approveAppAction }))
   expect(JSON.parse(result).delivery).toBe('not_delivered')
-  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32), expect.any(String))
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
 

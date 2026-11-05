@@ -3,7 +3,7 @@ import type { AgentTool } from 'core'
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
   approveComputerControl?(lane: string): Promise<boolean>
-  approveAppAction?(app: string, control: string, snapshot: string): Promise<boolean>
+  approveAppAction?(app: string, control: string, snapshot: string, scope?: string): Promise<boolean>
 }
 
 interface Consent {

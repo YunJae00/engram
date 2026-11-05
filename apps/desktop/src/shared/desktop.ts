@@ -58,6 +58,7 @@ export interface QuietControlDto {
 }
 export interface QuietStateDto { foreground: boolean; idleMs: number; minimized: boolean }
 export interface QuietObservationDto {
+  find?: string
   searchComplete?: boolean
   window: string
   pid: number

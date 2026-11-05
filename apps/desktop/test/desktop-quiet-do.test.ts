@@ -152,12 +152,12 @@ it.each(['declined', 'changed'] as const)('never sends after approval is %s', as
   const filled = screen([control('c5', 'Send'), { ...composer, value: request.text }], ['Recipient A'])
   fake.scan.mockResolvedValueOnce(initial).mockResolvedValue(filled)
   const approveSend = vi.fn(async () => {
-    if (mode === 'changed') fake.scan.mockResolvedValue({ ...filled, texts: [{ id: 't1', text: 'Recipient B' }] })
+    if (mode === 'changed') fake.scan.mockResolvedValue({ ...filled, controls: [control('c5', 'Send'), { ...composer, value: 'Changed input' }] })
     return mode !== 'declined'
   })
   const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
   const result = await quietDo({ ...request, send: true, approveSend }, decide)
-  expect(result.status).toBe('needs-person')
+  expect(result.status).toBe(mode === 'changed' ? 'blocked' : 'needs-person')
   expect(approveSend).toHaveBeenCalledOnce()
   expect(fake.press).not.toHaveBeenCalled()
 })
@@ -179,4 +179,17 @@ it('keeps a human approval pending beyond the former inner deadline', async () =
     expect((await result).status).toBe('needs-person')
     expect(fake.press).not.toHaveBeenCalled()
   } finally { vi.useRealTimers() }
+})
+
+it('dispatches app_do send through the confirmed control id despite unrelated changes', async () => {
+  const initial = screen([control('c5', 'Send', { runtimeId: 'send' }), { ...composer, runtimeId: 'input', value: 'Hello' }], ['Welcome'])
+  const fresh = screen([control('c5', 'Document', { runtimeId: 'document' }), control('c8', 'Send', { runtimeId: 'send' }), { ...composer, runtimeId: 'input', value: 'Hello' }], ['Updated sidebar'], 'b'.repeat(32))
+  fake.scan.mockResolvedValueOnce(initial).mockResolvedValueOnce(initial).mockResolvedValue(fresh)
+  fake.text.mockResolvedValue({ text: 'Done', settled: true })
+  const approveSend = vi.fn(async () => true)
+  const decide = vi.fn().mockImplementationOnce(decided('set c9')).mockImplementationOnce(decided('press c5')).mockImplementationOnce(decided('ready'))
+  const result = await quietDo({ lane: 'lane', app: 'Claude', goal: 'Send the draft', text: 'Hello', send: true, maxSteps: 2, approveSend }, decide)
+  expect(result).toMatchObject({ status: 'done', committed: true })
+  expect(approveSend).toHaveBeenCalledOnce()
+  expect(fake.press).toHaveBeenCalledExactlyOnceWith('lane', 'Claude', fresh.snapshot, 'c8', undefined, undefined)
 })

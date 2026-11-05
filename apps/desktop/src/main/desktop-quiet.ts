@@ -147,6 +147,7 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   result.sparseTree = !find && sparseDesktopTree(result)
   if (result.sparseTree) result.hint = SCREEN_HINT
   remember(lane, binding, actionable && !result.sparseTree ? 'covered' : 'bare', result, find, !find && !options.root && options.mode !== 'skeleton')
+  result.find = find
   named.set(result.snapshot, result)
   while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)
   return result
