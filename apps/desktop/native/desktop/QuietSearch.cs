@@ -35,9 +35,10 @@ internal sealed partial class QuietAccess
         cache.Add(AutomationElement.NameProperty);
         cache.Add(ValuePattern.ValueProperty);
         var watch = Stopwatch.StartNew();
-        // Controls decide completeness; text matches are best effort in the remaining budget, since legacy
-        // providers answer each text node slowly and a send button must still be found behind them.
-        tree.Truncated = Collect(root, Interactive, wanted, cache, watch, tree.Nodes);
+        // Controls and regions decide completeness; text matches are best effort in the remaining budget, since
+        // legacy providers answer each text node slowly and a send button must still be found behind them.
+        var regions = new[] { ControlType.Group, ControlType.Pane, ControlType.Custom };
+        tree.Truncated = Collect(root, Interactive.Concat(regions), wanted, cache, watch, tree.Nodes);
         textsTruncated = tree.Truncated || Collect(root, Textual, wanted, cache, watch, tree.Nodes);
         return tree;
     }
