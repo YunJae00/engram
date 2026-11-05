@@ -74,7 +74,9 @@ internal sealed partial class QuietAccess
     internal static bool HoldsText(string value) { return !string.IsNullOrWhiteSpace(value); }
     private List<object> Nearby(DesktopTarget target, string snapshot, AutomationElement element, HashSet<string> before)
     {
-        var root = Validate(target);
+        // The write just revalidated this window; the receipt only reads button names, so no second password scan.
+        Guard.Same(target);
+        var root = AutomationElement.FromHandle(target.Handle);
         var area = Neighborhood(element, root);
         var held = Snapshots.First(one => one.Id == snapshot);
         var result = new List<object>();
