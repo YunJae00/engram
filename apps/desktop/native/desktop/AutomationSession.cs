@@ -135,7 +135,7 @@ internal sealed class AutomationSession : IDisposable
             var held = Observation;
             ObservedElement node;
             if (held == null || held.Id != previous || held.Target.Id != target.Id || held.Target.Pid != target.Pid || held.Target.Started != target.Started
-                || (Stopwatch.GetTimestamp() - held.Created) * 1000.0 / Stopwatch.Frequency > 15000 || !held.Elements.TryGetValue(rootControl, out node))
+                || !held.Elements.TryGetValue(rootControl, out node))
                 throw new InvalidOperationException("This snapshot is stale. Read the app again");
             var info = node.Element.Current;
             if (RuntimeId(node.Element) != node.Runtime || info.Name != node.Name || info.AutomationId != node.AutomationId || info.ControlType.Id != node.ControlType || info.BoundingRectangle != node.Bounds)
@@ -189,7 +189,7 @@ internal sealed class AutomationSession : IDisposable
         return new
         {
             window = target.Id, pid = target.Pid, title = target.Title, snapshot = observation.Id,
-            expiresInMs = 15000, bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
+            bounds = Bounds(observation.Bounds), captureBounds = Bounds(observation.CaptureBounds), nodes = nodes, protectedBounds = protectedBounds,
             focusedEditable = focusedEditable,
             focusedControl = observation.FocusedRuntime,
             mode = mode ?? "full", root = rootControl, truncated = observation.Partial, scope = focusedOnly ? "focus" : "window",
@@ -248,13 +248,17 @@ internal sealed class AutomationSession : IDisposable
         throw new InvalidOperationException("The control is outside the selected application window");
         }
     }
+    internal static bool SnapshotIdentity(DesktopObservation value, string snapshot, LeaseState lease)
+    {
+        return value != null && value.Id == snapshot && value.Epoch == lease.Epoch && value.Target.Id == lease.Target.Id
+            && value.Target.Pid == lease.Target.Pid && value.Target.Started == lease.Target.Started;
+    }
     internal DesktopObservation Require(string snapshot, LeaseState lease)
     {
         using (DesktopProfile.Measure("require"))
         {
         var value = Observation;
-        if (value == null || value.Id != snapshot || value.Epoch != lease.Epoch || value.Target.Id != lease.Target.Id
-            || value.Target.Pid != lease.Target.Pid || (Stopwatch.GetTimestamp() - value.Created) * 1000.0 / Stopwatch.Frequency > 15000)
+        if (!SnapshotIdentity(value, snapshot, lease))
             throw new InvalidOperationException("Observe this application again before sending input");
         Validate(lease.Target);
         if (DesktopNative.Bounds(lease.Target.Handle) != value.Bounds || DesktopCapture.Bounds(lease.Target.Handle) != value.CaptureBounds)
@@ -296,6 +300,8 @@ internal sealed class AutomationSession : IDisposable
         }
         else
         {
+            if ((Stopwatch.GetTimestamp() - observation.Created) * 1000.0 / Stopwatch.Frequency > 15000)
+                throw new InvalidOperationException("Observe this app again before using screen coordinates");
             if (!x.HasValue || !y.HasValue) throw new ArgumentException("A control or both screen coordinates are required");
             point = new Point(x.Value, y.Value);
             element = AutomationElement.FromPoint(point);
