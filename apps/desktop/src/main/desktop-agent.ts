@@ -83,9 +83,13 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (name === undefined) return JSON.stringify(desktopFailure('This snapshot is stale. Read the app again before acting.'))
       const previous = quietSnapshot(snapshot)
       const container = /treeitem|row|group/i.test(previous?.controls.find(item => item.id === control)?.type ?? '')
-      if (!options?.action && (!name || irreversibleName(name))) {
+      const field = previous?.controls.find(item => item.id === control)
+      const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
+      const sendsKey = activationKey && field?.can.set && !!field.value?.trim()
+      const consequential = sendsKey || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
+      if (consequential) {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
-        if (!await (context as DesktopActionContext).approveAppAction?.(app, name || 'Unnamed control', snapshot))
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot))
           return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })
         const confirmed = await quietScan(lane, app, undefined, context.signal)
         if (confirmed.window !== previous.window || confirmed.pid !== previous.pid || confirmed.title !== previous.title || quietFingerprint(confirmed) !== quietFingerprint(previous))
@@ -93,7 +97,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         snapshot = confirmed.snapshot
       }
       const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal, options))
-      if (!options?.action && (!name || irreversibleName(name))) context.onCommitted?.()
+      if (consequential) context.onCommitted?.()
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),

@@ -175,6 +175,9 @@ final class DesktopHost {
                 let actual = node.value
                 return ["how": how, "message": actual == value ? "" : "The app did not take background text; its own search or field may need the person", "landed": actual == value, "exact": actual == value, "value": actual, "ms": 0, "control": "c" + node.id, "foregroundChanged": front != NSWorkspace.shared.frontmostApplication?.processIdentifier].merging(foregroundReceipt(previous)) { _, next in next }
             }
+            if let key = request["key"] as? String {
+                return try quietKey(key, node: node, window: window, inputVersion: inputVersion).merging(foregroundReceipt(previous)) { _, next in next }
+            }
             guard node.pressable else { throw DesktopFailure("This control cannot be pressed") }
             guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }

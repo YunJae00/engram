@@ -369,6 +369,16 @@ it('reports revocation after a cached handover without claiming the person decli
   expect(fake.act).toHaveBeenCalledOnce()
 })
 
+it.each([['Enter', 'c3'], ['Control+Enter', 'c3'], ['Enter', 'c9'], ['Control+Enter', 'c9']])('requires send approval for %s on editors and send controls', async (key, control) => {
+  fake.quietSnapshot.mockReturnValue({ controls: [{ id: control, type: 'Edit', value: 'Draft', can: { set: control === 'c3' } }], texts: [] })
+  const approveAppAction = vi.fn(async () => false)
+  const tool = desktopAgentTools('bot-one').find(item => item.name === 'app_press')!
+  const result = await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control, key }, Object.assign({ task: 'Send' }, { approveAppAction }))
+  expect(JSON.parse(result).delivery).toBe('not_delivered')
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
+  expect(fake.quietPress).not.toHaveBeenCalled()
+})
+
 it('remaps nearby controls to the fresh post-set snapshot by runtime identity', async () => {
   fake.quietSet.mockResolvedValue({ snapshot: 'a'.repeat(32), nearby: [{ id: 'c10020', runtimeId: 'send-runtime', name: 'Send', appeared: true }], landed: true })
   fake.quietScan.mockResolvedValue({ snapshot: 'b'.repeat(32), controls: [{ id: 'c7', runtimeId: 'send-runtime', name: 'Send', type: 'Button', can: { press: true } }], texts: [], skippedTexts: 0, state: { foreground: false } })

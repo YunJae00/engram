@@ -31,6 +31,8 @@ final class Connection: @unchecked Sendable {
                 for invalid in ["Command+Q", "Control+Alt+Delete", "Shift+Escape"] {
                     do { _ = try keyChord(invalid); fatalError("Unsafe chord accepted") } catch {}
                 }
+                for key in ["Enter", "Escape", "Tab", "Shift+Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Control+Enter"] { _ = try quietKeyChord(key) }
+                do { _ = try quietKeyChord("Command+Q"); fatalError("Unsafe quiet key accepted") } catch {}
                 precondition(" \n\t".trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 let selectAll = try keyChord("Control+A")
                 precondition(selectAll.1 == .maskCommand)

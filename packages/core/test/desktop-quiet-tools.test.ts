@@ -107,3 +107,17 @@ it('explains process input and reports background limits before any foreground r
     expect(description).toContain('without requesting foreground approval')
   }
 })
+
+it('passes only the allowlisted quiet keys and rejects mixed action options', async () => {
+  const { tool, courier } = setup()
+  const args = { app: 'Notes', snapshot: 'a'.repeat(32), control: 'c1' }
+  for (const key of ['Enter', 'Escape', 'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Control+Enter']) {
+    await tool('app_press').run({ ...args, key }, CONTEXT)
+    expect(courier.press).toHaveBeenLastCalledWith('Notes', args.snapshot, 'c1', CONTEXT, { key })
+  }
+  vi.mocked(courier.press).mockClear()
+  for (const extra of [{ key: 'Alt+Tab' }, { key: 'Enter', state: 'selected' }, { key: 'Tab', action: 'scroll_down' }]) {
+    expect(await tool('app_press').run({ ...args, ...extra }, CONTEXT)).toContain('quiet key')
+  }
+  expect(courier.press).not.toHaveBeenCalled()
+})

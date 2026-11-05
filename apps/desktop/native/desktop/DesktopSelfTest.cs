@@ -36,6 +36,13 @@ internal static class DesktopSelfTest
                 Check(receipt.landed && receipt.nearby == null, "Nearby failure preserves a landed write receipt");
             }
 
+            foreach (var key in new[] { "Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight" })
+                Check(QuietPostedInput.KeyCodes(key).Length == 1, "Background keys do not depend on modifier state");
+            foreach (var key in new[] { "Shift+Tab", "Control+Enter" })
+                Reject(delegate { QuietPostedInput.KeyCodes(key); }, "Background modifier keys are rejected before dispatch");
+            foreach (var type in new[] { System.Windows.Automation.ControlType.Button, System.Windows.Automation.ControlType.SplitButton, System.Windows.Automation.ControlType.Hyperlink })
+                Reject(delegate { QuietPostedInput.RequireKeyTarget(type); }, "Keys cannot click or activate buttons twice");
+            Reject(delegate { QuietPostedInput.KeyCodes("Alt+Tab"); }, "Quiet keys cannot switch apps");
             foreach (var chord in new[] { "Shift+Tab", "Control+Tab", "Control+Shift+Tab", "F6", "Shift+F6", "Control+L", "Control+N", "Control+H" })
                 Check(ControlPolicy.Chord(chord).Length <= 3, "Navigation chords are bounded and release every modifier");
             Check(LiveDocument.Replacement("Old title", "Old", "New") == "New title", "Document replacements preserve unrelated text");
