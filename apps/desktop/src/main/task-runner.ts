@@ -65,6 +65,7 @@ export function taskRunner(deps: {
   const waiting = new Map<string, number>()
   const owners = new Map<string, string>()
   const approved = new Map<string, { url: string; words: string }[]>()
+  const approvalScopes = new Map<string, Map<string, string>>()
   const alwaysFor = new Map<string, Set<string>>()
   const declined = new Map<string, Set<string>>()
   const trails = new Map<string, TurnStep[]>()
@@ -91,6 +92,7 @@ export function taskRunner(deps: {
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const earlier = trails.get(id) ?? []
     await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
@@ -153,7 +155,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -213,7 +215,7 @@ export function taskRunner(deps: {
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
         if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
-        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { alwaysFor.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
+        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
         const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
@@ -245,7 +247,7 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approved.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); trails.delete(task.id)
+        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); trails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
@@ -261,17 +263,28 @@ export function taskRunner(deps: {
     askFor(channel: string, confirm: Ask, waitMs = Infinity): Ask | undefined {
       const id = owners.get(channel)
       if (!id || !channels.has(channel)) return undefined
-      return async ({ words, url }) => {
+      return async ({ words, url, scope }) => {
         waiting.set(channel, (waiting.get(channel) ?? 0) + 1)
         try {
           const cardWords = url.startsWith('file:') ? words : words.slice(0, 120)
           if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
           const current = (await listTasks(paths)).find(t => t.id === id)
           if (current?.state !== 'running') return 'cancel'
+          const key = `${url}\n${cardWords}`
+          if (scope && url.startsWith('engram://app/')) {
+            const scopes = approvalScopes.get(id) ?? new Map<string, string>()
+            const previous = scopes.get(key)
+            if (previous !== scope && (previous || alwaysFor.get(id)?.has(key) || approved.get(id)?.some(g => g.url === url && g.words === cardWords))) {
+              alwaysFor.get(id)?.delete(key)
+              approved.set(id, (approved.get(id) ?? []).filter(g => g.url !== url || g.words !== cardWords))
+              await edit(id, t => { for (const a of t.approvals) if (a.url === url && a.words === cardWords) a.settled = true })
+            }
+            scopes.set(key, scope); approvalScopes.set(id, scopes)
+          }
           if (alwaysFor.get(id)?.has(`${url}\n${cardWords}`)) return confirm({ words, url })
           const granted = approved.get(id) ?? []
           const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
-          if (index >= 0) { granted.splice(index, 1); return confirm({ words, url }) }
+          if (index >= 0) { if (!url.startsWith('engram://app/')) granted.splice(index, 1); return confirm({ words, url }) }
           if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
           await edit(id, (t) => {
             if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
@@ -290,6 +303,7 @@ export function taskRunner(deps: {
               if (card) { answer = card.answer; card.settled = true }
             })
             if (!answer) continue
+            if (answer === 'approve' && url.startsWith('engram://app/')) approved.set(id, [...(approved.get(id) ?? []), { url, words: cardWords }])
             if (answer === 'approve-task') alwaysFor.set(id, (alwaysFor.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
             if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
             return answer !== 'decline' ? confirm({ words, url }) : 'cancel'

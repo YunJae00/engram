@@ -47,14 +47,14 @@ it('uses a separate one-shot structured approval for consequential actions while
   const ask = vi.fn(async () => 'approve' as const)
   let delivered = 0
   const tool: AgentTool = { name: 'app_press', description: '', argsSchema: {}, run: async (_args, context) => {
-    if (await (context as import('../src/main/desktop-opt-in.js').DesktopActionContext).approveAppAction?.('Fixture', 'Send', 'observed-snapshot')) delivered++
+    if (await (context as import('../src/main/desktop-opt-in.js').DesktopActionContext).approveAppAction?.('Fixture', 'Send', 'observed-snapshot', 'private-scope-hash')) delivered++
     return 'checked'
   } }
   const [wrapped] = desktopOptIn([tool], { enabled: async () => true, enable: vi.fn(), ask })
   await wrapped!.run({}, { task: 'Read only' })
   await wrapped!.run({}, { task: 'Send if approved' })
   expect(ask).toHaveBeenCalledTimes(2)
-  expect(ask).toHaveBeenCalledWith(expect.objectContaining({ url: 'engram://app/Fixture#observed-snapshot' }))
+  expect(ask).toHaveBeenCalledWith(expect.objectContaining({ url: 'engram://app/Fixture#Send', scope: 'private-scope-hash' }))
   expect(delivered).toBe(2)
 })
 
