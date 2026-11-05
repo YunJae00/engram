@@ -289,7 +289,8 @@ internal sealed class ControlFixture : Form
                     var child = new Panel { Dock = DockStyle.Fill, AccessibleName = "Deep region " + depth };
                     parent.Controls.Add(child); parent = child;
                 }
-                var input = new TextBox { AccessibleName = "Deep input", Multiline = true, Text = "\r\n", Bounds = new Rectangle(8, 8, 240, 50) };
+                // The legacy edit proxy offers no value pattern on a multiline box, so a single line carries the whitespace case.
+                var input = new TextBox { AccessibleName = "Deep input", Text = "  ", Bounds = new Rectangle(8, 8, 240, 30) };
                 var send = new Button { AccessibleName = "Deep Send", Text = "Send", Bounds = new Rectangle(8, 65, 100, 30) };
                 input.TextChanged += delegate { if (!string.IsNullOrWhiteSpace(input.Text) && send.Parent == null) parent.Controls.Add(send); };
                 parent.Controls.Add(input);
