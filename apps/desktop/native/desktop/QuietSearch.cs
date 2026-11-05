@@ -32,29 +32,25 @@ internal sealed partial class QuietAccess
     {
         var tree = new ObservationTree();
         var types = Interactive.Concat(Textual).Concat(new[] { ControlType.Group, ControlType.Pane, ControlType.Custom });
-        var walker = new TreeWalker(new AndCondition(Automation.ControlViewCondition, TypeCondition(types), new PropertyCondition(AutomationElement.IsPasswordProperty, false)));
+        var condition = new AndCondition(Automation.ControlViewCondition, TypeCondition(types), new PropertyCondition(AutomationElement.IsPasswordProperty, false));
         var cache = new CacheRequest { TreeScope = TreeScope.Element };
         cache.Add(AutomationElement.NameProperty);
         cache.Add(ValuePattern.ValueProperty);
         var watch = Stopwatch.StartNew();
-        var candidates = 0;
-        var parents = new Stack<AutomationElement>();
-        var element = walker.GetFirstChild(root, cache);
-        while (element != null) {
-            if (SearchLimit(candidates, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
-            candidates++;
+        // One bulk query crosses the process once; a step-by-step walk spends the budget before deep controls.
+        AutomationElementCollection found;
+        using (cache.Activate()) found = root.FindAll(TreeScope.Descendants, condition);
+        tree.Truncated = SearchLimit(found.Count, watch.ElapsedMilliseconds);
+        for (var index = 0; index < found.Count; index++) {
+            if (SearchLimit(index, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
+            var element = found[index];
             var name = element.GetCachedPropertyValue(AutomationElement.NameProperty, true) as string;
             var value = element.GetCachedPropertyValue(ValuePattern.ValueProperty, true) as string;
             if (Matches(name, value, wanted)) tree.Nodes.Add(new ObservationNode { Element = element });
-            var child = walker.GetFirstChild(element, cache);
-            if (child != null) { parents.Push(element); element = child; continue; }
-            var next = walker.GetNextSibling(element, cache);
-            while (next == null && parents.Count > 0) next = walker.GetNextSibling(parents.Pop(), cache);
-            element = next;
         }
         return tree;
     }
-    internal static bool SearchLimit(int candidates, long milliseconds) { return candidates >= 2000 || milliseconds >= 1800; }
+    internal static bool SearchLimit(int candidates, long milliseconds) { return candidates >= 20000 || milliseconds >= 1800; }
     internal static List<object> OptionalNearby(Func<List<object>> read)
     {
         try { return read(); }

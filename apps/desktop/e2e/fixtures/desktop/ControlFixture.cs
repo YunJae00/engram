@@ -283,9 +283,7 @@ internal sealed class ControlFixture : Form
             else if (method == "quietDeep")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Deep search fixture" };
-                var decoys = new Panel { AccessibleName = "Search decoys" };
-                for (var cell = 0; cell < 520; cell++) decoys.Controls.Add(new Label { Text = "Decoy " + cell });
-                Dense.Controls.Add(decoys);
+                for (var cell = 0; cell < 520; cell++) Dense.Controls.Add(new Label { Text = "Decoy " + cell });
                 var parent = Dense;
                 for (var depth = 0; depth < 17; depth++) {
                     var child = new Panel { Dock = DockStyle.Fill, AccessibleName = "Deep region " + depth };
