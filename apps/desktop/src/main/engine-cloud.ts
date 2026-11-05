@@ -1,3 +1,4 @@
+import { gateModelCalls } from './model-call-gate.js'
 import { ProcessClient } from './process-client.js'
 import { existsSync, realpathSync } from 'node:fs'
 import { delimiter, dirname, join, sep } from 'node:path'
@@ -208,7 +209,7 @@ export function cloudEngine(id: CloudEngineId, profile = activeAccountProfile(id
   const key = `${id}:${profile}`
   let engine = instances.get(key)
   if (!engine) {
-    engine = id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile)
+    engine = gateModelCalls(id === 'claude' ? new ClaudeEngine(profile) : new CodexEngine(profile))
     instances.set(key, engine)
   }
   return engine

@@ -31,7 +31,7 @@ export class VoiceSession {
       prompt: this.questions(),
       options: {
         cwd: spec.workdir, env: spec.env, pathToClaudeCodeExecutable: spec.binary, spawnClaudeCodeProcess: spawnRuntime,
-        abortController: this.abort, tools: [], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model,
+        abortController: this.abort, tools: [], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model, effort: 'low',
       },
     })
     void (async () => {

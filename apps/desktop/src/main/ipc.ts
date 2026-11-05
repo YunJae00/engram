@@ -184,6 +184,7 @@ import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, noteLimited, rememberSelections, withModel } from './ai-selection.js'
+import { withModelCallContext } from './model-call-metrics.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 import { agentCourier } from './agent-courier.js'
@@ -2252,7 +2253,8 @@ export function registerIpc(ctx: VaultContext): void {
     const releaseBrowser = holdAgentBrowser()
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
-      return await handleChatSend(request, controller.signal, recovery, savedRoutine, turn)
+      // A person's own turn holds its engine like a delegated task; nested task contexts keep their ids.
+      return await withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn))
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
