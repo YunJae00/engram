@@ -29,7 +29,7 @@ async function inspected(hand: Locator): Promise<ReturnType<typeof inspectContro
   }
 }
 
-export type Ask = ((what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>) & { reading?: () => boolean }
+export type Ask = ((what: { words: string; url: string; scope?: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>) & { reading?: () => boolean }
 const commitsFor = (control: PressTarget, ask?: Ask) => pressCommits(control) || (ask?.reading?.() === true && pressKeeps(control.words))
 
 async function allowed(page: Page, words: string, ask?: Ask): Promise<'yes' | 'no' | 'theirs' | 'later'> {

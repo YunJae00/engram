@@ -49,7 +49,7 @@ final class DesktopHost {
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "snapshot": result.id,
                 "bounds": rectangle(result.bounds), "mode": skeleton ? "skeleton" : "full", "truncated": !result.complete,
                 "searchComplete": result.complete, "controls": matches.map { node -> [String: Any] in
-                    ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "c" + node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
+                    ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "c" + node.id, "runtimeId": String(CFHash(node.element)), "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
                      "offscreen": node.bounds.map { !$0.intersects(result.bounds) } ?? true,
                      "focused": attribute(node.element, kAXFocusedAttribute) as? Bool ?? false, "secret": node.secret,
                      "can": ["set": node.settable, "press": node.pressable, "text": !node.secret]]

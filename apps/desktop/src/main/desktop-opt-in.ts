@@ -3,13 +3,13 @@ import type { AgentTool } from 'core'
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
   approveComputerControl?(lane: string): Promise<boolean>
-  approveAppAction?(app: string, control: string, snapshot: string): Promise<boolean>
+  approveAppAction?(app: string, control: string, snapshot: string, scope?: string): Promise<boolean>
 }
 
 interface Consent {
   enabled(): Promise<boolean>
   enable(): Promise<void>
-  ask?: (what: { words: string; url: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>
+  ask?: (what: { words: string; url: string; scope?: string }) => Promise<'approve' | 'always' | 'cancel' | 'later'>
 }
 
 export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] {
@@ -32,9 +32,9 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
       context.signal?.throwIfAborted()
       return answer === 'approve' && await consent.enabled()
     },
-    approveAppAction: async (app, control, snapshot) => {
+    approveAppAction: async (app, control, _snapshot, scope) => {
       context.signal?.throwIfAborted()
-      const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${app.slice(0, 60)}"? This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(snapshot)}` })
+      const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${app.slice(0, 60)}"? This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(control)}`, ...(scope ? { scope } : {}) })
       context.signal?.throwIfAborted()
       return answer === 'approve' && await consent.enabled()
     },

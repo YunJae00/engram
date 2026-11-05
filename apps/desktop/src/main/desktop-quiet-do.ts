@@ -5,10 +5,11 @@ import { decideChoice, type ChoiceDecision } from './decision-provider.js'
 import { controlLine, formatScan } from './desktop-quiet-format.js'
 import { quietPress, quietScan, quietSet, quietText } from './desktop-quiet.js'
 import { desktopFailure } from './desktop-failure.js'
+import { prepareQuietConfirmation, pressQuietConfirmed, confirmationFailure } from './desktop-quiet-confirm.js'
 import { flog } from './flog.js'
 
 // Bounded provider actions; uncertain or consequential outcomes stop the loop.
-export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; send?: boolean; maxSteps: number; signal?: AbortSignal; approveSend?: (snapshot: string) => Promise<boolean> }
+export interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; send?: boolean; maxSteps: number; signal?: AbortSignal; approveSend?: (snapshot: string, scope?: string) => Promise<boolean> }
 export interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
 export interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure' | 'needs-screen'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; foregroundTaken?: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string; replyPartial?: boolean }
 
@@ -154,19 +155,16 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
       flog('desktop-quiet', `app_do: send check ${ready ? `${ready.choice} (${ready.confidence.toFixed(2)}, ${ready.ms}ms)` : 'failed'}, pick ${decision.confidence.toFixed(2)}${held ? ' - held' : ''}`)
       if (held) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: held }); continue }
     }
-    if (sends && !await request.approveSend?.(observation.snapshot)) {
+    const approval = sends ? await prepareQuietConfirmation(request.lane, request.app, observation, id, true, request.signal) : undefined
+    if (sends && !approval) {
+      steps.push({ action: decision.choice, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(confirmationFailure()) })
+      return finish('blocked')
+    }
+    if (sends && !await request.approveSend?.(observation.snapshot, approval?.scope)) {
       steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'Sending was not approved; no input was sent.' })
       return finish('needs-person')
     }
     request.signal?.throwIfAborted()
-    if (sends) {
-      const confirmed = await quietScan(request.lane, request.app, undefined, request.signal)
-      if (confirmed.window !== observation.window || confirmed.pid !== observation.pid || quietFingerprint(confirmed) !== quietFingerprint(observation)) {
-        steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'The app changed while approval was pending; no input was sent.' })
-        return finish('needs-person')
-      }
-      observation = confirmed
-    }
     let outcome: string
     try {
       if (kind === 'set') {
@@ -178,7 +176,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
         textSet = true
       } else {
         const options = kind === 'press' ? undefined : kind.startsWith('scroll_') ? { action: kind } : { state: kind }
-        const result = await quietPress(request.lane, request.app, observation.snapshot, id, request.signal, ...(options ? [options as QuietPressOptions] : []))
+        const result = approval ? await pressQuietConfirmed(request.lane, request.app, approval, request.signal) : await quietPress(request.lane, request.app, observation.snapshot, id, request.signal, ...(options ? [options as QuietPressOptions] : []))
         foregroundChanged ||= result.foregroundChanged === true
         foregroundTaken ||= result.foregroundTaken === true
         pressed ||= result.pressed !== 'none'; outcome = `pressed (${result.pressed})`
@@ -186,7 +184,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
       }
     } catch (error) {
       request.signal?.throwIfAborted()
-      steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(desktopFailure(error)) })
+      steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(/snapshot is stale/i.test(String(error)) ? confirmationFailure() : desktopFailure(error)) })
       return finish('blocked')
     }
     steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome })

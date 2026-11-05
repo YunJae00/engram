@@ -11,7 +11,8 @@ import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
-import { formatDo, irreversibleName, quietDo, quietFingerprint } from './desktop-quiet-do.js'
+import { formatDo, irreversibleName, quietDo } from './desktop-quiet-do.js'
+import { prepareQuietConfirmation, pressQuietConfirmed, confirmationFailure } from './desktop-quiet-confirm.js'
 import { flog } from './flog.js'
 import { brainConnection } from './brain-connections.js'
 
@@ -88,22 +89,26 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
       const sendsKey = activationKey && field?.can.set && !!field.value?.trim()
       const consequential = sendsKey || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
+      let confirmedResult
       if (consequential) {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
-        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot))
+        const approval = await prepareQuietConfirmation(lane, app, previous, control, !!sendsKey || /send|submit|post|publish|보내기|전송|제출|게시/i.test(name), context.signal)
+        if (!approval) return JSON.stringify(confirmationFailure())
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope))
           return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })
-        const confirmed = await quietScan(lane, app, undefined, context.signal)
-        if (confirmed.window !== previous.window || confirmed.pid !== previous.pid || confirmed.title !== previous.title || quietFingerprint(confirmed) !== quietFingerprint(previous))
-          return JSON.stringify(desktopFailure('The window changed. Read it again before acting.'))
-        snapshot = confirmed.snapshot
+        try { confirmedResult = await pressQuietConfirmed(lane, app, approval, context.signal, options) }
+        catch (error) {
+          if (/snapshot is stale/i.test(String(error))) return JSON.stringify(confirmationFailure())
+          throw error
+        }
       }
-      const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal, options))
+      const result = formatPress(confirmedResult ?? await quietPress(lane, app, snapshot, control, context.signal, options))
       if (consequential) context.onCommitted?.()
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
-    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: snapshot => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
+    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   let handover: Promise<void> | undefined
   setDesktopHandoverReset(lane, () => { handover = undefined })

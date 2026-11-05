@@ -248,3 +248,64 @@ it('waits after a blocked collection result without rereading the barrier', asyn
   expect(task.turns).toBe(1)
   expect(t.sent).toHaveLength(1)
 })
+
+it.each(['approve', 'approve-task'] as const)('reuses %s for the same app control and input, then asks for changed input', async answer => {
+  const confirm = vi.fn(async () => 'approve' as const)
+  const verdicts: string[] = []
+  const target = { words: 'Allow Send', url: 'engram://app/Claude#Send', scope: 'original-draft-hash' }
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, 0)!
+    verdicts.push(await ask(target))
+    if (turn > 1) {
+      verdicts.push(await ask(target))
+      verdicts.push(await ask({ ...target, scope: 'changed-draft-hash' }))
+    }
+    return done('Checked approval scope')
+  })
+  await t.chat('Send the quiet draft')
+  const waiting = await t.settle('waiting')
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
+  const changed = await t.settle('waiting')
+  expect(changed.approvals).toHaveLength(2)
+  expect(changed.approvals[0]!.answer).toBe(answer)
+  expect(changed.approvals[1]!.answer).toBeUndefined()
+  expect(verdicts).toEqual(['later', 'approve', 'approve', 'later'])
+  expect(confirm).toHaveBeenCalledTimes(2)
+  await t.runner.stopChannel('bot-bot-1')
+})
+
+it.each(['approve', 'approve-task'] as const)('finishes matching app retries with one %s card', async answer => {
+  const confirm = vi.fn(async () => 'approve' as const)
+  const target = { words: 'Allow Send', url: 'engram://app/Claude#Send', scope: 'same-private-draft' }
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, 0)!
+    if (await ask(target) === 'later') return done('Waiting')
+    expect(await ask(target)).toBe('approve')
+    return done(`Approved on turn ${turn}`)
+  })
+  await t.chat('Send the draft once')
+  const waiting = await t.settle('waiting')
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
+  expect((await t.settle('done')).approvals).toHaveLength(1)
+  expect(confirm).toHaveBeenCalledTimes(2)
+  await t.chat('Start a different send task')
+  expect((await t.settle('waiting')).approvals).toHaveLength(1)
+  expect(confirm).toHaveBeenCalledTimes(2)
+  await t.runner.stopChannel('bot-bot-1')
+})
+
+it.each(['approve', 'approve-task'] as const)('bounds app %s to its turn or task across continuations', async answer => {
+  const target = { words: 'Allow Send', url: 'engram://app/Claude#Send', scope: 'same-draft' }
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, async () => 'approve', 0)!
+    if (await ask(target) === 'later') return done('Waiting for approval')
+    if (turn === 2) return { ...done('Continue checking'), unfinished: true }
+    return done('Checked')
+  })
+  await t.chat('Check the send across turns')
+  const waiting = await t.settle('waiting')
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
+  const result = await t.settle(answer === 'approve' ? 'waiting' : 'done')
+  expect(result.approvals).toHaveLength(answer === 'approve' ? 2 : 1)
+  if (answer === 'approve') await t.runner.stopChannel('bot-bot-1')
+})
