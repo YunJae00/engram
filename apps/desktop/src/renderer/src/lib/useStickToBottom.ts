@@ -75,7 +75,7 @@ export function useStickToBottom(ref: RefObject<HTMLElement | null>, messages: M
     }
     const current = state.current
     if (!current) return
-    const fresh = users > current.users && messages.some(message => message.streaming)
+    const fresh = users > current.users
     current.users = users
     current.follow(fresh)
   })

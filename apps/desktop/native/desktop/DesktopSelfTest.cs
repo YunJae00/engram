@@ -24,6 +24,23 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(!QuietAccess.HoldsText(" \r\n\t"), "Whitespace-only editors accept their first value");
+            Check(QuietAccess.HoldsText(" draft "), "Existing drafts remain protected");
+            Check(QuietAccess.Matches("Deep Send", "", "send"), "Target search matches deep control names");
+            Check(QuietAccess.Matches("Editor", "needle", "needle"), "Target search matches values");
+            Check(!QuietAccess.Matches("Editor", "", "Send"), "Target search excludes unrelated editors");
+            foreach (var key in new[] { "Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight" })
+                Check(QuietPostedInput.KeyCodes(key).Length == 1, "Background keys do not depend on modifier state");
+            foreach (var key in new[] { "Shift+Tab", "Control+Enter" })
+                Reject(delegate { QuietPostedInput.KeyCodes(key); }, "Background modifier keys are rejected before dispatch");
+            foreach (var type in new[] { System.Windows.Automation.ControlType.Button, System.Windows.Automation.ControlType.SplitButton, System.Windows.Automation.ControlType.Hyperlink })
+                Reject(delegate { QuietPostedInput.RequireKeyTarget(type); }, "Keys cannot click or activate buttons twice");
+            Check(!QuietAccess.SearchLimit(19999, 4999) && QuietAccess.SearchLimit(20000, 0) && QuietAccess.SearchLimit(0, 5000), "Search stops at either candidate or time budget");
+            foreach (var error in new Exception[] { new System.Windows.Automation.ElementNotAvailableException(), new InvalidOperationException(), new System.Runtime.InteropServices.COMException() }) {
+                var receipt = new { landed = true, nearby = QuietAccess.OptionalNearby(delegate { throw error; }) };
+                Check(receipt.landed && receipt.nearby == null, "Nearby failure preserves a landed write receipt");
+            }
+            Reject(delegate { QuietPostedInput.KeyCodes("Alt+Tab"); }, "Quiet keys cannot switch apps");
             foreach (var chord in new[] { "Shift+Tab", "Control+Tab", "Control+Shift+Tab", "F6", "Shift+F6", "Control+L", "Control+N", "Control+H" })
                 Check(ControlPolicy.Chord(chord).Length <= 3, "Navigation chords are bounded and release every modifier");
             Check(LiveDocument.Replacement("Old title", "Old", "New") == "New title", "Document replacements preserve unrelated text");
@@ -114,6 +131,10 @@ internal static class DesktopSelfTest
             var state = lease.Bind(target, grant);
             Check(lease.Valid(state), "New lease must be active");
             Reject(delegate { lease.Bind(target, Guid.NewGuid().ToString("N")); }, "Only one lease may be active");
+            var oldObservation = new DesktopObservation { Id = "old", Epoch = state.Epoch, Target = target, Created = 0 };
+            Check(AutomationSession.SnapshotIdentity(oldObservation, "old", state), "Slow model thoughts do not expire identical action targets");
+            Check(!AutomationSession.SnapshotIdentity(oldObservation, "other", state), "Snapshot identity remains required regardless of age");
+            Check(!AutomationSession.SnapshotIdentity(oldObservation, "old", new LeaseState { Epoch = state.Epoch + 1, Target = target }), "Aged snapshots cannot cross approvals");
             var current = true;
             var gate = new PacketGate(lease, delegate { return current; });
             var packet = gate.Begin(state);

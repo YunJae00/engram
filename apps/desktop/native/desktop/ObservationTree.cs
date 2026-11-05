@@ -47,14 +47,16 @@ internal sealed class ObservationTree
     {
         var result = new ObservationTree();
         var pending = new Queue<ObservationNode>();
+        var urgent = new Queue<ObservationNode>();
         var seen = new HashSet<string>();
         var watch = Stopwatch.StartNew();
         var queuedNodes = 1;
         pending.Enqueue(new ObservationNode { Element = root });
-        if (priority != null) { pending.Enqueue(new ObservationNode { Element = priority, Depth = 1 }); queuedNodes++; }
-        while (pending.Count > 0 && result.Nodes.Count < cap && watch.ElapsedMilliseconds < milliseconds)
+        if (priority != null) { urgent.Enqueue(new ObservationNode { Element = priority, Depth = 1 }); queuedNodes++; }
+        while ((pending.Count > 0 || urgent.Count > 0) && result.Nodes.Count < cap && watch.ElapsedMilliseconds < milliseconds)
         {
-            var node = pending.Dequeue();
+            var prioritized = urgent.Count > 0;
+            var node = prioritized ? urgent.Dequeue() : pending.Dequeue();
             if (!node.Transparent) queuedNodes--;
             try
             {
@@ -71,7 +73,7 @@ internal sealed class ObservationTree
                     {
                         var transparent = web && EmptyContainer(child);
                         if (!transparent && result.Nodes.Count + queuedNodes >= cap) { node.Truncated = true; break; }
-                        pending.Enqueue(new ObservationNode { Element = child, Parent = skip ? node.Parent : node, Depth = node.Depth + (skip ? 0 : 1), Transparent = transparent });
+                        (prioritized ? urgent : pending).Enqueue(new ObservationNode { Element = child, Parent = skip ? node.Parent : node, Depth = node.Depth + (skip ? 0 : 1), Transparent = transparent });
                         if (!transparent) queuedNodes++;
                     }
                     else node.Truncated = true;
@@ -83,7 +85,7 @@ internal sealed class ObservationTree
             }
             catch (ElementNotAvailableException) { node.Truncated = result.Truncated = true; }
         }
-        if (pending.Count > 0)
+        if (pending.Count > 0 || urgent.Count > 0)
         {
             result.Truncated = true;
             foreach (var node in result.Nodes) if (node.ChildCount > 0) node.Truncated = true;

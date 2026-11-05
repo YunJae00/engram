@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ENGINE_BUDGETS, engineBackoff, engineCwd, extractJson, type Standup } from 'core'
@@ -25,47 +26,49 @@ function digest(standup: Standup, dueCount: number): string {
 }
 
 export async function speakBrief(ctx: VaultContext, standup: Standup): Promise<string[] | null> {
-  if (standup.entries.length === 0) return null
-  const engine = ctx.engines[0]
-  if (!engine || engineBackoff.blockedMs() > 0) return null
-  const key = digest(standup, standup.due.length)
-  try {
-    const cached = JSON.parse(await readFile(cacheFile(), 'utf8')) as SpeechCache
-    if (cached.day === key && Array.isArray(cached.lines) && cached.lines.length > 0) return cached.lines
-  } catch {
-    /* no cache yet */
-  }
-  const facts = [
-    ...standup.entries.map(
-      (e) => `- folder "${e.folder}": last conclusion "${e.last}" (${e.daysAgo}d ago), ${e.open} open loops`,
-    ),
-    ...standup.due.map((d) => `- ${d.overdue ? 'OVERDUE' : 'due today'}: ${d.title}`),
-  ].join('\n')
-  const prompt = `${PROMPT_RULES}\n\n--- Folder summaries ---\n${facts}`
-  try {
-    let streamed = ''
-    let finalText: string | null = null
-    for await (const event of engine.run({
-      prompt,
-      workdir: engineCwd(ctx.paths),
-      disallowTools: true,
-      timeoutMs: ENGINE_BUDGETS.speech,
-      modelHint: 'smart',
-    })) {
-      if (event.type === 'token') streamed += event.text
-      else if (event.type === 'result') finalText = event.text
-      else if (event.type === 'error') return null
+  return withModelCallContext({ channel: 'background', purpose: 'brief-speech' }, async () => {
+    if (standup.entries.length === 0) return null
+    const engine = ctx.engines[0]
+    if (!engine || engineBackoff.blockedMs() > 0) return null
+    const key = digest(standup, standup.due.length)
+    try {
+      const cached = JSON.parse(await readFile(cacheFile(), 'utf8')) as SpeechCache
+      if (cached.day === key && Array.isArray(cached.lines) && cached.lines.length > 0) return cached.lines
+    } catch {
+      /* no cache yet */
     }
-    const value = extractJson(finalText ?? streamed) as { lines?: unknown } | null
-    if (!value || !Array.isArray(value.lines)) return null
-    const lines = value.lines
-      .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
-      .map((line) => line.trim().slice(0, 120))
-      .slice(0, 4)
-    if (lines.length === 0) return null
-    await writeFile(cacheFile(), JSON.stringify({ day: key, lines })).catch(() => undefined)
-    return lines
-  } catch {
-    return null
-  }
+    const facts = [
+      ...standup.entries.map(
+        (e) => `- folder "${e.folder}": last conclusion "${e.last}" (${e.daysAgo}d ago), ${e.open} open loops`,
+      ),
+      ...standup.due.map((d) => `- ${d.overdue ? 'OVERDUE' : 'due today'}: ${d.title}`),
+    ].join('\n')
+    const prompt = `${PROMPT_RULES}\n\n--- Folder summaries ---\n${facts}`
+    try {
+      let streamed = ''
+      let finalText: string | null = null
+      for await (const event of engine.run({
+        prompt,
+        workdir: engineCwd(ctx.paths),
+        disallowTools: true, effort: 'low',
+        timeoutMs: ENGINE_BUDGETS.speech,
+        modelHint: 'smart',
+      })) {
+        if (event.type === 'token') streamed += event.text
+        else if (event.type === 'result') finalText = event.text
+        else if (event.type === 'error') return null
+      }
+      const value = extractJson(finalText ?? streamed) as { lines?: unknown } | null
+      if (!value || !Array.isArray(value.lines)) return null
+      const lines = value.lines
+        .filter((line): line is string => typeof line === 'string' && line.trim().length > 0)
+        .map((line) => line.trim().slice(0, 120))
+        .slice(0, 4)
+      if (lines.length === 0) return null
+      await writeFile(cacheFile(), JSON.stringify({ day: key, lines })).catch(() => undefined)
+      return lines
+    } catch {
+      return null
+    }
+  })
 }

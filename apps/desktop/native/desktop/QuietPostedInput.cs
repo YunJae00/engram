@@ -50,6 +50,43 @@ internal static class QuietPostedInput
         Post(window, 0x0202, IntPtr.Zero, point);
         return window;
     }
+    internal static int[] KeyCodes(string key)
+    {
+        switch (key) {
+            case "Enter": return new[] { 13 };
+            case "Escape": return new[] { 27 };
+            case "Tab": return new[] { 9 };
+            case "Shift+Tab":
+            case "Control+Enter": throw new ArgumentException("Modifier keys are not delivered to a background window on Windows; use Enter or Tab, or request foreground control");
+            case "ArrowLeft": return new[] { 37 };
+            case "ArrowUp": return new[] { 38 };
+            case "ArrowRight": return new[] { 39 };
+            case "ArrowDown": return new[] { 40 };
+            default: throw new ArgumentException("Unsupported quiet key; no input was sent");
+        }
+    }
+    internal static void RequireKeyTarget(ControlType type)
+    {
+        if (type == ControlType.Button || type == ControlType.SplitButton || type == ControlType.Hyperlink)
+            throw new InvalidOperationException("use press for buttons");
+    }
+    internal static void Key(DesktopTarget target, AutomationElement element, string key, Action check)
+    {
+        var codes = KeyCodes(key);
+        RequireKeyTarget(element.Current.ControlType);
+        var window = element.Current.HasKeyboardFocus ? Destination(target, element, check) : Click(target, element, check);
+        var down = 0;
+        try {
+            foreach (var code in codes) {
+                if (Destination(target, element, check) != window) throw new InvalidOperationException("The background input window changed");
+                Post(window, 0x0100, new IntPtr(code), new IntPtr(1));
+                down++;
+            }
+            // The target message loop translates keydown to WM_CHAR; posting both can submit twice.
+        } finally {
+            for (var i = down - 1; i >= 0; i--) Post(window, 0x0101, new IntPtr(codes[i]), new IntPtr(unchecked((int)0xc0000001)));
+        }
+    }
     internal static void Text(DesktopTarget target, AutomationElement element, string text, Action check)
     {
         var window = Click(target, element, check);

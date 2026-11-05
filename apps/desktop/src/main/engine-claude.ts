@@ -1,3 +1,4 @@
+import { modelCall } from './model-call-metrics.js'
 import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
@@ -134,7 +135,9 @@ export class ClaudeEngine implements CloudEngine {
   // Short answers from a runtime kept open, for words said while a comet works.
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
-    return askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs)
+    const metric = modelCall('claude', prompt.length, 'low')
+    try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) }
+    finally { metric.end() }
   }
   private async voiceFor(workdir: string): Promise<VoiceSession | undefined> {
     await loadBrainConnections()
@@ -199,6 +202,7 @@ export class ClaudeEngine implements CloudEngine {
     const timer = setTimeout(() => abort.abort(), budget)
     const onAbort = (): void => abort.abort()
     job.signal?.addEventListener('abort', onAbort, { once: true })
+    const metric = modelCall('claude', job.prompt.length, job.effort)
     try {
       const stream = sdk.query({
         prompt: job.prompt,
@@ -228,7 +232,7 @@ export class ClaudeEngine implements CloudEngine {
       for await (const message of stream) {
         if (message.type === 'assistant') {
           const text = textOf((message as { message: { content: unknown } }).message.content)
-          if (text) yield { type: 'token', text }
+          if (text) { metric.token(); yield { type: 'token', text } }
           continue
         }
         if (message.type !== 'result') continue
@@ -251,6 +255,7 @@ export class ClaudeEngine implements CloudEngine {
       const message = err instanceof Error ? err.message : String(err)
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
+      metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
     }
@@ -258,10 +263,13 @@ export class ClaudeEngine implements CloudEngine {
 
   // The whole turn in one session, and the session kept warm for the next:
   // the runtime is handed the comet's tools and loops over them itself.
-  runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
+  async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
-    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) })
+    const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
+    const onToken = job.onToken
+    job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
+    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) }).finally(() => metric.end())
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.

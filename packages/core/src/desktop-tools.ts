@@ -299,18 +299,23 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
     },
     async run(args, context) {
       context.signal?.throwIfAborted()
-      if (!plainRecord(args) || !exactKeys(args, ['snapshot', 'actions']) || !Array.isArray(args['actions']) || args['actions'].length < 1 || args['actions'].length > 12) throw new Error('Use snapshot and 1 to 12 actions.')
-      const actions = args['actions'].map((step: unknown) => {
-        if (!plainRecord(step) || 'snapshot' in step) throw new Error('Sequence actions share the outer snapshot.')
-        if ('target' in step) return guardedActionOf({ ...step, snapshot: args['snapshot'] }, context)
-        const action = actionOf({ ...step, snapshot: args['snapshot'] }, context)
-        if (action.kind === 'scroll' || (action.kind === 'click' && !('element' in action))) throw new Error('Sequence actions require stable element targets, typing or supported keys.')
-        return action
-      })
-      const guarded = actions.some((action) => 'target' in action)
-      if (guarded && !actions.every((action) => 'target' in action)) throw new Error('Every step in guarded mode needs an explicit target.')
-      if (!guarded && actions.some((action) => action.kind === 'replace')) throw new Error('Replacement batches require guarded targets and exact expected values.')
-      if (!guarded && actions[0]?.kind !== 'click') throw new Error('Start a sequence with an observed element click to establish its input target.')
+      if (!plainRecord(args) || !exactKeys(args, ['snapshot', 'actions']) || !Array.isArray(args['actions']) || args['actions'].length < 1 || args['actions'].length > 12) throw new Error('Use snapshot and 1 to 12 actions. Example: {"snapshot":"<snapshot>","actions":[{"kind":"click","element":"e0"}]}')
+      let actions: DesktopSequenceAction[]
+      try {
+        actions = args['actions'].map((step: unknown) => {
+          if (!plainRecord(step) || 'snapshot' in step) throw new Error('Sequence actions share the outer snapshot.')
+          if ('target' in step) return guardedActionOf({ ...step, snapshot: args['snapshot'] }, context)
+          const action = actionOf({ ...step, snapshot: args['snapshot'] }, context)
+          if (action.kind === 'scroll' || (action.kind === 'click' && !('element' in action))) throw new Error('Sequence actions require stable element targets, typing or supported keys.')
+          return action
+        })
+        const guarded = actions.some((action) => 'target' in action)
+        if (guarded && !actions.every((action) => 'target' in action)) throw new Error('Every step in guarded mode needs an explicit target.')
+        if (!guarded && actions.some((action) => action.kind === 'replace')) throw new Error('Replacement batches require guarded targets and exact expected values.')
+        if (!guarded && actions[0]?.kind !== 'click') throw new Error('Start a sequence with an observed element click to establish its input target.')
+      } catch (error) {
+        throw new Error(`${error instanceof Error ? error.message : String(error)} Example: {"snapshot":"<snapshot>","actions":[{"kind":"click","element":"e0"}]}`)
+      }
       try { return await sequence(actions, context) } finally { context.signal?.throwIfAborted() }
     },
   })

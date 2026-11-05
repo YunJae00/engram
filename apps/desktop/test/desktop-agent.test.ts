@@ -3,7 +3,7 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  controlReason: undefined as string | undefined, resetHandover: undefined as (() => void) | undefined, assertNotStopped: vi.fn(), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
+  truncatedQuiet: false, searchedQuiet: false, controlReason: undefined as string | undefined, resetHandover: undefined as (() => void) | undefined, assertNotStopped: vi.fn(), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
   open: vi.fn(), lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), start: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true,
 }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
@@ -12,7 +12,7 @@ vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, create
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture', truncated: fake.truncatedQuiet, searched: fake.searchedQuiet }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: fake.quietSet, quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -29,6 +29,7 @@ beforeEach(() => {
   fake.lookup.mockImplementation(() => fake.binding)
   fake.available = true
   fake.covered = false
+  fake.truncatedQuiet = false; fake.searchedQuiet = false
   fake.handedOver = true
   fake.controlReason = undefined
   fake.start.mockImplementation(async () => { fake.handedOver = true; return { lane: 'bot-one', state: 'ready' } })
@@ -367,4 +368,30 @@ it('reports revocation after a cached handover without claiming the person decli
   expect(result.reason).not.toContain('declined')
   expect(approveComputerControl).toHaveBeenCalledOnce()
   expect(fake.act).toHaveBeenCalledOnce()
+})
+it('rejects hands approval before a complete quiet target search of a truncated app', async () => {
+  fake.handedOver = false; fake.truncatedQuiet = true
+  const approveComputerControl = vi.fn(async () => true)
+  const tool = desktopAgentTools('bot-one').find(item => item.name === 'desktop_action')!
+  const result = await tool.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, Object.assign({ task: 'Continue' }, { approveComputerControl }))
+  expect(JSON.parse(result).hint).toContain('find')
+  expect(approveComputerControl).not.toHaveBeenCalled()
+  expect(fake.start).not.toHaveBeenCalled()
+})
+it.each([['Enter', 'c3'], ['Control+Enter', 'c3'], ['Enter', 'c9'], ['Control+Enter', 'c9']])('requires send approval for %s on editors and send controls', async (key, control) => {
+  fake.quietSnapshot.mockReturnValue({ controls: [{ id: control, type: 'Edit', value: 'Draft', can: { set: control === 'c3' } }], texts: [] })
+  const approveAppAction = vi.fn(async () => false)
+  const tool = desktopAgentTools('bot-one').find(item => item.name === 'app_press')!
+  const result = await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control, key }, Object.assign({ task: 'Send' }, { approveAppAction }))
+  expect(JSON.parse(result).delivery).toBe('not_delivered')
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32))
+  expect(fake.quietPress).not.toHaveBeenCalled()
+})
+
+it('remaps nearby controls to the fresh post-set snapshot by runtime identity', async () => {
+  fake.quietSet.mockResolvedValue({ snapshot: 'a'.repeat(32), nearby: [{ id: 'c10020', runtimeId: 'send-runtime', name: 'Send', appeared: true }], landed: true })
+  fake.quietScan.mockResolvedValue({ snapshot: 'b'.repeat(32), controls: [{ id: 'c7', runtimeId: 'send-runtime', name: 'Send', type: 'Button', can: { press: true } }], texts: [], skippedTexts: 0, state: { foreground: false } })
+  const tool = desktopAgentTools('bot-one').find(tool => tool.name === 'app_set')!
+  const result = JSON.parse(await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c3', text: 'Draft' }, { task: 'Draft' }))
+  expect(result.nearby).toEqual([expect.objectContaining({ id: 'c7', snapshot: 'b'.repeat(32), appeared: true })])
 })

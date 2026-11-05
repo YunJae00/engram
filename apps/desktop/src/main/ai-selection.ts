@@ -1,3 +1,4 @@
+import { holdModelTaskEngine } from './model-call-gate.js'
 import { createEngine, type Engine, type ReasoningEffort } from 'core'
 import { loadSettings, updateSettings } from './settings.js'
 import type { AppSettingsDto } from '../shared/types.js'
@@ -11,6 +12,7 @@ export function aiSelection(settings: AppSettingsDto, scope: string) {
 }
 
 export function withModel(engine: Engine, model: string, effort?: ReasoningEffort): Engine {
+  holdModelTaskEngine(engine.id)
   const selected: Engine = Object.create(engine) as Engine
   selected.detect = () => engine.detect()
   selected.run = job => engine.run({ ...job, model, effort })
@@ -46,6 +48,7 @@ export async function chatEngine(scope: string, engines: Engine[], explicit?: st
   if (id !== 'claude' && id !== 'codex') throw new Error('Invalid AI provider')
   const signedIn = async (wanted: 'claude' | 'codex') => {
     const engine = createEngine(wanted)
+    holdModelTaskEngine(wanted)
     // A status check that timed out on a busy runtime is not a sign-out: the
     // call goes ahead, and a real sign-out fails it with an auth error.
     const status = await engine.detect()

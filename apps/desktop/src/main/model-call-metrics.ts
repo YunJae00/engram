@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { modelTaskScope } from './model-call-gate.js'
 import { flog } from './flog.js'
 
 type CallContext = { channel: string; task?: string; turn?: number; purpose: string }
@@ -15,8 +16,10 @@ export function withModelCallContext<T>(value: CallContext, run: () => T): T {
     recent.set(value.channel, current)
     if (recent.size > 128) recent.delete(recent.keys().next().value!)
   }
-  return context.run(current, run)
+  return context.run(current, () => value.purpose === 'task' ? modelTaskScope(run) : run())
 }
+
+export const currentModelCallContext = (): CallContext | undefined => context.getStore()
 
 export function modelCall(engine: string, promptChars: number, effort?: string, toolCount = 0): { token(): void; end(): void } {
   const current = context.getStore()

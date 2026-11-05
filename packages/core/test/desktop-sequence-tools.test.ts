@@ -106,3 +106,10 @@ it('validates explicit whole-field replacements and redacts both old and new con
   expect(act).not.toHaveBeenCalled()
   expect(sequence).not.toHaveBeenCalled()
 })
+
+it('includes a valid minimal sequence example for schema and step errors', async () => {
+  const tool = desktopTools({ read: async () => '', sequence: async () => '' }).find(tool => tool.name === 'desktop_sequence')!
+  for (const args of [{}, { snapshot: 'fresh', actions: [{ kind: 'type', text: 'Draft' }] }]) {
+    await expect(tool.run(args, { task: '' })).rejects.toThrow('"actions":[{"kind":"click","element":"e0"}]')
+  }
+})

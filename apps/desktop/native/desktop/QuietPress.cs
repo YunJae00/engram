@@ -25,14 +25,19 @@ internal sealed partial class QuietAccess
         if (desired == "selected") return state.TryGetValue("selected", out value) && Equals(value, true);
         return state.TryGetValue("expanded", out value) && Equals(value, desired);
     }
-    internal object Press(DesktopTarget target, string snapshot, string control, Action check, string desired = null, string action = null)
+    internal object Press(DesktopTarget target, string snapshot, string control, Action check, string desired = null, string action = null, string key = null)
     {
         RequireOperable(target);
         Validate(target);
         var element = Control(target, snapshot, control).Element;
+        Priorities[target.Id] = element;
         if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
         check();
         RequireIdle(target);
+        if (key != null) {
+            if (desired != null || action != null) throw new ArgumentException("Use a quiet key without state or action");
+            return PressKey(target, snapshot, control, element, key, check);
+        }
         var foreground = GetForegroundWindow();
         if (action != null) {
             if (desired != null) throw new ArgumentException("Choose a scroll action or desired state, not both");

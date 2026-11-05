@@ -280,6 +280,25 @@ internal sealed class ControlFixture : Form
                 Controls.Add(History); History.BringToFront();
             }
             else if (method == "clearHistory") { History.Dispose(); History = null; }
+            else if (method == "quietDeep")
+            {
+                Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Deep search fixture" };
+                // One list window with many items crowds the breadth-first read like many labels would, without a window per decoy.
+                var decoys = new ListBox { AccessibleName = "Search decoys", Bounds = new Rectangle(300, 8, 260, 260) };
+                for (var cell = 0; cell < 600; cell++) decoys.Items.Add("Decoy " + cell);
+                Dense.Controls.Add(decoys);
+                var parent = Dense;
+                for (var depth = 0; depth < 17; depth++) {
+                    var child = new Panel { Dock = DockStyle.Fill, AccessibleName = "Deep region " + depth };
+                    parent.Controls.Add(child); parent = child;
+                }
+                // The legacy edit proxy offers no value pattern on a multiline box, so a single line carries the whitespace case.
+                var input = new TextBox { AccessibleName = "Deep input", Text = "  ", Bounds = new Rectangle(8, 8, 240, 30) };
+                var send = new Button { AccessibleName = "Deep Send", Text = "Send", Bounds = new Rectangle(8, 65, 100, 30) };
+                input.TextChanged += delegate { if (!string.IsNullOrWhiteSpace(input.Text) && send.Parent == null) parent.Controls.Add(send); };
+                parent.Controls.Add(input);
+                Controls.Add(Dense); Dense.BringToFront();
+            }
             else if (method == "dense")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };

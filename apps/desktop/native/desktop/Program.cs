@@ -69,7 +69,7 @@ internal static class Program
         if (method == "quietRead") return quiet.Read(target, Optional(request, "snapshot", 100), Optional(request, "control", 32));
         if (ControlPolicy.IsSensitive(target.Title)) throw new InvalidOperationException("This application surface requires manual control");
         if (method == "quietSet") return quiet.Set(target, Text(request, "snapshot", 100), Text(request, "control", 32), Text(request, "text", 2000), Optional(request, "expected", 2000), check);
-        if (method == "quietPress") return quiet.Press(target, Text(request, "snapshot", 100), Text(request, "control", 32), check, Optional(request, "state", 16), Optional(request, "action", 24));
+        if (method == "quietPress") return quiet.Press(target, Text(request, "snapshot", 100), Text(request, "control", 32), check, Optional(request, "state", 16), Optional(request, "action", 24), Optional(request, "key", 32));
         throw new ArgumentException("Unsupported desktop method");
     }
 

@@ -12,6 +12,7 @@ import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
 import { formatDo, irreversibleName, quietDo, quietFingerprint } from './desktop-quiet-do.js'
+import { flog } from './flog.js'
 import { brainConnection } from './brain-connections.js'
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
@@ -42,8 +43,12 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
     const appNow = formatScan(reading, undefined)
     const contents = (view: QuietObservationDto) => JSON.stringify([view.controls.map(control => [control.type, control.name, control.value]), view.texts.map(text => text.text)])
     const unchangedContainer = before && contents(before) === contents(reading)
+    const nearby = Array.isArray(result.nearby) ? result.nearby.map((button: { id: string; runtimeId?: string; name: string }) => {
+      const matches = reading.controls.filter(control => button.runtimeId ? control.runtimeId === button.runtimeId : control.name === button.name)
+      return { ...button, snapshot: matches.length === 1 ? reading.snapshot : result.snapshot, id: matches.length === 1 ? matches[0]!.id : button.id }
+    }) : undefined
     observed?.()
-    return JSON.stringify({ ...result, appNow, ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
+    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ ...result, observationMayBeStale: true, ...await permissionFailure(error, lane, { delivered: true }) })
@@ -79,9 +84,13 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (name === undefined) return JSON.stringify(desktopFailure('This snapshot is stale. Read the app again before acting.'))
       const previous = quietSnapshot(snapshot)
       const container = /treeitem|row|group/i.test(previous?.controls.find(item => item.id === control)?.type ?? '')
-      if (!options?.action && (!name || irreversibleName(name))) {
+      const field = previous?.controls.find(item => item.id === control)
+      const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
+      const sendsKey = activationKey && field?.can.set && !!field.value?.trim()
+      const consequential = sendsKey || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
+      if (consequential) {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
-        if (!await (context as DesktopActionContext).approveAppAction?.(app, name || 'Unnamed control', snapshot))
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot))
           return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })
         const confirmed = await quietScan(lane, app, undefined, context.signal)
         if (confirmed.window !== previous.window || confirmed.pid !== previous.pid || confirmed.title !== previous.title || quietFingerprint(confirmed) !== quietFingerprint(previous))
@@ -89,7 +98,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         snapshot = confirmed.snapshot
       }
       const result = formatPress(await quietPress(lane, app, snapshot, control, context.signal, options))
-      if (!options?.action && (!name || irreversibleName(name))) context.onCommitted?.()
+      if (consequential) context.onCommitted?.()
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
@@ -104,6 +113,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     catch (error) { handover = undefined; throw error }
     const found = quietVerdict(lane, app ?? desktopBinding(lane)?.name)
     if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
+    if (found.truncated && !found.searched) throw new Error('The last quiet scan was truncated. Use app_read with find first, then root and snapshot if searchComplete is false, before requesting hands control.')
     const control = desktopControlStatus()
     if (control.lane === lane && ['ready', 'running'].includes(control.state)) return
     if (control.lane === lane && control.state === 'paused') {
@@ -112,6 +122,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }
     handover ??= (async () => {
       const binding = desktopBinding(lane)
+      flog('harness', JSON.stringify({ kind: 'host', operation: 'hands-handover', lane, reason: found.verdict === 'bare' ? 'quiet-provider-unavailable' : 'quiet-action-needs-hands' }))
       if (!await context.approveComputerControl?.(lane)) throw new Error('Foreground control was declined by the person. No input was sent.')
       context.signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)

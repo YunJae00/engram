@@ -8,6 +8,7 @@ export interface DesktopFailureObservation {
 }
 
 const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error']; hint?: string }[] = [
+  { pattern: /last quiet scan was truncated/i, code: 'policy_denied', hint: 'Use app_read with find first. If searchComplete is false, read with root and snapshot before requesting hands control.' },
   { pattern: /^No open window matches/, code: 'element_not_found', hint: 'No matching accessible window was found. Open the app or use a name from the window list; this does not prove the app is uninstalled.' },
   { pattern: /Allow input monitoring/i, code: 'input_monitoring_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Input Monitoring and restart Engram.' },
   { pattern: /Allow Engram in System Settings.*Screen Recording/i, code: 'screen_recording_denied', hint: 'Ask the person to allow Engram in System Settings → Privacy & Security → Screen Recording; if Engram is listed, remove it with − and add it again with +.' },

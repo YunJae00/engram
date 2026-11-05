@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { writeCapture } from 'core'
+import { updateDailyWorklog } from './daily-worklog.js'
 import { composeWorklog, readActivityRange } from './activity-watch.js'
 import type { VaultContext } from './vault.js'
 
@@ -19,12 +19,17 @@ export async function captureDeskActivity(ctx: VaultContext, now = Date.now()): 
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   if (since >= until) return false
-  const recent = await readActivityRange(ctx, since, until)
-  const label = `${new Date(since).toLocaleString('en-GB')} – ${new Date(until).toLocaleString('en-GB')}`
-  const log = composeWorklog(label, recent, 60_000)
-  if (log) await writeCapture(ctx.paths.inbox, `${log}\n\nRecorded locally from foreground application names and window titles. This is activity evidence, not proof that a task was completed.`)
+  let wrote = false
+  for (let day = Math.floor(since / DAY) * DAY; day <= until; day += DAY) {
+    const label = new Date(day).toISOString().slice(0, 10)
+    const recent = await readActivityRange(ctx, day, Math.min(until, day + DAY))
+    const log = composeWorklog(label, recent, 60_000)
+    if (!log || !recent.some(span => Date.parse(span.end) > since)) continue
+    await updateDailyWorklog(ctx.paths, label, 'Desk', `${log}\n\nRecorded locally from foreground application names and window titles. This is activity evidence, not proof that a task was completed.`, new Date(now))
+    wrote = true
+  }
   await mkdir(directory, { recursive: true })
   await writeFile(`${cursorFile}.tmp`, JSON.stringify({ through: until }))
   await rename(`${cursorFile}.tmp`, cursorFile)
-  return !!log
+  return wrote
 }

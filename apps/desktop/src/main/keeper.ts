@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +16,7 @@ import {
   type Engine,
   type SkillCandidate,
 } from 'core'
-import { writeCapture } from 'core'
+import { updateDailyWorklog } from './daily-worklog.js'
 import { app } from 'electron'
 import { isActivityWatchEnabled } from './activity-watch.js'
 import { flog } from './flog.js'
@@ -56,20 +57,22 @@ async function writeState(patch: Partial<KeeperState>): Promise<void> {
 }
 
 async function collectResult(engine: Engine, prompt: string, workdir: ReturnType<typeof engineCwd>): Promise<string | null> {
-  let streamed = ''
-  let finalText: string | null = null
-  for await (const event of engine.run({
-    prompt,
-    workdir,
-    disallowTools: true,
-    modelHint: 'smart',
-    timeoutMs: ENGINE_BUDGETS.job,
-  })) {
-    if (event.type === 'token') streamed += event.text
-    else if (event.type === 'result') finalText = event.text
-    else if (event.type === 'error') return null
-  }
-  return finalText ?? (streamed || null)
+  return withModelCallContext({ channel: 'background', purpose: 'skill-distillation' }, async () => {
+    let streamed = ''
+    let finalText: string | null = null
+    for await (const event of engine.run({
+      prompt,
+      workdir,
+      disallowTools: true, effort: 'low',
+      modelHint: 'smart',
+      timeoutMs: ENGINE_BUDGETS.job,
+    })) {
+      if (event.type === 'token') streamed += event.text
+      else if (event.type === 'result') finalText = event.text
+      else if (event.type === 'error') return null
+    }
+    return finalText ?? (streamed || null)
+  })
 }
 
 async function distillOnce(ctx: VaultContext, candidate: SkillCandidate): Promise<void> {
@@ -103,7 +106,7 @@ async function captureWebAndFiles(ctx: VaultContext, now = Date.now()): Promise<
   let wrote = false
   if (log) {
     const label = `${new Date(since).toLocaleString('en-GB')} – ${new Date(until).toLocaleString('en-GB')}`
-    wrote = await writeCapture(ctx.paths.inbox, `# Browser and file activity ${label}${log}`).then(
+    wrote = await updateDailyWorklog(ctx.paths, new Date(until).toISOString().slice(0, 10), 'Web and files', `### ${label}${log}`, new Date(now)).then(
       () => true,
       (err) => { flog('worklog-write-failed', err); return false },
     )

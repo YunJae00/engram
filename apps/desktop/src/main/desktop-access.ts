@@ -6,7 +6,7 @@ import { agentBrowserPids } from './agent-browser.js'
 import { flog } from './flog.js'
 import { broadcast } from './engine-health.js'
 
-export interface DesktopBinding extends DesktopBindingDto { aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
+export interface DesktopBinding extends DesktopBindingDto { previewPaused?: boolean; aliases?: string[]; window: string; pid: number; host: DesktopHost; stopped: boolean; revision: number }
 type Binding = DesktopBinding
 interface NativeWindow { bounds?: { x: number }; hidden?: boolean; barrier?: string; protected?: boolean; aliases?: string[]; window: string; pid: number; title: string; minimized: boolean; foreground?: boolean }
 const launchedApps = new Map<string, number>()
@@ -39,7 +39,8 @@ export async function showDesktopApp(lane: string): Promise<void> {
   changed()
 }
 export async function refreshHiddenApp(binding: Binding): Promise<Binding> {
-  const state = await binding.host.request<{ hidden?: boolean; mainWindow?: string }>('inspectWindow', { window: binding.window, pid: binding.pid })
+  const state = await binding.host.request<{ hidden?: boolean; minimized?: boolean; mainWindow?: string }>('inspectWindow', { window: binding.window, pid: binding.pid })
+  binding.previewPaused = state.hidden === true || state.minimized === true
   if (state.mainWindow && state.mainWindow !== binding.window && launchedApps.get(binding.lane) === binding.pid && bindings.get(binding.lane) === binding) {
     const windows = await nativeWindows(binding.host)
     const target = windows.find(one => one.window === state.mainWindow && one.pid === binding.pid && !one.minimized && !one.protected)
@@ -226,7 +227,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     if (current && current.host !== host) current.host.close()
     const hiddenByEngram = hiddenApps.get(lane)?.pid === target.pid && target.hidden !== false ? target.pid : undefined
-    const binding: Binding = { hiddenByEngram, lane, source: `window:${target.window}:0`, name: target.title, aliases: target.aliases, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
+    const binding: Binding = { previewPaused: target.hidden === true || target.minimized, hiddenByEngram, lane, source: `window:${target.window}:0`, name: target.title, aliases: target.aliases, readable: true, window: target.window, pid: target.pid, host, stopped: false, revision: (current?.revision ?? 0) + 1 }
     bindings.set(lane, binding)
     changed()
     return binding

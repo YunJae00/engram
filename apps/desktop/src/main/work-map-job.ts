@@ -1,3 +1,4 @@
+import { withModelCallContext } from './model-call-metrics.js'
 import { app, ipcMain } from 'electron'
 import { copyFile, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -103,7 +104,7 @@ export function refreshWorkMap(ctx: VaultContext): Promise<WorkMap | null> {
       const engine = ctx.engines[0]
       if (engine && map.places.length && engineBackoff.blockedMs() === 0) {
         try {
-          map = applyLabels(map, await collectResult(engine, { prompt: labelPrompt(map), workdir: engineCwd(ctx.paths), disallowTools: true, timeoutMs: LABEL_TIMEOUT_MS, modelHint: 'fast', signal: abort.signal }))
+          map = applyLabels(map, await withModelCallContext({ channel: 'background', purpose: 'work-map-labels' }, () => collectResult(engine, { effort: 'low', prompt: labelPrompt(map), workdir: engineCwd(ctx.paths), disallowTools: true, timeoutMs: LABEL_TIMEOUT_MS, modelHint: 'fast', signal: abort.signal })))
         } catch (error) { flog('work-map', `labelling failed - ${error instanceof Error ? error.message : String(error)}`) }
       }
       if (!(await allowed())) return null
