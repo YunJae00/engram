@@ -56,7 +56,9 @@ internal sealed partial class QuietAccess
         }
         return SearchLimit(found.Count, watch.ElapsedMilliseconds);
     }
-    internal static bool SearchLimit(int candidates, long milliseconds) { return candidates >= 20000 || milliseconds >= 1800; }
+    // A targeted find may take longer than the 1800 ms broad read: legacy providers answer a few hundred
+    // nodes in several seconds, and the host waits 30 s for any single request.
+    internal static bool SearchLimit(int candidates, long milliseconds) { return candidates >= 20000 || milliseconds >= 5000; }
     internal static List<object> OptionalNearby(Func<List<object>> read)
     {
         try { return read(); }

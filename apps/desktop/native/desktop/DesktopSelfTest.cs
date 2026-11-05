@@ -35,7 +35,7 @@ internal static class DesktopSelfTest
                 Reject(delegate { QuietPostedInput.KeyCodes(key); }, "Background modifier keys are rejected before dispatch");
             foreach (var type in new[] { System.Windows.Automation.ControlType.Button, System.Windows.Automation.ControlType.SplitButton, System.Windows.Automation.ControlType.Hyperlink })
                 Reject(delegate { QuietPostedInput.RequireKeyTarget(type); }, "Keys cannot click or activate buttons twice");
-            Check(!QuietAccess.SearchLimit(19999, 1799) && QuietAccess.SearchLimit(20000, 0) && QuietAccess.SearchLimit(0, 1800), "Search stops at either candidate or time budget");
+            Check(!QuietAccess.SearchLimit(19999, 4999) && QuietAccess.SearchLimit(20000, 0) && QuietAccess.SearchLimit(0, 5000), "Search stops at either candidate or time budget");
             foreach (var error in new Exception[] { new System.Windows.Automation.ElementNotAvailableException(), new InvalidOperationException(), new System.Runtime.InteropServices.COMException() }) {
                 var receipt = new { landed = true, nearby = QuietAccess.OptionalNearby(delegate { throw error; }) };
                 Check(receipt.landed && receipt.nearby == null, "Nearby failure preserves a landed write receipt");
