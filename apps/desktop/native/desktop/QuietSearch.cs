@@ -28,27 +28,33 @@ internal sealed partial class QuietAccess
         catch (ElementNotAvailableException) { Priorities.Remove(target.Id); return null; }
         catch (InvalidOperationException) { Priorities.Remove(target.Id); return null; }
     }
-    private static ObservationTree Search(AutomationElement root, string wanted)
+    private static ObservationTree Search(AutomationElement root, string wanted, out bool textsTruncated)
     {
         var tree = new ObservationTree();
-        var types = Interactive.Concat(Textual).Concat(new[] { ControlType.Group, ControlType.Pane, ControlType.Custom });
-        var condition = new AndCondition(Automation.ControlViewCondition, TypeCondition(types), new PropertyCondition(AutomationElement.IsPasswordProperty, false));
         var cache = new CacheRequest { TreeScope = TreeScope.Element };
         cache.Add(AutomationElement.NameProperty);
         cache.Add(ValuePattern.ValueProperty);
         var watch = Stopwatch.StartNew();
-        // One bulk query crosses the process once; a step-by-step walk spends the budget before deep controls.
+        // Controls decide completeness; text matches are best effort in the remaining budget, since legacy
+        // providers answer each text node slowly and a send button must still be found behind them.
+        tree.Truncated = Collect(root, Interactive, wanted, cache, watch, tree.Nodes);
+        textsTruncated = tree.Truncated || Collect(root, Textual, wanted, cache, watch, tree.Nodes);
+        return tree;
+    }
+    private static bool Collect(AutomationElement root, IEnumerable<ControlType> types, string wanted, CacheRequest cache, Stopwatch watch, List<ObservationNode> nodes)
+    {
+        if (SearchLimit(0, watch.ElapsedMilliseconds)) return true;
+        var condition = new AndCondition(Automation.ControlViewCondition, TypeCondition(types), new PropertyCondition(AutomationElement.IsPasswordProperty, false));
         AutomationElementCollection found;
         using (cache.Activate()) found = root.FindAll(TreeScope.Descendants, condition);
-        tree.Truncated = SearchLimit(found.Count, watch.ElapsedMilliseconds);
         for (var index = 0; index < found.Count; index++) {
-            if (SearchLimit(index, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
+            if (SearchLimit(index, watch.ElapsedMilliseconds)) return true;
             var element = found[index];
             var name = element.GetCachedPropertyValue(AutomationElement.NameProperty, true) as string;
             var value = element.GetCachedPropertyValue(ValuePattern.ValueProperty, true) as string;
-            if (Matches(name, value, wanted)) tree.Nodes.Add(new ObservationNode { Element = element });
+            if (Matches(name, value, wanted)) nodes.Add(new ObservationNode { Element = element });
         }
-        return tree;
+        return SearchLimit(found.Count, watch.ElapsedMilliseconds);
     }
     internal static bool SearchLimit(int candidates, long milliseconds) { return candidates >= 20000 || milliseconds >= 1800; }
     internal static List<object> OptionalNearby(Func<List<object>> read)

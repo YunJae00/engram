@@ -38,12 +38,13 @@ internal sealed partial class QuietAccess
         var wanted = string.IsNullOrWhiteSpace(find) ? null : find.Trim();
         var watch = Stopwatch.StartNew();
         var readingRoot = rootId == null ? root : Control(target, previous, rootId).Element;
-        var tree = wanted != null ? Search(readingRoot, wanted) : ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1", rootId == null ? Priority(target, root) : null);
+        var textsTruncated = false;
+        var tree = wanted != null ? Search(readingRoot, wanted, out textsTruncated) : ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1", rootId == null ? Priority(target, root) : null);
         cold = ChromiumAccessibility.IsCold(root.Current.ClassName, tree);
         var metadata = tree.Nodes.ToDictionary(node => AutomationSession.RuntimeId(node.Element));
         var cached = new List<AutomationElement>();
         foreach (var node in tree.Nodes) {
-            if (wanted != null && SearchLimit(cached.Count, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
+            if (wanted != null && SearchLimit(cached.Count, 0)) { tree.Truncated = true; break; }
             cached.Add(node.Element.GetUpdatedCache(Cache()));
         }
         var interactive = cached.Where(element => element.Cached.ControlType != ControlType.Text).ToList();
@@ -138,7 +139,7 @@ internal sealed partial class QuietAccess
             accessibilityRescanned = activationAttempted, window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
             bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)), mode = mode ?? "full", root = rootId,
             searchComplete = wanted == null ? (bool?)null : !tree.Truncated && skippedControls == 0 && skippedTexts == 0 && remaining > 0,
-            truncated = tree.Truncated || skippedControls > 0 || skippedTexts > 0 || remaining <= 0,
+            truncated = tree.Truncated || textsTruncated || skippedControls > 0 || skippedTexts > 0 || remaining <= 0,
             skippedControls = skippedControls, skippedTexts = skippedTexts, ms = watch.ElapsedMilliseconds, state = State(target),
         };
     }
