@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 const run = vi.hoisted(() => vi.fn(() => ({ status: 0 })))
 vi.mock('node:child_process', () => ({ spawnSync: run }))
 const argv = process.argv
-afterEach(() => { process.argv = argv; vi.restoreAllMocks(); vi.resetModules(); run.mockReset().mockReturnValue({ status: 0 }) })
+afterEach(() => { process.argv = argv; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.resetModules(); run.mockReset().mockReturnValue({ status: 0 }) })
 
 it('uses the same cached compiler and lint checks, then explicit unit tests and all hygiene scans', async () => {
   process.argv = ['node', 'check-quick', 'apps/desktop/test/codex-native.test.ts']
@@ -16,10 +16,19 @@ it('uses the same cached compiler and lint checks, then explicit unit tests and 
 
 it('uses the changed dependency graph by default and stops on the first failed check', async () => {
   process.argv = ['node', 'check-quick']
+  vi.stubEnv('ENGRAM_CHECK_BASE', '')
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('failed check') })
   run.mockReturnValueOnce({ status: 0 }).mockReturnValueOnce({ status: 0 }).mockReturnValueOnce({ status: 0 }).mockReturnValueOnce({ status: 1 })
   await expect(import(new URL('../../../scripts/check-quick.mjs', import.meta.url).href)).rejects.toThrow('failed check')
   expect((run.mock.calls as unknown as [string, string[]][])[3]![1]).toEqual(['node_modules/vitest/vitest.mjs', 'run', '--project', 'unit', '--changed', 'origin/main', '--passWithNoTests'])
   expect(run).toHaveBeenCalledTimes(4)
+})
+
+it('compares against ENGRAM_CHECK_BASE when it is set', async () => {
+  process.argv = ['node', 'check-quick']
+  vi.stubEnv('ENGRAM_CHECK_BASE', 'origin/develop')
+  vi.spyOn(console, 'log').mockImplementation(() => undefined)
+  await import(new URL('../../../scripts/check-quick.mjs', import.meta.url).href)
+  expect((run.mock.calls as unknown as [string, string[]][])[3]![1]).toEqual(['node_modules/vitest/vitest.mjs', 'run', '--project', 'unit', '--changed', 'origin/develop', '--passWithNoTests'])
 })
