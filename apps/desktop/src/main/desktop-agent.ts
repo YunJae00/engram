@@ -12,6 +12,7 @@ import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
 import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-format.js'
 import { formatDo, irreversibleName, quietDo, quietFingerprint } from './desktop-quiet-do.js'
+import { flog } from './flog.js'
 import { brainConnection } from './brain-connections.js'
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
@@ -112,6 +113,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     catch (error) { handover = undefined; throw error }
     const found = quietVerdict(lane, app ?? desktopBinding(lane)?.name)
     if (found.verdict === 'unknown') throw new Error('Read the app with app_read first. The hands tools, which take the mouse and keyboard, are only for an app whose controls app_read reports without any action.')
+    if (found.truncated && !found.searched) throw new Error('The last quiet scan was truncated. Use app_read with find first, then root and snapshot if searchComplete is false, before requesting hands control.')
     const control = desktopControlStatus()
     if (control.lane === lane && ['ready', 'running'].includes(control.state)) return
     if (control.lane === lane && control.state === 'paused') {
@@ -120,6 +122,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }
     handover ??= (async () => {
       const binding = desktopBinding(lane)
+      flog('harness', JSON.stringify({ kind: 'host', operation: 'hands-handover', lane, reason: found.verdict === 'bare' ? 'quiet-provider-unavailable' : 'quiet-action-needs-hands' }))
       if (!await context.approveComputerControl?.(lane)) throw new Error('Foreground control was declined by the person. No input was sent.')
       context.signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)

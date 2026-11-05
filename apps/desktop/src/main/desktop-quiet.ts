@@ -20,17 +20,18 @@ const SETTLE_POLL_MS = 1_000
 // tools are turned away from these, since the person would lose the mouse for
 // nothing the providers could not do.
 const COVERED_MS = 15 * 60_000
-const covered = new Map<string, Map<string, { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare' }>>()
+type Coverage = { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare'; truncated?: boolean; searched?: boolean }
+const covered = new Map<string, Map<string, Coverage>>()
 
 // What the quiet lane last found in a window: 'covered' when it exposed controls (the hands tools stay away),
 // 'bare' when it exposed none or a provider refused to act (the hands tools may step in), 'unknown' before any read.
-export function quietVerdict(lane: string, app?: string): { verdict: 'covered' | 'bare' | 'unknown'; title?: string } {
+export function quietVerdict(lane: string, app?: string): { verdict: 'covered' | 'bare' | 'unknown'; title?: string; truncated?: boolean; searched?: boolean } {
   const windows = covered.get(lane)
   if (!windows) return { verdict: 'unknown' }
   const wanted = app?.trim().toLocaleLowerCase()
   for (const [window, entry] of windows) {
     if (Date.now() - entry.at > COVERED_MS) { windows.delete(window); continue }
-    if (!wanted || `window:${window}:0` === wanted || appNameMatch({ name: entry.title, aliases: entry.aliases }, wanted)) return { verdict: entry.verdict, title: entry.title }
+    if (!wanted || `window:${window}:0` === wanted || appNameMatch({ name: entry.title, aliases: entry.aliases }, wanted)) return { verdict: entry.verdict, title: entry.title, truncated: entry.truncated, searched: entry.searched }
   }
   return { verdict: 'unknown' }
 }
@@ -38,9 +39,11 @@ export function quietCovers(lane: string, app?: string): string | null {
   const found = quietVerdict(lane, app)
   return found.verdict === 'covered' ? found.title ?? null : null
 }
-function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare'): void {
-  const windows = covered.get(lane) ?? new Map<string, { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare' }>()
-  windows.set(binding.window, { title: binding.name, aliases: binding.aliases, at: Date.now(), verdict })
+function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare', result: QuietObservationDto, find?: string, full = true): void {
+  const windows = covered.get(lane) ?? new Map<string, Coverage>()
+  const previous = windows.get(binding.window)
+  // Only a full read judges coverage; a narrowed read with no match must not hand the window to the hands tools.
+  windows.set(binding.window, { title: binding.name, aliases: binding.aliases, at: Date.now(), verdict: full || !previous ? verdict : previous.verdict, truncated: result.truncated, searched: previous?.searched === true || (!!find && result.searchComplete === true) })
   covered.set(lane, windows)
 }
 // A provider that offers a control but will not act on it hands the window to the hands tools.
@@ -143,7 +146,7 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   showWorkPreview(binding)
   result.sparseTree = !find && sparseDesktopTree(result)
   if (result.sparseTree) result.hint = SCREEN_HINT
-  if (!find && !options.root && options.mode !== 'skeleton') remember(lane, binding, actionable && !result.sparseTree ? 'covered' : 'bare')
+  remember(lane, binding, actionable && !result.sparseTree ? 'covered' : 'bare', result, find, !find && !options.root && options.mode !== 'skeleton')
   named.set(result.snapshot, result)
   while (named.size > NAMED_SNAPSHOTS) named.delete(named.keys().next().value!)
   return result
