@@ -42,8 +42,12 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
     const appNow = formatScan(reading, undefined)
     const contents = (view: QuietObservationDto) => JSON.stringify([view.controls.map(control => [control.type, control.name, control.value]), view.texts.map(text => text.text)])
     const unchangedContainer = before && contents(before) === contents(reading)
+    const nearby = Array.isArray(result.nearby) ? result.nearby.map((button: { id: string; runtimeId?: string; name: string }) => {
+      const matches = reading.controls.filter(control => button.runtimeId ? control.runtimeId === button.runtimeId : control.name === button.name)
+      return { ...button, snapshot: matches.length === 1 ? reading.snapshot : result.snapshot, id: matches.length === 1 ? matches[0]!.id : button.id }
+    }) : undefined
     observed?.()
-    return JSON.stringify({ ...result, appNow, ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
+    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ ...result, observationMayBeStale: true, ...await permissionFailure(error, lane, { delivered: true }) })

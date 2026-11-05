@@ -12,7 +12,7 @@ vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, create
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
-vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: vi.fn(), quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
+vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture' }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: fake.quietSet, quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
 import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
@@ -367,4 +367,12 @@ it('reports revocation after a cached handover without claiming the person decli
   expect(result.reason).not.toContain('declined')
   expect(approveComputerControl).toHaveBeenCalledOnce()
   expect(fake.act).toHaveBeenCalledOnce()
+})
+
+it('remaps nearby controls to the fresh post-set snapshot by runtime identity', async () => {
+  fake.quietSet.mockResolvedValue({ snapshot: 'a'.repeat(32), nearby: [{ id: 'c10020', runtimeId: 'send-runtime', name: 'Send', appeared: true }], landed: true })
+  fake.quietScan.mockResolvedValue({ snapshot: 'b'.repeat(32), controls: [{ id: 'c7', runtimeId: 'send-runtime', name: 'Send', type: 'Button', can: { press: true } }], texts: [], skippedTexts: 0, state: { foreground: false } })
+  const tool = desktopAgentTools('bot-one').find(tool => tool.name === 'app_set')!
+  const result = JSON.parse(await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c3', text: 'Draft' }, { task: 'Draft' }))
+  expect(result.nearby).toEqual([expect.objectContaining({ id: 'c7', snapshot: 'b'.repeat(32), appeared: true })])
 })

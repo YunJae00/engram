@@ -194,6 +194,8 @@ internal sealed partial class QuietAccess : IDisposable
         var hint = before.Trim().Length > 0 && Flat(before) == Flat(element.Current.Name);
         if (before.Length > 0 && !hint && before != expected)
             throw new InvalidOperationException("The field already holds text this chat did not put there: \"" + Clip(before, 120) + "\". Leave it, or pass that exact text as expected to replace it.");
+        var nearbyBefore = NearbyIds(element, AutomationElement.FromHandle(target.Handle));
+        Priorities[target.Id] = element;
         var watch = Stopwatch.StartNew();
         check();
         RequireIdle(target);
@@ -227,7 +229,7 @@ internal sealed partial class QuietAccess : IDisposable
             try { restoredForeground = DesktopNative.RestoreForeground(foreground); }
             catch { }
         }
-        return new { how = how, message = landed ? "" : "The app did not take background text; its own search or field may need the person", landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
+        return new { snapshot = snapshot, nearby = OptionalNearby(delegate { return Nearby(target, snapshot, element, nearbyBefore); }), how = how, message = landed ? "" : "The app did not take background text; its own search or field may need the person", landed = landed, exact = landed, value = Clip(after, ValueLimit), ms = watch.ElapsedMilliseconds, control = control,
             foregroundChanged = changedForeground, foregroundRestored = restoredForeground, requiresVerification = true };
     }
 

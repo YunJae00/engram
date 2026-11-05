@@ -57,3 +57,11 @@ describe('quiet readings for the brain', () => {
 it('does not turn an unverified desired state into a successful press receipt', () => {
   expect(JSON.parse(formatPress({ pressed: 'toggle', control: 'c1', foregroundChanged: false, satisfied: false }))).toMatchObject({ error: 'action_failed', delivery: 'delivered_unverified', retry: 'unsafe' })
 })
+
+it('distinguishes an incomplete zero-match search from a complete absence', () => {
+  const partial = formatScan(observation({ searchComplete: false, truncated: true }), 'Send')
+  expect(partial).toContain('search did not reach the whole app')
+  expect(partial).toContain('root:<region id>')
+  expect(partial).not.toContain('controls (0)')
+  expect(formatScan(observation({ searchComplete: true }), 'Send')).toContain('controls (0)')
+})

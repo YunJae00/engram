@@ -24,6 +24,15 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(QuietAccess.Matches("Deep Send", "", "send"), "Target search matches deep control names");
+            Check(QuietAccess.Matches("Editor", "needle", "needle"), "Target search matches values");
+            Check(!QuietAccess.Matches("Editor", "", "Send"), "Target search excludes unrelated editors");
+            Check(!QuietAccess.SearchLimit(1999, 1799) && QuietAccess.SearchLimit(2000, 0) && QuietAccess.SearchLimit(0, 1800), "Search stops at either candidate or time budget");
+            foreach (var error in new Exception[] { new System.Windows.Automation.ElementNotAvailableException(), new InvalidOperationException(), new System.Runtime.InteropServices.COMException() }) {
+                var receipt = new { landed = true, nearby = QuietAccess.OptionalNearby(delegate { throw error; }) };
+                Check(receipt.landed && receipt.nearby == null, "Nearby failure preserves a landed write receipt");
+            }
+
             foreach (var chord in new[] { "Shift+Tab", "Control+Tab", "Control+Shift+Tab", "F6", "Shift+F6", "Control+L", "Control+N", "Control+H" })
                 Check(ControlPolicy.Chord(chord).Length <= 3, "Navigation chords are bounded and release every modifier");
             Check(LiveDocument.Replacement("Old title", "Old", "New") == "New title", "Document replacements preserve unrelated text");

@@ -280,6 +280,21 @@ internal sealed class ControlFixture : Form
                 Controls.Add(History); History.BringToFront();
             }
             else if (method == "clearHistory") { History.Dispose(); History = null; }
+            else if (method == "quietDeep")
+            {
+                Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Deep search fixture" };
+                for (var cell = 0; cell < 520; cell++) Dense.Controls.Add(new Label { Text = "Decoy " + cell });
+                var parent = Dense;
+                for (var depth = 0; depth < 17; depth++) {
+                    var child = new Panel { Dock = DockStyle.Fill, AccessibleName = "Deep region " + depth };
+                    parent.Controls.Add(child); parent = child;
+                }
+                var input = new TextBox { AccessibleName = "Deep input", Multiline = true, Text = "", Bounds = new Rectangle(8, 8, 240, 50) };
+                var send = new Button { AccessibleName = "Deep Send", Text = "Send", Bounds = new Rectangle(8, 65, 100, 30) };
+                input.TextChanged += delegate { if (!string.IsNullOrWhiteSpace(input.Text) && send.Parent == null) parent.Controls.Add(send); };
+                parent.Controls.Add(input);
+                Controls.Add(Dense); Dense.BringToFront();
+            }
             else if (method == "dense")
             {
                 Dense = new Panel { Bounds = new Rectangle(18, 100, 580, 280), AccessibleName = "Large work surface" };

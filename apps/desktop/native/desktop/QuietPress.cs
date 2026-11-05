@@ -30,6 +30,7 @@ internal sealed partial class QuietAccess
         RequireOperable(target);
         Validate(target);
         var element = Control(target, snapshot, control).Element;
+        Priorities[target.Id] = element;
         if (!element.Current.IsEnabled) throw new InvalidOperationException("This control is disabled right now");
         check();
         RequireIdle(target);

@@ -39,20 +39,21 @@ final class DesktopHost {
     func state(_ window: Target) -> [String: Any] {
         ["foreground": window.foreground, "idleMs": monitor.state().idle, "minimized": window.minimized]
     }
-    func observe(_ window: Target, quiet: Bool, focusedOnly: Bool = false, root: AXUIElement? = nil, skeleton: Bool = false) throws -> [String: Any] {
-        let result = try scan(window, root: root, skeleton: skeleton)
+    func observe(_ window: Target, quiet: Bool, focusedOnly: Bool = false, find: String? = nil, root: AXUIElement? = nil, skeleton: Bool = false) throws -> [String: Any] {
+        let result = try scan(window, root: root, skeleton: skeleton, find: find)
         snapshots = snapshots.filter { Date().timeIntervalSince($0.value.at) < 30 }
         if snapshots.count >= 16, let oldest = snapshots.min(by: { $0.value.at < $1.value.at })?.key { snapshots.removeValue(forKey: oldest) }
         snapshots[result.id] = result
         if quiet {
+            let matches = result.controls.filter { find == nil || $0.name.localizedCaseInsensitiveContains(find!) || $0.value.localizedCaseInsensitiveContains(find!) }
             return ["window": String(window.id), "pid": window.pid, "title": window.title, "snapshot": result.id,
                 "bounds": rectangle(result.bounds), "mode": skeleton ? "skeleton" : "full", "truncated": !result.complete,
-                "controls": result.controls.map { node -> [String: Any] in
+                "searchComplete": result.complete, "controls": matches.map { node -> [String: Any] in
                     ["depth": node.depth, "childCount": node.childCount, "subtreeTruncated": node.subtreeTruncated, "id": "c" + node.id, "type": node.role, "name": node.name, "value": node.value, "enabled": node.enabled,
                      "offscreen": node.bounds.map { !$0.intersects(result.bounds) } ?? true,
                      "focused": attribute(node.element, kAXFocusedAttribute) as? Bool ?? false, "secret": node.secret,
                      "can": ["set": node.settable, "press": node.pressable, "text": !node.secret]]
-                }, "texts": result.controls.filter { !$0.secret && !$0.value.isEmpty }.map { ["id": "c" + $0.id, "text": $0.value] },
+                }, "texts": matches.filter { !$0.secret && !$0.value.isEmpty }.map { ["id": "c" + $0.id, "text": $0.value] },
                 "skippedControls": result.complete ? 0 : 1, "skippedTexts": result.complete ? 0 : 1, "ms": 0, "state": state(window)]
         }
         let focus = try? focused(result, editable: false)
@@ -139,7 +140,7 @@ final class DesktopHost {
             let root: AXUIElement?
             if request["root"] != nil { root = try control(snapshot(request, window: window), id: text(request, "root", limit: 32)).element }
             else { root = nil }
-            return try observe(window, quiet: method == "quietScan", focusedOnly: request["focusedOnly"] as? Bool == true, root: root, skeleton: mode == "skeleton")
+            return try observe(window, quiet: method == "quietScan", focusedOnly: request["focusedOnly"] as? Bool == true, find: request["find"] as? String, root: root, skeleton: mode == "skeleton")
         }
         if method == "quietRead" {
             let reading: Snapshot

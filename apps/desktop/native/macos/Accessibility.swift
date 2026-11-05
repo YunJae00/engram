@@ -125,7 +125,7 @@ struct Snapshot {
 func transparentGroup(role: String, name: String, value: String, identifier: String, actionable: Bool) -> Bool {
     role == kAXGroupRole && name.isEmpty && value.isEmpty && identifier.isEmpty && !actionable
 }
-func scan(_ target: Target, root: AXUIElement? = nil, skeleton: Bool = false) throws -> Snapshot {
+func scan(_ target: Target, root: AXUIElement? = nil, skeleton: Bool = false, find: String? = nil) throws -> Snapshot {
     let bounds = try target.bounds
     var stack = [(root ?? target.element, 0, false)], controls: [Control] = [], visited: [AXUIElement] = []
     let deadline = Date().addingTimeInterval(2)
@@ -146,13 +146,14 @@ func scan(_ target: Target, root: AXUIElement? = nil, skeleton: Bool = false) th
         if secret && (try? elementBounds(element)) == nil { complete = false }
         let skip = hasActions && !secret && transparentGroup(role: role, name: label, value: stringAttribute(element, kAXValueAttribute),
             identifier: stringAttribute(element, kAXIdentifierAttribute), actionable: settable.boolValue || !((actions as? [String]) ?? []).isEmpty)
-        if !skip { controls.append(Control(id: String(controls.count + 1), depth: depth, element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: (press || ((try? elementBounds(element)) != nil && ["AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton"].contains(role))) && !secret)) }
+        let include = !skip && (find == nil || label.localizedCaseInsensitiveContains(find!) || (!secret && stringAttribute(element, kAXValueAttribute).localizedCaseInsensitiveContains(find!)))
+        if include { controls.append(Control(id: String(controls.count + 1), depth: depth, element: element, role: role, name: secret ? "Protected control" : String(label.prefix(500)), secret: secret, bounds: try? elementBounds(element), enabled: attribute(element, kAXEnabledAttribute) as? Bool ?? true, settable: settable.boolValue && !secret, pressable: (press || ((try? elementBounds(element)) != nil && ["AXButton", "AXLink", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton"].contains(role))) && !secret)) }
         var rawChildren: CFTypeRef?
         let status = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &rawChildren)
         if status == .success, let children = rawChildren as? [AXUIElement] {
-            if !skip { controls[controls.count - 1].childCount = children.count }
+            if include { controls[controls.count - 1].childCount = children.count }
             if !skip && depth >= (skeleton ? 3 : 40) && !children.isEmpty {
-                controls[controls.count - 1].subtreeTruncated = true
+                if include { controls[controls.count - 1].subtreeTruncated = true }
                 complete = false
             } else { for child in children.reversed() { stack.append((child, depth + (skip ? 0 : 1), secret)) } }
         } else if status != .attributeUnsupported && status != .noValue { complete = false }

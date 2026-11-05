@@ -18,7 +18,7 @@ internal sealed partial class QuietAccess
             try { result = ScanOnce(target, find, mode, rootId, previous, activationAttempted, out nodes, out cold); }
             catch (ElementNotAvailableException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
             catch (System.Runtime.InteropServices.COMException) { if (attempt == 2) throw; System.Threading.Thread.Sleep(300); continue; }
-            if (mode == "skeleton" || rootId != null || attempt == 2) break;
+            if (!string.IsNullOrWhiteSpace(find) || mode == "skeleton" || rootId != null || attempt == 2) break;
             if (cold && !activationAttempted && string.IsNullOrWhiteSpace(find)) {
                 Guard.Same(target);
                 ChromiumAccessibility.Wake(target.Handle);
@@ -38,10 +38,14 @@ internal sealed partial class QuietAccess
         var wanted = string.IsNullOrWhiteSpace(find) ? null : find.Trim();
         var watch = Stopwatch.StartNew();
         var readingRoot = rootId == null ? root : Control(target, previous, rootId).Element;
-        var tree = ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1");
+        var tree = wanted != null ? Search(readingRoot) : ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1", rootId == null ? Priority(target, root) : null);
         cold = ChromiumAccessibility.IsCold(root.Current.ClassName, tree);
         var metadata = tree.Nodes.ToDictionary(node => AutomationSession.RuntimeId(node.Element));
-        var cached = tree.Nodes.Select(node => node.Element.GetUpdatedCache(Cache())).ToList();
+        var cached = new List<AutomationElement>();
+        foreach (var node in tree.Nodes) {
+            if (wanted != null && SearchLimit(cached.Count, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
+            cached.Add(node.Element.GetUpdatedCache(Cache()));
+        }
         var interactive = cached.Where(element => element.Cached.ControlType != ControlType.Text).ToList();
         var textual = cached.Where(element => element.Cached.ControlType == ControlType.Text).ToList();
         var controls = new List<object>();
@@ -71,12 +75,16 @@ internal sealed partial class QuietAccess
                 && (info.ControlType == ControlType.Edit || (info.ControlType == ControlType.Document && info.IsKeyboardFocusable));
             var name = Clip(info.Name, Math.Min(NameLimit, remaining));
             string value = null;
+            string rawValue = null;
             object pattern;
-            if (editable && element.TryGetCachedPattern(ValuePattern.Pattern, out pattern))
+            if (!info.IsPassword && element.TryGetCachedPattern(ValuePattern.Pattern, out pattern))
             {
-                try { value = Clip(((ValuePattern)pattern).Current.Value, Math.Min(ValueLimit, remaining)); } catch (ElementNotAvailableException) { value = null; }
+                try { rawValue = ((ValuePattern)pattern).Current.Value; value = Clip(rawValue, Math.Min(ValueLimit, remaining)); }
+                catch (ElementNotAvailableException) { value = null; }
+                catch (InvalidOperationException) { value = null; }
+                catch (System.Runtime.InteropServices.COMException) { value = null; }
             }
-            if (wanted != null && !editable && (name.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0) && (value == null || value.IndexOf(wanted, StringComparison.CurrentCultureIgnoreCase) < 0)) continue;
+            if (!Matches(info.Name, rawValue, wanted)) continue;
             if (controls.Count >= MaxControls || remaining <= 0) { skippedControls++; continue; }
             var runtime = AutomationSession.RuntimeId(element);
             var id = ids[runtime];
@@ -87,7 +95,7 @@ internal sealed partial class QuietAccess
             {
                 depth = meta.Depth, childCount = meta.ChildCount, subtreeTruncated = meta.Truncated,
                 parent = meta.Parent == null ? null : ids[AutomationSession.RuntimeId(meta.Parent.Element)], order = order[runtime],
-                id = id, type = info.ControlType.ProgrammaticName.Replace("ControlType.", ""), name = name,
+                runtimeId = runtime, id = id, type = info.ControlType.ProgrammaticName.Replace("ControlType.", ""), name = name,
                 value = value, placeholder = placeholder ? name : null,
                 can = new
                 {
@@ -129,6 +137,7 @@ internal sealed partial class QuietAccess
         {
             accessibilityRescanned = activationAttempted, window = target.Id, pid = target.Pid, title = target.Title, snapshot = snapshot.Id, controls = controls, texts = texts,
             bounds = AutomationSession.Bounds(DesktopNative.Bounds(target.Handle)), mode = mode ?? "full", root = rootId,
+            searchComplete = wanted == null ? (bool?)null : !tree.Truncated && skippedControls == 0 && skippedTexts == 0 && remaining > 0,
             truncated = tree.Truncated || skippedControls > 0 || skippedTexts > 0 || remaining <= 0,
             skippedControls = skippedControls, skippedTexts = skippedTexts, ms = watch.ElapsedMilliseconds, state = State(target),
         };

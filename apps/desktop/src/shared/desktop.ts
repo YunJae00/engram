@@ -38,6 +38,7 @@ export interface DesktopObservationDto {
 }
 // Provider-only operations avoid injected input. IDs belong to one snapshot.
 export interface QuietControlDto {
+  runtimeId?: string
   id: string
   state?: { checked?: 'on' | 'off' | 'indeterminate'; selected?: boolean; expanded?: string }
   parent?: string | null
@@ -57,6 +58,7 @@ export interface QuietControlDto {
 }
 export interface QuietStateDto { foreground: boolean; idleMs: number; minimized: boolean }
 export interface QuietObservationDto {
+  searchComplete?: boolean
   window: string
   pid: number
   title: string
@@ -74,7 +76,7 @@ export interface QuietObservationDto {
   ms: number
   state: QuietStateDto
 }
-export interface QuietSetResultDto { how?: 'ax' | 'typed' | 'focus-key' | 'posted'; message?: string; landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
+export interface QuietSetResultDto { snapshot?: string; nearby?: { name: string; id: string; runtimeId?: string; enabled: boolean; appeared: boolean }[]; how?: 'ax' | 'typed' | 'focus-key' | 'posted'; message?: string; landed: boolean; exact: boolean; value: string; ms: number; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
 export interface QuietPressResultDto { landed?: boolean; message?: string; how?: 'ax' | 'typed' | 'focus-key' | 'posted'; satisfied?: boolean | null; pressed: string; control: string; foregroundChanged: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean }
 export interface QuietReadResultDto { foregroundChanged?: boolean; foregroundRestored?: boolean; foregroundTaken?: boolean; text: string; chars: number; headClipped: boolean; truncated?: boolean; scope?: string; continuation?: string | null }
 // The brain that holds the computer, named for the person: the banner on the
