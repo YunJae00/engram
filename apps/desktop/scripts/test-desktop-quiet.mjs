@@ -161,7 +161,7 @@ export async function testDesktopQuiet(helper, fixture, target, until, launchApp
   const cut = await scan()
   assert.equal(cut.truncated, true)
   const deep = await helper.request('quietScan', { ...target, find: 'Deep input' })
-  assert.equal(deep.searchComplete, true)
+  assert.equal(deep.searchComplete, true, JSON.stringify({ targetedDeepSearch: deep }))
   assert.equal(deep.controls.length, 1, 'Targeted search must not retain unrelated editors')
   const inserted = await helper.request('quietSet', { ...target, snapshot: deep.snapshot, control: deep.controls[0].id, text: 'Owned deep draft' })
   assert.equal(inserted.landed, true, 'Whitespace-only content is empty')
@@ -169,7 +169,7 @@ export async function testDesktopQuiet(helper, fixture, target, until, launchApp
   const prioritized = await scan()
   assert.ok(prioritized.controls.some(control => control.name === 'Deep Send'), 'The last edited neighborhood takes priority over the broad tree')
   const sending = await helper.request('quietScan', { ...target, find: 'Deep Send' })
-  assert.equal(sending.searchComplete, true)
+  assert.equal(sending.searchComplete, true, JSON.stringify({ targetedSendSearch: sending }))
   assert.equal(sending.controls.length, 1)
   await fixture.request('sparse')
 

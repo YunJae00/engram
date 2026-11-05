@@ -28,21 +28,28 @@ internal sealed partial class QuietAccess
         catch (ElementNotAvailableException) { Priorities.Remove(target.Id); return null; }
         catch (InvalidOperationException) { Priorities.Remove(target.Id); return null; }
     }
-    private static ObservationTree Search(AutomationElement root)
+    private static ObservationTree Search(AutomationElement root, string wanted)
     {
         var tree = new ObservationTree();
         var types = Interactive.Concat(Textual).Concat(new[] { ControlType.Group, ControlType.Pane, ControlType.Custom });
-        var walker = new TreeWalker(new AndCondition(Automation.ControlViewCondition, TypeCondition(types)));
+        var walker = new TreeWalker(new AndCondition(Automation.ControlViewCondition, TypeCondition(types), new PropertyCondition(AutomationElement.IsPasswordProperty, false)));
+        var cache = new CacheRequest { TreeScope = TreeScope.Element };
+        cache.Add(AutomationElement.NameProperty);
+        cache.Add(ValuePattern.ValueProperty);
         var watch = Stopwatch.StartNew();
+        var candidates = 0;
         var parents = new Stack<AutomationElement>();
-        var element = walker.GetFirstChild(root);
+        var element = walker.GetFirstChild(root, cache);
         while (element != null) {
-            if (SearchLimit(tree.Nodes.Count, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
-            tree.Nodes.Add(new ObservationNode { Element = element });
-            var child = walker.GetFirstChild(element);
+            if (SearchLimit(candidates, watch.ElapsedMilliseconds)) { tree.Truncated = true; break; }
+            candidates++;
+            var name = element.GetCachedPropertyValue(AutomationElement.NameProperty, true) as string;
+            var value = element.GetCachedPropertyValue(ValuePattern.ValueProperty, true) as string;
+            if (Matches(name, value, wanted)) tree.Nodes.Add(new ObservationNode { Element = element });
+            var child = walker.GetFirstChild(element, cache);
             if (child != null) { parents.Push(element); element = child; continue; }
-            var next = walker.GetNextSibling(element);
-            while (next == null && parents.Count > 0) next = walker.GetNextSibling(parents.Pop());
+            var next = walker.GetNextSibling(element, cache);
+            while (next == null && parents.Count > 0) next = walker.GetNextSibling(parents.Pop(), cache);
             element = next;
         }
         return tree;

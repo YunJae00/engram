@@ -38,7 +38,7 @@ internal sealed partial class QuietAccess
         var wanted = string.IsNullOrWhiteSpace(find) ? null : find.Trim();
         var watch = Stopwatch.StartNew();
         var readingRoot = rootId == null ? root : Control(target, previous, rootId).Element;
-        var tree = wanted != null ? Search(readingRoot) : ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1", rootId == null ? Priority(target, root) : null);
+        var tree = wanted != null ? Search(readingRoot, wanted) : ObservationTree.Read(readingRoot, MaxControls + MaxTexts, mode == "skeleton" ? 3 : 32, 1800, root.Current.ClassName == "Chrome_WidgetWin_1", rootId == null ? Priority(target, root) : null);
         cold = ChromiumAccessibility.IsCold(root.Current.ClassName, tree);
         var metadata = tree.Nodes.ToDictionary(node => AutomationSession.RuntimeId(node.Element));
         var cached = new List<AutomationElement>();
