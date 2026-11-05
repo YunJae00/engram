@@ -24,6 +24,9 @@ internal static class DesktopSelfTest
     {
         try
         {
+            Check(!QuietAccess.HoldsText(" \r\n\t"), "Whitespace-only editors accept their first value");
+            Check(QuietAccess.HoldsText(" draft "), "Existing drafts remain protected");
+
             Check(QuietAccess.Matches("Deep Send", "", "send"), "Target search matches deep control names");
             Check(QuietAccess.Matches("Editor", "needle", "needle"), "Target search matches values");
             Check(!QuietAccess.Matches("Editor", "", "Send"), "Target search excludes unrelated editors");

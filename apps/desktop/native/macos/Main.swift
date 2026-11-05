@@ -31,6 +31,7 @@ final class Connection: @unchecked Sendable {
                 for invalid in ["Command+Q", "Control+Alt+Delete", "Shift+Escape"] {
                     do { _ = try keyChord(invalid); fatalError("Unsafe chord accepted") } catch {}
                 }
+                precondition(" \n\t".trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 let selectAll = try keyChord("Control+A")
                 precondition(selectAll.1 == .maskCommand)
                 precondition(sensitiveReason("Account alice@example.test — Sign in 123456") == "Sign in")

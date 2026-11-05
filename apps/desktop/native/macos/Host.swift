@@ -164,7 +164,7 @@ final class DesktopHost {
                 let existing = node.value
                 if let expected = request["expected"] as? String {
                     guard expected == existing else { throw DesktopFailure("The field changed. Read it again") }
-                } else if !existing.isEmpty { throw DesktopFailure("The field already holds text. Pass its exact value as expected to replace it") }
+                } else if !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw DesktopFailure("The field already holds text. Pass its exact value as expected to replace it") }
                 guard !monitor.state().escaped, monitor.inputVersion(window.pid) == inputVersion,
                       !(window.foreground && monitor.state().idle < 4000) else { throw DesktopFailure("The person is using this app") }
                 let how: String

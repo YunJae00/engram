@@ -192,7 +192,7 @@ internal sealed partial class QuietAccess : IDisposable
         var before = value.Current.Value ?? "";
         // An empty field that reports its own hint as its value holds nothing anyone typed.
         var hint = before.Trim().Length > 0 && Flat(before) == Flat(element.Current.Name);
-        if (before.Length > 0 && !hint && before != expected)
+        if (HoldsText(before) && !hint && before != expected)
             throw new InvalidOperationException("The field already holds text this chat did not put there: \"" + Clip(before, 120) + "\". Leave it, or pass that exact text as expected to replace it.");
         var nearbyBefore = NearbyIds(element, AutomationElement.FromHandle(target.Handle));
         Priorities[target.Id] = element;
