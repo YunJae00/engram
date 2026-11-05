@@ -2,9 +2,11 @@
 // design: the release run still covers everything; this run answers "did I
 // break the area I was working in" in minutes instead of hours.
 //
-//   node scripts/e2e-affected.mjs            specs for the files changed since origin/main (plus the working tree)
+//   node scripts/e2e-affected.mjs            specs for the files changed since the base ref (plus the working tree)
 //   node scripts/e2e-affected.mjs --list     print the chosen specs without running them
 //   node scripts/e2e-affected.mjs a.ts b.ts  specs for the given paths
+//
+// The base ref is ENGRAM_CHECK_BASE, or origin/main when unset or empty.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,6 +30,7 @@ const AREAS = [
   [/index\.ts$|ipc\.ts$|vault|settings\.ts|reset|quit|boot/, ['shell.spec.ts', 'app-reset.spec.ts', 'background-workers.spec.ts', 'chat.spec.ts']],
 ]
 
+const base = process.env.ENGRAM_CHECK_BASE || 'origin/main'
 const args = process.argv.slice(2)
 const listOnly = args.includes('--list')
 const given = args.filter(arg => !arg.startsWith('--'))
@@ -35,7 +38,7 @@ const given = args.filter(arg => !arg.startsWith('--'))
 function versionOnly(path) {
   if (!/^(apps\/desktop\/)?package\.json$/.test(path)) return false
   try {
-    const before = JSON.parse(execFileSync('git', ['show', `origin/main:${path}`], { cwd: root, encoding: 'utf8' }))
+    const before = JSON.parse(execFileSync('git', ['show', `${base}:${path}`], { cwd: root, encoding: 'utf8' }))
     const after = JSON.parse(readFileSync(join(root, path), 'utf8'))
     delete before.version; delete after.version
     return JSON.stringify(before) === JSON.stringify(after)
@@ -44,7 +47,7 @@ function versionOnly(path) {
 
 function changedPaths() {
   const out = (cmd) => execFileSync('git', cmd, { cwd: root, encoding: 'utf8' })
-  const lines = [...out(['diff', '--name-only', 'origin/main...HEAD']).split('\n'), ...out(['diff', '--name-only', 'HEAD']).split('\n'), ...out(['ls-files', '--others', '--exclude-standard']).split('\n')]
+  const lines = [...out(['diff', '--name-only', `${base}...HEAD`]).split('\n'), ...out(['diff', '--name-only', 'HEAD']).split('\n'), ...out(['ls-files', '--others', '--exclude-standard']).split('\n')]
   return [...new Set(lines.map(line => line.trim()).filter(Boolean))]
 }
 
