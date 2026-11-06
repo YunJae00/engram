@@ -1,0 +1,39 @@
+{
+  "id": "ui-motion-merge-serial-20261106",
+  "status": "done",
+  "headSha": "d230530b0f7ce1d0305a4e9f51550396c58bdf77",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "pnpm --filter desktop build", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-interaction-motion", "exit": 1 },
+    { "cmd": "node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-interaction-motion (session capture disabled on purpose, then restored and rebuilt)", "exit": 1 },
+    { "cmd": "node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line", "exit": 0 },
+    { "cmd": "git diff --cached --check", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The scenario failed during authoring for test-side reasons before it passed: a wrong Electron evaluate argument in the fault helper, a probe that clicked a row while the folder form was open (blur saves by design), and one race where the create button was clicked while the narrow sidebar was still sliding in (now waits for it). After those fixes it passed four consecutive runs at about 24 s each.",
+    "The closed create menu stays mounted with the hidden attribute (display none), which matches the closed native popover on next; the design asked for visibility hidden with a retained layout box. bots-new keeps its node identity and its vaultReady-only disabled rule.",
+    "The exit snapshot is positioned absolutely inside .bots-view rather than fixed: the view's container-type makes it the containing block for fixed descendants, so viewport coordinates would be offset. The scenario asserts the snapshot box equals the outgoing surface box.",
+    "A New chat snapshot includes the welcome composer; during the 160 ms exit the incoming thread's live composer paints over it at the same position.",
+    "An open folder form and an open create menu cannot coexist (opening the menu blurs the form, which saves it), so the reload probe covers form, menu and mid-session-exit as three separate reloads.",
+    "Not covered, as the design already notes: native HTML5 drag under motion, IME composition submit, live provider streaming, large transcript clone cost. Fixture threads are empty, so nested scroll restoration in the snapshot is implemented but not exercised.",
+    "Criterion commands were run without --build as the steps instruct; the build used for the final runs was produced from the committed sources."
+  ]
+}
