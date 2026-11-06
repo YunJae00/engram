@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "verdict.schema.json",
+  "title": "verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "attempt", "kind", "verdict", "headSha", "evidence", "findings"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "kind": { "type": "string", "enum": ["tests", "spec", "break", "desktop"] },
+    "verdict": { "type": "string", "enum": ["pass", "fail", "cannot_verify"] },
+    "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } },
+    "findings": { "type": "array", "items": { "$ref": "#/definitions/finding" } }
+  },
+  "definitions": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion", "cmd", "logPath", "result"],
+      "properties": {
+        "criterion": { "type": "string" },
+        "cmd": { "type": "string" },
+        "logPath": { "type": "string" },
+        "result": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "claim", "reproCmd"],
+      "properties": {
+        "file": { "type": "string" },
+        "line": { "type": "integer" },
+        "claim": { "type": "string" },
+        "reproCmd": { "type": "string" }
+      }
+    }
+  }
+}

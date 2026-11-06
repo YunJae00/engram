@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "report.schema.json",
+  "title": "report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "status", "headSha", "changedFiles", "testsAdded", "commandsRun", "openQuestions"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "status": { "type": "string", "enum": ["done", "blocked", "partial"] },
+    "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "changedFiles": { "type": "array", "items": { "type": "string" } },
+    "testsAdded": { "type": "array", "items": { "type": "string" } },
+    "commandsRun": { "type": "array", "items": { "$ref": "#/definitions/command" } },
+    "openQuestions": { "type": "array", "items": { "type": "string" } }
+  },
+  "definitions": {
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmd", "exit"],
+      "properties": {
+        "cmd": { "type": "string" },
+        "exit": { "type": "integer" }
+      }
+    }
+  }
+}

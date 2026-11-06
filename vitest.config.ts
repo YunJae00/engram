@@ -27,6 +27,7 @@ export default defineConfig({
             'packages/*/test/**/*.test.ts',
             // Pure renderer-lib logic (topic labels, grouping) — no DOM, node is fine.
             'apps/desktop/test/**/*.test.ts',
+            'orchestration/**/*.test.mjs',
           ],
           exclude: ['**/node_modules/**', ...TIMING_SENSITIVE],
         },

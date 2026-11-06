@@ -1,0 +1,335 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ledger.schema.json",
+  "title": "ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "batch",
+    "items"
+  ],
+  "properties": {
+    "batch": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/item"
+      }
+    },
+    "integration": {
+      "$ref": "#/definitions/integration"
+    }
+  },
+  "definitions": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "cmd",
+        "expect"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "cmd": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "string"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "area",
+        "difficulty",
+        "state",
+        "bounces",
+        "allowedFiles",
+        "criteria",
+        "scenarios",
+        "attempts",
+        "verdicts"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "area": {
+          "type": "string",
+          "enum": [
+            "ts",
+            "native"
+          ]
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "easy",
+            "hard"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "briefed",
+            "designing",
+            "implementing",
+            "implemented",
+            "verifying",
+            "verified",
+            "bounced",
+            "blocked",
+            "needs_human",
+            "merged",
+            "integrated",
+            "released",
+            "reverted"
+          ]
+        },
+        "bounces": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/criterion"
+          }
+        },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/attempt"
+          }
+        },
+        "verdicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/verdictRef"
+          }
+        },
+        "mergeSha": {
+          "$ref": "#/definitions/sha"
+        },
+        "revertSha": {
+          "$ref": "#/definitions/sha"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n",
+        "implementer",
+        "verifier",
+        "branch",
+        "startedAt",
+        "deadlineAt"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "implementer": {
+          "type": "string"
+        },
+        "verifier": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "worktree": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "logPath": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "deadlineAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        },
+        "headSha": {
+          "$ref": "#/definitions/sha"
+        },
+        "reportPath": {
+          "type": "string"
+        },
+        "tokens": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "stalled",
+            "invalid",
+            "superseded"
+          ]
+        }
+      }
+    },
+    "verdictRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "kind",
+        "verdict",
+        "headSha",
+        "path"
+      ],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "tests",
+            "spec",
+            "break",
+            "desktop"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "cannot_verify"
+          ]
+        },
+        "headSha": {
+          "$ref": "#/definitions/sha"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "integration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "passed",
+            "failed"
+          ]
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        },
+        "logPath": {
+          "type": "string"
+        },
+        "failedScenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/integrationRun"
+          }
+        }
+      }
+    },
+    "integrationRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "running",
+            "passed",
+            "failed"
+          ]
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        },
+        "logPath": {
+          "type": "string"
+        },
+        "failedScenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'vitest'
+import { designerPrompt, implementerPrompt, verifierPrompt, REPORT_SCHEMA_TEXT } from './prompt.mjs'
+
+const brief = {
+  id: 'fix-thing',
+  title: 'fix the thing',
+  area: 'ts',
+  difficulty: 'easy',
+  goal: 'make the thing work',
+  facts: ['thing breaks on empty input'],
+  criteria: [{ id: 'c1', cmd: 'npx vitest run thing', expect: 'exit 0' }],
+  allowedFiles: ['packages/core/src/thing.ts'],
+  outOfScope: ['apps/desktop/**'],
+  scenarios: ['thing-scenario'],
+}
+const rules = 'RULE: no Co-Authored-By trailers'
+const sha = 'a'.repeat(40)
+
+describe('implementerPrompt', () => {
+  const args = { persona: '# Implementer persona', rules, brief, branch: 'orch/fix-thing-1', baseBranch: 'next', reportPath: 'orchestration/reports/fix-thing.json' }
+
+  it('includes persona, rules, brief, branch and report contract', () => {
+    const p = implementerPrompt({ ...args, cloud: true })
+    for (const s of ['# Implementer persona', rules, 'npx vitest run thing', 'exit 0', 'packages/core/src/thing.ts', 'apps/desktop/**',
+      'git checkout -b orch/fix-thing-1', 'pnpm install --frozen-lockfile', 'npm run check:quick',
+      'git add -f orchestration/reports/fix-thing.json', 'git push -u origin orch/fix-thing-1', REPORT_SCHEMA_TEXT]) {
+      expect(p).toContain(s)
+    }
+  })
+
+  it('skips install and branch creation for a local worktree', () => {
+    const p = implementerPrompt({ ...args, cloud: false })
+    expect(p).not.toContain('pnpm install')
+    expect(p).not.toContain('git checkout -b')
+    expect(p).toContain('git push -u origin orch/fix-thing-1')
+  })
+})
+
+describe('verifierPrompt', () => {
+  it.each(['tests', 'spec', 'break', 'desktop'])('%s prompt carries schema, headSha and verdict path', (kind) => {
+    const p = verifierPrompt({ persona: '# V', kind, brief, headSha: sha, verdictPath: `orchestration/verdicts/fix-thing-1-${kind}.json`, schemaText: '{"VERDICT_SCHEMA":1}' })
+    expect(p).toContain('{"VERDICT_SCHEMA":1}')
+    expect(p).toContain(sha)
+    expect(p).toContain(`orchestration/verdicts/fix-thing-1-${kind}.json`)
+    expect(p).toContain('JSON only')
+  })
+
+  it('tests kind lists every criterion command and spec kind diffs against base', () => {
+    expect(verifierPrompt({ persona: '', kind: 'tests', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('npx vitest run thing')
+    expect(verifierPrompt({ persona: '', kind: 'spec', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('git diff next...HEAD')
+  })
+
+  it('spec and break prompts treat the report commit as required, implementer adds tests only in allowed files', () => {
+    for (const kind of ['spec', 'break']) {
+      expect(verifierPrompt({ persona: '', kind, brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain(`orchestration/reports/${brief.id}.json\` is the implementer's required report commit`)
+    }
+    expect(implementerPrompt({ persona: '', rules, brief, branch: 'b', baseBranch: 'next', reportPath: 'r' })).toContain('Add tests only inside the allowed files; if no test file is allowed, do not create one.')
+    expect(verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('thing-scenario')
+  })
+
+  it('rejects an unknown kind', () => {
+    expect(() => verifierPrompt({ persona: '', kind: 'nope', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toThrow()
+  })
+})
+
+describe('designerPrompt', () => {
+  it('includes rules, brief and design path', () => {
+    const p = designerPrompt({ persona: '# D', rules, brief, designPath: 'orchestration/designs/fix-thing-claude.md' })
+    expect(p).toContain(rules)
+    expect(p).toContain('make the thing work')
+    expect(p).toContain('orchestration/designs/fix-thing-claude.md')
+  })
+})

@@ -24,3 +24,15 @@ apps/desktop/bundle-cache/
 .claude/worktrees/
 # Native browser build output and SDK cache
 apps/desktop/native-bin/
+
+# orchestration runtime data
+orchestration/briefs/
+orchestration/ledger*.json
+orchestration/decisions.tsv
+orchestration/followups.tsv
+orchestration/reports/
+orchestration/verdicts/
+orchestration/designs/
+orchestration/logs/
+# the conductor guide is part of the system, unlike other CLAUDE.md files
+!orchestration/CLAUDE.md
