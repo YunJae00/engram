@@ -1,0 +1,37 @@
+{
+  "id": "ui-live-final2-20261106",
+  "status": "done",
+  "headSha": "006790a292df3e49695da49312fcc9629567bfe1",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs",
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs: card press closes workspace menu and model picker",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: drag leaves no text selection",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: chosen spot returns after window shrink and regrow",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: chosen spot returns after stack grows and goes away"
+  ],
+  "commandsRun": [
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay --build (new assertions against unfixed previewDrag.ts, negative check)", "exit": 1 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The Feature Map half of criterion break-regressions-and-map is not met here: orchestration/features/MAP.md is outside the allowed files and has no ui-live-overlay row; the brief assigns that row to B.",
+    "origin/next was 66dba87 when this ran, not 55c1d7d as the design states; the branch is based on 66dba87 and the cherry-pick applied cleanly.",
+    "orchestration/verdicts/ui-live-20261106-1-spec.json and -break.json and the tmp/break repro scenarios are not present in this worktree, so the two break repros were not rerun; the same behaviours are asserted in ui-live-overlay.mjs instead.",
+    "No unit test for clampPreview: apps/desktop/test/previewDrag.test.ts from c4d0a1a is outside the allowed files and was dropped.",
+    "The second-pointer guard and a chat smaller than the card plus stack are not asserted by the scenario."
+  ]
+}
