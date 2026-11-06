@@ -87,13 +87,16 @@ export async function run(page, { app, paths, expect, openActivity, log }) {
       window.on('blur', guard.onBlur)
       return guard
     })
-    // A hidden launch leaves macOS treating the test process as a background app that cannot take focus.
-    await app.evaluate(async ({ app }) => {
-      if (process.platform !== 'darwin') return
-      app.setActivationPolicy('regular')
-      await app.dock.show()
-      app.show()
-    })
+    // A hidden launch leaves macOS treating the test process as a background app that cannot take focus,
+    // and a never-shown X11 window paints no frames, so screenshots hang until it is mapped.
+    await app.evaluate(async ({ app }, { window }) => {
+      if (process.platform === 'darwin') {
+        app.setActivationPolicy('regular')
+        await app.dock.show()
+        app.show()
+      }
+      if (!window.isVisible()) window.show()
+    }, ctx.guard)
     for (const size of sizes) {
       await page.setViewportSize(size)
       await openActivity(page, 'bots')
