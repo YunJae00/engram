@@ -1,0 +1,28 @@
+{
+  "id": "ui-polish-cloud-20261106",
+  "attempt": 1,
+  "kind": "tests",
+  "verdict": "pass",
+  "headSha": "302bb92ee00ee2c3c953f2182927f9c8d26486ea",
+  "evidence": [
+    {
+      "criterion": "check-quick",
+      "cmd": "xvfb-run -a npm run check:quick",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-tests-check-quick.log",
+      "result": "exit 0: tsc core and desktop clean, eslint clean, vitest unit --changed origin/main found no test files (exit 0), todo-scan clean, css-orphan-scan clean (9 cosmetic dead modifiers reported, non-blocking). Fresh pnpm install --frozen-lockfile exit 0 (orchestration/logs/ui-polish-cloud-20261106-1-tests-install.log)."
+    },
+    {
+      "criterion": "real-focused-visual",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-tests-real-focused-visual.log",
+      "result": "exit 0, ok true, 31064 ms, 20 evidence entries, 0 errors. Desktop app rebuilt with --build then launched serially under Xvfb. Widths 1280x840 and 620x640 both exercised in light and dark themes; sidebar check 'two independent folders and unfiled avatar/preview rows' passed at both widths. Every contrast capture reported nativeFocused true (generations 0 and 1, focus guard self-check passed): .sidebar-conversation-name ratio 14.78-14.80, .sidebar-work-status 5.32, .bots-memory-title 16.10, .bots-memory-empty 5.77 (minimum ratio 5.32). 'long content after reload and bot switch' passed at 1280 and 620; 'focused sidebar and composer memory after reload' dark 1280 passed; 'renderer errors' empty. Internal run log tmp/verify-cli/ui-chat-polish-2026-11-06T14-52-24-136Z.log."
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status'",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-tests-regressions-and-relevant-controls.log",
+      "result": "chain exit 0, all scenarios serial on the build from the previous step and reporting ok true: check:quick exit 0; boot ok true 2068 ms (shell, topbar, bots-view visible, title Engram); cosmos ok true 10175 ms (sky-view brain-graph and cosmos-chat, collapse and Ask your memory); note-open ok true 10065 ms (star n-hello-0001 opened note-sheet, Escape closed); ui-activity-status ok true 24225 ms (persisted history tools hidden with text preserved, reduced-motion states). No \"ok\":false anywhere in the log."
+    }
+  ],
+  "findings": []
+}
