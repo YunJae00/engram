@@ -1,0 +1,28 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 1,
+  "kind": "tests",
+  "verdict": "pass",
+  "headSha": "ca7402801b47fa2e15274fe8a213dbdaf37b480f",
+  "evidence": [
+    {
+      "criterion": "check-quick",
+      "cmd": "npm run check:quick",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-tests-check-quick.log",
+      "result": "exit 0; tsc core and desktop clean, eslint clean, unit vitest 1 file 2 tests passed (sidebar-collection), todo-scan clean, css-orphan-scan clean (8 pre-existing cosmetic dead modifiers reported, none in allowed files)"
+    },
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-tests-integrated-real-motion.log",
+      "result": "exit 0; ok true in 64522ms on a fresh desktop build under Xvfb. 77 evidence entries, 0 with pass false, 0 renderer pageerrors. Covered: create menu retained before first open; native entry+exit motion measured on create menu, folder form, session rows, folder rows, disclosure and delete dialog under both no-preference and reduce; escape/outside-focus/single-submit/reopen; thread-to-thread, thread-to-new-chat and new-chat-to-thread; delete backdrop blocks and escape closes; long-history (40+ turn) motion for empty-to-long, long-to-long first visit and cached revisit, long-to-new-chat, wheel-up during long motion survives, resize during long motion keeps destination; reverse-order concurrent folder sessions and old rejection after newer form keeps editor; timed trusted double clicks at 0/60/120/180/240ms delays all last-click-wins; real B-C-A sequence ends on A with zero snapshot/owned residue; synthetic pair plus sixty-click storm handled in order; reduce preference mid-session, mid-menu and mid-form exit; twenty-one toggles with tab and outside click keep destination action; create menu inside viewport at 620/400/1280 widths; open menu row removed and sixteen search reversals leave no ghosts; three-hundred-row filter round trip; routine mode keeps new chat absent; reload with open form, menu and session exit then activity round-trips with no errors"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-tests-no-regressions.log",
+      "result": "exit 0; check:quick clean again; ui-activity-status ok true (24071ms) with persisted history toolsHidden true and textPreserved true, singleEvolvingStatus true and clearedOnDoneAndReload true under both no-preference and reduce, so no repeated text and no persistent tool activity; boot ok true (1865ms); cosmos ok true (9834ms); note-open ok true (9890ms); each scenario reused the build from the integrated-real-motion run"
+    }
+  ],
+  "findings": []
+}
