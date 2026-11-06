@@ -1,0 +1,67 @@
+{
+  "id": "ui-polish-last-20261106",
+  "status": "done",
+  "headSha": "23bffb82b3df0a265cc1d53e7bc5f692573d565f",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs",
+    "native Electron focus and rendered sidebar name/footer contrast in light/dark themes at 1280 and 620",
+    "composer memory toggle and rendered title/empty-state contrast in light/dark themes at 1280 and 620"
+  ],
+  "commandsRun": [
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish --build",
+      "exit": 1
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish --build",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "openQuestions": [
+    "Limitation: the reference microphone is absent; no decorative microphone or new dictation feature was introduced. Earlier visual attempts failed native window activation; the final unchanged strict focus and contrast checks passed."
+  ]
+}
