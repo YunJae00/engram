@@ -2,6 +2,7 @@
 // node scripts/verify-cli.mjs <scenario> [--build] [--root <dir>] | --list
 // --root picks the checkout whose build, node_modules and tmp/verify-cli are used; scenarios come from this repo.
 // Launches the built desktop app on a fresh vault, runs one scenario, prints one JSON line.
+// A scenario may export `launch`: `env` adds variables to the app's environment, `seed(core, paths)` fills the vault before launch.
 import { createWriteStream, existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -42,6 +43,7 @@ async function launch(name, log) {
   const core = await import(pathToFileURL(join(REPO, 'packages/core/src/index.ts')).href)
   const nav = await import(pathToFileURL(join(DESKTOP, 'e2e/navigation.ts')).href)
   const scenario = await import(pathToFileURL(join(SCENARIO_DIR, `${name}.mjs`)).href)
+  const launchWith = scenario.launch ?? {}
 
   const root = await mkdtemp(join(OUT_DIR, `${name}-vault-`))
   const userData = await mkdtemp(join(OUT_DIR, `${name}-userdata-`))
@@ -50,6 +52,7 @@ async function launch(name, log) {
   await core.createNote(paths, { id: 'n-hello-0001', body: '# Hello note\n\nThe very first note.' })
   await core.createNote(paths, { id: 'n-argo-0001', body: '# Argo redesign\n\nThe umbrella decision.' })
   await core.createNote(paths, { id: 'n-argo-0002', body: '# Argo palette\n\nColor decisions.', derived_from: ['n-argo-0001'] })
+  if (launchWith.seed) await launchWith.seed(core, paths)
 
   pendingLaunch = _electron.launch({
     args: [MAIN_ENTRY, '--no-sandbox'],
@@ -61,6 +64,7 @@ async function launch(name, log) {
       ENGRAM_NO_AUTOTIDY: '1',
       ENGRAM_ENGINE: 'none',
       ENGRAM_HIDDEN: '1',
+      ...(launchWith.env ?? {}),
     },
   })
   const app = await pendingLaunch
