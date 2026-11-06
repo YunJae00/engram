@@ -1,0 +1,81 @@
+name: Desktop smoke
+
+# The desktop smoke the orchestrator used to run on a local Mac after a release:
+# boot, note-open, cosmos and ui-activity-status through scripts/verify-cli.mjs.
+# The Release workflow calls it; run it on demand from the Actions tab.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or SHA to smoke (empty = the selected branch)
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - .github/workflows/smoke.yml
+      - scripts/verify-cli.mjs
+      - scripts/verify-cli-args.mjs
+      - scripts/verify-scenarios/**
+
+concurrency:
+  group: smoke-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: desktop smoke (macOS)
+    runs-on: macos-26-intel
+    timeout-minutes: 35
+    env:
+      SCENARIOS: boot note-open cosmos ui-activity-status
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 15
+      - name: Build desktop
+        run: pnpm --filter desktop build
+        timeout-minutes: 10
+      - name: Run smoke scenarios
+        shell: bash
+        run: |
+          mkdir -p tmp
+          failed=()
+          {
+            echo '| scenario | result | evidence |'
+            echo '| --- | --- | --- |'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for scenario in $SCENARIOS; do
+            echo "::group::$scenario"
+            if node scripts/verify-cli.mjs "$scenario" > "tmp/smoke-$scenario.json"; then status=pass; else status=fail; failed+=("$scenario"); fi
+            cat "tmp/smoke-$scenario.json"
+            echo '::endgroup::'
+            evidence=$(node -e 'try { const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8").trim().split("\n").pop()); console.log(JSON.stringify(r.evidence ?? "").slice(0, 200).replace(/\|/g, "/")) } catch { console.log("no JSON line") }' "tmp/smoke-$scenario.json")
+            echo "| $scenario | $status | $evidence |" >> "$GITHUB_STEP_SUMMARY"
+            [ "$status" = pass ] || echo "::error title=desktop smoke failed::$scenario: $evidence"
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "failed: ${failed[*]}"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-smoke-${{ github.run_attempt }}
+          path: |
+            tmp/smoke-*.json
+            tmp/verify-cli/*.log
+          if-no-files-found: ignore
+          retention-days: 14

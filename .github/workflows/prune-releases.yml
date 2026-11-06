@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   prune:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Delete every release but the newest few

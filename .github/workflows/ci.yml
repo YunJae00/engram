@@ -34,6 +34,8 @@ jobs:
       matrix:
         os: [windows-latest, macos-26-intel]
     runs-on: ${{ matrix.os }}
+    # A healthy run takes about 10 minutes; a hung install must not hold a runner for an hour.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +46,7 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: npm run check
       # The model catalogue points at someone else's server; a renamed file
       # there is a 404 the first user with that much RAM discovers.
@@ -53,6 +56,7 @@ jobs:
     name: typecheck · lint · unit
     needs: check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require checks on both operating systems
         env:
@@ -68,6 +72,8 @@ jobs:
       matrix:
         os: [windows-latest, macos-26-intel]
         shard: [1, 2, 3, 4]
+    # Shards take 6-15 minutes; the slowest Windows shard sets this bound.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +84,7 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -91,6 +98,7 @@ jobs:
     name: end-to-end (Electron)
     needs: e2e-shards
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require every shard to pass
         env:

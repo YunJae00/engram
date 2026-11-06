@@ -9,7 +9,7 @@ A session started in this folder is the Conductor, whichever agent runs it. A se
 3. **Brief and run.** Write one `briefs/<id>.json` per item (schema in `schemas/brief.schema.json`, no fix instructions, facts as structure only, never personal content from logs), `node run.mjs add briefs/<id>.json`, then `node run.mjs run` in the background. Report one line only when an item's state changes (`node run.mjs status`).
 4. **Choose a design.** When a hard item is `designing` and both designs are in `designs/`, first add every risk either design lists to the brief's `criteria` as a command with its expected result, so the concerns of the design that loses are still checked. Then pick the design that meets more of the merged criteria with `node run.mjs design <id> --pick`. The size of the change is not a reason to pick a design.
 5. **New scenarios** needed for a completion criterion are added by a verifier (desktop persona), never by an implementer. Add the scenario under `scripts/verify-scenarios/` through a verifier run before briefing the item that needs it, and add its row to `orchestration/features/MAP.md` in that same change.
-6. **Close.** When the run ends, read `reports/summary-<batch>.md` and report: what changed, the evidence table per criterion, items left out and why, patch or minor. Ask exactly one question: release? On yes run `node run.mjs release --bump patch|minor` and report where the installer is (the Release workflow assets).
+6. **Close.** When the run ends, read `reports/summary-<batch>.md` and report: what changed, the evidence table per criterion, items left out and why, patch or minor. Ask exactly one question: release? On yes run `node run.mjs release --bump patch|minor`, then `node run.mjs smoke`. Do not run the desktop smoke on this machine: the Release workflow's `smoke` job (`.github/workflows/smoke.yml`: `boot`, `note-open`, `cosmos`, `ui-activity-status` through `scripts/verify-cli.mjs` on a macOS runner) runs it, and `smoke` waits for that job and exits non-zero unless it passed. Report its result with the run URL, and where the installer is (the Release workflow assets). The Release is published only after that job passes; when it fails, report the failing scenarios from the job summary and stop. To smoke any branch or tag on demand, run the Desktop smoke workflow from the Actions tab (`workflow_dispatch`).
 
 ## Brief patterns
 
@@ -23,6 +23,7 @@ Go deep on one proof, then the ladder may run implementers in parallel. These ar
 ## Rules the Conductor keeps
 
 - All state lives in `ledger.json`, `decisions.tsv`, `followups.tsv`, `reports/`, `verdicts/`. Nothing depends on this session's memory; a restarted `run.mjs` continues from the files.
+- Every role has a deadline (`minutes` in `roles.md`). A role that passes it with nothing pushed is relaunched once as a fresh session on its own branch; a second timeout is a `timeout` outcome and the item moves on. Whatever a timed-out or superseded session pushes later is never read.
 - A verdict is void once a newer commit exists on the item's branch. A PASS with empty evidence is void. A finding without a reproduction command goes to `followups.tsv`, it never blocks.
 - A FAIL never goes back to the same agent. The ladder in `roles.md` picks the next implementer, who receives the findings of every earlier attempt. A second FAIL sets the chosen design aside and the item is designed again with those findings. After the ladder is exhausted the item is `needs_human`.
 - When an item comes back as `needs_human`, read its verdicts before briefing it again, and turn each finding into a criterion of the new brief.
@@ -41,4 +42,5 @@ node run.mjs integrate                                     rerun integration onc
 node run.mjs status                                        table of items and states
 node run.mjs design <id> --pick claude|codex               choose the design of a hard item in `designing`
 node run.mjs release --bump patch|minor                    bump both package.json files on next, fast-forward main, tag
+node run.mjs smoke [--tag vX.Y.Z]                          wait for the Release workflow's desktop smoke job (default: main's version), exit 1 unless it passed
 ```

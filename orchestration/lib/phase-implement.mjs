@@ -1,10 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { changedFiles, fetchBranch, fileAtRef, lsRemote, tipSha } from './git.mjs'
+import { changedFiles, deleteRemoteBranch, fetchBranch, fileAtRef, lsRemote, tipSha } from './git.mjs'
 import { readTokens } from './launch-local.mjs'
 import { isHard, transition } from './ledger.mjs'
 import {
-  deadlineAt, designLocations, designPath, findDesign, isStalled, lineage, machineCheck, needsRedesign, pickDesign, plannedAttempts,
+  deadlineAt, designLocations, designPath, findDesign, lineage, machineCheck, needsRedesign, pickDesign, plannedAttempts,
   rejectedDesignPath,
 } from './loop.mjs'
 import { runnable } from './overlap.mjs'
@@ -14,6 +14,7 @@ import {
   attemptRef, briefPath, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, linkNodeModules, loadBrief, loadJobs,
   note, persona, previousFindings, readJsonOrNull, releaseSlot, reportPath, RULES, save, saveJobs, schema, slotFree,
 } from './runtime.mjs'
+import { implementTimeout, roleMinutes, timedOut } from './timebox.mjs'
 import { validate } from './validate.mjs'
 
 const DESIGNERS = { claude: 'claude-local', codex: 'codex-local' }
@@ -66,7 +67,7 @@ async function launchDesigner(ctx, item, line, agent, tries) {
     findings: previousFindings(ctx, item), rejectedDesign: existsSync(rejected) ? readFileSync(rejected, 'utf8') : null,
   })
   const launched = await launchAgent(ctx, {
-    agent, label, cwd: worktree, prompt, role: 'design', minutes: ctx.roles.minutes.design, addDirs: [dirname(target)],
+    agent, label, cwd: worktree, prompt, role: 'design', minutes: roleMinutes(ctx.roles, 'design'), addDirs: [dirname(target)],
   })
   if (!launched) {
     await dropWorktree(ctx, worktree)
@@ -164,17 +165,19 @@ function withDesign(ctx, prompt, brief) {
   return path && existsSync(path) ? `${prompt}\n\n## Design (chosen)\n${readFileSync(path, 'utf8')}` : prompt
 }
 
-async function launchImplementer(ctx, ledger, item, brief, step) {
+async function launchImplementer(ctx, ledger, item, brief, step, relaunch = null) {
   const n = item.attempts.length + 1
   const branch = `${ctx.roles.branchPrefix}${item.id}-${n}`
   const label = `${item.id}-${n}`
   const cloud = isCloud(step.implementer)
+  const minutes = roleMinutes(ctx.roles, 'implement')
   const prompt = withDesign(ctx, implementerPrompt({
     persona: persona(ctx, 'implementer'), rules: RULES, brief, branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id), cloud,
-    findings: previousFindings(ctx, item),
+    findings: previousFindings(ctx, item), minutes,
   }), brief)
   const attempt = { n, implementer: step.implementer, verifier: step.verifier, branch, startedAt: new Date().toISOString() }
-  attempt.deadlineAt = deadlineAt(attempt.startedAt, ctx.roles.minutes.implement)
+  attempt.deadlineAt = deadlineAt(attempt.startedAt, minutes)
+  if (relaunch) Object.assign(attempt, relaunch)
   item.attempts.push(attempt)
   try {
     let worktree
@@ -186,12 +189,12 @@ async function launchImplementer(ctx, ledger, item, brief, step) {
       linkNodeModules(ctx.root, worktree)
       attempt.worktree = worktree
     }
-    const job = await launchAgent(ctx, { agent: step.implementer, label, cwd: worktree, prompt, role: 'implement', minutes: ctx.roles.minutes.implement })
+    const job = await launchAgent(ctx, { agent: step.implementer, label, cwd: worktree, prompt, role: 'implement', minutes })
     if (!job) throw new Error('no free local slot')
     Object.assign(attempt, { logPath: job.logPath, startedAt: job.startedAt, deadlineAt: job.deadlineAt })
     if (job.sessionId) attempt.sessionId = job.sessionId
     if (job.pid) attempt.pid = job.pid
-    note(ctx, item.id, 'implement', `launch ${step.implementer} attempt ${n}`, `rung ${item.bounces}`, job.sessionId ?? job.logPath)
+    note(ctx, item.id, 'implement', `launch ${step.implementer} attempt ${n}`, `rung ${item.bounces}${relaunch ? `, relaunch ${relaunch.launch} of attempt ${relaunch.relaunchOf}` : ''}`, job.sessionId ?? job.logPath)
     save(ctx, ledger)
   } catch (error) {
     await finish(ctx, attempt, 'invalid')
@@ -239,12 +242,11 @@ export async function checkImplementation(ctx, ledger, item, attempt) {
     text = await fileAtRef(ctx.opts, ref, path)
   }
   if (!text) {
-    const exited = !cloud && !alive(attempt.pid)
-    if (exited || isStalled(attempt.deadlineAt, new Date(), false)) {
-      await finish(ctx, attempt, exited ? 'invalid' : 'stalled')
-      note(ctx, item.id, 'implement', `attempt ${attempt.n} ${attempt.outcome}`, exited ? 'process exited without a report' : 'deadline passed without a report', attempt.logPath)
+    if (!cloud && !alive(attempt.pid)) {
+      await finish(ctx, attempt, 'invalid')
+      note(ctx, item.id, 'implement', `attempt ${attempt.n} invalid`, 'process exited without a report', attempt.logPath)
       save(ctx, ledger)
-    }
+    } else if (timedOut(attempt.deadlineAt)) await timeoutImplementation(ctx, ledger, item, attempt)
     return
   }
   const report = readJsonText(text)
@@ -268,6 +270,24 @@ export async function checkImplementation(ctx, ledger, item, attempt) {
     transition(item, 'verifying')
   }
   note(ctx, item.id, 'verify', 'verifying', `attempt ${attempt.n} by ${attempt.implementer}, verifier ${attempt.verifier}`, tip)
+  save(ctx, ledger)
+}
+
+// The timed-out session may still push later; its branch is deleted and never read again.
+export async function timeoutImplementation(ctx, ledger, item, attempt) {
+  const next = implementTimeout(attempt, ctx.roles)
+  await finish(ctx, attempt, 'timeout')
+  await dropWorktree(ctx, attempt.worktree)
+  await deleteRemoteBranch(ctx.opts, attempt.branch).catch(() => null)
+  await git(ctx.root, 'branch', '-D', attempt.branch).catch(() => null)
+  const why = `no report ${roleMinutes(ctx.roles, 'implement')} min after launch ${attempt.launch ?? 1}`
+  if (next.action === 'timeout') {
+    note(ctx, item.id, 'implement', `attempt ${attempt.n} timeout`, `${why}; no relaunch left`, attempt.sessionId ?? attempt.logPath)
+    return save(ctx, ledger)
+  }
+  note(ctx, item.id, 'implement', `attempt ${attempt.n} timeout`, `${why}; relaunching as a fresh session`, attempt.sessionId ?? attempt.logPath)
+  const step = { implementer: attempt.implementer, verifier: attempt.verifier }
+  await launchImplementer(ctx, ledger, item, loadBrief(ctx, item.id), step, { launch: next.launch, relaunchOf: attempt.n })
   save(ctx, ledger)
 }
 

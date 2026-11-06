@@ -4,12 +4,14 @@ import { checkVerdict } from './aggregate.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
+import { alive } from './procs.mjs'
 import { verifierPrompt } from './prompt.mjs'
 import {
-  attemptRef, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, loadBrief, loadJobs, note, persona,
+  attemptRef, dropWorktree, freshDetached, git, isCloud, kill, launchAgent, loadBrief, loadJobs, note, persona,
   readJsonOrNull, releaseSlot, save, saveJobs, schema,
 } from './runtime.mjs'
 import { finish, rejectDesign } from './phase-implement.mjs'
+import { maxLaunches, ownVerdict, roleMinutes, timeoutVerdict, verdictBranch, verifierTick } from './timebox.mjs'
 
 const label = (item, attempt, kind) => `${item.id}-${attempt.n}-${kind}`
 const verdictRel = (item, attempt, kind) => `orchestration/verdicts/${item.id}-${attempt.n}-${kind}.json`
@@ -28,22 +30,21 @@ function parseVerdict(job, worktreeFile, cloudVerdict) {
   }
 }
 
-function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null) {
+function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null, timeoutReason = null) {
   kill(job.pid)
   releaseSlot(ctx, job.pid)
-  const raw = parseVerdict(job, job.worktree ? join(job.worktree, verdictRel(item, attempt, kind)) : null, cloudVerdict)
-  const checked = raw ? checkVerdict(raw, schema(ctx, 'verdict')) : { valid: false, reason: 'no verdict produced' }
+  const raw = timeoutReason ? null : parseVerdict(job, job.worktree ? join(job.worktree, verdictRel(item, attempt, kind)) : null, cloudVerdict)
+  const checked = raw ? checkVerdict(raw, schema(ctx, 'verdict')) : { valid: false, reason: timeoutReason ?? 'no verdict produced' }
   const mismatch = raw && (raw.id !== item.id || raw.attempt !== attempt.n || raw.kind !== kind || raw.headSha !== job.headSha)
   const reason = !checked.valid ? checked.reason : mismatch ? 'verdict id/attempt/kind/headSha does not match the job' : null
-  const verdict = reason
-    ? { id: item.id, attempt: attempt.n, kind, verdict: 'cannot_verify', headSha: job.headSha, evidence: [], findings: [] }
-    : raw
+  const verdict = reason ? timeoutVerdict({ id: item.id, attempt: attempt.n, kind, headSha: job.headSha }) : raw
   const rel = verdictRel(item, attempt, kind).replace(/\.json$/, job.tries > 1 ? `-r${job.tries}.json` : '.json')
   mkdirSync(join(ctx.root, 'orchestration/verdicts'), { recursive: true })
   writeFileSync(join(ctx.root, rel), `${JSON.stringify(verdict, null, 2)}\n`)
   item.verdicts.push({ attempt: attempt.n, kind, verdict: verdict.verdict, headSha: verdict.headSha, path: rel })
   job.done = true
   job.path = rel
+  if (timeoutReason) job.timedOut = true
   note(ctx, item.id, 'verify', `${kind} ${verdict.verdict}`, reason ?? `attempt ${attempt.n}`, rel)
   save(ctx, ledger)
 }
@@ -54,14 +55,15 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
   const worktree = cloud ? null : join(ctx.worktrees, name)
   if (worktree) await freshDetached(ctx, worktree, attempt.headSha)
   const verdictPath = verdictRel(item, attempt, kind)
-  const verdictBranch = `orch/verdicts/${name}`
+  const branch = verdictBranch(name, tries)
+  const minutes = roleMinutes(ctx.roles, 'verify', kind)
   const prompt = verifierPrompt({
     persona: persona(ctx, `verifier-${kind}`), kind, brief: loadBrief(ctx, item.id), headSha: attempt.headSha, verdictPath,
     schemaText: readFileSync(join(ctx.orch, 'schemas/verdict.schema.json'), 'utf8'), attempt: attempt.n, baseBranch: ctx.base,
-    cloud, verdictBranch,
+    cloud, verdictBranch: branch, minutes,
   })
   const launched = await launchAgent(ctx, {
-    agent: attempt.verifier, label: name, cwd: worktree, prompt, role: 'verify', minutes: ctx.roles.minutes.verify,
+    agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', minutes,
     schemaPath: join(ctx.orch, 'schemas/verdict.schema.json'),
   })
   if (!launched) {
@@ -69,16 +71,16 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
     return null
   }
   note(ctx, item.id, 'verify', `launch ${attempt.verifier} ${kind}`, `attempt ${attempt.n} try ${tries}`, launched.logPath)
-  return { ...launched, worktree, tries, headSha: attempt.headSha, ...(cloud ? { verdictBranch } : {}) }
+  return { ...launched, worktree, tries, headSha: attempt.headSha, ...(cloud ? { verdictBranch: branch } : {}) }
 }
 
-async function cloudVerdict(ctx, job, path) {
+// Reads only this launch's branch; a verdict for another item, attempt, kind or commit is not this job's.
+async function cloudVerdict(ctx, job, path, expected) {
   if (!job.verdictBranch || !job.sessionId) return null
-  if (job.deadlineAt && Date.now() > Date.parse(job.deadlineAt)) return null
   try {
     await fetchBranch(ctx.opts, job.verdictBranch)
     const text = await fileAtRef(ctx.opts, `${ctx.opts.remote}/${job.verdictBranch}`, path)
-    return text ? JSON.parse(text) : null
+    return text ? ownVerdict(JSON.parse(text), expected) : null
   } catch {
     return null
   }
@@ -124,13 +126,21 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
     }
     if (!job.done) {
       const path = verdictRel(item, attempt, kind)
-      const result = job.verdictBranch ? await cloudVerdict(ctx, job, path) : readJsonOrNull(join(job.worktree, path))
-      const produced = result !== null
-      if (!produced && !jobFinished(job)) {
+      const expected = { id: item.id, attempt: attempt.n, kind, headSha: job.headSha }
+      const result = job.verdictBranch ? await cloudVerdict(ctx, job, path, expected) : readJsonOrNull(join(job.worktree, path))
+      const step = verifierTick(job, { produced: result !== null, exited: !job.sessionId && !alive(job.pid), roles: ctx.roles })
+      if (step === 'wait') {
         pending = true
         continue
       }
-      collect(ctx, ledger, item, attempt, kind, job, result)
+      if (step === 'relaunch') {
+        jobs[name] = await relaunchVerifier(ctx, item, attempt, kind, job)
+        saveJobs(ctx, jobs)
+        pending = true
+        continue
+      }
+      const timeout = step === 'timeout' ? `timed out after ${job.tries ?? 1} launch(es) of ${roleMinutes(ctx.roles, 'verify', kind)} min` : null
+      collect(ctx, ledger, item, attempt, kind, job, result, timeout)
       if (job.worktree) await dropWorktree(ctx, job.worktree)
     }
     tries[kind] = job.tries
@@ -138,7 +148,7 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   }
   saveJobs(ctx, jobs)
   if (pending) return
-  const decision = verifyDecision(byKind, tip, tries)
+  const decision = verifyDecision(byKind, tip, tries, maxLaunches(ctx.roles))
   if (decision.action === 'retry') {
     for (const kind of decision.kinds) jobs[label(item, attempt, kind)].retry = true
     saveJobs(ctx, jobs)
@@ -152,8 +162,9 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   for (const f of decision.followups) followup(ctx.root, f)
   const evidence = Object.values(jobs).filter((j) => j.headSha === tip && j.path).map((j) => j.path).join(' ')
   if (decision.action === 'needs_human') {
-    await finish(ctx, attempt, 'invalid')
-    item.reason = 'cannot_verify after one retry'
+    const slow = Object.keys(byKind).filter((kind) => jobs[label(item, attempt, kind)]?.timedOut)
+    await finish(ctx, attempt, slow.length ? 'timeout' : 'invalid')
+    item.reason = slow.length ? `${slow.join(',')} verifier timed out ${maxLaunches(ctx.roles)} times` : 'cannot_verify after one retry'
     note(ctx, item.id, 'verify', 'needs_human', item.reason, evidence)
     await supersede(ctx, item, item.attempts.filter((a) => !a.outcome))
     transition(item, 'needs_human')
@@ -162,6 +173,17 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   await finish(ctx, attempt, decision.action)
   note(ctx, item.id, 'verify', `attempt ${attempt.n} ${decision.action}`, `aggregate of ${Object.keys(byKind).join(',')}`, evidence)
   save(ctx, ledger)
+}
+
+// The timed-out session keeps running in the cloud; its branch is simply never read again.
+async function relaunchVerifier(ctx, item, attempt, kind, job) {
+  kill(job.pid)
+  releaseSlot(ctx, job.pid)
+  await dropWorktree(ctx, job.worktree)
+  const tries = (job.tries ?? 1) + 1
+  note(ctx, item.id, 'verify', `${kind} timeout`, `attempt ${attempt.n} try ${job.tries ?? 1} passed its deadline; fresh session as try ${tries}`, job.sessionId ?? job.logPath)
+  const launched = await launchVerifier(ctx, item, attempt, kind, tries)
+  return launched ?? { ...job, retry: true, tries: tries - 1 }
 }
 
 export async function dropBranch(ctx, attempt) {

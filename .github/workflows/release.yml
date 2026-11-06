@@ -19,6 +19,13 @@ jobs:
     with:
       ref: ${{ github.event.inputs.tag || github.ref }}
 
+  # Runs beside the installer build, so it adds no time unless it is slower than the build.
+  smoke:
+    needs: validate
+    uses: ./.github/workflows/smoke.yml
+    with:
+      ref: ${{ github.event.inputs.tag || github.ref }}
+
   build:
     needs: validate
     strategy:
@@ -30,6 +37,8 @@ jobs:
           - os: macos-26-intel
             name: macos
     runs-on: ${{ matrix.os }}
+    # The macOS installer build takes about 18 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,6 +49,7 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
       - name: Import signing certificate
         if: ${{ runner.os == 'macOS' }}
         uses: ./.github/actions/import-macos-signing
@@ -72,8 +82,9 @@ jobs:
         run: security delete-keychain "$ENGRAM_MAC_SIGN_KEYCHAIN"
 
   publish:
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/download-artifact@v4
         with:

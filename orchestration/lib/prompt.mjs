@@ -13,6 +13,7 @@ All keys are required. No other keys.`
 
 const DESKTOP_BUILD = 'If `apps/desktop/out/main/index.js` is missing, `node scripts/verify-cli.mjs <scenario>` builds the desktop app and later runs reuse that build. Do not append `--build`. A missing build is not `cannot_verify`.'
 const CLOUD_DESKTOP = 'You are in a Linux cloud container with no host display. Install `xvfb` with the system package manager if needed. Run Electron-related commands with `xvfb-run -a` (including any command in an `npm run check:quick && ...` chain), while preserving the exact `node scripts/verify-cli.mjs <scenario>` invocation inside it. Never report a missing X server as `cannot_verify` before trying Xvfb. Run desktop scenarios serially in your own session.'
+const timeBudget = (minutes, late) => (minutes ? [`You have ${minutes} minutes from launch. ${late} Anything pushed after that is ignored and a fresh session takes over.`] : [])
 const verifyCliCriterion = (brief) => (brief.criteria ?? []).some((c) => /(?:^|\s)scripts\/verify-cli\.mjs\s+[a-z0-9-]+/.test(c.cmd ?? ''))
 
 const VERIFIER_STEPS = {
@@ -33,6 +34,8 @@ const VERIFIER_STEPS = {
   ],
   break: (brief) => [
     `The commit adding \`orchestration/reports/${brief.id}.json\` is the implementer's required report commit; do not report it as a finding.`,
+    'The tests and desktop verifiers already run `npm run check:quick`, every criterion and every scenario. Do not rerun them; run only commands that attack the changed code.',
+    ...(briefScenarios(brief).length ? [DESKTOP_BUILD] : []),
     'Try to break the changed code: edge inputs, empty and huge values, concurrency, restart, missing files, error paths.',
     'Scratch scripts go under `tmp/` only. Do not change tracked files.',
     'Every finding must carry a `reproCmd` that you actually ran and that failed.',
@@ -86,8 +89,9 @@ function findingsBlock(findings) {
   ]
 }
 
-export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud, findings = [] }) {
+export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud, findings = [], minutes }) {
   const steps = [
+    ...timeBudget(minutes, 'If the work cannot be done by then, push the report with status `partial` or `blocked` before the deadline.'),
     ...(cloud
       ? ['Run `pnpm install --frozen-lockfile`.', `Run \`git checkout -b ${branch}\` from \`${baseBranch}\`.`]
       : [`You are already on branch \`${branch}\` (based on \`${baseBranch}\`). Do not switch branches.`]),
@@ -120,7 +124,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
   ].join('\n')
 }
 
-export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, verdictBranch = '' }) {
+export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, verdictBranch = '', minutes }) {
   const steps = VERIFIER_STEPS[kind]
   if (!steps) throw new Error(`unknown verifier kind: ${kind}`)
   return [
@@ -128,10 +132,11 @@ export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, sch
     '',
     briefBlock(brief),
     '',
-    `## Target\nVerify exact commit \`${headSha}\`. ${cloud ? `Start from \`${baseBranch}\`, fetch the implementation branch, and check out that commit detached. Do not modify the implementation branch. Return only your verdict as one commit on \`${verdictBranch}\`, created from the existing remote verdict branch if present or from \`${headSha}\` otherwise.` : 'The checkout is already at headSha. Do not edit, commit, push or switch branches.'}`,
+    `## Target\nVerify exact commit \`${headSha}\`. ${cloud ? `Start from \`${baseBranch}\`, fetch the implementation branch, and check out that commit detached. Do not modify the implementation branch. Return only your verdict as one commit on a new branch \`${verdictBranch}\` created from \`${headSha}\`.` : 'The checkout is already at headSha. Do not edit, commit, push or switch branches.'}`,
     '',
     '## Steps',
     numbered([
+      ...timeBudget(minutes, 'If you cannot finish by then, write and push a `cannot_verify` verdict that says what blocked you before the deadline.'),
       `Confirm \`git rev-parse HEAD\` prints \`${headSha}\`; if not, verdict \`cannot_verify\`.`,
       ...steps(brief, baseBranch),
       ...(cloud && briefScenarios(brief).length ? [CLOUD_DESKTOP] : []),
