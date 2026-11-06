@@ -63,3 +63,20 @@ export function showWebFrame(app, { lane, url, frame, title = 'Live overlay' }) 
     { type: 'agent:frame', lane, url, data: frame.data, width: frame.width, height: frame.height },
   ])
 }
+
+// Compact app frames keep the lifecycle fixtures light; a lane of them needs no web pane, mirror or desktop binding.
+export function appFrame(lane, id, frame, extra = {}) {
+  return { id, lane, title: id, at: Date.now(), data: `data:image/png;base64,${frame.data}`, captureState: 'ready', ...extra }
+}
+
+export function sendAppFrames(app, lane, ids, frame) {
+  return sendEvents(app, [{ type: 'desktop:preview', frames: ids.map(id => appFrame(lane, id, frame)) }])
+}
+
+export function sendUnavailableFrame(app, lane, id) {
+  return sendEvents(app, [{ type: 'desktop:preview', frames: [{ id, lane, title: id, at: Date.now(), unavailable: true, captureReason: 'screen_recording_denied' }] }])
+}
+
+export function solidFrame(rgb, size = { width: 320, height: 200 }) {
+  return pngFrame({ ...size, paint: () => rgb })
+}
