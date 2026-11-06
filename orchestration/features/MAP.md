@@ -6,18 +6,18 @@ Run from the repo root:
 
 ```
 node scripts/verify-cli.mjs --list
-node scripts/verify-cli.mjs <scenario>          # uses apps/desktop/out/main/index.js
-node scripts/verify-cli.mjs <scenario> --build  # builds desktop first
+node scripts/verify-cli.mjs <scenario>          # builds when apps/desktop/out/main/index.js is missing, then uses it
+node scripts/verify-cli.mjs <scenario> --build  # rebuilds desktop even when that file exists
 ```
 
-`verify-cli` launches that build on a fresh vault (`ENGRAM_ENGINE=none`, git and autotidy off, window hidden) with three notes: `n-hello-0001` ("Hello note"), `n-argo-0001`, `n-argo-0002` (derived from the first Argo note). It waits until `shell` is visible, then calls the scenario's `run(page, { app, paths, expect, openActivity, log })`. `openActivity` is `apps/desktop/e2e/navigation.ts`. The process prints one JSON line and exits 0 only when `ok` is true.
+`verify-cli` launches that build on a fresh vault (`ENGRAM_ENGINE=none`, git and autotidy off, window hidden) with three notes: `n-hello-0001` ("Hello note", happened 2026-01-15), `n-argo-0001` (2026-02-15), `n-argo-0002` (2026-03-15, derived from the first Argo note). It waits until `shell` is visible, then calls the scenario's `run(page, { app, paths, expect, openActivity, log })`. `openActivity` is `apps/desktop/e2e/navigation.ts`. The process prints one JSON line and exits 0 only when `ok` is true. A per-item criterion and the desktop verifier run the command without `--build`; the first run in a fresh worktree builds, and later scenarios in that same checkout reuse `apps/desktop/out/main/index.js`.
 
 A new scenario is a file `scripts/verify-scenarios/<name>.mjs` exporting that `run`. It returns `{ ok, evidence }`. Add its row here in the same change. The Conductor has a verifier add it; an implementer does not (`orchestration/CONDUCTOR.md`).
 
 | Surface | How to reach it | Scenario | What the scenario asserts |
 | --- | --- | --- | --- |
 | Shell / boot | Launch. Home is Comets. | `boot` | `shell`, `topbar`, `bots-view` (`App.tsx`, `TopBar.tsx`, `BotsView.tsx`) |
-| List / timeline | Engram menu → List, or `openActivity(page, 'list')` → `activity-list` | `list-filter` | `list-view` shows 3 `list-row`s; `.list-date` is newest-first (`chronoDate` in `ListView.tsx` is `happened_at` or `updated`); filter "Hello" leaves 1; the row opens `note-sheet` |
+| List / timeline | Engram menu → List, or `openActivity(page, 'list')` → `activity-list` | `list-filter` | `list-view` shows 3 `list-row`s; `.list-date` is newest-first across the three distinct `happened_at` days (`chronoDate` in `ListView.tsx` is `happened_at` or `updated`); filter "Hello" leaves 1; the row opens `note-sheet` |
 | Note open | Cosmos star, or the list row | `note-open` | `openActivity(page, 'sky')`, collapse `cosmos-chat-collapse`, click `[data-node-id="n-hello-0001"]`, `note-sheet` contains "The very first note", Escape closes it |
 | Palette | Ctrl/Cmd+P | `palette` | `palette-input` query "Hello" opens `note-editor` / `cm-host` |
 | Cosmos | Engram menu → Cosmos, or `openActivity(page, 'sky')` → `activity-sky` | `cosmos` | `sky-view`, `brain-graph` (`SkyCanvas.tsx`), `cosmos-chat`; collapse, then `cosmos-chat-open` restores `cosmos-chat-input` |
@@ -34,7 +34,7 @@ The memory graph (`brain-graph`) is part of Cosmos, proved by `cosmos` and `note
 
 These need more than the fresh three-note vault, so they stay in Playwright specs:
 
-- Pinned timeline dates (`happened_at` / `timeline: pinned`) — `apps/desktop/e2e/shell.spec.ts` ("list view: rows render chronologically"). `list-filter` only checks order of the seed's `updated` dates.
+- Pinned timeline dates (`happened_at` / `timeline: pinned`) — `apps/desktop/e2e/shell.spec.ts` ("list view: rows render chronologically"). `list-filter` checks order of the seed's distinct `happened_at` days (2026-03-15, 2026-02-15, 2026-01-15).
 - A comet's page panel (`preview-deck`) — needs a comet that has opened a page (`apps/desktop/e2e/browser-preview.spec.ts`, `live-view.spec.ts`).
 - Developers mode — `ENGRAM_DEVELOPER_FIXTURE` (`apps/desktop/e2e/developers.spec.ts`).
 - Embedded browser — Windows-only (`apps/desktop/e2e/native-browser.spec.ts`).

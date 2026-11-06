@@ -65,6 +65,23 @@ describe('verifierPrompt', () => {
     expect(verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('node scripts/verify-cli.mjs thing-scenario')
   })
 
+  it('tells scenario checks to build a missing desktop entry once and not pass --build', () => {
+    const scenarioBrief = {
+      ...brief,
+      criteria: [{ id: 'ui', cmd: 'node scripts/verify-cli.mjs thing-scenario', expect: 'exit 0 and JSON ok true' }],
+    }
+    for (const kind of ['tests', 'desktop']) {
+      const p = verifierPrompt({ persona: '', kind, brief: scenarioBrief, headSha: sha, verdictPath: 'v', schemaText: 's' })
+      expect(p).toContain('apps/desktop/out/main/index.js')
+      expect(p).toContain('Do not append `--build`')
+      expect(p).not.toContain('verify-cli.mjs thing-scenario --build')
+    }
+    const plain = verifierPrompt({ persona: '', kind: 'tests', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })
+    expect(plain).not.toContain('out/main/index.js')
+    expect(implementerPrompt({ persona: '', rules, brief: scenarioBrief, branch: 'b', baseBranch: 'next', reportPath: 'r' })).toContain('Do not append `--build`')
+    expect(implementerPrompt({ persona: '', rules, brief, branch: 'b', baseBranch: 'next', reportPath: 'r' })).not.toContain('out/main/index.js')
+  })
+
   it('desktop prompt refuses a brief that names no scenario', () => {
     const p = verifierPrompt({ persona: '', kind: 'desktop', brief: { ...brief, scenarios: [] }, headSha: sha, verdictPath: 'v', schemaText: 's' })
     expect(p).toContain('cannot_verify')

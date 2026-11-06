@@ -1,5 +1,10 @@
 import { isAbsolute, resolve } from 'node:path'
 
+// --build rebuilds even when the desktop entry exists. Otherwise build only when it is missing.
+export function needsBuild(force, entryExists) {
+  return Boolean(force) || !entryExists
+}
+
 export function parseArgs(argv, repo, cwd) {
   const at = argv.indexOf('--root')
   const rootValue = at === -1 ? null : argv[at + 1]

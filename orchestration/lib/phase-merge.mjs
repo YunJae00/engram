@@ -6,7 +6,7 @@ import { fetchBranch, push, revert, squashMerge } from './git.mjs'
 import { isTerminal, transition } from './ledger.mjs'
 import { integrationScenarios, nextRevert, suggestBump } from './loop.mjs'
 import { cleanAttempt, dropBranch } from './phase-verify.mjs'
-import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh } from './runtime.mjs'
+import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, syncBaseBranch } from './runtime.mjs'
 
 export async function mergeVerified(ctx, ledger) {
   for (const item of ledger.items.filter((i) => i.state === 'verified')) {
@@ -100,6 +100,7 @@ async function runChecks(ctx, merged, logPath) {
 export async function integrate(ctx, ledger) {
   const merged = () => ledger.items.filter((i) => i.state === 'merged')
   if (merged().length === 0) return
+  await syncBaseBranch(ctx, 'integrate')
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `integration-${ledger.batch}.log`)
   const history = ledger.integration?.history
