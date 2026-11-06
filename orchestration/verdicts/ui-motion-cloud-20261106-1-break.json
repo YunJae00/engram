@@ -1,0 +1,95 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 1,
+  "kind": "break",
+  "verdict": "fail",
+  "headSha": "ca7402801b47fa2e15274fe8a213dbdaf37b480f",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "tmp/verify-cli/ui-interaction-motion-2026-11-06T14-51-44-941Z.log",
+      "result": "exit 0, ok true, 57.8s; 77 evidence rows all pass (menu/form/row/folder/disclosure/dialog enter+exit eased 120-260ms, reduced motion immediate, 40-turn cached revisits keep enter and exit running after the mount scroll, wheel and resize mid-motion, fault-injected mutations, timed trusted double clicks, b-c-a chain, 60-click storm, 300-row filter, reload with open form/menu/session); no renderer pageerror"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "npm run check:quick && xvfb-run -a node scripts/verify-cli.mjs ui-activity-status && xvfb-run -a node scripts/verify-cli.mjs boot && xvfb-run -a node scripts/verify-cli.mjs cosmos && xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "tmp/break-c2-chain.out",
+      "result": "exit 0; check:quick passed (tsc core+desktop, eslint, vitest unit, todo-scan, css-scan); ui-activity-status ok true 24.5s, boot ok true 1.9s, cosmos ok true 9.8s, note-open ok true 9.9s"
+    },
+    {
+      "criterion": "break: real click dropped after Show earlier (document.startViewTransition overlay)",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only show-earlier-click",
+      "logPath": "tmp/break/out/p1.out",
+      "result": "exit 1: trusted mouse click on a conversation row 0/40/100/200ms after clicking sidebar-earlier reaches target HTML (view-transition overlay) and the row never becomes active; at 400ms the click reaches bot-<id> and navigates"
+    },
+    {
+      "criterion": "break: last real click wins, new chat then row within 0/16/50/120ms",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only new-chat-then-row",
+      "logPath": "tmp/break/out/new-chat-then-row.out",
+      "result": "exit 0: both clicks trusted and delivered (bots-new then bot-<id>), destination thread shown, menu hidden, no snapshot or owned animation residue"
+    },
+    {
+      "criterion": "break: row then create then new chat within 0/30/90ms ends on welcome",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only row-then-new-chat",
+      "logPath": "tmp/break/out/row-then-new-chat.out",
+      "result": "exit 0: three trusted clicks delivered in order, welcome shown with no active row, residue 0, focus on sidebar-create"
+    },
+    {
+      "criterion": "break: destination bot deleted while its 40-turn session motion runs",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only delete-mid-motion",
+      "logPath": "tmp/break/out/delete-mid-motion.out",
+      "result": "exit 0: snapshot and owned animations cleared, row gone, next navigation works, no page errors"
+    },
+    {
+      "criterion": "break: keyboard-only create menu (Enter/Space open, Shift+Tab to anchor keeps it open, Enter on bots-new, Escape focus return)",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only keyboard-menu",
+      "logPath": "tmp/break/out/keyboard-menu.out",
+      "result": "exit 0: first button focused on open, anchor refocus keeps menu open, Enter on bots-new lands on welcome and hides menu, Escape returns focus to sidebar-create"
+    },
+    {
+      "criterion": "break: BrowserWindow blur then focus with the menu open",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only window-refocus",
+      "logPath": "tmp/break/out/window-refocus.out",
+      "result": "exit 0: menu stays open, focus restored to bots-new"
+    },
+    {
+      "criterion": "break: clone cost at the 400-turn transcript cap and same-row click",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only clone-cost",
+      "logPath": "tmp/break/out/clone-cost.out",
+      "result": "exit 0: 2003 nodes cloned; same-row click 34ms round trip with no long task; away and back navigations one 92ms long task each; residue 0"
+    },
+    {
+      "criterion": "break: eight cycles of create, bots-new, row real clicks back to back",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only interleaved-storm",
+      "logPath": "tmp/break/out/interleaved-storm.out",
+      "result": "exit 0: every cycle delivered three trusted clicks and ended on the clicked row with the menu hidden; residue 0"
+    },
+    {
+      "criterion": "break: menu open across bots:changed reload, 64 rows and sidebar scroll",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only menu-survives-updates",
+      "logPath": "tmp/break/out/menu-survives-updates.out",
+      "result": "exit 0: menu stays open and focused on the same bots-new node through a store reload; stays open and positioned after scrolling the sidebar"
+    },
+    {
+      "criterion": "break: click a 400-turn thread then another row before it loads",
+      "cmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only navigate-before-load",
+      "logPath": "tmp/break/out/navigate-before-load.out",
+      "result": "exit 0: both trusted clicks delivered, final thread is the second row, one bots-thread in the DOM, residue 0, no page errors"
+    },
+    {
+      "criterion": "existing e2e: conversation sidebar spec",
+      "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts --workers=1 --output ../../tmp/break/playwright --reporter=line --trace off",
+      "logPath": "tmp/break/out/e2e-sidebar.out",
+      "result": "exit 0: 11 passed (1.3m), including create menu hidden/visible toggling and bots-new flows"
+    }
+  ],
+  "findings": [
+    {
+      "file": "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+      "line": 74,
+      "claim": "Real mouse navigation clicks are dropped by a document transition overlay: toggleEarlier wraps the Show earlier update in document.startViewTransition, so for about 250ms after a trusted click on sidebar-earlier the ::view-transition pseudo-element intercepts pointer events; a trusted click on a conversation row 0, 40, 100 or 200ms later reaches target HTML and the row never becomes active (at 400ms it navigates). This contradicts the brief fact 'never drop or defer real mouse-navigation clicks ... without document transition overlay interception'. The lines are untouched by this change (same code on origin/next) but live in an allowed file next to the rows the change animates.",
+      "reproCmd": "xvfb-run -a node tmp/break/run.mjs tmp/break/attack.mjs --only show-earlier-click"
+    }
+  ]
+}
