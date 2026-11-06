@@ -1,0 +1,28 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 3,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "d583f84de2cd9b70fdfc97db032cb3f234401f47",
+  "evidence": [
+    {
+      "criterion": "real-desktop",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "/tmp/claude-0/logs/overlay.log",
+      "result": "exit 0, ok true. Covers drag on incoming frames, resize anchors, tab switch/cancel/restore, clamps, stable thread once floating. Diff adds previewDrag.ts, overlay CSS, PreviewDeck/BotsView tweaks and the scenario; all in allowed files. Report notes the thread shifts once when an untouched deck is first lifted (kept to satisfy the stock e2e contract); the scenario asserts this and passes."
+    },
+    {
+      "criterion": "quick-and-stock-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "/tmp/claude-0/logs/reg.log",
+      "result": "exit 0; boot, cosmos, note-open all ok true"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "/tmp/claude-0/logs/overlay.log",
+      "result": "ok true; scenario covers prior break risks (held drag through frames, cancel paths, second pointer, clamps, reload anchor). No Feature Map change needed and none made. Only changed files are the allowed list plus the report; no TODO/stubs, all files under 400 lines, no commit trailers, no out-of-scope areas touched."
+    }
+  ],
+  "findings": []
+}
