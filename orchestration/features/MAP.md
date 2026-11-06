@@ -27,6 +27,10 @@ A new scenario is a file `scripts/verify-scenarios/<name>.mjs` exporting that `r
 | Capture | Second window, not a shell route. Preload `showQuickComet` → `quick:show` → `#quick` | `capture` | `quick-capture` and `quick-input`; Escape hides the window |
 | Inbox (scrap pile) | Ctrl/Cmd+Shift+P, command "Open scrap pile (inbox)" | `inbox` | `inbox-overlay` / `inbox-list` shows the empty copy; Escape closes it |
 | Settings | Sidebar `activity-settings`, or `openActivity(page, 'settings')` | `settings` | `settings-view`, About via `settings-nav-help` / `help-panel`, `settings-export-logs`; Escape closes it |
+| Conversation activity | Open a saved comet, then send a message through `bots-input` | `ui-activity-status` | Persisted tool work stays hidden and conversation text survives; one inline `role="status"` evolves on `comet:step`, clears on `chat:done` and reload, and respects reduced motion |
+| Interaction motion | Sidebar create/folder menus, conversation navigation and delete dialog | `ui-interaction-motion` | Compositor motion, reduced motion, focus and dismissal, mutation failure recovery, rapid navigation and reload (`scripts/verify-scenarios/ui-interaction-motion.mjs`, supplied at integration) |
+| Chat presentation | Folder and unfiled conversation rows, then open a chat and composer menus | `ui-chat-polish` | Sidebar previews, bubble/title/composer bounds at wide and narrow sizes, themes, attachments, long content and reload (`scripts/verify-scenarios/ui-chat-polish.mjs`, supplied at integration) |
+| Live preview overlay | Open a comet with an incoming `agent:frame`, then drag `preview-card` inside the chat | `ui-live-overlay` | Real PNG frame paints; chat stays packed before and after pointer drag, with the card and composer reachable (`scripts/verify-scenarios/ui-live-overlay.mjs`, supplied at integration) |
 
 The memory graph (`brain-graph`) is part of Cosmos, proved by `cosmos` and `note-open`. The connected model is the Brain rows, proved by `brain`.
 

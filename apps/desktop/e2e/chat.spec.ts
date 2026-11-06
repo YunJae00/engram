@@ -257,28 +257,26 @@ test('conversation keeps narration between compact activity groups and shows vis
   expect(await page.getByTestId(`bot-${bot.id}`).locator('img.site-icon').evaluate(async (node: HTMLImageElement) => { await node.decode(); return node.naturalWidth })).toBe(1)
   await page.getByTestId('bots-input').fill('Compare the options and prepare a short review.')
   await page.getByTestId('bots-input').press('Enter')
-  const lines = ['said: I will check the source and compare the available options.', 'open_page: https://example.com/research', 'read_open_page: https://example.com/research', 'said: The source is checked. I am now preparing the review.', 'file_create_copy: review.md']
+  const lines = ['said: I will check the source and compare the available options.', 'open_page: https://example.com/research', 'read_open_page: https://example.com/research', 'you: Keep the original document unchanged.', 'said: The source is checked. I am now preparing the review.', 'file_create_copy: review.md']
   await app.evaluate(({ BrowserWindow }, { id, lines }) => {
     for (const line of lines) BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel: `bot-${id}`, line })
   }, { id: bot.id, lines })
   const work = page.getByTestId('comet-work')
-  // While it works: its words, then one live line - no step list and no empty answer bubble.
-  await expect(work.locator('.comet-work-lines > li')).toHaveCount(2)
+  await expect(work.locator('.comet-work-lines > li')).toHaveCount(3)
   await expect(work.locator('.comet-work-lines > li').nth(0)).toContainText('I will check the source')
-  await expect(work.locator('.comet-work-lines > li').nth(1)).toContainText('The source is checked')
+  await expect(work.locator('.comet-work-lines > li').nth(1)).toHaveText('Keep the original document unchanged.')
+  await expect(work.locator('.comet-work-lines > li').nth(2)).toContainText('The source is checked')
   await expect(work.locator('.work-group')).toHaveCount(0)
   await expect(page.getByTestId('bots-thinking')).toHaveCount(1)
   await expect(page.locator('.bubble-msg.assistant')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
     type: 'chat:done', channel: `bot-${id}`, text: '## The review is ready\n\nThe options are compared and the source is available for your review.\n\n- Check the assumptions before choosing.\n- Keep the original document unchanged.\n\nhttps://example.com/research\n\nBackup: `검토_결과.pptx.e1b9abd7fa904dd291589bfd2e0d7de6.bak`',
   }), bot.id)
-  await expect(page.getByTestId('comet-work-done')).toContainText('Recorded · 3 actions')
   const done = page.getByTestId('comet-work-done')
-  await done.getByTestId('comet-work-toggle').click()
-  await expect(done.locator('.work-group')).toHaveCount(2)
-  await done.locator('.work-group summary').first().click()
-  await expect(done.locator('.work-group').first().locator('ol > li')).toHaveCount(2)
-  await done.getByTestId('comet-work-toggle').click()
+  await expect(done.locator('.comet-work-lines > li')).toHaveText(lines.filter(line => /^(said|you): /.test(line)).map(line => line.slice(line.indexOf(': ') + 2)))
+  await expect(page.getByTestId('bots-thinking')).toHaveCount(0)
+  await expect(page.locator('.comet-work-card, .work-group, [data-testid="comet-work-toggle"], [data-testid="bots-work-steps"]')).toHaveCount(0)
+  for (const line of lines.filter(line => !/^(said|you): /.test(line))) await expect(page.getByTestId('bots-thread')).not.toContainText(line)
   await expect(page.locator('.answer-sites .answer-site')).toHaveText('example.com')
   await expect(page.locator('.answer-sites img.site-icon')).toBeVisible()
   await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
