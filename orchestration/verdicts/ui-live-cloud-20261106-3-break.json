@@ -1,0 +1,13 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 3,
+  "kind": "break",
+  "verdict": "pass",
+  "headSha": "d583f84de2cd9b70fdfc97db032cb3f234401f47",
+  "evidence": [
+    {"criterion": "real-desktop", "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "logPath": "tmp/overlay.log", "result": "exit 0, ok true; covers docking, drag through incoming frames, resize anchors, tab/cancel/blur/lostcapture, clamps, 44px suspension, reload"},
+    {"criterion": "quick-and-stock-regressions", "cmd": "xvfb-run -a npm run check:quick; xvfb-run -a node scripts/verify-cli.mjs boot; ... cosmos; ... note-open", "logPath": "tmp/node_scripts_verify-cli_mjs_note-open.log", "result": "all four exit 0, ok true"},
+    {"criterion": "break-regressions-and-map", "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "logPath": "tmp/overlay.log", "result": "ok true. Code review of previewDrag.ts, PreviewDeck.tsx, live-overlay.css found no reproducible defect. Branch base is older than origin/next (4815e68) but merge-tree merges cleanly; not a code defect, and a merged-tree desktop run was not completed."}
+  ],
+  "findings": []
+}
