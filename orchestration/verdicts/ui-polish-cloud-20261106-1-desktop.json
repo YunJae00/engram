@@ -1,0 +1,52 @@
+{
+  "id": "ui-polish-cloud-20261106",
+  "attempt": 1,
+  "kind": "desktop",
+  "verdict": "pass",
+  "headSha": "302bb92ee00ee2c3c953f2182927f9c8d26486ea",
+  "evidence": [
+    {
+      "criterion": "real-focused-visual",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-ui-chat-polish.log",
+      "result": "exit 0, JSON ok true. Fresh checkout built apps/desktop/out/main/index.js on this run. Captures at 1280 and 620 in light and dark themes report nativeFocused true with sidebar conversation name ratio 14.78-14.80, sidebar work status ratio 5.32, composer memory title 16.10 and memory empty copy 5.77; focus guard self-check across generations 0 and 1, long content after reload and bot switch, and renderer errors all empty. Launched serially, alone in this session."
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "npm run check:quick",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-check-quick.log",
+      "result": "exit 0; css-orphan-scan clean"
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-activity-status",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-ui-activity-status.log",
+      "result": "exit 0, JSON ok true; persisted history hides tools and preserves text; single evolving status clears on done and reload for both no-preference and reduce motion"
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-boot.log",
+      "result": "exit 0, JSON ok true; shell, topbar and bots-view visible, title Engram"
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-cosmos.log",
+      "result": "exit 0, JSON ok true; sky-view showed brain-graph and cosmos-chat, collapse and reopen restored cosmos-chat-input"
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-note-open.log",
+      "result": "exit 0, JSON ok true; star n-hello-0001 opened note-sheet with The very first note, Escape closed it"
+    },
+    {
+      "criterion": "integration",
+      "cmd": "git merge-base --is-ancestor HEAD origin/next",
+      "logPath": "orchestration/logs/ui-polish-cloud-20261106-1-desktop-boot.log",
+      "result": "HEAD 302bb92 is not on origin/next (3fd4ac1), so npm run verify was not required and was not run"
+    }
+  ],
+  "findings": []
+}
