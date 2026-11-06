@@ -11,12 +11,6 @@ import { ReplyChips } from './ReplyChips.js'
 import { Thinking } from './Thinking.js'
 import { displayTaskAnswer, threadLang, threadWords } from '../lib/threadLang.js'
 
-// One conversation, read the way a chat with an assistant reads: the
-// person's words on the right; the comet's words, each turn's work card and
-// its answer as short bubbles on the left; while it works, one typing bubble
-// at the foot that says what it is doing; and, when it is done, the replies
-// the person is likely to send next. The full view and the split tiles both
-// show a conversation through this, so they never drift apart.
 export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
   messages: CometMessage[]
   busy: boolean
@@ -45,7 +39,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
       </div>
       const live = i === lastAssistant && busy
       return <Fragment key={i}>
-        <CometWork busy={live} lang={lang} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
+        <CometWork busy={live} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
           ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
           : m.text ? answerBubbles(displayTaskAnswer(m.text, lang)).map((part, k, parts) => (
