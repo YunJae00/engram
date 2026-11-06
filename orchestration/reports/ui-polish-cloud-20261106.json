@@ -1,0 +1,40 @@
+{
+  "id": "ui-polish-cloud-20261106",
+  "status": "done",
+  "headSha": "349649389085a5a3f67430382d6b3eadc119b5ff",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs: native focus is acquired at launch so the first capture runs on a shown window (X11 as well as macOS)"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build (unmodified primary scenario)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status'", "exit": 0 },
+    { "cmd": "xvfb-run -a pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --output=../../tmp/ui-polish-retry-playwright --trace off (primary gutters)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 0 },
+    { "cmd": "xvfb-run -a pnpm --filter desktop exec playwright test e2e/layout.spec.ts --workers=1 --output=../../tmp/ui-polish-retry-playwright --trace off", "exit": 0 },
+    { "cmd": "node --check scripts/verify-scenarios/ui-chat-polish.mjs && git diff --check origin/next", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status'", "exit": 0 },
+    { "cmd": "xvfb-run -a pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --output=../../tmp/ui-polish-retry-playwright --trace off", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Provenance: the brief's full hash b2a8035300c14477af316858265c49ff9253c3b4 is not an object on origin; the cherry-picked primary is b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc (tip-1 of origin/orch/ui-polish-last-serial-20261106-4), as the chosen design records. The alternate 82dab434 is not fetchable from origin and was not consulted.",
+    "Base: the local next ref was stale at 11cf9b5; the branch was started from origin/next 3fd4ac1, which contains the brief's 0ef250d plus the claude-cloud-verifiers merge (orchestration files only, none of the allowed files). The cherry-pick applied cleanly with no conflicts.",
+    "Deviation 1 from the primary (scenario): under Xvfb the primary's first page.screenshot timed out because the app launches hidden and only the macOS branch showed the window. acquireFocus now runs once right after the activation block, so every platform shows and focuses the real window before the first capture. No assertion was weakened; the same native-focus poll and typed FocusLost handling apply.",
+    "Deviation 2 from the primary (chat-theme.css): e2e/layout.spec.ts 'shared headers and composers keep their rhythm' requires the composer to be at least 30px wider than the thread content at 1440/948/620. The primary set --reading-gutter equal to --composer-gutter below 901px and to max(32px, ...) above, which measured 16.6px at 948. The override now keeps the base invariant (reading gutter = composer gutter + --space-4, or the 768px reading column) and the 901px media block is dropped. All nine layout cases pass after this change.",
+    "Serial execution: every Electron run was launched one at a time from this session under xvfb-run -a; no other Electron process existed before or after any run. No discarded contrast sample or focus refusal was logged in any ui-chat-polish run; all captured ratios were >= 5.32 with nativeFocused true and the hide/refocus self-check moved the blur generation from 0 to 1.",
+    "The design's macOS activation path (regular activation policy, Dock show) could not be exercised in this Linux container; the X11 focus path was verified instead. The term '02 tests' in the criterion has no matching suite; the six interaction suites named in the design were run in full with no case removed or skipped."
+  ]
+}
