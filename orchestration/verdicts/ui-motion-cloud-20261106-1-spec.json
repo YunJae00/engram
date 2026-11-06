@@ -1,0 +1,28 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 1,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "ca7402801b47fa2e15274fe8a213dbdaf37b480f",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "/tmp/claude-0/-home-user-engram/8276a097-0aa3-51b8-a532-43461f20e1df/scratchpad/logs/integrated-real-motion.log",
+      "result": "exit 0, ok true, 77 evidence records all pass, 0 page errors, 59210 ms; app log tmp/verify-cli/ui-interaction-motion-2026-11-06T14-49-37-363Z.log. Real Electron shown under Xvfb with two seeded 40-turn histories. Create menu stays mounted and bots-new is the same node across every close (menuClosed checks window.motionNew identity). Trusted mouse clicks: thread-to-thread, thread-to-new-chat, new-chat-to-thread measured eased 160 ms enter on live surface and exit on snapshot inside .bots-view; cached revisits after mount scroll-to-bottom keep 11 post-scroll frames with opposite opacity directions and clear in 166 to 169 ms; wheel up and resize mid-motion survive; reduced motion yields no pair. Timed second clicks at 0 to 240 ms, real B/C/A chain ending on A, 60-click storm, concurrent folder sessions settling in reverse order and an old rejection after a newer form all pass."
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "npm run check:quick && xvfb-run -a node scripts/verify-cli.mjs ui-activity-status && xvfb-run -a node scripts/verify-cli.mjs boot && xvfb-run -a node scripts/verify-cli.mjs cosmos && xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "/tmp/claude-0/-home-user-engram/8276a097-0aa3-51b8-a532-43461f20e1df/scratchpad/logs/no-regressions.log",
+      "result": "exit 0. check:quick: tsc core and desktop, eslint, vitest unit, todo-scan and css-orphan-scan all clean. ui-activity-status ok true with textPreserved true and singleEvolvingStatus true under both motion preferences (no repeated text, no persistent tool activity). boot, cosmos and note-open each ok true."
+    },
+    {
+      "criterion": "scope",
+      "cmd": "git diff --stat origin/next...ca7402801b47fa2e15274fe8a213dbdaf37b480f && git log --format=raw origin/next..ca7402801b47fa2e15274fe8a213dbdaf37b480f",
+      "logPath": "/tmp/claude-0/-home-user-engram/8276a097-0aa3-51b8-a532-43461f20e1df/scratchpad/logs/integrated-real-motion.log",
+      "result": "Two commits: ede1917 touches exactly the eight allowed files; ca74028 adds only orchestration/reports/ui-motion-cloud-20261106.json (required report commit). No App.tsx, shared Map, live overlay, global style, credential or native bundle change. No TODO/FIXME, no stubs, no commit trailers. Largest file is the scenario at 375 lines; Motion.tsx 102, SidebarCollection.tsx 168, AppSidebar.tsx 167. Against preserved source 96eb6a3 only Motion.tsx changes: the window scroll listener that disposed the navigation pair is removed and done() clears the shared dispose ref only when it still owns it, matching the stated defect fix. Comments in Motion.tsx and the scenario explain mechanism rather than history."
+    }
+  ],
+  "findings": []
+}
