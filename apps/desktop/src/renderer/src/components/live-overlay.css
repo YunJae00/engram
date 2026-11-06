@@ -1,5 +1,10 @@
 .bots-chat:has(.live-overlay-deck, .live-overlay-reopen) { position: relative; }
-.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + 30px * var(--deck-depth, 0)); margin: 0; touch-action: none; user-select: none; cursor: grab; }
+.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--overlay-step, 30px) * var(--deck-depth, 0)); width: var(--overlay-width, min(var(--pc-w), 100%)); max-width: none; margin: 0; touch-action: none; user-select: none; cursor: grab; }
 .live-overlay-deck[data-dragging] { cursor: grabbing; }
+.live-overlay-deck[data-suspended] { visibility: hidden; pointer-events: none; }
 .live-overlay-deck img { -webkit-user-drag: none; }
+.live-overlay-deck .preview-card-stage { max-height: min(var(--pc-stage-max), var(--overlay-stage, 100vh)); }
+.live-overlay-deck > .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--overlay-step, 30px)); --deck-y: calc(-1 * var(--overlay-step, 30px)); }
+.live-overlay-deck > .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--overlay-step, 30px)); --deck-y: calc(-2 * var(--overlay-step, 30px)); }
+.live-overlay-deck > .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--overlay-step, 30px)); --deck-y: calc(-3 * var(--overlay-step, 30px)); }
 .bots-chat > .live-overlay-reopen { position: absolute; z-index: 5; top: 12px; right: var(--panel-gutter); margin: 0; max-width: calc(100% - 2 * var(--panel-gutter)); }
