@@ -63,3 +63,8 @@ export function showWebFrame(app, { lane, url, frame, title = 'Live overlay' }) 
     { type: 'agent:frame', lane, url, data: frame.data, width: frame.width, height: frame.height },
   ])
 }
+
+export function appFrames(lane, ids, frame, extra = {}) {
+  const frames = ids.map(id => ({ id: `${lane}:app:${id}`, lane, title: id, at: Date.now(), data: `data:image/png;base64,${frame.data}`, captureState: 'ready', ...extra }))
+  return { type: 'desktop:preview', frames }
+}
