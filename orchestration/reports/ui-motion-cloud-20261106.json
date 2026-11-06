@@ -1,0 +1,35 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "status": "done",
+  "headSha": "c6db6e035595dbd0179114e246238011abebace0",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs",
+    "ui-interaction-motion: earlier-collapsed-old-row-absent-recent-target-stable",
+    "ui-interaction-motion: show-earlier-then-trusted-row-click (0/40/100/200/400 ms, recent and revealed old row)",
+    "ui-interaction-motion: hide-earlier-then-trusted-row-click (0/40/100/200/400 ms)",
+    "ui-interaction-motion: show-earlier-then-create",
+    "ui-interaction-motion: show-earlier-then-b-a-chain",
+    "ui-interaction-motion: reduce-earlier-then-row-click"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line --trace off", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "ui-interaction-motion ran in 58-74 s against the 90 s verify-cli budget on this container; a slower runner leaves little margin.",
+    "apps/desktop/src/renderer/src/activity-motion.css still holds ::view-transition rules for conversation-list; nothing invokes a document transition any more, but the file is outside the allowed files and was left unchanged."
+  ]
+}
