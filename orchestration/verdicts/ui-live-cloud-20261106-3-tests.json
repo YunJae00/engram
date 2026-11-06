@@ -1,0 +1,28 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 3,
+  "kind": "tests",
+  "verdict": "pass",
+  "headSha": "d583f84de2cd9b70fdfc97db032cb3f234401f47",
+  "evidence": [
+    {
+      "criterion": "real-desktop",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "orchestration/logs/real-desktop.log",
+      "result": "exit 0, ok true; all overlay stack, bounded drag, resize anchor, tab/cancel/restore, clamp and entrance checks reported verified"
+    },
+    {
+      "criterion": "quick-and-stock-regressions",
+      "cmd": "xvfb-run -a npm run check:quick && xvfb-run -a node scripts/verify-cli.mjs boot && xvfb-run -a node scripts/verify-cli.mjs cosmos && xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "orchestration/logs/quick-and-stock.log",
+      "result": "exit 0; check:quick passed (standalone run also exit 0, log orchestration/logs/check-quick.log); boot, cosmos and note-open each ok true"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "orchestration/logs/break-regressions.log",
+      "result": "exit 0, ok true"
+    }
+  ],
+  "findings": []
+}
