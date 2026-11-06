@@ -1,0 +1,40 @@
+{
+  "id": "ui-polish-retry-20261106",
+  "status": "done",
+  "headSha": "384e675068ce482c7d942a5a1c13987b3f4db651",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc", "exit": 0 },
+    { "cmd": "node --check scripts/verify-scenarios/ui-chat-polish.mjs && git diff --check 0ef250d && git diff --name-only 0ef250d", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish --build (unchanged candidate scenario: first screenshot timed out on the hidden X11 window)", "exit": 1 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish (unchanged candidate scenario rerun: same timeout)", "exit": 1 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish (after acquiring native focus at launch)", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status'", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --trace off --output=../../tmp/ui-polish-retry-playwright (candidate gutters: layout.spec.ts:61 failed, 37 of 38 passed)", "exit": 1 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish --build (after reading gutter fix)", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' pnpm --filter desktop exec playwright test e2e/layout.spec.ts:61 --workers=1 --trace off --output=../../tmp/ui-polish-retry-playwright-layout", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status' (on 384e675)", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --trace off --output=../../tmp/ui-polish-retry-playwright (on 384e675: 38 passed)", "exit": 0 },
+    { "cmd": "xvfb-run -a -s '-screen 0 1600x1000x24' node scripts/verify-cli.mjs ui-chat-polish (fresh process on the unchanged 384e675 build)", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The brief's full hash b2a8035300c14477af316858265c49ff9253c3b4 is not a git object on origin; the cherry-picked primary is b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc from origin/orch/ui-polish-last-serial-20261106-4, as the design resolved.",
+    "Deviation from the design's intact scenario: ui-chat-polish.mjs acquires native focus once right after the activation block (one added line). On this X11 host a never-shown window yields no frames, so the candidate's first screenshot timed out deterministically twice before any contrast check; the added call reuses the existing acquireFocus and adds a focus requirement rather than removing one.",
+    "Deviation from the candidate CSS: the chat reading gutter is now max(composer gutter + 16px, centered 768px), replacing the candidate's equal gutters below 901px and its 32px media override. The candidate failed the existing layout.spec.ts rhythm case at 948px (composer only 16.6px wider than the thread text, suite requires at least 30px); the fix restores the global rule's inset and the full suite then passed 38 of 38.",
+    "Verification ran on a Linux container under Xvfb with one Electron process at a time (no concurrent E2E); the macOS activation-policy path in the scenario was not exercised here, and the macOS lock directory protocol from the design was not applicable on this host.",
+    "The cloud session was assigned branch claude/implementer-role-workflow-frxit3 by its harness; per the brief only orch/ui-polish-retry-20261106-4 was pushed."
+  ]
+}
