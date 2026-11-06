@@ -1,0 +1,20 @@
+{
+  "id": "ui-polish-fixture-20261106",
+  "status": "blocked",
+  "headSha": "293eaa0c27f26562be2f3e89317f486cc86065c6",
+  "changedFiles": ["scripts/verify-scenarios/ui-chat-polish.mjs", "orchestration/reports/ui-polish-fixture-20261106.json"],
+  "testsAdded": ["ui-chat-polish: grouped sidebar with avatar and preview rows at desktop and narrow widths", "ui-chat-polish: two-sided bubbles, centered rounded title and bounded rounded composer"],
+  "commandsRun": [
+    { "cmd": "npm run check:quick", "exit": 1 },
+    { "cmd": "node scripts/verify-cli.mjs ui-polish-fixture-20261106", "exit": 1 },
+    { "cmd": "node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 1 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-chat-polish", "exit": 1 },
+    { "cmd": "git diff --check", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The criterion names ui-polish-fixture-20261106, but verify-cli loads exact filenames and the only allowed scenario file is ui-chat-polish.mjs. Correcting the command or allowing an alias file is required.",
+    "The reusable scenario ran against this branch's build at 1280x840 and 620x640. Sidebar grouping, previews, avatars, bubbles and composer boundaries passed. The title is neither centered over chat nor a rounded pill at either size. Product visual implementation is outside the allowed scope."
+  ]
+}
