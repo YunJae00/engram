@@ -8,6 +8,7 @@ import { t } from '../i18n.js'
 import { useAutoGrow } from '../lib/useAutoGrow.js'
 
 interface Props {
+  layout?: 'inline' | 'stacked'
   value: string
   placeholder: string
   maxLength: number
@@ -52,7 +53,7 @@ const appMark = (app: Mentionable, size: number) => app.icon ? <img className="a
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
-    { value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
+    { layout = 'inline', value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -161,7 +162,7 @@ export const ChatComposer = memo(
     }
 
     return (
-      <div className="chat-write" onDragOver={event => {
+      <div className="chat-write" data-layout={layout} onDragOver={event => {
         if (onAttachmentsChange && event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.stopPropagation() }
       }} onDrop={event => {
         if (!onAttachmentsChange || !event.dataTransfer.files.length) return
