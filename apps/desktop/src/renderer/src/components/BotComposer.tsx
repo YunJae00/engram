@@ -101,6 +101,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
       {computerOpen && <ComputerDialog lane={cometChannel(botId)} lang={lang} onClose={() => setComputerOpen(false)} />}
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer
+        layout="stacked"
         testId="bots-input"
         autoFocus
         value={value}
