@@ -1,0 +1,28 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 4,
+  "kind": "tests",
+  "verdict": "pass",
+  "headSha": "6fbcb26e00d374eda330c567f56be3b9507d5fe7",
+  "evidence": [
+    {
+      "criterion": "check:quick",
+      "cmd": "xvfb-run -a npm run check:quick",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-4-tests-check-quick.log",
+      "result": "exit 0; typecheck/lint/tests/scans clean (css-orphan-scan: clean)"
+    },
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-4-tests-integrated-real-motion.log",
+      "result": "exit 0; {\"scenario\":\"ui-interaction-motion\",\"ok\":true}; every evidence entry pass:true in real Electron under Xvfb, including create-menu-retained-before-first-open, menu/form/dialog/folder enter+exit measurements, thread/new-chat session motion with trusted clicks, long-history (40+ turn) scroll-to-bottom motion survival, timed trusted double clicks and real-b-c-a-sequence-ends-on-a (last click wins), 60-click storm handled in order, old-rejection/reverse-order folder sessions, and reduce-preference variants with no measurements"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-4-tests-no-regressions.log",
+      "result": "exit 0; check:quick passed, then ui-activity-status ok:true, boot ok:true, cosmos ok:true, note-open ok:true"
+    }
+  ],
+  "findings": []
+}
