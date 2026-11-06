@@ -1,0 +1,15 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 5,
+  "kind": "desktop",
+  "verdict": "pass",
+  "headSha": "a18b5fe9a53c4ae1c50b7a58e250c470308abbe4",
+  "evidence": [
+    {"criterion": "integrated-real-motion", "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "logPath": "orchestration/logs/ui-motion-cloud-20261106-5-ui-interaction-motion.log", "result": "exit 0, JSON ok true (pass)"},
+    {"criterion": "no-regressions", "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot", "logPath": "orchestration/logs/ui-motion-cloud-20261106-5-boot.log", "result": "exit 0, JSON ok true (pass)"},
+    {"criterion": "no-regressions", "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos", "logPath": "orchestration/logs/ui-motion-cloud-20261106-5-cosmos.log", "result": "exit 0, JSON ok true (pass)"},
+    {"criterion": "no-regressions", "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open", "logPath": "orchestration/logs/ui-motion-cloud-20261106-5-note-open.log", "result": "exit 0, JSON ok true (pass)"},
+    {"criterion": "no-regressions", "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-activity-status", "logPath": "orchestration/logs/ui-motion-cloud-20261106-5-ui-activity-status.log", "result": "exit 0, JSON ok true (pass)"}
+  ],
+  "findings": []
+}
