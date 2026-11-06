@@ -9,7 +9,7 @@ import {
   attemptRef, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, loadBrief, loadJobs, note, persona,
   readJsonOrNull, releaseSlot, save, saveJobs, schema,
 } from './runtime.mjs'
-import { finish } from './phase-implement.mjs'
+import { finish, rejectDesign } from './phase-implement.mjs'
 
 const label = (item, attempt, kind) => `${item.id}-${attempt.n}-${kind}`
 const verdictRel = (item, attempt, kind) => `orchestration/verdicts/${item.id}-${attempt.n}-${kind}.json`
@@ -175,8 +175,9 @@ export async function bounce(ctx, ledger, item, why) {
   note(ctx, item.id, 'bounce', `bounce ${item.bounces}`, why)
   const next = rung(item, ctx.roles)
   if (next) {
+    const redesign = rejectDesign(ctx, item)
     transition(item, 'briefed')
-    note(ctx, item.id, 'bounce', 'briefed', `next rung ${next.implementer} / ${next.verifier}`)
+    note(ctx, item.id, 'bounce', 'briefed', `next rung ${next.implementer} / ${next.verifier}${redesign ? '; design rejected, designing again' : ''}`)
   } else {
     item.reason = `ladder exhausted after ${item.bounces} bounces: ${why}`
     transition(item, 'needs_human')

@@ -85,6 +85,10 @@ export function nextRevert(failedScenarios, merged, revertsDone, cap) {
 }
 
 export const designPath = (id, line) => `orchestration/designs/${id}-${line}.md`
+export const rejectedDesignPath = (id) => designPath(id, 'rejected')
+
+// One FAIL can be a slip in the implementation; a second FAIL under the same design counts against the design.
+export const needsRedesign = (bounces, hasDesign) => hasDesign && bounces >= 2
 
 export function designLocations(root, worktree, id, line) {
   const target = `${root.replace(/\/$/, '')}/${designPath(id, line)}`

@@ -28,6 +28,19 @@ function effective(verdict) {
   return verdict.verdict
 }
 
+// What the next implementer or designer must be told: reproducible findings, or the evidence of a fail that has none.
+export function blockingFindings(verdicts) {
+  const seen = new Set()
+  return verdicts
+    .filter((verdict) => verdict.verdict === 'fail')
+    .flatMap((verdict) => {
+      const { kept, total } = splitFindings(verdict)
+      if (total > 0) return kept.map(({ file, line, claim, reproCmd }) => ({ where: `${file}:${line}`, claim, reproCmd }))
+      return verdict.evidence.map(({ criterion, cmd, result }) => ({ where: `criterion ${criterion}`, claim: result, reproCmd: cmd }))
+    })
+    .filter(({ where, claim }) => !seen.has(`${where}\n${claim}`) && seen.add(`${where}\n${claim}`))
+}
+
 export function aggregate(verdicts, tipSha) {
   const followups = verdicts.flatMap((verdict) => splitFindings(verdict).followups)
   if (verdicts.some((verdict) => verdict.headSha !== tipSha)) return { result: 'stale', followups }

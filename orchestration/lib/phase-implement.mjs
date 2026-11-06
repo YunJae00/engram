@@ -1,17 +1,18 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { changedFiles, fetchBranch, fileAtRef, lsRemote, tipSha } from './git.mjs'
 import { readTokens } from './launch-local.mjs'
 import { isHard, transition } from './ledger.mjs'
 import {
-  deadlineAt, designLocations, designPath, findDesign, isStalled, lineage, machineCheck, pickDesign, plannedAttempts,
+  deadlineAt, designLocations, designPath, findDesign, isStalled, lineage, machineCheck, needsRedesign, pickDesign, plannedAttempts,
+  rejectedDesignPath,
 } from './loop.mjs'
 import { runnable } from './overlap.mjs'
 import { alive } from './procs.mjs'
 import { designerPrompt, implementerPrompt } from './prompt.mjs'
 import {
   attemptRef, briefPath, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, linkNodeModules, loadBrief, loadJobs,
-  note, persona, readJsonOrNull, releaseSlot, reportPath, RULES, save, saveJobs, schema, slotFree,
+  note, persona, previousFindings, readJsonOrNull, releaseSlot, reportPath, RULES, save, saveJobs, schema, slotFree,
 } from './runtime.mjs'
 import { validate } from './validate.mjs'
 
@@ -59,7 +60,11 @@ async function launchDesigner(ctx, item, line, agent, tries) {
   mkdirSync(dirname(target), { recursive: true })
   await fetchBranch(ctx.opts, ctx.roles.baseBranch)
   await freshDetached(ctx, worktree, ctx.base)
-  const prompt = designerPrompt({ persona: persona(ctx, 'designer'), rules: RULES, brief: loadBrief(ctx, item.id), designPath: target })
+  const rejected = join(ctx.root, rejectedDesignPath(item.id))
+  const prompt = designerPrompt({
+    persona: persona(ctx, 'designer'), rules: RULES, brief: loadBrief(ctx, item.id), designPath: target,
+    findings: previousFindings(ctx, item), rejectedDesign: existsSync(rejected) ? readFileSync(rejected, 'utf8') : null,
+  })
   const launched = await launchAgent(ctx, {
     agent, label, cwd: worktree, prompt, role: 'design', minutes: ctx.roles.minutes.design, addDirs: [dirname(target)],
   })
@@ -127,6 +132,7 @@ export async function setDesign(ctx, ledger, item, line, why) {
   const brief = loadBrief(ctx, item.id)
   brief.design = path
   writeFileSync(briefPath(ctx, item.id), `${JSON.stringify(brief, null, 2)}\n`)
+  item.criteria = brief.criteria
   const jobs = loadJobs(ctx)
   for (const other of Object.keys(DESIGNERS)) {
     const job = jobs[`${item.id}-design-${other}`]
@@ -141,6 +147,18 @@ export async function setDesign(ctx, ledger, item, line, why) {
   save(ctx, ledger)
 }
 
+// Returns true when the chosen design was set aside so the item is designed again.
+export function rejectDesign(ctx, item) {
+  const brief = loadBrief(ctx, item.id)
+  if (!needsRedesign(item.bounces, Boolean(brief.design))) return false
+  const chosen = join(ctx.root, brief.design)
+  if (existsSync(chosen)) renameSync(chosen, join(ctx.root, rejectedDesignPath(item.id)))
+  for (const line of Object.keys(DESIGNERS)) rmSync(join(ctx.root, designPath(item.id, line)), { force: true })
+  delete brief.design
+  writeFileSync(briefPath(ctx, item.id), `${JSON.stringify(brief, null, 2)}\n`)
+  return true
+}
+
 function withDesign(ctx, prompt, brief) {
   const path = brief.design ? join(ctx.root, brief.design) : null
   return path && existsSync(path) ? `${prompt}\n\n## Design (chosen)\n${readFileSync(path, 'utf8')}` : prompt
@@ -153,6 +171,7 @@ async function launchImplementer(ctx, ledger, item, brief, step) {
   const cloud = isCloud(step.implementer)
   const prompt = withDesign(ctx, implementerPrompt({
     persona: persona(ctx, 'implementer'), rules: RULES, brief, branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id), cloud,
+    findings: previousFindings(ctx, item),
   }), brief)
   const attempt = { n, implementer: step.implementer, verifier: step.verifier, branch, startedAt: new Date().toISOString() }
   attempt.deadlineAt = deadlineAt(attempt.startedAt, ctx.roles.minutes.implement)

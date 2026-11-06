@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { URL } from 'node:url'
-import { aggregate, checkVerdict } from './aggregate.mjs'
+import { aggregate, blockingFindings, checkVerdict } from './aggregate.mjs'
 
 const schema = JSON.parse(readFileSync(new URL('../schemas/verdict.schema.json', import.meta.url), 'utf8'))
 const SHA = 'a'.repeat(40)
@@ -34,6 +34,23 @@ describe('checkVerdict', () => {
     const result = checkVerdict(verdict('spec', 'fail', { findings: [finding, loose] }), schema)
     expect(result.valid).toBe(true)
     expect(result.followups).toEqual([{ item: 'fix-x', file: 'b.ts', line: 7, claim: 'naming is odd' }])
+  })
+})
+
+describe('blockingFindings', () => {
+  it('keeps reproducible findings of failed verdicts once each and drops the rest', () => {
+    const all = [
+      verdict('break', 'fail', { findings: [finding, loose] }),
+      verdict('spec', 'fail', { attempt: 2, findings: [finding] }),
+      verdict('spec', 'fail', { findings: [loose] }),
+      verdict('tests', 'pass', { findings: [{ ...finding, claim: 'from a pass' }] }),
+    ]
+    expect(blockingFindings(all)).toEqual([{ where: 'a.ts:3', claim: 'crashes on empty input', reproCmd: 'node -e "x()"' }])
+  })
+
+  it('falls back to the evidence of a fail that carries no findings', () => {
+    expect(blockingFindings([verdict('tests', 'fail', { evidence: [{ ...evidence[0], result: 'exit 1' }] })]))
+      .toEqual([{ where: 'criterion c1', claim: 'exit 1', reproCmd: 'npm test' }])
   })
 })
 

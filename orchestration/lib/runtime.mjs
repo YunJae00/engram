@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
+import { blockingFindings } from './aggregate.mjs'
 import { addWorktree, fetchBranch, removeWorktree } from './git.mjs'
 import { launchCloud } from './launch-cloud.mjs'
 import { launchClaude, launchCodex, NODE_BIN } from './launch-local.mjs'
@@ -91,6 +92,8 @@ export const briefPath = (ctx, id) => join(ctx.orch, 'briefs', `${id}.json`)
 export const loadBrief = (ctx, id) => readJson(briefPath(ctx, id))
 export const schema = (ctx, name) => readJson(join(ctx.orch, 'schemas', `${name}.schema.json`))
 export const persona = (ctx, name) => readFileSync(join(ctx.orch, 'personas', `${name}.md`), 'utf8')
+export const previousFindings = (ctx, item) =>
+  blockingFindings(item.verdicts.map((ref) => readJsonOrNull(join(ctx.root, ref.path))).filter(Boolean))
 export const reportPath = (id) => `orchestration/reports/${id}.json`
 export const isCloud = (agent) => agent === 'claude-cloud'
 export const attemptRef = (ctx, attempt) => (isCloud(attempt.implementer) ? `${ctx.opts.remote}/${attempt.branch}` : attempt.branch)

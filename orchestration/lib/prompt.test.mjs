@@ -34,6 +34,13 @@ describe('implementerPrompt', () => {
     expect(p).not.toContain('git checkout -b')
     expect(p).toContain('git push -u origin orch/fix-thing-1')
   })
+
+  it('carries the findings of earlier attempts, and no section without any', () => {
+    const findings = [{ where: 'a.ts:3', claim: 'drops the limit reason', reproCmd: 'npx vitest run a' }]
+    const p = implementerPrompt({ ...args, findings })
+    for (const s of ['## Previous findings', 'a.ts:3: drops the limit reason', 'repro: `npx vitest run a`']) expect(p).toContain(s)
+    expect(implementerPrompt(args)).not.toContain('## Previous findings')
+  })
 })
 
 describe('verifierPrompt', () => {
@@ -69,5 +76,12 @@ describe('designerPrompt', () => {
     expect(p).toContain(rules)
     expect(p).toContain('make the thing work')
     expect(p).toContain('orchestration/designs/fix-thing-claude.md')
+    expect(p).not.toContain('## Rejected design')
+  })
+
+  it('carries earlier findings and the rejected design when designing again', () => {
+    const findings = [{ where: 'criterion c1', claim: 'exit 1', reproCmd: 'npx vitest run thing' }]
+    const p = designerPrompt({ persona: '# D', rules, brief, designPath: 'd.md', findings, rejectedDesign: 'branch on the pending flag\n' })
+    for (const s of ['## Previous findings', 'criterion c1: exit 1', '## Rejected design', 'branch on the pending flag']) expect(p).toContain(s)
   })
 })

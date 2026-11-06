@@ -8,7 +8,7 @@ The JSON block below is the single source of configuration that `lib/ledger.mjs`
 - `maxLocalAgents` caps concurrent local processes (claude-local and codex-local).
 - `verifierKinds` are the verifiers launched for every implemented attempt.
 
-Hard rule: an item is hard when its area is in `hardWhen.areas`, any allowed file matches a `hardWhen.sharedFiles` entry, the brief sets `repeat: true`, or it has bounced at least once. Hard items get a `designing` phase first, and after the first FAIL both a claude implementer and a codex implementer reimplement at once; the first verified attempt wins and the other branch is deleted.
+Hard rule: an item is hard when its area is in `hardWhen.areas`, any allowed file matches a `hardWhen.sharedFiles` entry, the brief sets `repeat: true`, or it has bounced at least once. Hard items get a `designing` phase first, and after the first FAIL both a claude implementer and a codex implementer reimplement at once; the first verified attempt wins and the other branch is deleted. Every attempt after a FAIL receives the findings of the earlier ones, and a second FAIL sends the item back to `designing`.
 
 Shared-file lock: an item whose allowed files include a `sharedFiles` entry runs only when no other in-flight item includes that same file.
 

@@ -58,7 +58,17 @@ function numbered(steps) {
   return steps.map((s, i) => `${i + 1}. ${s}`).join('\n')
 }
 
-export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud }) {
+function findingsBlock(findings) {
+  if (findings.length === 0) return []
+  return [
+    '',
+    '## Previous findings',
+    'Earlier attempts at this item failed verification on these points. Each one must hold in your work; do not repeat the approach that produced them.',
+    ...findings.map((f) => `- ${f.where}: ${f.claim}\n  repro: \`${f.reproCmd}\``),
+  ]
+}
+
+export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud, findings = [] }) {
   const steps = [
     ...(cloud
       ? ['Run `pnpm install --frozen-lockfile`.', `Run \`git checkout -b ${branch}\` from \`${baseBranch}\`.`]
@@ -79,6 +89,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
     rules.trim(),
     '',
     briefBlock(brief),
+    ...findingsBlock(findings),
     '',
     `## Branch\n\`${branch}\` from \`${baseBranch}\`. Never push any other branch. Never open a pull request.`,
     '',
@@ -113,7 +124,7 @@ export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, sch
   ].join('\n')
 }
 
-export function designerPrompt({ persona, rules, brief, designPath }) {
+export function designerPrompt({ persona, rules, brief, designPath, findings = [], rejectedDesign = null }) {
   return [
     persona.trim(),
     '',
@@ -121,6 +132,8 @@ export function designerPrompt({ persona, rules, brief, designPath }) {
     rules.trim(),
     '',
     briefBlock(brief),
+    ...findingsBlock(findings),
+    ...(rejectedDesign ? ['', '## Rejected design', 'Attempts that followed this design failed. Do not propose it again.', rejectedDesign.trim()] : []),
     '',
     '## Steps',
     numbered([

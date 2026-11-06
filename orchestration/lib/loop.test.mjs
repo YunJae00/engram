@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
-  bumpVersion, deadlineAt, designLocations, findDesign, globToRegExp, integrationScenarios, isStalled, machineCheck, nextRevert, pickDesign,
-  plannedAttempts, roundOutcome, suggestBump, verifyDecision,
+  bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, isStalled, machineCheck, needsRedesign,
+  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, suggestBump, verifyDecision,
 } from './loop.mjs'
+import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
-import { linkNodeModules } from './runtime.mjs'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { linkNodeModules, previousFindings } from './runtime.mjs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { attemptMinutes, batchIdle, integrationFinished, QUIET_HOST, resetIntegration } from './phase-merge.mjs'
 import { validate } from './validate.mjs'
 import { tmpdir } from 'node:os'
@@ -140,6 +141,52 @@ describe('design locations', () => {
     expect(findDesign(candidates, (p) => p === candidates[1])).toBe(candidates[1])
     expect(findDesign(candidates, () => true)).toBe(target)
     expect(findDesign(candidates, () => false)).toBeNull()
+  })
+})
+
+describe('retry after a FAIL', () => {
+  const fixture = (run) => {
+    const root = mkdtempSync(join(tmpdir(), 'orch-retry-'))
+    const ctx = { root, orch: join(root, 'orchestration') }
+    try {
+      for (const dir of ['briefs', 'designs', 'verdicts']) mkdirSync(join(ctx.orch, dir), { recursive: true })
+      run(ctx, (rel, value) => writeFileSync(join(root, rel), typeof value === 'string' ? value : JSON.stringify(value)))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+
+  it('redesigns only on a second bounce of an item that has a design', () => {
+    expect(needsRedesign(1, true)).toBe(false)
+    expect(needsRedesign(2, true)).toBe(true)
+    expect(needsRedesign(2, false)).toBe(false)
+  })
+
+  it('sets the chosen design aside and clears it from the brief', () => {
+    fixture((ctx, write) => {
+      const brief = join(ctx.orch, 'briefs/x.json')
+      write('orchestration/briefs/x.json', { id: 'x', design: designPath('x', 'claude') })
+      write(designPath('x', 'claude'), 'chosen design')
+      write(designPath('x', 'codex'), 'other design')
+      expect(rejectDesign(ctx, { id: 'x', bounces: 1 })).toBe(false)
+      expect(JSON.parse(readFileSync(brief, 'utf8')).design).toBe(designPath('x', 'claude'))
+      expect(rejectDesign(ctx, { id: 'x', bounces: 2 })).toBe(true)
+      expect(JSON.parse(readFileSync(brief, 'utf8'))).toEqual({ id: 'x' })
+      expect(readFileSync(join(ctx.root, rejectedDesignPath('x')), 'utf8')).toBe('chosen design')
+      expect(existsSync(join(ctx.root, designPath('x', 'claude')))).toBe(false)
+      expect(existsSync(join(ctx.root, designPath('x', 'codex')))).toBe(false)
+      expect(rejectDesign(ctx, { id: 'x', bounces: 3 })).toBe(false)
+    })
+  })
+
+  it('reads the findings of every failed verdict the ledger points at', () => {
+    fixture((ctx, write) => {
+      const finding = { file: 'a.ts', line: 3, claim: 'drops the limit reason', reproCmd: 'npx vitest run a' }
+      write('orchestration/verdicts/x-1-break.json', { id: 'x', verdict: 'fail', evidence: [], findings: [finding] })
+      write('orchestration/verdicts/x-1-spec.json', { id: 'x', verdict: 'pass', evidence: [], findings: [] })
+      const verdicts = ['break', 'spec', 'tests'].map((kind) => ({ path: `orchestration/verdicts/x-1-${kind}.json` }))
+      expect(previousFindings(ctx, { verdicts })).toEqual([{ where: 'a.ts:3', claim: 'drops the limit reason', reproCmd: 'npx vitest run a' }])
+    })
   })
 })
 
