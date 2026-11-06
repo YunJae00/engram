@@ -102,7 +102,11 @@ async function runChecks(ctx, merged, logPath) {
 export async function integrate(ctx, ledger) {
   const merged = () => ledger.items.filter((i) => i.state === 'merged')
   if (merged().length === 0) return
-  await syncBaseBranch(ctx, 'integrate')
+  const replayed = ledger.items.filter((i) => i.state === 'merged' && i.mergeSha)
+  if (replayed.length === 1 && !(await sh(ctx.nextWorktree, 'git', ['cat-file', '-e', `${replayed[0].mergeSha}^{commit}`])).code) {
+    const worktree = await prepareNext(ctx)
+    await sh(worktree, 'git', ['diff', '--quiet', replayed[0].mergeSha, 'HEAD']).then(({code}) => { if (code !== 0) throw new Error('restored merge differs from integration worktree') })
+  } else await syncBaseBranch(ctx, 'integrate')
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `integration-${ledger.batch}.log`)
   const history = ledger.integration?.history
