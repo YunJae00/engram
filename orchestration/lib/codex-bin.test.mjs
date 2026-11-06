@@ -1,5 +1,16 @@
+import { join } from 'node:path'
+import process from 'node:process'
 import { describe, expect, it } from 'vitest'
 import { resolveCodexBin } from './codex-bin.mjs'
+
+const HOST_LAYOUT = {
+  'win32-x64': ['x86_64-pc-windows-msvc', 'codex.exe'],
+  'win32-arm64': ['aarch64-pc-windows-msvc', 'codex.exe'],
+  'darwin-x64': ['x86_64-apple-darwin', 'codex'],
+  'darwin-arm64': ['aarch64-apple-darwin', 'codex'],
+  'linux-x64': ['x86_64-unknown-linux-musl', 'codex'],
+  'linux-arm64': ['aarch64-unknown-linux-musl', 'codex'],
+}
 
 const none = () => false
 const noDirs = () => []
@@ -24,14 +35,19 @@ describe('resolveCodexBin', () => {
     expect(found).not.toContain('darwin')
   })
 
-  it('finds a pnpm-stored binary for the current platform', () => {
+  it('finds a pnpm-stored binary for the host platform', () => {
+    const key = `${process.platform}-${process.arch}`
+    const layout = HOST_LAYOUT[key]
+    expect(layout, `no codex layout for ${key}`).toBeTruthy()
+    const [triple, binName] = layout
+    const folder = `@openai+codex-${key}@0.155.1`
+    const storeTail = join('apps', 'desktop', 'node_modules', '.pnpm')
     const found = resolveCodexBin('/repo', {
-      platform: 'linux', arch: 'x64',
-      exists: (path) => path.includes('@openai+codex-linux-x64@'),
-      listDir: (dir) => (dir.endsWith('apps/desktop/node_modules/.pnpm') ? ['@openai+codex-linux-x64@0.155.1'] : []),
+      exists: (candidate) => candidate.includes(folder),
+      listDir: (dir) => (dir.endsWith(storeTail) ? [folder] : []),
     })
-    expect(found).toContain('@openai+codex-linux-x64@0.155.1')
-    expect(found.endsWith('/vendor/x86_64-unknown-linux-musl/bin/codex')).toBe(true)
+    expect(found).toContain(folder)
+    expect(found.endsWith(join('vendor', triple, 'bin', binName))).toBe(true)
   })
 
   it('throws naming the platform and every path tried when none exist', () => {
