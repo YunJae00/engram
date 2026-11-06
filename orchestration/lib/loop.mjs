@@ -114,6 +114,24 @@ export function suggestBump(items) {
   return items.some((item) => /^(add|introduce|support)\b/.test(item.title)) ? 'minor' : 'patch'
 }
 
+const VERIFY_SCENARIO = /(?:^|\s)scripts\/verify-cli\.mjs\s+([a-z0-9-]+)/
+
+// Names in `scenarios`, plus any criterion whose command is `node scripts/verify-cli.mjs <scenario>`.
+export function briefScenarios(brief) {
+  const named = brief?.scenarios ?? []
+  const fromCommands = (brief?.criteria ?? []).flatMap((criterion) => {
+    const match = VERIFY_SCENARIO.exec(criterion.cmd ?? '')
+    return match ? [match[1]] : []
+  })
+  return [...new Set([...named, ...fromCommands])]
+}
+
+export function verifierKindsFor(roles, brief) {
+  const kinds = [...(roles.verifierKinds ?? [])]
+  if (briefScenarios(brief).length > 0 && !kinds.includes('desktop')) kinds.push('desktop')
+  return kinds
+}
+
 export function integrationScenarios(merged) {
-  return [...new Set(['boot', ...merged.flatMap((item) => item.scenarios ?? [])])]
+  return [...new Set(['boot', ...merged.flatMap((item) => briefScenarios(item))])]
 }

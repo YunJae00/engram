@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, openSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import process from 'node:process'
 
 // The shell's default Node can be older than package.json engines, so prefer the newest nvm install.
@@ -19,6 +19,15 @@ function nodeBin() {
 
 export const NODE_BIN = nodeBin()
 
+// nvm's layout is versions/node/<version>/bin. When that directory is absent, NODE_BIN is the running Node's directory.
+export function withNodeOnPath(env = process.env) {
+  const out = { ...env }
+  const key = Object.keys(out).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH'
+  const current = out[key]
+  out[key] = current ? `${NODE_BIN}${delimiter}${current}` : NODE_BIN
+  return out
+}
+
 function detached(cmd, args, { cwd, stdoutPath, stderrPath }) {
   const out = openSync(stdoutPath, 'a')
   const err = stderrPath === stdoutPath ? out : openSync(stderrPath, 'a')
@@ -27,7 +36,7 @@ function detached(cmd, args, { cwd, stdoutPath, stderrPath }) {
       cwd,
       detached: true,
       stdio: ['ignore', out, err],
-      env: { ...process.env, PATH: `${NODE_BIN}:${process.env.PATH ?? ''}` },
+      env: withNodeOnPath(),
     })
     child.unref()
     return { pid: child.pid }

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
 import { deleteRemoteBranch, fetchBranch, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
-import { roundOutcome, verifyDecision } from './loop.mjs'
+import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
 import { verifierPrompt } from './prompt.mjs'
 import {
   attemptRef, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, loadBrief, loadJobs, note, persona,
@@ -69,7 +69,7 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
 }
 
 async function resetJobs(ctx, item, attempt, jobs) {
-  for (const kind of ctx.roles.verifierKinds) {
+  for (const kind of verifierKindsFor(ctx.roles, loadBrief(ctx, item.id))) {
     const job = jobs[label(item, attempt, kind)]
     if (!job) continue
     kill(job.pid)
@@ -94,7 +94,7 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   const byKind = {}
   const tries = {}
   let pending = false
-  for (const kind of ctx.roles.verifierKinds) {
+  for (const kind of verifierKindsFor(ctx.roles, loadBrief(ctx, item.id))) {
     const name = label(item, attempt, kind)
     let job = jobs[name]
     if (!job || job.retry) {

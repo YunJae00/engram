@@ -62,7 +62,14 @@ describe('verifierPrompt', () => {
       expect(verifierPrompt({ persona: '', kind, brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain(`orchestration/reports/${brief.id}.json\` is the implementer's required report commit`)
     }
     expect(implementerPrompt({ persona: '', rules, brief, branch: 'b', baseBranch: 'next', reportPath: 'r' })).toContain('Add tests only inside the allowed files; if no test file is allowed, do not create one.')
-    expect(verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('thing-scenario')
+    expect(verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toContain('node scripts/verify-cli.mjs thing-scenario')
+  })
+
+  it('desktop prompt refuses a brief that names no scenario', () => {
+    const p = verifierPrompt({ persona: '', kind: 'desktop', brief: { ...brief, scenarios: [] }, headSha: sha, verdictPath: 'v', schemaText: 's' })
+    expect(p).toContain('cannot_verify')
+    expect(p).not.toContain('thing-scenario')
+    expect(p).toContain('"ok": true')
   })
 
   it('rejects an unknown kind', () => {
