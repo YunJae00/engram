@@ -110,7 +110,30 @@ export async function run(page, { app, paths, expect, openActivity, log }) {
       log.write(`[ui-chat-polish] ${JSON.stringify(evidence.at(-1))}\n`)
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme)
+        await app.evaluate(({ app, BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0]
+          window.show()
+          app.focus({ steal: true })
+          window.focus()
+        })
+        await page.bringToFront()
+        await expect.poll(() => app.evaluate(({ app, BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0]
+          app.focus({ steal: true })
+          window.moveTop()
+          window.focus()
+          return window.isFocused()
+        }), { message: 'native Electron window is focused', timeout: 10000 }).toBe(true)
+        await expect(page.locator('html')).toHaveAttribute('data-window-focused', 'true')
         await expect.poll(() => presentation(page)).toEqual([])
+        if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
+        const sidebarChecks = [
+          ['.sidebar-item:not(.active) .sidebar-conversation-name', '.app-sidebar'],
+          ['.sidebar-work-status > span:last-child', '.app-sidebar'],
+        ]
+        await expect.poll(async () => (await renderedContrast(page, app, expect, sidebarChecks)).every(check => check.ratio >= 4.5)).toBe(true)
+        evidence.push({ width: size.width, theme, state: 'focused sidebar', contrast: await renderedContrast(page, app, expect, sidebarChecks), errors: [] })
+        if (size.width <= 900) await page.getByTestId('app-sidebar-close').click()
         evidence.push({ width: size.width, theme, errors: await presentation(page) })
         const input = page.getByTestId('bots-input')
         await expect(input).toHaveAttribute('placeholder', /.+/)
@@ -124,6 +147,16 @@ export async function run(page, { app, paths, expect, openActivity, log }) {
         await expect.poll(() => withinViewport(menu)).toBe(true)
         await page.keyboard.press('Escape')
         await expect(menu).toHaveCount(0)
+        await page.getByTestId('bots-input-add').click()
+        await page.getByTestId('bots-memory-toggle').click()
+        await expect(page.getByTestId('bots-memory')).toBeVisible()
+        const memoryChecks = [['.bots-memory-title', '.bots-memory'], ['.bots-memory-empty', '.bots-memory']]
+        await expect.poll(async () => (await renderedContrast(page, app, expect, memoryChecks)).every(check => check.ratio >= 4.5)).toBe(true)
+        evidence.push({ width: size.width, theme, state: 'composer memory', contrast: await renderedContrast(page, app, expect, memoryChecks), errors: [] })
+        await page.screenshot({ path: `tmp/verify-cli/ui-chat-polish-${size.width}-${theme}-memory.png` })
+        await page.getByTestId('bots-input-add').click()
+        await page.getByTestId('bots-memory-toggle').click()
+        await expect(page.getByTestId('bots-memory')).toBeHidden()
         await page.locator('.bots-write [data-testid="model-picker"]').click()
         const models = page.getByTestId('model-picker-menu')
         await expect(models).toBeVisible()
@@ -244,5 +277,30 @@ async function presentation(page) {
     if (input.bottom > plus.top || input.bottom > send.top) errors.push('textarea not above controls')
     if (Math.abs(send.width - send.height) > 1 || parseFloat(getComputedStyle(document.querySelector('[data-testid="bots-input-send"]')).borderRadius) < 16) errors.push('send not round')
     return errors
+  })
+}
+
+async function renderedContrast(page, app, expect, checks) {
+  for (const [selector] of checks) await expect(page.locator(selector).first()).toBeVisible()
+  const samples = await page.evaluate(checks => checks.map(([selector, surface]) => {
+    const node = document.querySelector(selector)
+    const text = node.getBoundingClientRect()
+    const box = document.querySelector(surface).getBoundingClientRect()
+    return { selector, foreground: getComputedStyle(node).color.match(/[\d.]+/g).slice(0, 3).map(Number), x: Math.floor(box.left + 8), y: Math.floor(text.top + text.height / 2) }
+  }), checks)
+  const backgrounds = await app.evaluate(async ({ BrowserWindow }, { samples, width }) => {
+    const capture = await BrowserWindow.getAllWindows()[0].webContents.capturePage()
+    const image = capture.resize({ width })
+    const bitmap = image.toBitmap()
+    return samples.map(({ x, y }) => {
+      const offset = (y * image.getSize().width + x) * 4
+      return [bitmap[offset + 2], bitmap[offset + 1], bitmap[offset]]
+    })
+  }, { samples, width: (await page.viewportSize()).width })
+  const luminance = rgb => rgb.map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+  return samples.map(({ selector, foreground }, index) => {
+    const background = backgrounds[index]
+    const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a)
+    return { selector, foreground, background, ratio: (values[0] + 0.05) / (values[1] + 0.05) }
   })
 }

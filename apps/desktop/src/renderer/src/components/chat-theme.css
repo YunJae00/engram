@@ -5,6 +5,7 @@
   --rail-bg: #f5f5f5;
   --editor-bg: #fff;
   --input-bg: #fff;
+  --widget-bg: #fff;
   --fg: #202124;
   --fg-strong: #202124;
   --fg-dim: #62666d;
@@ -23,7 +24,7 @@
   color: var(--fg);
   color-scheme: light;
 }
-.app-sidebar { background: var(--rail-bg); border-right: 1px solid var(--border); }
+.app-sidebar { --sidebar-tint: linear-gradient(165deg, #edf5fc 0%, #f2f6fa 48%, #f4f8ee 100%); background: var(--rail-bg); border-right: 1px solid var(--border); }
 .app-sidebar .sidebar-item { border-radius: 13px; }
 .app-sidebar .sidebar-item.active { background: var(--selected-soft); }
 .app-sidebar .sidebar-conversations .bots-row { min-width: 0; height: 64px; padding: 8px 12px; gap: 10px; }
