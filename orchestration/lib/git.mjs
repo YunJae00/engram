@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -16,10 +18,44 @@ async function gitOrNull(cwd, args) {
   }
 }
 
+async function isAncestor(cwd, ancestor, descendant) {
+  return (await gitOrNull(cwd, ['merge-base', '--is-ancestor', ancestor, descendant])) !== null
+}
+
+// null means base already contains `from`. Otherwise 'created' | 'fast-forward' | 'merged'.
 export async function ensureBranch({ root, remote }, base, from) {
-  if (await gitOrNull(root, ['ls-remote', '--exit-code', '--heads', remote, base])) return false
-  await git(root, ['push', remote, `${from}:refs/heads/${base}`])
-  return true
+  const listed = await gitOrNull(root, ['ls-remote', '--exit-code', '--heads', remote, base])
+  const fromSha = await git(root, ['rev-parse', from])
+  if (!listed) {
+    await git(root, ['push', remote, `${fromSha}:refs/heads/${base}`])
+    return 'created'
+  }
+  const remoteSha = listed.split(/\s+/)[0]
+  if (remoteSha === fromSha) return null
+  await fetchBranch({ root, remote }, base)
+  if (await isAncestor(root, remoteSha, fromSha)) {
+    await git(root, ['push', remote, `${fromSha}:refs/heads/${base}`])
+    return 'fast-forward'
+  }
+  if (await isAncestor(root, fromSha, remoteSha)) return null
+  await mergeRemoteBranch({ root, remote }, base, from)
+  return 'merged'
+}
+
+async function mergeRemoteBranch(opts, base, from) {
+  const dir = join(opts.root, 'tmp', 'orch', `sync-${base}`)
+  await git(opts.root, ['worktree', 'remove', '--force', dir]).catch(() => {})
+  rmSync(dir, { recursive: true, force: true })
+  await addWorktree(opts, dir, `${opts.remote}/${base}`, { detach: true })
+  try {
+    await git(dir, ['merge', '-m', `merge ${from} into ${base}`, from])
+    await push(opts, dir, base)
+  } catch (error) {
+    await git(dir, ['merge', '--abort']).catch(() => {})
+    throw error
+  } finally {
+    await removeWorktree(opts, dir)
+  }
 }
 
 export async function addWorktree({ root }, path, ref, { detach = false } = {}) {

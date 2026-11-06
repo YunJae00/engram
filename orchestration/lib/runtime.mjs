@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, sym
 import { join } from 'node:path'
 import process from 'node:process'
 import { blockingFindings } from './aggregate.mjs'
-import { addWorktree, fetchBranch, removeWorktree } from './git.mjs'
+import { addWorktree, ensureBranch, fetchBranch, removeWorktree } from './git.mjs'
 import { launchCloud } from './launch-cloud.mjs'
 import { resolveCodexBin } from './codex-bin.mjs'
 import { launchClaude, launchCodex, withNodeOnPath } from './launch-local.mjs'
@@ -169,6 +169,17 @@ export async function prepareNext(ctx) {
   await git(ctx.nextWorktree, 'reset', '--hard')
   await git(ctx.nextWorktree, 'checkout', '--detach', ctx.base)
   return ctx.nextWorktree
+}
+
+// Keep the integration branch current with main before item branches or integration checks use it.
+export async function syncBaseBranch(ctx, phase = 'run') {
+  await fetchBranch(ctx.opts, ctx.roles.mainBranch)
+  const action = await ensureBranch(ctx.opts, ctx.roles.baseBranch, `${ctx.opts.remote}/${ctx.roles.mainBranch}`)
+  if (action) {
+    await fetchBranch(ctx.opts, ctx.roles.baseBranch)
+    note(ctx, 'batch', phase, `${action} ${ctx.roles.baseBranch}`, `from ${ctx.roles.mainBranch}`)
+  }
+  return action
 }
 
 async function prepareLaunch(ctx) {

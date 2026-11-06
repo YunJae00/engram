@@ -4,14 +4,13 @@ import { basename, join, resolve } from 'node:path'
 import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath, URL } from 'node:url'
-import { ensureBranch, fetchBranch } from './lib/git.mjs'
 import { isTerminal, loadLedger } from './lib/ledger.mjs'
 import { checkImplementation, designTick, promote, setDesign, startBriefed } from './lib/phase-implement.mjs'
 import { batchIdle, integrate, integrationFinished, mergeVerified, resetIntegration, writeSummary } from './lib/phase-merge.mjs'
 import { settle, verifyAttempt } from './lib/phase-verify.mjs'
 import { alive } from './lib/procs.mjs'
 import { release } from './lib/release.mjs'
-import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema } from './lib/runtime.mjs'
+import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
 import { validate } from './lib/validate.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -100,10 +99,7 @@ async function run(ctx, args) {
   }
   const unlock = lock(ctx)
   try {
-    await fetchBranch(ctx.opts, ctx.roles.mainBranch)
-    if (await ensureBranch(ctx.opts, ctx.roles.baseBranch, `${ctx.opts.remote}/${ctx.roles.mainBranch}`)) {
-      note(ctx, 'batch', 'run', `create ${ctx.roles.baseBranch}`, `from ${ctx.roles.mainBranch}`)
-    }
+    await syncBaseBranch(ctx)
     if (flag(args, '--reintegrate')) {
       const ledger = loadLedger(ROOT)
       if (ledger.integration?.state === 'failed') {
