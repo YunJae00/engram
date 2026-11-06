@@ -25,6 +25,9 @@ describe('roles', () => {
   it('parses the single json block in roles.md', () => {
     expect(roles.baseBranch).toBe('next')
     expect(roles.ladder.ts).toHaveLength(3)
+    expect(roles.models.claude.implement).toBe('claude-opus-5-5')
+    expect(roles.models.claude.verify).toBe('claude-sonnet-5-5')
+    expect(roles.models.codex).toBe('gpt-6-sol')
   })
 
   it('throws when roles.md has no json block', () => {
