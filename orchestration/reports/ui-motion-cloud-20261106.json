@@ -1,0 +1,37 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "status": "done",
+  "headSha": "9cf310679129a00f3077be21ad9f89f49723d32b",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs",
+    "ui-interaction-motion: show-earlier-then-recent-row (0/40/100/200/400 ms)",
+    "ui-interaction-motion: hide-earlier-then-recent-row (0/40/100/200/400 ms)",
+    "ui-interaction-motion: show-earlier-then-revealed-old-row (0/40/100/200/400 ms)",
+    "ui-interaction-motion: show-earlier-then-create",
+    "ui-interaction-motion: show-earlier-then-b-a-chain",
+    "ui-interaction-motion: reduce-show-earlier-then-row",
+    "ui-interaction-motion: reduce-hide-earlier-then-row"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build (with the previous startViewTransition toggleEarlier restored temporarily; Show/Hide earlier clicks reached HTML)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "exit": 0 },
+    { "cmd": "xvfb-run -a sh -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line --trace off", "exit": 0 },
+    { "cmd": "git diff --cached --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The ui-interaction-motion scenario now runs about 76-78 s in the cloud container against the unchanged 90 s verify-cli budget."
+  ]
+}
