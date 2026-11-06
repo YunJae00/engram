@@ -1,0 +1,28 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 5,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "a18b5fe9a53c4ae1c50b7a58e250c470308abbe4",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "tmp/verify-cli/ui-interaction-motion-2026-11-06T16-23-56-181Z.log",
+      "result": "exit 0, ok true, zero pass:false checks. Covers the brief's Break items: create-menu-retained-before-first-open (MotionSurface keepMounted keeps bots-new mounted), show/hide-earlier-then-trusted-row-click at 0/40/100/200/400 ms (toggleEarlier now flushSync without document.startViewTransition, so no overlay intercepts clicks), timed-trusted-double-click-long-history, second-click-landed-while-exit-snapshot-present and real-b-c-a-sequence-ends-on-a (last click wins), 40-turn histories with long-to-long first/cached visits and wheel-up-during-long-motion-survives (scroll-to-bottom no longer cancels Motion.tsx transitions), reduced-motion and reload/resize cleanup checks."
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "tmp/verify-cli/note-open-2026-11-06T16-26-29-047Z.log",
+      "result": "exit 0; check:quick passed and ui-activity-status, boot, cosmos, note-open each reported ok true (logs tmp/verify-cli/ui-activity-status-2026-11-06T16-25-53-349Z.log, boot-2026-11-06T16-26-17-438Z.log, cosmos-2026-11-06T16-26-19-272Z.log, note-open-2026-11-06T16-26-29-047Z.log)."
+    },
+    {
+      "criterion": "scope",
+      "cmd": "git diff --stat origin/next...HEAD && git log --format=%B origin/next..HEAD && wc -l $(git diff --name-only origin/next...HEAD)",
+      "logPath": "git diff origin/next...HEAD",
+      "result": "All 8 changed source files are in allowedFiles; the only other file is the required report orchestration/reports/ui-motion-cloud-20261106.json. No App.tsx, global style, Map, live overlay, credential or native changes. Largest file is ui-interaction-motion.mjs at 398 lines (<400). No TODO/FIXME/stubs, no commit trailers; the few comments state rationale rather than narrate the change."
+    }
+  ],
+  "findings": []
+}
