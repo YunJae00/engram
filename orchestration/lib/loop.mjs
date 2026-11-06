@@ -42,7 +42,6 @@ export function machineCheck({ itemId, report, reportErrors, changed, allowedFil
 }
 
 export const lineage = (agent) => (agent.startsWith('claude') ? 'claude' : 'codex')
-export const opposite = (agent) => (lineage(agent) === 'claude' ? 'codex-local' : 'claude-local')
 
 export function plannedAttempts(item, roles, hard) {
   const base = rung(item, roles)
@@ -52,8 +51,8 @@ export function plannedAttempts(item, roles, hard) {
     ? base.implementer
     : (roles.ladder[item.area].find((r) => lineage(r.implementer) === 'claude')?.implementer ?? 'claude-local')
   return [
-    { implementer: claude, verifier: opposite(claude) },
-    { implementer: 'codex-local', verifier: opposite('codex-local') },
+    { implementer: claude, verifier: base.verifier },
+    { implementer: base.implementer, verifier: base.verifier },
   ]
 }
 

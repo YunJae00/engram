@@ -65,6 +65,12 @@ function readJsonText(text) {
   }
 }
 
+// Item verification is cloud-only; these are the final local desktop smoke checks.
+const releaseScenarios = (merged) => {
+  const named = integrationScenarios(merged).filter((name) => ['note-open', 'cosmos', 'ui-activity-status'].includes(name))
+  return [...new Set(['boot', ...named, ...(merged.length ? ['note-open', 'cosmos', 'ui-activity-status'] : [])])]
+}
+
 async function runCi(ctx, logPath, timeoutMs) {
   const before = await latestRun(ctx)
   const started = await sh(ctx.root, 'gh', ['workflow', 'run', 'ci.yml', '--ref', ctx.roles.baseBranch, '-f', 'native_only=true'], { logPath })
@@ -89,7 +95,7 @@ async function runChecks(ctx, merged, logPath) {
   if ((await run('pnpm', ['install', '--frozen-lockfile'])).code !== 0) return ['install']
   const failed = []
   if ((await run('npm', ['run', 'verify'])).code !== 0) return ['verify']
-  for (const scenario of integrationScenarios(merged)) {
+  for (const scenario of releaseScenarios(merged)) {
     const built = existsSync(join(worktree, 'apps/desktop/out/main/index.js'))
     const cli = scenarioCommand(scenario, built)
     const result = await sh(worktree, process.execPath, cli, { logPath, timeoutMs, env: QUIET_HOST })

@@ -12,13 +12,14 @@ export const REPORT_SCHEMA_TEXT = `{
 All keys are required. No other keys.`
 
 const DESKTOP_BUILD = 'If `apps/desktop/out/main/index.js` is missing, `node scripts/verify-cli.mjs <scenario>` builds the desktop app and later runs reuse that build. Do not append `--build`. A missing build is not `cannot_verify`.'
+const CLOUD_DESKTOP = 'You are in a Linux cloud container with no host display. Install `xvfb` with the system package manager if needed. Run Electron-related commands with `xvfb-run -a` (including any command in an `npm run check:quick && ...` chain), while preserving the exact `node scripts/verify-cli.mjs <scenario>` invocation inside it. Never report a missing X server as `cannot_verify` before trying Xvfb. Run desktop scenarios serially in your own session.'
 const verifyCliCriterion = (brief) => (brief.criteria ?? []).some((c) => /(?:^|\s)scripts\/verify-cli\.mjs\s+[a-z0-9-]+/.test(c.cmd ?? ''))
 
 const VERIFIER_STEPS = {
-  tests: (brief) => [
+  tests: (brief, baseBranch, cloud) => [
     'Run `npm run check:quick` and save its output to a log under `orchestration/logs/`.',
     `Run every criterion command and save each output to its own log under \`orchestration/logs/\`:\n${brief.criteria.map((c) => `   - ${c.id}: \`${c.cmd}\` expect: ${c.expect}`).join('\n')}`,
-    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD] : []),
+    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : [])] : []),
     'Add one evidence entry per criterion with the exact command, the exit code and outcome in `result`, and the log path.',
     'Verdict `pass` only if every command exits as expected, `fail` if any does not, `cannot_verify` if the environment prevents running a command.',
   ],
@@ -93,7 +94,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
     'Implement the brief, touching only the allowed files.',
     'Add tests only inside the allowed files; if no test file is allowed, do not create one.',
     'Run `npm run check:quick` until it exits 0, and run every criterion command.',
-    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD] : []),
+    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : [])] : []),
     'Commit the code. Record `git rev-parse HEAD` as headSha.',
     `Write \`${reportPath}\` matching the report schema below, with that headSha.`,
     `Run \`git add -f ${reportPath}\` and commit it as a separate last commit.`,
@@ -119,7 +120,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
   ].join('\n')
 }
 
-export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next' }) {
+export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, verdictBranch = '' }) {
   const steps = VERIFIER_STEPS[kind]
   if (!steps) throw new Error(`unknown verifier kind: ${kind}`)
   return [
@@ -127,13 +128,15 @@ export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, sch
     '',
     briefBlock(brief),
     '',
-    `## Target\nThe checkout is at headSha \`${headSha}\`. Verify that exact commit. Do not edit, commit, push or switch branches.`,
+    `## Target\nVerify exact commit \`${headSha}\`. ${cloud ? `Start from \`${baseBranch}\`, fetch the implementation branch, and check out that commit detached. Do not modify the implementation branch. Return only your verdict as one commit on \`${verdictBranch}\`, created from the existing remote verdict branch if present or from \`${headSha}\` otherwise.` : 'The checkout is already at headSha. Do not edit, commit, push or switch branches.'}`,
     '',
     '## Steps',
     numbered([
       `Confirm \`git rev-parse HEAD\` prints \`${headSha}\`; if not, verdict \`cannot_verify\`.`,
       ...steps(brief, baseBranch),
+      ...(cloud && briefScenarios(brief).length ? [CLOUD_DESKTOP] : []),
       `Write the verdict JSON to \`${verdictPath}\` with id \`${brief.id}\`, attempt ${attempt}, kind \`${kind}\`, headSha \`${headSha}\`.`,
+      ...(cloud ? [`Run \`git add -f ${verdictPath}\`, commit only the verdict, and push it to \`origin ${verdictBranch}\`. Never push any other branch and never open a pull request.`] : []),
       'Print the same verdict JSON as your final message, JSON only, nothing before or after it.',
     ]),
     '',

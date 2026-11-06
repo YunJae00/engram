@@ -60,8 +60,8 @@ describe('transition', () => {
 
 describe('ladder', () => {
   it('picks the rung by bounce count and returns null when exhausted', () => {
-    expect(rung(base, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'codex-local' })
-    expect(rung({ ...base, bounces: 2 }, roles)).toEqual({ implementer: 'codex-local', verifier: 'claude-local' })
+    expect(rung(base, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'claude-cloud' })
+    expect(rung({ ...base, bounces: 2 }, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'claude-cloud' })
     expect(rung({ ...base, bounces: 3 }, roles)).toBeNull()
   })
 

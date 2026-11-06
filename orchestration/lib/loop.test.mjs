@@ -20,20 +20,20 @@ const item = (over = {}) => ({ id: 'x', area: 'ts', bounces: 0, ...over })
 
 describe('bounce ladder', () => {
   it('takes one rung per bounce for easy items', () => {
-    expect(plannedAttempts(item(), roles, false)).toEqual([{ implementer: 'claude-cloud', verifier: 'codex-local' }])
-    expect(plannedAttempts(item({ bounces: 2 }), roles, false)).toEqual([{ implementer: 'codex-local', verifier: 'claude-local' }])
+    expect(plannedAttempts(item(), roles, false)).toEqual([{ implementer: 'claude-cloud', verifier: 'claude-cloud' }])
+    expect(plannedAttempts(item({ bounces: 2 }), roles, false)).toEqual([{ implementer: 'claude-cloud', verifier: 'claude-cloud' }])
     expect(plannedAttempts(item({ bounces: 3 }), roles, false)).toEqual([])
   })
 
-  it('runs claude and codex at once for hard items after the first FAIL', () => {
+  it('runs independent claude attempts at once for hard items after the first FAIL', () => {
     expect(plannedAttempts(item(), roles, true)).toHaveLength(1)
     expect(plannedAttempts(item({ bounces: 1 }), roles, true)).toEqual([
-      { implementer: 'claude-cloud', verifier: 'codex-local' },
-      { implementer: 'codex-local', verifier: 'claude-local' },
+      { implementer: 'claude-cloud', verifier: 'claude-cloud' },
+      { implementer: 'claude-cloud', verifier: 'claude-cloud' },
     ])
     expect(plannedAttempts(item({ area: 'native', bounces: 2 }), roles, true)).toEqual([
-      { implementer: 'claude-local', verifier: 'codex-local' },
-      { implementer: 'codex-local', verifier: 'claude-local' },
+      { implementer: 'claude-cloud', verifier: 'claude-cloud' },
+      { implementer: 'claude-cloud', verifier: 'claude-cloud' },
     ])
     expect(plannedAttempts(item({ area: 'native', bounces: 3 }), roles, true)).toEqual([])
   })
