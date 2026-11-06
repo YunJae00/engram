@@ -1,0 +1,48 @@
+{
+  "id": "ui-live-retry-20261106",
+  "status": "done",
+  "headSha": "9a1ee0698b21623d6119d51719ff266cd421273c",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs",
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs: untouched four-card deck bounded at 800x560 and 1400x600 under a draft, then right anchor with empty inline left/top restored",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: cancelling before the first drag leaves no inline position and the right anchor survives resizes",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: window shrink while held clamps the card, keeps capture, a 1px move gives 1px, and the released point is committed",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: 150px thread fits spacing and card height with usable controls; 30px thread suspends the overlay and recovers",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: six frames render four with depth three and unrendered frames stay selectable and bounded",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: a second pointer id cannot move or take the drag",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: a throwing setPointerCapture leaves no marker, no map change and no page error; a real drag then works",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: same-id frame replacement and stack growth mid-drag keep capture and clamp, with a 1px follow-up move",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: lane switch mid-drag discards the provisional point and restores each lane's own position",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: app-only lane deck torn down by empty frames and restored, also while held; unavailable frame shows its message and recovers",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: renderer reload resets to the default anchor with no marker or stale capture",
+    "scripts/verify-scenarios/lib/chat-layout.mjs: packedBlocks checks stack against the thread floor, exposed back-card corners and the suspended state; controlsUsable, flowGeometry, deckInline, stackBounded helpers",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs: appPreview, sizeWindow, constrainChat, drag and cancellation injection helpers"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick 9be2ba989a05fed9d99d7decaab7131a1059dcb3", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build (unchanged candidate; hidden window acked pointer input about once a second and the scenario exceeded the 90s budget)", "exit": 1 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build (negative check: clamp floor set to chat.clientHeight; failed at the thread-bottom assertion with 82px overflow)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "npm run check:quick && xvfb-run -a node scripts/verify-cli.mjs boot && xvfb-run -a node scripts/verify-cli.mjs cosmos && xvfb-run -a node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "node node_modules/eslint/bin/eslint.js scripts/verify-scenarios apps/desktop/src/renderer/src/lib/previewDrag.ts", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The literal candidate f6c7a408c840e2bd98a44ef961c9c52a7512 and f6c7a40ea36d458400ef85571d8cd9867469ce76 are not in this clone; the same code commit, 'keep the live overlay card above the composer', is 9be2ba989a05fed9d99d7decaab7131a1059dcb3 on origin/orch/ui-live-final2-serial-20261106-2 and is the headSha bound by orchestration/reports/ui-live-final2-serial-20261106.json, so that object was cherry-picked. c4d0a1a701fdeb02e54cdfa94b3ee1ebb0b77466 is absent and was not used.",
+    "This session was pinned by its harness to branch claude/implementer-role-workflow-hjie60, so the work is committed and pushed there instead of orch/ui-live-retry-20261106-4; the branch starts at origin/next 0ef250d3f0748d1e609322f3b697e1ee4a84ebc4 and holds only the cherry-pick, this change and the report.",
+    "Every desktop run used xvfb-run -a because the container has no display; the scenario shows the test window with showInactive before pointer input, so it appears briefly on a real desktop during verification.",
+    "Below 44px of available chat width or thread height the overlay is suspended (hidden, no pointer input, preference kept) and recovers automatically; the scenario asserts this state explicitly at a 30px thread.",
+    "Positions are kept in renderer memory per lane and reset on reload; no unit test for clampPreview or fitStack because apps/desktop/test is outside the allowed files.",
+    "orchestration/features/MAP.md was not read or edited; Feature Map completeness for break-regressions-and-map is owned by B."
+  ]
+}
