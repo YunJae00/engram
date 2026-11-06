@@ -94,6 +94,8 @@ export async function run(page, { app, paths, expect, openActivity, log }) {
       await app.dock.show()
       app.show()
     })
+    // A window that is never shown yields no frames on X11, so every screenshot below needs a focused window first.
+    await acquireFocus(ctx, 'launch')
     for (const size of sizes) {
       await page.setViewportSize(size)
       await openActivity(page, 'bots')
