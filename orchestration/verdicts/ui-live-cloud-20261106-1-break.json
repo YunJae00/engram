@@ -1,0 +1,65 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 1,
+  "kind": "break",
+  "verdict": "fail",
+  "headSha": "1add1b2dc53805548ea92f895ae5e94391df75b5",
+  "evidence": [
+    {
+      "criterion": "real-desktop",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "tmp/verify-cli/ui-live-overlay-2026-11-06T14-43-25-668Z.log",
+      "result": "exit 0, ok true in 41s: png frame painted, no thread shift before/mid/after drag, cancellations, second pointer, refused capture, corner and composer-floor clamps, reopen, held drag through incoming frames, depth growth and resize rebase, lane spots, 100px floor fit, suspension below 44px, six frames, remounts, reload anchor; no page errors"
+    },
+    {
+      "criterion": "quick-and-stock-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "tmp/break-c2-quick-stock.out",
+      "result": "exit 0: tsc core+desktop, eslint, vitest unit (--changed), todo-scan and css-orphan-scan passed; boot ok true 1.9s, cosmos ok true 9.9s, note-open ok true 9.9s"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/work-preview-layout.spec.ts e2e/browser-preview.spec.ts",
+      "logPath": "tmp/break-e2e-preview-specs.out",
+      "result": "exit 1 at headSha: 2 failed, 2 did not run, 3 passed. The same command on an origin/next worktree (tmp/break-e2e-preview-specs-baseline-next.out) passes 7/7, so both are regressions introduced by the overlay placement. Feature Map row 'Live preview overlay' (orchestration/features/MAP.md:33) already exists and names scripts/verify-scenarios/ui-live-overlay.mjs; untouched by this change as the brief requires."
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node tmp/break-cli.mjs tmp/break-scenarios/edges2.mjs",
+      "logPath": "tmp/break-edges2.out",
+      "result": "steady-state probes passed: thread floors 150/120/100/90/80/70/60/50/46/45/44 untouched and parked (card >=44px, bottom at or above the floor, spacing fitted) and suspension at 43/20/1; chat widths 400/330/320/300/200/150/100/60/45/44 fitted, suspended at 43/10; right and middle button presses and back-card presses never place; 40 frame updates with 1..6 frames while held keep capture and pack; pointer at -500,-500 clamps to the 90,90 stack corner; 700x400/500x300/400x250/300x200 windows with a parked card pack or suspend and the spot returns at 1400x900; an 80-line draft suspends and restores; double click, shift drag and wheel mid-drag behave. Failures in this run were probe mistakes (floor value assertion below 44, zoom delta units, wrong action-button index for app frames, sidebar drawer closed)"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node tmp/break-cli.mjs tmp/break-scenarios/edges3.mjs",
+      "logPath": "tmp/break-edges3.out",
+      "result": "zoom 1.5/0.75/1.25 pack at idle, far corner and 90,90 corner; -100,+50 drags land exactly; zoom back to 1 mid-drag keeps capture; lane switch while suspended restores the spot and unsuspends. Noted, not reproduced as a defect: Escape cancels only while the deck holds focus (focus moved to the composer mid-drag ignores Escape; release still commits). Remaining failures were probe mistakes (committed lane spot persists across my reset, selected web card kept in front, sidebar drawer closed)"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node tmp/break-cli.mjs tmp/break-scenarios/pill.mjs",
+      "logPath": "tmp/break-pill.out",
+      "result": "exit 0: deck, collapsed pill and hidden pill rects identical across 91 frames at 1000x700, 900x650, 800x600 and 1400x900; an earlier 'element is not stable' click timeout on the hidden pill at 900x650 did not reproduce"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "git status --short && git diff --stat origin/next 1add1b2dc53805548ea92f895ae5e94391df75b5",
+      "logPath": "tmp/break-c1-ui-live-overlay.out",
+      "result": "checkout clean at the target sha; the change touches only the 7 allowed files plus the required report commit orchestration/reports/ui-live-cloud-20261106.json"
+    }
+  ],
+  "findings": [
+    {
+      "file": "apps/desktop/src/renderer/src/views/BotsView.tsx",
+      "line": 119,
+      "claim": "Passing overlay to PreviewDeck moves the card over the thread, and the stock e2e 'preview stays within a narrow window, stays above the thread and supports dark and reduced-motion modes' (apps/desktop/e2e/browser-preview.spec.ts:174) now fails: card bottom 305.375 vs required <= thread top 94.375 at a 620x800 window. The same spec passes 6/6 on origin/next.",
+      "reproCmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/browser-preview.spec.ts"
+    },
+    {
+      "file": "apps/desktop/src/renderer/src/components/live-overlay.css",
+      "line": 2,
+      "claim": "The absolute overlay deck at top 12px of .bots-chat overlaps the conversation thread, so the stock e2e 'app previews stack, promote back cards and stay inside full, split, minimized and expanded conversations' (apps/desktop/e2e/work-preview-layout.spec.ts:69, predicate requires preview.bottom <= thread.top + 1 and no overlap with bubbles) times out after 30s at headSha. It passes on origin/next.",
+      "reproCmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/work-preview-layout.spec.ts"
+    }
+  ]
+}
