@@ -1,0 +1,41 @@
+{
+  "id": "ui-motion-full-20261106",
+  "status": "blocked",
+  "headSha": "9655743e85b24ce985ac7a4e3e01bda36142a81e",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "commandsRun": [
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --check",
+      "exit": 0
+    }
+  ],
+  "openQuestions": [
+    "The mandatory ui-interaction-motion Feature Map row is absent. orchestration/features/MAP.md is outside the allowlist; the orchestrator must arrange that change before declaring completion.",
+    "The referenced prior implementation worktree was absent. This implementation was built from the current baseline and verified with 38 passing evidence records, including 30 normal/reduced animation measurements.",
+    "Async composer/external selection transitions and full main-process crash durability remain outside this representative navigation proof. The scenario does not exhaustively cover the design's 80-chat/12-folder stress, overlapping mutation ordering, or drag/pin matrix."
+  ]
+}
