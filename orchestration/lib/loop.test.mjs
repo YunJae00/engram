@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
-  briefScenarios, bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, isStalled, machineCheck, needsRedesign,
+  briefScenarios, bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, machineCheck, needsRedesign,
   nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, suggestBump, verifyDecision, verifierKindsFor,
 } from './loop.mjs'
 import { rejectDesign } from './phase-implement.mjs'
@@ -69,13 +69,9 @@ describe('machine checks', () => {
   })
 })
 
-describe('stall detection', () => {
-  it('stalls only past the deadline without a report', () => {
-    const deadline = deadlineAt('2026-11-05T10:00:00.000Z', 45)
-    expect(deadline).toBe('2026-11-05T10:45:00.000Z')
-    expect(isStalled(deadline, new Date('2026-11-05T10:44:59Z'), false)).toBe(false)
-    expect(isStalled(deadline, new Date('2026-11-05T10:45:01Z'), false)).toBe(true)
-    expect(isStalled(deadline, new Date('2026-11-05T11:00:00Z'), true)).toBe(false)
+describe('deadlines', () => {
+  it('adds the role minutes to the launch time', () => {
+    expect(deadlineAt('2026-11-05T10:00:00.000Z', 45)).toBe('2026-11-05T10:45:00.000Z')
   })
 })
 

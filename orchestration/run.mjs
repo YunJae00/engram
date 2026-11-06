@@ -9,7 +9,8 @@ import { checkImplementation, designTick, promote, setDesign, startBriefed } fro
 import { batchIdle, integrate, integrationFinished, mergeVerified, resetIntegration, writeSummary } from './lib/phase-merge.mjs'
 import { settle, verifyAttempt } from './lib/phase-verify.mjs'
 import { alive } from './lib/procs.mjs'
-import { release } from './lib/release.mjs'
+import { awaitSmoke, release } from './lib/release.mjs'
+import { fetchBranch, fileAtRef } from './lib/git.mjs'
 import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
 import { validate } from './lib/validate.mjs'
 
@@ -20,7 +21,8 @@ const USAGE = `usage:
   node orchestration/run.mjs integrate
   node orchestration/run.mjs status
   node orchestration/run.mjs design <id> --pick claude|codex
-  node orchestration/run.mjs release --bump patch|minor`
+  node orchestration/run.mjs release --bump patch|minor
+  node orchestration/run.mjs smoke [--tag vX.Y.Z]`
 
 const flag = (args, name) => args.includes(name)
 const option = (args, name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
@@ -137,6 +139,17 @@ async function integrateOnce(ctx) {
   }
 }
 
+// The desktop smoke runs in the Release workflow (smoke.yml); this reads its result.
+async function smoke(ctx, tag) {
+  if (!tag) {
+    await fetchBranch(ctx.opts, ctx.roles.mainBranch)
+    tag = `v${JSON.parse(await fileAtRef(ctx.opts, `${ctx.opts.remote}/${ctx.roles.mainBranch}`, 'package.json')).version}`
+  }
+  const result = await awaitSmoke(ctx, tag)
+  ctx.log(`smoke ${result.state} for ${tag}${result.url ? ` ${result.url}` : ''}\n${result.jobs.join('\n')}`)
+  if (result.state !== 'passed') process.exitCode = 1
+}
+
 async function main(argv) {
   const [command, ...args] = argv
   const ctx = createContext(ROOT, { dryRun: flag(args, '--dry-run') })
@@ -153,6 +166,7 @@ async function main(argv) {
   if (command === 'release' && ['patch', 'minor'].includes(option(args, '--bump'))) {
     return ctx.log(`released v${await release(ctx, loadLedger(ROOT), option(args, '--bump'))}`)
   }
+  if (command === 'smoke') return smoke(ctx, option(args, '--tag'))
   process.stderr.write(`${USAGE}\n`)
   process.exitCode = 2
 }

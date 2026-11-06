@@ -7,6 +7,7 @@ import { isTerminal, transition } from './ledger.mjs'
 import { integrationScenarios, nextRevert, suggestBump } from './loop.mjs'
 import { cleanAttempt, dropBranch } from './phase-verify.mjs'
 import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, syncBaseBranch } from './runtime.mjs'
+import { roleMinutes } from './timebox.mjs'
 
 export async function mergeVerified(ctx, ledger) {
   for (const item of ledger.items.filter((i) => i.state === 'verified')) {
@@ -90,7 +91,7 @@ async function runCi(ctx, logPath, timeoutMs) {
 
 async function runChecks(ctx, merged, logPath) {
   const worktree = await prepareNext(ctx)
-  const timeoutMs = ctx.roles.minutes.integrate * 60_000
+  const timeoutMs = roleMinutes(ctx.roles, 'integrate') * 60_000
   const run = (cmd, args) => sh(worktree, cmd, args, { logPath, timeoutMs, env: QUIET_HOST })
   if ((await run('pnpm', ['install', '--frozen-lockfile'])).code !== 0) return ['install']
   const failed = []

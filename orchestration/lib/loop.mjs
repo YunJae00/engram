@@ -6,10 +6,6 @@ export function deadlineAt(startIso, minutes) {
   return new Date(Date.parse(startIso) + minutes * 60_000).toISOString()
 }
 
-export function isStalled(deadlineIso, now, hasReport) {
-  return !hasReport && now.getTime() > Date.parse(deadlineIso)
-}
-
 export function globToRegExp(glob) {
   let out = ''
   for (let i = 0; i < glob.length; i++) {

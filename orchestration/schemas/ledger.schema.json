@@ -192,6 +192,14 @@
         "deadlineAt": {
           "type": "string"
         },
+        "launch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "relaunchOf": {
+          "type": "integer",
+          "minimum": 1
+        },
         "finishedAt": {
           "type": "string"
         },
@@ -214,7 +222,8 @@
             "fail",
             "stalled",
             "invalid",
-            "superseded"
+            "superseded",
+            "timeout"
           ]
         }
       }

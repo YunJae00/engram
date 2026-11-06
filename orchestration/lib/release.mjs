@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { fetchBranch, push } from './git.mjs'
 import { transition } from './ledger.mjs'
 import { bumpVersion } from './loop.mjs'
@@ -39,4 +40,44 @@ export async function release(ctx, ledger, kind) {
   }
   save(ctx, ledger)
   return version
+}
+
+const SMOKE_JOB = /^smoke\b/
+
+/** State of the Release workflow's desktop smoke from `gh run view --json jobs` output. */
+export function smokeState(jobs) {
+  const smoke = (jobs ?? []).filter((job) => SMOKE_JOB.test(job.name ?? ''))
+  if (smoke.length === 0) return { state: 'missing', jobs: [] }
+  const names = smoke.map((job) => `${job.name}: ${job.conclusion || job.status}`)
+  if (smoke.some((job) => job.status !== 'completed')) return { state: 'pending', jobs: names }
+  return { state: smoke.every((job) => job.conclusion === 'success') ? 'passed' : 'failed', jobs: names }
+}
+
+async function ghJson(ctx, args) {
+  const { code, out } = await sh(ctx.root, 'gh', args)
+  if (code !== 0) return null
+  try {
+    return JSON.parse(out)
+  } catch {
+    return null
+  }
+}
+
+/** Waits for the desktop smoke job of the Release run for `tag` and returns its state. */
+export async function awaitSmoke(ctx, tag, { timeoutMs = 90 * 60_000, pollMs = 30_000 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  let last = { state: 'missing', jobs: [] }
+  let url = ''
+  while (Date.now() < deadline) {
+    const run = (await ghJson(ctx, ['run', 'list', '--workflow', 'release.yml', '--branch', tag, '--limit', '1', '--json', 'databaseId,url']))?.[0]
+    if (run) {
+      url = run.url
+      last = smokeState((await ghJson(ctx, ['run', 'view', String(run.databaseId), '--json', 'jobs']))?.jobs)
+      if (last.state === 'passed' || last.state === 'failed') break
+    }
+    await sleep(pollMs)
+  }
+  if (last.state === 'missing' || last.state === 'pending') last = { ...last, state: 'timeout' }
+  note(ctx, 'batch', 'smoke', `smoke ${last.state}`, `${tag}: ${last.jobs.join('; ') || 'no smoke job found'}`, url)
+  return { ...last, url }
 }

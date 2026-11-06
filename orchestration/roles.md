@@ -4,7 +4,8 @@ The JSON block below is the single source of configuration that `lib/ledger.mjs`
 
 - `areas` maps each work area to the path globs it owns. A brief names its area; its `allowedFiles` should stay inside those paths.
 - `ladder[area]` lists, per attempt, which agent implements and which Claude cloud session verifies. Verifier kinds share the Claude lineage: each independently verifies the exact attempt SHA. Attempt n uses `ladder[area][n-1]`, so the rung equals the number of bounces so far. Once the ladder is exhausted the item goes to `needs_human`.
-- `minutes` are the deadlines per phase. An attempt past its deadline is `stalled` and bounces.
+- `minutes` are the deadlines per role, counted from each launch. `implement` covers one implementer session; `verify` is a number or one entry per verifier kind (`tests`, `spec`, `desktop`, `break`, with `default` for any other). A role with no entry gets the built-in default: design 15, implement 40, verify 20, integrate 60.
+- `timeoutRelaunches` (default 1) is how many fresh sessions replace a role that passes its deadline with nothing pushed. Each relaunch gets its own branch (`orch/<id>-<n>` as a new attempt for an implementer, `orch/verdicts/<id>-<n>-<kind>-r<try>` for a verifier), so whatever the timed-out session pushes later is never read. Once the relaunches are spent, the attempt's outcome is `timeout`: an implementation bounces to the next rung, a verifier records `cannot_verify` and the item goes to `needs_human`. A verifier's timeout relaunch and its `cannot_verify` retry share the same budget of `1 + timeoutRelaunches` launches.
 - `maxLocalAgents` caps concurrent local processes (claude-local and codex-local).
 - `verifierKinds` are the Claude cloud verifiers launched for every implemented attempt. A brief that lists `scenarios`, or whose criterion command is `node scripts/verify-cli.mjs <scenario>`, also launches `desktop`. `tests`, `spec` and `break` stay in this list.
 - `codexBin`, when set, is a repo-relative or absolute path and is used only when that file exists. Launch then looks for `@openai/codex-<platform>-<arch>` under `apps/desktop/node_modules`, `node_modules`, and the pnpm store, with `codex.exe` on Windows. A missing binary throws and names every path tried. A binary for another OS is never spawned. The value below is the macOS arm64 vendor path; on any other machine it is skipped when the file is absent.
@@ -24,10 +25,16 @@ Shared-file lock: an item whose allowed files include a `sharedFiles` entry runs
   "maxLocalAgents": 4,
   "minutes": {
     "design": 15,
-    "implement": 45,
-    "verify": 20,
+    "implement": 40,
+    "verify": {
+      "tests": 20,
+      "spec": 20,
+      "desktop": 20,
+      "break": 20
+    },
     "integrate": 60
   },
+  "timeoutRelaunches": 1,
   "areas": {
     "ts": {
       "paths": [
