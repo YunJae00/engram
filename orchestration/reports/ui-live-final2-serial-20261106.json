@@ -1,0 +1,40 @@
+{
+  "id": "ui-live-final2-serial-20261106",
+  "status": "done",
+  "headSha": "9be2ba989a05fed9d99d7decaab7131a1059dcb3",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs",
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs: popover dismissal on card press",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: no text selection after a drag",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: bottom clamp ends at the thread, not under the composer (900px and 600px)",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: centre press on a bottom-parked card at 600px starts a drag",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: growing draft pushes a parked card up and clearing it restores the spot",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: chosen spot survives window shrink and stack depth changes",
+    "scripts/verify-scenarios/ui-live-overlay.mjs: per-lane positions restored across comet switches",
+    "scripts/verify-scenarios/lib/chat-layout.mjs: packedBlocks checks stack bounds, thread floor and card top/centre/bottom hit points"
+  ],
+  "commandsRun": [
+    { "cmd": "ENGRAM_CHECK_BASE=origin/next npm run check:quick", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs note-open", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Negative check, not listed in commandsRun because it ran against a temporary uncommitted edit: with the clamp floor set back to chat.clientHeight, node scripts/verify-cli.mjs ui-live-overlay --build exited 1 at the thread-bottom assertion; the line was restored and the scenario rerun to exit 0 before committing.",
+    "The earlier repro tmp/break/run.mjs repro-composer-cover does not exist in this worktree, so it was not run; the 1400x600 bottom-park block in the scenario covers the same case.",
+    "Known limit left as designed: when the thread is shorter than the stack offset plus the card height (about 210px for a four-card stack), no position fits and the card's lower edge runs under the composer; the composer stays usable.",
+    "Card positions are kept in memory only and reset on app restart or renderer reload.",
+    "No unit test for clampPreview: apps/desktop/test/previewDrag.test.ts is outside the allowed files, so the cherry-picked test file was dropped.",
+    "orchestration/features/MAP.md was not touched; the ui-live-overlay row already on next (line 33) is owned by B."
+  ]
+}
