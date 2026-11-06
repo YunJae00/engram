@@ -1,0 +1,39 @@
+{
+  "id": "ui-activity-work-20261106",
+  "status": "blocked",
+  "headSha": "c67fd374054226f8720b6890f6d36939eeecb55f",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/CometMessages.tsx",
+    "apps/desktop/src/renderer/src/components/CometWork.tsx",
+    "apps/desktop/test/comet-messages.test.ts",
+    "orchestration/reports/ui-activity-work-20261106.json"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/comet-messages.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "cmd": "node node_modules/vitest/vitest.mjs run --project unit apps/desktop/test/comet-messages.test.ts",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick && test -f scripts/verify-scenarios/ui-activity-status.mjs",
+      "exit": 1
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --check",
+      "exit": 0
+    },
+    {
+      "cmd": "node node_modules/vitest/vitest.mjs run --project unit apps/desktop/test/comet-messages.test.ts apps/desktop/test/pending-status.test.ts apps/desktop/test/comet-activity.test.ts",
+      "exit": 0
+    }
+  ],
+  "openQuestions": [
+    "The required scripts/verify-scenarios/ui-activity-status.mjs does not exist and is outside allowedFiles, as is orchestration/features/MAP.md. Permission to edit those two paths was requested but not received. The permitted implementation and regression tests are complete; the required Electron scenario, Feature Map registration, and real app proof remain blocked by the explicit file restrictions."
+  ]
+}
