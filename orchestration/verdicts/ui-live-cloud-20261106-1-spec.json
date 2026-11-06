@@ -1,0 +1,28 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 1,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "1add1b2dc53805548ea92f895ae5e94391df75b5",
+  "evidence": [
+    {
+      "criterion": "real-desktop",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "tmp/verify-cli/ui-live-overlay-2026-11-06T14-43-39-493Z.log",
+      "result": "exit 0, ok true, 41482 ms. Evidence line reports the 1280x800 PNG painted into preview-card with no web pane, the thread rectangles unchanged through the drag (card 1068,99 to 748,299 in chat 300,87 1100x813 over thread at y=87), right anchor through tab switch and widths, escape/cancel/lostcapture/blur/tab cancellations restoring the committed spot, second pointer and refused capture ignored, corner and composer-floor clamps, collapse/reopen position retained, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, fit and suspension, and the preview-card-in entrance animation asserted at scripts/verify-scenarios/ui-live-overlay.mjs:42. The diff implements this in apps/desktop/src/renderer/src/lib/previewDrag.ts (clamped placement, pointer capture, commit on release only, cancel on Escape/pointercancel/lostpointercapture/blur, ResizeObserver and depth watch relayout) and live-overlay.css (absolute overlay inside .bots-chat so the thread and composer keep their flow), wired through the new overlay prop in PreviewDeck.tsx and BotsView.tsx."
+    },
+    {
+      "criterion": "quick-and-stock-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "tmp/verify-cli/boot-2026-11-06T14-45-11-286Z.log tmp/verify-cli/cosmos-2026-11-06T14-45-13-620Z.log tmp/verify-cli/note-open-2026-11-06T14-45-23-614Z.log",
+      "result": "exit 0. check:quick: tsc core and desktop clean, eslint clean, vitest unit 22 passed, todo-scan clean, css-orphan-scan clean. boot ok true (2268 ms), cosmos ok true (9941 ms), note-open ok true (10340 ms). Combined stdout and stderr kept at /tmp/claude-0/-home-user-engram/12877566-c08e-59a2-a80a-3f46ab082043/scratchpad/logs/quick-and-stock.log."
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "tmp/verify-cli/ui-live-overlay-2026-11-06T14-45-37-542Z.log",
+      "result": "exit 0, ok true on a second serial rebuild and run, same evidence line as real-desktop. Previously reported break risks are covered by explicit assertions in scripts/verify-scenarios/ui-live-overlay.mjs: no thread shift (expectFlow at lines 94, 96, 104, 130), second pointer and refused capture (lines 133-155), mid-drag depth growth and resize with 1px rebase (lines 223-239), dropped lane-switch drag (lines 257-268), composer-floor clamp on a short window (lines 273-294), fit to a 100px floor and suspension below 44px (lines 311-334), empty-frame remounts and unavailable-frame recovery (lines 350-370), reload back to the anchor (lines 381-388). Feature Map: orchestration/features/MAP.md row 33 for ui-live-overlay already exists identically on origin/next and origin/main and is untouched by the diff, matching the goal that no Feature Map change is needed. Spec checks: git diff --name-only origin/next...HEAD lists seven files all within allowedFiles plus orchestration/reports/ui-live-cloud-20261106.json (the required report commit); PreviewCard.tsx is allowed but unchanged. No TODO/FIXME/stub strings in the added lines, git diff --check clean, no commit trailers on the three commits, longest changed file is scripts/verify-scenarios/ui-live-overlay.mjs at 398 lines. Out-of-scope areas (polish, sidebar, history, game controller) are not touched and no new architecture is introduced beyond one hook module. Notes that are not findings: the brief's candidate sha f6c7a408c840e2bd98a44ef961c9c52a7512 is 36 hex characters and resolves to no object, and the report's substitute f6c7a40ea36d458400ef85571d8cd9867469ce76 is not reachable from any fetched ref, so the cherry-pick provenance cannot be checked from git history; the diff content itself is what the criteria verify. The design path orchestration/designs/ui-live-retry-20261106-codex.md does not exist on this checkout, origin/next or origin/main."
+    }
+  ],
+  "findings": []
+}
