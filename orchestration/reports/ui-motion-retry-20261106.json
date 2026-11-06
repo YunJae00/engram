@@ -1,0 +1,46 @@
+{
+  "id": "ui-motion-retry-20261106",
+  "status": "done",
+  "headSha": "aa821506e9fd6d0838348cf834b9a048a61f1a93",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "pnpm --filter desktop build", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (candidate scenario unchanged, hidden window on Linux)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (candidate scenario, window shown on Linux)", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (extended scenario, snapshot box compared without translate tolerance)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "npm run check:quick (unused performance global declared)", "exit": 1 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-activity-status", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line --trace off", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "This run happened on a Linux cloud container under Xvfb, not on the requested Mac. Every Electron command ran serially there; the Mac run remains for the verifier.",
+    "On Linux a never-shown Electron window gets no compositor frames, so CSS transitions stayed pending forever and the candidate scenario timed out at its first settle. The scenario now calls showInactive on the window only when process.platform is linux; on macOS the window stays hidden as before.",
+    "Motion.tsx changes against the candidate tree are limited to the navigation hook: the window scroll cancellation listener is gone, cleanup is idempotent and closes over its own pair, and it clears the shared dispose ref only when that ref still points at the same pair. The other seven files match the candidate tree apart from the scenario.",
+    "The natural-lifetime evidence rows record the mount scroll of the incoming transcript at roughly 20 to 90 ms after the trusted click while the enter and exit animations keep running to about 150 ms, with 7 to 12 post-scroll frames whose live and snapshot opacities move in opposite directions, and the pair plus snapshot gone by 180 to 250 ms.",
+    "The snapshot box is compared with the click-time outgoing box using a 4 px tolerance, because the exit animation translates the snapshot by up to 4 px and the passive probe reads getBoundingClientRect every frame without pausing anything.",
+    "The resize-mid-motion row passed with the pair observed for 2 frames at currentTime 0 before the renderer resize disposed it; the check requires the pair to have existed and to have ended before 150 ms, then the destination to land and accept input.",
+    "The fault helper now keeps hold mode on until cleared and queues one release per held call with its own verdict, so two overlapping folder creations and a held-then-rejected creation could be driven; the previous single reject and single hold cases keep their original assertions.",
+    "The whole scenario took 39 to 43 s on Linux without a build and 57 s including the rebuild, inside the 90 s verify-cli budget.",
+    "Not covered, as the design notes: native HTML5 drag under motion, IME composition submit, live provider streaming under concurrent motion, arbitrarily large transcript clone cost, and process restart with an in-flight backend mutation."
+  ]
+}
