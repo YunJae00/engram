@@ -1,0 +1,34 @@
+{
+  "id": "ui-polish-last-serial-20261106",
+  "status": "done",
+  "headSha": "b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs: focus guard self-check (hide and refocus must invalidate a saved blur generation)",
+    "scripts/verify-scenarios/ui-chat-polish.mjs: focused dark sidebar and composer memory contrast after reload"
+  ],
+  "commandsRun": [
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-chat-polish", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-activity-status", "exit": 0 },
+    { "cmd": "pnpm --filter desktop exec playwright test e2e/chat.spec.ts e2e/chat-attachments.spec.ts e2e/conversation-sidebar.spec.ts --workers=1", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The --build run of ui-chat-polish started while one other Electron process from the conductor main checkout was alive (another implementer, worktree ui-polish-last-serial-20261106-5, works on the same brief in parallel). It still passed with native focus. The rerun without --build and every other scenario and Playwright suite ran with no other Electron process present at start or end.",
+    "Serial execution is not enforceable from the allowed files. A verifier that launches beside another Electron run or under a persistent system dialog can still be refused focus; the scenario then fails closed after 10 seconds and logs the target window state.",
+    "No discarded sample or refused focus was logged in either ui-chat-polish run, so the resample-after-focus-loss path ran only through the built-in hide and refocus self-check.",
+    "The macOS activation change (regular activation policy, Dock show) is verified on this Mac only; Windows and Linux take the same window focus path without that step and were not run.",
+    "The brief names app.bringToFront, which neither Electron nor Playwright provides; the scenario uses app.focus({steal:true}), window focus on the page's own BrowserWindow, then page.bringToFront()."
+  ]
+}
