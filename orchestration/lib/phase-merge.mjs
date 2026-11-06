@@ -6,7 +6,7 @@ import { fetchBranch, push, revert, squashMerge } from './git.mjs'
 import { isTerminal, transition } from './ledger.mjs'
 import { integrationScenarios, nextRevert, suggestBump } from './loop.mjs'
 import { cleanAttempt, dropBranch } from './phase-verify.mjs'
-import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh } from './runtime.mjs'
+import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, syncBaseBranch } from './runtime.mjs'
 
 export async function mergeVerified(ctx, ledger) {
   for (const item of ledger.items.filter((i) => i.state === 'verified')) {
@@ -35,6 +35,8 @@ export async function mergeVerified(ctx, ledger) {
 
 export const QUIET_HOST = { ENGRAM_QUIET_HOST: '1' }
 const QUIET_NOTE = 'ENGRAM_QUIET_HOST=1, host focus specs skipped'
+
+export const scenarioCommand = (scenario, built) => ['scripts/verify-cli.mjs', scenario, ...(built ? [] : ['--build'])]
 
 export const batchIdle = (ledger) => ledger.items.length > 0 && ledger.items.every((i) => isTerminal(i.state) || i.state === 'merged')
 export const integrationFinished = (ledger) => ['passed', 'failed'].includes(ledger.integration?.state)
@@ -89,8 +91,8 @@ async function runChecks(ctx, merged, logPath) {
   if ((await run('npm', ['run', 'verify'])).code !== 0) return ['verify']
   for (const scenario of integrationScenarios(merged)) {
     const built = existsSync(join(worktree, 'apps/desktop/out/main/index.js'))
-    const cli = [join(ctx.root, 'scripts/verify-cli.mjs'), scenario, '--root', worktree, ...(built ? [] : ['--build'])]
-    const result = await sh(ctx.root, process.execPath, cli, { logPath, timeoutMs, env: QUIET_HOST })
+    const cli = scenarioCommand(scenario, built)
+    const result = await sh(worktree, process.execPath, cli, { logPath, timeoutMs, env: QUIET_HOST })
     if (result.code !== 0) failed.push(scenario)
   }
   if (failed.length) return failed
@@ -100,6 +102,7 @@ async function runChecks(ctx, merged, logPath) {
 export async function integrate(ctx, ledger) {
   const merged = () => ledger.items.filter((i) => i.state === 'merged')
   if (merged().length === 0) return
+  await syncBaseBranch(ctx, 'integrate')
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `integration-${ledger.batch}.log`)
   const history = ledger.integration?.history

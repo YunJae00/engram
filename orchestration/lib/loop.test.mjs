@@ -9,7 +9,7 @@ import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
 import { linkNodeModules, previousFindings } from './runtime.mjs'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { attemptMinutes, batchIdle, integrationFinished, QUIET_HOST, resetIntegration } from './phase-merge.mjs'
+import { attemptMinutes, batchIdle, integrationFinished, QUIET_HOST, resetIntegration, scenarioCommand } from './phase-merge.mjs'
 import { validate } from './validate.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -122,6 +122,11 @@ describe('integration culprit loop', () => {
     expect(nextRevert(['palette'], merged, 0, 2).id).toBe('a')
     expect(nextRevert(['palette'], merged, 2, 2)).toBeNull()
     expect(nextRevert(['palette'], [], 0, 2)).toBeNull()
+  })
+
+  it('loads scenarios from the integration worktree using the local CLI', () => {
+    expect(scenarioCommand('palette', false)).toEqual(['scripts/verify-cli.mjs', 'palette', '--build'])
+    expect(scenarioCommand('ui-activity-status', true)).toEqual(['scripts/verify-cli.mjs', 'ui-activity-status'])
   })
 
   it('never reverts on an infrastructure failure without a culprit', () => {

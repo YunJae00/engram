@@ -5,8 +5,8 @@ export async function run(page, { expect, openActivity }) {
   const rows = page.getByTestId('list-row')
   await expect(rows).toHaveCount(3)
   const dates = await page.locator('.list-date').allTextContents()
-  const newestFirst = [...dates].sort().reverse().join('|') === dates.join('|')
-  if (!newestFirst) return { ok: false, evidence: `list dates were not newest-first: ${dates.join(', ')}` }
+  const newestFirst = dates.length > 1 && new Set(dates).size === dates.length && [...dates].sort().reverse().join('|') === dates.join('|')
+  if (!newestFirst) return { ok: false, evidence: `list dates were not distinct newest-first: ${dates.join(', ')}` }
   await page.getByTestId('list-filter').fill('Hello')
   await expect(rows).toHaveCount(1)
   await rows.first().click()

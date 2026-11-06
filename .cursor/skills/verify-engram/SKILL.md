@@ -11,7 +11,7 @@ Desktop proof is one command from the repo root:
 node scripts/verify-cli.mjs <scenario>
 ```
 
-Add `--build` when `apps/desktop/out/main/index.js` is missing. The process launches that build on a fresh vault and prints one JSON line. Exit 0 and `"ok": true` is a pass. A description of a click is not.
+The command builds the desktop app when `apps/desktop/out/main/index.js` is missing and reuses a build that is already there. `--build` forces a rebuild; per-item criteria omit it. The process launches that build on a fresh vault and prints one JSON line. Exit 0 and `"ok": true` is a pass. A description of a click is not.
 
 ## Steps
 

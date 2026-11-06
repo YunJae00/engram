@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseArgs } from '../../scripts/verify-cli-args.mjs'
+import { needsBuild, parseArgs } from '../../scripts/verify-cli-args.mjs'
 
 describe('verify-cli args', () => {
   it('defaults the root to the script repo', () => {
@@ -11,6 +11,13 @@ describe('verify-cli args', () => {
     expect(parseArgs(['--root', 'tmp/orch/next', 'boot'], '/repo', '/repo')).toMatchObject({ name: 'boot', root: resolve('/repo', 'tmp/orch/next') })
     expect(parseArgs(['boot', '--root', '/abs/next'], '/repo', '/cwd')).toMatchObject({ name: 'boot', root: '/abs/next' })
     expect(parseArgs(['--list', '--root', 'x'], '/repo', '/c')).toMatchObject({ list: true, name: '', root: resolve('/c', 'x') })
+  })
+
+  it('builds when the desktop entry is missing and reuses one that exists', () => {
+    expect(needsBuild(false, false)).toBe(true)
+    expect(needsBuild(false, true)).toBe(false)
+    expect(needsBuild(true, true)).toBe(true)
+    expect(needsBuild(true, false)).toBe(true)
   })
 
   it('rejects --root without a directory', () => {

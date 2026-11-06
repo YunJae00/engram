@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // node scripts/verify-cli.mjs <scenario> [--build] [--root <dir>] | --list
 // --root picks the checkout whose build, node_modules and tmp/verify-cli are used; scenarios come from this repo.
+// Builds the desktop app when out/main/index.js is missing. --build rebuilds even when that file exists.
 // Launches the built desktop app on a fresh vault, runs one scenario, prints one JSON line.
 import { createWriteStream, existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -8,7 +9,7 @@ import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parseArgs } from './verify-cli-args.mjs'
+import { needsBuild, parseArgs } from './verify-cli-args.mjs'
 
 const SCENARIO_DIR = fileURLToPath(new URL('./verify-scenarios/', import.meta.url))
 let opts
@@ -47,9 +48,9 @@ async function launch(name, log) {
   const userData = await mkdtemp(join(OUT_DIR, `${name}-userdata-`))
   tempDirs.push(root, userData)
   const paths = await core.initVault(root, { git: false })
-  await core.createNote(paths, { id: 'n-hello-0001', body: '# Hello note\n\nThe very first note.' })
-  await core.createNote(paths, { id: 'n-argo-0001', body: '# Argo redesign\n\nThe umbrella decision.' })
-  await core.createNote(paths, { id: 'n-argo-0002', body: '# Argo palette\n\nColor decisions.', derived_from: ['n-argo-0001'] })
+  await core.createNote(paths, { id: 'n-hello-0001', body: '# Hello note\n\nThe very first note.', happened_at: '2026-01-15T00:00:00.000Z' })
+  await core.createNote(paths, { id: 'n-argo-0001', body: '# Argo redesign\n\nThe umbrella decision.', happened_at: '2026-02-15T00:00:00.000Z' })
+  await core.createNote(paths, { id: 'n-argo-0002', body: '# Argo palette\n\nColor decisions.', derived_from: ['n-argo-0001'], happened_at: '2026-03-15T00:00:00.000Z' })
 
   pendingLaunch = _electron.launch({
     args: [MAIN_ENTRY, '--no-sandbox'],
@@ -105,12 +106,14 @@ const fail = (evidence) => emit({ scenario: name, ok: false, ms: Date.now() - st
 if (!scenarios.includes(name)) fail(`unknown scenario "${name}"; known: ${scenarios.join(', ')}`)
 await mkdir(OUT_DIR, { recursive: true })
 const log = createWriteStream(join(REPO, logPath))
-if (opts.build) {
+if (needsBuild(opts.build, existsSync(MAIN_ENTRY))) {
+  const why = opts.build ? '--build' : 'apps/desktop/out/main/index.js missing'
+  log.write(`[verify-cli] building desktop (${why})\n`)
   const built = spawnSync('pnpm', ['--filter', 'desktop', 'build'], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
   log.write(`${built.stdout ?? ''}${built.stderr ?? ''}`)
   if (built.status !== 0) fail(`pnpm --filter desktop build failed (status ${built.status ?? built.error?.message})`)
 }
-if (!existsSync(MAIN_ENTRY)) fail('apps/desktop/out/main/index.js missing; run with --build')
+if (!existsSync(MAIN_ENTRY)) fail('apps/desktop/out/main/index.js missing after desktop build')
 
 let timer
 try {

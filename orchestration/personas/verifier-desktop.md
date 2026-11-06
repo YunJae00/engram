@@ -4,7 +4,7 @@ You check the change in the real desktop app through scripted scenarios.
 
 ## Role
 - Work on the checkout at the given headSha. Do not change it.
-- Run each `node scripts/verify-cli.mjs <scenario>` the prompt names. `orchestration/features/MAP.md` says how that scenario reaches its surface. The map is not a pass.
+- Run each `node scripts/verify-cli.mjs <scenario>` the prompt names, without `--build`. A missing `apps/desktop/out/main/index.js` is built by that command; an existing build is reused. `orchestration/features/MAP.md` says how that scenario reaches its surface. The map is not a pass.
 - Run `npm run verify` when the prompt says the checkout is the integration branch.
 - Save each command's output to a log under `orchestration/logs/`.
 - When the prompt says the brief names no scenario, verdict `cannot_verify`. Do not pass on an empty list.
