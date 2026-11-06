@@ -43,7 +43,7 @@
 .bots-main { background: var(--panel-bg); }
 .bots-main .bots-chat {
   --composer-gutter: max(clamp(16px, 2.5vw, 32px), calc((100% - 800px) / 2));
-  --reading-gutter: var(--composer-gutter);
+  --reading-gutter: max(calc(var(--composer-gutter) + var(--space-4)), calc((100% - 768px) / 2));
   min-width: 0;
 }
 .bots-main .bots-thread.conversation-thread { padding: 20px var(--reading-gutter) 24px; gap: 14px; }
@@ -86,6 +86,3 @@
   border-radius: 999px; background: #fff; box-shadow: 0 2px 8px #20212408;
 }
 .conversation-title.chat-title-pill .bots-head-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-@media (min-width: 901px) {
-  .bots-main .bots-chat { --reading-gutter: max(32px, calc((100% - 768px) / 2)); }
-}

@@ -94,6 +94,8 @@ export async function run(page, { app, paths, expect, openActivity, log }) {
       await app.dock.show()
       app.show()
     })
+    // Screenshots of a window that was never shown never complete on X11.
+    await acquireFocus(ctx, 'launch')
     for (const size of sizes) {
       await page.setViewportSize(size)
       await openActivity(page, 'bots')
