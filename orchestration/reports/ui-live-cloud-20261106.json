@@ -1,0 +1,34 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "status": "done",
+  "headSha": "700a3e02253f27e19ab3a8cfcaa9af0515ce1f41",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "scripts/verify-scenarios/ui-live-overlay.mjs",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick f6c7a40ea36d458400ef85571d8cd9867469ce76", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/browser-preview.spec.ts", "exit": 0 },
+    { "cmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/work-preview-layout.spec.ts", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The brief's sha f6c7a408c840e2bd98a44ef961c9c52a7512 is 36 hex characters and resolves to no object; the cherry-picked candidate is f6c7a40ea36d458400ef85571d8cd9867469ce76 (keep the live overlay card above the composer), fetched by sha from origin.",
+    "The stock e2e specs require an untouched preview to sit above the thread, which an absolutely positioned overlay at the top of the chat cannot satisfy. The untouched deck therefore keeps its in-flow slot above the thread, and drags move it with the CSS translate property, which never reflows the thread. A committed position is a chat-local point, clamped to the chat width and the thread bottom (the composer floor) with the back-card depth reserved. The design's fit and below-44px suspension steps are not implemented because the in-flow slot always fits.",
+    "Under Xvfb, a window that is never shown paints once a second, so each pointer move takes about 1s and the overlay scenario overran its 90s budget. The scenario now calls showInactive on the window, as the attempt-1 scenario did.",
+    "Feature Map not touched; the brief states the rows already exist on main."
+  ]
+}
