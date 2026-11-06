@@ -1,0 +1,33 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "status": "done",
+  "headSha": "6289a69afe1d6a4a623d7c9f383d1e83bdc9695c",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "scripts/verify-scenarios/ui-live-overlay.mjs",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick f6c7a40ea36d458400ef85571d8cd9867469ce76", "exit": 0 },
+    { "cmd": "git cherry-pick bdda286", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/work-preview-layout.spec.ts e2e/browser-preview.spec.ts", "exit": 0 },
+    { "cmd": "cd apps/desktop && xvfb-run -a node node_modules/@playwright/test/cli.js test --workers=1 --trace off e2e/app-preview-stream.spec.ts e2e/app-work-live.spec.ts e2e/background-conversation-live.spec.ts e2e/live-view.spec.ts e2e/office-preview.spec.ts e2e/computer-control.spec.ts e2e/browser-focus.spec.ts", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The brief's sha f6c7a408c840e2bd98a44ef961c9c52a7512 is 36 hex characters and resolves to no object; the available candidate f6c7a40ea36d458400ef85571d8cd9867469ce76 (fetched from origin by sha) was cherry-picked, followed by the attempt-1 adjustment bdda286.",
+    "To keep the stock e2e contract (preview above the thread), an untouched deck now stays docked in flow above the thread; it floats over the chat only after a moved drag or a committed lane spot. The thread therefore shifts once when the card is first lifted or re-docked by a cancelled first drag, and stays fixed while the card is placed or updated.",
+    "The design file orchestration/designs/ui-live-retry-20261106-codex.md is not in this checkout; the design text in the prompt was followed."
+  ]
+}
