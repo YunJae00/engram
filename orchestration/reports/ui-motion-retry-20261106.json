@@ -1,0 +1,76 @@
+{
+  "id": "ui-motion-retry-20261106",
+  "status": "done",
+  "headSha": "85529aff7385d8401da20214cc8abc0da43a058a",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs: retained interaction coverage plus passive 40-turn first-visit and cached post-scroll progress",
+    "trusted long-history second clicks and B/C/A order",
+    "concurrent reverse-order folder completion and stale rejection",
+    "populated reduced motion, preference flip, resize, upward wheel, and capture failure"
+  ],
+  "commandsRun": [
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-interaction-motion",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-interaction-motion",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-interaction-motion",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open",
+      "exit": 0
+    },
+    {
+      "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --check",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --cached --check",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --cached --name-only",
+      "exit": 0
+    },
+    {
+      "cmd": "wc -l apps/desktop/src/renderer/src/components/AppSidebar.tsx apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx apps/desktop/src/renderer/src/components/Motion.tsx apps/desktop/src/renderer/src/components/SidebarCollection.tsx apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx apps/desktop/src/renderer/src/components/interaction-motion.css apps/desktop/src/renderer/src/lib/motion.ts scripts/verify-scenarios/ui-interaction-motion.mjs",
+      "exit": 0
+    }
+  ],
+  "openQuestions": [
+    "The CLI built the missing desktop output on the first run; --build was omitted per implementation step 5. Final motion run passed all 77 evidence rows; existing Electron suite passed all 32 tests.",
+    "An intermediate scenario assertion checked preference cleanup before the asynchronous media event arrived. The final assertion requires cleanup within 120 ms; the final run passed.",
+    "Full application restart with an in-flight mutation, native drag with motion beyond existing tests, IME submission, credentialed streaming, and arbitrarily large transcript clone cost remain unverified."
+  ]
+}
