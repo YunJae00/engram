@@ -89,6 +89,17 @@ describe('verifierPrompt', () => {
     expect(p).toContain('"ok": true')
   })
 
+  it('cloud prompts use Xvfb and return verdicts on their own branch', () => {
+    for (const cloud of [false, true]) {
+      const p = implementerPrompt({ persona: '', rules, brief: { ...brief, criteria: [{ id: 'ui', cmd: 'node scripts/verify-cli.mjs thing-scenario', expect: 'exit 0' }] }, branch: 'b', baseBranch: 'next', reportPath: 'r', cloud })
+      if (cloud) expect(p).toContain('xvfb-run -a')
+      else expect(p).not.toContain('xvfb-run')
+      const v = verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's', cloud, verdictBranch: 'orch/verdicts/test' })
+      if (cloud) for (const value of ['xvfb-run -a', 'orch/verdicts/test', 'Do not modify the implementation branch']) expect(v).toContain(value)
+      else expect(v).not.toContain('xvfb-run')
+    }
+  })
+
   it('rejects an unknown kind', () => {
     expect(() => verifierPrompt({ persona: '', kind: 'nope', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).toThrow()
   })

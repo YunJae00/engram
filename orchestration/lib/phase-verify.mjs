@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
-import { deleteRemoteBranch, fetchBranch, tipSha } from './git.mjs'
+import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
 import { verifierPrompt } from './prompt.mjs'
@@ -14,8 +14,9 @@ import { finish, rejectDesign } from './phase-implement.mjs'
 const label = (item, attempt, kind) => `${item.id}-${attempt.n}-${kind}`
 const verdictRel = (item, attempt, kind) => `orchestration/verdicts/${item.id}-${attempt.n}-${kind}.json`
 
-function parseVerdict(job, worktreeFile) {
-  const fromFile = readJsonOrNull(worktreeFile)
+function parseVerdict(job, worktreeFile, cloudVerdict) {
+  if (cloudVerdict) return cloudVerdict
+  const fromFile = worktreeFile ? readJsonOrNull(worktreeFile) : null
   if (fromFile) return fromFile
   const text = job.outPath && existsSync(job.outPath) ? readFileSync(job.outPath, 'utf8') : ''
   try {
@@ -27,10 +28,10 @@ function parseVerdict(job, worktreeFile) {
   }
 }
 
-function collect(ctx, ledger, item, attempt, kind, job) {
+function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null) {
   kill(job.pid)
   releaseSlot(ctx, job.pid)
-  const raw = parseVerdict(job, join(job.worktree, verdictRel(item, attempt, kind)))
+  const raw = parseVerdict(job, job.worktree ? join(job.worktree, verdictRel(item, attempt, kind)) : null, cloudVerdict)
   const checked = raw ? checkVerdict(raw, schema(ctx, 'verdict')) : { valid: false, reason: 'no verdict produced' }
   const mismatch = raw && (raw.id !== item.id || raw.attempt !== attempt.n || raw.kind !== kind || raw.headSha !== job.headSha)
   const reason = !checked.valid ? checked.reason : mismatch ? 'verdict id/attempt/kind/headSha does not match the job' : null
@@ -49,12 +50,15 @@ function collect(ctx, ledger, item, attempt, kind, job) {
 
 async function launchVerifier(ctx, item, attempt, kind, tries) {
   const name = label(item, attempt, kind)
-  const worktree = join(ctx.worktrees, name)
-  await freshDetached(ctx, worktree, attempt.headSha)
+  const cloud = isCloud(attempt.verifier)
+  const worktree = cloud ? null : join(ctx.worktrees, name)
+  if (worktree) await freshDetached(ctx, worktree, attempt.headSha)
   const verdictPath = verdictRel(item, attempt, kind)
+  const verdictBranch = `orch/verdicts/${name}`
   const prompt = verifierPrompt({
     persona: persona(ctx, `verifier-${kind}`), kind, brief: loadBrief(ctx, item.id), headSha: attempt.headSha, verdictPath,
     schemaText: readFileSync(join(ctx.orch, 'schemas/verdict.schema.json'), 'utf8'), attempt: attempt.n, baseBranch: ctx.base,
+    cloud, verdictBranch,
   })
   const launched = await launchAgent(ctx, {
     agent: attempt.verifier, label: name, cwd: worktree, prompt, role: 'verify', minutes: ctx.roles.minutes.verify,
@@ -65,7 +69,19 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
     return null
   }
   note(ctx, item.id, 'verify', `launch ${attempt.verifier} ${kind}`, `attempt ${attempt.n} try ${tries}`, launched.logPath)
-  return { ...launched, worktree, tries, headSha: attempt.headSha }
+  return { ...launched, worktree, tries, headSha: attempt.headSha, ...(cloud ? { verdictBranch } : {}) }
+}
+
+async function cloudVerdict(ctx, job, path) {
+  if (!job.verdictBranch || !job.sessionId) return null
+  if (job.deadlineAt && Date.now() > Date.parse(job.deadlineAt)) return null
+  try {
+    await fetchBranch(ctx.opts, job.verdictBranch)
+    const text = await fileAtRef(ctx.opts, `${ctx.opts.remote}/${job.verdictBranch}`, path)
+    return text ? JSON.parse(text) : null
+  } catch {
+    return null
+  }
 }
 
 async function resetJobs(ctx, item, attempt, jobs) {
@@ -107,13 +123,15 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
       continue
     }
     if (!job.done) {
-      const produced = readJsonOrNull(join(job.worktree, verdictRel(item, attempt, kind))) !== null
+      const path = verdictRel(item, attempt, kind)
+      const result = job.verdictBranch ? await cloudVerdict(ctx, job, path) : readJsonOrNull(join(job.worktree, path))
+      const produced = result !== null
       if (!produced && !jobFinished(job)) {
         pending = true
         continue
       }
-      collect(ctx, ledger, item, attempt, kind, job)
-      await dropWorktree(ctx, job.worktree)
+      collect(ctx, ledger, item, attempt, kind, job, result)
+      if (job.worktree) await dropWorktree(ctx, job.worktree)
     }
     tries[kind] = job.tries
     byKind[kind] = readJsonOrNull(join(ctx.root, job.path))
