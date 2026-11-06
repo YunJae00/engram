@@ -68,23 +68,23 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       style('--live-fit-stage', `${Math.min(natural.height, space.floor - depth)}px`)
       return { ...space, depth }
     }
+    const dock = () => {
+      for (const name of ['left', 'top', 'right', ...FIT_VARS]) style(name, '')
+      flag('data-suspended', false)
+      flag('data-floating', false)
+    }
+    // An untouched deck stays docked above the thread; only a moved drag or a committed spot floats it over the chat.
     const layout = () => {
       if (!live) return
+      const requested = drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)
+      if (!requested) { dock(); return }
+      flag('data-floating', true)
       const space = bounds()
       if (!space) { finish(false, false); return }
       if (space.width < MIN_CARD || space.floor < MIN_CARD) { finish(false, false); flag('data-suspended', true); return }
       flag('data-suspended', false)
-      const fitted = fit(space)
-      const requested = drag ? drag.provisional ?? drag.shown : positions.get(lane)
-      if (requested) {
-        const next = place(requested, fitted)
-        if (drag) { drag.origin = next; drag.start = drag.last; drag.shown = next; if (drag.provisional) drag.provisional = next }
-        return
-      }
-      for (const name of ['left', 'top', 'right']) style(name, '')
-      const anchor = shown()
-      const next = clampPreview(anchor, fitted.width, fitted.floor, deck.offsetWidth, deck.offsetHeight, fitted.depth)
-      if (!same(anchor, next)) place(next, fitted)
+      const next = place(requested, fit(space))
+      if (drag?.moved) { drag.origin = next; drag.start = drag.last; drag.shown = next; drag.provisional = next }
     }
     const down = (event: PointerEvent) => {
       if (drag || !event.isPrimary || event.button !== 0 || deck.hasAttribute('data-suspended')) return
@@ -99,12 +99,18 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const move = (event: PointerEvent) => {
       if (!drag || drag.id !== event.pointerId) return
       drag.last = { x: event.clientX, y: event.clientY }
+      const target = { x: drag.origin.x + drag.last.x - drag.start.x, y: drag.origin.y + drag.last.y - drag.start.y }
+      if (!drag.moved) {
+        if (same(target, drag.origin)) return
+        drag.moved = true
+        drag.provisional = target
+        layout()
+        return
+      }
       const space = bounds()
       if (!space) return
-      const next = place({ x: drag.origin.x + drag.last.x - drag.start.x, y: drag.origin.y + drag.last.y - drag.start.y }, space)
-      if (!same(next, drag.shown)) drag.moved = true
-      drag.shown = next
-      drag.provisional = next
+      drag.shown = place(target, space)
+      drag.provisional = drag.shown
     }
     const up = (event: PointerEvent) => { if (drag?.id === event.pointerId) finish(true) }
     const cancel = (event: PointerEvent) => { if (drag?.id === event.pointerId) finish(false) }

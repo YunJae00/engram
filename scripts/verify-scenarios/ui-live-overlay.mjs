@@ -5,7 +5,6 @@ import { pngFrame, sendAppFrames, sendUnavailableFrame, showWebFrame, solidFrame
 
 const BOT = 'Live overlay'
 const URL = 'https://example.test/live'
-const point = ({ x, y }) => `${Math.round(x)},${Math.round(y)}`
 
 export async function run(page, { app, paths, expect, openActivity }) {
   const errors = []; page.on('pageerror', error => errors.push(String(error)))
@@ -23,14 +22,13 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const frame = pngFrame({ width: 1280, height: 800 })
   const small = solidFrame([40, 160, 90])
   const card = page.getByTestId('preview-card')
-  const { deck, press, pointerId, hold, slide, spot, synthetic, dragTo, dragBy, expectAt, expectIdle, expectHeld } = deckDriver(page, expect)
+  const { deck, press, pointerId, hold, slide, spot, synthetic, dragTo, dragBy, escapeDrag, expectAt, expectIdle, expectHeld } = deckDriver(page, expect)
   const count = async n => { await expect(deck.locator('.preview-deck-card')).toHaveCount(n); await settle(page) }
   const visible = async () => { await expect(card).toBeVisible(); await settle(page) }
-  await settle(page)
-  const baseline = await flowGeometry(page)
-  const expectFlow = async label => expect(await flowGeometry(page), label).toEqual(baseline)
+  let flow
+  const expectFlow = async label => expect(await flowGeometry(page), label).toEqual(flow)
 
-  // Live rendering: a real PNG paints into the card without a web pane and leaves the thread where it was.
+  // Live rendering: a real PNG paints into the card without a web pane, docked above the thread until it is dragged.
   await showWebFrame(app, { lane, url: URL, frame })
   await expect(card).toBeVisible()
   await expect(card.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 15_000 })
@@ -41,11 +39,11 @@ export async function run(page, { app, paths, expect, openActivity }) {
   expect(await card.locator('canvas').evaluate(canvas => [...canvas.getContext('2d').getImageData(256, 320, 1, 1).data])).toEqual([220, 60, 60, 255])
   expect(await card.evaluate(node => getComputedStyle(node).animationName)).toBe('preview-card-in')
   await settle(page)
-  await expectFlow('after the card appeared')
+  flow = await flowGeometry(page)
   const anchored = await deckAt(page)
-  expect(anchored.left).toBe('')
+  expect([anchored.left, anchored.floating]).toEqual(['', false])
   const before = await measureChat(page)
-  expect(packedBlocks(before).reasons, 'before any drag').toEqual([])
+  expect(packedBlocks(before).reasons, 'docked before any drag').toEqual([])
 
   // Untouched bounds: a four-card stack stays inside the chat and above the thread floor through resizes and a growing draft.
   await sendAppFrames(app, lane, ['second', 'third', 'fourth'], small)
@@ -88,10 +86,13 @@ export async function run(page, { app, paths, expect, openActivity }) {
     expect((await deckAt(page)).left).toBe('')
   }
 
-  // The real drag: the thread never shifts while the card moves, and the card lands where the pointer took it.
+  // The real drag lifts the card off its docked slot once; after that the thread never shifts while the card moves.
   await hold()
   await slide(-before.card.width * 0.3, 0, 6)
-  await expectFlow('mid drag')
+  await settle(page)
+  expect((await deckAt(page)).floating).toBe(true)
+  flow = await flowGeometry(page)
+  expect(flow[0][1], 'the thread reclaims the docked slot').toBeLessThan(before.thread.top)
   await slide(-before.card.width, before.card.height, 12)
   await expectFlow('late in the drag')
   await page.mouse.up()
@@ -168,7 +169,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await card.hover()
     await card.locator('.preview-card-actions button').nth(index).click()
     await expect(card).toHaveCount(0)
-    await expectFlow(`${testId} shown`)
+    expect(await page.getByTestId(testId).evaluate(node => node.getBoundingClientRect().bottom - document.querySelector('.bots-thread').getBoundingClientRect().top), `${testId} above the thread`).toBeLessThanOrEqual(1)
     await page.getByTestId(testId).click()
     await visible()
     await expectAt(restored, `after ${testId}`)
@@ -297,9 +298,9 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const freshLane = `bot-${fresh.id}`; await open(fresh.id)
   await sendAppFrames(app, freshLane, ['a', 'b', 'c', 'd', 'e', 'f'], small)
   await count(4)
-  const natural = await deckAt(page)
-  expect([natural.depth, natural.spacing, natural.left]).toEqual([3, 30, ''])
-  const seen = new Set([natural.front])
+  const docked = await deckAt(page)
+  expect([docked.depth, docked.left, docked.floating]).toEqual([3, '', false])
+  const seen = new Set([docked.front])
   for (let step = 0; step < 5; step++) {
     await deck.focus()
     await page.keyboard.press('ArrowRight')
@@ -308,11 +309,18 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await expectPacked(page, expect, `front card ${step + 1}`)
   }
   expect([...seen].sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+  const lifted = async () => { await expectHeld(); expect((await deckAt(page)).floating).toBe(true) }
+  expect(await escapeDrag(-80, 40, lifted)).toMatchObject({ left: '', floating: false })
+  await resizeWindow(app, page, expect, 1100, 900)
+  await expect.poll(async () => (await deckAt(page)).right).toBe(docked.right)
+  await resizeWindow(app, page, expect, 1400, 900)
+  const freshSpot = await dragBy(-120, 60)
+  expect([freshSpot.left !== '', freshSpot.floating, freshSpot.spacing]).toEqual([true, true, 30])
   try {
     await constrainFloor(page, 100)
     await expect.poll(async () => (await deckAt(page)).spacing).toBeLessThan(30)
     const fitted = await deckAt(page)
-    expect(fitted.height).toBeLessThan(natural.height)
+    expect(fitted.height).toBeLessThan(freshSpot.height)
     expect(fitted.height).toBeGreaterThanOrEqual(44)
     await pollPacked(page, expect, 'fitted to a 100px floor')
     await card.hover()
@@ -331,21 +339,8 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await page.mouse.up()
     expect((await flowGeometry(page))[1].slice(2, 4)).toEqual(composerFitted)
   } finally { await constrainFloor(page, null) }
-  await expect.poll(async () => { const now = await deckAt(page); return [now.suspended, now.spacing, now.height, now.left] }).toEqual([false, 30, natural.height, ''])
-  await hold()
-  await slide(-80, 40)
-  await page.keyboard.press('Escape')
-  await page.mouse.up()
-  expect((await deckAt(page)).left).toBe('')
-  await resizeWindow(app, page, expect, 1100, 900)
-  await expect.poll(async () => (await deckAt(page)).right).toBe(natural.right)
-  await resizeWindow(app, page, expect, 1400, 900)
-  const freshSpot = await dragBy(-120, 60)
-  expect(freshSpot.left).not.toBe('')
-  await hold()
-  await slide(-60, -30)
-  await page.keyboard.press('Escape')
-  await page.mouse.up()
+  await expect.poll(async () => { const now = await deckAt(page); return [now.suspended, now.spacing, now.height, now.x, now.y] }).toEqual([false, 30, freshSpot.height, freshSpot.x, freshSpot.y])
+  await escapeDrag(-60, -30)
   await expectAt(freshSpot, 'escape after a committed drag')
   await sendAppFrames(app, freshLane, [], small)
   await expect(deck).toHaveCount(0)
@@ -383,16 +378,16 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await sendAppFrames(app, freshLane, ['a', 'b'], small)
   await visible()
   const reset = await deckAt(page)
-  expect([reset.left, reset.dragging, reset.right]).toEqual(['', false, natural.right])
+  expect([reset.left, reset.dragging, reset.floating, reset.right]).toEqual(['', false, false, docked.right])
   expect(spot(await dragBy(-100, 50))).toEqual({ x: reset.x - 100, y: reset.y + 50 })
   await expectIdle()
   expect(errors).toEqual([])
   return {
     ok: true,
-    evidence: `agent:frame ${frame.width}x${frame.height} png painted preview-card for ${lane} with no web pane; ${describeBlocks(before)}; after the drag: ${describeBlocks(after)}; `
-      + `untouched four-card bounds at 1000x560/1400x600 and under a draft, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
+    evidence: `agent:frame ${frame.width}x${frame.height} png painted preview-card for ${lane} with no web pane; docked: ${describeBlocks(before)}; floating after the drag: ${describeBlocks(after)}; `
+      + `untouched decks docked above the thread, four-card bounds at 1000x560/1400x600 and under a draft, a stable thread once the card floats, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
       + `second pointer and refused capture ignored, corner and composer-floor clamps, reopen position, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, `
       + `lane spots and a dropped lane-switch drag, 600px floor under a growing draft, fit to a 100px floor, suspension below 44px, six frames cycling four cards, empty-frame remounts, `
-      + `unavailable frame recovery, browser open and a reload back to the anchor verified; last press at ${point(press)}`,
+      + `unavailable frame recovery, browser open and a reload back to the anchor verified; last press at ${Math.round(press.x)},${Math.round(press.y)}`,
   }
 }

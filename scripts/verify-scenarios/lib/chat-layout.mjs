@@ -13,14 +13,14 @@ export function deckAt(page) {
     return {
       x: deck.offsetLeft, y: deck.offsetTop, width: deck.offsetWidth, height: deck.offsetHeight,
       right: chat.clientWidth - deck.offsetLeft - deck.offsetWidth, left: deck.style.left, top: deck.style.top,
-      dragging: deck.hasAttribute('data-dragging'), suspended: deck.hasAttribute('data-suspended'),
+      dragging: deck.hasAttribute('data-dragging'), suspended: deck.hasAttribute('data-suspended'), floating: deck.hasAttribute('data-floating'),
       spacing: parseFloat(deck.style.getPropertyValue('--live-fit-space')), depth: Number(deck.style.getPropertyValue('--deck-depth')),
       cards: deck.querySelectorAll('.preview-deck-card').length, front: deck.querySelector('[data-position="0"]')?.dataset.frame,
     }
   })
 }
 
-// Thread, composer and bubble rectangles plus scroll state: the overlay must leave all of them where they were.
+// Thread, composer and bubble rectangles plus scroll state: moving or updating a placed deck must leave all of them where they were.
 export function flowGeometry(page) {
   return page.evaluate(() => {
     const rect = selector => {
@@ -59,7 +59,7 @@ export function measureChat(page) {
       viewport: { width: innerWidth, height: innerHeight },
       stack, main: rect(main), chat: rect(chat), card: rect(card), thread: rect(thread), composer: rect(composer), input: rect(input),
       cardOnTop: [(box.top + box.bottom) / 2, box.top + 5, box.bottom - 5].every(y => card.contains(document.elementFromPoint(middle, y))),
-      pane: document.querySelector('.web-pane') !== null,
+      pane: document.querySelector('.web-pane') !== null, floating: deck.hasAttribute('data-floating'),
     }
   })
 }
@@ -68,7 +68,7 @@ const inside = (box, outer, slack = 1) => box.left >= outer.left - slack && box.
 
 export function packedBlocks(measure) {
   if (!measure) return { ok: false, reasons: ['chat, deck, card, thread or composer is missing'] }
-  const { viewport, main, chat, card, thread, composer, stack, input, cardOnTop, pane } = measure
+  const { viewport, main, chat, card, thread, composer, stack, input, cardOnTop, pane, floating } = measure
   const reasons = []
   const show = box => `${Math.round(box.left)},${Math.round(box.top)}-${Math.round(box.right)},${Math.round(box.bottom)}`
   if (card.right > viewport.width + 1 || card.bottom > viewport.height + 1) reasons.push(`card ${show(card)} leaves the window`)
@@ -79,6 +79,7 @@ export function packedBlocks(measure) {
     if (!box.exposed) reasons.push(`stack card ${box.position} has no exposed corner`)
   }
   if (card.bottom > thread.bottom + 1 || card.bottom > composer.top) reasons.push(`card ${show(card)} runs past the thread onto the composer`)
+  if (!floating && card.bottom > thread.top + 1) reasons.push(`docked card ${show(card)} covers the thread top ${Math.round(thread.top)}`)
   if (!inside(input, chat)) reasons.push('composer leaves the chat')
   if (Math.abs(chat.width - main.width) >= 2) reasons.push('chat is narrowed beside the card')
   if (pane) reasons.push('a web pane is open beside the chat')
@@ -112,7 +113,7 @@ export function constrainFloor(page, floor) {
 
 export function describeBlocks({ card, chat, thread }) {
   const box = (one) => `${Math.round(one.left)},${Math.round(one.top)} ${Math.round(one.width)}x${Math.round(one.height)}`
-  return `card ${box(card)} in chat ${box(chat)} over thread at y=${Math.round(thread.top)}`
+  return `card ${box(card)} in chat ${box(chat)} with thread at y=${Math.round(thread.top)}`
 }
 
 // Real mouse drags on the overlay deck, with the last trusted pointer id recorded by armPointer for capture checks.
@@ -139,6 +140,7 @@ export function deckDriver(page, expect) {
     synthetic: (type, id) => deck.evaluate((node, init) => node.dispatchEvent(new PointerEvent(init.type, { pointerId: init.id, bubbles: true, isPrimary: false })), { type, id }),
     dragTo: async (x, y) => { await hold(); await page.mouse.move(x, y, { steps: 8 }); await page.mouse.up(); return deckAt(page) },
     dragBy: async (dx, dy) => { await hold(); await slide(dx, dy, 8); await page.mouse.up(); return deckAt(page) },
+    escapeDrag: async (dx, dy, during = async () => {}) => { await hold(); await slide(dx, dy); await during(); await page.keyboard.press('Escape'); await page.mouse.up(); return deckAt(page) },
     expectAt: async (expected, label) => { const now = await deckAt(page); expect(spot(now), label).toEqual(spot(expected)); return now },
     expectIdle: async () => { expect((await deckAt(page)).dragging).toBe(false); expect(await captured()).toBe(false) },
     expectHeld: async () => { expect((await deckAt(page)).dragging).toBe(true); expect(await captured()).toBe(true) },

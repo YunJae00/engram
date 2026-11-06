@@ -55,7 +55,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   }, [identity])
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   if (!frame) return null
-  if (view.hidden || view.collapsed) return <button type="button" className={`preview-card-reopen${overlay ? ' live-overlay-reopen' : ''}`} data-testid={view.hidden ? 'preview-card-reopen' : 'preview-card-collapsed'} data-lane={lane} data-source={frame.source} aria-label={view.hidden ? words.show : words.expand} aria-expanded={false} onClick={() => change({ collapsed: false, hidden: false })}><AppWindow size={12} aria-hidden />{view.hidden ? words.show : `${frame.title || words.browser} · ${words[state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state]}`}</button>
+  if (view.hidden || view.collapsed) return <button type="button" className="preview-card-reopen" data-testid={view.hidden ? 'preview-card-reopen' : 'preview-card-collapsed'} data-lane={lane} data-source={frame.source} aria-label={view.hidden ? words.show : words.expand} aria-expanded={false} onClick={() => change({ collapsed: false, hidden: false })}><AppWindow size={12} aria-hidden />{view.hidden ? words.show : `${frame.title || words.browser} · ${words[state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state]}`}</button>
   return <div ref={surface} className={`preview-deck${overlay ? ' live-overlay-deck' : ''}`} style={{ '--deck-depth': Math.min(ordered.length - 1, 3) } as CSSProperties} data-testid="preview-deck" aria-label={words.choose} tabIndex={0} onKeyDown={event => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
