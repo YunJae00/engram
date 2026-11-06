@@ -1,0 +1,44 @@
+{
+  "id": "ui-motion-retry-20261106",
+  "status": "done",
+  "headSha": "c991ed52254a0b4802f7dc769e3a39fbcd166165",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "pnpm --filter desktop build", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (candidate scenario unchanged, baseline)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (seeded histories hidden as older than a day)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (string predicates blocked by renderer CSP)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion (snapshot box read through exit translateY)", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-activity-status", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line", "exit": 0 },
+    { "cmd": "git diff --cached --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Every Electron command ran serially on Linux under Xvfb (xvfb-run -a, 1600x1000x24) rather than on the requested Mac; this container has no macOS. The criterion commands were otherwise run verbatim.",
+    "Under Xvfb an unmapped window ticks requestAnimationFrame once per second, so the scenario now calls BrowserWindow.showInactive() after setSize; that is the only reason the candidate's unchanged scenario failed its first settle() here. On a Mac this shows the window without activating it.",
+    "The hook change versus source 96eb6a3 is confined to useChatNavigationMotion: no scroll subscription of any kind, and cleanup is closure-owned and idempotent with the shared dispose ref reset only when it still identifies that pair. Base 0ef250d had not touched the other seven files since the candidate's fork point, so they are the candidate's versions unchanged.",
+    "Measured with the passive probe on the final build: cached revisits record the transcript mount scroll at 19-27 ms with 10-11 post-scroll frames in which enter and exit opacities progress in opposite directions, a sample past 120 ms, and cleanup at 187-211 ms; first visits see the disk-load scroll at 57-78 ms, still inside the pair, with 7-8 post-scroll frames. A real wheel-up at 25-127 ms moved the thread and the pair survived; a mid-motion resize disposed the pair within the same frame as the resize event.",
+    "The seeded 40-turn histories carry timestamps within the last hour because the sidebar folds conversations older than a day under an earlier group; January timestamps left the rows absent.",
+    "The scenario file is exactly 400 lines after consolidating repeated fixture, probe and evidence logic; the second-click timing loop, the preference flip and the reduced-motion populated navigation now run on the long histories rather than on empty fixtures. The flip no longer retries.",
+    "Not covered, as the design states: native HTML5 drag under motion, IME composition submission, live provider streaming under concurrent motion, and transcript clone cost beyond the 40-turn fixture."
+  ]
+}
