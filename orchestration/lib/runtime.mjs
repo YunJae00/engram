@@ -5,7 +5,8 @@ import process from 'node:process'
 import { blockingFindings } from './aggregate.mjs'
 import { addWorktree, fetchBranch, removeWorktree } from './git.mjs'
 import { launchCloud } from './launch-cloud.mjs'
-import { launchClaude, launchCodex, NODE_BIN } from './launch-local.mjs'
+import { resolveCodexBin } from './codex-bin.mjs'
+import { launchClaude, launchCodex, withNodeOnPath } from './launch-local.mjs'
 import { decide, loadRoles, saveLedger } from './ledger.mjs'
 import { deadlineAt } from './loop.mjs'
 import { alive, Semaphore } from './procs.mjs'
@@ -45,7 +46,7 @@ export function createContext(root, { dryRun = false, log = (line) => process.st
 
 export function sh(cwd, cmd, args, { logPath, timeoutMs = 0, env = {} } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, PATH: `${NODE_BIN}:${process.env.PATH ?? ''}` } })
+    const child = spawn(cmd, args, { cwd, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], env: withNodeOnPath({ ...process.env, ...env }) })
     let out = ''
     const onData = (d) => { out += d }
     child.stdout.on('data', onData)
@@ -207,7 +208,7 @@ export async function launchAgent(ctx, { agent, label, cwd, prompt, role, minute
     return { ...job, pid, outPath }
   }
   const outPath = join(ctx.logs, `${label}.out`)
-  const codexBin = join(ctx.root, ctx.roles.codexBin)
+  const codexBin = resolveCodexBin(ctx.root, { override: ctx.roles.codexBin })
   const addDirs = [...NODE_MODULES.map((rel) => join(ctx.root, rel)).filter((dir) => existsSync(dir)), ...extraDirs]
   const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: SANDBOX[role], schemaPath, addDirs })
   ctx.sem.acquire(label, pid)

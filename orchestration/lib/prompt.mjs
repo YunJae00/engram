@@ -1,3 +1,5 @@
+import { briefScenarios } from './loop.mjs'
+
 export const REPORT_SCHEMA_TEXT = `{
   "id": string (the brief id),
   "status": "done" | "blocked" | "partial",
@@ -31,12 +33,22 @@ const VERIFIER_STEPS = {
     'Every finding must carry a `reproCmd` that you actually ran and that failed.',
     'Verdict `fail` only when at least one such finding exists; otherwise `pass` with evidence listing what you tried.',
   ],
-  desktop: (brief, baseBranch) => [
-    `Run \`node scripts/verify-cli.mjs <scenario>\` for each scenario: ${(brief.scenarios ?? []).join(', ') || '(none listed)'}.`,
-    `If HEAD is on \`${baseBranch}\`, also run \`npm run verify\`.`,
-    'Save each output to a log under `orchestration/logs/` and add one evidence entry per command.',
-    'Verdict `pass` only if every command passes; `fail` with one finding per failure; `cannot_verify` if the app cannot start here.',
-  ],
+  desktop: (brief, baseBranch) => {
+    const commands = briefScenarios(brief).map((name) => `node scripts/verify-cli.mjs ${name}`)
+    if (commands.length === 0) {
+      return [
+        'This brief names no verify-cli scenario in `scenarios` or in a criterion command.',
+        'Verdict `cannot_verify`. A desktop pass needs one evidence entry per `node scripts/verify-cli.mjs <scenario>` with exit 0 and a JSON line `"ok": true`. Do not pass on an empty list.',
+      ]
+    }
+    return [
+      'Read `orchestration/features/MAP.md` for how each scenario reaches its surface. The proof is the command output, not the map.',
+      ...commands.map((cmd) => `Run \`${cmd}\` and save the output under \`orchestration/logs/\`. That scenario passes only when the process exits 0 and the JSON line has \`"ok": true\`.`),
+      `If HEAD is on \`${baseBranch}\`, also run \`npm run verify\`.`,
+      'Add one evidence entry per command with the exact command, the exit code and outcome in `result`, and the log path.',
+      'Verdict `pass` only if every command passes; `fail` with one finding per failure (each finding needs a `reproCmd`); `cannot_verify` if the app cannot start here.',
+    ]
+  },
 }
 
 function briefBlock(brief) {

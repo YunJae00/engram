@@ -5,11 +5,20 @@ A session started in this folder is the Conductor, whichever agent runs it. A se
 ## Procedure
 
 1. **Evidence first.** On feedback, look for that moment in the installed app's log (`%APPDATA%\desktop\logs\engram-main.log` on Windows, `~/Library/Application Support/desktop/logs/engram-main.log` on macOS) and in the vault's `.engram\` folder (`tasks.json`, `audit/<date>.jsonl`). If reading takes long, start a read-only investigator locally with the `personas/investigator.md` prompt and wait for its findings file.
-2. **Show the item table once.** Columns: item, completion criteria (command plus expected result), difficulty, implementer (from `roles.md`). The first criterion of the table is that the symptom the user described is gone; when no test can show that, it is a verify scenario (step 5). Ask the user about items whose criteria cannot be written as a command, and before leaving the cause of the reported symptom out of scope. Never drop that cause silently, and never brief only what surrounds it.
+2. **Show the item table once.** Columns: item, completion criteria (command plus expected result), difficulty, implementer (from `roles.md`). The first criterion of the table is that the symptom the user described is gone; when no test can show that, it is a verify scenario (step 5) named in `orchestration/features/MAP.md`. Ask the user about items whose criteria cannot be written as a command, and before leaving the cause of the reported symptom out of scope. Never drop that cause silently, and never brief only what surrounds it.
 3. **Brief and run.** Write one `briefs/<id>.json` per item (schema in `schemas/brief.schema.json`, no fix instructions, facts as structure only, never personal content from logs), `node run.mjs add briefs/<id>.json`, then `node run.mjs run` in the background. Report one line only when an item's state changes (`node run.mjs status`).
 4. **Choose a design.** When a hard item is `designing` and both designs are in `designs/`, first add every risk either design lists to the brief's `criteria` as a command with its expected result, so the concerns of the design that loses are still checked. Then pick the design that meets more of the merged criteria with `node run.mjs design <id> --pick`. The size of the change is not a reason to pick a design.
-5. **New scenarios** needed for a completion criterion are added by a verifier (desktop persona), never by an implementer. Add the scenario under `scripts/verify-scenarios/` through a verifier run before briefing the item that needs it.
+5. **New scenarios** needed for a completion criterion are added by a verifier (desktop persona), never by an implementer. Add the scenario under `scripts/verify-scenarios/` through a verifier run before briefing the item that needs it, and add its row to `orchestration/features/MAP.md` in that same change.
 6. **Close.** When the run ends, read `reports/summary-<batch>.md` and report: what changed, the evidence table per criterion, items left out and why, patch or minor. Ask exactly one question: release? On yes run `node run.mjs release --bump patch|minor` and report where the installer is (the Release workflow assets).
+
+## Brief patterns
+
+Go deep on one proof, then the ladder may run implementers in parallel. These are habits for this Conductor, not a second set of commands.
+
+- **Done means a command.** Every criterion is `cmd` plus `expect`. When the symptom is on screen, `cmd` is `node scripts/verify-cli.mjs <scenario>` with the scenario name as the next argument, `expect` says exit 0 and `"ok": true`, and the same name is in `scenarios`. A sentence that is not a command is not a criterion.
+- **Evidence first.** Step 1 happens before the brief. Facts are observations from the log or the vault. The brief does not contain a guessed patch, and it does not drop the symptom in order to brief the code around it.
+- **Prove it works.** `tests`, `spec` and `break` always run. A brief that names a scenario also launches the `desktop` verifier (`roles.md`). A desktop pass has one evidence row per scenario. A pass with empty evidence is void. The Feature Map says which scenario reaches which surface; the command output is the proof.
+- **Build the lever.** When no scenario shows the symptom, add one (step 5) that reuses `openActivity` from `apps/desktop/e2e/navigation.ts` and returns `{ ok, evidence }`. Update the Feature Map in that change. A manual click is not a completion criterion.
 
 ## Rules the Conductor keeps
 

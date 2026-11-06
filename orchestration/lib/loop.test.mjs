@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
-  bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, isStalled, machineCheck, needsRedesign,
-  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, suggestBump, verifyDecision,
+  briefScenarios, bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, isStalled, machineCheck, needsRedesign,
+  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, suggestBump, verifyDecision, verifierKindsFor,
 } from './loop.mjs'
 import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
@@ -130,6 +130,29 @@ describe('integration culprit loop', () => {
 
   it('always includes boot in the scenarios', () => {
     expect(integrationScenarios(merged)).toEqual(['boot', 'palette'])
+  })
+
+  it('reads a verify-cli criterion when scenarios is empty', () => {
+    const item = { scenarios: [], criteria: [{ id: 'ui', cmd: 'node scripts/verify-cli.mjs note-open --build', expect: 'ok true' }] }
+    expect(briefScenarios(item)).toEqual(['note-open'])
+    expect(integrationScenarios([item])).toEqual(['boot', 'note-open'])
+  })
+})
+
+describe('desktop verifier selection', () => {
+  const roles = { verifierKinds: ['tests', 'spec', 'break'] }
+
+  it('keeps tests, spec and break when the brief names no scenario', () => {
+    expect(verifierKindsFor(roles, { scenarios: [], criteria: [{ cmd: 'npm test', expect: '0' }] })).toEqual(['tests', 'spec', 'break'])
+  })
+
+  it('adds desktop once when a scenario is listed or commanded', () => {
+    expect(verifierKindsFor(roles, { scenarios: ['palette'], criteria: [] })).toEqual(['tests', 'spec', 'break', 'desktop'])
+    expect(verifierKindsFor(
+      { verifierKinds: ['tests', 'spec', 'break', 'desktop'] },
+      { scenarios: ['palette'], criteria: [] },
+    )).toEqual(['tests', 'spec', 'break', 'desktop'])
+    expect(verifierKindsFor(roles, { criteria: [{ cmd: 'node scripts/verify-cli.mjs inbox', expect: 'ok true' }] })).toEqual(['tests', 'spec', 'break', 'desktop'])
   })
 })
 
