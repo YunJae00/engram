@@ -1,0 +1,34 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 3,
+  "kind": "desktop",
+  "verdict": "pass",
+  "headSha": "d583f84de2cd9b70fdfc97db032cb3f234401f47",
+  "evidence": [
+    {
+      "criterion": "ui-live-overlay",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-3-ui-live-overlay.log",
+      "result": "exit 0, ok true"
+    },
+    {
+      "criterion": "boot",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-3-boot.log",
+      "result": "exit 0, ok true"
+    },
+    {
+      "criterion": "cosmos",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-3-cosmos.log",
+      "result": "exit 0, ok true"
+    },
+    {
+      "criterion": "note-open",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-3-note-open.log",
+      "result": "exit 0, ok true"
+    }
+  ],
+  "findings": []
+}
