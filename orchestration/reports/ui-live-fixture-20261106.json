@@ -1,0 +1,33 @@
+{
+  "id": "ui-live-fixture-20261106",
+  "status": "done",
+  "headSha": "d79d84ea3ad98fec5100c4610f7b6d5f1fa832b0",
+  "changedFiles": [
+    "scripts/verify-cli.mjs",
+    "scripts/verify-scenarios/ui-live-overlay.mjs",
+    "scripts/verify-scenarios/ui-live-fixture-20261106.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "orchestration/features/MAP.md",
+    "apps/desktop/test/verify-live-overlay.test.ts"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/verify-live-overlay.test.ts",
+    "scripts/verify-scenarios/ui-live-overlay.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "pnpm --filter desktop build", "exit": 0 },
+    { "cmd": "node node_modules/vitest/vitest.mjs run --project unit apps/desktop/test/verify-live-overlay.test.ts", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs ui-live-overlay", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs ui-live-fixture-20261106", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-fixture-20261106", "exit": 1 },
+    { "cmd": "npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The criterion runs the proof under the brief id, so scripts/verify-scenarios/ui-live-fixture-20261106.mjs re-exports ui-live-overlay; drop that alias if the criterion is renamed to ui-live-overlay.",
+    "The preview card has no reposition-on-drag behaviour in the renderer, so the scenario proves a real pointer drag lands on the card, stays inside the chat and leaves the packed layout intact; a card that moves with the pointer would need a product change outside this brief.",
+    "On this Linux container Electron needs a display: the bare criterion command exits 1 with 'Missing X server or $DISPLAY' and passes under xvfb-run, as does boot; on a desktop verifier it runs as written."
+  ]
+}
