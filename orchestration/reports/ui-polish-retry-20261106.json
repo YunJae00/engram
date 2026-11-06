@@ -1,0 +1,99 @@
+{
+  "id": "ui-polish-retry-20261106",
+  "status": "done",
+  "headSha": "e5315efea76cba5813ddd752b74f559d85ebaeea",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "commandsRun": [
+    {
+      "cmd": "git cherry-pick b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc",
+      "exit": 0
+    },
+    {
+      "cmd": "node --check scripts/verify-scenarios/ui-chat-polish.mjs",
+      "exit": 0
+    },
+    {
+      "cmd": "git diff --check 0ef250d",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs boot",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs cosmos",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs note-open",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-activity-status",
+      "exit": 0
+    },
+    {
+      "cmd": "pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --output=../../tmp/ui-polish-retry-playwright",
+      "exit": 1
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 0
+    },
+    {
+      "cmd": "pnpm --filter desktop build",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 0
+    },
+    {
+      "cmd": "npm run check:quick",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs boot",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs cosmos",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs note-open",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-activity-status",
+      "exit": 0
+    },
+    {
+      "cmd": "pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --output=../../tmp/ui-polish-retry-playwright",
+      "exit": 0
+    },
+    {
+      "cmd": "node scripts/verify-cli.mjs ui-chat-polish",
+      "exit": 0
+    }
+  ],
+  "openQuestions": []
+}
