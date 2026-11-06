@@ -1,0 +1,41 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 4,
+  "kind": "break",
+  "verdict": "fail",
+  "headSha": "6fbcb26e00d374eda330c567f56be3b9507d5fe7",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "tmp/verify-cli/ui-interaction-motion-2026-11-06T16-23-26-363Z.log",
+      "result": "exit 0, ok true. Every evidence entry passes. The scenario's row-exit check hides all rows with a no-match search, so it never checks where a single removed row's exit plays."
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a sh -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "tmp/regress.log",
+      "result": "chain exit 0. check:quick passed, and ui-activity-status, boot, cosmos and note-open each returned ok true."
+    },
+    {
+      "criterion": "break:row-exit-position",
+      "cmd": "xvfb-run -a node tmp/probe/cli.mjs ghost",
+      "logPath": "tmp/probe/ghost.out",
+      "result": "exit 1. Four chats were created, then the top row 'Ghost one' (top=100) was deleted with window.engram.botDelete. Its exit ghost rendered at list index 3 of 4 (top=299), at the bottom, not in its original slot."
+    },
+    {
+      "criterion": "break:code-review",
+      "cmd": "git diff origin/next...6fbcb26e00d374eda330c567f56be3b9507d5fe7 -- apps/",
+      "logPath": "tmp/regress.log",
+      "result": "Reviewed these paths with no other reproducible defect: the create-menu outside/escape/focusin guards; keepMounted with hidden+inert; folder-form consumed/Enter/Escape single submit; the pending counter; disclosure focus rescue; the reduced-motion hook; the snapshot attribute stripping (id, name, for); the dispose/resize/activity cleanup; and the menu viewport clamp inside the transformed sidebar."
+    }
+  ],
+  "findings": [
+    {
+      "file": "apps/desktop/src/renderer/src/components/Motion.tsx",
+      "line": 39,
+      "claim": "MotionList puts every exiting row after all live children ([...children, ...state.exits]), so the exit ghost of a removed chat row is moved to the bottom of its list instead of staying where the row was. The rows below that slot jump up with no motion, and the fade-out plays at the list foot. Repro (tmp/probe/scen/ghost.mjs, run through a copy of verify-cli pointed at tmp/probe/scen): create 4 chats, then delete the top row. The ghost appeared at index 3 of 4 with top 299px, not at index 0 with top 100px.",
+      "reproCmd": "xvfb-run -a node tmp/probe/cli.mjs ghost"
+    }
+  ]
+}
