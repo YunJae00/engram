@@ -1,0 +1,37 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "status": "done",
+  "headSha": "ede1917c5332d75fd5abca4b39e67ea7785f944d",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/AppSidebar.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarCollection.tsx",
+    "apps/desktop/src/renderer/src/components/SidebarDisclosure.tsx",
+    "apps/desktop/src/renderer/src/components/DeleteConversationDialog.tsx",
+    "apps/desktop/src/renderer/src/components/Motion.tsx",
+    "apps/desktop/src/renderer/src/components/interaction-motion.css",
+    "apps/desktop/src/renderer/src/lib/motion.ts",
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-interaction-motion.mjs"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "pnpm --filter desktop build", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 1 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "exit": 0 },
+    { "cmd": "npm run check:quick && xvfb-run -a node scripts/verify-cli.mjs ui-activity-status && xvfb-run -a node scripts/verify-cli.mjs boot && xvfb-run -a node scripts/verify-cli.mjs cosmos && xvfb-run -a node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "cd apps/desktop && ENGRAM_QUIET_HOST=1 xvfb-run -a node node_modules/@playwright/test/cli.js test e2e/conversation-sidebar.spec.ts e2e/routines.spec.ts e2e/chat.spec.ts --workers=1 --output ../../tmp/motion-playwright --reporter=line --trace off", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Under Xvfb the test window launched with ENGRAM_HIDDEN=1 is never shown, so requestAnimationFrame fired about once per second and the document timeline barely advanced; every exit transition and the session pair looked cancelled. The scenario now shows the BrowserWindow before measuring (it already resized it through BrowserWindow), after which frames ran at about 16 ms. The main process and verify-cli are unchanged.",
+    "The first exit-code-1 run above was that hidden-window pacing; the second was a test-side race where Escape reached the new folder form before its input had focus, now guarded by waiting for focus as the fault-injection helper already did. No retry loop remains: the mid-session preference flip is a single attempt (45 ms to cleanup).",
+    "Measured on long histories: cached revisits record the mount scroll 13 to 24 ms after the click and then 10 to 12 further frames with enter and exit still running in opposite directions, with cleanup at 159 to 176 ms; first visits load at about 31 to 38 ms and auto-follow scrolls across the pair without ending it; a real wheel upward at 117 ms moved the live transcript while the pair kept running; a resize mid-motion cleaned up in 22 ms. Snapshot scrollTop matched the captured outgoing scrollTop in every sample.",
+    "Not covered, as the design notes: native HTML5 drag under motion, IME composition submission, live provider streaming under concurrent motion, and clone cost of transcripts larger than the 40-turn fixtures."
+  ]
+}
