@@ -1,0 +1,28 @@
+{
+  "id": "ui-polish-cloud-20261106",
+  "attempt": 1,
+  "kind": "break",
+  "verdict": "pass",
+  "headSha": "302bb92ee00ee2c3c953f2182927f9c8d26486ea",
+  "evidence": [
+    {
+      "criterion": "real-focused-visual",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build",
+      "logPath": "tmp/polish.log",
+      "result": "exit 0, ok true; nativeFocused true on every capture at 1280 and 620, light and dark; sidebar contrast 14.8 and 5.3, composer memory 16.1 and 5.8; focus-guard self-check and reload with long content passed; no renderer errors"
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a npm run check:quick; then xvfb-run -a node scripts/verify-cli.mjs boot, cosmos, note-open, ui-activity-status run serially",
+      "logPath": "tmp/cq.log",
+      "result": "check:quick exit 0 (css-orphan-scan clean); boot, cosmos, note-open, ui-activity-status each exit 0 with ok true"
+    },
+    {
+      "criterion": "break-attempt-contrast-sweep",
+      "cmd": "scratch scenario (untracked, removed) scanning all text under .bots-main, .app-sidebar and open popovers for contrast < 3 in dark and light, covering base view, add menu, model picker menu and mention list, with markdown content (code, quote, table, link)",
+      "logPath": "tmp/scratch.log",
+      "result": "zero low-contrast text elements in all 8 states; dark screenshot inspected, light surfaces readable. Unreferenced dark-palette variables (--accent-soft, --clay-soft, --card-top/bot) are not used by any element rendered inside the scoped regions"
+    }
+  ],
+  "findings": []
+}
