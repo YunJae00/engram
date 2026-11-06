@@ -1,0 +1,40 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 1,
+  "kind": "desktop",
+  "verdict": "pass",
+  "headSha": "1add1b2dc53805548ea92f895ae5e94391df75b5",
+  "evidence": [
+    {
+      "criterion": "ui-live-overlay",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-desktop-ui-live-overlay.log",
+      "result": "exit 0, ok true (40220 ms; first run built apps/desktop/out/main/index.js): PNG 1280x800 frame painted into preview-card with no web pane; chat stayed packed before and after the pointer drag (card 1068,99 -> 748,299, thread at y=87 unchanged); four-card stack bounds through resizes and a growing draft, right anchor through tab switches and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, second pointer and refused capture ignored, corner and composer-floor clamps, reopen position, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, lane spots and dropped lane-switch drag, 600px floor under a growing draft, fit to a 100px floor, suspension below 44px, six frames cycling four cards, empty-frame remounts, unavailable frame recovery, browser open and reload back to the anchor all verified"
+    },
+    {
+      "criterion": "boot",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-desktop-boot.log",
+      "result": "exit 0, ok true (1713 ms): shell, topbar and bots-view visible; title \"Engram\""
+    },
+    {
+      "criterion": "cosmos",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-desktop-cosmos.log",
+      "result": "exit 0, ok true (9715 ms): sky-view showed brain-graph and cosmos-chat; collapse hid the panel and Ask your memory brought cosmos-chat-input back"
+    },
+    {
+      "criterion": "note-open",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-desktop-note-open.log",
+      "result": "exit 0, ok true (10171 ms): star n-hello-0001 opened note-sheet showing \"The very first note\"; Escape closed it"
+    },
+    {
+      "criterion": "npm run verify",
+      "cmd": "git merge-base --is-ancestor HEAD origin/next",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-desktop-ui-live-overlay.log",
+      "result": "not run: HEAD 1add1b2dc53805548ea92f895ae5e94391df75b5 is not on origin/next (3fd4ac19580e234653927a9c00612697a105ebc1), so the integration-branch check does not apply; the four named scenarios were run serially under Xvfb in one Claude cloud session"
+    }
+  ],
+  "findings": []
+}
