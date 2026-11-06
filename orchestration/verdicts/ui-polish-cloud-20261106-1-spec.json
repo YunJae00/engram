@@ -1,0 +1,40 @@
+{
+  "id": "ui-polish-cloud-20261106",
+  "attempt": 1,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "302bb92ee00ee2c3c953f2182927f9c8d26486ea",
+  "evidence": [
+    {
+      "criterion": "real-focused-visual",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-chat-polish --build",
+      "logPath": "tmp/verify-cli/ui-chat-polish-2026-11-06T14-51-40-050Z.log",
+      "result": "exit 0, ok true in 31167 ms after a fresh desktop build. Evidence rows cover 1280x840 and 620x640 with layout errors [] at both sizes, focused sidebar and composer memory contrast in light and dark (all ratios between 5.32 and 16.10, nativeFocused true, generation 0), composer menu/memory/model-picker controls inside the viewport, 2000-char draft, unsupported attachment alert, long title ellipsis after reload and bot switch, dark contrast after reload, renderer errors []. The focus guard self-check moved the blur generation from 0 to 1. The log holds no 'discarded sample' and no 'focus refused' line. Run serially under Xvfb with no other Electron process."
+    },
+    {
+      "criterion": "regressions-and-relevant-controls",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open && node scripts/verify-cli.mjs ui-activity-status'",
+      "logPath": "tmp/verify-cli/ui-activity-status-2026-11-06T14-53-22-094Z.log",
+      "result": "chain exit 0. check:quick exit 0; boot ok true (shell, topbar, bots-view visible); cosmos ok true; note-open ok true; ui-activity-status ok true with persisted history, single evolving status and cleared-on-done for both reduced-motion settings. Earlier per-scenario logs: tmp/verify-cli/boot-2026-11-06T14-52-59-954Z.log, cosmos-2026-11-06T14-53-02-050Z.log, note-open-2026-11-06T14-53-12-080Z.log. Scenarios launched one at a time."
+    },
+    {
+      "criterion": "allowed-files-and-scope",
+      "cmd": "git diff --stat origin/next...302bb92ee00ee2c3c953f2182927f9c8d26486ea && git log --format='%H%n%(trailers)' origin/next..302bb92ee00ee2c3c953f2182927f9c8d26486ea && git diff --check origin/next...302bb92ee00ee2c3c953f2182927f9c8d26486ea",
+      "logPath": "tmp/verify-cli/ui-chat-polish-2026-11-06T14-51-40-050Z.log",
+      "result": "Seven files changed: BotComposer.tsx, ChatComposer.tsx, CometTitle.tsx, chat-theme.css (new, 88 lines), lib/chatTheme.ts (new, 56 lines), scripts/verify-scenarios/ui-chat-polish.mjs (new, 396 lines) and the required report orchestration/reports/ui-polish-cloud-20261106.json. All six code files are in the allowed list; SidebarConversation.tsx is allowed but untouched. AppSidebar.tsx, BotsView.tsx, Map.md, other scenarios, orchestration config and App.tsx are not touched; no lucide, mic, login or credential code added. No file over 400 lines. No TODO/FIXME/stub/placeholder in the added lines. The three code commits carry no trailers. git diff --check is clean. The scenario's three comments state constraints (macOS activation policy, X11 screenshot on a never-shown window, cleanup errors not replacing the scenario error), not history."
+    },
+    {
+      "criterion": "preserve-desktop-passed-candidate",
+      "cmd": "git range-diff b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc^..b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc 37b28bb351f7eb8f0fef367399aa03e94cfd5238^..37b28bb351f7eb8f0fef367399aa03e94cfd5238 && git show 349649389085a5a3f67430382d6b3eadc119b5ff --stat",
+      "logPath": "tmp/verify-cli/ui-chat-polish-2026-11-06T14-51-40-050Z.log",
+      "result": "The brief's 40-char hash b2a8035300c1... is not an object on origin; the cherry-picked commit 37b28bb is byte-identical (range-diff '=') to b2a8035fc10360b2 from origin/orch/ui-polish-last-serial-20261106-4, which the report names. The only follow-up commit changes 3 lines: --reading-gutter keeps the base invariant (composer gutter + --space-4 or the 768px column) and drops the 901px media block, and acquireFocus(ctx, 'launch') runs before the first capture. No assertion in the scenario was weakened. The alternate 82dab43 is not on origin and was not needed because measured focus held (nativeFocused true on every sample)."
+    },
+    {
+      "criterion": "earlier-contrast-findings-preserved",
+      "cmd": "grep -n -- '--sidebar-tint\\|--widget-bg\\|--editor-bg' apps/desktop/src/renderer/src/components/chat-theme.css",
+      "logPath": "tmp/verify-cli/ui-chat-polish-2026-11-06T14-51-40-050Z.log",
+      "result": ".app-sidebar overrides --sidebar-tint to the pale frosted gradient (#edf5fc/#f2f6fa/#f4f8ee), not the dark focus gradient; the measured focused sidebar background was rgb(240,246,251) in both themes. .bots-main overrides --widget-bg, --editor-bg and the full light palette, so .bots-memory (composer memory) measured white with 16.10/5.77 ratios in dark theme and the in-tree .chat-add-menu popover is white. Noted gap, not a finding: the model-picker menu opened from the bots composer is portaled to document.body (ModelPicker.tsx line 232), so no .bots-main override reaches it; in dark theme it measures rgb(36,36,36) with rgb(222,222,222) text over the white composer. Its own text stays readable (about 11:1), so it is not a contrast fault of the kind the brief's break findings describe, and a scoped fix needs ModelPicker.tsx, which is outside the allowed files. Measured with a throwaway scenario copied beside a copy of scripts/verify-cli.mjs and run with --root; left for a follow-up brief."
+    }
+  ],
+  "findings": []
+}
