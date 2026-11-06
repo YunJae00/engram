@@ -1,0 +1,39 @@
+.sidebar-create-menu[data-motion-state],
+[data-testid='sidebar-chat-collection'] .sidebar-folder-create[data-motion-state],
+[data-testid='sidebar-chat-collection'] [data-motion-row] {
+  opacity: 1;
+  transition: opacity 160ms cubic-bezier(0.2, 0.7, 0.2, 1), translate 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  translate: 0 0;
+}
+.sidebar-create-menu[data-motion-state] { z-index: 1000; }
+.sidebar-create-menu[data-motion-state='exit'],
+[data-testid='sidebar-chat-collection'] .sidebar-folder-create[data-motion-state='exit'],
+[data-testid='sidebar-chat-collection'] [data-motion-row][data-motion-state='exit'] {
+  opacity: 0;
+  translate: 0 4px;
+  pointer-events: none;
+}
+@starting-style {
+  .sidebar-create-menu[data-motion-state='live'],
+  [data-testid='sidebar-chat-collection'] .sidebar-folder-create[data-motion-state='live'],
+  [data-testid='sidebar-chat-collection'] [data-motion-row][data-motion-state='live'] { opacity: 0; translate: 0 4px; }
+}
+[data-testid='sidebar-chat-collection'].dragging [data-motion-row] { translate: none; }
+.sidebar-disclosure[data-chat-motion='true'] { transition: grid-template-rows 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms cubic-bezier(0.2, 0.7, 0.2, 1), visibility 0s; }
+.sidebar-disclosure[data-chat-motion='true'][data-open='false'] { transition-delay: 0s, 0s, 220ms; }
+.delete-conversation-dialog[data-chat-motion='true'][open] { transition-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); }
+html[data-chat-motion] .comet-welcome, html[data-chat-motion] .bots-thread { view-transition-name: chat-surface; }
+html[data-chat-motion] .sidebar-conversations { view-transition-name: none; }
+html[data-chat-motion]::view-transition { pointer-events: none; }
+html[data-chat-motion]::view-transition-old(chat-surface) { animation: chat-surface-out 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+html[data-chat-motion]::view-transition-new(chat-surface) { animation: chat-surface-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes chat-surface-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes chat-surface-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-create-menu[data-motion-state],
+  [data-testid='sidebar-chat-collection'] .sidebar-folder-create[data-motion-state],
+  [data-testid='sidebar-chat-collection'] [data-motion-row],
+  .sidebar-disclosure[data-chat-motion='true'],
+  .delete-conversation-dialog[data-chat-motion='true'][open] { transition: none; translate: none; }
+  html[data-chat-motion]::view-transition-old(chat-surface), html[data-chat-motion]::view-transition-new(chat-surface) { animation: none; }
+}
