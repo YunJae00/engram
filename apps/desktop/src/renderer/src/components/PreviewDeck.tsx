@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { usePreviewDrag } from '../lib/previewDrag.js'
+import './live-overlay.css'
 import { AppWindow } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { useWebPane } from '../lib/webPane.js'
@@ -20,9 +22,9 @@ export function previewNeighbor(frames: PreviewFrame[], id: string, direction: n
 export function previewAppVisible(frame: PreviewFrame | undefined, view: { hidden: boolean; collapsed: boolean }): boolean {
   return frame?.source === 'app' && frame.phase !== 'activity' && !view.hidden && !view.collapsed
 }
-export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWeb, active = true }: {
+export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWeb, active = true, overlay = false }: {
   frames: PreviewFrame[]; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
-  lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean
+  lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean; overlay?: boolean
 }) {
   const presence = useId()
   const words = threadWords(lang).workPreview
@@ -31,6 +33,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   const [order, setOrder] = useState<string[]>([])
   const [selected, setSelected] = useState<string>()
   const surface = useRef<HTMLDivElement>(null)
+  usePreviewDrag(surface, overlay && active && !view.hidden && !view.collapsed && frames.length > 0, lane)
   const images = useRef(new Map<string, string>())
   const ordered = previewOrder(order, frames, selected)
   const identity = ordered.join('\n')
@@ -53,7 +56,7 @@ export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWe
   const change = (next: typeof view) => { preferences.set(lane, next); setView(next) }
   if (!frame) return null
   if (view.hidden || view.collapsed) return <button type="button" className="preview-card-reopen" data-testid={view.hidden ? 'preview-card-reopen' : 'preview-card-collapsed'} data-lane={lane} data-source={frame.source} aria-label={view.hidden ? words.show : words.expand} aria-expanded={false} onClick={() => change({ collapsed: false, hidden: false })}><AppWindow size={12} aria-hidden />{view.hidden ? words.show : `${frame.title || words.browser} · ${words[state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state]}`}</button>
-  return <div ref={surface} className="preview-deck" style={{ '--deck-depth': Math.min(ordered.length - 1, 3) } as CSSProperties} data-testid="preview-deck" aria-label={words.choose} tabIndex={0} onKeyDown={event => {
+  return <div ref={surface} className={`preview-deck${overlay ? ' live-overlay-deck' : ''}`} style={{ '--deck-depth': Math.min(ordered.length - 1, 3) } as CSSProperties} data-testid="preview-deck" aria-label={words.choose} tabIndex={0} onKeyDown={event => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
     setSelected(previewNeighbor(frames, frame.id, event.key === 'ArrowRight' ? 1 : -1))
