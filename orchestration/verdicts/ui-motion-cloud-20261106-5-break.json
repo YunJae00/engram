@@ -1,0 +1,23 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 5,
+  "kind": "break",
+  "verdict": "fail",
+  "headSha": "a18b5fe9a53c4ae1c50b7a58e250c470308abbe4",
+  "evidence": [
+    { "criterion": "integrated-real-motion", "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build", "logPath": "tmp/verify-cli/ui-interaction-motion-2026-11-06T16-24-34-493Z.log", "result": "exit 0, ok true; every evidence row passes, no renderer pageerror" },
+    { "criterion": "no-regressions", "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "logPath": "tmp/break/c2.out", "result": "exit 0; check:quick passed; ui-activity-status ok true 24.1s, boot ok true 2.0s, cosmos ok true 9.8s, note-open ok true 9.8s" },
+    { "criterion": "break: pending welcome creation vs later real row click / New chat (bots:create delayed 700ms in main)", "cmd": "ATTACK_ONLY=welcome-send-then-row-click,welcome-send-then-new-chat xvfb-run -a node tmp/break/run.mjs attack", "logPath": "tmp/break/attack1.out", "result": "exit 1: right after the click the clicked row (or the New chat welcome) is shown, then the old creation resolves and selectComet(newBot) replaces it. Same command with --root on an origin/next worktree also fails (tmp/break/attack-next.out), so the defect predates this change" },
+    { "criterion": "break: real click at the closing create menu's spot right after Escape reaches the row beneath", "cmd": "ATTACK_ONLY=click-through-exiting-menu xvfb-run -a node tmp/break/run.mjs attack", "logPath": "tmp/break/attack1.out", "result": "pass: the trusted click reached the row under the menu and navigated" },
+    { "criterion": "break: two New folder forms back to back with Enter; navigating from mission control to a row", "cmd": "ATTACK_ONLY=rename-and-folder-enter,mission-to-row xvfb-run -a node tmp/break/run.mjs attack", "logPath": "tmp/break/attack1.out", "result": "pass: both folders created once; mission to row navigation landed with no leftover snapshot" },
+    { "criterion": "break: Enter twice in rename, folder create pending (sidebar:change delayed 600ms) while a second form is typed then Escaped, real click into a deleted row's slot", "cmd": "xvfb-run -a node tmp/break/run.mjs attack2", "logPath": "tmp/break/attack2.out", "result": "exit 0: one rename, the late completion did not touch the second form's text or focus, only 'Pending A' created, the click on the deleted slot opened the row now in that slot; no page errors" }
+  ],
+  "findings": [
+    {
+      "file": "apps/desktop/src/renderer/src/components/CometWelcome.tsx",
+      "line": 31,
+      "claim": "The brief requires that the last real navigation click wins and that old creation completions do not affect new sessions. Neither holds. Send a first message from the New chat welcome, then really click another conversation, or open a fresh New chat, before bots:create resolves. When it resolves, selectComet(bot.id) runs without checking anything and pulls the view to the newly created conversation, away from the session the person picked last. The same failure reproduces on origin/next, and the file is outside allowedFiles. Only AppSidebar's navigation entry points could guard against it.",
+      "reproCmd": "ATTACK_ONLY=welcome-send-then-row-click,welcome-send-then-new-chat xvfb-run -a node tmp/break/run.mjs attack"
+    }
+  ]
+}
