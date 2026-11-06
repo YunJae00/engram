@@ -1,0 +1,36 @@
+{
+  "id": "ui-polish-retry-20261106",
+  "status": "done",
+  "headSha": "830b23d9bbcc5635c891f29849904332a92f860a",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/BotComposer.tsx",
+    "apps/desktop/src/renderer/src/components/ChatComposer.tsx",
+    "apps/desktop/src/renderer/src/components/CometTitle.tsx",
+    "apps/desktop/src/renderer/src/components/chat-theme.css",
+    "apps/desktop/src/renderer/src/lib/chatTheme.ts",
+    "scripts/verify-scenarios/ui-chat-polish.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-chat-polish.mjs: preserved from the cherry-picked candidate (focus guard self-check, focused sidebar and composer memory contrast at 1280 and 620 in light and dark, post-reload dark samples); the test window is now shown before the first capture so the scenario also runs on X11"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "npm run check:quick", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs ui-chat-polish --build", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs boot", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs cosmos", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs note-open", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs ui-activity-status", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" pnpm --filter desktop exec playwright test e2e/conversation-polish.spec.ts e2e/conversation-sidebar.spec.ts e2e/chat-attachments.spec.ts e2e/queued-messages.spec.ts e2e/layout.spec.ts e2e/appearance.spec.ts --workers=1 --trace off --output=../../tmp/ui-polish-retry-playwright", "exit": 0 },
+    { "cmd": "xvfb-run -a -s \"-screen 0 1600x1000x24\" node scripts/verify-cli.mjs ui-chat-polish", "exit": 0 },
+    { "cmd": "node --check scripts/verify-scenarios/ui-chat-polish.mjs", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The brief's full primary sha b2a8035300c14477af316858265c49ff9253c3b4 does not exist; the commit with that 7-character prefix is b2a8035fc10360b207dd6c438ca3c0b3f5bc8dbc on origin/orch/ui-polish-last-serial-20261106-4 (subject: polish chat surfaces and guard focused contrast captures, exactly the six allowed files). It was cherry-picked onto origin/next 0ef250d as 17c5e547e27fc247711c9e895402161220e256c7 without conflicts. The alternate object 82dab43 is not reachable from origin and was not used.",
+    "This implementer ran on Linux (no macOS available), so every Electron command above ran under xvfb-run with a fresh X display and no other Electron, verify-cli or Playwright process alive at launch; the bare commands fail here for lack of a display. Native focus was real X11 focus: all 22 contrast samples per ui-chat-polish run report nativeFocused true, blur generation unchanged, minimum ratio 5.32 (sidebar footer), sidebar name 14.78, memory title 16.10, memory empty text 5.77, and the hide/refocus self-check moved the generation from 0 to 1. The macOS activation path was not exercised on this machine.",
+    "On X11 the never-shown ENGRAM_HIDDEN window produced no frames, so the candidate's first page.screenshot hung for 30 seconds. The scenario now shows the BrowserWindow once before the first capture (acquireFocus already did so later); the macOS activation policy and Dock steps are unchanged.",
+    "The candidate's chat-theme.css set --reading-gutter equal to --composer-gutter, which failed the existing e2e/layout.spec.ts rhythm test at 948px (composer only 16.6px wider than the reading column, test requires 30). The reading gutter is now composer gutter + 16px, matching the base relationship; all 38 tests in the six suites pass, and the previous implementer's report had not run layout.spec.ts.",
+    "No desktop verification was run concurrently with any other Electron process; serial execution was enforced by one shell runner, not by the allowed files.",
+    "The session harness designated branch claude/implementer-role-workflow-xg9xpf was left untouched; only orch/ui-polish-retry-20261106-2 was pushed, as the brief requires."
+  ]
+}
