@@ -1,0 +1,5 @@
+.bots-chat:has(.live-overlay-deck, .live-overlay-reopen) { position: relative; }
+.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + 30px * var(--deck-depth, 0)); margin: 0; touch-action: none; user-select: none; cursor: grab; }
+.live-overlay-deck[data-dragging] { cursor: grabbing; }
+.live-overlay-deck img { -webkit-user-drag: none; }
+.bots-chat > .live-overlay-reopen { position: absolute; z-index: 5; top: 12px; right: var(--panel-gutter); margin: 0; max-width: calc(100% - 2 * var(--panel-gutter)); }
