@@ -1,0 +1,40 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 1,
+  "kind": "desktop",
+  "verdict": "pass",
+  "headSha": "ca7402801b47fa2e15274fe8a213dbdaf37b480f",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-desktop-ui-interaction-motion.log",
+      "result": "exit 0; JSON line {\"scenario\":\"ui-interaction-motion\",\"ok\":true}; first run built apps/desktop/out/main/index.js (out/main/index.js was missing, no --build); every step reports pass:true, zero pass:false; Electron 33.4.11 under Xvfb on Linux, HEAD detached at ca7402801b47fa2e15274fe8a213dbdaf37b480f"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs boot",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-desktop-boot.log",
+      "result": "exit 0; JSON line {\"scenario\":\"boot\",\"ok\":true}; reused the build from the ui-interaction-motion run"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs cosmos",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-desktop-cosmos.log",
+      "result": "exit 0; JSON line {\"scenario\":\"cosmos\",\"ok\":true}; reused build"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs note-open",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-desktop-note-open.log",
+      "result": "exit 0; JSON line {\"scenario\":\"note-open\",\"ok\":true}; reused build"
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-activity-status",
+      "logPath": "orchestration/logs/ui-motion-cloud-20261106-1-desktop-ui-activity-status.log",
+      "result": "exit 0; JSON line {\"scenario\":\"ui-activity-status\",\"ok\":true}; reused build. npm run verify not run: HEAD ca74028 is ahead of origin/next 3fd4ac1, not on it"
+    }
+  ],
+  "findings": []
+}
