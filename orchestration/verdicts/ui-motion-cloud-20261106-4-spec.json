@@ -1,0 +1,22 @@
+{
+  "id": "ui-motion-cloud-20261106",
+  "attempt": 4,
+  "kind": "spec",
+  "verdict": "pass",
+  "headSha": "6fbcb26e00d374eda330c567f56be3b9507d5fe7",
+  "evidence": [
+    {
+      "criterion": "integrated-real-motion",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-interaction-motion --build",
+      "logPath": "tmp/verify-cli/ui-interaction-motion-2026-11-06T16-23-02-924Z.log",
+      "result": "exit 0, ok true in 83729 ms with zero failing checks. Covers the create menu kept mounted with one bots-new control from before the first open, 40-turn histories that scroll to the bottom on mount while enter and exit motion keeps running, real trusted click sequences where the last click wins (show/hide earlier then row at 0-400 ms, b-c-a ending on a), reduced motion mid-session and mid-menu/form, and a reload round trip. The diff replaces the native popover with a MotionSurface keepMounted menu in AppSidebar.tsx and removes the document.startViewTransition use in toggleEarlier, so no document transition overlay can intercept clicks (the scenario reports calls 0)."
+    },
+    {
+      "criterion": "no-regressions",
+      "cmd": "xvfb-run -a sh -c 'npm run check:quick && node scripts/verify-cli.mjs ui-activity-status && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "tmp/verify-cli/note-open-2026-11-06T16-25-42-132Z.log",
+      "result": "chain exit 0. check:quick passed. ui-activity-status ok true with one evolving status that clears on done and on reload, tools hidden and text preserved, for both no-preference and reduce. boot, cosmos and note-open each ok true."
+    }
+  ],
+  "findings": []
+}
