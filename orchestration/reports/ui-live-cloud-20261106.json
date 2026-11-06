@@ -1,0 +1,29 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "status": "done",
+  "headSha": "bdda28630e7b2fa1085858ad411fd0e5fc87465d",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "scripts/verify-scenarios/ui-live-overlay.mjs",
+    "scripts/verify-scenarios/lib/chat-layout.mjs",
+    "scripts/verify-scenarios/lib/frame-fixture.mjs"
+  ],
+  "testsAdded": [
+    "scripts/verify-scenarios/ui-live-overlay.mjs: untouched four-card bounds through resizes and a draft, second pointer and refused capture, mid-drag depth growth and resize with 1px rebase, dropped lane-switch drag, fit to a 100px floor and suspension below 44px, six frames cycling four cards, empty-frame remounts, unavailable frame recovery, reload back to the anchor"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm install --frozen-lockfile", "exit": 0 },
+    { "cmd": "git cherry-pick f6c7a40ea36d458400ef85571d8cd9867469ce76", "exit": 0 },
+    { "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build", "exit": 0 },
+    { "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'", "exit": 0 },
+    { "cmd": "git diff --check", "exit": 0 }
+  ],
+  "openQuestions": [
+    "The brief's literal candidate sha f6c7a408c840e2bd98a44ef961c9c52a7512 does not exist; the report-bound object f6c7a40ea36d458400ef85571d8cd9867469ce76 was fetched from origin and cherry-picked first, as the design directs.",
+    "The scenario now shows the hidden test window inactive at start: a never-shown window under Xvfb paints once a second, which made every pointer action wait about a second and overran the 90s budget. Under a real display this shows an unfocused window during the run.",
+    "Feature Map completeness for ui-live-overlay stays an integration-owned gate; MAP.md was not read or edited here, as the design requires."
+  ]
+}
