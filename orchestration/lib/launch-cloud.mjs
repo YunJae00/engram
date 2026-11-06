@@ -9,9 +9,17 @@ export function parseCloudOutput(text) {
   return { sessionId, url }
 }
 
-export async function launchCloud({ launchWorktree, prompt, logPath }) {
+/** Args after `script -q <log>`: `claude [--model <id>] --cloud <prompt>`. */
+export function cloudClaudeArgs(prompt, { model } = {}) {
+  const args = ['claude']
+  if (model) args.push('--model', model)
+  args.push('--cloud', prompt)
+  return args
+}
+
+export async function launchCloud({ launchWorktree, prompt, logPath, model }) {
   // claude --cloud refuses a non-TTY stdout; script provides the pty.
-  const child = spawn('script', ['-q', logPath, 'claude', '--cloud', prompt], {
+  const child = spawn('script', ['-q', logPath, ...cloudClaudeArgs(prompt, { model })], {
     cwd: launchWorktree,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PATH: `${NODE_BIN}:${process.env.PATH ?? ''}` },

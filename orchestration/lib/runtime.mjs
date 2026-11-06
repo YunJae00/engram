@@ -97,6 +97,22 @@ export const previousFindings = (ctx, item) =>
   blockingFindings(item.verdicts.map((ref) => readJsonOrNull(join(ctx.root, ref.path))).filter(Boolean))
 export const reportPath = (id) => `orchestration/reports/${id}.json`
 export const isCloud = (agent) => agent === 'claude-cloud'
+
+/** Pick the CLI model id from roles.models for this agent + phase. */
+export function resolveAgentModel(roles, { agent, role }) {
+  const models = roles?.models
+  if (!models) return undefined
+  if (agent === 'codex-local') {
+    const codex = models.codex
+    if (typeof codex === 'string') return codex
+    return codex?.[role] || undefined
+  }
+  if (agent === 'claude-cloud' || agent === 'claude-local') {
+    return models.claude?.[role] || undefined
+  }
+  return undefined
+}
+
 export const attemptRef = (ctx, attempt) => (isCloud(attempt.implementer) ? `${ctx.opts.remote}/${attempt.branch}` : attempt.branch)
 
 const jobsPath = (ctx) => join(ctx.logs, 'jobs.json')
@@ -205,23 +221,24 @@ export async function launchAgent(ctx, { agent, label, cwd, prompt, role, minute
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `${label}.log`)
   const startedAt = new Date().toISOString()
-  const job = { agent, logPath, startedAt, deadlineAt: deadlineAt(startedAt, minutes) }
+  const model = resolveAgentModel(ctx.roles, { agent, role })
+  const job = { agent, logPath, startedAt, deadlineAt: deadlineAt(startedAt, minutes), model }
   if (isCloud(agent)) {
     await prepareLaunch(ctx)
-    const { sessionId, url } = await launchCloud({ root: ctx.root, launchWorktree: ctx.launchWorktree, prompt, logPath })
+    const { sessionId, url } = await launchCloud({ root: ctx.root, launchWorktree: ctx.launchWorktree, prompt, logPath, model })
     return { ...job, sessionId, url }
   }
   if (!slotFree(ctx, agent)) return null
   if (agent === 'claude-local') {
     const outPath = join(ctx.logs, `${label}.out.json`)
-    const { pid } = launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDirs: extraDirs })
+    const { pid } = launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDirs: extraDirs, model })
     ctx.sem.acquire(label, pid)
     return { ...job, pid, outPath }
   }
   const outPath = join(ctx.logs, `${label}.out`)
   const codexBin = resolveCodexBin(ctx.root, { override: ctx.roles.codexBin })
   const addDirs = [...NODE_MODULES.map((rel) => join(ctx.root, rel)).filter((dir) => existsSync(dir)), ...extraDirs]
-  const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: SANDBOX[role], schemaPath, addDirs })
+  const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: SANDBOX[role], schemaPath, addDirs, model })
   ctx.sem.acquire(label, pid)
   return { ...job, pid, outPath }
 }

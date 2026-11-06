@@ -46,20 +46,34 @@ function detached(cmd, args, { cwd, stdoutPath, stderrPath }) {
   }
 }
 
-export function launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDirs = [] }) {
+export function claudeLocalArgs({ prompt, schemaPath, addDirs = [], model } = {}) {
   const args = ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'json']
+  if (model) args.push('--model', model)
   if (addDirs.length) args.push('--add-dir', ...addDirs)
   if (schemaPath) args.push('--json-schema', JSON.stringify(JSON.parse(readFileSync(schemaPath, 'utf8'))))
-  return detached('claude', args, { cwd, stdoutPath: outPath, stderrPath: logPath })
+  return args
 }
 
-export function launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox, schemaPath, addDirs = [] }) {
+export function launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDirs = [], model }) {
+  return detached('claude', claudeLocalArgs({ prompt, schemaPath, addDirs, model }), {
+    cwd, stdoutPath: outPath, stderrPath: logPath,
+  })
+}
+
+export function codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs = [], model, outPath } = {}) {
   // A login shell sources nvm and puts the default Node (v22) ahead of NODE_BIN.
   const args = ['exec', '-C', cwd, '-s', sandbox, '-c', 'allow_login_shell=false', '--skip-git-repo-check', '--ephemeral']
+  if (model) args.push('-m', model)
   for (const dir of addDirs) args.push('--add-dir', dir)
   if (schemaPath) args.push('--output-schema', schemaPath)
   args.push('-o', outPath, '--json', prompt)
-  return detached(codexBin, args, { cwd, stdoutPath: logPath, stderrPath: logPath })
+  return args
+}
+
+export function launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox, schemaPath, addDirs = [], model }) {
+  return detached(codexBin, codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs, model, outPath }), {
+    cwd, stdoutPath: logPath, stderrPath: logPath,
+  })
 }
 
 const CLAUDE_USAGE_KEYS = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens']
