@@ -1,0 +1,34 @@
+{
+  "id": "ui-live-cloud-20261106",
+  "attempt": 1,
+  "kind": "tests",
+  "verdict": "pass",
+  "headSha": "1add1b2dc53805548ea92f895ae5e94391df75b5",
+  "evidence": [
+    {
+      "criterion": "check-quick",
+      "cmd": "npm run check:quick",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-tests-check-quick.log",
+      "result": "exit 0; typecheck, lint, unit tests, todo-scan and css-orphan-scan all clean (8 cosmetic dead modifiers reported, scan still clean)"
+    },
+    {
+      "criterion": "real-desktop",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-tests-real-desktop.log",
+      "result": "exit 0; ok true in 36643ms. Fresh desktop build. Card painted over the thread at y=87 with no thread shift, before and after the drag; held drag through incoming frames and a replaced image, resize with 1px rebase anchor, tab/escape/cancel/lostcapture/blur cancellations, reopen position restore, corner and composer-floor clamps, lane spots and dropped lane-switch drag, 600px floor under a growing draft, overlay entrance and six frames cycling four cards all verified. No break finding."
+    },
+    {
+      "criterion": "quick-and-stock-regressions",
+      "cmd": "xvfb-run -a bash -c 'npm run check:quick && node scripts/verify-cli.mjs boot && node scripts/verify-cli.mjs cosmos && node scripts/verify-cli.mjs note-open'",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-tests-quick-and-stock-regressions.log",
+      "result": "exit 0; check:quick clean; boot ok true (1717ms), cosmos ok true (9714ms), note-open ok true (9841ms), each reusing the existing build"
+    },
+    {
+      "criterion": "break-regressions-and-map",
+      "cmd": "xvfb-run -a node scripts/verify-cli.mjs ui-live-overlay --build",
+      "logPath": "orchestration/logs/ui-live-cloud-20261106-1-tests-break-regressions-and-map.log",
+      "result": "exit 0; ok true in 34635ms on a second independent rebuild; same full evidence line as real-desktop, zero break/fail/error lines in the log. Feature Map rows already exist on main per the brief and no Feature Map change was required of this commit."
+    }
+  ],
+  "findings": []
+}
