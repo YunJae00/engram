@@ -1,11 +1,15 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
+import './chat-theme.css'
+import { useChatTitlePosition } from '../lib/chatTheme.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 
 export function CometTitle({ ready }: { ready: boolean }) {
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
+  const titleRef = useRef<HTMLSpanElement>(null)
+  useChatTitlePosition(titleRef, selectedId)
   const [bots, setBots] = useState<BotDto[]>([])
   useEffect(() => {
     if (!ready) return
@@ -22,5 +26,5 @@ export function CometTitle({ ready }: { ready: boolean }) {
     return () => { alive = false; unsubscribe() }
   }, [ready])
   const selected = bots.find((bot) => bot.id === selectedId)
-  return <span className="conversation-title"><span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
+  return <span ref={titleRef} className="conversation-title chat-title-pill"><span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
 }
