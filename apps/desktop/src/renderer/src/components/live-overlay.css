@@ -4,7 +4,7 @@
 .live-overlay-deck[data-dragging] { cursor: grabbing; }
 .live-overlay-deck[data-suspended] { visibility: hidden; pointer-events: none; }
 .live-overlay-deck img { -webkit-user-drag: none; }
-.live-overlay-deck[data-floating] .preview-card-stage { max-height: var(--live-fit-stage, var(--pc-stage-max)); }
+.live-overlay-deck[data-floating] .preview-card-stage { min-height: 0; max-height: min(var(--pc-stage-max), var(--live-fit-stage, var(--pc-stage-max))); }
 .live-overlay-deck[data-floating] .preview-card-actions { z-index: 1; }
 .live-overlay-deck[data-floating] .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 30px)); --deck-y: calc(-1 * var(--live-fit-space, 30px)); }
 .live-overlay-deck[data-floating] .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
