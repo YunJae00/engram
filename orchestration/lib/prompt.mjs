@@ -20,13 +20,27 @@ export const verifierLinuxDesktop = (cloud, platform = process.platform) => !clo
 const timeBudget = (minutes, late) => (minutes ? [`You have ${minutes} minutes from launch. ${late} Anything pushed after that is ignored and a fresh session takes over.`] : [])
 const verifyCliCriterion = (brief) => (brief.criteria ?? []).some((c) => /(?:^|\s)scripts\/verify-cli\.mjs\s+[a-z0-9-]+/.test(c.cmd ?? ''))
 
+// Whole-suite commands (unit suite, Electron e2e, release gates) run once at integration,
+// not per item: per-item checks stay on the changed code and the item's own scenarios.
+const FULL_SUITE = /^\s*(?:xvfb-run\s+-a\s+)?(?:pnpm|npm)\s+(?:run\s+)?(?:test|verify|verify:release|check|test:e2e(?::fast)?|e2e:affected)\s*$/
+export const isFullSuite = (cmd) => FULL_SUITE.test(cmd ?? '')
+export const scopedCriteria = (brief) => (brief.criteria ?? []).filter((c) => !isFullSuite(c.cmd))
+export const deferredCriteria = (brief) => (brief.criteria ?? []).filter((c) => isFullSuite(c.cmd))
+const deferredNote = (brief) => {
+  const deferred = deferredCriteria(brief)
+  return deferred.length
+    ? [`Do not run these whole-suite criteria; integration runs them once before release. Record each as an evidence entry with result \`deferred to integration\`, which does not block \`pass\`: ${deferred.map((c) => `${c.id} (\`${c.cmd}\`)`).join(', ')}.`]
+    : []
+}
+
 const VERIFIER_STEPS = {
   tests: (brief, baseBranch, cloud) => [
-    'Run `npm run check:quick` and save its output to a log under `orchestration/logs/`.',
-    `Run every criterion command and save each output to its own log under \`orchestration/logs/\`:\n${brief.criteria.map((c) => `   - ${c.id}: \`${c.cmd}\` expect: ${c.expect}`).join('\n')}`,
+    `Run \`ENGRAM_CHECK_BASE=${baseBranch} npm run check:quick\` (typecheck, lint and only the unit tests related to files changed since \`${baseBranch}\`) and save its output to a log under \`orchestration/logs/\`.`,
+    `Run every criterion command below and save each output to its own log under \`orchestration/logs/\`:\n${scopedCriteria(brief).map((c) => `   - ${c.id}: \`${c.cmd}\` expect: ${c.expect}`).join('\n')}`,
     ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : [])] : []),
+    ...deferredNote(brief),
     'Add one evidence entry per criterion with the exact command, the exit code and outcome in `result`, and the log path.',
-    'Verdict `pass` only if every command exits as expected, `fail` if any does not, `cannot_verify` if the environment prevents running a command.',
+    'Verdict `pass` only if every command you ran exits as expected, `fail` if any does not, `cannot_verify` if the environment prevents running a command.',
   ],
   spec: (brief, baseBranch) => [
     `Read \`git diff ${baseBranch}...HEAD\` and \`git log ${baseBranch}..HEAD\`.`,
@@ -38,7 +52,7 @@ const VERIFIER_STEPS = {
   ],
   break: (brief) => [
     `The commit adding \`orchestration/reports/${brief.id}.json\` is the implementer's required report commit; do not report it as a finding.`,
-    'The tests and desktop verifiers already run `npm run check:quick`, every criterion and every scenario. Do not rerun them; run only commands that attack the changed code.',
+    'The tests and desktop verifiers already run `npm run check:quick`, the related unit tests, the item criteria and every scenario; whole-suite runs happen at integration. Do not rerun them; run only commands that attack the changed code.',
     ...(briefScenarios(brief).length ? [DESKTOP_BUILD] : []),
     'Try to break the changed code: edge inputs, empty and huge values, concurrency, restart, missing files, error paths.',
     'Scratch scripts go under `tmp/` only. Do not change tracked files.',
@@ -93,7 +107,7 @@ function findingsBlock(findings) {
   ]
 }
 
-export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud, findings = [], minutes }) {
+export function implementerPrompt({ persona, rules, brief, branch, baseBranch, reportPath, cloud, linux = false, findings = [], minutes }) {
   const steps = [
     ...timeBudget(minutes, 'If the work cannot be done by then, push the report with status `partial` or `blocked` before the deadline.'),
     ...(cloud
@@ -101,8 +115,8 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
       : [`You are already on branch \`${branch}\` (based on \`${baseBranch}\`). Do not switch branches.`]),
     'Implement the brief, touching only the allowed files.',
     'Add tests only inside the allowed files; if no test file is allowed, do not create one.',
-    'Run `npm run check:quick` until it exits 0, and run every criterion command.',
-    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : [])] : []),
+    `Run \`ENGRAM_CHECK_BASE=${baseBranch} npm run check:quick\` (related unit tests only) until it exits 0, then every criterion command except whole-suite ones (${deferredCriteria(brief).map((c) => `\`${c.cmd}\``).join(', ') || 'none'}), which integration runs once.`,
+    ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : linux ? [LINUX_DESKTOP] : [])] : []),
     'Commit the code. Record `git rev-parse HEAD` as headSha.',
     `Write \`${reportPath}\` matching the report schema below, with that headSha.`,
     `Run \`git add -f ${reportPath}\` and commit it as a separate last commit.`,

@@ -9,7 +9,7 @@ import {
 } from './loop.mjs'
 import { runnable } from './overlap.mjs'
 import { alive } from './procs.mjs'
-import { designerPrompt, implementerPrompt } from './prompt.mjs'
+import { designerPrompt, implementerPrompt, verifierLinuxDesktop } from './prompt.mjs'
 import {
   attemptRef, briefPath, dropWorktree, freshDetached, git, isCloud, jobFinished, kill, launchAgent, linkNodeModules, loadBrief, loadJobs,
   note, persona, previousFindings, readJsonOrNull, releaseSlot, reportPath, RULES, save, saveJobs, schema, slotFree,
@@ -172,7 +172,7 @@ async function launchImplementer(ctx, ledger, item, brief, step, relaunch = null
   const cloud = isCloud(step.implementer)
   const minutes = roleMinutes(ctx.roles, 'implement')
   const prompt = withDesign(ctx, implementerPrompt({
-    persona: persona(ctx, 'implementer'), rules: RULES, brief, branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id), cloud,
+    persona: persona(ctx, 'implementer'), rules: RULES, brief, branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id), cloud, linux: verifierLinuxDesktop(cloud),
     findings: previousFindings(ctx, item), minutes,
   }), brief)
   const attempt = { n, implementer: step.implementer, verifier: step.verifier, branch, startedAt: new Date().toISOString() }
