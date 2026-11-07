@@ -33,7 +33,7 @@ async function clientState(id: McpClientDto['id']): Promise<McpClientDto> {
       const binary = id === 'claude' ? claudeBinary() : codexBinary()
       if (!binary) return { id, state: 'unavailable' }
       const result = await runText(binary, ['mcp', 'get', 'engram', ...(id === 'codex' ? ['--json'] : [])], 10000)
-      if (result.code !== 0) return { id, state: /not found|no .*server|does not exist|not exist/i.test(result.out) ? 'not-configured' : 'error' }
+      if (result.code !== 0) return { id, state: /not found|no .*server|does not exist|not exist/i.test(`${result.out}\n${result.err ?? ''}`) ? 'not-configured' : 'error' }
       text = result.out
     }
     return { id, state: currentSpec(text) ? 'configured' : 'not-configured' }
@@ -92,7 +92,7 @@ async function connectCli(client: 'claude' | 'codex'): Promise<McpConnectResultD
     try { await writeFile(pending, restore.before, { mode: 0o600 }); await rename(pending, restore.file) }
     finally { await rm(pending, { force: true }) }
   }
-  return added.code === 0 ? { ok: true } : { ok: false, code: 'failed', detail: added.out.slice(-300) }
+  return added.code === 0 ? { ok: true } : { ok: false, code: 'failed', detail: `${added.err ?? ''}\n${added.out}`.trim().slice(-300) }
 }
 
 async function connect(client: 'desktop' | 'claude' | 'codex'): Promise<McpConnectResultDto> {

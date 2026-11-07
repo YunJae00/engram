@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readAuthStatus, textOf } from '../src/main/engine-claude.js'
 import { claudeBinary, cloudErrorKind, codexBinary, StatusCache, STATUS_TTL_MS, unpackedPath, withHelpersOnPath } from '../src/main/engine-cloud.js'
-import { disableMcpOverrides, readLoginStatus, restoreOptionalFields, strictSchema } from '../src/main/engine-codex.js'
+import { disableMcpOverrides, mcpListJson, readLoginStatus, restoreOptionalFields, strictSchema } from '../src/main/engine-codex.js'
 import { openStepSchema } from '../../../packages/core/src/agent-prompt.js'
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 import { cometTools } from '../../../packages/core/src/comet-tools.js'
@@ -23,6 +23,22 @@ describe('readAuthStatus', () => {
     expect(readAuthStatus('{"loggedIn":true,"email":"a@b.c"}')).toEqual({ installed: true, loggedIn: true, conclusive: true })
     expect(readAuthStatus('noise\n{"loggedIn":false}')).toEqual({ installed: true, loggedIn: false, conclusive: true })
     expect(readAuthStatus('command not found')).toEqual({ installed: true, loggedIn: false, conclusive: false })
+  })
+})
+
+describe('mcpListJson', () => {
+  const warning = 'WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp"\n'
+  it('parses JSON stdout and leaves a stderr warning out of the document', () => {
+    expect(mcpListJson({ code: 0, out: '[]\n', err: warning })).toBe('[]')
+    expect(disableMcpOverrides(mcpListJson({ code: 0, out: '[{"name":"a","transport":{"command":"node"}}]', err: warning }))).toEqual(['mcp_servers={"a"={command="node",enabled=false}}'])
+  })
+  it('reports a stderr-only failure instead of parsing the warning as JSON', () => {
+    expect(() => mcpListJson({ code: 1, out: '', err: 'not found\n' })).toThrow(/not found/)
+    expect(() => mcpListJson({ code: null, out: '', err: '' })).toThrow('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+  })
+  it('rejects malformed stdout even when stderr is empty', () => {
+    expect(() => mcpListJson({ code: 0, out: '{', err: '' })).toThrow('Could not read the ChatGPT tool configuration. The runtime did not return a JSON list.')
+    expect(() => mcpListJson({ code: 0, out: '', err: warning })).toThrow('Could not read the ChatGPT tool configuration. The runtime returned no JSON list.')
   })
 })
 

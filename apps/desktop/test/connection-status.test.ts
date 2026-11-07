@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { connectionConfirmed, connectionLabel } from '../src/renderer/src/lib/connectionStatus.js'
+import { connectionConfirmed, connectionLabel, visibleLoginMessage } from '../src/renderer/src/lib/connectionStatus.js'
 import { connectionProbe } from '../src/main/connection-probe.js'
 
 it('distinguishes signed out, unknown, expired and quota-limited accounts', () => {
@@ -15,6 +15,8 @@ it('distinguishes signed out, unknown, expired and quota-limited accounts', () =
   expect(connectionLabel({ ...connected, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')
   expect(connectionLabel({ ...connected, conclusive: false, healthy: false, healthReason: 'auth' }, 'codex')).toBe('Reconnect required')
   expect(connectionLabel({ ...connected, installed: false, healthy: false, healthReason: 'auth' }, 'claude')).toBe('Not installed')
+  expect(visibleLoginMessage(true, 'Sign-in did not finish. Try again in your browser.')).toBeUndefined()
+  expect(visibleLoginMessage(false, 'Sign-in did not finish. Try again in your browser.')).toBe('Sign-in did not finish. Try again in your browser.')
 })
 
 it('ends a hung connection check as unknown, not signed out or connected', async () => {

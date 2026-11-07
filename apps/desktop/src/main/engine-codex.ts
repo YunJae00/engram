@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
-import { cloudErrorKind, codexBinary, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
+import { cloudErrorKind, codexBinary, commandText, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, withHelpersOnPath, type CloudEngine, type CloudLoginOptions, type RunText } from './engine-cloud.js'
 import { CodexAccount } from './codex-account.js'
 import { loadSettings } from './settings.js'
 import { runCodexTurn } from './codex-turn.js'
@@ -129,8 +129,8 @@ export class CodexEngine implements CloudEngine {
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
       if (hasBrainConnection('codex', this.accountProfile)) { const probe = await probeConnection('codex', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
-      const { code, out } = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
-      return readLoginStatus(out, code)
+      const status = await runText(binary, ['login', 'status'], STATUS_TIMEOUT_MS, withHelpersOnPath(binary, this.env))
+      return readLoginStatus(commandText(status), status.code)
     })
   }
 
@@ -300,10 +300,10 @@ async function mcpCatalog(binary: string, cwd: string, env: Record<string, strin
   if (held && Date.now() - held.at < CATALOG_MS) return held.out
   const pending = reading.get(key) ?? (async () => {
     const catalog = await runText(binary, ['-C', cwd, 'mcp', 'list', '--json'], 60_000, env, { signal: new AbortController().signal })
-    if (catalog.code !== 0) throw new Error('Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+    const document = mcpListJson(catalog)
     for (const [stored, value] of catalogs) if (Date.now() - value.at >= CATALOG_MS) catalogs.delete(stored)
-    catalogs.set(key, { out: catalog.out, at: Date.now() })
-    return catalog.out
+    catalogs.set(key, { out: document, at: Date.now() })
+    return document
   })().finally(() => reading.delete(key))
   reading.set(key, pending)
   return new Promise<string>((resolve, reject) => {
@@ -314,6 +314,20 @@ async function mcpCatalog(binary: string, cwd: string, env: Record<string, strin
   })
 }
 export function forgetCodexCatalog(): void { catalogs.clear() }
+
+// `mcp list --json` writes the document on stdout. A stderr warning, including
+// Codex refusing to plant helper binaries under a temporary CODEX_HOME, is not
+// part of that document and must not make JSON.parse fail.
+export function mcpListJson(result: RunText): string {
+  if (result.code !== 0) {
+    const detail = commandText(result).trim()
+    throw new Error(detail ? `Could not read the ChatGPT tool configuration. ${detail}` : 'Could not read the ChatGPT tool configuration. Try again after checking the runtime.')
+  }
+  const document = result.out.trim()
+  if (!document) throw new Error('Could not read the ChatGPT tool configuration. The runtime returned no JSON list.')
+  try { JSON.parse(document) } catch { throw new Error('Could not read the ChatGPT tool configuration. The runtime did not return a JSON list.') }
+  return document
+}
 
 const SERVER_IDLE_MS = 60 * 60_000
 const toolServers = new Map<string, { server: ToolServer; usedAt: number }>()

@@ -162,6 +162,13 @@ describe('text runtime desktop isolation boundary', () => {
     expect(new CodexEngine().desktopToolIsolation).toBe(true)
   })
 
+  it('reads a JSON tool list when the runtime warns on stderr', async () => {
+    fixture.catalog.mockResolvedValue({ code: 0, out: '[{"name":"fixture","transport":{"command":"node"}}]', err: 'WARNING: proceeding, even though we could not create PATH aliases\n' })
+    const events = await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, disallowTools: true }))
+    expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
+    expect(fixture.run).toHaveBeenCalledOnce()
+  })
+
   it('does not start the SDK when inherited connection discovery fails', async () => {
     fixture.catalog.mockResolvedValue({ code: null, out: '' })
     const events = await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, disallowTools: true }))
