@@ -50,7 +50,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
           )) : null}
       </Fragment>
     })}
-    {busy && <div className="bubble-typing" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
+    {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
     {!busy && !offerOpen && last && !last.streaming && !failed(last) && <ReplyChips text={last.text} onPick={onReply} />}
   </>
