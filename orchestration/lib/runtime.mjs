@@ -215,9 +215,16 @@ export function slotFree(ctx, agent) {
 }
 
 // Codex needs full access to commit through a linked worktree's gitdir and to push.
+// The desktop verifier launches Electron under Xvfb, which workspace-write blocks
+// ("Check failed: . shutdown: Operation not permitted"); other verifier kinds stay sandboxed.
 const SANDBOX = { implement: 'danger-full-access', verify: 'workspace-write', design: 'workspace-write' }
+const VERIFY_SANDBOX = { desktop: 'danger-full-access' }
 
-export async function launchAgent(ctx, { agent, label, cwd, prompt, role, minutes, schemaPath, addDirs: extraDirs = [] }) {
+export function codexSandbox(role, kind) {
+  return (role === 'verify' && VERIFY_SANDBOX[kind]) || SANDBOX[role]
+}
+
+export async function launchAgent(ctx, { agent, label, cwd, prompt, role, kind, minutes, schemaPath, addDirs: extraDirs = [] }) {
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `${label}.log`)
   const startedAt = new Date().toISOString()
@@ -238,7 +245,7 @@ export async function launchAgent(ctx, { agent, label, cwd, prompt, role, minute
   const outPath = join(ctx.logs, `${label}.out`)
   const codexBin = resolveCodexBin(ctx.root, { override: ctx.roles.codexBin })
   const addDirs = [...NODE_MODULES.map((rel) => join(ctx.root, rel)).filter((dir) => existsSync(dir)), ...extraDirs]
-  const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: SANDBOX[role], schemaPath, addDirs, model })
+  const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: codexSandbox(role, kind), schemaPath, addDirs, model })
   ctx.sem.acquire(label, pid)
   return { ...job, pid, outPath }
 }

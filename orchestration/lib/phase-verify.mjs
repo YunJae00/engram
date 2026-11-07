@@ -63,7 +63,7 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
     cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes,
   })
   const launched = await launchAgent(ctx, {
-    agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', minutes,
+    agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', kind, minutes,
     schemaPath: join(ctx.orch, 'schemas/verdict.schema.json'),
   })
   if (!launched) {
