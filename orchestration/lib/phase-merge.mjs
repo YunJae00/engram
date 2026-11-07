@@ -7,7 +7,7 @@ import { isTerminal, transition } from './ledger.mjs'
 import { integrationScenarios, nextRevert, suggestBump } from './loop.mjs'
 import { cleanAttempt, dropBranch } from './phase-verify.mjs'
 import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, syncBaseBranch } from './runtime.mjs'
-import { integrationBase, integrationCommands, integrationTier, tierScenarios } from './tier.mjs'
+import { integrationBase, integrationCommands, integrationEnv, integrationTier, tierScenarios } from './tier.mjs'
 import { roleMinutes } from './timebox.mjs'
 
 export async function mergeVerified(ctx, ledger) {
@@ -99,9 +99,10 @@ async function runChecks(ctx, merged, logPath) {
     return { sha: i.mergeSha, count: out.code === 0 ? Number(out.out) : NaN }
   }))
   const base = integrationBase(counts, `${ctx.opts.remote}/${ctx.roles.mainBranch}`)
-  writeFileSync(logPath, `integration tier ${tier}; ENGRAM_CHECK_BASE=${base}\n`, { flag: 'a' })
+  const env = integrationEnv(tier, base)
+  writeFileSync(logPath, `integration tier ${tier}${env.ENGRAM_CHECK_BASE ? `; ENGRAM_CHECK_BASE=${env.ENGRAM_CHECK_BASE}` : ''}\n`, { flag: 'a' })
   for (const [cmd, args] of integrationCommands(tier)) {
-    if ((await sh(worktree, cmd, args, { logPath, timeoutMs, env: { ...QUIET_HOST, ENGRAM_CHECK_BASE: base } })).code !== 0) return [tier === 'full' ? 'verify' : args.join(' ')]
+    if ((await sh(worktree, cmd, args, { logPath, timeoutMs, env: { ...QUIET_HOST, ...env } })).code !== 0) return [tier === 'full' ? 'verify' : args.join(' ')]
   }
   for (const scenario of releaseScenarios(merged, tier)) {
     const built = existsSync(join(worktree, 'apps/desktop/out/main/index.js'))

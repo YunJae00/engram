@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { integrationBase, integrationCommands, integrationTier, tierScenarios } from './tier.mjs'
+import { integrationBase, integrationCommands, integrationEnv, integrationTier, tierScenarios } from './tier.mjs'
 import { loadRoles } from './ledger.mjs'
 import { URL, fileURLToPath } from 'node:url'
 
@@ -32,5 +32,9 @@ describe('integration tier', () => {
   it('diffs against the parent of the batch first merge, else the fallback', () => {
     expect(integrationBase([{ sha: 'b2', count: 12 }, { sha: 'a1', count: 10 }, { sha: 'c3', count: NaN }], 'origin/main')).toBe('a1^')
     expect(integrationBase([], 'origin/main')).toBe('origin/main')
+  })
+  it('sets ENGRAM_CHECK_BASE only for the full tier', () => {
+    expect(integrationEnv('quick', 'a1^')).toEqual({})
+    expect(integrationEnv('full', 'a1^')).toEqual({ ENGRAM_CHECK_BASE: 'a1^' })
   })
 })

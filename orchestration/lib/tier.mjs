@@ -36,3 +36,11 @@ export function integrationBase(counts, fallback) {
   if (!known.length) return fallback
   return `${known.reduce((a, b) => (b.count < a.count ? b : a)).sha}^`
 }
+
+// Only the full tier's e2e selection needs the batch base. The quick tier runs the whole
+// unit suite, and a leaked ENGRAM_CHECK_BASE reaches tests that spawn the selector in
+// their own fixture repo (packages/core/test/e2e-runners.test.ts), where that SHA does
+// not exist and every spec is selected.
+export function integrationEnv(tier, base) {
+  return tier === 'full' && base ? { ENGRAM_CHECK_BASE: base } : {}
+}
