@@ -4,6 +4,31 @@ import { pathToFileURL } from 'node:url'
 import { once } from 'node:events'
 import { build } from 'esbuild'
 import { expect, it, vi } from 'vitest'
+import { mcpListJson } from '../src/main/engine-codex.js'
+
+it('keeps a stderr warning out of a JSON stdout document', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const outdir = await mkdtemp(resolve('tmp/process-test-'))
+  await writeFile(join(outdir, 'package.json'), '{"type":"module"}')
+  await build({ entryPoints: ['apps/desktop/src/main/process-client.ts', 'apps/desktop/src/main/process-worker.ts'], outdir, platform: 'node', format: 'esm' })
+  const { ProcessClient } = await import(pathToFileURL(join(outdir, 'process-client.js')).href) as typeof import('../src/main/process-client.js')
+  const warned = new ProcessClient(process.execPath, ['-e', "process.stderr.write('WARNING: proceeding, helper binaries\\n'); process.stdout.write('[]\\n')"])
+  let out = ''
+  let err = ''
+  warned.stdout.on('data', (data: Buffer) => { out += data })
+  warned.stderr.on('data', (data: Buffer) => { err += data })
+  await warned.waitForClose(5000)
+  expect(warned.exitCode).toBe(0)
+  expect(mcpListJson({ code: warned.exitCode, out, err })).toBe('[]')
+  const failed = new ProcessClient(process.execPath, ['-e', "process.stderr.write('not found\\n'); process.exit(1)"])
+  let failure = ''
+  failed.stderr.on('data', (data: Buffer) => { failure += data })
+  failed.stdout.resume()
+  await failed.waitForClose(5000)
+  expect(failed.exitCode).toBe(1)
+  expect(() => mcpListJson({ code: failed.exitCode, out: '', err: failure })).toThrow(/not found/)
+  await import(pathToFileURL(join(outdir, 'process-client.js')).href).then((mod: typeof import('../src/main/process-client.js')) => mod.stopRuntimeProcesses())
+})
 
 it('streams through a worker, preserves exit/errors, and cancels during startup', async () => {
   await mkdir(resolve('tmp'), { recursive: true })

@@ -9,7 +9,7 @@ import { AccountProfiles } from './AccountProfiles.js'
 import { AccountUsage } from './AccountUsage.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
-import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
+import { connectionConfirmed, connectionLabel, visibleLoginMessage } from '../lib/connectionStatus.js'
 import { KeyConnection } from './KeyConnection.js'
 import { SettingsItem, SettingsGroup } from './SettingsLayout.js'
 
@@ -68,6 +68,7 @@ export function EngineSettings() {
         const status = pending ? login.phase === 'opening' ? 'Starting sign-in…' : 'Finish signing in in your browser' : connectionLabel(state, id)
         const notInstalled = id === 'claude' && state && !state.installed
         const signIn = pending ? status : connected ? 'Signed in with your account' : notInstalled ? 'Official runtime download. Anthropic’s terms apply.' : status
+        const notice = visibleLoginMessage(connected, login?.message)
         return (
           <section key={id} className="settings-section engine-connection" aria-label={`${name} connection`}>
             <div className="engine-card-heading">
@@ -76,7 +77,7 @@ export function EngineSettings() {
             </div>
             <div className="settings-card">
               <SettingsItem icon={<Users size={18} />} title="Account" description={profileName}>{!pending && <AccountProfiles provider={id} label="Manage" />}</SettingsItem>
-              <SettingsItem icon={<LogIn size={18} />} title="Sign-in" description={signIn} below={login?.message && <p className="engine-message" role="status">{login.message}</p>}>
+              <SettingsItem icon={<LogIn size={18} />} title="Sign-in" description={signIn} below={notice && <p className="engine-message" role="status">{notice}</p>}>
                 <span className="engine-actions">
                   {pending ? <>
                     {login.canOpen && <button className="secondary" onClick={() => run(api.engineOpenLogin(id))}><ExternalLink size={13} /> Open browser</button>}
