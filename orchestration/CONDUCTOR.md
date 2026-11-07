@@ -20,6 +20,10 @@ Go deep on one proof, then the ladder may run implementers in parallel. These ar
 - **Prove it works.** `tests`, `spec` and `break` always run. A brief that names a scenario also launches the `desktop` verifier (`roles.md`). A desktop pass has one evidence row per scenario. A pass with empty evidence is void. The Feature Map says which scenario reaches which surface; the command output is the proof.
 - **Build the lever.** When no scenario shows the symptom, add one (step 5) that reuses `openActivity` from `apps/desktop/e2e/navigation.ts` and returns `{ ok, evidence }`. Update the Feature Map in that change. A manual click is not a completion criterion.
 
+## Integration tier
+
+Integration runs the `quick` tier by default (`roles.md` `integration.tier`): typecheck, lint, the whole unit suite, a desktop build and the batch's own scenarios, then CI. Run `node run.mjs run --full` (or `node run.mjs integrate --full`) for the long tier with the affected Electron e2e specs (`npm run verify`) when the batch is large or risky: more than 5 items, or any item touching `packages/core/**`, `apps/desktop/src/main/**`, `apps/desktop/src/preload/**` or `apps/desktop/native/**`. Also run it once a week. Say which tier ran in the close report.
+
 ## Rules the Conductor keeps
 
 - All state lives in `ledger.json`, `decisions.tsv`, `followups.tsv`, `reports/`, `verdicts/`. Nothing depends on this session's memory; a restarted `run.mjs` continues from the files.
@@ -34,11 +38,11 @@ Go deep on one proof, then the ladder may run implementers in parallel. These ar
 
 ```
 node run.mjs add <brief.json>                              queue an item (validates the brief, copies it to briefs/)
-node run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate]
+node run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick]
                                                            tick every <s> seconds (default 30) until integration ends;
                                                            --dry-run prints what one tick would launch and writes nothing;
                                                            --reintegrate resumes a batch whose integration failed
-node run.mjs integrate                                     rerun integration once (previous result kept in history), rewrite the summary
+node run.mjs integrate [--full|--quick]                    rerun integration once (previous result kept in history), rewrite the summary
 node run.mjs status                                        table of items and states
 node run.mjs design <id> --pick claude|codex               choose the design of a hard item in `designing`
 node run.mjs release --bump patch|minor                    bump both package.json files on next, fast-forward main, tag

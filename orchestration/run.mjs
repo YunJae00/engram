@@ -13,12 +13,13 @@ import { awaitSmoke, release } from './lib/release.mjs'
 import { fetchBranch, fileAtRef } from './lib/git.mjs'
 import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
 import { validate } from './lib/validate.mjs'
+import { integrationTier } from './lib/tier.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const USAGE = `usage:
   node orchestration/run.mjs add <brief.json>
-  node orchestration/run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate]
-  node orchestration/run.mjs integrate
+  node orchestration/run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick]
+  node orchestration/run.mjs integrate [--full|--quick]
   node orchestration/run.mjs status
   node orchestration/run.mjs design <id> --pick claude|codex
   node orchestration/run.mjs release --bump patch|minor
@@ -153,6 +154,7 @@ async function smoke(ctx, tag) {
 async function main(argv) {
   const [command, ...args] = argv
   const ctx = createContext(ROOT, { dryRun: flag(args, '--dry-run') })
+  ctx.integrationTier = integrationTier(ctx.roles, args)
   if (command === 'add' && args[0]) return add(ctx, args[0])
   if (command === 'status') return ctx.log(existsSync(join(ctx.orch, 'ledger.json')) ? status(loadLedger(ROOT)) : 'ledger empty')
   if (command === 'run') return run(ctx, args)

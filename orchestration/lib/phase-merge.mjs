@@ -7,6 +7,7 @@ import { isTerminal, transition } from './ledger.mjs'
 import { integrationScenarios, nextRevert, suggestBump } from './loop.mjs'
 import { cleanAttempt, dropBranch } from './phase-verify.mjs'
 import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, syncBaseBranch } from './runtime.mjs'
+import { integrationCommands, integrationTier, tierScenarios } from './tier.mjs'
 import { roleMinutes } from './timebox.mjs'
 
 export async function mergeVerified(ctx, ledger) {
@@ -67,10 +68,7 @@ function readJsonText(text) {
 }
 
 // Item verification is cloud-only; these are the final local desktop smoke checks.
-const releaseScenarios = (merged) => {
-  const named = integrationScenarios(merged).filter((name) => ['note-open', 'cosmos', 'ui-activity-status'].includes(name))
-  return [...new Set(['boot', ...named, ...(merged.length ? ['note-open', 'cosmos', 'ui-activity-status'] : [])])]
-}
+const releaseScenarios = (merged, tier) => tierScenarios(tier, integrationScenarios(merged), merged.length)
 
 async function runCi(ctx, logPath, timeoutMs) {
   const before = await latestRun(ctx)
@@ -95,8 +93,12 @@ async function runChecks(ctx, merged, logPath) {
   const run = (cmd, args) => sh(worktree, cmd, args, { logPath, timeoutMs, env: QUIET_HOST })
   if ((await run('pnpm', ['install', '--frozen-lockfile'])).code !== 0) return ['install']
   const failed = []
-  if ((await run('npm', ['run', 'verify'])).code !== 0) return ['verify']
-  for (const scenario of releaseScenarios(merged)) {
+  const tier = ctx.integrationTier ?? integrationTier(ctx.roles)
+  writeFileSync(logPath, `integration tier ${tier}\n`, { flag: 'a' })
+  for (const [cmd, args] of integrationCommands(tier)) {
+    if ((await run(cmd, args)).code !== 0) return [tier === 'full' ? 'verify' : args.join(' ')]
+  }
+  for (const scenario of releaseScenarios(merged, tier)) {
     const built = existsSync(join(worktree, 'apps/desktop/out/main/index.js'))
     const cli = scenarioCommand(scenario, built)
     const result = await sh(worktree, process.execPath, cli, { logPath, timeoutMs, env: QUIET_HOST })

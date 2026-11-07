@@ -23,6 +23,9 @@ Shared-file lock: an item whose allowed files include a `sharedFiles` entry runs
   "mainBranch": "main",
   "branchPrefix": "orch/",
   "maxLocalAgents": 3,
+  "integration": {
+    "tier": "quick"
+  },
   "minutes": {
     "design": 15,
     "implement": 40,
@@ -111,3 +114,5 @@ Shared-file lock: an item whose allowed files include a `sharedFiles` entry runs
 ```
 
 Test scope: per item, the `tests` verifier runs `npm run check:quick`, with `ENGRAM_CHECK_BASE=<baseBranch>` (typecheck, lint, unit tests related to the changed files), and every criterion except whole-suite commands (`pnpm run test`, `npm run verify`, `test:e2e`, `check`, `verify:release`; see `isFullSuite` in `lib/prompt.mjs`). Those are recorded as `deferred to integration` and run once at integration before release: `npm run verify` plus every scenario on the merged branch, then CI (`npm run check` on macOS and Windows).
+
+Integration tier: `integration.tier` is `quick` (default) or `full`; `run.mjs run|integrate --full` or `--quick` overrides it for that process. `quick` runs `npm run check:quick`, `pnpm run test` (whole unit suite), the desktop build, `boot`, every scenario the batch's items name and the release smoke set, then CI. `full` replaces the first three with `npm run verify` (affected Electron e2e specs) and keeps boot plus the smoke set. See `lib/tier.mjs`.
