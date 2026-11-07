@@ -1,11 +1,43 @@
 import { api } from '../api.js'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { AppWindow, Calendar, ChevronUp, FileText, Globe, Mail, LoaderCircle, PanelRight, X } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { GROUP_KO } from '../lib/threadLangKo.js'
 import { useWebPane, webPane } from '../lib/webPane.js'
 import { FrameScreen } from './FrameScreen.js'
 import type { PreviewFrame } from './usePreviewFrames.js'
+
+export const FALLBACK_RATIO = 16 / 10
+export type StageSize = { id: string; width: number; height: number }
+type ChatObserver = Pick<ResizeObserver, 'observe' | 'disconnect'>
+
+export function measuredSize(previous: StageSize | null, id: string, width: number, height: number): StageSize | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return previous
+  if (previous && previous.id === id && previous.width === width && previous.height === height) return previous
+  return { id, width, height }
+}
+
+export function stageRatio(size: StageSize | null, id: string): number {
+  return size && size.id === id ? size.width / size.height : FALLBACK_RATIO
+}
+
+export function paintedSize(stage: ParentNode | null): { width: number; height: number } | null {
+  const canvas = stage?.querySelector('canvas')
+  return canvas ? { width: canvas.width, height: canvas.height } : null
+}
+
+export function observeChatCap(stage: Element, onCap: (pixels: number) => void, Observer: new (callback: () => void) => ChatObserver = ResizeObserver): () => void {
+  const chat = stage.closest('.bots-chat, .mini-chat')
+  if (!chat) return () => {}
+  const read = (): void => {
+    const height = chat.getBoundingClientRect().height
+    if (height > 0) onCap(Math.floor(height / 2))
+  }
+  read()
+  const observer = new Observer(read)
+  observer.observe(chat)
+  return () => observer.disconnect()
+}
 
 export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb, onCollapse, onHide, onSnapshot }: {
   frame: PreviewFrame; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
@@ -17,7 +49,17 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const description = useId()
   const [now, setNow] = useState(Date.now)
   const paints = useRef(new Map<string, number>())
-  const onPaint = useCallback((image: string) => { paints.current.set(frame.id, Date.now()); onSnapshot?.(frame.id, image); frame.onPaint?.() }, [frame.id, frame.onPaint, onSnapshot])
+  const stage = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState<StageSize | null>(null)
+  const [cap, setCap] = useState<number | null>(null)
+  const recordSize = useCallback((width: number, height: number) => setSize(previous => measuredSize(previous, frame.id, width, height)), [frame.id])
+  const onPaint = useCallback((image: string) => {
+    const painted = paintedSize(stage.current)
+    if (painted) recordSize(painted.width, painted.height)
+    paints.current.set(frame.id, Date.now()); onSnapshot?.(frame.id, image); frame.onPaint?.()
+  }, [frame.id, frame.onPaint, onSnapshot, recordSize])
+  useEffect(() => stage.current ? observeChatCap(stage.current, pixels => setCap(current => current === pixels ? current : pixels)) : undefined, [])
+  const stageStyle = { aspectRatio: String(stageRatio(size, frame.id)), ...cap ? { '--pc-stage-cap': `${cap}px` } : {} } as CSSProperties
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
@@ -37,9 +79,9 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
     if (frame.phase === 'empty') requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="live-address"]')?.focus())
   }
   return <aside className="preview-card" data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
-    <div className="preview-card-stage" data-phase={frame.phase} title={snapshot}>
+    <div ref={stage} className="preview-card-stage" data-phase={frame.phase} title={snapshot} style={stageStyle}>
       <span id={description} className="sr-only">{words.description}</span>
-      {hasImage ? <img src={frame.image} alt={title} /> : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
+      {hasImage ? <img src={frame.image} alt={title} onLoad={event => recordSize(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} /> : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
       {!hasImage && <div className="preview-card-state"><Icon size={16} aria-hidden /><span>{message}</span></div>}
       <div className="preview-card-actions">
         {!!frame.hiddenByEngram && <button type="button" aria-label={words.showApp} title={words.showApp} onClick={() => { void api.desktopShowApp(lane).catch(() => {}) }}><AppWindow size={14} aria-hidden /></button>}
