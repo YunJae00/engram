@@ -35,7 +35,9 @@ describe('scriptArgs', () => {
     expect(args).toHaveLength(5)
   })
 
-  it.skipIf(process.platform === 'win32')('runs echo under the host script, including a quote in the argument', () => {
+  // BSD script(1) on macOS needs a terminal (tcgetattr), which CI runners do not have; the
+  // argument shape is covered above, and Linux util-linux script runs without one.
+  it.skipIf(process.platform === 'win32' || (process.platform === 'darwin' && !process.stdin.isTTY))('runs echo under the host script, including a quote in the argument', () => {
     const dir = mkdtempSync(join(tmpdir(), 'script-probe-'))
     const log = join(dir, 'typescript')
     try {
