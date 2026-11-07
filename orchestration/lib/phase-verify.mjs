@@ -5,7 +5,7 @@ import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
 import { alive } from './procs.mjs'
-import { verifierPrompt } from './prompt.mjs'
+import { verifierLinuxDesktop, verifierPrompt } from './prompt.mjs'
 import {
   attemptRef, dropWorktree, freshDetached, git, isCloud, kill, launchAgent, loadBrief, loadJobs, note, persona,
   readJsonOrNull, releaseSlot, save, saveJobs, schema,
@@ -60,7 +60,7 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
   const prompt = verifierPrompt({
     persona: persona(ctx, `verifier-${kind}`), kind, brief: loadBrief(ctx, item.id), headSha: attempt.headSha, verdictPath,
     schemaText: readFileSync(join(ctx.orch, 'schemas/verdict.schema.json'), 'utf8'), attempt: attempt.n, baseBranch: ctx.base,
-    cloud, verdictBranch: branch, minutes,
+    cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes,
   })
   const launched = await launchAgent(ctx, {
     agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', minutes,

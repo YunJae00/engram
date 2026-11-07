@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { designerPrompt, implementerPrompt, verifierPrompt, REPORT_SCHEMA_TEXT } from './prompt.mjs'
+import { designerPrompt, implementerPrompt, verifierLinuxDesktop, verifierPrompt, REPORT_SCHEMA_TEXT } from './prompt.mjs'
 
 const brief = {
   id: 'fix-thing',
@@ -98,6 +98,33 @@ describe('verifierPrompt', () => {
       if (cloud) for (const value of ['xvfb-run -a', 'orch/verdicts/test', 'Do not modify the implementation branch']) expect(v).toContain(value)
       else expect(v).not.toContain('xvfb-run')
     }
+  })
+
+  it('tells a local Linux verifier to run desktop scenarios under xvfb-run', () => {
+    expect(verifierLinuxDesktop(false, 'linux')).toBe(true)
+    expect(verifierLinuxDesktop(true, 'linux')).toBe(false)
+    expect(verifierLinuxDesktop(false, 'darwin')).toBe(false)
+    for (const kind of ['tests', 'spec', 'break', 'desktop']) {
+      const p = verifierPrompt({ persona: '', kind, brief, headSha: sha, verdictPath: 'v', schemaText: 's', linux: true })
+      expect(p).toContain('xvfb-run -a')
+      expect(p).toContain('Write the verdict JSON at the path in the steps.')
+      expect(p).not.toContain('Do not modify the implementation branch')
+      const timed = verifierPrompt({ persona: '', kind, brief, headSha: sha, verdictPath: 'v', schemaText: 's', linux: true, minutes: 20 })
+      expect(timed).toContain('write a `cannot_verify` verdict')
+      expect(timed).not.toContain('write and push')
+    }
+    const testsCli = verifierPrompt({
+      persona: '', kind: 'tests', headSha: sha, verdictPath: 'v', schemaText: 's', linux: true,
+      brief: { ...brief, scenarios: [], criteria: [{ id: 'ui', cmd: 'node scripts/verify-cli.mjs thing-scenario', expect: 'exit 0' }] },
+    })
+    expect(testsCli).toContain('xvfb-run -a')
+    expect(testsCli).toContain('node scripts/verify-cli.mjs thing-scenario')
+    const specOnly = verifierPrompt({
+      persona: '', kind: 'spec', headSha: sha, verdictPath: 'v', schemaText: 's', linux: true,
+      brief: { ...brief, scenarios: [], criteria: [{ id: 'c1', cmd: 'npx vitest run thing', expect: 'exit 0' }] },
+    })
+    expect(specOnly).not.toContain('xvfb-run')
+    expect(verifierPrompt({ persona: '', kind: 'desktop', brief, headSha: sha, verdictPath: 'v', schemaText: 's' })).not.toContain('xvfb-run')
   })
 
   it('rejects an unknown kind', () => {

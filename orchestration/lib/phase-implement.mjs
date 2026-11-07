@@ -217,7 +217,7 @@ async function startImplement(ctx, ledger, item, brief, hard) {
   if (local > ctx.sem.free()) return ctx.log(`${item.id}: waiting for ${local} local slot(s)`)
   for (const step of plan) await launchImplementer(ctx, ledger, item, brief, step)
   transition(item, 'implementing')
-  note(ctx, item.id, 'implement', 'implementing', hard && plan.length > 1 ? 'hard item after a FAIL: claude and codex reimplement at once' : `rung ${item.bounces}`)
+  note(ctx, item.id, 'implement', 'implementing', hard && plan.length > 1 ? `hard item after a FAIL: ${plan.map((s) => s.implementer).join(' and ')} reimplement at once` : `rung ${item.bounces}`)
   save(ctx, ledger)
 }
 

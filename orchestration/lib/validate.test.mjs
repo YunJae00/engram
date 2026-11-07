@@ -82,4 +82,30 @@ describe('validate', () => {
     }
     expect(validate(load('ledger.schema.json'), ledger)).toEqual([])
   })
+
+  it('accepts every field a real run writes onto the ledger', () => {
+    const sha = 'a'.repeat(40)
+    const ledger = {
+      batch: '20261107T000000',
+      items: [{
+        id: 'fix-x', title: 'fix x', area: 'native', difficulty: 'hard', state: 'integrated', bounces: 2,
+        allowedFiles: ['apps/desktop/native/**'], criteria: [{ id: 'c', cmd: 'true', expect: '0' }], scenarios: ['boot'],
+        attempts: [{
+          n: 1, implementer: 'claude-cloud', verifier: 'codex-local', branch: 'orch/fix-x-1',
+          worktree: '/tmp/orch/fix-x-1', sessionId: 'session_1', pid: 42, logPath: 'orchestration/logs/fix-x-1.log',
+          startedAt: '2026-01-01T00:00:00.000Z', deadlineAt: '2026-01-01T00:40:00.000Z', launch: 2, relaunchOf: 1,
+          finishedAt: '2026-01-01T00:30:00.000Z', headSha: sha, reportPath: 'orchestration/reports/fix-x.json',
+          tokens: null, outcome: 'pass',
+        }],
+        verdicts: [{ attempt: 1, kind: 'desktop', verdict: 'pass', headSha: sha, path: 'orchestration/verdicts/fix-x-1-desktop.json' }],
+        mergeSha: sha, reason: 'kept',
+      }],
+      integration: {
+        state: 'passed', startedAt: '2026-01-01T01:00:00.000Z', finishedAt: '2026-01-01T02:00:00.000Z',
+        logPath: 'orchestration/logs/integration.log', failedScenarios: [],
+        history: [{ state: 'failed', startedAt: '2026-01-01T00:00:00.000Z', failedScenarios: ['boot'], logPath: 'orchestration/logs/old.log' }],
+      },
+    }
+    expect(validate(load('ledger.schema.json'), ledger)).toEqual([])
+  })
 })

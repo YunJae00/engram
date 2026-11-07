@@ -9,7 +9,7 @@ export function parseCloudOutput(text) {
   return { sessionId, url }
 }
 
-/** Args after `script -q <log>`: `claude [--model <id>] --cloud <prompt>`. */
+/** Args after `script`: `claude [--model <id>] --cloud <prompt>`. */
 export function cloudClaudeArgs(prompt, { model } = {}) {
   const args = ['claude']
   if (model) args.push('--model', model)
@@ -17,9 +17,24 @@ export function cloudClaudeArgs(prompt, { model } = {}) {
   return args
 }
 
+// util-linux `script` runs one shell command via `-c`. Quote so the prompt is not expanded.
+function shellJoin(args) {
+  return args.map((arg) => `'${String(arg).replaceAll("'", `'\\''`)}'`).join(' ')
+}
+
+/**
+ * `script` argv that runs `command` under a pty and writes the typescript to `logPath`.
+ * macOS/BSD takes the command as trailing argv. util-linux rejects that ("unexpected number
+ * of arguments") and wants `-c <command> <file>`; `-e` returns the command's exit code.
+ */
+export function scriptArgs(logPath, command, { platform = process.platform } = {}) {
+  if (platform === 'linux') return ['-q', '-e', '-c', shellJoin(command), logPath]
+  return ['-q', logPath, ...command]
+}
+
 export async function launchCloud({ launchWorktree, prompt, logPath, model }) {
   // claude --cloud refuses a non-TTY stdout; script provides the pty.
-  const child = spawn('script', ['-q', logPath, ...cloudClaudeArgs(prompt, { model })], {
+  const child = spawn('script', scriptArgs(logPath, cloudClaudeArgs(prompt, { model })), {
     cwd: launchWorktree,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, PATH: `${NODE_BIN}:${process.env.PATH ?? ''}` },

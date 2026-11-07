@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { delimiter, isAbsolute, join } from 'node:path'
 import process from 'node:process'
 
 // Same triples as apps/desktop/src/main/engine-cloud.ts. The binary name differs on Windows.
@@ -20,7 +20,7 @@ const listOrEmpty = (dir) => {
   }
 }
 
-export function codexCandidates(root, { platform, arch, override, listDir = listOrEmpty } = {}) {
+export function codexCandidates(root, { platform, arch, override, listDir = listOrEmpty, pathEnv } = {}) {
   const paths = []
   const push = (path) => {
     if (path && !paths.includes(path)) paths.push(path)
@@ -41,13 +41,24 @@ export function codexCandidates(root, { platform, arch, override, listDir = list
       push(join(store, name, 'node_modules', pkg, bin))
     }
   }
+  // A global install (no repo package) is the host `codex` on PATH. Another OS's PATH is not searched.
+  const pathList = pathEnv !== undefined
+    ? pathEnv
+    : (platform === process.platform && arch === process.arch ? process.env.PATH ?? '' : '')
+  if (pathList) {
+    const names = platform === 'win32' ? ['codex.exe', 'codex.cmd', 'codex'] : ['codex']
+    for (const dir of pathList.split(delimiter)) {
+      if (!dir) continue
+      for (const name of names) push(join(dir, name))
+    }
+  }
   return paths
 }
 
-export function resolveCodexBin(root, { platform = process.platform, arch = process.arch, override, exists = existsSync, listDir } = {}) {
-  const candidates = codexCandidates(root, { platform, arch, override, listDir })
+export function resolveCodexBin(root, { platform = process.platform, arch = process.arch, override, exists = existsSync, listDir, pathEnv } = {}) {
+  const candidates = codexCandidates(root, { platform, arch, override, listDir, pathEnv })
   const found = candidates.find((path) => exists(path))
   if (found) return found
   const listed = candidates.map((path) => `- ${path}`).join('\n')
-  throw new Error(`codex binary not found for ${platform}-${arch}. Tried:\n${listed || '- (no path for this platform)'}\nSet roles.codexBin to a binary that exists on this machine, or install @openai/codex-${platform}-${arch}.`)
+  throw new Error(`codex binary not found for ${platform}-${arch}. Tried:\n${listed || '- (no path for this platform)'}\nSet roles.codexBin to a binary that exists on this machine, install @openai/codex-${platform}-${arch}, or put codex on PATH.`)
 }

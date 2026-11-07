@@ -25,6 +25,9 @@ describe('roles', () => {
   it('parses the single json block in roles.md', () => {
     expect(roles.baseBranch).toBe('next')
     expect(roles.ladder.ts).toHaveLength(3)
+    for (const area of ['ts', 'native']) {
+      expect(roles.ladder[area].every((rung) => rung.implementer === 'claude-cloud' && rung.verifier === 'codex-local')).toBe(true)
+    }
     expect(roles.models.claude.implement).toBe('claude-opus-5-5')
     expect(roles.models.claude.verify).toBe('claude-sonnet-5-5')
     expect(roles.models.codex).toBe('gpt-6-sol')
@@ -63,8 +66,8 @@ describe('transition', () => {
 
 describe('ladder', () => {
   it('picks the rung by bounce count and returns null when exhausted', () => {
-    expect(rung(base, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'claude-cloud' })
-    expect(rung({ ...base, bounces: 2 }, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'claude-cloud' })
+    expect(rung(base, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'codex-local' })
+    expect(rung({ ...base, bounces: 2 }, roles)).toEqual({ implementer: 'claude-cloud', verifier: 'codex-local' })
     expect(rung({ ...base, bounces: 3 }, roles)).toBeNull()
   })
 

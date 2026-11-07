@@ -1,3 +1,5 @@
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { describe, expect, it } from 'vitest'
@@ -35,6 +37,32 @@ describe('resolveCodexBin', () => {
     expect(found).not.toContain('darwin')
   })
 
+  it('prefers a repo package over a codex binary on PATH', () => {
+    const found = resolveCodexBin('/repo', {
+      platform: 'linux', arch: 'x64', pathEnv: '/usr/local/bin', listDir: noDirs,
+      exists: (path) => path.includes('codex-linux-x64') || path === join('/usr/local/bin', 'codex'),
+    })
+    expect(found).toContain('codex-linux-x64')
+    expect(found).not.toBe(join('/usr/local/bin', 'codex'))
+  })
+
+  it('finds a PATH codex when no repo package exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-path-'))
+    const name = process.platform === 'win32' ? 'codex.exe' : 'codex'
+    const bin = join(dir, name)
+    writeFileSync(bin, '')
+    chmodSync(bin, 0o755)
+    try {
+      const found = resolveCodexBin('/repo', {
+        platform: process.platform, arch: process.arch, override: darwinOverride(),
+        exists: existsSync, listDir: noDirs, pathEnv: dir,
+      })
+      expect(found).toBe(bin)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('finds a pnpm-stored binary for the host platform', () => {
     const key = `${process.platform}-${process.arch}`
     const layout = HOST_LAYOUT[key]
@@ -53,14 +81,18 @@ describe('resolveCodexBin', () => {
   it('throws naming the platform and every path tried when none exist', () => {
     let message = ''
     try {
-      resolveCodexBin('/repo', { platform: 'linux', arch: 'arm64', override: darwinOverride(), exists: none, listDir: noDirs })
+      resolveCodexBin('/repo', {
+        platform: 'linux', arch: 'arm64', override: darwinOverride(), exists: none, listDir: noDirs, pathEnv: '/opt/bin',
+      })
     } catch (error) {
       message = error.message
     }
     expect(message).toMatch(/linux-arm64/)
     expect(message).toContain('codex-linux-arm64')
     expect(message).toContain('codex-darwin-arm64')
+    expect(message).toContain(join('/opt/bin', 'codex'))
     expect(message).toContain('roles.codexBin')
+    expect(message).toContain('PATH')
   })
 })
 

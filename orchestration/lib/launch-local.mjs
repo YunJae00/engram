@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { closeSync, openSync, readdirSync, readFileSync } from 'node:fs'
+import { closeSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
@@ -60,6 +60,42 @@ export function launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDir
   })
 }
 
+const CODEX_SCHEMA_DROP = new Set([
+  '$schema', '$id', 'title', 'definitions', '$defs',
+  'pattern', 'minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'format',
+])
+
+// Codex structured output rejects draft-07 `$ref` / `pattern` that Claude's `--json-schema` accepts.
+export function codexOutputSchema(schema) {
+  const defs = { ...(schema.definitions ?? {}), ...(schema.$defs ?? {}) }
+  const walk = (node, stack) => {
+    if (Array.isArray(node)) return node.map((entry) => walk(entry, stack))
+    if (!node || typeof node !== 'object') return node
+    if (typeof node.$ref === 'string') {
+      const name = node.$ref.replace(/^#\/(?:definitions|\$defs)\//, '')
+      if (!Object.hasOwn(defs, name)) throw new Error(`unsupported $ref ${node.$ref}`)
+      if (stack.has(name)) throw new Error(`cyclic $ref ${node.$ref}`)
+      stack.add(name)
+      const resolved = walk(defs[name], stack)
+      stack.delete(name)
+      return resolved
+    }
+    const out = {}
+    for (const [key, value] of Object.entries(node)) {
+      if (CODEX_SCHEMA_DROP.has(key)) continue
+      out[key] = walk(value, stack)
+    }
+    return out
+  }
+  return walk(schema, new Set())
+}
+
+export function materializeCodexSchema(schemaPath, destPath) {
+  const flat = codexOutputSchema(JSON.parse(readFileSync(schemaPath, 'utf8')))
+  writeFileSync(destPath, JSON.stringify(flat))
+  return destPath
+}
+
 export function codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs = [], model, outPath } = {}) {
   // A login shell sources nvm and puts the default Node (v22) ahead of NODE_BIN.
   const args = ['exec', '-C', cwd, '-s', sandbox, '-c', 'allow_login_shell=false', '--skip-git-repo-check', '--ephemeral']
@@ -71,7 +107,8 @@ export function codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs = [], mode
 }
 
 export function launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox, schemaPath, addDirs = [], model }) {
-  return detached(codexBin, codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs, model, outPath }), {
+  const outputSchema = schemaPath ? materializeCodexSchema(schemaPath, `${outPath}.schema.json`) : undefined
+  return detached(codexBin, codexArgs({ cwd, prompt, sandbox, schemaPath: outputSchema, addDirs, model, outPath }), {
     cwd, stdoutPath: logPath, stderrPath: logPath,
   })
 }

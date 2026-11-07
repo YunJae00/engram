@@ -1,6 +1,9 @@
-import { delimiter } from 'node:path'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { NODE_BIN, claudeLocalArgs, codexArgs, withNodeOnPath } from './launch-local.mjs'
+import { NODE_BIN, claudeLocalArgs, codexArgs, codexOutputSchema, materializeCodexSchema, withNodeOnPath } from './launch-local.mjs'
 
 describe('withNodeOnPath', () => {
   it('prefixes Node with the platform delimiter and keeps a Windows Path key', () => {
@@ -22,6 +25,39 @@ describe('claudeLocalArgs', () => {
     expect(claudeLocalArgs({ prompt: 'p', model: 'claude-sonnet-5-5' })).toEqual([
       '-p', 'p', '--dangerously-skip-permissions', '--output-format', 'json', '--model', 'claude-sonnet-5-5',
     ])
+  })
+})
+
+describe('codexOutputSchema', () => {
+  it('inlines $ref and drops draft-07 keywords Codex structured output rejects', () => {
+    const flat = codexOutputSchema({
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      title: 'verdict',
+      type: 'object',
+      definitions: {
+        entry: { type: 'object', required: ['x'], properties: { x: { type: 'string', pattern: '^[a-z]+$', minimum: 1 } } },
+      },
+      properties: { list: { type: 'array', items: { $ref: '#/definitions/entry' } } },
+    })
+    expect(flat.$schema).toBeUndefined()
+    expect(flat.definitions).toBeUndefined()
+    expect(flat.properties.list.items.properties.x).toEqual({ type: 'string' })
+    expect(JSON.stringify(flat)).not.toContain('$ref')
+    expect(JSON.stringify(flat)).not.toContain('pattern')
+  })
+
+  it('writes a flattened verdict schema for Codex', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-schema-'))
+    const dest = join(dir, 'out.schema.json')
+    try {
+      materializeCodexSchema(fileURLToPath(new URL('../schemas/verdict.schema.json', import.meta.url)), dest)
+      const flat = JSON.parse(readFileSync(dest, 'utf8'))
+      expect(flat.properties.evidence.items.required).toEqual(['criterion', 'cmd', 'logPath', 'result'])
+      expect(flat.properties.findings.items.properties.reproCmd.type).toBe('string')
+      expect(JSON.stringify(flat)).not.toMatch(/\$ref|pattern/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
