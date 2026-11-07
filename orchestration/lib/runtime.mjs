@@ -220,7 +220,11 @@ export function slotFree(ctx, agent) {
 const SANDBOX = { implement: 'danger-full-access', verify: 'workspace-write', design: 'workspace-write' }
 const VERIFY_SANDBOX = { desktop: 'danger-full-access' }
 
-export function codexSandbox(role, kind) {
+// On a Linux orchestration host the workspace-write sandbox also blocks child processes
+// and local socket listeners (EPERM) that the full test suite needs, so every verifier
+// kind runs with full access there.
+export function codexSandbox(role, kind, platform = process.platform) {
+  if (role === 'verify' && platform === 'linux') return 'danger-full-access'
   return (role === 'verify' && VERIFY_SANDBOX[kind]) || SANDBOX[role]
 }
 
