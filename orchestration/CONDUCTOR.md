@@ -24,6 +24,8 @@ Go deep on one proof, then the ladder may run implementers in parallel. These ar
 
 Integration runs the `quick` tier by default (`roles.md` `integration.tier`): typecheck, lint, the whole unit suite, a desktop build and the batch's own scenarios, then CI. Run `node run.mjs run --full` (or `node run.mjs integrate --full`) for the long tier with the affected Electron e2e specs (`npm run verify`) when the batch is large or risky: more than 5 items, or any item touching `packages/core/**`, `apps/desktop/src/main/**`, `apps/desktop/src/preload/**` or `apps/desktop/native/**`. Also run it once a week. Say which tier ran in the close report.
 
+`release` is quick too: a tag push runs the Release workflow with checks, unit tests, native checks, the desktop smoke and the installer build, and skips the Electron e2e shards. For a release with more than 5 items or core/main/preload/native changes, run the full e2e first: Actions → "Full e2e" → Run workflow (`gh workflow run e2e-weekly.yml -f ref=next`), or dispatch Release with `full_e2e: true` (`gh workflow run release.yml -f tag=vX.Y.Z -f full_e2e=true`). "Full e2e" also runs on next every Monday 03:00 KST; a failure there is a blocking item for the next batch.
+
 ## Rules the Conductor keeps
 
 - All state lives in `ledger.json`, `decisions.tsv`, `followups.tsv`, `reports/`, `verdicts/`. Nothing depends on this session's memory; a restarted `run.mjs` continues from the files.

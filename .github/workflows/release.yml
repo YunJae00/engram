@@ -8,6 +8,10 @@ on:
       tag:
         description: Tag to build (e.g. v0.1.0)
         required: true
+      full_e2e:
+        description: Also run the full Electron e2e shards (large or risky releases)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -18,6 +22,8 @@ jobs:
     secrets: inherit
     with:
       ref: ${{ github.event.inputs.tag || github.ref }}
+      # Tag pushes have no inputs, so routine releases skip the e2e shards.
+      skip_e2e: ${{ github.event.inputs.full_e2e != 'true' }}
 
   # Runs beside the installer build, so it adds no time unless it is slower than the build.
   smoke:

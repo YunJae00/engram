@@ -27,3 +27,12 @@ export function tierScenarios(tier, itemScenarios, mergedCount) {
   const named = tier === 'full' ? itemScenarios.filter((name) => SMOKE.includes(name)) : itemScenarios
   return [...new Set(['boot', ...named, ...smoke])]
 }
+
+// The e2e selector diffs against ENGRAM_CHECK_BASE (origin/main when unset), which on a
+// long-lived next selects nearly every spec. Full integration diffs against the commit
+// before the batch's first merge instead: the parent of the merge with the fewest ancestors.
+export function integrationBase(counts, fallback) {
+  const known = counts.filter((c) => c.sha && Number.isFinite(c.count))
+  if (!known.length) return fallback
+  return `${known.reduce((a, b) => (b.count < a.count ? b : a)).sha}^`
+}

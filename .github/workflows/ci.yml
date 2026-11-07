@@ -9,6 +9,11 @@ on:
       ref:
         type: string
         required: true
+      # Routine releases skip the Electron e2e shards (checks, unit tests and native
+      # still run); the weekly full run and big changes keep them.
+      skip_e2e:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       native_only:
@@ -64,7 +69,7 @@ jobs:
         run: test "$RESULT" = success
 
   e2e-shards:
-    if: ${{ !inputs.native_only }}
+    if: ${{ !inputs.native_only && !inputs.skip_e2e }}
     name: Electron (${{ matrix.os }}) shard ${{ matrix.shard }}/4
     runs-on: ${{ matrix.os }}
     strategy:
@@ -94,7 +99,7 @@ jobs:
           retention-days: 7
 
   e2e:
-    if: ${{ always() && !inputs.native_only }}
+    if: ${{ always() && !inputs.native_only && !inputs.skip_e2e }}
     name: end-to-end (Electron)
     needs: e2e-shards
     runs-on: ubuntu-latest

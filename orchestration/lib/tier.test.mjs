@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { integrationCommands, integrationTier, tierScenarios } from './tier.mjs'
+import { integrationBase, integrationCommands, integrationTier, tierScenarios } from './tier.mjs'
 import { loadRoles } from './ledger.mjs'
 import { URL, fileURLToPath } from 'node:url'
 
@@ -28,5 +28,9 @@ describe('integration tier', () => {
     expect(tierScenarios('quick', items, 2)).toEqual(['boot', 'ui-status-line', 'ui-preview-aspect', 'cosmos', 'note-open', 'ui-activity-status'])
     expect(tierScenarios('full', items, 2)).toEqual(['boot', 'cosmos', 'note-open', 'ui-activity-status'])
     expect(tierScenarios('quick', ['boot'], 0)).toEqual(['boot'])
+  })
+  it('diffs against the parent of the batch first merge, else the fallback', () => {
+    expect(integrationBase([{ sha: 'b2', count: 12 }, { sha: 'a1', count: 10 }, { sha: 'c3', count: NaN }], 'origin/main')).toBe('a1^')
+    expect(integrationBase([], 'origin/main')).toBe('origin/main')
   })
 })

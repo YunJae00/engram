@@ -1,0 +1,21 @@
+name: Full e2e
+
+# The long tier: every check plus all Electron e2e shards on next, once a week and on
+# demand for big changes. Routine releases skip the shards (release.yml full_e2e).
+on:
+  schedule:
+    - cron: '0 18 * * 0'  # Mondays 03:00 KST
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or SHA to test
+        default: next
+        required: true
+
+jobs:
+  full:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.inputs.ref || 'next' }}
+      skip_e2e: false
