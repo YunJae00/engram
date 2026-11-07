@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { briefScenarios } from './loop.mjs'
 
 export const REPORT_SCHEMA_TEXT = `{

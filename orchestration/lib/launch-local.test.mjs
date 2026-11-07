@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { URL, fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { NODE_BIN, claudeLocalArgs, codexArgs, codexOutputSchema, materializeCodexSchema, withNodeOnPath } from './launch-local.mjs'
 
