@@ -25,8 +25,9 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
   try {
     const page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
-    const frames = bots.map((bot, index) => ({ id: `bot-${bot.id}:window:${index}`, lane: `bot-${bot.id}`, title: `Owned app ${index + 1}`, at: Date.now(), captureState: 'ready', current: false,
-      data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=' }))
+    const size = { width: 1280, height: 720 }
+    const data = await app.evaluate(({ nativeImage }, size) => nativeImage.createFromBuffer(Buffer.alloc(size.width * size.height * 4, 0x80), size).toDataURL(), size)
+    const frames = bots.map((bot, index) => ({ id: `bot-${bot.id}:window:${index}`, lane: `bot-${bot.id}`, title: `Owned app ${index + 1}`, at: Date.now(), captureState: 'ready', current: false, data }))
     await app.evaluate(({ ipcMain }, frames) => {
       ipcMain.removeHandler('desktop:previews')
       ipcMain.handle('desktop:previews', (_event, lane: string) => frames.filter(frame => frame.lane === lane))
@@ -80,7 +81,7 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       for (const event of events) window.webContents.send('engram:event', event)
     }, events)
     const lane = `bot-${bots[0]!.id}`
-    const web = { type: 'agent:frame', lane, url: 'https://example.test/preview', data: frames[0]!.data.split(',')[1], width: 1280, height: 800 }
+    const web = { type: 'agent:frame', lane, url: 'https://example.test/preview', data: data.split(',')[1], ...size }
     const expand = async () => {
       const button = full.getByTestId('preview-card-collapsed')
       if (await button.isVisible()) await button.click()
@@ -138,7 +139,8 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       expect(appStyle.width).toBe(320)
       expect(appStyle.headers).toBe(0)
       expect(appStyle.radius).toBe('16px')
-      expect(appStyle.aspect).toBe('16 / 10')
+      const [w, h = '1'] = appStyle.aspect.split('/').map(part => part.trim())
+      expect(Math.abs(Number(w) / Number(h) / (size.width / size.height) - 1)).toBeLessThanOrEqual(0.03)
       await check(full, `${theme}-mixed`)
       await full.getByTestId('preview-deck').getByRole('button', { name: 'Owned app 1', exact: true }).press('Enter')
       await full.getByTestId('preview-deck').press('ArrowRight')
