@@ -86,7 +86,10 @@ export function codexBinary(): string | null {
 
 export interface RunText {
   code: number | null
+  /** stdout. A JSON command's document lives here and only here. */
   out: string
+  /** stderr. A warning here must not be parsed as part of stdout. */
+  err: string
 }
 
 // The runtime's helpers (its own search tool among them) sit in a folder
@@ -101,26 +104,28 @@ export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = proce
   return out
 }
 
-// One command of the runtime, its output collected, ended after the budget.
+// One command of the runtime, its streams kept apart, ended after the budget.
+// stderr is a warning or a failure explanation. It is not part of a JSON
+// document the command wrote to stdout, so the two are never concatenated.
 export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>, login?: CloudLoginOptions): Promise<RunText> {
   login?.signal?.throwIfAborted()
   return new Promise((resolve) => {
     let out = ''
+    let err = ''
     let done = false
     const finish = (code: number | null): void => {
       if (done) return
       done = true
       clearTimeout(timer)
       login?.signal?.removeEventListener('abort', cancel)
-      resolve({ code, out })
+      resolve({ code, out, err })
     }
     let child: ProcessClient
     try {
       child = new ProcessClient(binary, args, { env })
       child.stdin.end()
-    } catch (err) {
-      out = err instanceof Error ? err.message : String(err)
-      resolve({ code: null, out })
+    } catch (error) {
+      resolve({ code: null, out: '', err: error instanceof Error ? error.message : String(error) })
       return
     }
     const timer = setTimeout(() => {
@@ -129,18 +134,27 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
     }, timeoutMs)
     const cancel = (): void => { child.kill(); finish(null) }
     login?.signal?.addEventListener('abort', cancel, { once: true })
-    const receive = (chunk: Buffer): void => {
-      out = (out + chunk.toString()).slice(-65536)
-      if (login?.onUrl) for (const url of out.match(/https:\/\/[\w./?=&%+~:#@!-]+/g) ?? []) login.onUrl(url)
+    const receive = (stream: 'out' | 'err') => (chunk: Buffer): void => {
+      const next = (stream === 'out' ? out : err) + chunk.toString()
+      if (stream === 'out') out = next.slice(-65536)
+      else err = next.slice(-65536)
+      // A sign-in link may be printed on either stream. Scanning both does
+      // not feed stderr into a later JSON parse.
+      if (login?.onUrl) for (const url of chunk.toString().match(/https:\/\/[\w./?=&%+~:#@!-]+/g) ?? []) login.onUrl(url)
     }
-    child.stdout?.on('data', receive)
-    child.stderr?.on('data', receive)
-    child.on('error', (err) => {
-      out += err.message
+    child.stdout?.on('data', receive('out'))
+    child.stderr?.on('data', receive('err'))
+    child.on('error', (error) => {
+      err += error.message
       finish(null)
     })
     child.on('close', (code) => finish(code))
   })
+}
+
+// Prose status ("logged in") is read from both streams. A JSON document is not.
+export function commandText(result: RunText): string {
+  return `${result.out ?? ''}${result.err ?? ''}`
 }
 
 // What a failed call means: the vendor's runtime says it in words, and the

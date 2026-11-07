@@ -13,3 +13,10 @@ export function connectionLabel(state: Connection | undefined, provider: string)
   if (state.healthy === false) return state.healthReason === 'quota' ? 'Request limited · Retry check' : state.healthReason === 'outage' ? 'Not answering on its side' : 'Connection needs attention'
   return 'Connected'
 }
+
+// A finished external sign-in replaces an earlier browser failure. The old
+// sentence stays in the login record until the next attempt; it is not the
+// current account state.
+export function visibleLoginMessage(connected: boolean, message?: string): string | undefined {
+  return connected || !message ? undefined : message
+}
