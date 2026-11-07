@@ -32,6 +32,7 @@ A new scenario is a file `scripts/verify-scenarios/<name>.mjs` exporting that `r
 | Interaction motion | Sidebar create/folder menus, conversation navigation and delete dialog | `ui-interaction-motion` | Compositor motion, reduced motion, focus and dismissal, mutation failure recovery, rapid navigation and reload (`scripts/verify-scenarios/ui-interaction-motion.mjs`, supplied at integration) |
 | Chat presentation | Folder and unfiled conversation rows, then open a chat and composer menus | `ui-chat-polish` | Sidebar previews, bubble/title/composer bounds at wide and narrow sizes, themes, attachments, long content and reload (`scripts/verify-scenarios/ui-chat-polish.mjs`, supplied at integration) |
 | Live preview overlay | Open a comet with an incoming `agent:frame`, then drag `preview-card` inside the chat | `ui-live-overlay` | Real PNG frame paints; chat stays packed before and after pointer drag, with the card and composer reachable (`scripts/verify-scenarios/ui-live-overlay.mjs`, supplied at integration) |
+| Live preview aspect | Open a comet with an incoming app frame (portrait, landscape, very tall) | `ui-preview-aspect` | `preview-card-stage` follows the frame's aspect ratio, clamped between 96px and half the chat height, with the whole frame visible (no crop), at wide and narrow widths, in light and dark themes |
 
 The memory graph (`brain-graph`) is part of Cosmos, proved by `cosmos` and `note-open`. The connected model is the Brain rows, proved by `brain`.
 
