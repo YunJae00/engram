@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
+import process from 'node:process'
 import { overlaps } from './overlap.mjs'
 
 const EDGES = {
@@ -91,5 +92,7 @@ export function isHard(item, roles) {
 }
 
 export function rung(item, roles) {
+  const cap = Number(process.env.ENGRAM_MAX_BOUNCES)
+  if (cap > 0 && item.bounces >= cap) return null
   return roles.ladder[item.area]?.[item.bounces] ?? null
 }

@@ -111,6 +111,7 @@ async function runChecks(ctx, merged, logPath) {
     if (result.code !== 0) failed.push(scenario)
   }
   if (failed.length) return failed
+  if (process.env.ENGRAM_SKIP_CI === '1') return []
   return (await runCi(ctx, logPath, timeoutMs)) ? [] : ['ci']
 }
 
