@@ -1,9 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import process from 'node:process'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { checkVerdict } from './aggregate.mjs'
 import { DESKTOP_BUILD, evidenceRound, hiddenUnset, MAX_REQUESTS, runCommands, runRequests, sandboxOnlyCannotVerify, shareEvidence, testsGate, withoutBuild } from './evidence.mjs'
 import { verifierPrompt } from './prompt.mjs'
@@ -69,8 +68,7 @@ describe('runner evidence for spec and break', () => {
   it('strips ENGRAM_HIDDEN from unit commands and keeps it for e2e even when the runner has it set', async () => {
     const { sh } = await import('./runtime.mjs')
     const dir = mkdtempSync(join(tmpdir(), 'orch-hidden-'))
-    const before = process.env.ENGRAM_HIDDEN
-    process.env.ENGRAM_HIDDEN = '1'
+    vi.stubEnv('ENGRAM_HIDDEN', '1')
     try {
       expect(hiddenUnset('pnpm exec vitest run --project unit apps/desktop')).toEqual(['ENGRAM_HIDDEN'])
       for (const cmd of ['npm run check:quick', 'npm run typecheck', 'npm run lint']) expect(hiddenUnset(cmd)).toEqual(['ENGRAM_HIDDEN'])
@@ -81,8 +79,7 @@ describe('runner evidence for spec and break', () => {
       expect(unit[0].tail).toBe('hidden=absent')
       expect(e2e[0].tail).toBe('hidden=1')
     } finally {
-      if (before === undefined) delete process.env.ENGRAM_HIDDEN
-      else process.env.ENGRAM_HIDDEN = before
+      vi.unstubAllEnvs()
       rmSync(dir, { recursive: true, force: true })
     }
   })
@@ -162,6 +159,9 @@ describe('tests lane gate for spec and break', () => {
     expect(testsGate(kinds, { results: [{ exit: 0 }, { exit: 0 }] })).toBe('go')
     expect(testsGate(kinds, { results: [{ exit: 0 }, { exit: 1 }] })).toBe('fail')
     expect(testsGate(kinds, { sessionId: 's' })).toBe('go')
+    expect(testsGate(kinds, { verdictBranch: 'verdict/x' })).toBe('go')
+    // A local lane whose runner commands are still running has no results yet.
+    expect(testsGate(kinds, { pid: 1, worktree: '/w', headSha: sha })).toBe('wait')
     expect(testsGate(['spec', 'break'], undefined)).toBe('go')
   })
 })

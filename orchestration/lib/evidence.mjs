@@ -63,9 +63,10 @@ export async function runCommands(worktree, name, commands, timeoutMs, run = sh)
 export const runRequests = (worktree, name, requests, run = sh) =>
   runCommands(worktree, name, requests.map(({ cmd, why = '' }, i) => ({ id: `request${i + 1}`, cmd, why })), REQUEST_TIMEOUT_MS, run)
 
-/** Spec and break launch only after the runner-run tests lane passed; a cloud lane (no runner results) does not gate. */
+/** Spec and break launch only after the runner-run tests lane passed; a cloud lane (no runner results by design) does not gate. */
 export function testsGate(kinds, testsJob) {
-  if (!kinds.includes('tests') || (testsJob && !testsJob.results)) return 'go'
+  if (!kinds.includes('tests')) return 'go'
+  if (testsJob && !testsJob.results) return testsJob.sessionId || testsJob.verdictBranch ? 'go' : 'wait'
   if (!testsJob) return 'wait'
   return testsJob.results.every((r) => r.exit === 0) ? 'go' : 'fail'
 }
