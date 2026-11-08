@@ -71,4 +71,14 @@ describe('replies block facts rule', () => {
     for (const chip of ['마감 정해지면 알려줄게', '마감은 미정으로 둬줘', '후보 다시 보여줘']) expect(EARLIER_REPLIES_RULE).toContain(`"${chip}"`)
     expect(EARLIER_REPLIES_RULE).toContain('never "마감일 11/16로 확정해줘" or "마감일도 11/16으로 넣어서 다시 써줘"')
   })
+
+  it('keeps chips from offering an action the person put on hold, such as sending the mail', () => {
+    expect(EARLIER_REPLIES_RULE).toContain('When the person put an action or step on hold or deferred it (나중에 보낼게, 일단 보내지 마, 보류)')
+    for (const action of ['sending', 'posting', 'submitting', 'scheduling', 'deleting', 'any other step']) expect(EARLIER_REPLIES_RULE).toContain(action)
+    expect(EARLIER_REPLIES_RULE).toContain('no reply offers to do that action now')
+    expect(EARLIER_REPLIES_RULE).toContain('the replies follow the request they did make, such as a rewrite')
+    for (const chip of ['한 번 더 다듬어줘', '제목도 다듬어줘', '보낼 때 말할게']) expect(EARLIER_REPLIES_RULE).toContain(`"${chip}"`)
+    expect(EARLIER_REPLIES_RULE).toContain('never "이제 메일 보내줘" or "이대로 보내줘"')
+    for (const flags of flagSets) expect(sessionRules(flags)).toContain('no reply offers to do that action now')
+  })
 })
