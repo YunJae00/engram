@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sessionRules } from '../src/agent-session-shape.js'
+import { EARLIER_REPLIES_RULE, sessionRules } from '../src/agent-session-shape.js'
 
 const flagSets = [
   { engineId: 'mock', desktop: false, workflow: false, browser: false, planned: false, pageSteps: false },
@@ -38,5 +38,20 @@ describe('replies block facts rule', () => {
     expect(line).toContain('아직 시간 모름')
     expect(line).toContain('시간 정해지면 알려줄게')
     expect(line).toContain('never "시간은 오후 2시로 해줘"')
+  })
+
+  it.each(flagSets)('keeps unclicked earlier chips from becoming the person\'s decision (%#)', flags => {
+    const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(line).toContain(EARLIER_REPLIES_RULE)
+  })
+
+  it('states what an unclicked earlier chip may and may not decide', () => {
+    expect(EARLIER_REPLIES_RULE).toContain('```replies')
+    expect(EARLIER_REPLIES_RULE).toContain('that the person did not pick are your words, not theirs')
+    for (const word of ['date', 'deadline', 'owner', 'amount']) expect(EARLIER_REPLIES_RULE).toContain(word)
+    expect(EARLIER_REPLIES_RULE).toContain('is never the person\'s decision')
+    expect(EARLIER_REPLIES_RULE).toContain('as set or confirmed (such as 확정됨) only when the person wrote it or picked a reply that states it')
+    expect(EARLIER_REPLIES_RULE).toContain('otherwise it stays unknown (미정)')
+    expect(EARLIER_REPLIES_RULE).toContain('new replies do not build on it')
   })
 })

@@ -8,7 +8,7 @@ import { runAgentLoop, said } from './agent-loop.js'
 import { conversationLines, personaLines, resumeLines, skillIndexLines } from './agent-prompt.js'
 import { parseAsk } from './ask.js'
 import { DESKTOP_TOOL_ISOLATION_MESSAGE, type ToolSessionCall } from './engine/types.js'
-import { sessionRules } from './agent-session-shape.js'
+import { EARLIER_REPLIES_RULE, sessionRules } from './agent-session-shape.js'
 import { withoutSecrets } from './secrets.js'
 import { answerLanguageLine } from './task-proposal.js'
 import { desktopScopeTools, desktopStepArgs, desktopStepSummary, isDesktopTool } from './desktop-tools.js'
@@ -219,7 +219,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       ...resumeLines(options.resume),
       ...(desktop ? ['Prior-turn desktop observations are historical: use app_read for background accessibility work, or read_desktop/look_desktop for foreground work, before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       ...skillIndexLines(options.skills),
-      `Task: ${task}`, answerLanguageLine(task)].join('\n'),
+      EARLIER_REPLIES_RULE, `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.native ? { native: {

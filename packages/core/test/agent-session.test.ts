@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
+import { EARLIER_REPLIES_RULE } from '../src/agent-session-shape.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
 import { MockEngine } from '../src/engine/mock.js'
@@ -183,6 +184,21 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
     expect(result.answer).toBe('From the notes: notes about deploys')
     expect(lines).toEqual(['search_memory: deploys'])
     expect(result.asked).toBeUndefined()
+  })
+
+  it('every turn of a kept session carries the unclicked-chip rule, also once the opening is no longer sent', async () => {
+    const seen: { system: string; prompt: string; opening?: string }[] = []
+    const engine = sessionBrain(async (job) => {
+      seen.push({ system: job.system, prompt: job.prompt, ...(job.opening ? { opening: job.opening } : {}) })
+      return { answer: 'ok' }
+    })
+    await runToolSession({ engine, workdir: WORKDIR, tools }, '회의록 정리해줘', { guided: false, session: 'comet-1', history: [{ role: 'user', text: 'earlier' }] })
+    await runToolSession({ engine, workdir: WORKDIR, tools }, '좀 더 자세히 알려줘', { guided: false, session: 'comet-1' })
+    expect(seen[1]!.opening).toBeUndefined()
+    for (const turn of seen) {
+      expect(turn.prompt).toContain(EARLIER_REPLIES_RULE)
+      expect(turn.system).toContain(EARLIER_REPLIES_RULE)
+    }
   })
 
   it('a question to the person ends the turn as an ask, whatever the brain says afterwards', async () => {
