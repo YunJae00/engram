@@ -28,4 +28,15 @@ describe('replies block facts rule', () => {
     expect(line).toContain('기한 아직 모름')
     expect(line).toContain('Suggested replies from your earlier answers are not facts the person gave')
   })
+
+  it.each(flagSets)('keeps chips from filling in a partly known or unknown time (%#)', flags => {
+    const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    for (const word of ['time', 'hour', 'minute']) expect(line).toContain(word)
+    expect(line).toContain('When the person gives only part of a value (a day, or 오후 without an hour)')
+    expect(line).toContain('must not fill in the missing part with a specific value')
+    expect(line).toContain('when the person says they do not know a value yet, no reply supplies it')
+    expect(line).toContain('아직 시간 모름')
+    expect(line).toContain('시간 정해지면 알려줄게')
+    expect(line).toContain('never "시간은 오후 2시로 해줘"')
+  })
 })
