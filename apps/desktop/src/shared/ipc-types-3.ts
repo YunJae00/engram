@@ -71,6 +71,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   chatQueued(botId: string, pending: boolean): Promise<void>
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
+  botsSearch(query: string): Promise<string[]>
   siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
   sidebarLayout(kind?: SidebarKind): Promise<SidebarLayout>
   sidebarChange(request: SidebarChange): Promise<SidebarLayout>

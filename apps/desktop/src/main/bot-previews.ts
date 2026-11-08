@@ -30,3 +30,32 @@ export async function botPreviews(paths: VaultPaths, bots: Bot[]): Promise<BotDt
   }
   return rows
 }
+
+const texts = new Map<string, { stamp: string; value: Promise<string> }>()
+const fold = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+
+export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): Promise<string[]> {
+  const needle = fold(query)
+  if (!needle) return []
+  const hits: string[] = []
+  for (let offset = 0; offset < bots.length; offset += 8) {
+    await Promise.all(bots.slice(offset, offset + 8).map(async bot => {
+      if (!/^[\w-]+$/.test(bot.id)) return
+      const path = join(paths.cache, 'bot-chats', `${bot.id}.jsonl`)
+      try {
+        const info = await stat(path)
+        const stamp = `${info.mtimeMs}:${info.size}`
+        let held = texts.get(path)
+        if (!held || held.stamp !== stamp) {
+          // A finite limit reads the whole transcript; the default keeps only the last 400 turns.
+          const value = readBotTranscript(paths, bot.id, Number.MAX_SAFE_INTEGER).then(turns => turns.filter(turn => !turn.progress).map(turn => fold(turn.text)).join('\n'))
+          held = { stamp, value }
+          if (texts.size >= 256) texts.delete(texts.keys().next().value!)
+          texts.set(path, held)
+        }
+        if ((await held.value).includes(needle)) hits.push(bot.id)
+      } catch { texts.delete(path) }
+    }))
+  }
+  return hits
+}

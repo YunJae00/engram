@@ -31,6 +31,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [bots, setBots] = useState<BotDto[]>([])
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [query, setQuery] = useState('')
+  const [bodyHits, setBodyHits] = useState<{ query: string; ids: Set<string> }>({ query: '', ids: new Set() })
   const createId = useId(), createMenu = useRef<HTMLDivElement>(null)
   const [layout, setLayout] = useState<SidebarLayout | null>(null)
   const [layoutError, setLayoutError] = useState('')
@@ -92,12 +93,18 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const remove = async (kind: SidebarKind, id: string) => { if (kind === 'chat') { await api.botDelete(id); cometThreads.forget(id) } else await api.routineRemove(id); await reload() }
   const newFolder = (kind: SidebarKind) => setCreating(current => ({ ...current, [kind]: current[kind] + 1 }))
   const search = query.trim().toLocaleLowerCase()
+  useEffect(() => {
+    if (!search || library || !vaultReady) return
+    let live = true
+    const timer = window.setTimeout(() => void api.botsSearch(search).then(ids => { if (live) setBodyHits({ query: search, ids: new Set(ids) }) }).catch(() => undefined), 150)
+    return () => { live = false; window.clearTimeout(timer) }
+  }, [search, library, vaultReady, bots])
   // A conversation quiet for a day leaves the list, not the disk; search and
   // Show earlier still reach it.
   const pinned = new Set(layout?.chat.items.filter(item => item.pinned).map(item => item.id) ?? [])
   const recent = (bot: BotDto) => Date.now() - Date.parse(bot.lastMessage?.at ?? bot.createdAt) < DAY_MS || bot.id === selectedId || pinned.has(bot.id) || waiting.has(bot.id) || activityOf(bot) !== 'ready'
   const earlier = bots.filter(bot => !recent(bot)).length
-  const matchingBots = search ? bots.filter(bot => bot.id === selectedId || `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search)) : showEarlier ? bots : bots.filter(recent)
+  const matchingBots = search ? bots.filter(bot => bot.id === selectedId || `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search) || (bodyHits.query === search && bodyHits.ids.has(bot.id))) : showEarlier ? bots : bots.filter(recent)
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
   const matchingRoutines = search ? routines.filter(routine => routine.name.toLocaleLowerCase().includes(search)) : routines

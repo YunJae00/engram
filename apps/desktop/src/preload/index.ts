@@ -161,6 +161,7 @@ const api: EngramApi = {
   errandAbort: () => ipcRenderer.invoke('errand:abort'),
   errandJournal: () => ipcRenderer.invoke('errand:journal'),
   botsList: () => ipcRenderer.invoke('bots:list'),
+  botsSearch: (query: string) => ipcRenderer.invoke('bots:search', query),
   siteIcon: (origin, shortcut) => ipcRenderer.invoke('site:icon', origin, shortcut),
   sidebarLayout: (kind) => ipcRenderer.invoke('sidebar:layout', kind),
   sidebarChange: (request) => ipcRenderer.invoke('sidebar:change', request),

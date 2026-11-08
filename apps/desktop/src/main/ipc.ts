@@ -145,7 +145,7 @@ import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
-import { botPreviews } from './bot-previews.js'
+import { botPreviews, botSearch } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -1299,6 +1299,7 @@ export function registerIpc(ctx: VaultContext): void {
     for (const bot of bots) for (const site of bot.webSites ?? []) visitedOrigins.add(site.origin)
     return botPreviews(paths, bots)
   })
+  ipcMain.handle('bots:search', async (_e, query: unknown) => typeof query === 'string' ? botSearch(paths, await loadBots(paths), query) : [])
   ipcMain.handle('site:icon', async (_event, origin: unknown, shortcut: unknown) => {
     if (typeof origin !== 'string' || origin.length > 2048) return null
     // Sidebar shortcuts are user-selected origins and survive a browser session.
