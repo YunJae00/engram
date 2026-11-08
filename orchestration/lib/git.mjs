@@ -84,8 +84,9 @@ export async function changedFiles({ root }, base, ref) {
   return out ? out.split('\n') : []
 }
 
+// null when the ref does not exist (e.g. an attempt branch deleted by hand).
 export async function tipSha({ root }, ref) {
-  return git(root, ['rev-parse', ref])
+  return gitOrNull(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
 }
 
 export async function lastCommitTime({ root }, ref) {

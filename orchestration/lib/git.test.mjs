@@ -56,6 +56,7 @@ describe('git', () => {
     await g.fetchBranch(opts, 'orch/item')
     expect(await g.tipSha(opts, 'origin/orch/item')).toBe(reportSha)
     expect(await g.tipSha(opts, 'origin/orch/item~1')).toBe(codeSha)
+    expect(await g.tipSha(opts, 'orch/gone')).toBeNull()
     expect(await g.fileAtRef(opts, 'origin/orch/item', 'orchestration/reports/item.json')).toBe('{}')
     expect(await g.fileAtRef(opts, 'origin/orch/item', 'missing.txt')).toBeNull()
     expect((await g.changedFiles(opts, 'main', 'origin/orch/item')).sort())

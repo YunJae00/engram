@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
-  briefScenarios, bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, machineCheck, needsRedesign,
+  briefScenarios, bumpVersion, deadlineAt, forEachItem, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, machineCheck, needsRedesign,
   nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, smallFailure, suggestBump, verifyDecision, verifierKindsFor,
 } from './loop.mjs'
 import { rejectDesign } from './phase-implement.mjs'
@@ -313,5 +313,19 @@ describe('integration rerun', () => {
     expect(attemptMinutes({ startedAt: '2026-11-05T10:00:00Z', finishedAt: '2026-11-05T10:12:30Z' })).toBe(12.5)
     expect(attemptMinutes({ startedAt: '2026-11-05T10:00:00Z' })).toBe('')
     expect(QUIET_HOST).toEqual({ ENGRAM_QUIET_HOST: '1' })
+  })
+})
+
+describe('forEachItem', () => {
+  it('logs an item that throws with its id and still runs the others', async () => {
+    const ran = []
+    const logs = []
+    await forEachItem([{ id: 'a' }, { id: 'b' }, { id: 'c' }], async (item) => {
+      if (item.id === 'b') throw new Error('git rev-parse failed')
+      ran.push(item.id)
+    }, (line) => logs.push(line))
+    expect(ran).toEqual(['a', 'c'])
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toMatch(/^item b tick failed: Error: git rev-parse failed/)
   })
 })

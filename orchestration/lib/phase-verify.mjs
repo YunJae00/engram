@@ -151,9 +151,16 @@ async function resetJobs(ctx, item, attempt, jobs) {
 
 export async function verifyAttempt(ctx, ledger, item, attempt) {
   const ref = attemptRef(ctx, attempt)
-  if (isCloud(attempt.implementer)) await fetchBranch(ctx.opts, attempt.branch)
-  const tip = await tipSha(ctx.opts, ref)
+  const fetched = !isCloud(attempt.implementer) || (await fetchBranch(ctx.opts, attempt.branch).then(() => true, () => false))
+  const tip = fetched ? await tipSha(ctx.opts, ref) : null
   const jobs = loadJobs(ctx)
+  if (!tip) {
+    await resetJobs(ctx, item, attempt, jobs)
+    saveJobs(ctx, jobs)
+    await finish(ctx, attempt, 'invalid')
+    note(ctx, item.id, 'verify', `attempt ${attempt.n} invalid`, `branch missing: ${ref}`, attempt.branch)
+    return save(ctx, ledger)
+  }
   if (tip !== attempt.headSha) {
     await resetJobs(ctx, item, attempt, jobs)
     saveJobs(ctx, jobs)

@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
-const remote = vi.hoisted(() => ({ files: new Map(), deleted: [], launches: [] }))
+const remote = vi.hoisted(() => ({ files: new Map(), deleted: [], launches: [], missing: new Set() }))
 
 vi.mock('./git.mjs', async (original) => ({
   ...(await original()),
   fetchBranch: async () => {},
   lsRemote: async (_opts, branch) => ([...remote.files.keys()].some((key) => key.startsWith(`origin/${branch}:`)) ? 'sha' : null),
   fileAtRef: async (_opts, ref, path) => remote.files.get(`${ref}:${path}`) ?? null,
-  tipSha: async () => 'a'.repeat(40),
+  tipSha: async (_opts, ref) => (remote.missing.has(ref) ? null : 'a'.repeat(40)),
   deleteRemoteBranch: async (_opts, branch) => { remote.deleted.push(branch) },
 }))
 
@@ -72,6 +72,7 @@ beforeEach(() => {
   remote.files.clear()
   remote.deleted.length = 0
   remote.launches.length = 0
+  remote.missing.clear()
   ctx = makeCtx()
 })
 
@@ -121,6 +122,21 @@ describe('verifier timebox in the loop', () => {
     expect(item.state).toBe('needs_human')
     expect(item.reason).toBe('break verifier timed out 2 times')
     expect(remote.launches).toHaveLength(4)
+  })
+
+  it('ends the attempt as invalid when its branch is gone, then bounces the item', async () => {
+    const item = ledgerItem(attempt())
+    const ledger = { batch: 'b', items: [item] }
+    await verifyAttempt(ctx, ledger, item, item.attempts[0])
+    expect(Object.keys(loadJobs(ctx))).toHaveLength(3)
+
+    remote.missing.add('origin/orch/x-1')
+    await verifyAttempt(ctx, ledger, item, item.attempts[0])
+    expect(item.attempts[0].outcome).toBe('invalid')
+    expect(loadJobs(ctx)).toEqual({})
+    expect(decisions()).toMatch(/attempt 1 invalid\tbranch missing: origin\/orch\/x-1/)
+    await settle(ctx, ledger, item)
+    expect(item.bounces).toBe(1)
   })
 
   it('takes the relaunched session verdict when it arrives in time', async () => {

@@ -14,6 +14,7 @@ import { fetchBranch, fileAtRef } from './lib/git.mjs'
 import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
 import { validate } from './lib/validate.mjs'
 import { integrationTier } from './lib/tier.mjs'
+import { forEachItem } from './lib/loop.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const USAGE = `usage:
@@ -66,14 +67,15 @@ async function tick(ctx) {
   const ledger = ctx.dryRun ? (readJsonOrNull(join(ctx.orch, 'ledger.json')) ?? { batch: 'dry-run', items: [] }) : loadLedger(ROOT)
   promote(ctx, ledger)
   if (!ctx.dryRun) {
-    for (const item of ledger.items.filter((i) => i.state === 'designing')) await designTick(ctx, ledger, item)
-    for (const item of ledger.items.filter((i) => ['implementing', 'implemented', 'verifying'].includes(i.state))) {
+    const log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`)
+    await forEachItem(ledger.items.filter((i) => i.state === 'designing'), (item) => designTick(ctx, ledger, item), log)
+    await forEachItem(ledger.items.filter((i) => ['implementing', 'implemented', 'verifying'].includes(i.state)), async (item) => {
       for (const attempt of item.attempts.filter((a) => !a.outcome)) {
         if (!attempt.headSha) await checkImplementation(ctx, ledger, item, attempt)
         else await verifyAttempt(ctx, ledger, item, attempt)
       }
       await settle(ctx, ledger, item)
-    }
+    }, log)
     await mergeVerified(ctx, ledger)
   }
   await startBriefed(ctx, ledger)

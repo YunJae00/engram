@@ -37,6 +37,17 @@ export function machineCheck({ itemId, report, reportErrors, changed, allowedFil
   return { ok: true, reason: null }
 }
 
+// An unexpected error in one item is logged with its id; the other items in the tick still run.
+export async function forEachItem(items, step, log) {
+  for (const item of items) {
+    try {
+      await step(item)
+    } catch (error) {
+      log(`item ${item.id} tick failed: ${error.stack ?? error}`)
+    }
+  }
+}
+
 export const lineage = (agent) => (agent.startsWith('claude') ? 'claude' : 'codex')
 
 // A small miss (at most 2 blocking findings, or only the tests lane failed) does not need two reimplementations.
