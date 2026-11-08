@@ -35,7 +35,10 @@ const credentials = { claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLA
 export function accountEnvironment(provider: AccountProvider, id = activeAccountProfile(provider), runtimeConnection = true): NodeJS.ProcessEnv {
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
   if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
-  const env = { ...systemEnvironment, [providerKey[provider]]: systemPaths ? profilePath(provider, id) : process.env[providerKey[provider]] }
+  const key = providerKey[provider], env = { ...systemEnvironment }
+  // An explicit CLAUDE_CONFIG_DIR makes Claude Code read a different Keychain entry, so the system profile only sets it when the user did.
+  const dir = !systemPaths ? process.env[key] : id !== 'system' ? profilePath(provider, id) : systemEnvironment[key] !== undefined ? systemPaths[provider] : undefined
+  if (dir === undefined) delete env[key]; else env[key] = dir
   if (id !== 'system') for (const key of credentials[provider]) delete env[key]
   const connection = runtimeConnection ? connectionEnvironment(provider, id) : {}
   if (Object.keys(connection).length) for (const key of credentials[provider]) delete env[key]
