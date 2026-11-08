@@ -650,6 +650,9 @@ const en = {
   'settings.title': 'Settings',
   'settings.groupConnections': 'Connections',
   'settings.autoStart': 'Start at login',
+  'settings.autoStartWindows': 'Engram opens quietly when you sign in to Windows.',
+  'settings.autoStartMac': 'Engram opens quietly when you log in to your Mac.',
+  'settings.autoStartLinux': 'Engram opens quietly when you sign in.',
   'settings.deskJournal': 'Remember app activity',
   'settings.sessionWatch': 'Remember coding sessions',
   'settings.feedback': 'Send feedback',
@@ -786,6 +789,9 @@ const isMac = typeof window !== 'undefined' && window.engram?.platform === 'darw
 
 // Platform-correct modifier label for UI built from parts (e.g. HelpPanel).
 export const MOD_LABEL = isMac ? 'Cmd' : 'Ctrl'
+
+export const AUTO_START_KEY: StringKey = isMac ? 'settings.autoStartMac'
+  : typeof window !== 'undefined' && window.engram?.platform === 'win32' ? 'settings.autoStartWindows' : 'settings.autoStartLinux'
 
 export type Translate = (key: StringKey, vars?: Record<string, string | number>) => string
 

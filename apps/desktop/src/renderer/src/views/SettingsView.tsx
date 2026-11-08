@@ -14,7 +14,7 @@ import { WorkHabitsSettings } from '../components/WorkHabitsSettings.js'
 import { LEARNING_SOURCES } from '../components/LearningSources.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { Keys, SettingsGroup, SettingsItem } from '../components/SettingsLayout.js'
-import { MOD_LABEL } from '../i18n.js'
+import { AUTO_START_KEY, MOD_LABEL } from '../i18n.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
 import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 import { ResetSettings } from '../components/ResetSettings.js'
@@ -137,7 +137,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <h2>General</h2>
         <SettingsGroup title="Appearance"><div className="settings-item"><AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} /></div></SettingsGroup>
         <SettingsGroup title="App">
-          <SettingsItem icon={<Power size={18} />} title={t('settings.autoStart')} description="Engram opens quietly when you sign in to Windows." htmlFor="setting-autostart">
+          <SettingsItem icon={<Power size={18} />} title={t('settings.autoStart')} description={t(AUTO_START_KEY)} htmlFor="setting-autostart">
             <input id="setting-autostart" type="checkbox" className="switch" data-testid="setting-autostart" checked={settings.autoStart} disabled={saving} onChange={(e) => void patch({ autoStart: e.target.checked })} />
           </SettingsItem>
           <SettingsItem icon={<Sparkles size={18} />} title="New Comet anywhere" description="Starts a conversation next to the pointer, from any app."><Keys keys={[MOD_LABEL, 'Shift', 'Space']} /></SettingsItem>
