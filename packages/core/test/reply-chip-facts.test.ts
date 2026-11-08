@@ -62,4 +62,13 @@ describe('replies block facts rule', () => {
     expect(EARLIER_REPLIES_RULE).toContain('In a reply, recap or summary never list it as settled (지금까지 확정된 내용) or state it as what the person said')
     expect(EARLIER_REPLIES_RULE).toContain('never treat it as something they said earlier that you must now correct')
   })
+
+  it('keeps chips from re-offering a deferred or undecided value, earlier candidates and unclicked chip values included', () => {
+    expect(EARLIER_REPLIES_RULE).toContain('When the person deferred a value or put it on hold (일단 보류, 나중에), said they do not know it yet, or your answer shows it as undecided (미정, 아직 미정), no reply proposes a specific value for it')
+    expect(EARLIER_REPLIES_RULE).toContain('not a candidate you listed earlier (such as 11/16, 11/19 or 11/23)')
+    expect(EARLIER_REPLIES_RULE).toContain('not a value from an earlier reply they did not pick')
+    expect(EARLIER_REPLIES_RULE).toContain('offer neutral defer or confirm options in their voice instead')
+    for (const chip of ['마감 정해지면 알려줄게', '마감은 미정으로 둬줘', '후보 다시 보여줘']) expect(EARLIER_REPLIES_RULE).toContain(`"${chip}"`)
+    expect(EARLIER_REPLIES_RULE).toContain('never "마감일 11/16로 확정해줘" or "마감일도 11/16으로 넣어서 다시 써줘"')
+  })
 })
