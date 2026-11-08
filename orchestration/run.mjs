@@ -1,17 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import process from 'node:process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath, URL } from 'node:url'
-import { isTerminal, loadLedger } from './lib/ledger.mjs'
+import { loadLedger } from './lib/ledger.mjs'
 import { checkImplementation, designTick, promote, setDesign, startBriefed } from './lib/phase-implement.mjs'
 import { batchIdle, integrate, integrationFinished, mergeVerified, resetIntegration, writeSummary } from './lib/phase-merge.mjs'
 import { settle, verifyAttempt } from './lib/phase-verify.mjs'
-import { alive } from './lib/procs.mjs'
+import { addBrief, drain, pidPath, runnerPid } from './lib/inbox.mjs'
 import { awaitSmoke, release } from './lib/release.mjs'
 import { fetchBranch, fileAtRef } from './lib/git.mjs'
-import { briefPath, createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
+import { createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBranch } from './lib/runtime.mjs'
 import { validate } from './lib/validate.mjs'
 import { integrationTier } from './lib/tier.mjs'
 import { forEachItem } from './lib/loop.mjs'
@@ -33,22 +33,7 @@ function add(ctx, file) {
   const brief = readJson(resolve(file))
   const errors = validate(schema(ctx, 'brief'), brief)
   if (errors.length) throw new Error(`brief invalid:\n${errors.join('\n')}`)
-  let ledger = loadLedger(ROOT)
-  const finished = ledger.items.length > 0 && ledger.items.every((i) => isTerminal(i.state))
-  if (finished && ['passed', 'failed'].includes(ledger.integration?.state)) {
-    renameSync(join(ctx.orch, 'ledger.json'), join(ctx.orch, `ledger-${ledger.batch}.json`))
-    ledger = loadLedger(ROOT)
-  }
-  if (ledger.items.some((i) => i.id === brief.id)) throw new Error(`${brief.id} is already in the ledger`)
-  const target = briefPath(ctx, brief.id)
-  mkdirSync(join(ctx.orch, 'briefs'), { recursive: true })
-  if (resolve(file) !== target) writeFileSync(target, `${JSON.stringify(brief, null, 2)}\n`)
-  ledger.items.push({
-    id: brief.id, title: brief.title, area: brief.area, difficulty: brief.difficulty, state: 'queued', bounces: 0,
-    allowedFiles: brief.allowedFiles, criteria: brief.criteria, scenarios: brief.scenarios ?? [], attempts: [], verdicts: [],
-  })
-  save(ctx, ledger)
-  note(ctx, brief.id, 'add', 'queued', `brief ${basename(file)}`, target)
+  addBrief(ctx, brief, resolve(file))
 }
 
 function status(ledger) {
@@ -65,6 +50,13 @@ function status(ledger) {
 
 async function tick(ctx) {
   const ledger = ctx.dryRun ? (readJsonOrNull(join(ctx.orch, 'ledger.json')) ?? { batch: 'dry-run', items: [] }) : loadLedger(ROOT)
+  if (!ctx.dryRun) {
+    const added = drain(ctx, ledger)
+    if (added.length) {
+      save(ctx, ledger)
+      for (const id of added) note(ctx, id, 'add', 'queued', 'drained from pending-adds')
+    }
+  }
   promote(ctx, ledger)
   if (!ctx.dryRun) {
     const log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`)
@@ -87,9 +79,9 @@ async function tick(ctx) {
 }
 
 function lock(ctx) {
-  const path = join(ctx.logs, 'run.pid')
-  const owner = Number(readJsonOrNull(path)?.pid)
-  if (owner && owner !== process.pid && alive(owner)) throw new Error(`run.mjs already running as pid ${owner}`)
+  const path = pidPath(ctx)
+  const owner = runnerPid(ctx)
+  if (owner) throw new Error(`run.mjs already running as pid ${owner}`)
   mkdirSync(ctx.logs, { recursive: true })
   writeFileSync(path, JSON.stringify({ pid: process.pid }))
   return () => rmSync(path, { force: true })
