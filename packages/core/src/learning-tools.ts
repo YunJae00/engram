@@ -1,4 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
+import { withoutReplies } from './agent-history.js'
 import { contentWords } from './search-template.js'
 import { passesPrivacyLint, type InstallResult, type SkillDraft } from './skills.js'
 import { safeAddress } from './work-map.js'
@@ -67,7 +68,8 @@ export function searchChatsTool(deps: { chats(): Promise<ChatTurns[]> }): AgentT
       const query = String(args['query'] ?? '').trim()
       const words = [...new Set(contentWords(query).filter(word => word.length > 1))]
       if (!words.length) throw new Error('Give the words to look for.')
-      const hits = (await deps.chats()).flatMap(chat => chat.turns.map(turn => {
+      const hits = (await deps.chats()).flatMap(chat => chat.turns.map(said => {
+        const turn = said.role === 'user' ? said : { ...said, text: withoutReplies(said.text) }
         const text = turn.text.toLowerCase()
         return { chat: chat.name, turn, score: words.filter(word => text.includes(word)).length }
       })).filter(hit => hit.score > 0)

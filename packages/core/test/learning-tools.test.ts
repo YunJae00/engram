@@ -38,3 +38,19 @@ it('finds earlier conversations by their words, closest and newest first', async
   expect(found).not.toContain('초장집')
   expect(await tool.run({ query: 'payroll' }, { task: '' })).toContain('No earlier conversation')
 })
+
+it('leaves unclicked suggested replies out of earlier answers and keeps clicked ones as their words', async () => {
+  const tool = searchChatsTool({
+    chats: async () => [
+      { name: 'Report', turns: [
+        { role: 'assistant', text: '매출 보고서 초안 구성은 개요, 지표, 결론 순서가 좋아요.\n\n```replies\n팀장님한테 물어보고 알려줄게\n일단 3분기로 가정해서 진행해줘\n```', at: '2026-11-08T01:00:00Z' },
+      ] },
+      { name: 'Other', turns: [{ role: 'user', text: '3분기로 해줘', at: '2026-11-07T01:00:00Z' }] },
+    ],
+  })
+  const quarter = await tool.run({ query: '3분기' }, { task: '' })
+  expect(quarter).not.toContain('가정해서')
+  expect(quarter).not.toContain('replies')
+  expect(quarter).toContain('[Other, 2026-11-07] They said: 3분기로 해줘')
+  expect(await tool.run({ query: '보고서 초안 구성' }, { task: '' })).toContain('You answered: 매출 보고서 초안 구성은')
+})

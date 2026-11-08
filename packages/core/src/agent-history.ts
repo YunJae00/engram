@@ -16,7 +16,7 @@ const EARLIER_REQUESTS_CHARS = 12000
 // Suggested replies are the comet's guesses, not the person's words; sent back
 // they would let an invented value pass as already in the conversation.
 const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
-function withoutReplies(text: string): string {
+export function withoutReplies(text: string): string {
   const open = text.search(REPLIES_OPEN)
   if (open < 0) return text
   const rest = text.slice(open).split('\n')
