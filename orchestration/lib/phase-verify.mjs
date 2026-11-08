@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
-import { evidenceRound, outputTail, REVIEW_KINDS, runRequests, screenshots, shareEvidence } from './evidence.mjs'
+import { evidenceRound, hiddenUnset, outputTail, REVIEW_KINDS, runRequests, screenshots, shareEvidence } from './evidence.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
@@ -63,7 +63,7 @@ export async function runChecks(ctx, worktree, brief, name, run = sh) {
   const results = []
   for (const { id, cmd, expect, env } of commands) {
     const logPath = `orchestration/logs/${name}-${id.replace(/\W+/g, '_')}.log`
-    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, timeoutMs: 30 * 60_000 })
+    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, unset: hiddenUnset(cmd), timeoutMs: 30 * 60_000 })
     results.push({ id, cmd, expect, exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) })
   }
   return results

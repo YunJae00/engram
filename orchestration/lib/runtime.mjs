@@ -44,9 +44,11 @@ export function createContext(root, { dryRun = false, log = (line) => process.st
   }
 }
 
-export function sh(cwd, cmd, args, { logPath, timeoutMs = 0, env = {} } = {}) {
+export function sh(cwd, cmd, args, { logPath, timeoutMs = 0, env = {}, unset = [] } = {}) {
+  const childEnv = withNodeOnPath({ ...process.env, ...env })
+  for (const key of unset) delete childEnv[key]
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], env: withNodeOnPath({ ...process.env, ...env }) })
+    const child = spawn(cmd, args, { cwd, timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv })
     let out = ''
     const onData = (d) => { out += d }
     child.stdout.on('data', onData)

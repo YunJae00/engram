@@ -8,6 +8,11 @@ export const MAX_REQUESTS = 3
 const REQUEST_TIMEOUT_MS = 10 * 60_000
 const SANDBOX_LAUNCH = /\bEPERM\b|\bSIGABRT\b|electron[^\n]*(?:launch|start|spawn|crash|abort)/i
 
+const E2E_CMD = /playwright|e2e|verify-cli|run verify\b/i
+
+// ENGRAM_HIDDEN keeps e2e windows and notifications off the host, but product code reads it too, so unit commands must not see it.
+export const hiddenUnset = (cmd) => (E2E_CMD.test(cmd) ? [] : ['ENGRAM_HIDDEN'])
+
 export const outputTail = (text, lines = 40, chars = 4000) => String(text ?? '').split('\n').slice(-lines).join('\n').slice(-chars)
 export const screenshots = (text) => [...new Set(String(text ?? '').match(/[\w./-]+\.png\b/g) ?? [])]
 
@@ -34,7 +39,7 @@ export async function runRequests(worktree, name, requests, run = sh) {
   const results = []
   for (const [i, { cmd, why = '' }] of requests.entries()) {
     const logPath = `orchestration/logs/${name}-request${i + 1}.log`
-    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), timeoutMs: REQUEST_TIMEOUT_MS })
+    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), timeoutMs: REQUEST_TIMEOUT_MS, unset: hiddenUnset(cmd) })
     results.push({ id: `request${i + 1}`, cmd, why, exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) })
   }
   return results

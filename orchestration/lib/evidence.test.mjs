@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import process from 'node:process'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { checkVerdict } from './aggregate.mjs'
-import { evidenceRound, MAX_REQUESTS, runRequests, sandboxOnlyCannotVerify, shareEvidence } from './evidence.mjs'
+import { evidenceRound, hiddenUnset, MAX_REQUESTS, runRequests, sandboxOnlyCannotVerify, shareEvidence } from './evidence.mjs'
 import { verifierPrompt } from './prompt.mjs'
 
 const sha = 'a'.repeat(40)
@@ -61,6 +62,27 @@ describe('runner evidence for spec and break', () => {
       expect(r).toMatchObject({ cmd: 'node probe.mjs', why: 'see runtime', exit: 3, logPath: 'orchestration/logs/x-1-spec-request1.log', screenshots: ['tmp/shot.png'] })
       expect(r.tail.split('\n').length).toBeLessThanOrEqual(40)
     } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('strips ENGRAM_HIDDEN from unit commands and keeps it for e2e even when the runner has it set', async () => {
+    const { sh } = await import('./runtime.mjs')
+    const dir = mkdtempSync(join(tmpdir(), 'orch-hidden-'))
+    const before = process.env.ENGRAM_HIDDEN
+    process.env.ENGRAM_HIDDEN = '1'
+    try {
+      expect(hiddenUnset('pnpm exec vitest run --project unit apps/desktop')).toEqual(['ENGRAM_HIDDEN'])
+      for (const cmd of ['npm run check:quick', 'npm run typecheck', 'npm run lint']) expect(hiddenUnset(cmd)).toEqual(['ENGRAM_HIDDEN'])
+      for (const cmd of ['pnpm exec playwright test e2e/x.spec.ts', 'node scripts/verify-cli.mjs s', 'npm run verify']) expect(hiddenUnset(cmd)).toEqual([])
+      const probe = 'echo "hidden=${ENGRAM_HIDDEN-absent}"'
+      const unit = await runRequests(dir, 'u', [{ cmd: `${probe} # vitest` }], sh)
+      const e2e = await runRequests(dir, 'e', [{ cmd: `${probe} # playwright` }], sh)
+      expect(unit[0].tail).toBe('hidden=absent')
+      expect(e2e[0].tail).toBe('hidden=1')
+    } finally {
+      if (before === undefined) delete process.env.ENGRAM_HIDDEN
+      else process.env.ENGRAM_HIDDEN = before
       rmSync(dir, { recursive: true, force: true })
     }
   })

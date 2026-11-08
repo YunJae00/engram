@@ -160,7 +160,8 @@ describe('runner-executed tests verifier', () => {
       const run = async (cwd, cmd, args, opts) => { calls.push({ cwd, args, opts }); return { code: args[1].includes('fail') ? 1 : 0, out: '' } }
       const results = await runChecks({ base: 'origin/next' }, dir, brief, 'x-1-tests', run)
       expect(calls[0].args[1]).toBe('npm run check:quick')
-      expect(calls[0].opts.env).toEqual({ ENGRAM_CHECK_BASE: 'origin/next' })
+      expect(calls[0].opts).toMatchObject({ env: { ENGRAM_CHECK_BASE: 'origin/next' }, unset: ['ENGRAM_HIDDEN'] })
+      expect(calls[1].opts.unset).toEqual(['ENGRAM_HIDDEN'])
       expect(results.map((r) => [r.id, r.exit])).toEqual([['check:quick', 0], ...brief.criteria.map((c) => [c.id, c.cmd.includes('fail') ? 1 : 0])])
       const p = verifierPrompt({ persona: '', kind: 'tests', brief, headSha: sha, verdictPath: 'v', schemaText: 's', results })
       expect(p).toContain('do not rerun them')
