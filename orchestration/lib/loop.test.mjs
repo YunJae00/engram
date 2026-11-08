@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
   briefScenarios, bumpVersion, deadlineAt, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, machineCheck, needsRedesign,
-  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, suggestBump, verifyDecision, verifierKindsFor,
+  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, smallFailure, suggestBump, verifyDecision, verifierKindsFor,
 } from './loop.mjs'
 import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
@@ -36,6 +36,24 @@ describe('bounce ladder', () => {
       { implementer: 'claude-local', verifier: 'codex-local' },
     ])
     expect(plannedAttempts(item({ area: 'native', bounces: 3 }), roles, true)).toEqual([])
+  })
+
+  it('starts one implementer for a hard retry after a small failure', () => {
+    expect(plannedAttempts(item({ bounces: 1 }), roles, true, true)).toEqual([{ implementer: 'claude-local', verifier: 'codex-local' }])
+    const finding = (n) => ({ file: 'a.ts', line: n, claim: `c${n}`, reproCmd: 'npm test' })
+    const files = {
+      spec: { kind: 'spec', verdict: 'fail', evidence: [], findings: [finding(1), finding(2), finding(3)] },
+      small: { kind: 'break', verdict: 'fail', evidence: [], findings: [finding(1)] },
+      tests: { kind: 'tests', verdict: 'fail', evidence: [1, 2, 3].map((n) => ({ criterion: `c${n}`, cmd: 'x', logPath: '', result: 'exit 1' })), findings: [] },
+      pass: { kind: 'tests', verdict: 'pass', evidence: [], findings: [] },
+    }
+    const read = (path) => files[path]
+    const failed = (paths) => ({ attempts: [{ n: 1, outcome: 'fail' }, { n: 2, outcome: 'fail' }], verdicts: paths.map((path) => ({ attempt: 2, path })) })
+    expect(smallFailure(failed(['spec', 'pass']), read)).toBe(false)
+    expect(smallFailure(failed(['small', 'pass']), read)).toBe(true)
+    expect(smallFailure(failed(['tests']), read)).toBe(true)
+    expect(smallFailure(failed(['tests', 'spec']), read)).toBe(false)
+    expect(smallFailure({ attempts: [{ n: 1, outcome: 'invalid' }], verdicts: [] }, read)).toBe(false)
   })
 })
 

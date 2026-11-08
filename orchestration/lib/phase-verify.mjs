@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
-import { evidenceRound, hiddenUnset, outputTail, REVIEW_KINDS, runRequests, screenshots, shareEvidence } from './evidence.mjs'
+import { evidenceRound, outputTail, REVIEW_KINDS, runCommands, runRequests, shareEvidence, testsGate } from './evidence.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
@@ -53,20 +53,29 @@ function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null, tim
 // Verifier flow for local `tests`: the sandboxed reviewer cannot launch Electron or open sockets
 // (EPERM on macOS workspace-write), so this trusted runner code executes the check and criterion
 // commands itself in the worktree, saves each log, and the reviewer only judges the captured results.
-export async function runChecks(ctx, worktree, brief, name, run = sh) {
-  const logs = join(worktree, 'orchestration/logs')
-  mkdirSync(logs, { recursive: true })
+export function runChecks(ctx, worktree, brief, name, run = sh) {
   const commands = [
     { id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } },
     ...scopedCriteria(brief).map((c) => ({ id: c.id, cmd: c.cmd, expect: c.expect })),
   ]
-  const results = []
-  for (const { id, cmd, expect, env } of commands) {
-    const logPath = `orchestration/logs/${name}-${id.replace(/\W+/g, '_')}.log`
-    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, unset: hiddenUnset(cmd), timeoutMs: 30 * 60_000 })
-    results.push({ id, cmd, expect, exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) })
+  return runCommands(worktree, name, commands, 30 * 60_000, run)
+}
+
+// A failed runner-run tests lane fails the attempt at once with its captured results; spec and break never launch.
+async function failOnTests(ctx, ledger, item, attempt, jobs, testsJob) {
+  const failed = testsJob.results.filter((r) => r.exit !== 0)
+  for (const r of failed) {
+    const from = join(testsJob.worktree, r.logPath)
+    if (existsSync(from)) copyFileSync(from, join(ctx.root, r.logPath))
   }
-  return results
+  const evidence = failed.map((r) => ({ criterion: r.id, cmd: r.cmd, logPath: r.logPath, result: `exit ${r.exit}${r.tail ? `\n${outputTail(r.tail, 15, 1500)}` : ''}` }))
+  const verdict = { id: item.id, attempt: attempt.n, kind: 'tests', verdict: 'fail', headSha: testsJob.headSha, evidence, findings: [] }
+  if (!testsJob.done) collect(ctx, ledger, item, attempt, 'tests', testsJob, verdict)
+  await dropWorktree(ctx, testsJob.worktree)
+  saveJobs(ctx, jobs)
+  await finish(ctx, attempt, 'fail')
+  note(ctx, item.id, 'verify', `attempt ${attempt.n} fail`, `runner tests lane failed: ${failed.map((r) => r.id).join(', ')}; spec and break not launched`, testsJob.path)
+  save(ctx, ledger)
 }
 
 // `testsJob` feeds spec/break the runner-run results; `round` reruns a reviewer in its own worktree with requested outputs.
@@ -87,7 +96,7 @@ async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null
   })
   const launched = await launchAgent(ctx, {
     agent: attempt.verifier, label: `${tries > 1 ? `${name}-r${tries}` : name}${round ? '-evidence' : ''}`, cwd: worktree, prompt, role: 'verify', kind, minutes,
-    schemaPath: join(ctx.orch, 'schemas/verdict.schema.json'),
+    schemaPath: join(ctx.orch, 'schemas/verdict.schema.json'), counted: !REVIEW_KINDS.includes(kind),
   })
   if (!launched) {
     await dropWorktree(ctx, worktree)
@@ -150,11 +159,18 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   const byKind = {}
   const tries = {}
   let pending = false
-  for (const kind of verifierKindsFor(ctx.roles, loadBrief(ctx, item.id))) {
+  const kinds = verifierKindsFor(ctx.roles, loadBrief(ctx, item.id))
+  for (const kind of kinds) {
     const name = label(item, attempt, kind)
     let job = jobs[name]
     const testsJob = jobs[label(item, attempt, 'tests')]
     if (!job || job.retry) {
+      const gate = REVIEW_KINDS.includes(kind) ? testsGate(kinds, testsJob) : 'go'
+      if (gate === 'fail') return failOnTests(ctx, ledger, item, attempt, jobs, testsJob)
+      if (gate === 'wait') {
+        pending = true
+        continue
+      }
       const launched = await launchVerifier(ctx, item, attempt, kind, (job?.tries ?? 0) + 1, { testsJob })
       if (launched) {
         jobs[name] = launched

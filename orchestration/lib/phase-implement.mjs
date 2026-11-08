@@ -5,7 +5,7 @@ import { readTokens } from './launch-local.mjs'
 import { isHard, transition } from './ledger.mjs'
 import {
   deadlineAt, designLocations, designPath, findDesign, lineage, machineCheck, needsRedesign, pickDesign, plannedAttempts,
-  rejectedDesignPath,
+  rejectedDesignPath, smallFailure,
 } from './loop.mjs'
 import { runnable } from './overlap.mjs'
 import { alive } from './procs.mjs'
@@ -203,7 +203,7 @@ async function launchImplementer(ctx, ledger, item, brief, step, relaunch = null
 }
 
 async function startImplement(ctx, ledger, item, brief, hard) {
-  const plan = plannedAttempts(item, ctx.roles, hard)
+  const plan = plannedAttempts(item, ctx.roles, hard, smallFailure(item, (path) => readJsonOrNull(join(ctx.root, path))))
   if (plan.length === 0) {
     item.reason = 'ladder exhausted'
     transition(item, 'needs_human')

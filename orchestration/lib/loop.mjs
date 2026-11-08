@@ -1,4 +1,4 @@
-import { aggregate } from './aggregate.mjs'
+import { aggregate, blockingFindings } from './aggregate.mjs'
 import { culprits, revertPlan } from './bisect.mjs'
 import { rung } from './ledger.mjs'
 
@@ -39,10 +39,18 @@ export function machineCheck({ itemId, report, reportErrors, changed, allowedFil
 
 export const lineage = (agent) => (agent.startsWith('claude') ? 'claude' : 'codex')
 
-export function plannedAttempts(item, roles, hard) {
+// A small miss (at most 2 blocking findings, or only the tests lane failed) does not need two reimplementations.
+export function smallFailure(item, readVerdict) {
+  const last = item.attempts?.findLast((a) => a.outcome === 'fail')
+  if (!last) return false
+  const verdicts = (item.verdicts ?? []).filter((v) => v.attempt === last.n).map((v) => readVerdict(v.path)).filter(Boolean)
+  return blockingFindings(verdicts).length <= 2 || verdicts.filter((v) => v.verdict === 'fail').every((v) => v.kind === 'tests')
+}
+
+export function plannedAttempts(item, roles, hard, small = false) {
   const base = rung(item, roles)
   if (!base) return []
-  if (!hard || item.bounces === 0) return [base]
+  if (!hard || item.bounces === 0 || small) return [base]
   const claude = lineage(base.implementer) === 'claude'
     ? base.implementer
     : (roles.ladder[item.area].find((r) => lineage(r.implementer) === 'claude')?.implementer ?? 'claude-local')
