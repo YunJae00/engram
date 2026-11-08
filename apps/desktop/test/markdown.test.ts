@@ -71,6 +71,26 @@ describe('answerHtml', () => {
     expect(range).toContain('2~3개만')
     expect(answerHtml('~~취소~~')).toContain('<del>취소</del>')
     expect(answerHtml('~~~\nconst a = 1\n~~~')).toContain('<code>const a = 1')
+    const ranges = ['2~3개', '10~15만원', '오전~오후', '월~금', '9시~12시 / 14시~18시', '3~4명', '약 ~5분', '30%~40%']
+    for (const text of ranges) {
+      expect(answerHtml(text), text).not.toContain('<del>')
+      expect(answerHtml(text), text).toContain(text)
+    }
+    const line = '회의는 11/17~11/20, 2~3개, 10~15만원, 월~금 9시~12시 / 14시~18시, 3~4명, 30%~40%'
+    expect(answerHtml(line)).not.toContain('<del>')
+    expect(answerHtml(line)).toContain(line)
+    const bold = answerHtml('**11/17~11/20**')
+    expect(bold).toContain('<strong>11/17~11/20</strong>')
+    expect(bold).not.toContain('<del>')
+    const code = answerHtml('`a~b~c`')
+    expect(code).toContain('<code>a~b~c</code>')
+    expect(code).not.toContain('<del>')
+    const mixed = answerHtml('~~취소된 일정~~ 대신 11/17~11/20, 2~3개')
+    expect(mixed).toContain('<del>취소된 일정</del>')
+    expect(mixed.match(/<del>/g)).toHaveLength(1)
+    expect(mixed).toContain('11/17~11/20, 2~3개')
+    expect(answerHtml('~~취소된 일정~~')).toContain('<del>취소된 일정</del>')
+    expect(answerHtml('~~~\nconst a = 1\n~~~')).not.toContain('<del>')
   })
 })
 

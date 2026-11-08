@@ -54,4 +54,23 @@ it('keeps single tildes in ranges literal and still strikes through double tilde
   expect(html('~~취소~~')).toContain('<del>취소</del>')
   expect(html('~~~\nconst a = 1\n~~~')).toContain('const a = 1')
   expect(html('~~~\nconst a = 1\n~~~')).not.toContain('<del>')
+  const ranges = ['2~3개', '10~15만원', '오전~오후', '월~금', '9시~12시 / 14시~18시', '3~4명', '약 ~5분', '30%~40%']
+  for (const text of ranges) {
+    expect(html(text), text).not.toContain('<del>')
+    expect(html(text), text).toContain(text)
+  }
+  const line = '회의는 11/17~11/20, 2~3개, 10~15만원, 월~금 9시~12시 / 14시~18시, 3~4명, 30%~40%'
+  expect(html(line)).not.toContain('<del>')
+  expect(html(line)).toContain(line)
+  const bold = html('**11/17~11/20**')
+  expect(bold).toContain('<strong>11/17~11/20</strong>')
+  expect(bold).not.toContain('<del>')
+  const code = html('`a~b~c`')
+  expect(code).toContain('<code>a~b~c</code>')
+  expect(code).not.toContain('<del>')
+  const mixed = html('~~취소된 일정~~ 대신 11/17~11/20, 2~3개')
+  expect(mixed).toContain('<del>취소된 일정</del>')
+  expect(mixed.match(/<del>/g)).toHaveLength(1)
+  expect(mixed).toContain('11/17~11/20, 2~3개')
+  expect(html('~~취소된 일정~~')).toContain('<del>취소된 일정</del>')
 })
