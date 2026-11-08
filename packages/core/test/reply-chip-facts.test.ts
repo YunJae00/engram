@@ -81,4 +81,16 @@ describe('replies block facts rule', () => {
     expect(EARLIER_REPLIES_RULE).toContain('never "이제 메일 보내줘" or "이대로 보내줘"')
     for (const flags of flagSets) expect(sessionRules(flags)).toContain('no reply offers to do that action now')
   })
+
+  it('keeps chips from retrying a held or failed step and from echoing the deferral back', () => {
+    expect(EARLIER_REPLIES_RULE).toContain('Retrying a failed or held step counts as doing it now, and so does switching to another app or tool to do it')
+    expect(EARLIER_REPLIES_RULE).toContain('never "Outlook 열었어, 다시 해줘" or "다른 메일 앱으로 해줘" after a hold')
+    expect(EARLIER_REPLIES_RULE).toContain('or picked a deferral reply such as "나중에 할게"')
+    expect(EARLIER_REPLIES_RULE).toContain('No reply repeats the deferral the person just made, such as "나중에 할게" right after they said 보류 or picked "나중에 할게"')
+    expect(EARLIER_REPLIES_RULE).toContain('also when the step failed and no draft or result exists')
+    for (const chip of ['보낼 때 말할게', '본문 한 번 더 다듬어줘']) expect(EARLIER_REPLIES_RULE).toContain(`"${chip}"`)
+    expect(EARLIER_REPLIES_RULE).toContain('never "이제 메일 보내줘" or "이대로 보내줘"')
+    expect(EARLIER_REPLIES_RULE).toContain('Before any hold, the replies to a failed step may still offer to retry, switch apps or defer')
+    for (const flags of flagSets) expect(sessionRules(flags)).toContain('No reply repeats the deferral the person just made')
+  })
 })
