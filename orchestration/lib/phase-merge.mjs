@@ -31,6 +31,11 @@ export async function mergeVerified(ctx, ledger) {
     await dropBranch(ctx, winner)
     transition(item, 'merged')
     note(ctx, item.id, 'merge', 'merged', `squash of attempt ${winner.n} into ${ctx.roles.baseBranch}`, item.mergeSha)
+    // A merge after this batch's integration finished leaves it stale; rerun it once the batch is idle.
+    if (integrationFinished(ledger)) {
+      resetIntegration(ledger)
+      note(ctx, 'batch', 'integrate', 'pending', `${item.id} merged after integration finished`)
+    }
     save(ctx, ledger)
   }
 }
