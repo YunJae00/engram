@@ -172,7 +172,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
     decide: (name, input, signal) => nativeDecision(policy, name, input, signal),
     onCall(name, input) {
       const line = nativeSummary(name, input)
-      options.onStep(`${name}: ${line}`)
+      if (!FREE.has(name)) options.onStep(`${name}: ${line}`)
       options.audit(name, line)
       noteScript(options.channel, name, input)
     },

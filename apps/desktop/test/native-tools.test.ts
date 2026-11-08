@@ -173,6 +173,19 @@ describe('permission modes', () => {
     expect(ask).toHaveBeenCalledTimes(3)
   })
 
+  it('keeps host plumbing tools out of the step line but still audits them', async () => {
+    const onStep = vi.fn()
+    const audit = vi.fn()
+    const tools = await cometNativeTools({ paths: vaultPaths(join(root, 'one')), channel: 'bot-free', onStep, audit })
+    tools.onCall!('ToolSearch', { query: 'select:x' })
+    tools.onCall!('TodoWrite', { todos: [{ content: 'a', status: 'pending' }] })
+    expect(onStep).not.toHaveBeenCalled()
+    expect(audit.mock.calls.map(([name]) => name)).toEqual(['ToolSearch', 'TodoWrite'])
+    tools.onCall!('Read', { file_path: '/a/b.txt' })
+    expect(onStep).toHaveBeenCalledTimes(1)
+    expect(onStep.mock.calls[0]![0]).toMatch(/^Read: /)
+  })
+
   it('carries the mode to the runtime', async () => {
     const tools = await cometNativeTools({ paths: vaultPaths(join(root, 'one')), channel: 'bot-1', mode: 'each', onStep: vi.fn(), audit: vi.fn() })
     expect(tools.mode).toBe('each')
