@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
+import { restoreBuild } from './build-cache.mjs'
 import { evidenceRound, outputTail, REVIEW_KINDS, runCommands, runRequests, shareEvidence, testsGate } from './evidence.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
@@ -83,7 +84,11 @@ async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null
   const name = label(item, attempt, kind)
   const cloud = isCloud(attempt.verifier)
   const worktree = cloud ? null : round?.worktree ?? join(ctx.worktrees, name)
-  if (worktree && !round) await freshDetached(ctx, worktree, attempt.headSha)
+  if (worktree && !round) {
+    await freshDetached(ctx, worktree, attempt.headSha)
+    // verify-cli reuses an existing build, so a cached one spares each verifier its own desktop build.
+    await restoreBuild(worktree)
+  }
   const verdictPath = verdictRel(item, attempt, kind)
   const results = worktree && kind === 'tests' ? await runChecks(ctx, worktree, loadBrief(ctx, item.id), name) : null
   const evidence = !worktree || !REVIEW_KINDS.includes(kind) ? null : round?.evidence ?? await shareEvidence(ctx, worktree, name, testsJob)

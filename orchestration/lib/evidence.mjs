@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { restoreBuild, saveBuild } from './build-cache.mjs'
 import { git, sh } from './runtime.mjs'
 
 // Spec and break judge runner-captured evidence; the sandboxed reviewer cannot launch Electron or e2e.
@@ -40,7 +41,7 @@ export function withoutBuild(cmd) {
   return parts.includes(DESKTOP_BUILD) ? parts.filter((p) => p !== DESKTOP_BUILD).join(' && ') : null
 }
 
-/** Runs commands in a worktree outside the sandbox, one log each; the desktop build runs once and a failed build fails every command needing it. */
+/** Runs commands in a worktree outside the sandbox, one log each; the desktop build runs once (or comes from the build cache) and a failed build fails every command needing it. */
 export async function runCommands(worktree, name, commands, timeoutMs, run = sh) {
   mkdirSync(join(worktree, 'orchestration/logs'), { recursive: true })
   const exec = async (id, cmd, env) => {
@@ -48,11 +49,24 @@ export async function runCommands(worktree, name, commands, timeoutMs, run = sh)
     const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, unset: hiddenUnset(cmd), timeoutMs })
     return { exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) }
   }
+  // A build cached for this tree is restored instead of rebuilt; a miss builds once and fills the cache.
+  const buildOnce = async () => {
+    const cached = await restoreBuild(worktree)
+    if (cached) {
+      const logPath = `orchestration/logs/${name}-desktop-build.log`
+      const tail = `desktop build restored from ${cached}`
+      writeFileSync(join(worktree, logPath), `${tail}\n`)
+      return { exit: 0, logPath, tail, screenshots: [] }
+    }
+    const built = await exec('desktop-build', DESKTOP_BUILD)
+    if (built.exit === 0) await saveBuild(worktree)
+    return built
+  }
   let build = null
   const results = []
   for (const { cmd, env, ...rest } of commands) {
     const after = withoutBuild(cmd)
-    if (after !== null) build ??= await exec('desktop-build', DESKTOP_BUILD)
+    if (after !== null) build ??= await buildOnce()
     const ran = after === null ? await exec(rest.id, cmd, env) : build.exit !== 0 || !after ? build : await exec(rest.id, after, env)
     results.push({ ...rest, cmd, ...ran })
   }
