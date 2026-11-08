@@ -8,6 +8,7 @@ let revision = 0
 let visible = false
 let registered = false
 let requestedLayout: unknown = []
+let place: typeof placeNativePages = placeNativePages
 
 export async function refreshNativeLayout(): Promise<void> { await layout(requestedLayout).catch(() => undefined) }
 
@@ -41,7 +42,7 @@ async function layout(requested: unknown): Promise<void> {
   const win = window
   if (!win || win.isDestroyed() || !win.isVisible() || win.isMinimized()) {
     visible = false
-    await placeNativePages([])
+    await place([])
     return
   }
   const [width = 0, height = 0] = win.getContentSize()
@@ -58,14 +59,16 @@ async function layout(requested: unknown): Promise<void> {
   }))
   if (generation !== revision) return
   visible = views.some(Boolean)
-  await placeNativePages(views.filter((view): view is NonNullable<typeof view> => view !== null))
+  await place(views.filter((view): view is NonNullable<typeof view> => view !== null))
 }
 
 export function attachNativeLayout(win: BrowserWindow): void {
   registerNativeLayout()
   window = win
   setNativeBrowserOwner(win)
-  const hide = () => { visible = false; ++revision; void placeNativePages([]).catch(() => undefined) }
+  // e2e seam: hidden runs cannot reach the native helper
+  if (process.defaultApp && process.env['ENGRAM_HIDDEN'] === '1') Object.assign(globalThis, { __engramNativePlacer: (next?: typeof placeNativePages) => { place = next ?? placeNativePages } })
+  const hide = () => { visible = false; ++revision; void place([]).catch(() => undefined) }
   win.on('hide', hide)
   win.on('minimize', hide)
   win.webContents.on('did-start-loading', hide)
