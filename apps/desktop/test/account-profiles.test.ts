@@ -99,3 +99,25 @@ it('keeps a defined but empty system config directory resolved to the default pa
     expect(accountEnvironment('codex', 'system')['CODEX_HOME']).toBe(join(homedir(), '.codex'))
   } finally { process.env = original }
 })
+
+it('leaves CODEX_HOME unset after switching from an added codex profile back to system and restarting', async () => {
+  const original = { ...process.env }
+  await mkdir(resolve('tmp'), { recursive: true })
+  const root = await mkdtemp(resolve('tmp/accounts-codex-unset-'))
+  try {
+    delete process.env['CLAUDE_CONFIG_DIR']
+    delete process.env['CODEX_HOME']
+    await initializeAccountProfiles(root)
+    const id = (await addAccountProfile('codex', 'Work')).profiles[0]!.id
+    await selectAccountProfile('codex', id)
+    expect(process.env['CODEX_HOME']).toBe(join(root, 'account-profiles', id))
+    await selectAccountProfile('codex', 'system')
+    expect('CODEX_HOME' in process.env).toBe(false)
+    await initializeAccountProfiles(root)
+    expect('CODEX_HOME' in process.env).toBe(false)
+    expect('CLAUDE_CONFIG_DIR' in process.env).toBe(false)
+    expect('CODEX_HOME' in accountEnvironment('codex', 'system')).toBe(false)
+    expect('CLAUDE_CONFIG_DIR' in accountEnvironment('claude', 'system')).toBe(false)
+    expect(accountEnvironment('codex', id)['CODEX_HOME']).toBe(join(root, 'account-profiles', id))
+  } finally { process.env = original }
+})
