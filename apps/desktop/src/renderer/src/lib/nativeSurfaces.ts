@@ -37,9 +37,11 @@ function scroll(event: Event): void {
   if (event.target === document || [...surfaces.keys()].some(element => event.target instanceof Element && event.target.contains(element))) schedule()
 }
 
+export const OVERLAY_SELECTOR = 'dialog[open], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status'
+
 function measure(): void {
   const result: NativeSurfaceDto[] = []
-  const overlays = [...document.querySelectorAll<HTMLElement>('dialog[open], [role="alertdialog"], [aria-modal="true"], [role="menu"], [role="dialog"], .brief-overlay, .sheet-overlay, .workspace-menu, .help-panel, .mission-add-menu, .tour-overlay, .computer-status')]
+  const overlays = [...document.querySelectorAll<HTMLElement>(OVERLAY_SELECTOR)]
   // Occlusion by another app is not a layout change. Native child windows
   // already follow their owner; unmounting them here flashes on task switching.
   for (const [element, lane] of surfaces) {

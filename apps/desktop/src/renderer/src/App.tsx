@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
 import { AppNotices } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
@@ -6,6 +6,7 @@ import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
+import { dismissSidebar, useSidebarEscape } from './lib/sidebarOverlay.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
 import { useCometState, useShellState } from './state-slices.js'
@@ -79,6 +80,8 @@ function Shell() {
   const [devLayout, setDevLayout] = useState<1 | 2 | 4>(1)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+  useSidebarEscape(sidebarOpen, closeSidebar)
   // "View in the cosmos" hands over the topic's member ids; the sky consumes
   // them on mount (same seed idiom as chatSeed) and spotlights those stars.
   const [skyFocus, setSkyFocus] = useState<{ ids: string[] } | null>(null)
@@ -267,7 +270,7 @@ function Shell() {
         selectedRoutineId={selectedRoutineId}
         onSelectRoutine={setSelectedRoutineId}
       />
-      {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => dismissSidebar(closeSidebar)} />}
       <main className="app-main">
         <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
         <AppNotices
