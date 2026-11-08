@@ -31,6 +31,9 @@ test.beforeAll(async () => {
       at: STAMP,
     })
   }
+  const weekly = await createBot(paths, { name: '주간회의' })
+  bots.push(weekly)
+  for (const [role, text] of [['user', '법무팀 검토 일정 잡아 주세요'], ['assistant', '11/16 오전으로 잡았습니다.'], ['user', 'Thanks.'], ['assistant', 'Done.']] as const) await appendBotTurn(paths, weekly.id, { role, text, at: STAMP })
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
     ...process.env, ENGRAM_VAULT: root,
     ENGRAM_USERDATA: await mkdtemp(join(TMP, 'e2e-conversation-sidebar-userdata-')),
@@ -234,6 +237,21 @@ test('search finds long titles and previews inside collapsed folders without cha
   await page.getByRole('button', { name: 'Clear search', exact: true }).click()
   await expect(first).not.toBeVisible()
   expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
+})
+
+test('search finds words that appear only in earlier message bodies', async () => {
+  const weekly = bots.at(-1)!
+  const row = page.getByTestId(`bot-${weekly.id}`)
+  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
+  for (const query of ['법무팀', '11/16', '주간회의']) {
+    await input.fill(query)
+    await expect(row).toBeVisible()
+    await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
+  }
+  await input.fill('존재하지않는단어')
+  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+  await expect(row).toBeVisible()
 })
 
 test('sidebar fits light, dark and narrow layouts with captured examples', async () => {
