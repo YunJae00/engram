@@ -97,7 +97,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const pinned = new Set(layout?.chat.items.filter(item => item.pinned).map(item => item.id) ?? [])
   const recent = (bot: BotDto) => Date.now() - Date.parse(bot.lastMessage?.at ?? bot.createdAt) < DAY_MS || bot.id === selectedId || pinned.has(bot.id) || waiting.has(bot.id) || activityOf(bot) !== 'ready'
   const earlier = bots.filter(bot => !recent(bot)).length
-  const matchingBots = search ? bots.filter(bot => `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search)) : showEarlier ? bots : bots.filter(recent)
+  const matchingBots = search ? bots.filter(bot => bot.id === selectedId || `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search)) : showEarlier ? bots : bots.filter(recent)
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
   const matchingRoutines = search ? routines.filter(routine => routine.name.toLocaleLowerCase().includes(search)) : routines
