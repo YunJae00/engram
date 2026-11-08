@@ -124,17 +124,26 @@ describe('verifier timebox in the loop', () => {
     expect(remote.launches).toHaveLength(4)
   })
 
-  it('ends the attempt as invalid when its branch is gone, then bounces the item', async () => {
+  it('verifies the recorded commit when the branch is gone', async () => {
+    remote.missing.add('origin/orch/x-1')
+    const item = ledgerItem(attempt())
+    await verifyAttempt(ctx, { batch: 'b', items: [item] }, item, item.attempts[0])
+    expect(item.attempts[0].headSha).toBe(head)
+    expect(item.attempts[0].outcome).toBeUndefined()
+    expect(remote.launches.map((l) => l.label)).toEqual(['x-1-tests', 'x-1-spec', 'x-1-break'])
+  })
+
+  it('ends the attempt as invalid when neither the branch nor its commit resolves, then bounces the item', async () => {
     const item = ledgerItem(attempt())
     const ledger = { batch: 'b', items: [item] }
     await verifyAttempt(ctx, ledger, item, item.attempts[0])
     expect(Object.keys(loadJobs(ctx))).toHaveLength(3)
 
-    remote.missing.add('origin/orch/x-1')
+    remote.missing.add('origin/orch/x-1').add(head)
     await verifyAttempt(ctx, ledger, item, item.attempts[0])
     expect(item.attempts[0].outcome).toBe('invalid')
     expect(loadJobs(ctx)).toEqual({})
-    expect(decisions()).toMatch(/attempt 1 invalid\tbranch missing: origin\/orch\/x-1/)
+    expect(decisions()).toMatch(/attempt 1 invalid\tbranch is gone/)
     await settle(ctx, ledger, item)
     expect(item.bounces).toBe(1)
   })

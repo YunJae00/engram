@@ -151,14 +151,15 @@ async function resetJobs(ctx, item, attempt, jobs) {
 
 export async function verifyAttempt(ctx, ledger, item, attempt) {
   const ref = attemptRef(ctx, attempt)
-  const fetched = !isCloud(attempt.implementer) || (await fetchBranch(ctx.opts, attempt.branch).then(() => true, () => false))
-  const tip = fetched ? await tipSha(ctx.opts, ref) : null
+  if (isCloud(attempt.implementer)) await fetchBranch(ctx.opts, attempt.branch).catch(() => {})
+  // Cleanup may delete the branch while the attempt is in flight; the recorded commit still stands for it.
+  const tip = (await tipSha(ctx.opts, ref)) ?? (attempt.headSha && (await tipSha(ctx.opts, attempt.headSha)))
   const jobs = loadJobs(ctx)
   if (!tip) {
     await resetJobs(ctx, item, attempt, jobs)
     saveJobs(ctx, jobs)
     await finish(ctx, attempt, 'invalid')
-    note(ctx, item.id, 'verify', `attempt ${attempt.n} invalid`, `branch missing: ${ref}`, attempt.branch)
+    note(ctx, item.id, 'verify', `attempt ${attempt.n} invalid`, `branch is gone and ${attempt.headSha} does not resolve`, ref)
     return save(ctx, ledger)
   }
   if (tip !== attempt.headSha) {
