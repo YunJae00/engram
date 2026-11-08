@@ -23,6 +23,8 @@
 .preview-card-stale { margin-left: auto; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-badge); }
 .preview-card-actions { position: absolute; top: var(--space-2); right: var(--space-2); display: flex; gap: var(--space-1); opacity: 0; color: inherit; }
 .preview-card:hover .preview-card-actions, .preview-card:focus-within .preview-card-actions { opacity: 1; }
+/* Activity cards have no picture to keep clear, and they float over the thread, so the close controls stay reachable without hover. */
+.preview-card-stage[data-phase="activity"] .preview-card-actions { opacity: 1; }
 .preview-card-actions button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: 999px; background: color-mix(in srgb, black 45%, transparent); color: inherit; cursor: pointer; }
 .preview-card-caption, .preview-card-actions { color: #fff; }
 .preview-card-actions button:focus-visible, .preview-card-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
