@@ -49,7 +49,7 @@ export function Onboarding() {
     finally { if (at === revision.current) setLoading(false) }
   }
   useEffect(() => {
-    void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError('Could not find your default folder. Choose a folder below.'))
+    void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError('Could not suggest a folder. Choose one to continue.'))
     void loadBrains()
     void refreshAccountUsage(true).catch(() => undefined)
     void api.activityGet().then(activity => setSources(held => ({ ...held, activity }))).catch(() => undefined)
@@ -94,13 +94,13 @@ export function Onboarding() {
   return <div className="onboarding" data-testid="onboarding"><div className="onboard-card">
     <div className="onboard-progress" aria-label={`Step ${step} of 3`}><strong>Engram</strong><span>{step} / 3</span></div>
     {step === 1 ? <section data-testid="onboard-step-1">
-      <h1>Choose your workspace</h1>
+      <h1>Choose a workspace folder</h1>
       <div className="onboard-folder">
         <div className="onboard-folder-path">
         <Folder size={18} aria-hidden />
-        <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Workspace folder" onChange={event => setRoot(event.target.value)} />
+        <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Folder path" onChange={event => setRoot(event.target.value)} />
         </div>
-        <button className="secondary" aria-label="Choose workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker.'))}>Choose…</button>
+        <button className="secondary" aria-label="Browse for workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker. Type a path instead.'))}>Browse…</button>
       </div>
       <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
     </section> : step === 2 ? <section className="onboard-ai" data-testid="onboard-step-2">
