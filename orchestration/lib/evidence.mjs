@@ -41,6 +41,23 @@ export function withoutBuild(cmd) {
   return parts.includes(DESKTOP_BUILD) ? parts.filter((p) => p !== DESKTOP_BUILD).join(' && ') : null
 }
 
+// `pnpm --filter <pkg> exec vitest run <path>` runs in the package dir, where the root vitest projects
+// (whose includes are repo-relative) match no file; rewrite it to the root `unit` project with repo-relative paths.
+const WORKSPACE_DIRS = { desktop: 'apps/desktop', core: 'packages/core' }
+const FILTERED_VITEST = /^pnpm\s+(?:--filter[=\s]|-F\s*)(\S+)\s+exec\s+vitest\s+run(?=\s|$)(.*)$/
+export function rootVitest(cmd) {
+  return cmd.split('&&').map((part) => {
+    const m = FILTERED_VITEST.exec(part.trim())
+    const dir = m && WORKSPACE_DIRS[m[1].replace(/^@engram\//, '')]
+    if (!dir || /(?:^|\s)--project\b/.test(m[2])) return part
+    const args = m[2].trim().split(/\s+/).filter(Boolean)
+    const paths = args.map((a) => (!a.startsWith('-') && a.includes('/') ? `${dir}/${a.replace(/^\.\//, '')}` : a))
+    const lead = part.match(/^\s*/)[0]
+    const tail = part.match(/\s*$/)[0]
+    return `${lead}pnpm exec vitest run --project unit ${(args.some((a) => !a.startsWith('-')) ? paths : [dir, ...paths]).join(' ')}${tail}`
+  }).join('&&')
+}
+
 /** Runs commands in a worktree outside the sandbox, one log each; the desktop build runs once (or comes from the build cache) and a failed build fails every command needing it. */
 export async function runCommands(worktree, name, commands, timeoutMs, run = sh) {
   mkdirSync(join(worktree, 'orchestration/logs'), { recursive: true })
@@ -64,7 +81,8 @@ export async function runCommands(worktree, name, commands, timeoutMs, run = sh)
   }
   let build = null
   const results = []
-  for (const { cmd, env, ...rest } of commands) {
+  for (const { cmd: asWritten, env, ...rest } of commands) {
+    const cmd = rootVitest(asWritten)
     const after = withoutBuild(cmd)
     if (after !== null) build ??= await buildOnce()
     const ran = after === null ? await exec(rest.id, cmd, env) : build.exit !== 0 || !after ? build : await exec(rest.id, after, env)

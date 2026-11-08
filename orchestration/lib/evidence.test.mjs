@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { checkVerdict } from './aggregate.mjs'
-import { DESKTOP_BUILD, evidenceRound, hiddenUnset, MAX_REQUESTS, runCommands, runRequests, sandboxOnlyCannotVerify, shareEvidence, testsGate, withoutBuild } from './evidence.mjs'
+import { DESKTOP_BUILD, evidenceRound, hiddenUnset, MAX_REQUESTS, rootVitest, runCommands, runRequests, sandboxOnlyCannotVerify, shareEvidence, testsGate, withoutBuild } from './evidence.mjs'
 import { verifierPrompt } from './prompt.mjs'
 
 const sha = 'a'.repeat(40)
@@ -43,6 +43,37 @@ describe('verdict evidence requests', () => {
     expect(sandboxOnlyCannotVerify(sandbox('criterion c1 is not covered by the diff'))).toBe(false)
     expect(sandboxOnlyCannotVerify({ ...sandbox('EPERM'), findings: [{ file: 'a', line: 1, claim: 'c', reproCmd: 'r' }] })).toBe(false)
     expect(sandboxOnlyCannotVerify({ ...sandbox('EPERM'), verdict: 'fail' })).toBe(false)
+  })
+})
+
+describe('package-filtered vitest commands', () => {
+  it('rewrites them to the root unit project with repo-relative paths', () => {
+    expect(rootVitest('pnpm --filter desktop exec vitest run test/markdown.test.ts && pnpm --filter @engram/core exec vitest run test/prose.test.ts'))
+      .toBe('pnpm exec vitest run --project unit apps/desktop/test/markdown.test.ts && pnpm exec vitest run --project unit packages/core/test/prose.test.ts')
+    expect(rootVitest('pnpm -F core exec vitest run ./test/a.test.ts -t name')).toBe('pnpm exec vitest run --project unit packages/core/test/a.test.ts -t name')
+    expect(rootVitest('pnpm --filter=desktop exec vitest run')).toBe('pnpm exec vitest run --project unit apps/desktop')
+  })
+
+  it('leaves other commands as written', () => {
+    for (const cmd of [
+      'pnpm exec vitest run --project unit apps/desktop/test/markdown.test.ts',
+      'pnpm --filter desktop exec vitest run --project unit test/a.test.ts',
+      'pnpm --filter unknown exec vitest run test/a.test.ts',
+      'pnpm --filter desktop build && cd apps/desktop && npx playwright test e2e/x.spec.ts --reporter=line',
+    ]) expect(rootVitest(cmd)).toBe(cmd)
+  })
+
+  it('runs and reports the rewritten command', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orch-vitest-'))
+    try {
+      const calls = []
+      const run = async (cwd, cmd, args) => { calls.push(args[1]); return { code: 0, out: '' } }
+      const [r] = await runCommands(dir, 'x', [{ id: 'unit-3', cmd: 'pnpm --filter desktop exec vitest run test/markdown.test.ts' }], 1000, run)
+      expect(calls).toEqual(['pnpm exec vitest run --project unit apps/desktop/test/markdown.test.ts'])
+      expect(r.cmd).toBe(calls[0])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
