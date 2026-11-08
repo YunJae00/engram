@@ -24,7 +24,7 @@ vi.mock('../src/main/desktop-host.js', () => ({
     revoke(reason = 'Mouse input returned control to the user') { this.changed(reason) }
   },
 }))
-import { rememberLaunchedApp, rememberHiddenApp, refreshHiddenApp, showDesktopApp, releaseDesktop, rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
+import { rememberLaunchedApp, rememberHiddenApp, refreshHiddenApp, showDesktopApp, releaseDesktop, rememberOpenedForeground, bindDesktopForLane, chooseDesktop, closeDesktopAccess, desktopBinding, desktopBindings, desktopVisible, desktopWindows, keptOut, setDesktopAppsOff, setDesktopLaneWorking, setDesktopOwner, setDesktopReadAccess, setDesktopReleaseHook, closeCatalogHost } from '../src/main/desktop-access.js'
 
 const lane = 'bot-one'
 const other = 'bot-two'
@@ -305,4 +305,22 @@ it('excludes offscreen browser windows when their pid is unknown', async () => {
   fake.windows.push({ window: '110', pid: 300, title: 'YouTube - Google Chrome', minimized: false, bounds: { x: -4000 } })
   expect(await desktopWindows()).toHaveLength(3)
   await expect(bindDesktopForLane(lane, { app: 'YouTube' })).rejects.toThrow('No open window matches')
+})
+
+it('reports the minimized owner window as not visible and restores visibility', () => {
+  const listeners = new Map<string, () => void>()
+  let minimized = false
+  setDesktopOwner({
+    on: (name: string, listener: () => void) => listeners.set(name, listener),
+    isDestroyed: () => false, isVisible: () => true, isMinimized: () => minimized, webContents: { on: vi.fn() },
+  } as unknown as BrowserWindow)
+  expect(desktopVisible()).toBe(true)
+  minimized = true
+  listeners.get('minimize')!()
+  expect(fake.changed).toHaveBeenLastCalledWith({ type: 'desktop:visibility', visible: false })
+  expect(desktopVisible()).toBe(false)
+  minimized = false
+  listeners.get('restore')!()
+  expect(fake.changed).toHaveBeenLastCalledWith({ type: 'desktop:visibility', visible: true })
+  expect(desktopVisible()).toBe(true)
 })

@@ -8,7 +8,7 @@ type IpcHandler = (event: { sender: Sender; senderFrame: object }, ...args: unkn
 
 const deps = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(), captureHandler: undefined as CaptureHandler | undefined,
-  owner: undefined as { webContents: Sender } | undefined, visible: true,
+  owner: undefined as { webContents: Sender } | undefined, visible: true, minimized: false,
   bindings: [] as { lane: string; source: string; name: string; readable: boolean }[],
   flog: vi.fn(), media: vi.fn(), capture: vi.fn(), read: vi.fn(), start: vi.fn(), stop: vi.fn(),
 }))
@@ -20,7 +20,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => true } }))
 vi.mock('../src/main/desktop-access.js', () => ({
-  captureSource: deps.capture, desktopOwner: () => deps.owner, desktopVisible: () => deps.visible,
+  captureSource: deps.capture, desktopOwner: () => deps.owner, desktopVisible: () => deps.visible && !deps.minimized,
   desktopBindings: () => deps.bindings, desktopWindows: async () => [],
   showDesktopApp: vi.fn(), chooseDesktop: vi.fn(), releaseDesktop: vi.fn(), setDesktopReadAccess: vi.fn(),
 }))
@@ -63,6 +63,7 @@ beforeEach(async () => {
   sender = { id: 1, mainFrame: {}, isDestroyed: vi.fn(() => false) }
   deps.owner = { webContents: sender }
   deps.visible = true
+  deps.minimized = false
   deps.bindings = [{ lane, source: source.id, name: source.name, readable: false }]
   deps.capture.mockReset().mockResolvedValue(source)
   deps.read.mockReset().mockResolvedValue({ snapshot: 's' })
@@ -268,4 +269,13 @@ it('records stream events and capture denial reasons', async () => {
   const callback = capture(); await flush()
   expect(callback).toHaveBeenCalledWith(null)
   expect(deps.flog.mock.calls.some(([, data]) => JSON.parse(data).reason === 'Window inspection failed')).toBe(true)
+})
+
+it('refuses window views while the owner window is minimized and allows them after restore', () => {
+  deps.minimized = true
+  expect(call('desktop:visible')).toBe(false)
+  expect(() => prepare()).toThrow('Show Engram before starting a window view.')
+  deps.minimized = false
+  expect(call('desktop:visible')).toBe(true)
+  expect(prepare()).toEqual(expect.any(String))
 })
