@@ -3,7 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
   briefScenarios, bumpVersion, deadlineAt, forEachItem, designLocations, designPath, findDesign, globToRegExp, integrationScenarios, machineCheck, needsRedesign,
-  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, smallFailure, suggestBump, verifyDecision, verifierKindsFor,
+  nextRevert, pickDesign, plannedAttempts, rejectedDesignPath, roundOutcome, scheduleAttempts, smallFailure, suggestBump, verifyDecision, verifierKindsFor,
 } from './loop.mjs'
 import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
@@ -58,6 +58,30 @@ describe('bounce ladder', () => {
     expect(smallFailure(failed(['tests']), read)).toBe(true)
     expect(smallFailure(failed(['tests', 'spec']), read)).toBe(false)
     expect(smallFailure({ attempts: [{ n: 1, outcome: 'invalid' }], verdicts: [] }, read)).toBe(false)
+  })
+})
+
+describe('slot scheduling', () => {
+  const local = (who) => ({ implementer: who, verifier: 'codex-local' })
+  const cloud = (agent) => agent.endsWith('-cloud')
+  const hardBounced = () => plannedAttempts(item({ bounces: 1 }), roles, true)
+
+  it('gives two briefed hard items one implementer each before any parallel attempt', () => {
+    expect(scheduleAttempts([hardBounced(), hardBounced()], 2, cloud)).toEqual([[hardBounced()[0]], [hardBounced()[0]]])
+  })
+
+  it('lets a lone hard bounced item fill an idle slot with a second attempt', () => {
+    expect(scheduleAttempts([hardBounced()], 2, cloud)).toEqual([hardBounced()])
+    expect(scheduleAttempts([hardBounced()], 1, cloud)).toEqual([[hardBounced()[0]]])
+  })
+
+  it('withholds the second attempt while another item waits for a slot', () => {
+    const picks = scheduleAttempts([hardBounced(), [local('codex-local')], [local('claude-local')]], 2, cloud)
+    expect(picks).toEqual([[hardBounced()[0]], [local('codex-local')], []])
+  })
+
+  it('does not count cloud implementers against local slots', () => {
+    expect(scheduleAttempts([[local('codex-cloud')], [local('claude-local')]], 1, cloud)).toEqual([[local('codex-cloud')], [local('claude-local')]])
   })
 })
 

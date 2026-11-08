@@ -5,7 +5,7 @@ import { readTokens } from './launch-local.mjs'
 import { isHard, transition } from './ledger.mjs'
 import {
   deadlineAt, designLocations, designPath, findDesign, lineage, machineCheck, needsRedesign, pickDesign, plannedAttempts,
-  rejectedDesignPath, smallFailure,
+  rejectedDesignPath, scheduleAttempts, smallFailure,
 } from './loop.mjs'
 import { runnable } from './overlap.mjs'
 import { alive } from './procs.mjs'
@@ -37,13 +37,17 @@ export function promote(ctx, ledger) {
 }
 
 export async function startBriefed(ctx, ledger) {
+  const queue = []
   for (const id of runnable(ledger.items)) {
     const item = ledger.items.find((i) => i.id === id)
     const brief = loadBrief(ctx, id)
     const hard = isHard({ ...item, repeat: brief.repeat }, ctx.roles)
     if (hard && !brief.design) await startDesign(ctx, ledger, item)
-    else await startImplement(ctx, ledger, item, brief, hard)
+    else queue.push({ item, brief, hard, plan: plannedAttempts(item, ctx.roles, hard, smallFailure(item, (path) => readJsonOrNull(join(ctx.root, path)))) })
   }
+  const free = ctx.dryRun ? ctx.roles.maxLocalAgents : ctx.sem.free()
+  const picks = scheduleAttempts(queue.map((q) => q.plan), free, isCloud)
+  for (const [i, q] of queue.entries()) await startImplement(ctx, ledger, q, picks[i])
 }
 
 async function startDesign(ctx, ledger, item) {
@@ -202,22 +206,20 @@ async function launchImplementer(ctx, ledger, item, brief, step, relaunch = null
   }
 }
 
-async function startImplement(ctx, ledger, item, brief, hard) {
-  const plan = plannedAttempts(item, ctx.roles, hard, smallFailure(item, (path) => readJsonOrNull(join(ctx.root, path))))
+async function startImplement(ctx, ledger, { item, brief, hard, plan }, steps) {
   if (plan.length === 0) {
     item.reason = 'ladder exhausted'
     transition(item, 'needs_human')
     note(ctx, item.id, 'implement', 'needs_human', item.reason)
     return save(ctx, ledger)
   }
-  const local = plan.filter((step) => !isCloud(step.implementer)).length
   if (ctx.dryRun) {
-    return ctx.log(`dry-run ${item.id}: would launch ${plan.map((s) => `${s.implementer} (verifier ${s.verifier})`).join(' and ')} on rung ${item.bounces}`)
+    return ctx.log(`dry-run ${item.id}: would launch ${steps.map((s) => `${s.implementer} (verifier ${s.verifier})`).join(' and ') || 'nothing (no free local slot)'} on rung ${item.bounces}`)
   }
-  if (local > ctx.sem.free()) return ctx.log(`${item.id}: waiting for ${local} local slot(s)`)
-  for (const step of plan) await launchImplementer(ctx, ledger, item, brief, step)
+  if (steps.length === 0) return ctx.log(`${item.id}: waiting for a local slot`)
+  for (const step of steps) await launchImplementer(ctx, ledger, item, brief, step)
   transition(item, 'implementing')
-  note(ctx, item.id, 'implement', 'implementing', hard && plan.length > 1 ? `hard item after a FAIL: ${plan.map((s) => s.implementer).join(' and ')} reimplement at once` : `rung ${item.bounces}`)
+  note(ctx, item.id, 'implement', 'implementing', hard && steps.length > 1 ? `hard item after a FAIL with an idle slot: ${steps.map((s) => s.implementer).join(' and ')} reimplement at once` : `rung ${item.bounces}`)
   save(ctx, ledger)
 }
 

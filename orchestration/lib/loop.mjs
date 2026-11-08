@@ -65,10 +65,26 @@ export function plannedAttempts(item, roles, hard, small = false) {
   const claude = lineage(base.implementer) === 'claude'
     ? base.implementer
     : (roles.ladder[item.area].find((r) => lineage(r.implementer) === 'claude')?.implementer ?? 'claude-local')
-  return [
-    { implementer: claude, verifier: base.verifier },
-    { implementer: base.implementer, verifier: base.verifier },
-  ]
+  return [base, { implementer: claude, verifier: base.verifier }]
+}
+
+// One implementer per item first, in ledger order; a second parallel attempt only takes a slot no first attempt is waiting for.
+export function scheduleAttempts(plans, free, cloud) {
+  const picks = plans.map(() => [])
+  let waiting = false
+  const take = (i, step) => {
+    if (cloud(step.implementer)) picks[i].push(step)
+    else if (free > 0) {
+      picks[i].push(step)
+      free--
+    } else return false
+    return true
+  }
+  plans.forEach((plan, i) => {
+    if (plan[0] && !take(i, plan[0])) waiting = true
+  })
+  if (!waiting) plans.forEach((plan, i) => plan[1] && picks[i].length && take(i, plan[1]))
+  return picks
 }
 
 export function roundOutcome(attempts) {
