@@ -92,6 +92,22 @@ describe('answerHtml', () => {
     expect(answerHtml('~~취소된 일정~~')).toContain('<del>취소된 일정</del>')
     expect(answerHtml('~~~\nconst a = 1\n~~~')).not.toContain('<del>')
   })
+  it('closes bold after punctuation when a Korean particle follows', () => {
+    const two = answerHtml('**받은 편지함(inbox)**과 **보낸 편지함(sent)**을 요약')
+    expect(two.match(/<strong>/g)).toHaveLength(2)
+    expect(two).toContain('<strong>받은 편지함(inbox)</strong>과')
+    expect(two).not.toContain('**')
+    const quoted = answerHtml('**"시스템 설정 → 손쉬운 사용"**에서 허용')
+    expect(quoted).toContain('<strong>&quot;시스템 설정 → 손쉬운 사용&quot;</strong>에서')
+    expect(quoted).not.toContain('**')
+    expect(answerHtml('`**a)**과`')).toContain('<code>**a)**과</code>')
+    expect(answerHtml('```\n**a)**과\n```')).toContain('**a)**과')
+    expect(answerHtml('**bold**, text')).toBe('<p><strong>bold</strong>, text</p>\n')
+    expect(answerHtml('\\*\\*a)\\*\\*과')).toBe('<p>**a)**과</p>\n')
+    const partly = answerHtml('**a)\\**과')
+    expect(partly).not.toContain('<em>')
+    expect(partly).not.toContain('<strong>')
+  })
 })
 
 describe('found items and suggested replies', () => {

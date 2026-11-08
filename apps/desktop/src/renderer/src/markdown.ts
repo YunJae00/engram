@@ -40,7 +40,14 @@ class DoubleTildeTokenizer extends marked.Tokenizer {
     const token = super.del(src)
     return token?.raw.startsWith('~~') ? token : undefined
   }
+
+  // CommonMark will not close `**(inbox)**과`: after punctuation, a closing run
+  // must be followed by space or punctuation, and Korean particles attach directly.
+  override emStrong(src: string, maskedSrc: string, prevChar?: string): Tokens.Em | Tokens.Strong | undefined {
+    return super.emStrong(src, maskedSrc.replace(PARTICLE_AFTER_CLOSER, '$1.'), prevChar)
+  }
 }
+const PARTICLE_AFTER_CLOSER = /([^\s*\p{L}\p{N}]\*{2,})\p{Script=Hangul}/gu
 export const markdownTokenizer = (): InstanceType<typeof marked.Tokenizer> => new DoubleTildeTokenizer()
 
 export function memorySources(text: string): { url: string; label: string }[] {

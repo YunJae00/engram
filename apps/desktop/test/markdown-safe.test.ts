@@ -74,3 +74,11 @@ it('keeps single tildes in ranges literal and still strikes through double tilde
   expect(mixed).toContain('11/17~11/20, 2~3개')
   expect(html('~~취소된 일정~~')).toContain('<del>취소된 일정</del>')
 })
+
+it('closes bold after punctuation when a Korean particle follows', () => {
+  const html = (text: string) => renderToStaticMarkup(createElement('div', null, renderMarkdown(text)))
+  const two = html('**받은 편지함(inbox)**과 **보낸 편지함(sent)**을 요약')
+  expect(two.match(/<strong>/g)).toHaveLength(2)
+  expect(two).not.toContain('**')
+  expect(html('`**a)**과`')).toContain('<code>**a)**과</code>')
+})
