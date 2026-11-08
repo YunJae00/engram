@@ -29,9 +29,14 @@ test('Office activity events show a localized card without an image', async () =
     await expect(card.locator('.preview-card-caption')).toHaveText('Outlook · 메일 확인')
     await expect(card.locator('.preview-card-state')).toHaveText('창 없이 Office에서 읽는 중')
     await expect(card.locator('img, canvas')).toHaveCount(0)
-    await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
-    await expect(card).toBeVisible()
-    await expect(card.locator('img, canvas')).toHaveCount(0)
+    await app.evaluate(({ BrowserWindow }, lane) => {
+      const send = (event: unknown) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', event)
+      send({ type: 'comet:working', channel: lane, working: false })
+      send({ type: 'chat:done', channel: lane })
+    }, lane)
+    await expect(card).toHaveCount(0, { timeout: 2000 })
+    await page.waitForTimeout(5000)
+    await expect(card).toHaveCount(0)
   } finally { await closeTestApp(app) }
 })
 
@@ -56,6 +61,7 @@ test('Office activity card can be closed without hover so it stops covering the 
     await expect(thread.locator('.bubble-msg')).not.toHaveCount(0)
     expect(await thread.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true)
     await app.evaluate(({ BrowserWindow }, lane) => {
+      BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: true })
       BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'desktop:preview', frames: [{ id: `office:${lane}`, lane, title: 'Outlook', activity: 'Checking your mail', captureState: 'activity', current: true, at: Date.now() }] })
     }, lane)
     const card = page.getByTestId('preview-card')

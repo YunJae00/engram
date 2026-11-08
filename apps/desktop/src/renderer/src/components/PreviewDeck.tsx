@@ -22,11 +22,12 @@ export function previewNeighbor(frames: PreviewFrame[], id: string, direction: n
 export function previewAppVisible(frame: PreviewFrame | undefined, view: { hidden: boolean; collapsed: boolean }): boolean {
   return frame?.source === 'app' && frame.phase !== 'activity' && !view.hidden && !view.collapsed
 }
-export function PreviewDeck({ frames, busy, state, lang, lane, compact, onOpenWeb, active = true, overlay = false }: {
+export function PreviewDeck({ frames: all, busy, state, lang, lane, compact, onOpenWeb, active = true, overlay = false }: {
   frames: PreviewFrame[]; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
   lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean; overlay?: boolean
 }) {
   const presence = useId()
+  const frames = busy ? all : all.filter(frame => frame.phase !== 'activity')
   const words = threadWords(lang).workPreview
   const { attention } = useWebPane(lane)
   const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: false, hidden: false })

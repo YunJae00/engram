@@ -173,7 +173,7 @@ it.each([
   }
 })
 
-it('publishes an Office activity DTO without a binding or capture and retains it after completion', async () => {
+it.each(['chat:done', 'chat:error'])('publishes an Office activity DTO without a binding or capture and removes it on %s', async type => {
   const { officeWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
   const finish = officeWorkPreview('mail-lane', 'outlook.mail')
   expect(workPreviews('mail-lane')).toEqual([{ id: 'office:mail-lane', lane: 'mail-lane', title: 'Outlook', activity: 'Checking your mail', captureState: 'activity', current: true, at: expect.any(Number) }])
@@ -182,8 +182,17 @@ it('publishes an Office activity DTO without a binding or capture and retains it
   finish()
   expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
   officeWorkPreview('mail-lane', 'outlook.calendar')
-  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: 'mail-lane' })
-  expect(workPreviews('mail-lane')[0]).toMatchObject({ captureState: 'activity', current: false })
+  officeWorkPreview('other-lane', 'excel.read')
+  fake.tap.mock.calls[0]![0]({ type, channel: 'mail-lane' })
+  expect(workPreviews('mail-lane')).toEqual([])
+  expect(workPreviews('other-lane')[0]).toMatchObject({ captureState: 'activity', current: true })
+  expect(fake.send).toHaveBeenLastCalledWith('engram:event', { type: 'desktop:preview', frames: [expect.objectContaining({ id: 'office:other-lane' })] })
+})
+it('keeps an app frame with data as delayed after chat:done', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const held = binding(1); showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
+  fake.tap.mock.calls[0]![0]({ type: 'chat:done', channel: held.lane })
+  expect(workPreviews(held.lane)[0]).toMatchObject({ captureState: 'delayed', current: false, data: expect.any(String) })
 })
 
 it('protects every attempt until the lane has its first frame', async () => {

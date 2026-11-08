@@ -110,9 +110,10 @@ function hookPreviewEvents(): void {
       if ((event.type === 'chat:done' || event.type === 'chat:error') && event.channel) {
         active.delete(event.channel); preemptions.delete(event.channel)
         for (const [id, frame] of entries) if (frame.lane === event.channel) {
+          if (frame.captureState === 'activity') { remove(id); continue }
           if (!visible.has(event.channel)) { clearTimeout(deferred.get(id)); deferred.delete(id) }
           frame.current = false
-          if (frame.captureState !== 'unavailable' && frame.captureState !== 'activity') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
+          if (frame.captureState !== 'unavailable') frame.captureState = frame.data ? 'delayed' : 'no-snapshot'
         }
         publish()
       }
