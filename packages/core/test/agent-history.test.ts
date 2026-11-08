@@ -32,3 +32,37 @@ it('retains a verified URL and total beyond the former assistant cutoff', () => 
 it('keeps the observation time in conversation history', () => {
   expect(conversation([{ role: 'user', text: 'Read Claude', at: '2026-11-02T10:28:08.000Z' }]).join('\n')).toContain('[2026-11-02 10:28Z] User: Read Claude')
 })
+
+const invented = '다음 회의 날짜는 11월 14일이야'
+const asked = `메모에 기한이 없어요.\n\n다음 회의 날짜를 알고 계신가요?\n\n\`\`\`replies\n${invented}\n기한 아직 모름\n\`\`\``
+
+it('leaves suggested replies out of recent assistant turns', () => {
+  const text = conversation([{ role: 'user', text: '기한도 같이 넣어줘' }, { role: 'assistant', text: asked }]).join('\n')
+  expect(text).toContain('다음 회의 날짜를 알고 계신가요?')
+  expect(text).not.toContain('```replies')
+  expect(text).not.toContain('11월 14일')
+})
+
+it('leaves suggested replies out of earlier assistant turns', () => {
+  const long = 'x'.repeat(15_000)
+  const history = [
+    { role: 'user' as const, text: '기한도 같이 넣어줘' },
+    { role: 'assistant' as const, text: asked },
+    ...Array.from({ length: 5 }, (_, at) => ({ role: (at % 2 ? 'assistant' : 'user') as 'user' | 'assistant', text: `${at} ${long}` })),
+  ]
+  const text = conversation(history).join('\n')
+  expect(text).toContain('Earlier requests in this conversation')
+  expect(text).toContain('다음 회의 날짜를 알고 계신가요?')
+  expect(text).not.toContain('```replies')
+  expect(text).not.toContain('11월 14일')
+})
+
+it('strips an unclosed replies block', () => {
+  const text = conversation([{ role: 'assistant', text: `정리했어요.\n\`\`\`replies\n${invented}` }]).join('\n')
+  expect(text).toContain('You: 정리했어요.')
+  expect(text).not.toContain('11월 14일')
+})
+
+it('keeps a clicked chip as the person\'s own words', () => {
+  expect(conversation([{ role: 'user', text: invented }]).join('\n')).toContain(`User: ${invented}`)
+})

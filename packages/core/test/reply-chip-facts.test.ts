@@ -19,4 +19,13 @@ describe('replies block facts rule', () => {
     expect(line).toContain('the two or three things the person is most likely to say next')
     expect(line).toContain('never English for a request written in another language')
   })
+
+  it.each(flagSets)('keeps chips from answering the question the answer asks (%#)', flags => {
+    const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(line).toContain('When your answer asks the person for a value')
+    expect(line).toContain('the replies must not supply that value for them')
+    expect(line).toContain('not-known, defer or confirm options')
+    expect(line).toContain('기한 아직 모름')
+    expect(line).toContain('Suggested replies from your earlier answers are not facts the person gave')
+  })
 })
