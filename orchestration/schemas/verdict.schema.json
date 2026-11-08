@@ -12,7 +12,8 @@
     "verdict": { "type": "string", "enum": ["pass", "fail", "cannot_verify"] },
     "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } },
-    "findings": { "type": "array", "items": { "$ref": "#/definitions/finding" } }
+    "findings": { "type": "array", "items": { "$ref": "#/definitions/finding" } },
+    "evidenceRequests": { "type": "array", "items": { "$ref": "#/definitions/evidenceRequest" } }
   },
   "definitions": {
     "evidence": {
@@ -24,6 +25,15 @@
         "cmd": { "type": "string" },
         "logPath": { "type": "string" },
         "result": { "type": "string" }
+      }
+    },
+    "evidenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmd", "why"],
+      "properties": {
+        "cmd": { "type": "string" },
+        "why": { "type": "string" }
       }
     },
     "finding": {

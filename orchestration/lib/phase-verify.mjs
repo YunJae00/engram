@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
+import { evidenceRound, outputTail, REVIEW_KINDS, runRequests, screenshots, shareEvidence } from './evidence.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
@@ -62,28 +63,30 @@ export async function runChecks(ctx, worktree, brief, name, run = sh) {
   const results = []
   for (const { id, cmd, expect, env } of commands) {
     const logPath = `orchestration/logs/${name}-${id.replace(/\W+/g, '_')}.log`
-    const { code } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, timeoutMs: 30 * 60_000 })
-    results.push({ id, cmd, expect, exit: code, logPath })
+    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, timeoutMs: 30 * 60_000 })
+    results.push({ id, cmd, expect, exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) })
   }
   return results
 }
 
-async function launchVerifier(ctx, item, attempt, kind, tries) {
+// `testsJob` feeds spec/break the runner-run results; `round` reruns a reviewer in its own worktree with requested outputs.
+async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null, round = null } = {}) {
   const name = label(item, attempt, kind)
   const cloud = isCloud(attempt.verifier)
-  const worktree = cloud ? null : join(ctx.worktrees, name)
-  if (worktree) await freshDetached(ctx, worktree, attempt.headSha)
+  const worktree = cloud ? null : round?.worktree ?? join(ctx.worktrees, name)
+  if (worktree && !round) await freshDetached(ctx, worktree, attempt.headSha)
   const verdictPath = verdictRel(item, attempt, kind)
   const results = worktree && kind === 'tests' ? await runChecks(ctx, worktree, loadBrief(ctx, item.id), name) : null
+  const evidence = !worktree || !REVIEW_KINDS.includes(kind) ? null : round?.evidence ?? await shareEvidence(ctx, worktree, name, testsJob)
   const branch = verdictBranch(name, tries)
   const minutes = roleMinutes(ctx.roles, 'verify', kind)
   const prompt = verifierPrompt({
     persona: persona(ctx, `verifier-${kind}`), kind, brief: loadBrief(ctx, item.id), headSha: attempt.headSha, verdictPath,
     schemaText: readFileSync(join(ctx.orch, 'schemas/verdict.schema.json'), 'utf8'), attempt: attempt.n, baseBranch: ctx.base,
-    cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes, results,
+    cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes, results, evidence, requested: round?.requested ?? null,
   })
   const launched = await launchAgent(ctx, {
-    agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', kind, minutes,
+    agent: attempt.verifier, label: `${tries > 1 ? `${name}-r${tries}` : name}${round ? '-evidence' : ''}`, cwd: worktree, prompt, role: 'verify', kind, minutes,
     schemaPath: join(ctx.orch, 'schemas/verdict.schema.json'),
   })
   if (!launched) {
@@ -91,7 +94,22 @@ async function launchVerifier(ctx, item, attempt, kind, tries) {
     return null
   }
   note(ctx, item.id, 'verify', `launch ${attempt.verifier} ${kind}`, `attempt ${attempt.n} try ${tries}`, launched.logPath)
-  return { ...launched, worktree, tries, headSha: attempt.headSha, ...(cloud ? { verdictBranch: branch } : {}) }
+  return {
+    ...launched, worktree, tries, headSha: attempt.headSha, ...(cloud ? { verdictBranch: branch } : {}),
+    ...(results ? { results } : {}), ...(evidence ? { evidence } : {}), ...(round ? { evidenceRound: true } : {}),
+  }
+}
+
+// One extra round per reviewer: the runner runs what it asked for (or nothing, when it only blamed the sandbox) and reruns it.
+async function evidenceRelaunch(ctx, item, attempt, kind, job, requests) {
+  kill(job.pid)
+  releaseSlot(ctx, job.pid)
+  rmSync(join(job.worktree, verdictRel(item, attempt, kind)), { force: true })
+  const requested = await runRequests(job.worktree, label(item, attempt, kind), requests)
+  note(ctx, item.id, 'verify', `${kind} evidence round`, `${requested.length} runner command(s); reviewer reruns once`, job.logPath)
+  const round = { worktree: job.worktree, evidence: job.evidence ?? null, requested }
+  const launched = await launchVerifier(ctx, item, attempt, kind, job.tries ?? 1, { round })
+  return launched ?? { ...job, retry: true, evidenceRound: true }
 }
 
 // Reads only this launch's branch; a verdict for another item, attempt, kind or commit is not this job's.
@@ -135,8 +153,9 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   for (const kind of verifierKindsFor(ctx.roles, loadBrief(ctx, item.id))) {
     const name = label(item, attempt, kind)
     let job = jobs[name]
+    const testsJob = jobs[label(item, attempt, 'tests')]
     if (!job || job.retry) {
-      const launched = await launchVerifier(ctx, item, attempt, kind, (job?.tries ?? 0) + 1)
+      const launched = await launchVerifier(ctx, item, attempt, kind, (job?.tries ?? 0) + 1, { testsJob })
       if (launched) {
         jobs[name] = launched
         saveJobs(ctx, jobs)
@@ -154,7 +173,14 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
         continue
       }
       if (step === 'relaunch') {
-        jobs[name] = await relaunchVerifier(ctx, item, attempt, kind, job)
+        jobs[name] = await relaunchVerifier(ctx, item, attempt, kind, job, testsJob)
+        saveJobs(ctx, jobs)
+        pending = true
+        continue
+      }
+      const requests = step === 'collect' ? evidenceRound(parseVerdict(job, job.worktree && join(job.worktree, path), result), kind, job) : null
+      if (requests) {
+        jobs[name] = await evidenceRelaunch(ctx, item, attempt, kind, job, requests)
         saveJobs(ctx, jobs)
         pending = true
         continue
@@ -196,13 +222,13 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
 }
 
 // The timed-out session keeps running in the cloud; its branch is simply never read again.
-async function relaunchVerifier(ctx, item, attempt, kind, job) {
+async function relaunchVerifier(ctx, item, attempt, kind, job, testsJob) {
   kill(job.pid)
   releaseSlot(ctx, job.pid)
   await dropWorktree(ctx, job.worktree)
   const tries = (job.tries ?? 1) + 1
   note(ctx, item.id, 'verify', `${kind} timeout`, `attempt ${attempt.n} try ${job.tries ?? 1} passed its deadline; fresh session as try ${tries}`, job.sessionId ?? job.logPath)
-  const launched = await launchVerifier(ctx, item, attempt, kind, tries)
+  const launched = await launchVerifier(ctx, item, attempt, kind, tries, { testsJob })
   return launched ?? { ...job, retry: true, tries: tries - 1 }
 }
 

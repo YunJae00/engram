@@ -29,7 +29,7 @@ describe('roles', () => {
       expect(roles.ladder[area].every((rung) => rung.implementer === 'claude-local' && rung.verifier === 'codex-local')).toBe(true)
     }
     expect(roles.models.claude.implement).toBe('claude-opus-5-5')
-    expect(roles.models.claude.verify).toBe('claude-sonnet-5-5')
+    expect(roles.models.claude.verify).toBe('claude-opus-5-5')
     expect(roles.models.codex).toBe('gpt-6-sol')
   })
 

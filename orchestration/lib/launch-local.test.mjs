@@ -54,6 +54,8 @@ describe('codexOutputSchema', () => {
       const flat = JSON.parse(readFileSync(dest, 'utf8'))
       expect(flat.properties.evidence.items.required).toEqual(['criterion', 'cmd', 'logPath', 'result'])
       expect(flat.properties.findings.items.properties.reproCmd.type).toBe('string')
+      expect(flat.required).toContain('evidenceRequests')
+      expect(flat.properties.evidenceRequests.items.required).toEqual(['cmd', 'why'])
       expect(JSON.stringify(flat)).not.toMatch(/\$ref|pattern/)
     } finally {
       rmSync(dir, { recursive: true, force: true })

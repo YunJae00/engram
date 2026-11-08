@@ -85,6 +85,8 @@ export function codexOutputSchema(schema) {
       if (CODEX_SCHEMA_DROP.has(key)) continue
       out[key] = walk(value, stack)
     }
+    // Strict structured output needs every property listed in `required`; optional fields come back empty.
+    if (out.properties && Array.isArray(out.required)) out.required = Object.keys(out.properties)
     return out
   }
   return walk(schema, new Set())

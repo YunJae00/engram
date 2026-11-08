@@ -7,10 +7,10 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 const roles = loadRoles(repoRoot)
 
 describe('resolveAgentModel', () => {
-  it('uses Opus for Claude implement and Sonnet for verify/design from roles.md', () => {
+  it('uses Opus for Claude implement, verify and design from roles.md', () => {
     expect(resolveAgentModel(roles, { agent: 'claude-cloud', role: 'implement' })).toBe('claude-opus-5-5')
-    expect(resolveAgentModel(roles, { agent: 'claude-cloud', role: 'verify' })).toBe('claude-sonnet-5-5')
-    expect(resolveAgentModel(roles, { agent: 'claude-local', role: 'design' })).toBe('claude-sonnet-5-5')
+    expect(resolveAgentModel(roles, { agent: 'claude-cloud', role: 'verify' })).toBe('claude-opus-5-5')
+    expect(resolveAgentModel(roles, { agent: 'claude-local', role: 'design' })).toBe('claude-opus-5-5')
   })
 
   it('uses the Codex workhorse slug for every Codex phase', () => {

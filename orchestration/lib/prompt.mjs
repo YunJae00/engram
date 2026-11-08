@@ -1,4 +1,5 @@
 import process from 'node:process'
+import { MAX_REQUESTS } from './evidence.mjs'
 import { briefScenarios } from './loop.mjs'
 
 export const REPORT_SCHEMA_TEXT = `{
@@ -33,6 +34,22 @@ const deferredNote = (brief) => {
     : []
 }
 
+const checkLine = (r) => `   - ${r.id}: \`${r.cmd}\` exit ${r.exit}${r.why ? ` (asked: ${r.why})` : ''} log: ${r.logPath}${r.screenshots?.length ? ` screenshots: ${r.screenshots.join(', ')}` : ''}${r.tail ? `\n     output tail:\n${r.tail.split('\n').map((l) => `     > ${l}`).join('\n')}` : ''}`
+
+// Spec/break reviewers judge what the unsandboxed runner captured; they never start the app themselves.
+function runnerEvidence(evidence, requested) {
+  const checks = evidence.checks.length
+    ? `The runner ran the tests lane outside your sandbox (logs under \`orchestration/logs/\`):\n${evidence.checks.map(checkLine).join('\n')}`
+    : 'The runner has no tests-lane results for this commit; judge from the diff and the code, and request runtime evidence if you need it.'
+  return [
+    `The runner wrote \`git diff <base>...HEAD\` to \`${evidence.diffPath}\`. ${checks}`,
+    'Do not launch the app, Electron, `scripts/verify-cli.mjs` scenarios or e2e tests yourself: this sandbox cannot start them (EPERM, SIGABRT). A failed app launch inside the sandbox is never by itself a reason for `cannot_verify`.',
+    ...(requested
+      ? [`This is your one evidence round; the runner ran your requested commands outside the sandbox. Decide \`pass\` or \`fail\` now and leave \`evidenceRequests\` empty:\n${requested.map(checkLine).join('\n')}`]
+      : [`If you need runtime evidence the results above do not give, put up to ${MAX_REQUESTS} shell commands in \`evidenceRequests\` as \`{ "cmd", "why" }\` with verdict \`cannot_verify\`; the runner runs them in this checkout outside the sandbox and reruns you once with their output.`]),
+  ]
+}
+
 const VERIFIER_STEPS = {
   tests: (brief, baseBranch, cloud, results) => results ? [
     `The runner already ran \`npm run check:quick\` and every criterion command outside your sandbox; do not rerun them. Results (read each log under \`orchestration/logs/\`):\n${results.map((r) => `   - ${r.id}: \`${r.cmd}\` exit ${r.exit} expect: ${r.expect ?? 'exit 0'} log: ${r.logPath}`).join('\n')}`,
@@ -55,10 +72,10 @@ const VERIFIER_STEPS = {
     'Add one evidence entry per criterion saying how the diff meets it or not.',
     'Every finding needs file, line, claim and a `reproCmd` that shows it. Never `fail` without a `reproCmd`.',
   ],
-  break: (brief) => [
+  break: (brief, baseBranch, cloud, evidence) => [
     `The commit adding \`orchestration/reports/${brief.id}.json\` is the implementer's required report commit; do not report it as a finding.`,
     'The tests and desktop verifiers already run `npm run check:quick`, the related unit tests, the item criteria and every scenario; whole-suite runs happen at integration. Do not rerun them; run only commands that attack the changed code.',
-    ...(briefScenarios(brief).length ? [DESKTOP_BUILD] : []),
+    ...(briefScenarios(brief).length && !evidence ? [DESKTOP_BUILD] : []),
     'Try to break the changed code: edge inputs, empty and huge values, concurrency, restart, missing files, error paths.',
     'Scratch scripts go under `tmp/` only. Do not change tracked files.',
     'Every finding must carry a `reproCmd` that you actually ran and that failed.',
@@ -147,7 +164,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
   ].join('\n')
 }
 
-export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, linux = false, verdictBranch = '', minutes, results = null }) {
+export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, linux = false, verdictBranch = '', minutes, results = null, evidence = null, requested = null }) {
   const steps = VERIFIER_STEPS[kind]
   if (!steps) throw new Error(`unknown verifier kind: ${kind}`)
   const desktopNote = cloud ? CLOUD_DESKTOP : linux ? LINUX_DESKTOP : null
@@ -165,7 +182,8 @@ export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, sch
         ? 'If you cannot finish by then, write and push a `cannot_verify` verdict that says what blocked you before the deadline.'
         : 'If you cannot finish by then, write a `cannot_verify` verdict that says what blocked you before the deadline.'),
       `Confirm \`git rev-parse HEAD\` prints \`${headSha}\`; if not, verdict \`cannot_verify\`.`,
-      ...steps(brief, baseBranch, false, results),
+      ...(evidence ? runnerEvidence(evidence, requested) : []),
+      ...steps(brief, baseBranch, false, results ?? evidence),
       ...(desktopNote && briefScenarios(brief).length ? [desktopNote] : []),
       `Write the verdict JSON to \`${verdictPath}\` with id \`${brief.id}\`, attempt ${attempt}, kind \`${kind}\`, headSha \`${headSha}\`.`,
       ...(cloud ? [`Run \`git add -f ${verdictPath}\`, commit only the verdict, and push it to \`origin ${verdictBranch}\`. Never push any other branch and never open a pull request.`] : []),
