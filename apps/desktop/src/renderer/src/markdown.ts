@@ -33,6 +33,16 @@ function unfence(text: string): string {
 
 // Mid-stream, a capture marker tail may arrive before main strips it from the
 // final text — never show the plumbing.
+// marked's GFM del also takes a single tilde, which strikes through Korean
+// ranges like 11/17~11/20. Only ~~double~~ tildes mean strikethrough.
+class DoubleTildeTokenizer extends marked.Tokenizer {
+  override del(src: string): Tokens.Del | undefined {
+    const token = super.del(src)
+    return token?.raw.startsWith('~~') ? token : undefined
+  }
+}
+export const markdownTokenizer = (): InstanceType<typeof marked.Tokenizer> => new DoubleTildeTokenizer()
+
 export function memorySources(text: string): { url: string; label: string }[] {
   const sources = new Map<string, string>()
   marked.walkTokens(marked.lexer(text), token => {
@@ -151,5 +161,5 @@ export function answerHtml(text: string, sourceUrls: string[] = [], notes: strin
   renderer.table = (token) => cardsHtml(token, (tokens) => renderer.parser.parseInline(tokens)) ?? table(token)
   const code = renderer.code.bind(renderer)
   renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>Code</span><button type="button" data-copy-code="true">Copy code</button></div>${code(token)}</div>`
-  return marked.parse(dedent(visible) || '…', { async: false, renderer }) as string
+  return marked.parse(dedent(visible) || '…', { async: false, renderer, tokenizer: markdownTokenizer() }) as string
 }

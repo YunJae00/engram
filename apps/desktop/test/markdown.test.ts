@@ -64,6 +64,14 @@ describe('answerHtml', () => {
   it('hides the capture marker tail', () => {
     expect(answerHtml('Saved it.\n<engram:capture>buy milk</engram:capture>')).not.toContain('buy milk')
   })
+  it('keeps single tildes in ranges literal and still strikes through double tildes', () => {
+    const range = answerHtml('4개 후보(11/17~11/20) 중 2~3개만')
+    expect(range).not.toContain('<del>')
+    expect(range).toContain('11/17~11/20')
+    expect(range).toContain('2~3개만')
+    expect(answerHtml('~~취소~~')).toContain('<del>취소</del>')
+    expect(answerHtml('~~~\nconst a = 1\n~~~')).toContain('<code>const a = 1')
+  })
 })
 
 describe('found items and suggested replies', () => {

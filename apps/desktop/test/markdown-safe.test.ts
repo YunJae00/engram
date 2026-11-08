@@ -44,3 +44,14 @@ it('highlights supported code without interpreting markup and leaves large block
   expect(render('<script>alert(1)</script>', 'html')).not.toContain('<script>')
   expect(render('const x = 1;'.repeat(2000), 'ts')).not.toContain('tok-keyword')
 })
+
+it('keeps single tildes in ranges literal and still strikes through double tildes', () => {
+  const html = (text: string) => renderToStaticMarkup(createElement('div', null, renderMarkdown(text)))
+  const range = html('4개 후보(11/17~11/20) 중 2~3개만')
+  expect(range).not.toContain('<del>')
+  expect(range).toContain('11/17~11/20')
+  expect(range).toContain('2~3개만')
+  expect(html('~~취소~~')).toContain('<del>취소</del>')
+  expect(html('~~~\nconst a = 1\n~~~')).toContain('const a = 1')
+  expect(html('~~~\nconst a = 1\n~~~')).not.toContain('<del>')
+})

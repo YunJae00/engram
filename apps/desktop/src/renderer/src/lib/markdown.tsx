@@ -1,5 +1,6 @@
 import { createElement, Fragment, type ReactNode } from 'react'
 import { marked, type MarkedToken, type Token } from 'marked'
+import { markdownTokenizer } from '../markdown'
 
 // React escapes model HTML. Remote images never load implicitly, and only
 // explicit web links are active.
@@ -34,5 +35,5 @@ export function renderMarkdown(src: string, codeBlock?: (text: string, language:
       default: return <Fragment key={key}>{entry.raw}</Fragment>
     }
   })
-  return render(marked.lexer(src, { gfm: true }), 'md')
+  return render(marked.lexer(src, { gfm: true, tokenizer: markdownTokenizer() }), 'md')
 }
