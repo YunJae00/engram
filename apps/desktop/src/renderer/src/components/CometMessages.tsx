@@ -28,7 +28,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
 }) {
   const lastAssistant = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
-  const last = messages[lastAssistant]
+  const last = messages.at(-1)
   const lang = threadLang(messages)
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
@@ -52,6 +52,6 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
-    {!busy && !offerOpen && last && !last.streaming && !failed(last) && <ReplyChips text={last.text} onPick={onReply} />}
+    {!busy && !offerOpen && last?.role === 'assistant' && !last.streaming && !last.progress && !failed(last) && <ReplyChips text={last.text} onPick={onReply} />}
   </>
 }
