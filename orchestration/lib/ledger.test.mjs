@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,11 @@ const tempRoot = () => {
   return root
 }
 
+// The loop exports ENGRAM_MAX_BOUNCES; these tests pick their own cap.
+beforeEach(() => vi.stubEnv('ENGRAM_MAX_BOUNCES', undefined))
+
 afterEach(() => {
+  vi.unstubAllEnvs()
   for (const root of temps.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -69,6 +73,12 @@ describe('ladder', () => {
     expect(rung(base, roles)).toEqual({ implementer: 'claude-local', verifier: 'codex-local' })
     expect(rung({ ...base, bounces: 2 }, roles)).toEqual({ implementer: 'claude-local', verifier: 'codex-local' })
     expect(rung({ ...base, bounces: 3 }, roles)).toBeNull()
+  })
+
+  it('stops at ENGRAM_MAX_BOUNCES when the loop sets it', () => {
+    vi.stubEnv('ENGRAM_MAX_BOUNCES', '2')
+    expect(rung({ ...base, bounces: 1 }, roles)).not.toBeNull()
+    expect(rung({ ...base, bounces: 2 }, roles)).toBeNull()
   })
 
   it('classifies hard items', () => {

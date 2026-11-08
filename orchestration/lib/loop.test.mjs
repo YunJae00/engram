@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fileURLToPath, URL } from 'node:url'
 import { loadRoles } from './ledger.mjs'
 import {
@@ -17,6 +17,10 @@ import { join } from 'node:path'
 const roles = loadRoles(fileURLToPath(new URL('../..', import.meta.url)))
 const sha = (c) => c.repeat(40)
 const item = (over = {}) => ({ id: 'x', area: 'ts', bounces: 0, ...over })
+
+// The loop exports ENGRAM_MAX_BOUNCES; these tests pick their own cap.
+beforeEach(() => vi.stubEnv('ENGRAM_MAX_BOUNCES', undefined))
+afterEach(() => vi.unstubAllEnvs())
 
 describe('bounce ladder', () => {
   it('takes one rung per bounce for easy items', () => {
