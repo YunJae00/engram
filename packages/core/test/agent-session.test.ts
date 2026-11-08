@@ -199,6 +199,7 @@ describe('a tool session: the brain loops, the turn keeps the loop\'s shape', ()
       expect(turn.prompt).toContain(EARLIER_REPLIES_RULE)
       expect(turn.system).toContain(EARLIER_REPLIES_RULE)
     }
+    for (const word of ['any detail', '분기', '엑셀 파일', '지금까지 확정된 내용', 'recap']) expect(seen[1]!.prompt).toContain(word)
   })
 
   it('a question to the person ends the turn as an ask, whatever the brain says afterwards', async () => {

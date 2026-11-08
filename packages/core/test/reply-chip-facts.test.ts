@@ -54,4 +54,12 @@ describe('replies block facts rule', () => {
     expect(EARLIER_REPLIES_RULE).toContain('otherwise it stays unknown (미정)')
     expect(EARLIER_REPLIES_RULE).toContain('new replies do not build on it')
   })
+
+  it('covers any detail from an unclicked chip in replies and recaps, not only dates and owners', () => {
+    expect(EARLIER_REPLIES_RULE).toContain('any detail that appears only there')
+    for (const word of ['period or quarter', '분기', 'data source or file', '엑셀 파일', 'format', 'recipient', 'any other fact']) expect(EARLIER_REPLIES_RULE).toContain(word)
+    expect(EARLIER_REPLIES_RULE).toContain('never the person\'s decision or answer')
+    expect(EARLIER_REPLIES_RULE).toContain('In a reply, recap or summary never list it as settled (지금까지 확정된 내용) or state it as what the person said')
+    expect(EARLIER_REPLIES_RULE).toContain('never treat it as something they said earlier that you must now correct')
+  })
 })

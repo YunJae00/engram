@@ -16,7 +16,7 @@ const COMMAND_APPROVAL: Record<PermissionMode, string> = {
 }
 
 // Sent with every turn because a warm session keeps its own earlier ```replies blocks in context.
-export const EARLIER_REPLIES_RULE = 'Your earlier suggested replies (```replies lines and the chips made from them) that the person did not pick are your words, not theirs: a date, deadline, time, owner or amount that appears only there is never the person\'s decision. Show a deadline, date, owner or amount as set or confirmed (such as 확정됨) only when the person wrote it or picked a reply that states it; otherwise it stays unknown (미정), and new replies do not build on it.'
+export const EARLIER_REPLIES_RULE = 'Your earlier suggested replies (```replies lines and the chips made from them) that the person did not pick are your words, not theirs: any detail that appears only there (a date, deadline, time, owner, amount, period or quarter such as 4분기, data source or file such as 엑셀 파일, format, recipient or any other fact) is never the person\'s decision or answer. Show such a detail as set or confirmed (such as 확정됨) only when the person wrote it or picked a reply that states it; otherwise it stays unknown (미정), and new replies do not build on it. In a reply, recap or summary never list it as settled (지금까지 확정된 내용) or state it as what the person said, and never treat it as something they said earlier that you must now correct.'
 
 // The rules a session is opened with, the same for every turn of a comet
 // offered the same tools, so a session warmed ahead matches the one a comet
