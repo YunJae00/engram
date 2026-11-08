@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import process from 'node:process'
 import { blockingFindings } from './aggregate.mjs'
 import { addWorktree, ensureBranch, fetchBranch, removeWorktree } from './git.mjs'
@@ -154,13 +154,31 @@ export async function dropWorktree(ctx, path) {
 
 export const NODE_MODULES = ['node_modules', 'apps/desktop/node_modules', 'packages/core/node_modules']
 
+// Each worktree gets real node_modules dirs whose entries point at the shared install (8 GB
+// machine: no second install), except workspace links (core -> packages/core), which are re-pointed
+// into the worktree so it resolves workspace packages from its own checkout, not the root's.
 export function linkNodeModules(root, worktree) {
-  for (const rel of NODE_MODULES) {
-    const target = join(root, rel)
-    const link = join(worktree, rel)
-    if (!existsSync(target) || existsSync(link) || isLink(link)) continue
-    mkdirSync(join(link, '..'), { recursive: true })
-    symlinkSync(target, link, 'dir')
+  for (const rel of NODE_MODULES) linkEntries(root, worktree, rel)
+}
+
+function linkEntries(root, worktree, rel) {
+  const target = join(root, rel)
+  const link = join(worktree, rel)
+  if (!existsSync(target) || existsSync(link) || isLink(link)) return
+  mkdirSync(link, { recursive: true })
+  for (const entry of readdirSync(target)) {
+    const from = join(target, entry)
+    const to = join(link, entry)
+    if (isLink(from)) {
+      const real = realpathSync(from)
+      const inside = relative(realpathSync(root), real)
+      const workspace = !inside.startsWith('..') && !isAbsolute(inside) && !inside.split(sep).includes('node_modules')
+      symlinkSync(workspace ? join(worktree, inside) : from, to, 'dir')
+    } else if (entry.startsWith('@') && lstatSync(from).isDirectory()) {
+      linkEntries(root, worktree, join(rel, entry))
+    } else {
+      symlinkSync(from, to, lstatSync(from).isDirectory() ? 'dir' : 'file')
+    }
   }
 }
 

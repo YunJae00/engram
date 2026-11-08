@@ -8,7 +8,7 @@ import {
 import { rejectDesign } from './phase-implement.mjs'
 import { release, setVersion } from './release.mjs'
 import { linkNodeModules, previousFindings } from './runtime.mjs'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { attemptMinutes, batchIdle, integrationFinished, QUIET_HOST, resetIntegration, scenarioCommand } from './phase-merge.mjs'
 import { validate } from './validate.mjs'
 import { tmpdir } from 'node:os'
@@ -234,17 +234,24 @@ describe('design pick and release helpers', () => {
 })
 
 describe('worktree setup and release gate', () => {
-  it('links existing node_modules into a worktree and skips missing ones', () => {
+  it('links shared deps but resolves workspace packages from the worktree itself', () => {
     const base = mkdtempSync(join(tmpdir(), 'orch-link-'))
     try {
-      mkdirSync(join(base, 'root/node_modules'), { recursive: true })
-      mkdirSync(join(base, 'root/packages/core/node_modules'), { recursive: true })
-      mkdirSync(join(base, 'wt'))
-      linkNodeModules(join(base, 'root'), join(base, 'wt'))
-      linkNodeModules(join(base, 'root'), join(base, 'wt'))
-      expect(lstatSync(join(base, 'wt/node_modules')).isSymbolicLink()).toBe(true)
-      expect(lstatSync(join(base, 'wt/packages/core/node_modules')).isSymbolicLink()).toBe(true)
-      expect(existsSync(join(base, 'wt/apps/desktop/node_modules'))).toBe(false)
+      const root = join(base, 'root')
+      const wt = join(base, 'wt')
+      mkdirSync(join(root, 'node_modules/vitest'), { recursive: true })
+      mkdirSync(join(root, 'packages/core/node_modules'), { recursive: true })
+      mkdirSync(join(root, 'apps/desktop/node_modules/@scope'), { recursive: true })
+      symlinkSync(join(root, 'packages/core'), join(root, 'apps/desktop/node_modules/core'), 'dir')
+      symlinkSync(join(root, 'node_modules/vitest'), join(root, 'apps/desktop/node_modules/@scope/vitest'), 'dir')
+      mkdirSync(join(wt, 'packages/core'), { recursive: true })
+      linkNodeModules(root, wt)
+      linkNodeModules(root, wt)
+      const desktop = join(wt, 'apps/desktop/node_modules')
+      expect(realpathSync(join(desktop, 'core'))).toBe(realpathSync(join(wt, 'packages/core')))
+      expect(realpathSync(join(desktop, '@scope/vitest'))).toBe(realpathSync(join(root, 'node_modules/vitest')))
+      expect(realpathSync(join(wt, 'node_modules/vitest'))).toBe(realpathSync(join(root, 'node_modules/vitest')))
+      expect(lstatSync(join(wt, 'packages/core/node_modules')).isDirectory()).toBe(true)
     } finally {
       rmSync(base, { recursive: true, force: true })
     }

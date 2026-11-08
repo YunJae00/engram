@@ -147,3 +147,28 @@ describe('designerPrompt', () => {
     for (const s of ['## Previous findings', 'criterion c1: exit 1', '## Rejected design', 'branch on the pending flag']) expect(p).toContain(s)
   })
 })
+
+describe('runner-executed tests verifier', () => {
+  it('hands captured results to the reviewer instead of telling it to run commands', async () => {
+    const { runChecks } = await import('./phase-verify.mjs')
+    const { mkdtempSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'orch-checks-'))
+    try {
+      const calls = []
+      const run = async (cwd, cmd, args, opts) => { calls.push({ cwd, args, opts }); return { code: args[1].includes('fail') ? 1 : 0, out: '' } }
+      const results = await runChecks({ base: 'origin/next' }, dir, brief, 'x-1-tests', run)
+      expect(calls[0].args[1]).toBe('npm run check:quick')
+      expect(calls[0].opts.env).toEqual({ ENGRAM_CHECK_BASE: 'origin/next' })
+      expect(results.map((r) => [r.id, r.exit])).toEqual([['check:quick', 0], ...brief.criteria.map((c) => [c.id, c.cmd.includes('fail') ? 1 : 0])])
+      const p = verifierPrompt({ persona: '', kind: 'tests', brief, headSha: sha, verdictPath: 'v', schemaText: 's', results })
+      expect(p).toContain('do not rerun them')
+      expect(p).toContain(`exit 0 expect:`)
+      expect(p).toContain(results[0].logPath)
+      expect(p).not.toContain('Run every criterion command')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

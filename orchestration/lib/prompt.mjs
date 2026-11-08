@@ -34,7 +34,12 @@ const deferredNote = (brief) => {
 }
 
 const VERIFIER_STEPS = {
-  tests: (brief, baseBranch, cloud) => [
+  tests: (brief, baseBranch, cloud, results) => results ? [
+    `The runner already ran \`npm run check:quick\` and every criterion command outside your sandbox; do not rerun them. Results (read each log under \`orchestration/logs/\`):\n${results.map((r) => `   - ${r.id}: \`${r.cmd}\` exit ${r.exit} expect: ${r.expect ?? 'exit 0'} log: ${r.logPath}`).join('\n')}`,
+    ...deferredNote(brief),
+    'Add one evidence entry per result with the exact command, the exit code and outcome in `result`, and the log path.',
+    'Verdict `pass` only if every result meets its expectation, `fail` if any does not, `cannot_verify` if a log shows the environment prevented the command.',
+  ] : [
     `Run \`ENGRAM_CHECK_BASE=${baseBranch} npm run check:quick\` (typecheck, lint and only the unit tests related to files changed since \`${baseBranch}\`) and save its output to a log under \`orchestration/logs/\`.`,
     `Run every criterion command below and save each output to its own log under \`orchestration/logs/\`:\n${scopedCriteria(brief).map((c) => `   - ${c.id}: \`${c.cmd}\` expect: ${c.expect}`).join('\n')}`,
     ...(verifyCliCriterion(brief) ? [DESKTOP_BUILD, ...(cloud ? [CLOUD_DESKTOP] : [])] : []),
@@ -142,7 +147,7 @@ export function implementerPrompt({ persona, rules, brief, branch, baseBranch, r
   ].join('\n')
 }
 
-export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, linux = false, verdictBranch = '', minutes }) {
+export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, schemaText, attempt = 1, baseBranch = 'next', cloud = false, linux = false, verdictBranch = '', minutes, results = null }) {
   const steps = VERIFIER_STEPS[kind]
   if (!steps) throw new Error(`unknown verifier kind: ${kind}`)
   const desktopNote = cloud ? CLOUD_DESKTOP : linux ? LINUX_DESKTOP : null
@@ -160,7 +165,7 @@ export function verifierPrompt({ persona, kind, brief, headSha, verdictPath, sch
         ? 'If you cannot finish by then, write and push a `cannot_verify` verdict that says what blocked you before the deadline.'
         : 'If you cannot finish by then, write a `cannot_verify` verdict that says what blocked you before the deadline.'),
       `Confirm \`git rev-parse HEAD\` prints \`${headSha}\`; if not, verdict \`cannot_verify\`.`,
-      ...steps(brief, baseBranch),
+      ...steps(brief, baseBranch, false, results),
       ...(desktopNote && briefScenarios(brief).length ? [desktopNote] : []),
       `Write the verdict JSON to \`${verdictPath}\` with id \`${brief.id}\`, attempt ${attempt}, kind \`${kind}\`, headSha \`${headSha}\`.`,
       ...(cloud ? [`Run \`git add -f ${verdictPath}\`, commit only the verdict, and push it to \`origin ${verdictBranch}\`. Never push any other branch and never open a pull request.`] : []),

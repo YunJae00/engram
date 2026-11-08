@@ -5,10 +5,10 @@ import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
 import { followup, rung, transition } from './ledger.mjs'
 import { roundOutcome, verifierKindsFor, verifyDecision } from './loop.mjs'
 import { alive } from './procs.mjs'
-import { verifierLinuxDesktop, verifierPrompt } from './prompt.mjs'
+import { scopedCriteria, verifierLinuxDesktop, verifierPrompt } from './prompt.mjs'
 import {
   attemptRef, dropWorktree, freshDetached, git, isCloud, kill, launchAgent, loadBrief, loadJobs, note, persona,
-  readJsonOrNull, releaseSlot, save, saveJobs, schema,
+  readJsonOrNull, releaseSlot, save, saveJobs, schema, sh,
 } from './runtime.mjs'
 import { finish, rejectDesign } from './phase-implement.mjs'
 import { maxLaunches, ownVerdict, roleMinutes, timeoutVerdict, verdictBranch, verifierTick } from './timebox.mjs'
@@ -49,18 +49,38 @@ function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null, tim
   save(ctx, ledger)
 }
 
+// Verifier flow for local `tests`: the sandboxed reviewer cannot launch Electron or open sockets
+// (EPERM on macOS workspace-write), so this trusted runner code executes the check and criterion
+// commands itself in the worktree, saves each log, and the reviewer only judges the captured results.
+export async function runChecks(ctx, worktree, brief, name, run = sh) {
+  const logs = join(worktree, 'orchestration/logs')
+  mkdirSync(logs, { recursive: true })
+  const commands = [
+    { id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } },
+    ...scopedCriteria(brief).map((c) => ({ id: c.id, cmd: c.cmd, expect: c.expect })),
+  ]
+  const results = []
+  for (const { id, cmd, expect, env } of commands) {
+    const logPath = `orchestration/logs/${name}-${id.replace(/\W+/g, '_')}.log`
+    const { code } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, timeoutMs: 30 * 60_000 })
+    results.push({ id, cmd, expect, exit: code, logPath })
+  }
+  return results
+}
+
 async function launchVerifier(ctx, item, attempt, kind, tries) {
   const name = label(item, attempt, kind)
   const cloud = isCloud(attempt.verifier)
   const worktree = cloud ? null : join(ctx.worktrees, name)
   if (worktree) await freshDetached(ctx, worktree, attempt.headSha)
   const verdictPath = verdictRel(item, attempt, kind)
+  const results = worktree && kind === 'tests' ? await runChecks(ctx, worktree, loadBrief(ctx, item.id), name) : null
   const branch = verdictBranch(name, tries)
   const minutes = roleMinutes(ctx.roles, 'verify', kind)
   const prompt = verifierPrompt({
     persona: persona(ctx, `verifier-${kind}`), kind, brief: loadBrief(ctx, item.id), headSha: attempt.headSha, verdictPath,
     schemaText: readFileSync(join(ctx.orch, 'schemas/verdict.schema.json'), 'utf8'), attempt: attempt.n, baseBranch: ctx.base,
-    cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes,
+    cloud, linux: verifierLinuxDesktop(cloud), verdictBranch: branch, minutes, results,
   })
   const launched = await launchAgent(ctx, {
     agent: attempt.verifier, label: tries > 1 ? `${name}-r${tries}` : name, cwd: worktree, prompt, role: 'verify', kind, minutes,

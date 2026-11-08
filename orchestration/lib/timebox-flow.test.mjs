@@ -53,7 +53,7 @@ function makeCtx() {
   for (const dir of ['schemas', 'personas']) cpSync(join(repo, 'orchestration', dir), join(orch, dir), { recursive: true })
   mkdirSync(join(orch, 'briefs'), { recursive: true })
   writeFileSync(join(orch, 'briefs/x.json'), JSON.stringify(brief))
-  const roles = loadRoles(repo)
+  const roles = { ...loadRoles(repo), branchPrefix: 'orch/' } // pinned: the test must not follow live roles.md
   return {
     root, roles, orch, dryRun: false, log: () => {}, opts: { root, remote: 'origin' }, base: 'origin/next',
     logs: join(orch, 'logs'), worktrees: join(root, 'tmp/w'), sem: { free: () => 4, release: () => {}, acquire: () => {} },
