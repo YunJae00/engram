@@ -8,7 +8,7 @@ export const MAX_REQUESTS = 3
 const REQUEST_TIMEOUT_MS = 10 * 60_000
 const SANDBOX_LAUNCH = /\bEPERM\b|\bSIGABRT\b|electron[^\n]*(?:launch|start|spawn|crash|abort)/i
 
-const E2E_CMD = /playwright|e2e|verify-cli|run verify\b/i
+const E2E_CMD = /playwright|e2e|verify-cli|run verify\b|electron/i
 
 // ENGRAM_HIDDEN keeps e2e windows and notifications off the host, but product code reads it too, so unit commands must not see it.
 export const hiddenUnset = (cmd) => (E2E_CMD.test(cmd) ? [] : ['ENGRAM_HIDDEN'])
@@ -33,16 +33,41 @@ export function evidenceRound(verdict, kind, job) {
   return sandboxOnlyCannotVerify(verdict) ? [] : null
 }
 
-/** Runs the reviewer's requested commands in its worktree outside the sandbox, one log each. */
-export async function runRequests(worktree, name, requests, run = sh) {
+export const DESKTOP_BUILD = 'pnpm --filter desktop build'
+// The rest of a `&&` chain once the desktop build step is taken out, or null when the chain does not build.
+export function withoutBuild(cmd) {
+  const parts = cmd.split('&&').map((p) => p.trim())
+  return parts.includes(DESKTOP_BUILD) ? parts.filter((p) => p !== DESKTOP_BUILD).join(' && ') : null
+}
+
+/** Runs commands in a worktree outside the sandbox, one log each; the desktop build runs once and a failed build fails every command needing it. */
+export async function runCommands(worktree, name, commands, timeoutMs, run = sh) {
   mkdirSync(join(worktree, 'orchestration/logs'), { recursive: true })
+  const exec = async (id, cmd, env) => {
+    const logPath = `orchestration/logs/${name}-${id.replace(/\W+/g, '_')}.log`
+    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), env, unset: hiddenUnset(cmd), timeoutMs })
+    return { exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) }
+  }
+  let build = null
   const results = []
-  for (const [i, { cmd, why = '' }] of requests.entries()) {
-    const logPath = `orchestration/logs/${name}-request${i + 1}.log`
-    const { code, out } = await run(worktree, 'sh', ['-c', cmd], { logPath: join(worktree, logPath), timeoutMs: REQUEST_TIMEOUT_MS, unset: hiddenUnset(cmd) })
-    results.push({ id: `request${i + 1}`, cmd, why, exit: code, logPath, tail: outputTail(out), screenshots: screenshots(out) })
+  for (const { cmd, env, ...rest } of commands) {
+    const after = withoutBuild(cmd)
+    if (after !== null) build ??= await exec('desktop-build', DESKTOP_BUILD)
+    const ran = after === null ? await exec(rest.id, cmd, env) : build.exit !== 0 || !after ? build : await exec(rest.id, after, env)
+    results.push({ ...rest, cmd, ...ran })
   }
   return results
+}
+
+/** Runs the reviewer's requested commands in its worktree outside the sandbox, one log each. */
+export const runRequests = (worktree, name, requests, run = sh) =>
+  runCommands(worktree, name, requests.map(({ cmd, why = '' }, i) => ({ id: `request${i + 1}`, cmd, why })), REQUEST_TIMEOUT_MS, run)
+
+/** Spec and break launch only after the runner-run tests lane passed; a cloud lane (no runner results) does not gate. */
+export function testsGate(kinds, testsJob) {
+  if (!kinds.includes('tests') || (testsJob && !testsJob.results)) return 'go'
+  if (!testsJob) return 'wait'
+  return testsJob.results.every((r) => r.exit === 0) ? 'go' : 'fail'
 }
 
 /** Copies the tests lane's logs into a spec/break worktree and writes the diff there; returns what the prompt cites. */

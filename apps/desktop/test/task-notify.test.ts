@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { DelegatedTask } from 'core'
 
 const mocks = vi.hoisted(() => ({ supported: true, focused: false, show: vi.fn(), click: undefined as (() => void) | undefined }))
@@ -15,7 +15,11 @@ import { notifyTask, setTaskSurface } from '../src/main/task-notify.js'
 beforeEach(() => {
   mocks.supported = true; mocks.focused = false; mocks.click = undefined; mocks.show.mockClear()
   vi.unstubAllEnvs()
+  // The orchestrator or a hidden app run may export ENGRAM_HIDDEN=1; these tests choose it themselves.
+  vi.stubEnv('ENGRAM_HIDDEN', undefined)
 })
+
+afterEach(() => vi.unstubAllEnvs())
 
 it('opens the correct conversation when a background notification is clicked', () => {
   const surface = vi.fn(), broadcast = vi.fn()

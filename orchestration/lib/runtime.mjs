@@ -248,7 +248,8 @@ export function codexSandbox(role, kind, platform = process.platform) {
   return (role === 'verify' && VERIFY_SANDBOX[kind]) || SANDBOX[role]
 }
 
-export async function launchAgent(ctx, { agent, label, cwd, prompt, role, kind, minutes, schemaPath, addDirs: extraDirs = [] }) {
+// `counted: false` (read-only spec/break judges) neither waits for nor takes a maxLocalAgents slot.
+export async function launchAgent(ctx, { agent, label, cwd, prompt, role, kind, minutes, schemaPath, addDirs: extraDirs = [], counted = true }) {
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `${label}.log`)
   const startedAt = new Date().toISOString()
@@ -259,18 +260,18 @@ export async function launchAgent(ctx, { agent, label, cwd, prompt, role, kind, 
     const { sessionId, url } = await launchCloud({ root: ctx.root, launchWorktree: ctx.launchWorktree, prompt, logPath, model })
     return { ...job, sessionId, url }
   }
-  if (!slotFree(ctx, agent)) return null
+  if (counted && !slotFree(ctx, agent)) return null
   if (agent === 'claude-local') {
     const outPath = join(ctx.logs, `${label}.out.json`)
     const { pid } = launchClaude({ cwd, prompt, logPath, outPath, schemaPath, addDirs: extraDirs, model })
-    ctx.sem.acquire(label, pid)
+    if (counted) ctx.sem.acquire(label, pid)
     return { ...job, pid, outPath }
   }
   const outPath = join(ctx.logs, `${label}.out`)
   const codexBin = resolveCodexBin(ctx.root, { override: ctx.roles.codexBin })
   const addDirs = [...NODE_MODULES.map((rel) => join(ctx.root, rel)).filter((dir) => existsSync(dir)), ...extraDirs]
   const { pid } = launchCodex({ codexBin, cwd, prompt, logPath, outPath, sandbox: codexSandbox(role, kind), schemaPath, addDirs, model })
-  ctx.sem.acquire(label, pid)
+  if (counted) ctx.sem.acquire(label, pid)
   return { ...job, pid, outPath }
 }
 

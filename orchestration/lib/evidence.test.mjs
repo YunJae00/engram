@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { checkVerdict } from './aggregate.mjs'
-import { evidenceRound, hiddenUnset, MAX_REQUESTS, runRequests, sandboxOnlyCannotVerify, shareEvidence } from './evidence.mjs'
+import { DESKTOP_BUILD, evidenceRound, hiddenUnset, MAX_REQUESTS, runCommands, runRequests, sandboxOnlyCannotVerify, shareEvidence, testsGate, withoutBuild } from './evidence.mjs'
 import { verifierPrompt } from './prompt.mjs'
 
 const sha = 'a'.repeat(40)
@@ -74,7 +74,7 @@ describe('runner evidence for spec and break', () => {
     try {
       expect(hiddenUnset('pnpm exec vitest run --project unit apps/desktop')).toEqual(['ENGRAM_HIDDEN'])
       for (const cmd of ['npm run check:quick', 'npm run typecheck', 'npm run lint']) expect(hiddenUnset(cmd)).toEqual(['ENGRAM_HIDDEN'])
-      for (const cmd of ['pnpm exec playwright test e2e/x.spec.ts', 'node scripts/verify-cli.mjs s', 'npm run verify']) expect(hiddenUnset(cmd)).toEqual([])
+      for (const cmd of ['pnpm exec playwright test e2e/x.spec.ts', 'node scripts/verify-cli.mjs s', 'npm run verify', 'pnpm --filter desktop test:e2e', 'electron .']) expect(hiddenUnset(cmd)).toEqual([])
       const probe = 'echo "hidden=${ENGRAM_HIDDEN-absent}"'
       const unit = await runRequests(dir, 'u', [{ cmd: `${probe} # vitest` }], sh)
       const e2e = await runRequests(dir, 'e', [{ cmd: `${probe} # playwright` }], sh)
@@ -113,5 +113,55 @@ describe('runner evidence for spec and break', () => {
     } finally {
       rmSync(base, { recursive: true, force: true })
     }
+  })
+})
+
+describe('runner-run commands', () => {
+  it('builds the desktop app once, then runs criteria without the build step', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orch-build-'))
+    try {
+      const calls = []
+      const run = async (cwd, cmd, args, opts) => { calls.push({ cmd: args[1], unset: opts.unset }); return { code: 0, out: '' } }
+      const commands = [
+        { id: 'unit', cmd: 'npx vitest run a.test.ts' },
+        { id: 'c1', cmd: `${DESKTOP_BUILD} && node scripts/verify-cli.mjs boot`, expect: '0' },
+        { id: 'c2', cmd: `${DESKTOP_BUILD} && node scripts/verify-cli.mjs note-open`, expect: '0' },
+        { id: 'c3', cmd: DESKTOP_BUILD, expect: '0' },
+      ]
+      const results = await runCommands(dir, 'x-1-tests', commands, 1000, run)
+      expect(calls.map((c) => c.cmd)).toEqual(['npx vitest run a.test.ts', DESKTOP_BUILD, 'node scripts/verify-cli.mjs boot', 'node scripts/verify-cli.mjs note-open'])
+      expect(calls[0].unset).toEqual(['ENGRAM_HIDDEN'])
+      expect(calls[2].unset).toEqual([])
+      expect(results.map((r) => [r.id, r.cmd, r.exit])).toEqual(commands.map((c) => [c.id, c.cmd, 0]))
+      expect(results[3].logPath).toBe('orchestration/logs/x-1-tests-desktop_build.log')
+      expect(withoutBuild('npm test')).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails every criterion needing a failed build with the build log, without running it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orch-build-'))
+    try {
+      const calls = []
+      const run = async (cwd, cmd, args) => { calls.push(args[1]); return { code: args[1] === DESKTOP_BUILD ? 2 : 0, out: 'vite: error' } }
+      const commands = ['boot', 'note-open'].map((s) => ({ id: s, cmd: `${DESKTOP_BUILD} && node scripts/verify-cli.mjs ${s}` }))
+      const results = await runCommands(dir, 'x-1-tests', commands, 1000, run)
+      expect(calls).toEqual([DESKTOP_BUILD])
+      for (const r of results) expect(r).toMatchObject({ exit: 2, logPath: 'orchestration/logs/x-1-tests-desktop_build.log', tail: 'vite: error' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('tests lane gate for spec and break', () => {
+  const kinds = ['tests', 'spec', 'break']
+  it('waits for the runner tests lane, launches on pass and fails on any failed command', () => {
+    expect(testsGate(kinds, undefined)).toBe('wait')
+    expect(testsGate(kinds, { results: [{ exit: 0 }, { exit: 0 }] })).toBe('go')
+    expect(testsGate(kinds, { results: [{ exit: 0 }, { exit: 1 }] })).toBe('fail')
+    expect(testsGate(kinds, { sessionId: 's' })).toBe('go')
+    expect(testsGate(['spec', 'break'], undefined)).toBe('go')
   })
 })
