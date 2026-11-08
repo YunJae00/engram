@@ -104,8 +104,8 @@ Shared-file lock: an item whose allowed files include a `sharedFiles` entry runs
   "models": {
     "claude": {
       "implement": "claude-opus-5-5",
-      "verify": "claude-sonnet-5-5",
-      "design": "claude-sonnet-5-5"
+      "verify": "claude-opus-5-5",
+      "design": "claude-opus-5-5"
     },
     "codex": "gpt-6-sol"
   },
