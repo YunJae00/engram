@@ -125,7 +125,7 @@ export function officeWorkPreview(lane: string, op: string): () => void {
   hookPreviewEvents()
   const title = op.startsWith('outlook.') ? 'Outlook' : op.startsWith('excel.') ? 'Excel' : op.startsWith('word.') ? 'Word' : 'PowerPoint'
   const activity = op === 'outlook.calendar' ? 'Checking your calendar' : title === 'Outlook' ? 'Checking your mail' : 'Working with documents'
-  const id = `office:${lane}`
+  const id = `office:${lane}:${title}`
   const entry: WorkPreviewDto = { id, lane, title, activity, at: Date.now(), captureState: 'activity', current: true }
   valid.set(id, () => true)
   entries.delete(id); entries.set(id, entry)

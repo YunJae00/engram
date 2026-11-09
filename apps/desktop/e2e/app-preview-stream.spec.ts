@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-test('paints an owned app stream within two seconds of binding and keeps it after the turn', async () => {
+async function launchStreamFixture() {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'app-stream-')), { git: false })
   const bot = await createBot(paths, { name: 'Stream fixture' })
@@ -53,6 +53,12 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
     await openActivity(page, 'bots')
     await page.getByTestId(`bot-${bot.id}`).click()
     await page.getByTestId('bots-input').focus()
+    return { app, page, lane, bot }
+  } catch (error) { await closeTestApp(app); throw error }
+}
+test('paints an owned app stream within two seconds of binding and keeps it after the turn', async () => {
+  const { app, page, lane } = await launchStreamFixture()
+  try {
     await app.evaluate(({ ipcMain, BrowserWindow }, lane) => {
       ipcMain.removeHandler('desktop:bindings')
       ipcMain.handle('desktop:bindings', () => [{ lane, source: 'window:42:0', name: 'Owned stream', readable: true }])
@@ -93,5 +99,38 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
     await expect(page.getByTestId('preview-card-collapsed')).toBeVisible()
     await page.getByTestId('preview-card-collapsed').click()
     await expect(painted).toBeVisible()
+  } finally { await closeTestApp(app) }
+})
+
+test('rebinding the lane to another window keeps the earlier card on its own app and moves Live to the new card', async () => {
+  const { app, page, lane } = await launchStreamFixture()
+  const counts = () => page.evaluate(() => (window as unknown as { streamCounts: { opened: number; closed: number } }).streamCounts)
+  const bind = (source: string, name: string) => app.evaluate(({ ipcMain, BrowserWindow }, { lane, source, name }) => {
+    ipcMain.removeHandler('desktop:bindings')
+    ipcMain.handle('desktop:bindings', () => [{ lane, source, name, readable: true }])
+    BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'desktop:changed' })
+  }, { lane, source, name })
+  try {
+    await bind('window:42:0', 'Owned stream')
+    await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: true }), lane)
+    const deck = page.getByTestId('preview-deck')
+    const front = deck.locator('[data-position="0"] [data-testid="preview-card"]')
+    await expect(front.locator('canvas[data-painted]')).toBeVisible({ timeout: 2000 })
+    await expect(front).toContainText('Live')
+    expect(await counts()).toEqual({ opened: 1, closed: 0 })
+    await bind('window:43:0', 'Second app')
+    await expect(deck.locator('[data-position="0"]')).toHaveAttribute('data-frame', `${lane}:window:43:0`)
+    await expect(front.locator('.preview-card-caption')).toContainText('Second app')
+    await expect(front.locator('canvas[data-painted]')).toBeVisible({ timeout: 2000 })
+    await expect(front).toContainText('Live')
+    const owned = deck.getByRole('button', { name: 'Owned stream', exact: true })
+    await expect(owned.locator('img')).toBeVisible()
+    await expect.poll(counts).toEqual({ opened: 2, closed: 1 })
+    await owned.press('Enter')
+    await expect(deck.locator('[data-position="0"]')).toHaveAttribute('data-frame', `${lane}:window:42:0`)
+    await expect(front.locator('.preview-card-caption')).toContainText('Owned stream')
+    await expect(front.locator('.preview-card-caption')).not.toContainText('Live')
+    await expect(front.locator('canvas[data-painted]')).toHaveCount(0)
+    await expect(deck.getByRole('button', { name: 'Second app', exact: true })).toBeVisible()
   } finally { await closeTestApp(app) }
 })

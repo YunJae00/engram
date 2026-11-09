@@ -1,6 +1,6 @@
 import { api } from '../api.js'
 import { type CSSProperties, useCallback, useEffect, useId, useRef, useState } from 'react'
-import { AppWindow, Calendar, ChevronUp, FileText, Globe, Mail, LoaderCircle, PanelRight, X } from 'lucide-react'
+import { AppWindow, Calendar, ChevronUp, FileSpreadsheet, FileText, Globe, Mail, LoaderCircle, PanelRight, Presentation, X } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { GROUP_KO } from '../lib/threadLangKo.js'
 import { useWebPane, webPane } from '../lib/webPane.js'
@@ -40,6 +40,12 @@ export function observeChatCap(stage: Element, onCap: (cap: number) => void): ()
   return () => observer.disconnect()
 }
 
+export function previewIcon(frame: Pick<PreviewFrame, 'phase' | 'title' | 'activity' | 'source'>) {
+  if (frame.phase !== 'activity') return frame.source === 'web' ? Globe : AppWindow
+  if (frame.title === 'Outlook') return frame.activity === 'Checking your calendar' ? Calendar : Mail
+  return frame.title === 'Excel' ? FileSpreadsheet : frame.title === 'PowerPoint' ? Presentation : FileText
+}
+
 export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb, onCollapse, onHide, onSnapshot }: {
   frame: PreviewFrame; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
   lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void
@@ -66,7 +72,7 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
     const timer = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
-  const Icon = frame.phase === 'activity' ? frame.title === 'Outlook' ? frame.activity === 'Checking your calendar' ? Calendar : Mail : FileText : frame.source === 'web' ? Globe : AppWindow
+  const Icon = previewIcon(frame)
   const title = frame.title || words.browser
   const status = state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state
   const age = Math.max(0, Math.floor((now - (paints.current.get(frame.id) ?? frame.at)) / 1000))

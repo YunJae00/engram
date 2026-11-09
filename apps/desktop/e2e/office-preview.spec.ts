@@ -89,3 +89,46 @@ test('Office activity card can be closed without hover so it stops covering the 
     await expect(card.locator('.preview-card-caption')).toHaveText('Outlook · 메일 확인')
   } finally { await closeTestApp(app) }
 })
+
+test('Office activity cards for different apps keep their own look when the current app changes', async () => {
+  const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  const paths = await initVault(await mkdtemp(join(tmp, 'office-preview-')), { git: false })
+  const bot = await createBot(paths, { name: 'Office mix' })
+  await appendBotTurn(paths, bot.id, { role: 'user', text: '메일이랑 엑셀 확인해 줘', at: new Date().toISOString() })
+  const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
+    ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'office-preview-user-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1',
+  } })
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByTestId('shell')).toBeVisible()
+    await openActivity(page, 'bots')
+    await page.getByTestId(`bot-${bot.id}`).click()
+    const lane = `bot-${bot.id}`
+    const now = Date.now()
+    const frames = (outlookCurrent: boolean) => [
+      { id: `office:${lane}:Excel`, lane, title: 'Excel', activity: 'Working with documents', captureState: 'activity', current: !outlookCurrent, at: now + 1 },
+      { id: `office:${lane}:Outlook`, lane, title: 'Outlook', activity: outlookCurrent ? 'Checking your calendar' : 'Checking your mail', captureState: 'activity', current: outlookCurrent, at: outlookCurrent ? now + 2 : now },
+    ]
+    const send = (events: unknown[]) => app.evaluate(({ BrowserWindow }, events) => {
+      for (const event of events) BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', event)
+    }, events)
+    await send([{ type: 'comet:working', channel: lane, working: true }, { type: 'desktop:preview', frames: frames(false) }])
+    const deck = page.getByTestId('preview-deck')
+    const front = deck.locator('[data-position="0"] [data-testid="preview-card"]')
+    await expect(front.locator('.preview-card-caption')).toHaveText('Excel · 문서 작업')
+    await expect(front.locator('.preview-card-state svg.lucide-file-spreadsheet')).toHaveCount(1)
+    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
+    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Outlook')
+    await send([{ type: 'desktop:preview', frames: frames(true) }])
+    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
+    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Outlook')
+    await expect(front.locator('.preview-card-state svg.lucide-file-spreadsheet')).toHaveCount(1)
+    await expect(front.locator('.preview-card-caption')).toHaveText(/^Excel/)
+    await expect(front.locator('.preview-card-caption')).not.toContainText('Outlook')
+    await deck.locator('[data-position="1"] .preview-deck-back').press('Enter')
+    await expect(front.locator('.preview-card-caption')).toHaveText('Outlook · 일정 확인')
+    await expect(front.locator('.preview-card-state svg.lucide-calendar')).toHaveCount(1)
+    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Excel`)
+    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Excel')
+  } finally { await closeTestApp(app) }
+})

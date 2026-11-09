@@ -1,13 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { AppWindow, Calendar, FileSpreadsheet, FileText, Globe, Mail, Presentation } from 'lucide-react'
 import type { WorkPreviewDto } from '../src/shared/desktop.js'
 const pane = vi.hoisted(() => ({ attention: false }))
 vi.mock('../src/renderer/src/lib/webPane.js', () => ({ useWebPane: () => pane, webPane: {} }))
 vi.mock('../src/renderer/src/api.js', () => ({ api: {} }))
 vi.mock('../src/renderer/src/lib/agentMirrorLive.js', () => ({ agentMirror: {} }))
 import { appPreviewFrame } from '../src/renderer/src/components/usePreviewFrames.js'
-import { PreviewCard } from '../src/renderer/src/components/PreviewCard.js'
+import { PreviewCard, previewIcon } from '../src/renderer/src/components/PreviewCard.js'
 import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
 import { threadWords } from '../src/renderer/src/lib/threadLang.js'
 
@@ -71,4 +72,30 @@ it.each(['en', 'ko'] as const)('shows connecting instead of stale capture-unsafe
   expect(render(true)).toContain(threadWords(lang).workPreview.firstFrame)
   expect(render(true)).not.toContain(threadWords(lang).workPreview.captureUnsafe)
   expect(render(false)).toContain(threadWords(lang).workPreview.captureUnsafe)
+})
+
+it('derives each card icon from its own app, never from another card', () => {
+  const office = (title: string, activity = 'Working with documents') => previewIcon({ phase: 'activity', title, activity, source: 'app' })
+  expect(office('Outlook', 'Checking your mail')).toBe(Mail)
+  expect(office('Outlook', 'Checking your calendar')).toBe(Calendar)
+  expect(office('Excel')).toBe(FileSpreadsheet)
+  expect(office('PowerPoint')).toBe(Presentation)
+  expect(office('Word')).toBe(FileText)
+  expect(previewIcon({ phase: 'ready', title: 'example.test', source: 'web' })).toBe(Globe)
+  expect(previewIcon({ phase: 'ready', title: 'Finder', source: 'app' })).toBe(AppWindow)
+})
+
+it('renders Outlook and Excel activity cards with their own chrome whichever is current', () => {
+  const card = (id: string, title: string, activity: string, current: boolean) => renderToStaticMarkup(createElement(PreviewCard, {
+    frame: appPreviewFrame({ id, lane: 'bot-mix', title, activity, captureState: 'activity', current, at: 1 }),
+    busy: true, state: 'recorded', lang: 'en', lane: 'bot-mix', compact: false, onCollapse() {}, onHide() {},
+  }))
+  const excel = card('office:bot-mix:Excel', 'Excel', 'Working with documents', true)
+  const outlook = card('office:bot-mix:Outlook', 'Outlook', 'Checking your mail', false)
+  expect(excel).toContain('lucide-file-spreadsheet')
+  expect(excel).toContain('Excel · Working with documents')
+  expect(excel).not.toContain('lucide-mail')
+  expect(outlook).toContain('lucide-mail')
+  expect(outlook).toContain('Outlook · Working')
+  expect(outlook).not.toContain('Excel')
 })

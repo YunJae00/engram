@@ -176,7 +176,7 @@ it.each([
 it.each(['chat:done', 'chat:error'])('publishes an Office activity DTO without a binding or capture and removes it on %s', async type => {
   const { officeWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
   const finish = officeWorkPreview('mail-lane', 'outlook.mail')
-  expect(workPreviews('mail-lane')).toEqual([{ id: 'office:mail-lane', lane: 'mail-lane', title: 'Outlook', activity: 'Checking your mail', captureState: 'activity', current: true, at: expect.any(Number) }])
+  expect(workPreviews('mail-lane')).toEqual([{ id: 'office:mail-lane:Outlook', lane: 'mail-lane', title: 'Outlook', activity: 'Checking your mail', captureState: 'activity', current: true, at: expect.any(Number) }])
   expect(fake.send).toHaveBeenCalledWith('engram:event', expect.objectContaining({ type: 'desktop:preview' }))
   expect(fake.image).not.toHaveBeenCalled()
   finish()
@@ -186,7 +186,28 @@ it.each(['chat:done', 'chat:error'])('publishes an Office activity DTO without a
   fake.tap.mock.calls[0]![0]({ type, channel: 'mail-lane' })
   expect(workPreviews('mail-lane')).toEqual([])
   expect(workPreviews('other-lane')[0]).toMatchObject({ captureState: 'activity', current: true })
-  expect(fake.send).toHaveBeenLastCalledWith('engram:event', { type: 'desktop:preview', frames: [expect.objectContaining({ id: 'office:other-lane' })] })
+  expect(fake.send).toHaveBeenLastCalledWith('engram:event', { type: 'desktop:preview', frames: [expect.objectContaining({ id: 'office:other-lane:Excel' })] })
+})
+it('keeps one activity card per Office app so a newer app never restyles an older card', async () => {
+  const { officeWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  officeWorkPreview('bot-mix', 'outlook.mail')()
+  const excel = officeWorkPreview('bot-mix', 'excel.read')
+  expect(workPreviews('bot-mix')).toEqual([
+    expect.objectContaining({ id: 'office:bot-mix:Excel', title: 'Excel', activity: 'Working with documents', current: true }),
+    expect.objectContaining({ id: 'office:bot-mix:Outlook', title: 'Outlook', activity: 'Checking your mail', current: false }),
+  ])
+  excel(); officeWorkPreview('bot-mix', 'outlook.calendar')
+  expect(workPreviews('bot-mix')).toEqual([
+    expect.objectContaining({ id: 'office:bot-mix:Outlook', title: 'Outlook', activity: 'Checking your calendar', current: true }),
+    expect.objectContaining({ id: 'office:bot-mix:Excel', title: 'Excel', activity: 'Working with documents', current: false, captureState: 'activity' }),
+  ])
+})
+it('keeps an earlier window card titled as its own app after the lane binds another window', async () => {
+  const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
+  const first = binding(1); (first as { name: string }).name = 'Inbox - Outlook'; showWorkPreview(first); await vi.advanceTimersByTimeAsync(1)
+  const second = { ...first, source: 'window:2:0', name: 'Book1 - Excel' } as DesktopBinding
+  fake.bindings.set(first.lane, second); showWorkPreview(second); await vi.advanceTimersByTimeAsync(1)
+  expect(workPreviews('bot-1').map(frame => [frame.id, frame.title, frame.current])).toEqual([['bot-1:window:2:0', 'Book1 - Excel', true], ['bot-1:window:1:0', 'Inbox - Outlook', false]])
 })
 it('keeps an app frame with data as delayed after chat:done', async () => {
   const { showWorkPreview, workPreviews } = await import('../src/main/work-preview.js')
