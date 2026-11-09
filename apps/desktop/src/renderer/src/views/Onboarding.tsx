@@ -11,6 +11,8 @@ import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js
 import { useModelChoices } from '../components/ModelPicker.js'
 import { OnboardingModel } from '../components/OnboardingModel.js'
 
+const CHECK_ERROR = 'Could not check AI connections. Please retry before continuing.'
+
 export function Onboarding() {
   const profiles = useAccountProfiles()
   const [step, setStep] = useState(1)
@@ -42,11 +44,12 @@ export function Onboarding() {
   const pick = choice && ready.some(brain => brain.id === choice) ? choice : null
   const modelReady = !!pick && !catalog.loading && !catalog.error && catalog.rows.length > 0 && model !== null && (model === '' || catalog.rows.some(row => row.value === model))
 
-  const loadBrains = async () => {
+  // `fresh` re-detects past main-process status caches, for a CLI login finished outside the app.
+  const loadBrains = async (fresh = false): Promise<EngineStatusDto[] | null> => {
     const at = ++revision.current
     if (!checked.current) setLoading(true)
-    try { const states = await api.engineStates(); if (at === revision.current) { setBrains(states); checked.current = true } }
-    catch { if (at === revision.current) setError('Could not check AI connections. Please retry before continuing.') }
+    try { const states = await api.engineStates(fresh ? [] : undefined); if (at !== revision.current) return null; setBrains(states); setError(held => held === CHECK_ERROR ? '' : held); checked.current = true; return states }
+    catch { if (at === revision.current) setError(CHECK_ERROR); return null }
     finally { if (at === revision.current) setLoading(false) }
   }
   useEffect(() => {
@@ -55,16 +58,22 @@ export function Onboarding() {
     void refreshAccountUsage(true).catch(() => undefined)
     void api.activityGet().then(activity => setSources(held => ({ ...held, activity }))).catch(() => undefined)
     void api.engineLogins().then(setLogins).catch(() => undefined)
-    return api.onEvent(event => {
-      if (event.type === 'engines:changed' || event.type === 'engines:detected') void loadBrains()
+    const refocus = () => { if (!signing.current && !completing.current) void loadBrains(true) }
+    window.addEventListener('focus', refocus)
+    const off = api.onEvent(event => {
+      if ((event.type === 'engines:changed' || event.type === 'engines:detected') && !signing.current) void loadBrains()
       if (event.type === 'engines:login') setLogins(held => [...held.filter(login => login.id !== event.login.id || login.profile !== event.login.profile), event.login])
     })
+    return () => { window.removeEventListener('focus', refocus); off() }
   }, [])
 
   const connect = async (id: 'claude' | 'codex') => {
     if (signing.current) return
     signing.current = true; setConnecting(id); setError(''); setCheckFailed(null)
     try {
+      const states = await loadBrains(true)
+      if (states?.some(brain => brain.id === id && connectionConfirmed(brain))) return
+      setError('')
       const result = await api.engineConnect(id)
       if (!result.ok) setError(result.message || 'Sign-in was cancelled. Please try again.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign-in did not finish. Please try again.') }

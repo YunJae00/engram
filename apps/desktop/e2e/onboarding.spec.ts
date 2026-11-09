@@ -4,33 +4,23 @@ import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
-
 // Fresh setup reaches the shell only after a verified AI response.
-
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const PREVIEW = join(REPO_TMP, 'onboarding-preview')
-
 let app: ElectronApplication
 let page: Page
 let vaultRoot: string
 let mockDir: string
-async function chooseModel(label: string) {
-  await page.getByTestId('onboard-model').click()
-  await page.getByRole('menuitemradio', { name: label, exact: true }).click()
-}
+async function chooseModel(label: string) { await page.getByTestId('onboard-model').click(); await page.getByRole('menuitemradio', { name: label, exact: true }).click() }
 async function screenshot(name: string) {
   const data = await app.evaluate(async ({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!
-    await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
-    await new Promise(resolve => setTimeout(resolve, 400))
-    await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
-    await new Promise(resolve => setTimeout(resolve, 450))
-    return (await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })).toPNG().toString('base64')
+    const capture = () => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
+    for (const wait of [400, 450]) { await capture(); await new Promise(resolve => setTimeout(resolve, wait)) }
+    return (await capture()).toPNG().toString('base64')
   })
   await writeFile(join(PREVIEW, name), Buffer.from(data, 'base64'))
 }
-
 test.beforeEach(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   await mkdir(PREVIEW, { recursive: true })
@@ -38,35 +28,18 @@ test.beforeEach(async () => {
   mockDir = join(userData, 'mock')
   await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
   vaultRoot = join(await mkdtemp(join(REPO_TMP, 'e2e-onboard-')), 'Engram')
-
-  app = await electron.launch({
-    timeout: 90000,
-    args: [MAIN_ENTRY, '--no-sandbox'],
-    env: {
-      ...process.env,
-      // NO ENGRAM_VAULT → onboarding must appear
-      ENGRAM_VAULT: '',
-      ENGRAM_USERDATA: userData,
-      ENGRAM_ONBOARD_ROOT: vaultRoot,
-      ENGRAM_NO_GIT: '1',
-      ENGRAM_NO_AUTOTIDY: '1',
-      ENGRAM_ENGINE: 'none',
-      ENGRAM_HIDDEN: '1',
-      ENGRAM_BROWSER_EXTERNAL: '0',
-    },
-  })
+  // NO ENGRAM_VAULT → onboarding must appear
+  const env = { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ONBOARD_ROOT: vaultRoot, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0' }
+  app = await electron.launch({ timeout: 90000, args: [MAIN_ENTRY, '--no-sandbox'], env })
   page = await app.firstWindow({ timeout: 90000 })
   await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('models:list')
-    ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
+    ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
   })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
-test.afterEach(async () => {
-  await closeTestApp(app)
-})
+test.afterEach(async () => { await closeTestApp(app) })
 
 test('a fresh workspace requires verified AI before browsing', async () => {
   await expect(page.getByTestId('onboarding')).toBeVisible()
@@ -76,8 +49,7 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await page.getByTestId('vault-root-input').fill(' ')
   await expect(page.getByTestId('onboard-next')).toBeDisabled()
   await app.evaluate(({ ipcMain }, root) => {
-    ipcMain.removeHandler('import:pick')
-    ipcMain.handle('import:pick', () => root)
+    ipcMain.removeHandler('import:pick'); ipcMain.handle('import:pick', () => root)
   }, vaultRoot)
   await page.getByRole('button', { name: 'Browse for workspace folder', exact: true }).click()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
@@ -92,8 +64,7 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await page.getByTestId('onboard-next').click()
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-    ipcMain.removeHandler('engines:states')
-    ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
@@ -128,8 +99,7 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
   await app.evaluate(({ BrowserWindow, ipcMain }) => {
     const window = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('index.html'))!
     window.setMinimumSize(0, 0); window.setContentSize(600, 800)
-    ipcMain.removeHandler('engines:states')
-    ipcMain.handle('engines:states', () => [
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [
       { id: 'claude', installed: true, loggedIn: false },
       { id: 'codex', installed: true, loggedIn: true },
     ])
@@ -184,8 +154,7 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await writeFile(join(mockDir, 'default.txt'), '')
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-    ipcMain.removeHandler('engines:states')
-    ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await page.getByTestId('onboard-next').click()
@@ -206,14 +175,11 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
 
 test('models must finish loading before selection and setup can continue', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
-    ipcMain.removeHandler('engines:states')
-    ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
-    ipcMain.removeHandler('models:list')
-    ipcMain.handle('models:list', () => new Promise(resolve => { (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels = () => resolve([{ value: 'sonnet', label: 'Sonnet', detail: 'Fixture' }]) }))
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', () => new Promise(resolve => { (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels = () => resolve([{ value: 'sonnet', label: 'Sonnet', detail: 'Fixture' }]) }))
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   })
-  const choose = page.getByRole('button', { name: 'Browse for workspace folder', exact: true })
-  const next = page.getByTestId('onboard-next')
+  const choose = page.getByRole('button', { name: 'Browse for workspace folder', exact: true }), next = page.getByTestId('onboard-next')
   expect(Math.abs((await choose.boundingBox())!.x - (await next.boundingBox())!.x)).toBeLessThan(2)
   await next.click()
   await page.getByTestId('onboard-choose-claude').check()
@@ -236,7 +202,6 @@ test('models must finish loading before selection and setup can continue', async
 test('first-run login states, filing retry and direct browser entry', async () => {
   test.setTimeout(240000)
   await expect(page.getByTestId('onboarding')).toBeVisible()
-
   // ① vault location (pre-filled from ENGRAM_ONBOARD_ROOT)
   await expect(page.getByTestId('onboard-step-1')).toBeVisible()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
@@ -246,8 +211,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
     const states = [{ id: 'claude', installed: true, loggedIn: false }, { id: 'codex', installed: true, loggedIn: false }]
-    let attempt = 0
-    let cancel: (() => void) | undefined
+    let attempt = 0, cancel: (() => void) | undefined
     for (const channel of ['engines:states', 'engines:connect', 'engines:cancelLogin']) ipcMain.removeHandler(channel)
     ipcMain.handle('engines:states', () => states)
     ipcMain.handle('engines:cancelLogin', () => cancel?.())
@@ -263,7 +227,6 @@ test('first-run login states, filing retry and direct browser entry', async () =
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await page.getByTestId('onboard-next').click()
-
   // Sign-in must finish before the live connection check.
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
   await expect(page.getByTestId('onboard-connect-codex')).toBeEnabled()
@@ -288,7 +251,6 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-finish').click()
-
   // lands in the shell on the new vault
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing?.engine]))).toEqual(['codex', 'codex'])
@@ -298,8 +260,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect.poll(() => page.evaluate(() => window.engram.enginesDetected())).toBe(true)
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))
-    ipcMain.removeHandler('engines:list')
-    ipcMain.handle('engines:list', () => engines)
+    ipcMain.removeHandler('engines:list'); ipcMain.handle('engines:list', () => engines)
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })
   })
   await expect(page.getByTestId('connect-banner')).toHaveCount(0)
@@ -307,8 +268,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await screenshot('05-first-screen.png')
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler('sweep:run')
-    const fixture = globalThis as typeof globalThis & { filingCalls: number }
-    fixture.filingCalls = 0
+    const fixture = Object.assign(globalThis, { filingCalls: 0 })
     ipcMain.handle('sweep:run', async () => {
       fixture.filingCalls++
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:start' })
@@ -339,8 +299,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByTestId('sweep-status')).toContainText('Filing done')
   expect(await app.evaluate(() => (globalThis as typeof globalThis & { filingCalls: number }).filingCalls)).toBe(1)
   await expect(page.getByTestId('filing-retry')).toBeEnabled()
-  const retryBox = await page.getByTestId('filing-retry').boundingBox()
-  const settingsBox = await page.getByTestId('activity-settings').boundingBox()
+  const retryBox = await page.getByTestId('filing-retry').boundingBox(), settingsBox = await page.getByTestId('activity-settings').boundingBox()
   expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(settingsBox!.x)
   expect(Math.abs(retryBox!.y + retryBox!.height / 2 - settingsBox!.y - settingsBox!.height / 2)).toBeLessThan(2)
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
@@ -395,4 +354,46 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.reload()
     await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+})
+
+type Fixture = { state: { id: string; installed: boolean; loggedIn: boolean; conclusive?: boolean }; calls: unknown[]; connects: number; held: ((loggedIn: boolean | null) => void)[]; hold: boolean; finish?: () => void }
+test('a CLI login finished outside the app shows on focus and on Connect', async () => {
+  await app.evaluate(({ ipcMain }) => {
+    const { fx } = Object.assign(globalThis, { fx: { state: { id: 'codex', installed: true, loggedIn: false }, calls: [], connects: 0, held: [], hold: false } as Fixture })
+    for (const channel of ['engines:states', 'engines:connect']) ipcMain.removeHandler(channel)
+    ipcMain.handle('engines:states', (_event, ids) => {
+      fx.calls.push(ids)
+      return !fx.hold ? [{ ...fx.state }] : new Promise((resolve, reject) => fx.held.push(loggedIn => loggedIn === null ? reject(new Error('stale')) : resolve([{ ...fx.state, loggedIn }])))
+    })
+    ipcMain.handle('engines:connect', () => { fx.connects++; return new Promise(resolve => { fx.finish = () => { fx.state.loggedIn = true; resolve({ ok: true }) } }) })
+  })
+  const fx = <T,>(run: (fixture: Fixture) => T) => app.evaluate((_electron, source) => new Function('fx', `return (${source})(fx)`)((globalThis as typeof globalThis & { fx: Fixture }).fx), run.toString()) as Promise<T>
+  const focus = () => page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  const codex = page.getByTestId('onboard-brain-codex')
+  await page.getByTestId('onboard-next').click(); await expect(page.getByTestId('onboard-connect-codex')).toBeVisible()
+  await expect(page.getByTestId('onboard-step-2')).toContainText('Not connected')
+  await fx(f => { f.state.loggedIn = true }); await focus()
+  await expect(codex).toHaveText('Signed in')
+  expect(await fx(f => [f.calls.at(-1), f.connects])).toEqual([[], 0])
+  await page.getByTestId('onboard-choose-codex').check(); await chooseModel('Quick model')
+  await page.getByTestId('onboard-ai-next').click(); await focus()
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); await expect(codex).toHaveText('Signed in')
+  await fx(f => { f.hold = true }); await focus(); await focus(); await focus()
+  await expect.poll(() => fx(f => f.held.length)).toBe(3)
+  await fx(f => { f.held[2]!(true); f.held[0]!(false); f.held[1]!(null) })
+  await expect(codex).toHaveText('Signed in'); await expect(page.getByRole('alert')).toHaveCount(0)
+  await fx(f => { f.hold = false; f.state.conclusive = false }); await focus()
+  await expect(page.getByRole('button', { name: 'Retry check', exact: true })).toBeVisible()
+  await fx(f => { f.state.conclusive = true }); await focus(); await expect(codex).toHaveText('Signed in')
+  await fx(f => { f.state.loggedIn = false }); await focus(); await expect(page.getByTestId('onboard-connect-codex')).toBeVisible()
+  await fx(f => { f.state.loggedIn = true }); await page.getByTestId('onboard-connect-codex').click()
+  await expect(codex).toHaveText('Signed in'); expect(await fx(f => f.connects)).toBe(0)
+  await fx(f => { f.state.loggedIn = false }); await focus()
+  await page.getByTestId('onboard-connect-codex').click()
+  await expect.poll(() => fx(f => f.connects)).toBe(1)
+  const calls = await fx(f => f.calls.length); await focus()
+  await expect(page.getByRole('status').filter({ hasText: 'Opening sign-in' })).toBeVisible()
+  expect(await fx(f => f.calls.length)).toBe(calls)
+  await fx(f => f.finish!())
+  await expect(codex).toHaveText('Signed in'); await expect.poll(() => fx(f => f.calls.length)).toBe(calls + 1)
 })

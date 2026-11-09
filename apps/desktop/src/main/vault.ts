@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
 import { vaultGit } from './vault-git.js'
 import { connectionProbe } from './connection-probe.js'
-import { engineHealthOf, revalidateEngines } from './engine-health.js'
+import { engineHealthOf, markEngineOk, revalidateEngines } from './engine-health.js'
 
 // Vault + engine context for the main process. Env knobs used by dev/e2e:
 //   ENGRAM_VAULT     vault root (skips onboarding)
@@ -89,12 +89,24 @@ function keepSet(keep: Iterable<EngineId>): Set<EngineId> {
 // The honest per-engine picture for setup UI: "installed but not logged in" is
 // a state the user can ACT on, and resolveEngines collapses it into absence.
 // Mock/none stay forced so e2e and --engine flags behave the same everywhere.
+// An empty list asks for a fresh check of every provider (onboarding after an
+// outside CLI login): cached and pending status probes are dropped first.
+const freshProbes = new WeakMap<Engine, number>()
 export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') return [{ id: 'mock', installed: true, loggedIn: true }]
   if (engineFlag === 'none') return [{ id: 'claude', installed: false, loggedIn: false }]
-  return Promise.all(ids.map(async (id) => {
-    const detection = await connectionProbe(() => createEngine(id).detect())
+  const fresh = ids.length === 0
+  return Promise.all((fresh ? ENGINE_ORDER : ids).map(async (id) => {
+    const engine = createEngine(id) as Engine & { forgetStatus?: () => void }
+    const turn = (freshProbes.get(engine) ?? 0) + 1
+    if (fresh) { freshProbes.set(engine, turn); engine.forgetStatus?.() }
+    const detection = await connectionProbe(() => engine.detect())
+    const latest = fresh && freshProbes.get(engine) === turn
+    // Only the newest fresh check may drop a hung probe; an older one would void the newer generation.
+    if (latest && detection.conclusive === false) engine.forgetStatus?.()
+    // A fresh signed-in status after an outside login replaces an earlier auth failure.
+    if (latest && detection.installed && detection.loggedIn && detection.conclusive !== false && engineHealthOf(id)?.reason === 'auth') markEngineOk(id)
     const health = engineHealthOf(id)
     return { id, ...detection, ...(health ? { healthy: health.healthy, healthReason: health.reason } : {}) }
   }))
