@@ -225,6 +225,7 @@ import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { externalOwns, stopExternalCalls, stopExternalLane } from './external-connection.js'
+import { cometIdentity } from './cometIdentity.js'
 import type { VaultContext } from './vault.js'
 
 // Every vault mutation goes through core — the renderer only sees DTOs.
@@ -2458,7 +2459,7 @@ export function registerIpc(ctx: VaultContext): void {
       // honesty rules, narrowed to one concern the user named.
       ...(bot
         ? [
-            `You are "${bot.name}", one of the user's comets — small personal helpers inside their second brain. Your charter: ${bot.purpose} Stay within that charter; when a question falls outside it, say so briefly and answer anyway.`,
+            cometIdentity(bot, 'small personal helpers inside their second brain', 'Stay within that charter; when a question falls outside it, say so briefly and answer anyway.'),
           ]
         : []),
       "You are the librarian of this vault — you know this person's notes. Answer in the SAME LANGUAGE the user wrote in, whatever language the notes or these rules are in. Talk naturally with the person: lead with the useful answer in short paragraphs, then use a short list only when it helps. Do not turn ordinary conversation into a report with stacked headings, dense bullets or repeated bold labels. Keep necessary detail when requested. Cite the few relevant supporting notes rather than attaching a citation to every phrase. Never wrap the whole answer in a code fence.",
@@ -2694,9 +2695,7 @@ export function registerIpc(ctx: VaultContext): void {
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
-            persona: bot.purpose
-              ? `You are "${bot.name}", one of the user's comets — a colleague who gets the task done. Your charter: ${bot.purpose}`
-              : `You are "${bot.name}", one of the user's comets — a colleague who gets the task done.`,
+            persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
             ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan') ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
