@@ -62,6 +62,12 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
     setOpenedPages(new Set(openTiles))
   }
   const [error, setError] = useState(false)
+  const [focusSeat, setFocusSeat] = useState<number | null>(null)
+  const composerOf = (index: number) => document.querySelector<HTMLTextAreaElement>(`[data-testid="mission-tile-${index}"] .mini-chat-write textarea`)
+  useEffect(() => {
+    const input = focusSeat === null ? null : composerOf(focusSeat)
+    if (input) { input.focus(); setFocusSeat(null) }
+  }, [focusSeat, bots, seats])
 
   useEffect(() => {
     if (adding === null) return
@@ -139,6 +145,7 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
       const bot = await api.botCreate({ name: t('bots.untitled'), purpose: '' })
       setBots((previous) => [...previous.filter((one) => one.id !== bot.id), bot])
       seat(index, bot.id)
+      setFocusSeat(index)
     } catch { setError(true) } finally { setCreating(false) }
   }
   const chooser = (index: number) => (
@@ -168,7 +175,11 @@ export function MissionControl({ layout }: { layout: 2 | 4 }) {
             </article>
           )
           return (
-            <article ref={node => { if (node) tiles.current.set(bot.id, node); else tiles.current.delete(bot.id) }} className="mission-tile" data-state={statusOf(bot)} key={index} data-testid={`mission-tile-${index}`}>
+            <article ref={node => { if (node) tiles.current.set(bot.id, node); else tiles.current.delete(bot.id) }} className="mission-tile" data-state={statusOf(bot)} key={index} data-testid={`mission-tile-${index}`} onClick={(event) => {
+              if (chatFolded || !(event.target instanceof Element) || event.target.closest('.mission-tile-head, .mission-add-menu, button, a, input, textarea, select, label, [role="button"], [contenteditable="true"], [tabindex]')) return
+              if (window.getSelection()?.isCollapsed === false) return
+              composerOf(index)?.focus()
+            }}>
               <header className="mission-tile-head">
                 <button className="mission-name mission-change" title={t('mission.change')} aria-label={t('mission.choose', { count: index + 1 })} aria-expanded={adding === index} onClick={() => setAdding(adding === index ? null : index)}><span>{bot.name}</span><ChevronDown size={13} /></button>
                 <span className="mission-status" role="status"><CometActivityIndicator state={statusOf(bot)} />{cometActivityLabel(statusOf(bot))}</span>
