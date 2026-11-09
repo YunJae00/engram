@@ -5,7 +5,7 @@ import type { SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/
 import { SidebarDisclosure } from './SidebarDisclosure.js'
 import { DeleteConversationDialog } from './DeleteConversationDialog.js'
 
-interface Item { id: string; name: string; active?: boolean; leading?: ReactNode; content?: ReactNode }
+interface Item { id: string; name: string; active?: boolean; recency?: number; leading?: ReactNode; content?: ReactNode }
 interface Props {
   kind: SidebarKind; items: Item[]; layout: SidebarLayout[SidebarKind]; newFolder: number
   onChange(change: SidebarChange['change']): Promise<void>
@@ -90,7 +90,8 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
   }
   const byId = new Map(items.map(item => [item.id, item]))
   const itemRows = (folder: string | null) => layout.items.filter(one => one.folder === folder)
-    .sort((a, b) => kind === 'chat' ? Number(!!b.pinned) - Number(!!a.pinned) : 0)
+    // Pinned rows keep their manual order; unpinned rows follow the latest activity.
+    .sort((a, b) => kind === 'chat' ? Number(!!b.pinned) - Number(!!a.pinned) || (a.pinned ? 0 : (byId.get(b.id)?.recency ?? 0) - (byId.get(a.id)?.recency ?? 0)) : 0)
     .flatMap(one => { const item = byId.get(one.id); return item ? [{ ...item, pinned: kind === 'chat' && !!one.pinned }] : [] })
   const controls = (entry: Entry, name: string, pinned = false) => <>
     <div className="sidebar-row-actions">

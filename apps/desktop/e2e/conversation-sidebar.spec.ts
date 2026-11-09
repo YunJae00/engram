@@ -13,12 +13,19 @@ const STAMP = new Date(Date.now() - 60 * 60_000).toISOString()
 let app: ElectronApplication
 let page: Page
 let paths: VaultPaths
-let screenshots: string
+let screenshots: string, root: string
 const bots: Bot[] = []
+
+async function launch(): Promise<void> {
+  const userData = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-userdata-'))
+  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
+  page = await app.firstWindow(); await page.setViewportSize({ width: 1280, height: 840 }); await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect(page.getByTestId('shell')).toBeVisible(); await expect(page.getByTestId('bots-new')).toBeEnabled()
+}
 
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
-  const root = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-'))
+  root = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-'))
   paths = await initVault(root, { git: false })
   screenshots = await mkdtemp(join(TMP, 'conversation-sidebar-shots-'))
   for (let index = 0; index < 28; index++) {
@@ -34,16 +41,7 @@ test.beforeAll(async () => {
   const weekly = await createBot(paths, { name: '주간회의' })
   bots.push(weekly)
   for (const [role, text] of [['user', '법무팀 검토 일정 잡아 주세요'], ['assistant', '11/16 오전으로 잡았습니다.'], ['user', 'Thanks.'], ['assistant', 'Done.']] as const) await appendBotTurn(paths, weekly.id, { role, text, at: STAMP })
-  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
-    ...process.env, ENGRAM_VAULT: root,
-    ENGRAM_USERDATA: await mkdtemp(join(TMP, 'e2e-conversation-sidebar-userdata-')),
-    ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1',
-  } })
-  page = await app.firstWindow()
-  await page.setViewportSize({ width: 1280, height: 840 })
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await launch()
 })
 
 test.afterAll(async () => { await app?.close() })
@@ -386,4 +384,17 @@ test('split controls keep the current conversation and add independent chats', a
   await expect(first).toHaveValue('First conversation draft')
   await expect(second).toHaveValue('Second conversation draft')
   await capture('split-conversations.png')
+})
+
+test('unpinned conversations follow the latest activity, live and after relaunch', async () => {
+  const at = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+  const [pinned, a, b] = [await createBot(paths, { name: 'Pinned older conversation' }, at(50)), await createBot(paths, { name: 'Pasta conversation' }, at(30)), await createBot(paths, { name: 'Airpods conversation' }, at(18))]
+  await appendBotTurn(paths, a.id, { role: 'user', text: 'Pasta?', at: at(20).toISOString() }); await appendBotTurn(paths, b.id, { role: 'assistant', text: 'Airpods.', at: at(16).toISOString() })
+  await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), pinned.id)
+  const refresh = () => app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
+  const order = () => page.getByTestId('sidebar-chats').locator('.sidebar-item-main').evaluateAll((nodes, ids) => nodes.map(node => node.getAttribute('data-testid')!.slice(4)).filter(id => ids.includes(id)), [pinned.id, a.id, b.id])
+  await openActivity(page, 'bots'); await showSidebar(); await refresh(); await expect.poll(order).toEqual([pinned.id, b.id, a.id])
+  await expect.poll(() => page.getByTestId('sidebar-chats').locator('.sidebar-item').first().getAttribute('data-pinned')).toBe('true')
+  await appendBotTurn(paths, a.id, { role: 'assistant', text: 'Fresh pasta.', at: at(1).toISOString() }); await refresh(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
+  await app.close(); await launch(); await openActivity(page, 'bots'); await showSidebar(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
 })
