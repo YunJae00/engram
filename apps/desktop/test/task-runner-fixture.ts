@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, vi } from 'vitest'
-import { listTasks, type VaultPaths } from 'core'
+import { listTasks, writeCapture, type VaultPaths } from 'core'
 import type { ChatRequestDto, EngramEvent } from '../src/shared/types.js'
 
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknown>())
@@ -17,7 +17,8 @@ export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked
 export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
-  const root = await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private') } as unknown as VaultPaths
+  const root = await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private'), inbox: join(root, 'inbox') } as unknown as VaultPaths
+  await mkdir(paths.inbox, { recursive: true })
   const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], evidences: TurnEvidence[] = []
   let last: TurnOutcome | undefined
   const aborted: { resolve?: () => void } = {}
@@ -37,7 +38,8 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     broadcast: (event) => events.push(event),
     ...(checkBudgetMs ? { checkBudgetMs } : {}),
     ...(offered ? { offered } : {}),
-    remember: async (text) => { remembered.push(text) },
+    // Mirrors the ipc.ts wiring so the capture lands in the inbox file the librarian files.
+    remember: async (text) => { remembered.push(text); await writeCapture(paths.inbox, text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
     learn: (question, answer) => learned.push([question, answer]),
     deliver: async (channel, text, _since, _trail, evidence) => { delivered.push(text); if (evidence) evidences.push(evidence); events.push({ type: 'chat:done', channel, text }) },

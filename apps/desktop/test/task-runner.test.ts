@@ -1,3 +1,4 @@
+import { readdir, readFile } from 'node:fs/promises'
 import { expect, it, vi } from 'vitest'
 import { createTask, findPlaybook, listTasks, TASK_MAX_TURNS, updateTask } from 'core'
 import type { TurnOutcome } from '../src/main/task-runner.js'
@@ -9,20 +10,19 @@ it('does not add a check turn to an answer that changed nothing', async () => {
   expect((await t.settle('done')).turns).toBe(1)
 })
 
-it('dates the finished-task capture by the local day, not the UTC day', async () => {
+it.each([
+  ['2026-11-08T20:40:00.000Z', '2026-11-09'], // 05:40 KST
+  ['2026-11-08T16:59:10.588Z', '2026-11-09'], // 01:59 KST, the tester's run
+  ['2026-11-08T14:59:59.999Z', '2026-11-08'], // 23:59 KST, last ms of the previous local day
+])('files the finished-task capture under the local Asia/Seoul day, not the UTC day (%s)', async (now, day) => {
   const zone = process.env.TZ
-  process.env.TZ = 'Asia/Seoul'
-  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-08T22:46:40.445Z') })
+  process.env.TZ = 'Asia/Seoul'; vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) })
   try {
     const t = await setup(async () => done('Saved the file', 3))
-    await t.chat('파일로 저장해줘')
-    expect((await t.settle('done')).updatedAt).toBe('2026-11-08T22:46:40.445Z')
-    await vi.waitFor(() => expect(t.remembered[0]?.split('\n')[0]).toBe('Task finished 2026-11-09: 파일로 저장해줘'))
-  } finally {
-    vi.useRealTimers()
-    if (zone === undefined) delete process.env.TZ
-    else process.env.TZ = zone
-  }
+    await t.chat('파일로 저장해줘'); expect((await t.settle('done')).updatedAt).toBe(now)
+    const [file] = await vi.waitFor(async () => { const names = await readdir(t.paths.inbox); expect(names).toHaveLength(1); return names })
+    expect((await readFile(`${t.paths.inbox}/${file}`, 'utf8')).split('\n')[0]).toBe(`Task finished ${day}: 파일로 저장해줘`)
+  } finally { vi.useRealTimers(); if (zone === undefined) delete process.env.TZ; else process.env.TZ = zone }
 })
 
 it('starts a similar request from where it began last time and the steps that worked, and counts how often', async () => {
