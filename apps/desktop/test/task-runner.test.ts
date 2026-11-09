@@ -9,6 +9,22 @@ it('does not add a check turn to an answer that changed nothing', async () => {
   expect((await t.settle('done')).turns).toBe(1)
 })
 
+it('dates the finished-task capture by the local day, not the UTC day', async () => {
+  const zone = process.env.TZ
+  process.env.TZ = 'Asia/Seoul'
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-08T22:46:40.445Z') })
+  try {
+    const t = await setup(async () => done('Saved the file', 3))
+    await t.chat('파일로 저장해줘')
+    expect((await t.settle('done')).updatedAt).toBe('2026-11-08T22:46:40.445Z')
+    await vi.waitFor(() => expect(t.remembered[0]?.split('\n')[0]).toBe('Task finished 2026-11-09: 파일로 저장해줘'))
+  } finally {
+    vi.useRealTimers()
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
+  }
+})
+
 it('starts a similar request from where it began last time and the steps that worked, and counts how often', async () => {
   const t = await setup(async () => ({ ...done('Filed', 4), trail: [
     { tool: 'open_page', args: { url: 'https://expenses.example/new' }, observation: 'opened' },
