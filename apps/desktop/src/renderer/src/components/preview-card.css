@@ -30,7 +30,14 @@
 .preview-card-actions button:focus-visible, .preview-card-reopen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .preview-card, .preview-card-stage, .preview-card-reopen, .computer-spinner { animation: none; } }
 .preview-deck { --pc-w: 320px; position: relative; flex: 0 0 auto; align-self: flex-end; width: min(var(--pc-w), calc(100% - 30px * var(--deck-depth, 0))); max-width: calc(100% - 2 * var(--panel-gutter) - 30px * var(--deck-depth, 0)); margin: calc(12px + 30px * var(--deck-depth, 0)) var(--panel-gutter) 0; isolation: isolate; }
-.mini-chat .preview-deck { --pc-w: 264px; }
+/* The mini chat keeps a permanent top slot so a card never squeezes or covers the transcript. */
+.mini-chat-preview { position: relative; flex: 0 1 min(35%, 220px); min-height: 0; container-type: size; --mini-stack: 12px; }
+.mini-chat-preview > .preview-deck { --pc-w: 264px; position: absolute; top: calc(8px + var(--mini-stack) * var(--deck-depth, 0)); right: var(--panel-gutter); width: min(var(--pc-w), calc(100% - 2 * var(--panel-gutter) - var(--mini-stack) * var(--deck-depth, 0))); max-width: none; margin: 0; }
+.mini-chat-preview .preview-card-stage { min-height: 0; max-height: max(0px, calc(100cqh - 8px - var(--mini-stack) * var(--deck-depth, 0))); }
+.mini-chat-preview .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--mini-stack)); --deck-y: calc(-1 * var(--mini-stack)); }
+.mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--mini-stack)); --deck-y: calc(-2 * var(--mini-stack)); }
+.mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--mini-stack)); --deck-y: calc(-3 * var(--mini-stack)); }
+.mini-chat-preview > .preview-card-reopen { position: absolute; top: 8px; right: var(--panel-gutter); margin: 0; }
 .preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 280ms var(--ease-out), filter 280ms var(--ease-out), opacity 200ms; }
 .preview-deck-card[data-position="0"] { animation: preview-deck-forward 280ms var(--ease-out); }
 .preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; }
