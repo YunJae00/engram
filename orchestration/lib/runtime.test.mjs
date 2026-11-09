@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { join } from 'node:path'
 import process from 'node:process'
 import { describe, expect, it, vi } from 'vitest'
+import { alive } from './procs.mjs'
 import { codexSandbox, launchAgent } from './runtime.mjs'
 
 describe('codexSandbox', () => {
@@ -27,16 +29,21 @@ describe('codexSandbox', () => {
 describe('local agent slots', () => {
   it('launches uncounted judges without a free local slot and never takes one', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'orch-slot-'))
+    let pid
     try {
       const sem = { free: () => 0, acquire: vi.fn() }
       const ctx = { root: dir, logs: join(dir, 'logs'), roles: { codexBin: process.execPath }, sem }
       const opts = { agent: 'codex-local', label: 'x-1-spec', cwd: dir, prompt: '-e 0', role: 'verify', kind: 'spec', minutes: 1 }
       expect(await launchAgent(ctx, opts)).toBeNull()
       const job = await launchAgent(ctx, { ...opts, counted: false })
-      expect(job.pid).toBeGreaterThan(0)
+      pid = job.pid
+      expect(pid).toBeGreaterThan(0)
       expect(sem.acquire).not.toHaveBeenCalled()
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      // The detached child holds dir as its cwd and the log open; Windows refuses to remove the dir until it exits.
+      try { if (pid) process.kill(pid) } catch { /* already exited */ }
+      for (let i = 0; pid && alive(pid) && i < 100; i++) await sleep(50)
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
     }
   })
 })

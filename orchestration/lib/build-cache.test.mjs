@@ -13,7 +13,7 @@ afterEach(() => {
 
 const g = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 function repo() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'orch-build-cache-')))
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'orch-build-cache-')))
   temps.push(root)
   g(root, 'init', '-q')
   writeFileSync(join(root, '.gitignore'), 'apps/desktop/out/\napps/desktop/native-bin/\ntmp/\nwt*/\n')

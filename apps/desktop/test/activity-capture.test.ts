@@ -17,7 +17,7 @@ describe('desk activity reaches the inbox without a CLI session', () => {
   it('files current-day journal data once and persists its cursor', async () => {
     const paths = await initVault(await tmpVaultRoot('activity-capture'), { git: false })
     const ctx = { paths } as VaultContext
-    const now = Date.now()
+    const now = Date.UTC(2026, 10, 6, 12, 0)
     const start = now - 20 * 60_000
     const directory = join(paths.workspace, '.engram', 'activity')
     await mkdir(directory, { recursive: true })
@@ -32,5 +32,22 @@ describe('desk activity reaches the inbox without a CLI session', () => {
     expect(notes[0]?.body).toContain('Project outline')
     expect(notes[0]?.front.id).toMatch(/^n-worklog-\d{4}-\d{2}-\d{2}$/)
     expect(await readdir(paths.inbox)).toEqual([])
+  })
+  it('splits a span that crosses UTC midnight between the two days it touches, filing each part once', async () => {
+    const paths = await initVault(await tmpVaultRoot('activity-capture-midnight'), { git: false })
+    const ctx = { paths } as VaultContext
+    const now = Date.UTC(2026, 10, 7, 0, 12)
+    const start = now - 20 * 60_000
+    const end = now - 10 * 60_000
+    const directory = join(paths.workspace, '.engram', 'activity')
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, '2026-11-06.jsonl'), JSON.stringify({ app: 'Editor', title: 'Project outline', start: new Date(start).toISOString(), end: new Date(end).toISOString() }) + '\n')
+    expect(await readActivityRange(ctx, start, now)).toEqual([{ app: 'Editor', title: 'Project outline', start: new Date(start).toISOString(), end: new Date(end).toISOString() }])
+    expect(await captureDeskActivity(ctx, now)).toBe(true)
+    expect(await captureDeskActivity(ctx, now)).toBe(false)
+    expect(await captureDeskActivity(ctx, now + 10 * 60_000)).toBe(false)
+    const notes = (await loadNotes(paths)).sort((a, b) => a.front.id.localeCompare(b.front.id))
+    expect(notes.map(note => note.front.id)).toEqual(['n-worklog-2026-11-06', 'n-worklog-2026-11-07'])
+    for (const note of notes) expect(note.body).toContain('Project outline')
   })
 })
