@@ -1,4 +1,4 @@
-import { t as english, type Translate } from '../i18n.js'
+import { tIn, type Translate } from '../i18n.js'
 import { KO, KO_WORDS } from './threadLangKo.js'
 
 // The words inside a conversation - what the comet is doing, its work card,
@@ -19,7 +19,7 @@ export function threadT(lang: ThreadLang): ThreadTranslate {
   const translate = ((key, vars) => {
     if (key === 'aside.unapplied') return lang === 'ko' ? KO[key]! : 'These messages are saved in the conversation.'
     const template = lang === 'ko' ? KO[key] : undefined
-    if (!template) return english(key, vars)
+    if (!template) return tIn(lang, key, vars)
     return vars ? template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match)) : template
   }) as ThreadTranslate
   translate.lang = lang

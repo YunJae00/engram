@@ -1,4 +1,7 @@
-const en = {
+import type { EngramApi } from '../../shared/types.js'
+import { ko } from './i18n-ko'
+
+export const en = {
   'mission.title': 'Orbit',
   'mission.change': 'Replace this panel',
   'mission.choose': 'Chat for panel {count}',
@@ -780,6 +783,37 @@ const en = {
 } as const
 
 export type StringKey = keyof typeof en
+export type UiLanguage = 'system' | 'ko' | 'en'
+
+// Only en* locales read English; every other system locale, Japanese included, reads Korean.
+export function resolveUiLanguage(preference: unknown, locale: string): 'ko' | 'en' {
+  if (preference === 'ko' || preference === 'en') return preference
+  return /^en(?:[-_]|$)/i.test(locale) ? 'en' : 'ko'
+}
+
+let preference: unknown = 'system'
+const systemLocale = (): string => (typeof navigator === 'undefined' ? 'en-US' : navigator.language)
+export const uiLanguage = (): 'ko' | 'en' => resolveUiLanguage(preference, systemLocale())
+export const uiLocale = (): 'ko-KR' | 'en-US' => (uiLanguage() === 'en' ? 'en-US' : 'ko-KR')
+
+// Subscribe before reading so a change broadcast during the read is not overwritten by the older value.
+export async function followSettings(bridge: Pick<EngramApi, 'onEvent' | 'settingsGet'>): Promise<void> {
+  let changed = false
+  // A failed read or a partial bridge (test doubles) keeps the current language.
+  try {
+    bridge.onEvent(event => {
+      if (event.type !== 'settings:changed') return
+      changed = true
+      preference = event.settings.uiLanguage
+    })
+    const settings = await bridge.settingsGet()
+    if (!changed) preference = settings?.uiLanguage
+  } catch {
+    return
+  }
+}
+
+if (typeof window !== 'undefined' && 'engram' in window) await followSettings(window.engram)
 
 // macOS reads Cmd where Windows/Linux read Ctrl. Handlers already accept both
 // (metaKey || ctrlKey everywhere); the string tables stay written with "Ctrl"
@@ -798,9 +832,11 @@ export type Translate = (key: StringKey, vars?: Record<string, string | number>)
 // Look up a key and fill {name} placeholders from `vars`. Unknown placeholders
 // are left untouched so a template mistake is visible. On macOS the "Ctrl+"
 // labels are rewritten to "Cmd+" in one pass.
-export const t: Translate = (key, vars) => {
-  let template: string = en[key]
+export function tIn(lang: 'ko' | 'en', key: StringKey, vars?: Record<string, string | number>): string {
+  let template: string = (lang === 'en' ? en : ko)[key]
   if (isMac) template = template.replace(/\bCtrl\+/g, 'Cmd+')
   if (!vars) return template
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))
 }
+
+export const t: Translate = (key, vars) => tIn(uiLanguage(), key, vars)

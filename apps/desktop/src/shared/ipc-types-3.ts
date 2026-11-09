@@ -227,6 +227,7 @@ export interface AppSettingsDto {
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort
   theme?: 'system' | 'light' | 'dark'
+  uiLanguage?: 'system' | 'ko' | 'en'
   defaultEngine: 'claude' | 'codex'
   autoStart: boolean
   teamSync: 'auto' | 'manual'

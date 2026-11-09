@@ -9,6 +9,7 @@ export interface AppSettings {
   claudeEffort?: import('core').ReasoningEffort
   codexEffort?: import('core').ReasoningEffort
   theme: 'system' | 'light' | 'dark'
+  uiLanguage: 'system' | 'ko' | 'en'
   // Which brain answers: the one on this disk, or one of the two the person
   // signed in to. Chosen once, never switched behind their back.
   defaultEngine: 'claude' | 'codex'
@@ -46,6 +47,7 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   aiSelections: {},
   theme: 'system',
+  uiLanguage: 'system',
   defaultEngine: 'claude',
   autoStart: false,
   teamSync: 'auto',
@@ -82,6 +84,7 @@ async function readSettings(): Promise<AppSettings> {
     merged.aiSelections = Object.fromEntries(Object.entries(merged.aiSelections ?? {}).filter(([scope, value]) =>
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
+    if (!['system', 'ko', 'en'].includes(merged.uiLanguage)) merged.uiLanguage = 'system'
     for (const selection of Object.values(merged.aiSelections)) if (selection.effort && !REASONING_EFFORTS.includes(selection.effort)) delete selection.effort
     for (const key of ['claudeEffort', 'codexEffort'] as const) if (merged[key] && !REASONING_EFFORTS.includes(merged[key])) delete merged[key]
     return merged
