@@ -40,6 +40,17 @@ describe('replies block facts rule', () => {
     expect(line).toContain('never "시간은 오후 2시로 해줘"')
   })
 
+  it.each(flagSets)('keeps chips from inventing a reason or a link between items (%#)', flags => {
+    const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(line).toContain('never states a reason, cause or link between items')
+    expect(line).toContain('unless the person or a tool result said it')
+    expect(line).toContain('a reference ID or two items in the same note is not a link')
+    expect(line).toContain('asks for it or leaves it open in their voice')
+    for (const chip of ['연기 이유 확인해줘', '이유는 비워둬']) expect(line).toContain(`"${chip}"`)
+    expect(line).toContain('never "연기 이유는 "지난주 장애 때문"으로 넣어줘"')
+    expect(line).toContain('never "박민수 기한은 11월 14일로 넣어줘"')
+  })
+
   it.each(flagSets)('keeps unclicked earlier chips from becoming the person\'s decision (%#)', flags => {
     const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
     expect(line).toContain(EARLIER_REPLIES_RULE)
