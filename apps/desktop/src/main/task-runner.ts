@@ -17,6 +17,7 @@ import {
   TASK_TOKEN_BUDGET,
   tasksToResume,
   updateTask,
+  withoutReplies,
   type DelegatedTask,
   type MeaningScores,
   type TurnStep,
@@ -188,7 +189,7 @@ export function taskRunner(deps: {
     if (handedBack.delete(task.id) || task.state !== 'done' || !task.result || task.verificationIssue) return
     await recordPlaybook(paths, task.goal, trail).catch((error) => flog('tasks', error))
     if ((task.work ?? 0) < WORTH_KEEPING_STEPS && !savedFile(task.result)) return
-    await deps.remember([`Task finished ${localDay(new Date(task.updatedAt))}: ${task.goal.slice(0, 400)}`, '', 'Result:', task.result.slice(0, 2000)].join('\n'))
+    await deps.remember([`Task finished ${localDay(new Date(task.updatedAt))}: ${task.goal.slice(0, 400)}`, '', 'Result:', withoutReplies(task.result).slice(0, 2000)].join('\n'))
       .catch((error) => flog('tasks', error))
   }
 

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { conversation } from '../src/agent-history.js'
+import { withoutReplies } from '../src/index.js'
 
 it('carries earlier answers whole while there is room, newest first', () => {
   const found = 'The leave balance is on PageOne → Workday → Time Off: 15 days left. '.repeat(10)
@@ -65,4 +66,15 @@ it('strips an unclosed replies block', () => {
 
 it('keeps a clicked chip as the person\'s own words', () => {
   expect(conversation([{ role: 'user', text: invented }]).join('\n')).toContain(`User: ${invented}`)
+})
+
+it('strips every replies block from a text, closed or not', () => {
+  expect(withoutReplies('A\n```replies\nx\n```\nB\n```replies\ny\n```')).toBe('A\nB')
+  expect(withoutReplies('A\n```replies\nx\n```\nB\n```replies\ny')).toBe('A\nB')
+  expect(withoutReplies('A\n```ts\nconst x = 1\n```')).toBe('A\n```ts\nconst x = 1\n```')
+})
+
+it('strips many replies blocks in one pass without exhausting memory', () => {
+  const text = 'line\n```replies\nchip\n```\n'.repeat(10_000)
+  expect(withoutReplies(text)).toBe(Array(10_000).fill('line').join('\n'))
 })

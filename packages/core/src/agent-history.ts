@@ -17,11 +17,15 @@ const EARLIER_REQUESTS_CHARS = 12000
 // they would let an invented value pass as already in the conversation.
 const REPLIES_OPEN = /^[ \t]*```[ \t]*replies[ \t]*$/im
 export function withoutReplies(text: string): string {
-  const open = text.search(REPLIES_OPEN)
-  if (open < 0) return text
-  const rest = text.slice(open).split('\n')
-  const close = rest.findIndex((line, index) => index > 0 && /^\s*```\s*$/.test(line))
-  return (text.slice(0, open) + (close < 0 ? '' : rest.slice(close + 1).join('\n'))).trimEnd()
+  if (!REPLIES_OPEN.test(text)) return text
+  const kept: string[] = []
+  let inside = false
+  for (const line of text.split('\n')) {
+    if (inside) inside = !/^\s*```\s*$/.test(line)
+    else if (REPLIES_OPEN.test(line)) inside = true
+    else kept.push(line)
+  }
+  return kept.join('\n').trimEnd()
 }
 
 function turnText(turn: NonNullable<AgentLoopOptions['history']>[number]): string {
