@@ -6,6 +6,7 @@ type Drag = { id: number; start: Point; last: Point; origin: Point; shown: Point
 
 const SPACING = 30
 const MIN_CARD = 44
+const DOCK_INSET = 12
 const FIT_VARS = ['--live-fit-width', '--live-fit-stage', '--live-fit-space']
 // Committed lane preferences for this renderer lifetime; a drag writes one only on release.
 const positions = new Map<string, Point>()
@@ -36,9 +37,10 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const flag = (name: string, on: boolean) => { if (deck.hasAttribute(name) !== on) { if (on) deck.setAttribute(name, ''); else deck.removeAttribute(name) } }
     const shown = (): Point => ({ x: deck.offsetLeft, y: deck.offsetTop })
     const stack = () => Math.min(3, Math.max(0, Number(deck.style.getPropertyValue('--deck-depth')) || 0))
-    const bounds = (): Bounds | undefined => {
+    const bounds = (docked = false): Bounds | undefined => {
       const width = chat.clientWidth, height = chat.clientHeight
       if (!width || !height) return undefined
+      if (docked) return { width, floor: (thread ? thread.offsetTop : height) - DOCK_INSET, depth: 0 }
       const floor = Math.min(thread ? thread.offsetTop + thread.offsetHeight : height, height)
       return { width, floor, depth: stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0) }
     }
@@ -68,12 +70,16 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       style('--live-fit-stage', `${Math.min(natural.height, space.floor - depth)}px`)
       return { ...space, depth }
     }
+    // The CSS anchor docks the deck at the slot's top inset; the fit keeps its bottom at or above the thread top.
     const dock = () => {
-      for (const name of ['left', 'top', 'right', ...FIT_VARS]) style(name, '')
-      flag('data-suspended', false)
+      for (const name of ['left', 'top', 'right']) style(name, '')
       flag('data-floating', false)
+      const space = bounds(true)
+      const room = !!space && space.width >= MIN_CARD && space.floor >= MIN_CARD
+      flag('data-suspended', !room)
+      if (space && room) fit(space)
     }
-    // An untouched deck stays docked above the thread; only a moved drag or a committed spot floats it over the chat.
+    // An untouched deck stays docked in the slot above the thread; only a moved drag or a committed spot floats it over the chat.
     const layout = () => {
       if (!live) return
       const requested = drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)

@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
@@ -58,4 +59,18 @@ it('keeps every deck position on its own app chrome after the current card chang
     else expect(block).toContain(`aria-label="${own.title}"`)
     for (const other of after) if (other.id !== id) expect(block).not.toContain(`aria-label="${other.title}"`)
   }
+})
+
+it('takes the Bots overlay deck and its pill out of flow in every state, docked in a permanent slot', () => {
+  const css = readFileSync(new URL('../src/renderer/src/components/live-overlay.css', import.meta.url), 'utf8')
+  const rule = (selector: string) => new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+  const render = (overlay: boolean) => renderToStaticMarkup(createElement(PreviewDeck, { frames: [frame('a', 1)], busy: true, state: 'recorded', lang: 'en', lane: `unit-deck-flow-${overlay}`, compact: false, overlay }))
+  expect(render(true)).toContain('class="preview-deck live-overlay-deck"')
+  expect(render(false)).toContain('class="preview-deck"')
+  expect(rule('.bots-chat > .live-overlay-deck')).toMatch(/position: absolute;.*margin: 0;/)
+  expect(rule('.bots-chat > .preview-card-reopen')).toMatch(/position: absolute;.*margin: 0;/)
+  expect(rule('.bots-chat')).toContain('position: relative;')
+  expect(rule('.bots-chat::before')).toMatch(/flex: 0 1 \S/)
+  expect(css).not.toMatch(/\.bots-chat[^{]*:has\(/)
+  expect(css).not.toMatch(/\.bots-chat > \.live-overlay-deck\[data-floating\]/)
 })

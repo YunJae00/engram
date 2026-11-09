@@ -28,7 +28,9 @@ export async function run(page, { app, paths, expect, openActivity }) {
   let flow
   const expectFlow = async label => expect(await flowGeometry(page), label).toEqual(flow)
 
-  // Live rendering: a real PNG paints into the card without a web pane, docked above the thread until it is dragged.
+  // Live rendering: a real PNG paints into the card without a web pane, docked in the fixed slot above the thread until it is dragged.
+  await settle(page)
+  flow = await flowGeometry(page)
   await showWebFrame(app, { lane, url: URL, frame })
   await expect(card).toBeVisible()
   await expect(card.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 15_000 })
@@ -39,7 +41,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
   expect(await card.locator('canvas').evaluate(canvas => [...canvas.getContext('2d').getImageData(256, 320, 1, 1).data])).toEqual([220, 60, 60, 255])
   expect(await card.evaluate(node => getComputedStyle(node).animationName)).toBe('preview-card-in')
   await settle(page)
-  flow = await flowGeometry(page)
+  await expectFlow('the first card docks without moving the thread')
   const anchored = await deckAt(page)
   expect([anchored.left, anchored.floating]).toEqual(['', false])
   const before = await measureChat(page)
@@ -86,13 +88,12 @@ export async function run(page, { app, paths, expect, openActivity }) {
     expect((await deckAt(page)).left).toBe('')
   }
 
-  // The real drag lifts the card off its docked slot once; after that the thread never shifts while the card moves.
+  // The real drag lifts the card off the fixed slot; the thread never shifts, neither at the lift nor while the card moves.
   await hold()
   await slide(-before.card.width * 0.3, 0, 6)
   await settle(page)
   expect((await deckAt(page)).floating).toBe(true)
-  flow = await flowGeometry(page)
-  expect(flow[0][1], 'the thread reclaims the docked slot').toBeLessThan(before.thread.top)
+  await expectFlow('the drag lifts the card without moving the thread')
   await slide(-before.card.width, before.card.height, 12)
   await expectFlow('late in the drag')
   await page.mouse.up()
@@ -317,7 +318,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const freshSpot = await dragBy(-120, 60)
   expect([freshSpot.left !== '', freshSpot.floating, freshSpot.spacing]).toEqual([true, true, 30])
   try {
-    await constrainFloor(page, 100)
+    expect(Math.abs(await constrainFloor(page, 100) - 100), 'thread floor pinned at 100px').toBeLessThanOrEqual(1)
     await expect.poll(async () => (await deckAt(page)).spacing).toBeLessThan(30)
     const fitted = await deckAt(page)
     expect(fitted.height).toBeLessThan(freshSpot.height)
@@ -329,7 +330,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await visible()
     await pollPacked(page, expect, 'fitted again after a collapse')
     const composerFitted = (await flowGeometry(page))[1].slice(2, 4)
-    await constrainFloor(page, 30)
+    expect(await constrainFloor(page, 30), 'thread floor below a 44px card').toBeLessThan(44)
     await expect.poll(async () => (await deckAt(page)).suspended).toBe(true)
     await expect(card).toBeHidden()
     const corner = await page.evaluate(() => { const chat = document.querySelector('.bots-chat').getBoundingClientRect(); return { x: chat.right - 40, y: chat.top + 10 } })
@@ -385,7 +386,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
   return {
     ok: true,
     evidence: `agent:frame ${frame.width}x${frame.height} png painted preview-card for ${lane} with no web pane; docked: ${describeBlocks(before)}; floating after the drag: ${describeBlocks(after)}; `
-      + `untouched decks docked above the thread, four-card bounds at 1000x560/1400x600 and under a draft, a stable thread once the card floats, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
+      + `untouched decks docked in a fixed slot above the thread, a thread that keeps its place as cards mount, clear and lift, four-card bounds at 1000x560/1400x600 and under a draft, a stable thread once the card floats, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
       + `second pointer and refused capture ignored, corner and composer-floor clamps, reopen position, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, `
       + `lane spots and a dropped lane-switch drag, 600px floor under a growing draft, fit to a 100px floor, suspension below 44px, six frames cycling four cards, empty-frame remounts, `
       + `unavailable frame recovery, browser open and a reload back to the anchor verified; last press at ${Math.round(press.x)},${Math.round(press.y)}`,

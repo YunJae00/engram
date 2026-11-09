@@ -100,14 +100,19 @@ export async function resizeWindow(app, page, expect, width, height) {
   await expect.poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight])).toEqual([width, height])
 }
 
-// Pins the thread floor below the chat top at the given height by constraining the chat, so fit limits can be forced on any window.
+// Pins the thread floor below the chat top near the given height by constraining the chat and returns the floor reached; the slot rescales with the chat, so it is measured, not computed.
 export function constrainFloor(page, floor) {
   return page.evaluate((floor) => {
     const chat = document.querySelector('.bots-chat')
     const thread = chat.querySelector(':scope > .bots-thread')
-    if (floor === null) { chat.style.maxHeight = ''; return }
-    const rest = chat.clientHeight - thread.offsetTop - thread.offsetHeight
-    chat.style.maxHeight = `${rest + floor}px`
+    const reached = () => thread.offsetTop + thread.offsetHeight
+    if (floor === null) { chat.style.maxHeight = ''; return reached() }
+    let last
+    for (let step = 0; step < 8 && Math.abs(reached() - floor) > 1 && reached() !== last; step++) {
+      last = reached()
+      chat.style.maxHeight = `${chat.clientHeight - (last - floor)}px`
+    }
+    return reached()
   }, floor)
 }
 

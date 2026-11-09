@@ -1,11 +1,14 @@
-.bots-chat:has(.live-overlay-deck) { position: relative; }
+/* A permanent top slot: the deck docks inside it, so a card arriving or leaving never moves the thread. */
+.bots-chat { position: relative; }
+.bots-chat::before { content: ''; flex: 0 1 min(35%, 300px); }
 .live-overlay-deck { touch-action: none; user-select: none; cursor: grab; }
-.bots-chat > .live-overlay-deck[data-floating] { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--live-fit-space, 30px) * var(--deck-depth, 0)); width: var(--live-fit-width, var(--pc-w)); max-width: none; margin: 0; }
+.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--live-fit-space, 30px) * var(--deck-depth, 0)); width: var(--live-fit-width, var(--pc-w)); max-width: none; margin: 0; }
+.bots-chat > .preview-card-reopen { position: absolute; z-index: 5; right: var(--panel-gutter); top: 12px; margin: 0; }
 .live-overlay-deck[data-dragging] { cursor: grabbing; }
 .live-overlay-deck[data-suspended] { visibility: hidden; pointer-events: none; }
 .live-overlay-deck img { -webkit-user-drag: none; }
-.live-overlay-deck[data-floating] .preview-card-stage { min-height: 0; max-height: min(var(--pc-stage-max), var(--live-fit-stage, var(--pc-stage-max))); }
-.live-overlay-deck[data-floating] .preview-card-actions { z-index: 1; }
-.live-overlay-deck[data-floating] .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 30px)); --deck-y: calc(-1 * var(--live-fit-space, 30px)); }
-.live-overlay-deck[data-floating] .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
-.live-overlay-deck[data-floating] .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 30px)); --deck-y: calc(-3 * var(--live-fit-space, 30px)); }
+.bots-chat > .live-overlay-deck .preview-card-stage { min-height: 0; max-height: min(var(--pc-stage-max), var(--live-fit-stage, var(--pc-stage-max))); }
+.bots-chat > .live-overlay-deck .preview-card-actions { z-index: 1; }
+.bots-chat > .live-overlay-deck .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 30px)); --deck-y: calc(-1 * var(--live-fit-space, 30px)); }
+.bots-chat > .live-overlay-deck .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
+.bots-chat > .live-overlay-deck .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 30px)); --deck-y: calc(-3 * var(--live-fit-space, 30px)); }
