@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addBotTask, appendBotTurn, createBot, declineStanding, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
+import { addBotTask, appendBotTurn, createBot, declineStanding, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME, updateBot, AVATAR_RANGES } from '../src/bots.js'
+import { AVATAR_RANGES as FIELD_RANGES, botPatchError, isBotAvatar } from '../src/bot-fields.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 import { recordBotSites } from '../src/bots.js'
@@ -148,6 +149,7 @@ describe('bots.json that cannot be read', () => {
       () => declineStanding(paths, 'x', 'k'),
       () => dismissBotSuggestion(paths, 'z'),
       () => recordBotSites(paths, 'x', ['https://a.example']),
+      () => updateBot(paths, 'x', { label: 'l' }),
     ]) await expect(call()).rejects.toThrow(/bots\.json/)
     expect(await readFile(file)).toEqual(original)
     for (const body of ['null', '[]', '{"bots":{}}', '{"bots":[],"dismissed":"x"}']) {
@@ -252,5 +254,134 @@ describe('bots.json that cannot be read', () => {
     expect(await loadBots(paths)).toHaveLength(1)
     expect(await loadDismissedSuggestions(paths)).toEqual(['first'])
     expect(await copies(paths.cache)).toEqual([])
+  })
+})
+
+describe('bot v2 fields', () => {
+  const setup = async (tag: string) => {
+    const paths = await initVault(await tmpVaultRoot(tag), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    const bytes = () => readFile(file)
+    const stored = async () => JSON.parse(await readFile(file, 'utf8')) as { bots: Record<string, unknown>[] }
+    const primaries = async () => (await loadBots(paths)).filter(b => b.primary === true).map(b => b.name)
+    return { paths, file, bytes, stored, primaries }
+  }
+
+  it('updateBot validates label, notify, and avatar ranges body 0-5 face 0-5 accessory 0-8 palette 0-7 or image', async () => {
+    const { paths, bytes, stored } = await setup('bots-v2-validate')
+    const bot = await createBot(paths, { name: 'A' })
+    expect(FIELD_RANGES).toBe(AVATAR_RANGES)
+    expect(AVATAR_RANGES).toEqual({ body: 5, face: 5, accessory: 8, palette: 7 })
+    expect(isBotAvatar({ image: '' })).toBe(true)
+    expect(botPatchError({ avatar: { image: '' } })).toBeUndefined()
+    expect(botPatchError({ label: '😀'.repeat(40) })).toBeUndefined()
+    const sparse: string[] = ['a']
+    sparse[2] = 'c'
+    const bad: unknown[] = [
+      { label: 'x'.repeat(41) }, { label: '😀'.repeat(41) }, { notify: 'loud' },
+      { avatar: { body: 6, face: 0, accessory: 0, palette: 0 } }, { avatar: { body: 0, face: -1, accessory: 0, palette: 0 } },
+      { avatar: { body: 0, face: 0, accessory: 9, palette: 0 } }, { avatar: { body: 0, face: 0, accessory: 0, palette: 8 } },
+      { avatar: { body: 1.5, face: 0, accessory: 0, palette: 0 } }, { avatar: { image: 'a', body: 0, face: 0, accessory: 0, palette: 0 } },
+      { avatar: { body: 0, face: 0, accessory: 0 } }, { avatar: null }, { label: 3 }, { hidden: false }, { primary: 'yes' },
+      { skills: sparse }, { skills: ['a', 1] }, { templateId: 2 },
+      { id: 'other' }, { tasks: [] }, { createdAt: 'x' }, { name: '  ' }, { purpose: 4 }, { wings: 2 }, [], null,
+    ]
+    const before = await bytes()
+    for (const patch of bad) await expect(updateBot(paths, bot.id, patch as never)).rejects.toThrow()
+    await expect(updateBot(paths, 'missing', { label: 'ok' })).rejects.toThrow(/no such comet/)
+    expect(await bytes()).toEqual(before)
+    for (const avatar of [{ body: 0, face: 0, accessory: 0, palette: 0 }, { image: '' }, { body: 5, face: 5, accessory: 8, palette: 7 }])
+      expect((await updateBot(paths, bot.id, { avatar })).avatar).toEqual(avatar)
+    await updateBot(paths, bot.id, { label: '😀'.repeat(40), notify: 'attention', hidden: true, skills: ['', 'b'], templateId: '' })
+    await updateBot(paths, bot.id, { notify: 'off' })
+    let saved = (await stored()).bots[0]!
+    expect(saved).toMatchObject({ name: 'A', label: '😀'.repeat(40), notify: 'off', hidden: true, skills: ['', 'b'], templateId: '', avatar: { body: 5, face: 5, accessory: 8, palette: 7 }, primary: true })
+    await updateBot(paths, bot.id, { label: undefined, hidden: undefined, skills: undefined, avatar: undefined })
+    saved = (await stored()).bots[0]!
+    for (const key of ['label', 'hidden', 'skills', 'avatar']) expect(Object.hasOwn(saved, key)).toBe(false)
+    expect(saved.notify).toBe('off')
+  })
+
+  it('purpose cap 2000', async () => {
+    const { paths, stored } = await setup('bots-v2-purpose')
+    const long = 'p'.repeat(1999) + 'q' + 'r'.repeat(500)
+    const bot = await createBot(paths, { name: 'A', purpose: long })
+    expect((await stored()).bots[0]!.purpose).toBe(long.slice(0, 2000))
+    await updateBot(paths, bot.id, { purpose: 'x' + long })
+    expect((await stored()).bots[0]!.purpose).toBe(('x' + long).slice(0, 2000))
+    expect((await addBotTask(paths, bot.id, { name: 't', goal: 'g'.repeat(600) })).goal).toHaveLength(500)
+  })
+
+  it('exactly one primary', async () => {
+    const { paths, file, bytes, stored, primaries } = await setup('bots-v2-primary')
+    await mkdir(paths.cache, { recursive: true })
+    await writeFile(file, JSON.stringify({ extra: 1, bots: [{ name: 'malformed' }], dismissed: [] }))
+    const a = await createBot(paths, { name: 'A' })
+    expect(a.primary).toBe(true)
+    const b = await createBot(paths, { name: 'B' })
+    expect(b.primary).toBeUndefined()
+    const c = await createBot(paths, { name: 'C' })
+    expect(await primaries()).toEqual(['A'])
+    await updateBot(paths, b.id, { primary: true })
+    expect(await primaries()).toEqual(['B'])
+    const before = await bytes()
+    await expect(updateBot(paths, b.id, { primary: false })).rejects.toThrow()
+    await expect(updateBot(paths, b.id, { primary: undefined })).rejects.toThrow()
+    expect(await bytes()).toEqual(before)
+    await updateBot(paths, a.id, { primary: false })
+    expect(await primaries()).toEqual(['B'])
+    await deleteBot(paths, b.id)
+    expect(await primaries()).toEqual(['A'])
+    await deleteBot(paths, c.id)
+    expect(await primaries()).toEqual(['A'])
+    await deleteBot(paths, a.id)
+    const left = await stored()
+    expect(left).toMatchObject({ extra: 1, bots: [{ name: 'malformed' }] })
+    expect(await loadBots(paths)).toEqual([])
+
+    const fresh = await setup('bots-v2-primary-race')
+    const [x, y, z] = [await createBot(fresh.paths, { name: 'X' }), await createBot(fresh.paths, { name: 'Y' }), await createBot(fresh.paths, { name: 'Z' })]
+    await Promise.all([updateBot(fresh.paths, y.id, { primary: true }), updateBot(fresh.paths, z.id, { primary: true })])
+    expect(await fresh.primaries()).toEqual(['Z'])
+    expect(x.primary).toBe(true)
+  })
+
+  it('updateBot reads the patch once', async () => {
+    const { paths, bytes, primaries, stored } = await setup('bots-v2-once')
+    const a = await createBot(paths, { name: 'A' })
+    const b = await createBot(paths, { name: 'B' })
+    let primaryReads = 0
+    const flip = { get primary() { return primaryReads++ === 0 ? true : undefined } }
+    await updateBot(paths, b.id, flip)
+    expect(primaryReads).toBe(1)
+    expect(await primaries()).toEqual(['B'])
+    let labelReads = 0
+    const shifty = { get label() { return labelReads++ === 0 ? 'fine' : 'x'.repeat(41) } }
+    const before = await bytes()
+    const outcome = await updateBot(paths, a.id, shifty).then(() => 'stored', () => 'rejected')
+    expect(labelReads).toBe(1)
+    const label = (await stored()).bots.find(bot => bot.id === a.id)!.label
+    if (outcome === 'rejected') expect(await bytes()).toEqual(before)
+    else expect(label).toBe('fine')
+    expect(label).not.toBe('x'.repeat(41))
+  })
+
+  it('updatedAt is stamped, not patched', async () => {
+    const { paths, bytes, stored } = await setup('bots-v2-stamp')
+    const bot = await createBot(paths, { name: 'A' }, new Date('2020-05-05T00:00:00.000Z'))
+    const created = (await stored()).bots[0]!.updatedAt as string
+    expect(new Date(created).toISOString()).toBe(created)
+    expect(bot.updatedAt).toBe(created)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    const updated = await updateBot(paths, bot.id, { label: 'l' })
+    const stamped = (await stored()).bots[0]!.updatedAt as string
+    expect(new Date(stamped).toISOString()).toBe(stamped)
+    expect(updated.updatedAt).toBe(stamped)
+    expect(stamped > created).toBe(true)
+    const before = await bytes()
+    await expect(updateBot(paths, bot.id, { updatedAt: '2020-01-01T00:00:00.000Z' } as never)).rejects.toThrow(/updatedAt/)
+    await expect(updateBot(paths, bot.id, { label: 'x'.repeat(41) })).rejects.toThrow()
+    expect(await bytes()).toEqual(before)
+    expect((await stored()).bots[0]!.updatedAt).toBe(stamped)
   })
 })

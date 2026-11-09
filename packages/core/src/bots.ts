@@ -5,6 +5,8 @@ import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
 import { isSchedule, type Schedule } from './schedule.js'
 import { renameWithRetry } from './rename-with-retry.js'
+import { botPatchError } from './bot-fields.js'
+export { AVATAR_RANGES } from './bot-fields.js'
 
 // A task is the work a person repeats, saved on the comet that owns it and run with one click.
 export interface BotTask {
@@ -20,6 +22,7 @@ export interface BotTask {
   seen?: string[]
   // The conversation a repeating request keeps answering in.
   chat?: string
+  paused?: true
 }
 
 export interface TaskWatch { tool: string; args: Record<string, unknown> }
@@ -33,7 +36,19 @@ export interface Bot {
   tasks?: BotTask[]
   // Asks the person refused to make standing, by ask key: offered once.
   declined?: string[]
+  avatar?: BotAvatar
+  label?: string
+  // Exactly one stored bot holds it whenever any bot exists.
+  primary?: true
+  hidden?: true
+  notify?: 'all' | 'attention' | 'off'
+  skills?: string[]
+  templateId?: string
+  updatedAt?: string
 }
+
+export type BotAvatar = { body: number; face: number; accessory: number; palette: number } | { image: string }
+export type BotPatch = Partial<Pick<Bot, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }
 
 // How a checked answer was checked: verdicts with their basis, sources read, and the confirmed record.
 export interface TurnEvidence {
@@ -215,16 +230,18 @@ export async function createBot(
 ): Promise<Bot> {
   const name = input.name.trim().slice(0, 60)
   // The charter is optional: most comets are a conversation, not a role.
-  const purpose = (input.purpose ?? '').trim().slice(0, 500)
+  const purpose = (input.purpose ?? '').trim().slice(0, 2000)
   if (!name) throw new Error('a bot needs a name')
   const bot: Bot = {
     id: `bot-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
     name,
     purpose,
     createdAt: now.toISOString(),
+    updatedAt: new Date().toISOString(),
   }
   await mutateBots(paths, (bots) => {
     bots.push(bot)
+    if (!bots.some((b) => b.primary === true)) bot.primary = true
   })
   return bot
 }
@@ -241,7 +258,10 @@ export async function renameBot(paths: VaultPaths, id: string, name: string): Pr
 export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
   await mutateBots(paths, (bots) => {
     const at = bots.findIndex((b) => b.id === id)
-    if (at >= 0) bots.splice(at, 1)
+    if (at < 0) return
+    const [gone] = bots.splice(at, 1)
+    // Interim: the primary may still be deleted, so the first survivor takes it in the same write.
+    if (gone!.primary && bots[0]) bots[0].primary = true
   })
   // Its memory of the person goes with it; the transcript stays on disk until a vault reset.
   await forgetBotMemory(paths, id)
@@ -302,6 +322,31 @@ export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: s
 // One appended line per turn; compacted only once well past the cap.
 const TRANSCRIPT_COMPACT_BYTES = 2_000_000
 const compactAt = new Map<string, number>()
+
+export async function updateBot(paths: VaultPaths, id: string, patch: BotPatch): Promise<Bot> {
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) throw new Error('a bot change must be an object')
+  // One read of the caller's object; nested values are detached so nothing changes while queued.
+  const copy: BotPatch = { ...patch }
+  if (copy.avatar && typeof copy.avatar === 'object' && !Array.isArray(copy.avatar)) copy.avatar = { ...copy.avatar }
+  if (Array.isArray(copy.skills)) copy.skills = [...copy.skills]
+  const error = botPatchError(copy)
+  if (error) throw new Error(error)
+  if (copy.name !== undefined) copy.name = copy.name.trim().slice(0, 60)
+  if (copy.purpose !== undefined) copy.purpose = copy.purpose.trim().slice(0, 2000)
+  return mutateBots(paths, (bots) => {
+    const bot = bots.find((b) => b.id === id)
+    if (!bot) throw new Error('no such comet')
+    if (bot.primary && Object.hasOwn(copy, 'primary') && copy.primary !== true) throw new Error('the primary comet stays primary until another one is made primary')
+    if (copy.primary) for (const other of bots) if (other !== bot) delete other.primary
+    const fields = bot as unknown as Record<string, unknown>
+    for (const [key, value] of Object.entries(copy)) {
+      if (value === undefined || value === false) delete fields[key]
+      else fields[key] = value
+    }
+    bot.updatedAt = new Date().toISOString()
+    return { ...bot }
+  })
+}
 
 export function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): Promise<void> {
   const file = chatPath(paths, botId)
