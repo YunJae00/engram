@@ -105,6 +105,20 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
   await sendNow(api, store, botId, draft, attachments)
 }
 
+export const CHIP_FAILED = 'Cannot send this choice. Enter a message instead.'
+
+// A tapped chip says only its own words, never the composer's draft or files.
+// False means nothing was sent, so the caller must say so instead of going quiet.
+export function sendCometReply(api: ChatApi, store: CometThreadsStore, botId: string, label: string): boolean {
+  const words = label.trim()
+  if (!words || words.length > 2000) return false
+  const { draft, attachments } = store.thread(botId)
+  void sendCometMessage(api, store, botId, words, [])
+  store.setDraft(botId, draft)
+  store.setAttachments(botId, attachments)
+  return true
+}
+
 // A message that failed is sent again where it stood, as if just written.
 export async function resendFailedCometMessage(api: ChatApi, store: CometThreadsStore, botId: string): Promise<void> {
   const failed = store.takeFailed(botId)

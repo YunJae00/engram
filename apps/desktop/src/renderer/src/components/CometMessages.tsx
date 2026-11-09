@@ -20,7 +20,7 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   keptWork: string[]
   // A question card is already offering the next moves.
   offerOpen?: boolean
-  onReply(label: string): void
+  onReply(label: string): boolean
   // Sends the last message again when it failed.
   onResend?(): void
   // Cards waiting on the person sit under the answer, above the replies.
@@ -55,6 +55,6 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
-    {settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${settledIndex}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
+    {settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${settledIndex}-${settled.text}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
   </>
 }

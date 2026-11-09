@@ -6,7 +6,8 @@ import { cometThreads, loadCometThread } from '../lib/cometThreadsLive.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
-import { resendFailedCometMessage, sendCometMessage } from '../lib/attachments.js'
+import { CHIP_FAILED, resendFailedCometMessage, sendCometMessage, sendCometReply } from '../lib/attachments.js'
+import { useShellState } from '../state-slices.js'
 import { ThreadAsks } from './ThreadAsks.js'
 import { ThreadOffers } from './ThreadOffers.js'
 import { ChatComposer } from './ChatComposer.js'
@@ -42,6 +43,12 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
     if (!message.trim() && !thread.attachments.length) return
     await sendCometMessage(api, cometThreads, botId, message.trim(), thread.attachments)
   }
+  const { showToast } = useShellState()
+  const sendChip = (label: string): boolean => {
+    if (sendCometReply(api, cometThreads, botId, label)) return true
+    showToast(CHIP_FAILED)
+    return false
+  }
   const stop = () => {
     cometThreads.stop(botId, t('bubble.stopped'))
     void api.chatAbort(cometChannel(botId)).catch(() => undefined)
@@ -53,8 +60,8 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
       <div className="mini-chat-preview"><PreviewDeck active={active} frames={frames} compact onOpenWeb={previewTile?.onOpen} key={botId} lane={cometChannel(botId)} busy={thread.busy} lang={threadLang(thread.messages)} state={thread.messages.at(-1)?.error ? 'stopped' : thread.offer?.kind === 'asked' ? 'waiting' : 'recorded'} /></div>
       <div className="mini-chat-thread conversation-thread" ref={listRef}>
         {thread.messages.length === 0 && thread.loaded && <p className="mini-chat-empty">{t('mission.waiting')}</p>}
-        <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={(label) => void send(label)} onResend={() => void resendFailedCometMessage(api, cometThreads, botId)}>
-          <ThreadOffers botId={botId} onSend={(label) => void send(label)} />
+        <CometMessages messages={thread.messages} busy={thread.busy} status={status} since={thread.startedAt ?? undefined} workLines={thread.workLines} keptWork={thread.keptWork} offerOpen={!!thread.offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, botId)}>
+          <ThreadOffers botId={botId} onSend={sendChip} />
           <ThreadAsks botId={botId} questionShown={!thread.busy && thread.messages.at(-1)?.role === 'assistant' && !thread.messages.at(-1)?.streaming ? thread.messages.at(-1)?.text : undefined} failureShown={!!thread.messages.at(-1)?.error} />
         </CometMessages>
       </div>
