@@ -107,6 +107,28 @@ it.each(['approve', 'approve-task'])('lets a card be answered with %s while the 
   expect(t.sent).toHaveLength(1)
 })
 
+it('stops a turn in which the person declined a card instead of continuing it', async () => {
+  const t = await setup(async (request, turn, _extra, runner) => {
+    if (turn > 1) return done('Next turn asked again')
+    const verdict = await runner.askFor(request.channel!, async () => 'approve', 5000)!({ words: 'Run this command? pwd && ls', url: 'file:///C:/work#abc' })
+    return { ...done(`command: ${verdict}`, 2), unfinished: true }
+  })
+  const running = t.chat('Make the docx')
+  const card = await vi.waitFor(async () => {
+    const task = (await listTasks(t.paths)).at(-1)!
+    expect(task?.approvals).toHaveLength(1)
+    return task
+  }, { timeout: 5000 })
+  await t.call('tasks:decide', card.id, card.approvals[0]!.id, 'decline')
+  await running
+  const task = await t.settle('waiting')
+  expect(task.result).toBe('command: cancel')
+  expect(t.sent).toHaveLength(1)
+  expect(task.log.at(-1)?.line).toContain('declined a command')
+  await t.chat('Do it without commands')
+  expect((await t.settle('done')).result).toBe('Next turn asked again')
+})
+
 it('leaves committing presses for the person, one per page, and makes exactly the approved ones', async () => {
   const verdicts: string[] = []
   const t = await setup(async (request, turn, _extra, runner) => {

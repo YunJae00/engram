@@ -19,6 +19,7 @@ const within = (root: string, path: string): boolean => {
 const deny = (message: string): NativeDecision => ({ behavior: 'deny', message })
 const PLAN_ONLY = 'Plan mode: commands and file changes are off. Read what you need, then reply with the plan.'
 const allow: NativeDecision = { behavior: 'allow' }
+const DECLINED = 'The person declined a command in this turn, so no command runs until they write again. Do not try another command. Finish with what you have, or ask the person one short plain-language question with ask_person.'
 
 export interface NativePolicy {
   cwd: string
@@ -31,6 +32,10 @@ export interface NativePolicy {
   // Unset is 'once': the first command asks, the rest follow.
   mode?: PermissionMode
   ask?: Ask
+  // Per turn: a declined command card stops every later command in this turn without a card.
+  declined?: boolean
+  // Per turn: command cards are asked one at a time, so one answer covers the calls queued behind it.
+  asking?: Promise<unknown>
 }
 
 export function nativeSummary(name: string, input: Record<string, unknown>): string {
@@ -76,20 +81,29 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
     const command = typeof input['command'] === 'string' ? input['command'].trim() : ''
     if (!command) return deny('Supply a command.')
     if (policy.mode === 'plan') return deny(PLAN_ONLY)
+    if (policy.declined) return deny(DECLINED)
     const unbounded = policy.mode === 'auto' && policy.sandboxed !== true
     const each = policy.mode === 'each' || unbounded
     if ((policy.mode === 'auto' && policy.sandboxed === true) || (!each && policy.commands.allowed)) return allow
-    if (!policy.ask) return deny('Commands are not available in this chat.')
+    const ask = policy.ask
+    if (!ask) return deny('Commands are not available in this chat.')
     if (unbounded && command.length > 16_000) return deny('This command is too long to review. Use a smaller command.')
     const words = each ? `Run this command? ${command.replace(/\s+/g, ' ')}` : policy.sandboxed ? 'Allow commands for this comet? They can read files; writes stay in the task folder and network access is blocked.' : 'Allow commands for this comet? They can read or change any accessible file and use the network; not sandboxed.'
     // Bind approval to the exact command, not its shortened preview or working directory.
     const url = pathToFileURL(policy.cwd)
     if (unbounded) url.hash = createHash('sha256').update(command).digest('hex')
-    const verdict = await policy.ask({ words: unbounded ? `Run this command outside the sandbox?\n${command}` : words, url: url.href })
-    if (signal?.aborted) return deny('The call was canceled.')
+    const asked = (policy.asking ?? Promise.resolve()).then(() =>
+      policy.declined ? 'cancel' as const
+      : signal?.aborted ? undefined
+      : !each && policy.commands.allowed ? 'approve' as const
+      : ask({ words: unbounded ? `Run this command outside the sandbox?\n${command}` : words, url: url.href }))
+    policy.asking = asked.catch(() => undefined)
+    const verdict = await asked
+    if (verdict === 'cancel') policy.declined = true
+    if (signal?.aborted || verdict === undefined) return deny('The call was canceled.')
     if (verdict === 'approve' || verdict === 'always') { if (!each) policy.commands.allowed = true; return allow }
     if (verdict === 'later') return deny('Running commands waits for the person\'s approval. Continue with other work, or report what remains.')
-    return deny(each ? 'The person did not allow this command.' : 'The person did not allow commands for this comet.')
+    return deny(`${each ? 'The person did not allow this command.' : 'The person did not allow commands for this comet.'} ${DECLINED}`)
   }
   if (FREE.has(name)) return allow
   if (name === 'AskUserQuestion') return deny('Ask with ask_person instead.')

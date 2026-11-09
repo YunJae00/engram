@@ -69,6 +69,8 @@ export function taskRunner(deps: {
   const approvalScopes = new Map<string, Map<string, string>>()
   const alwaysFor = new Map<string, Set<string>>()
   const declined = new Map<string, Set<string>>()
+  // Tasks whose person declined a card during the turn now running; that turn is not continued automatically.
+  const refusedThisTurn = new Set<string>()
   const trails = new Map<string, TurnStep[]>()
   const handedBack = new Set<string>()
   const continuations = new Map<string, { count: number; reason: string }>()
@@ -92,7 +94,9 @@ export function taskRunner(deps: {
     }
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const earlier = trails.get(id) ?? []
+    refusedThisTurn.delete(id)
     await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...earlier, ...(outcome?.trail ?? [])]
@@ -113,6 +117,7 @@ export function taskRunner(deps: {
       if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
+      else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
       else if (deps.offered?.(channelOf(t)) && !outcome.unfinished && !pending.length && (!outcome.check || t.verified)) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
@@ -306,7 +311,7 @@ export function taskRunner(deps: {
             if (!answer) continue
             if (answer === 'approve' && url.startsWith('engram://app/')) approved.set(id, [...(approved.get(id) ?? []), { url, words: cardWords }])
             if (answer === 'approve-task') alwaysFor.set(id, (alwaysFor.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
-            if (answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
+            if (answer === 'decline') { declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`)); refusedThisTurn.add(id) }
             return answer !== 'decline' ? confirm({ words, url }) : 'cancel'
           }
           return 'later'

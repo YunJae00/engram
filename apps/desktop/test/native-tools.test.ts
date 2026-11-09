@@ -173,6 +173,53 @@ describe('permission modes', () => {
     expect(ask).toHaveBeenCalledTimes(3)
   })
 
+  it('asks no more command cards in a turn after a decline, and asks again next turn', async () => {
+    type Verdict = Awaited<ReturnType<NonNullable<NativePolicy['ask']>>>
+    const live = () => new AbortController().signal
+    const deferred = () => { let resolve!: (v: Verdict) => void; const promise = new Promise<Verdict>(r => { resolve = r }); return { promise, resolve } }
+    const tools = (name: string, ask: NativePolicy['ask'], mode?: 'each') => cometNativeTools({ paths: vaultPaths(join(root, name)), channel: 'bot-d', ...(mode ? { mode } : {}), ask, onStep: vi.fn(), audit: vi.fn() })
+    const ask = vi.fn<NonNullable<NativePolicy['ask']>>().mockResolvedValueOnce('cancel').mockResolvedValue('approve')
+    const t1 = await tools('decline', ask, 'each')
+    expect((await t1.decide('Bash', { command: 'python3 -c "import docx" || pip3 show python-docx' }, live())).message).toContain('this command')
+    expect((await t1.decide('Bash', { command: 'pwd && ls' }, live())).behavior).toBe('deny')
+    expect((await t1.decide('Bash', { command: 'ls -la' }, live())).message).toContain('declined')
+    expect(ask).toHaveBeenCalledTimes(1)
+    const t2 = await tools('decline', ask, 'each')
+    expect((await t2.decide('Bash', { command: 'pwd' }, live())).behavior).toBe('allow')
+    ask.mockResolvedValueOnce('later')
+    expect((await t2.decide('Bash', { command: 'ls' }, live())).message).toContain('waits')
+    expect((await t2.decide('Bash', { command: 'dir' }, live())).behavior).toBe('allow')
+    expect(ask).toHaveBeenCalledTimes(4)
+
+    const late = deferred(), lateAsk = vi.fn<NonNullable<NativePolicy['ask']>>(() => late.promise)
+    const aborted = await tools('abort', lateAsk, 'each')
+    const c = new AbortController()
+    const first = aborted.decide('Bash', { command: 'a' }, c.signal)
+    await vi.waitFor(() => expect(lateAsk).toHaveBeenCalledTimes(1))
+    c.abort(); late.resolve('cancel')
+    expect((await first).behavior).toBe('deny')
+    expect((await aborted.decide('Bash', { command: 'b' }, live())).message).toContain('declined')
+    expect(lateAsk).toHaveBeenCalledTimes(1)
+
+    const shared = vi.fn<NonNullable<NativePolicy['ask']>>().mockResolvedValueOnce('cancel').mockResolvedValue('approve')
+    const turnA = await tools('shared', shared), turnB = await tools('shared', shared)
+    expect((await turnA.decide('Bash', { command: 'dir' }, live())).behavior).toBe('deny')
+    expect((await turnB.decide('Bash', { command: 'dir' }, live())).behavior).toBe('allow')
+    expect(turnB.ready!()).toBe(true)
+    expect((await turnA.decide('Bash', { command: 'ls' }, live())).message).toContain('declined')
+    expect(shared).toHaveBeenCalledTimes(2)
+
+    for (const [name, mode, verdict, behavior] of [['parallel-each', 'each', 'cancel', 'deny'], ['parallel-once', undefined, 'approve', 'allow']] as const) {
+      const card = deferred(), cardAsk = vi.fn<NonNullable<NativePolicy['ask']>>(() => card.promise)
+      const t = await tools(name, cardAsk, mode)
+      const both = Promise.all([t.decide('Bash', { command: 'a' }, live()), t.decide('Bash', { command: 'b' }, live())])
+      await vi.waitFor(() => expect(cardAsk).toHaveBeenCalledTimes(1))
+      card.resolve(verdict)
+      expect((await both).map(d => d.behavior)).toEqual([behavior, behavior])
+      expect(cardAsk).toHaveBeenCalledTimes(1)
+    }
+  })
+
   it('keeps host plumbing tools out of the step line but still audits them', async () => {
     const onStep = vi.fn()
     const audit = vi.fn()
