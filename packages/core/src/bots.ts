@@ -1,32 +1,21 @@
 import { appendFile, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import type { VaultPaths } from './vault.js'
 import { forgetBotMemory } from './bot-memory.js'
 import { isSchedule, type Schedule } from './schedule.js'
 import { renameWithRetry } from './rename-with-retry.js'
 
-// Bots are named colleagues inside the vault: each carries a charter (what it
-// is for), keeps its own conversation, and can dispatch errands. The heart of
-// one is a paragraph of intent — everything heavier (retrieval, inference,
-// browsing) is borrowed from the host at answer time, which is why a bot is
-// cheap enough to make one per concern.
-
-// A task is the work a person repeats: "gather last week's decisions",
-// "draft the deploy notice". Saved on the comet that owns it, run with one
-// click — an errand is the engine, this is the thing you actually keep.
+// A task is the work a person repeats, saved on the comet that owns it and run with one click.
 export interface BotTask {
   id: string
   name: string
   goal: string
   lastRunAt?: string
-  // A task that stands: when it runs, and the procedure it replays. Without
-  // a procedure the goal is said in its conversation at that time, as a
-  // turn like any other - anything it would send or submit still waits for
-  // the person's OK.
+  // A standing task: without a procedure its goal is said as a turn; sends still wait for the person's OK.
   schedule?: Schedule
   routineId?: string
-  // Run only when this read-only listing shows something not seen at the
-  // last run; `seen` holds the item keys it showed then.
+  // Run only when this read-only listing shows items not in `seen` from the last run.
   watch?: TaskWatch
   seen?: string[]
   // The conversation a repeating request keeps answering in.
@@ -42,14 +31,11 @@ export interface Bot {
   createdAt: string
   webSites?: { origin: string; visits: number }[]
   tasks?: BotTask[]
-  // Asks the person refused to make standing, by ask key: offered once, not
-  // every third morning.
+  // Asks the person refused to make standing, by ask key: offered once.
   declined?: string[]
 }
 
-// How a checked answer was checked: each requirement with its verdict and
-// the observed fact behind it, what was read as a source, and how often this
-// comet's checked work has been confirmed.
+// How a checked answer was checked: verdicts with their basis, sources read, and the confirmed record.
 export interface TurnEvidence {
   checks: { requirement: string; status: 'pass' | 'fail' | 'unknown'; basis: string }[]
   grounding: { status: 'pass' | 'fail' | 'unknown'; basis: string }
@@ -77,8 +63,7 @@ export interface BotSuggestion {
 
 const BOTS_FILE = 'bots.json'
 const CHAT_DIR = 'bot-chats'
-// A conversation is a working surface, not an archive — the vault is the
-// archive. Old turns fall off the top.
+// A conversation is a working surface; old turns fall off the top.
 const TRANSCRIPT_CAP = 400
 
 function botsPath(paths: VaultPaths): string {
@@ -86,47 +71,70 @@ function botsPath(paths: VaultPaths): string {
 }
 
 function chatPath(paths: VaultPaths, botId: string): string {
-  // The id is generated here (crypto hex) — never user text — so it is safe
-  // as a file name.
+  // The id is generated here (crypto hex), never user text, so it is safe as a file name.
   return join(paths.cache, CHAT_DIR, `${botId}.jsonl`)
 }
 
 interface BotsFile {
   bots: Bot[]
-  // Suggestions the person turned down, by lowercased name. Kept beside the
-  // bots because a refusal is a decision about this vault, not this machine —
-  // it must outlive a reinstall and must not follow the person to another vault.
+  // Refused suggestion names: a decision about this vault, so kept beside the bots.
   dismissed: string[]
 }
 
-async function readBotsFile(paths: VaultPaths): Promise<BotsFile> {
-  try {
-    const raw = JSON.parse(await readFile(botsPath(paths), 'utf8')) as Partial<BotsFile>
-    return {
-      bots: Array.isArray(raw.bots)
-        ? raw.bots.filter((b) => typeof b?.id === 'string' && typeof b?.name === 'string')
-        : [],
-      dismissed: Array.isArray(raw.dismissed) ? raw.dismissed.filter((n): n is string => typeof n === 'string') : [],
-    }
-  } catch {
-    return { bots: [], dismissed: [] }
+// Parsed bots.json as stored; entries and fields the code does not know ride along to the next write.
+interface StoredBots { raw: Record<string, unknown>; bots: unknown[]; dismissed: unknown[] }
+
+function isBot(entry: unknown): entry is Bot {
+  return typeof (entry as Bot | null)?.id === 'string' && typeof (entry as Bot).name === 'string'
+}
+
+async function readBotsBytes(paths: VaultPaths): Promise<Buffer | undefined> {
+  try { return await readFile(botsPath(paths)) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
   }
 }
 
-async function writeBotsFile(paths: VaultPaths, file: BotsFile): Promise<void> {
+function parseBots(bytes: Buffer | undefined): StoredBots | undefined {
+  if (!bytes) return { raw: {}, bots: [], dismissed: [] }
+  let raw: unknown
+  // fatal: invalid UTF-8 is corrupt, never silently replaced with U+FFFD and rewritten.
+  try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)) } catch { return undefined }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const { bots, dismissed = [] } = raw as { bots?: unknown; dismissed?: unknown }
+  return Array.isArray(bots) && Array.isArray(dismissed) ? { raw: raw as Record<string, unknown>, bots, dismissed } : undefined
+}
+
+async function readBotsFile(paths: VaultPaths): Promise<BotsFile> {
+  const stored = parseBots(await readBotsBytes(paths).catch(() => Buffer.alloc(0)))
+  return { bots: stored?.bots.filter(isBot) ?? [], dismissed: stored?.dismissed.filter((n): n is string => typeof n === 'string') ?? [] }
+}
+
+// Never returns empty for a file that exists: a write after that would erase it.
+async function readForWrite(paths: VaultPaths): Promise<StoredBots> {
+  const bytes = await readBotsBytes(paths)
+  const stored = parseBots(bytes)
+  if (stored) return stored
+  const target = botsPath(paths)
+  const copy = `${target}.corrupt-${createHash('sha256').update(bytes!).digest('hex').slice(0, 16)}`
+  if (!(await readFile(copy).catch(() => undefined))?.equals(bytes!)) {
+    const scratch = `${target}.${process.pid}.copy.tmp`
+    await writeFile(scratch, bytes!)
+    await renameWithRetry(scratch, copy)
+  }
+  throw new Error(`bots.json could not be read and was left as is; a copy is kept at ${copy}`)
+}
+
+async function writeBotsFile(paths: VaultPaths, file: Record<string, unknown>): Promise<void> {
   await mkdir(paths.cache, { recursive: true })
-  // Written beside and renamed into place: a reader who arrives mid-write
-  // sees the old file whole, never a truncated half. A turn that read a
-  // half-written file here concluded the comet did not exist and answered
-  // as the wrong persona (measured).
+  // Scratch + rename: a reader mid-write sees the old file whole.
   const target = botsPath(paths)
   const scratch = `${target}.${process.pid}.tmp`
   await writeFile(scratch, JSON.stringify(file, null, 2))
   await renameWithRetry(scratch, target)
 }
 
-// Every change to the file is a read followed by a write, and two of those
-// interleaved lose one side. One chain per file keeps them in order.
+// Each change is read-then-write; one chain per file keeps interleaved changes from losing one side.
 const queues = new Map<string, Promise<unknown>>()
 
 function serialized<T>(paths: VaultPaths, work: () => Promise<T>, key = botsPath(paths)): Promise<T> {
@@ -155,15 +163,15 @@ export function recordBotSites(paths: VaultPaths, botId: string, urls: string[])
   })
 }
 
-// Read, change, write - as one turn of the queue. Two callers arriving
-// together each see the other's change; outside the queue the second
-// write silently dropped the first (measured: of two tasks added at once,
-// one vanished).
+// Read, change, write as one turn of the queue, or concurrent changes drop each other.
 function mutateBots<T>(paths: VaultPaths, work: (bots: Bot[]) => T): Promise<T> {
   return serialized(paths, async () => {
-    const file = await readBotsFile(paths)
-    const out = work(file.bots)
-    await writeBotsFile(paths, file)
+    const stored = await readForWrite(paths)
+    const bots = stored.bots.filter(isBot)
+    const known = new Set<unknown>(bots)
+    const out = work(bots)
+    const kept = stored.bots.filter((entry) => !known.has(entry) || bots.includes(entry as Bot))
+    await writeBotsFile(paths, { ...stored.raw, bots: [...kept, ...bots.filter((bot) => !known.has(bot))], dismissed: stored.dismissed })
     return out
   })
 }
@@ -171,8 +179,7 @@ function mutateBots<T>(paths: VaultPaths, work: (bots: Bot[]) => T): Promise<T> 
 // A refused name is stored as shown, and shown names are short.
 const SUGGESTION_NAME_CAP = 80
 
-// Suggestions carry no id; the name is what the person saw and refused, so it
-// is the key — compared the same way "already have this bot" is.
+// The name the person saw and refused is the key, compared like "already have this bot".
 function suggestionKey(name: string): string {
   return name.trim().toLowerCase()
 }
@@ -185,14 +192,13 @@ export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<v
   const key = suggestionKey(name).slice(0, SUGGESTION_NAME_CAP)
   if (!key) return Promise.resolve()
   return serialized(paths, async () => {
-    const file = await readBotsFile(paths)
-    if (file.dismissed.includes(key)) return
-    await writeBotsFile(paths, { ...file, dismissed: [...file.dismissed, key] })
+    const stored = await readForWrite(paths)
+    if (stored.dismissed.includes(key)) return
+    await writeBotsFile(paths, { ...stored.raw, bots: stored.bots, dismissed: [...stored.dismissed, key] })
   })
 }
 
-// A comet made with one press carries this name until its first message
-// names it.
+// A comet made with one press carries this name until its first message names it.
 export const UNTITLED_BOT_NAME = 'New comet'
 const TITLE_CHARS = 40
 
@@ -237,12 +243,8 @@ export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
     const at = bots.findIndex((b) => b.id === id)
     if (at >= 0) bots.splice(at, 1)
   })
-  // What it remembered of the person goes with it: that was its reading,
-  // and deleting the comet is the person's word on it.
+  // Its memory of the person goes with it; the transcript stays on disk until a vault reset.
   await forgetBotMemory(paths, id)
-  // The transcript file stays on disk (cheap, and deleting user words should
-  // never ride silently on another action); recreating the bot id is
-  // impossible, so it is unreachable garbage a vault reset clears.
 }
 
 export async function addBotTask(
@@ -297,9 +299,7 @@ export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: s
   })
 }
 
-// A turn is one appended line, not a re-parse and rewrite of the whole
-// transcript (that ran twice per chat turn). Reads already take the tail, so
-// the file is only compacted to the cap once it has grown well past it.
+// One appended line per turn; compacted only once well past the cap.
 const TRANSCRIPT_COMPACT_BYTES = 2_000_000
 const compactAt = new Map<string, number>()
 
@@ -320,8 +320,7 @@ export function appendBotTurn(paths: VaultPaths, botId: string, turn: BotTurn): 
   }, file)
 }
 
-// A fresh start: the transcript so far is put away beside the live file
-// (nothing a person said is deleted), and the conversation begins empty.
+// A fresh start: the transcript is put away beside the live file, nothing deleted.
 export function archiveBotTranscript(paths: VaultPaths, botId: string, now: Date = new Date()): Promise<void> {
   const live = chatPath(paths, botId)
   return serialized(paths, async () => {
@@ -360,9 +359,7 @@ export async function readBotTranscript(paths: VaultPaths, botId: string, limit 
   }
 }
 
-// What bots would this vault want? Read from what is actually in it: folders
-// the user works in constantly deserve a resident colleague. Deterministic on
-// purpose — a recommendation that changes every call reads as noise.
+// What bots would this vault want, read from its busiest folders; deterministic so it does not read as noise.
 export function recommendBots(
   notes: { context?: string; title: string }[],
   existingNames: string[],

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { addBotTask, appendBotTurn, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
+import { addBotTask, appendBotTurn, createBot, declineStanding, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, readBotTranscript, recommendBots, renameBot, titleFromMessage, UNTITLED_BOT_NAME } from '../src/bots.js'
 import { initVault } from '../src/vault.js'
 import { tmpVaultRoot } from './helpers.js'
 import { recordBotSites } from '../src/bots.js'
 import { archiveBotTranscript } from '../src/bots.js'
-import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 it('keeps concurrent appends intact through compaction and serializes archiving', async () => {
@@ -124,5 +124,133 @@ describe('two changes arriving together', () => {
     const bots = await loadBots(paths)
     expect(bots.find((x) => x.id === a.id)?.tasks).toHaveLength(1)
     expect(bots.find((x) => x.id === b.id)?.tasks).toHaveLength(1)
+  })
+})
+
+describe('bots.json that cannot be read', () => {
+  const copies = async (cache: string) => (await readdir(cache)).filter(n => n.startsWith('bots.json.corrupt-') && !n.endsWith('.tmp'))
+
+  it('corrupt bots.json is never overwritten', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-corrupt'), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    await mkdir(paths.cache, { recursive: true })
+    await writeFile(file, '{"bots": [')
+    const original = await readFile(file)
+    const before = await readdir(paths.cache)
+    expect(await loadBots(paths)).toEqual([])
+    expect(await loadDismissedSuggestions(paths)).toEqual([])
+    expect(await readdir(paths.cache)).toEqual(before)
+    for (const call of [
+      () => createBot(paths, { name: 'A' }),
+      () => renameBot(paths, 'x', 'y'),
+      () => deleteBot(paths, 'x'),
+      () => addBotTask(paths, 'x', { name: 't', goal: 'g' }),
+      () => declineStanding(paths, 'x', 'k'),
+      () => dismissBotSuggestion(paths, 'z'),
+      () => recordBotSites(paths, 'x', ['https://a.example']),
+    ]) await expect(call()).rejects.toThrow(/bots\.json/)
+    expect(await readFile(file)).toEqual(original)
+    for (const body of ['null', '[]', '{"bots":{}}', '{"bots":[],"dismissed":"x"}']) {
+      await writeFile(file, body)
+      await expect(createBot(paths, { name: 'A' })).rejects.toThrow(/bots\.json/)
+      expect(await readFile(file, 'utf8')).toBe(body)
+    }
+  })
+
+  it('invalid utf-8 bots.json is treated as corrupt', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-utf8'), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    const original = Buffer.concat([Buffer.from('{"bots":[{"id":"b","name":"'), Buffer.from([0xff]), Buffer.from('"}]}')])
+    await mkdir(paths.cache, { recursive: true })
+    await writeFile(file, original)
+    await expect(createBot(paths, { name: 'A' })).rejects.toThrow(/bots\.json/)
+    await expect(dismissBotSuggestion(paths, 'z')).rejects.toThrow(/bots\.json/)
+    const after = await readFile(file)
+    expect(after).toEqual(original)
+    expect(after.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false)
+    const kept = await copies(paths.cache)
+    expect(kept).toHaveLength(1)
+    expect(await readFile(join(paths.cache, kept[0]!))).toEqual(original)
+  })
+
+  it('corrupt copy kept', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-corrupt-copy'), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    const stamp = new Date('2025-01-01T00:00:00Z')
+    await mkdir(paths.cache, { recursive: true })
+    await writeFile(file, '{bad-one')
+    await utimes(file, stamp, stamp)
+    const first = await createBot(paths, { name: 'A' }).catch((error: Error) => error.message)
+    expect(await copies(paths.cache)).toHaveLength(1)
+    const [one] = await copies(paths.cache)
+    expect(await readFile(join(paths.cache, one!), 'utf8')).toBe('{bad-one')
+    expect(first).toContain(join(paths.cache, one!))
+    const copyPath = join(paths.cache, one!)
+    const old = new Date('2000-01-01T00:00:00Z')
+    await utimes(copyPath, old, old)
+    const before = await stat(copyPath)
+    await expect(createBot(paths, { name: 'A' })).rejects.toThrow()
+    await expect(dismissBotSuggestion(paths, 'z')).rejects.toThrow()
+    expect(await copies(paths.cache)).toHaveLength(1)
+    const after = await stat(copyPath)
+    expect(after.ino).toBe(before.ino)
+    expect(after.mtimeMs).toBe(before.mtimeMs)
+    expect((await readdir(paths.cache)).filter(n => n.endsWith('.tmp'))).toEqual([])
+    await writeFile(copyPath, 'edited')
+    await expect(createBot(paths, { name: 'A' })).rejects.toThrow()
+    expect(await readFile(copyPath, 'utf8')).toBe('{bad-one')
+    const settled = await Promise.allSettled([createBot(paths, { name: 'C' }), createBot(paths, { name: 'D' }), dismissBotSuggestion(paths, 'y')])
+    expect(settled.map(r => r.status)).toEqual(['rejected', 'rejected', 'rejected'])
+    expect(await copies(paths.cache)).toEqual([one])
+    expect(await readFile(file, 'utf8')).toBe('{bad-one')
+    await writeFile(file, '{bad-two')
+    await utimes(file, stamp, stamp)
+    const second = await createBot(paths, { name: 'B' }).catch((error: Error) => error.message)
+    const names = await copies(paths.cache)
+    expect(names).toHaveLength(2)
+    const two = names.find(n => n !== one)!
+    expect(await readFile(join(paths.cache, two), 'utf8')).toBe('{bad-two')
+    expect(second).toContain(join(paths.cache, two))
+    expect(await readFile(file, 'utf8')).toBe('{bad-two')
+  })
+
+  it('unknown and malformed entries survive a write', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-unknown'), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    const malformed = [{ name: 'no id', keep: true }, 'stray', null]
+    await mkdir(paths.cache, { recursive: true })
+    await writeFile(file, JSON.stringify({ version: 7, extra: { a: 1 }, bots: [...malformed, { id: 'bot-a', name: 'A', purpose: '', createdAt: 't', future: { deep: [1] } }], dismissed: ['x', 42] }))
+    const read = async () => JSON.parse(await readFile(file, 'utf8'))
+    await createBot(paths, { name: 'B' })
+    await renameBot(paths, 'bot-a', 'A2')
+    let stored = await read()
+    expect(stored.version).toBe(7)
+    expect(stored.extra).toEqual({ a: 1 })
+    expect(stored.bots.slice(0, 3)).toEqual(malformed)
+    expect(stored.bots[3]).toMatchObject({ name: 'A2', future: { deep: [1] } })
+    expect(stored.bots[4].name).toBe('B')
+    expect(stored.dismissed).toEqual(['x', 42])
+    await dismissBotSuggestion(paths, 'y')
+    stored = await read()
+    expect(stored.dismissed).toEqual(['x', 42, 'y'])
+    expect(stored.bots).toHaveLength(5)
+    await deleteBot(paths, 'bot-a')
+    stored = await read()
+    expect(stored.bots.slice(0, 3)).toEqual(malformed)
+    expect(stored.bots.slice(3).map((b: { name: string }) => b.name)).toEqual(['B'])
+    expect((await loadBots(paths)).map(b => b.name)).toEqual(['B'])
+  })
+
+  it('missing bots.json still reads as empty', async () => {
+    const paths = await initVault(await tmpVaultRoot('bots-missing'), { git: false })
+    const file = join(paths.cache, 'bots.json')
+    expect(await loadBots(paths)).toEqual([])
+    expect(await loadDismissedSuggestions(paths)).toEqual([])
+    await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' })
+    await dismissBotSuggestion(paths, 'first')
+    await createBot(paths, { name: 'A' })
+    expect(await loadBots(paths)).toHaveLength(1)
+    expect(await loadDismissedSuggestions(paths)).toEqual(['first'])
+    expect(await copies(paths.cache)).toEqual([])
   })
 })
