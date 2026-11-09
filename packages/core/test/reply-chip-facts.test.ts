@@ -51,6 +51,13 @@ describe('replies block facts rule', () => {
     expect(line).toContain('never "박민수 기한은 11월 14일로 넣어줘"')
   })
 
+  it.each(flagSets)('keeps chips from supplying a reason the answer asks for (%#)', flags => {
+    const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
+    expect(line).toContain('When your answer asks the person for a value (a date, owner, amount, reason, cause or other detail), the replies must not supply that value for them')
+    for (const chip of ['사유는 비워둬', '사유 정해지면 알려줄게']) expect(line).toContain(`"${chip}"`)
+    expect(line).toContain('never 사유는 "일정상 테스트 기간 추가 필요"로 넣어줘')
+  })
+
   it.each(flagSets)('keeps unclicked earlier chips from becoming the person\'s decision (%#)', flags => {
     const line = sessionRules(flags).split('\n').find(l => l.includes('fenced block whose language is replies'))!
     expect(line).toContain(EARLIER_REPLIES_RULE)
