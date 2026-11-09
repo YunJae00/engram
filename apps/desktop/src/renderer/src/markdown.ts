@@ -41,7 +41,7 @@ class DoubleTildeTokenizer extends marked.Tokenizer {
     return token?.raw.startsWith('~~') ? token : undefined
   }
 
-  // CommonMark will not close `**(inbox)**과`: after punctuation, a closing run
+  // CommonMark will not close `**(inbox)**` + a Hangul particle (e.g. U+ACFC): after punctuation, a closing run
   // must be followed by space or punctuation, and Korean particles attach directly.
   override emStrong(src: string, maskedSrc: string, prevChar?: string): Tokens.Em | Tokens.Strong | undefined {
     return super.emStrong(src, maskedSrc.replace(PARTICLE_AFTER_CLOSER, '$1.'), prevChar)
