@@ -254,6 +254,37 @@ test('search finds words that appear only in earlier message bodies', async () =
   await expect(row).toBeVisible()
 })
 
+test('search hides the open and pinned conversation when it does not match', async () => {
+  await showSidebar()
+  const open = page.getByTestId(`bot-${bots[2]!.id}`), other = page.getByTestId(`bot-${bots[1]!.id}`)
+  const rows = page.locator('.sidebar-conversations .bots-row')
+  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
+  const pin = async (label: 'Pin' | 'Unpin') => { await page.getByTestId(`sidebar-chat-menu-${bots[2]!.id}`).click(); await page.locator('.sidebar-organize-menu').getByRole('button', { name: label, exact: true }).click() }
+  await open.click()
+  await expect(open).toHaveClass(/active/)
+  expect(await page.evaluate(q => window.engram.botsSearch(q), 'zzqx-없는토큰')).toEqual([])
+  for (const pinned of [false, true]) {
+    if (pinned) await pin('Pin')
+    if (pinned) await expect(open.locator('..')).toHaveAttribute('data-pinned', 'true')
+    const before = await page.evaluate(() => window.engram.sidebarLayout())
+    await input.fill('handoff checklist')
+    await expect(other).toBeVisible()
+    await expect(rows).toHaveCount(1)
+    await expect(open).toHaveCount(0)
+    await input.fill('zzqx-없는토큰')
+    await expect(rows).toHaveCount(0)
+    await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+    await expect(open).toBeVisible()
+    await expect(other).toBeVisible()
+    await expect(open).toHaveClass(/active/)
+    if (pinned) await expect(open.locator('..')).toHaveAttribute('data-pinned', 'true')
+    expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
+  }
+  await pin('Unpin')
+  await expect(open.locator('..')).not.toHaveAttribute('data-pinned', 'true')
+})
+
 test('sidebar fits light, dark and narrow layouts with captured examples', async () => {
   await showSidebar()
   await page.locator('.sidebar-scroll').evaluate(node => { node.scrollTop = 0 })
