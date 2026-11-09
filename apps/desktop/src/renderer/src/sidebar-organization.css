@@ -166,7 +166,11 @@
 .onboard-card { max-height: calc(100dvh - 72px); overflow-y: auto; }
 .onboard-card > .onboard-ai { min-height: 0; }
 .onboard-ai-content { display: flex; flex-direction: column; gap: 24px; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 2px 12px 2px 2px; }
-.onboard-ai > h1, .onboard-ai > .onboard-actions { flex-shrink: 0; }
+.onboard-ai > h1 { flex-shrink: 0; }
+.onboard-card:has(> .onboard-progress) { height: min(600px, calc(100dvh - 72px)); }
+.onboard-card > section { flex: 1 1 auto; min-height: 0; }
+.onboard-card > .onboard-actions { flex-shrink: 0; margin-top: 22px; }
+.onboard-actions > .secondary { margin-right: auto; }
 .onboard-preferences .learning-sources { gap: 8px; }
 .sidebar-footer > button[data-testid='activity-settings'] { width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }

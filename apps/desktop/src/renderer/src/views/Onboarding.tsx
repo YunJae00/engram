@@ -35,6 +35,7 @@ export function Onboarding() {
   const checked = useRef(false)
   const signing = useRef(false)
   const completing = useRef(false)
+  const primary = useRef<HTMLButtonElement>(null)
   const ready = brains.filter(connectionConfirmed)
   // A signed-in account at its usage limit is connected but cannot answer now.
   const limited = (id: 'claude' | 'codex') => usage.some(account => account.provider === id && account.profile === (profiles?.selected[id] ?? 'system') && (account.usage?.windows ?? []).some(window => (window.used ?? 0) >= 100 && (window.resetsAt === undefined || window.resetsAt > Date.now())))
@@ -102,7 +103,6 @@ export function Onboarding() {
         </div>
         <button className="secondary" aria-label="Browse for workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker. Type a path instead.'))}>Browse…</button>
       </div>
-      <div className="onboard-actions"><button className="primary" data-testid="onboard-next" disabled={!root.trim()} onClick={() => { setError(''); setStep(2) }}>Continue</button></div>
     </section> : step === 2 ? <section className="onboard-ai" data-testid="onboard-step-2">
       <h1>Connect your AI</h1>
       <div className="onboard-ai-content">
@@ -122,14 +122,19 @@ export function Onboarding() {
       </div>
       <fieldset className="onboard-choice" data-testid="onboard-choice"><legend>Your AI for conversations &amp; Cosmos</legend>{(['claude', 'codex'] as const).map(id => <label className="onboard-choice-card" key={id} data-selected={pick === id}><input type="radio" name="onboard-brain" value={id} data-testid={`onboard-choose-${id}`} checked={pick === id} disabled={finishing || !ready.some(brain => brain.id === id)} onChange={() => { setChoice(id); setModel(null); setCheckFailed(null) }} /><ProviderIcon provider={id} size={18} /><span>{id === 'claude' ? 'Claude' : 'ChatGPT'}</span><Check size={16} className="onboard-choice-check" aria-hidden /></label>)}<div className="onboard-model-reveal" data-open={!!pick}><div>{pick && <OnboardingModel {...catalog} value={model} disabled={finishing} onChange={value => { setModel(value); setCheckFailed(null) }} />}</div></div></fieldset>
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={!!connecting || installing} onClick={() => { setError(''); setStep(1) }}>Back</button><button className="primary" data-testid="onboard-ai-next" disabled={loading || !!connecting || installing || !modelReady} onClick={() => { setError(''); setStep(3) }}>Continue</button></div>
     </section> : <section className="onboard-ai" data-testid="onboard-step-3">
       <h1>Make it yours</h1>
       <div className="onboard-ai-content onboard-preferences" aria-busy={finishing}>
         <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
       </div>
-      <div className="onboard-actions"><button className="secondary" disabled={finishing} onClick={() => { setError(''); setStep(2) }}>Back</button><button className="primary" data-testid="onboard-finish" disabled={finishing || !modelReady} onClick={() => void finish()}>{finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : 'Start Engram'}</button></div>
     </section>}
     {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
+    {/* One persistent bar: step changes rewrite these nodes instead of remounting them under the cursor. */}
+    <div className="onboard-actions">
+      {step > 1 && <button className="secondary" disabled={step === 2 ? !!connecting || installing : finishing} onClick={event => { if (event.detail > 1) return; if (step === 2 && event.detail === 0) primary.current?.focus(); setError(''); setStep(step - 1) }}>Back</button>}
+      <button ref={primary} className="primary" data-testid={step === 1 ? 'onboard-next' : step === 2 ? 'onboard-ai-next' : 'onboard-finish'} disabled={step === 1 ? !root.trim() : step === 2 ? loading || !!connecting || installing || !modelReady : finishing || !modelReady} onClick={event => { if (event.detail > 1) return; if (step === 3) { void finish(); return } setError(''); setStep(step + 1) }}>
+        {step === 3 && finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : step === 3 ? 'Start Engram' : 'Continue'}
+      </button>
+    </div>
   </div></div>
 }
