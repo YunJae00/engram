@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkVerdict } from './aggregate.mjs'
+import { sharedCheck, sharedResult } from './batch.mjs'
 import { restoreBuild } from './build-cache.mjs'
 import { evidenceRound, outputTail, REVIEW_KINDS, runCommands, runRequests, shareEvidence, testsGate } from './evidence.mjs'
 import { deleteRemoteBranch, fetchBranch, fileAtRef, tipSha } from './git.mjs'
@@ -54,12 +55,13 @@ function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null, tim
 // Verifier flow for local `tests`: the sandboxed reviewer cannot launch Electron or open sockets
 // (EPERM on macOS workspace-write), so this trusted runner code executes the check and criterion
 // commands itself in the worktree, saves each log, and the reviewer only judges the captured results.
-export function runChecks(ctx, worktree, brief, name, run = sh) {
+export async function runChecks(ctx, worktree, brief, name, run = sh, shared = null) {
   const commands = [
-    { id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } },
+    ...(shared ? [] : [{ id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } }]),
     ...scopedCriteria(brief).map((c) => ({ id: c.id, cmd: c.cmd, expect: c.expect })),
   ]
-  return runCommands(worktree, name, commands, 30 * 60_000, run)
+  const results = await runCommands(worktree, name, commands, 30 * 60_000, run)
+  return shared ? [sharedResult(shared, worktree, name), ...results] : results
 }
 
 // A failed runner-run tests lane fails the attempt at once with its captured results; spec and break never launch.
@@ -80,7 +82,7 @@ async function failOnTests(ctx, ledger, item, attempt, jobs, testsJob) {
 }
 
 // `testsJob` feeds spec/break the runner-run results; `round` reruns a reviewer in its own worktree with requested outputs.
-async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null, round = null } = {}) {
+async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null, round = null, shared = null } = {}) {
   const name = label(item, attempt, kind)
   const cloud = isCloud(attempt.verifier)
   const worktree = cloud ? null : round?.worktree ?? join(ctx.worktrees, name)
@@ -90,7 +92,7 @@ async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null
     await restoreBuild(worktree)
   }
   const verdictPath = verdictRel(item, attempt, kind)
-  const results = worktree && kind === 'tests' ? await runChecks(ctx, worktree, loadBrief(ctx, item.id), name) : null
+  const results = worktree && kind === 'tests' ? await runChecks(ctx, worktree, loadBrief(ctx, item.id), name, sh, shared) : null
   const evidence = !worktree || !REVIEW_KINDS.includes(kind) ? null : round?.evidence ?? await shareEvidence(ctx, worktree, name, testsJob)
   const branch = verdictBranch(name, tries)
   const minutes = roleMinutes(ctx.roles, 'verify', kind)
@@ -184,7 +186,8 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
         pending = true
         continue
       }
-      const launched = await launchVerifier(ctx, item, attempt, kind, (job?.tries ?? 0) + 1, { testsJob })
+      const shared = kind === 'tests' && !isCloud(attempt.verifier) ? await sharedCheck(ctx, ledger, attempt) : null
+      const launched = await launchVerifier(ctx, item, attempt, kind, (job?.tries ?? 0) + 1, { testsJob, shared })
       if (launched) {
         jobs[name] = launched
         saveJobs(ctx, jobs)

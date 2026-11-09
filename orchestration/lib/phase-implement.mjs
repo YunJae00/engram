@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { batchLabel, batchMinutes, batchOf, batchPrompt, pickBatches, releaseMember } from './batch.mjs'
 import { changedFiles, deleteRemoteBranch, fetchBranch, fileAtRef, lsRemote, tipSha } from './git.mjs'
 import { readTokens } from './launch-local.mjs'
 import { isHard, transition } from './ledger.mjs'
@@ -45,9 +46,80 @@ export async function startBriefed(ctx, ledger) {
     if (hard && !brief.design) await startDesign(ctx, ledger, item)
     else queue.push({ item, brief, hard, plan: plannedAttempts(item, ctx.roles, hard, smallFailure(item, (path) => readJsonOrNull(join(ctx.root, path)))) })
   }
-  const free = ctx.dryRun ? ctx.roles.maxLocalAgents : ctx.sem.free()
-  const picks = scheduleAttempts(queue.map((q) => q.plan), free, isCloud)
-  for (const [i, q] of queue.entries()) await startImplement(ctx, ledger, q, picks[i])
+  let free = ctx.dryRun ? ctx.roles.maxLocalAgents : ctx.sem.free()
+  const { groups, singles } = pickBatches(queue, ctx.batch ?? 0)
+  // A batch is one process, so it takes one slot; a group without a slot waits like a single would.
+  for (const group of groups) {
+    if (free > 0 && (await startBatch(ctx, ledger, group))) free--
+    else singles.push(...group)
+  }
+  const picks = scheduleAttempts(singles.map((q) => q.plan), free, isCloud)
+  for (const [i, q] of singles.entries()) await startImplement(ctx, ledger, q, picks[i])
+}
+
+function prepareAttempt(ctx, item, step, minutes) {
+  const n = item.attempts.length + 1
+  const branch = `${ctx.roles.branchPrefix}${item.id}-${n}`
+  const startedAt = new Date().toISOString()
+  return { n, implementer: step.implementer, verifier: step.verifier, branch, startedAt, deadlineAt: deadlineAt(startedAt, minutes) }
+}
+
+async function addAttemptWorktree(ctx, attempt, label) {
+  const worktree = join(ctx.worktrees, label)
+  await fetchBranch(ctx.opts, ctx.roles.baseBranch)
+  await dropWorktree(ctx, worktree)
+  await git(ctx.root, 'worktree', 'add', '-B', attempt.branch, worktree, ctx.base)
+  linkNodeModules(ctx.root, worktree)
+  attempt.worktree = worktree
+}
+
+// One implementer session for 2..N easy items; each item keeps its own attempt, branch, worktree,
+// report and verdicts, so a failure bounces only that item, and its next attempt runs single.
+async function startBatch(ctx, ledger, group) {
+  const ids = group.map((q) => q.item.id)
+  const label = batchLabel(ids)
+  const step = group[0].plan[0]
+  if (ctx.dryRun) {
+    ctx.log(`dry-run batch ${ids.join(', ')}: would launch one ${step.implementer} session (verifier ${step.verifier})`)
+    return true
+  }
+  const minutes = batchMinutes(roleMinutes(ctx.roles, 'implement'), group.length)
+  const attempts = group.map(({ item }) => prepareAttempt(ctx, item, step, minutes))
+  group.forEach(({ item }, i) => item.attempts.push(attempts[i]))
+  try {
+    const sections = []
+    for (const [i, { item, brief }] of group.entries()) {
+      await addAttemptWorktree(ctx, attempts[i], `${item.id}-${attempts[i].n}`)
+      sections.push({ id: item.id, worktree: attempts[i].worktree, prompt: withDesign(ctx, implementerPrompt({
+        persona: '', rules: RULES, brief, branch: attempts[i].branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id),
+        cloud: false, linux: verifierLinuxDesktop(false), findings: [],
+      }), brief) })
+    }
+    const cwd = join(ctx.worktrees, label)
+    mkdirSync(cwd, { recursive: true })
+    const prompt = batchPrompt({ persona: persona(ctx, 'implementer'), minutes, sections })
+    const job = await launchAgent(ctx, { agent: step.implementer, label, cwd, prompt, role: 'implement', minutes, addDirs: attempts.map((a) => a.worktree) })
+    if (!job) throw new Error('no free local slot')
+    for (const a of attempts) Object.assign(a, { logPath: job.logPath, startedAt: job.startedAt, deadlineAt: job.deadlineAt, pid: job.pid })
+    const jobs = loadJobs(ctx)
+    jobs[label] = { pid: job.pid, logPath: job.logPath, open: attempts.map((a) => a.branch) }
+    saveJobs(ctx, jobs)
+  } catch (error) {
+    // Split: undo the batch so every member starts single in this same tick.
+    for (const [i, { item }] of group.entries()) {
+      item.attempts.splice(item.attempts.indexOf(attempts[i]), 1)
+      await dropWorktree(ctx, attempts[i].worktree)
+      await git(ctx.root, 'branch', '-D', attempts[i].branch).catch(() => null)
+      note(ctx, item.id, 'implement', `batch ${label} split`, String(error.message).slice(0, 300))
+    }
+    return false
+  }
+  for (const [i, { item }] of group.entries()) {
+    transition(item, 'implementing')
+    note(ctx, item.id, 'implement', `launch ${step.implementer} attempt ${attempts[i].n}`, `rung 0, batched with ${ids.filter((id) => id !== item.id).join(', ')}`, attempts[i].logPath)
+  }
+  save(ctx, ledger)
+  return true
 }
 
 async function startDesign(ctx, ledger, item) {
@@ -126,8 +198,10 @@ export async function designTick(ctx, ledger, item) {
     note(ctx, item.id, 'design', 'needs_human', item.reason)
     return save(ctx, ledger)
   }
-  const pick = pickDesign(designs, mine.every(([, job]) => now.getTime() > Date.parse(job.deadlineAt)))
-  if (pick) await setDesign(ctx, ledger, item, pick, 'deadline passed; earliest design wins')
+  // Batch mode does not idle out the design deadline once both designers delivered (measured: ~12 of 19 min).
+  const early = Boolean(ctx.batch) && designs.length === Object.keys(DESIGNERS).length
+  const pick = pickDesign(designs, early || mine.every(([, job]) => now.getTime() > Date.parse(job.deadlineAt)))
+  if (pick) await setDesign(ctx, ledger, item, pick, `${early ? 'both designs in (batch mode)' : 'deadline passed'}; earliest design wins`)
 }
 
 export async function setDesign(ctx, ledger, item, line, why) {
@@ -170,30 +244,20 @@ function withDesign(ctx, prompt, brief) {
 }
 
 async function launchImplementer(ctx, ledger, item, brief, step, relaunch = null) {
-  const n = item.attempts.length + 1
-  const branch = `${ctx.roles.branchPrefix}${item.id}-${n}`
-  const label = `${item.id}-${n}`
   const cloud = isCloud(step.implementer)
   const minutes = roleMinutes(ctx.roles, 'implement')
+  const attempt = prepareAttempt(ctx, item, step, minutes)
+  const { n, branch } = attempt
+  const label = `${item.id}-${n}`
   const prompt = withDesign(ctx, implementerPrompt({
     persona: persona(ctx, 'implementer'), rules: RULES, brief, branch, baseBranch: ctx.roles.baseBranch, reportPath: reportPath(item.id), cloud, linux: verifierLinuxDesktop(cloud),
     findings: previousFindings(ctx, item), minutes,
   }), brief)
-  const attempt = { n, implementer: step.implementer, verifier: step.verifier, branch, startedAt: new Date().toISOString() }
-  attempt.deadlineAt = deadlineAt(attempt.startedAt, minutes)
   if (relaunch) Object.assign(attempt, relaunch)
   item.attempts.push(attempt)
   try {
-    let worktree
-    if (!cloud) {
-      worktree = join(ctx.worktrees, label)
-      await fetchBranch(ctx.opts, ctx.roles.baseBranch)
-      await dropWorktree(ctx, worktree)
-      await git(ctx.root, 'worktree', 'add', '-B', branch, worktree, ctx.base)
-      linkNodeModules(ctx.root, worktree)
-      attempt.worktree = worktree
-    }
-    const job = await launchAgent(ctx, { agent: step.implementer, label, cwd: worktree, prompt, role: 'implement', minutes })
+    if (!cloud) await addAttemptWorktree(ctx, attempt, label)
+    const job = await launchAgent(ctx, { agent: step.implementer, label, cwd: attempt.worktree, prompt, role: 'implement', minutes })
     if (!job) throw new Error('no free local slot')
     Object.assign(attempt, { logPath: job.logPath, startedAt: job.startedAt, deadlineAt: job.deadlineAt })
     if (job.sessionId) attempt.sessionId = job.sessionId
@@ -224,8 +288,11 @@ async function startImplement(ctx, ledger, { item, brief, hard, plan }, steps) {
 }
 
 export async function finish(ctx, attempt, outcome) {
-  kill(attempt.pid)
-  releaseSlot(ctx, attempt.pid)
+  if (releaseMember(ctx, attempt)) {
+    kill(attempt.pid)
+    releaseSlot(ctx, attempt.pid)
+    if (batchOf(attempt)) rmSync(join(ctx.worktrees, batchOf(attempt)), { recursive: true, force: true })
+  }
   attempt.outcome = outcome
   attempt.finishedAt ??= new Date().toISOString()
   if (attempt.logPath && !isCloud(attempt.implementer)) {

@@ -15,11 +15,12 @@ import { createContext, note, readJson, readJsonOrNull, save, schema, syncBaseBr
 import { validate } from './lib/validate.mjs'
 import { integrationTier } from './lib/tier.mjs'
 import { forEachItem } from './lib/loop.mjs'
+import { batchSize } from './lib/batch.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const USAGE = `usage:
   node orchestration/run.mjs add <brief.json>
-  node orchestration/run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick]
+  node orchestration/run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick] [--batch [2-4]]
   node orchestration/run.mjs integrate [--full|--quick]
   node orchestration/run.mjs status
   node orchestration/run.mjs design <id> --pick claude|codex
@@ -149,6 +150,7 @@ async function main(argv) {
   const [command, ...args] = argv
   const ctx = createContext(ROOT, { dryRun: flag(args, '--dry-run') })
   ctx.integrationTier = integrationTier(ctx.roles, args)
+  ctx.batch = batchSize(args)
   if (command === 'add' && args[0]) return add(ctx, args[0])
   if (command === 'status') return ctx.log(existsSync(join(ctx.orch, 'ledger.json')) ? status(loadLedger(ROOT)) : 'ledger empty')
   if (command === 'run') return run(ctx, args)

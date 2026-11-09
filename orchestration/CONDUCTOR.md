@@ -40,10 +40,14 @@ Integration runs the `quick` tier by default (`roles.md` `integration.tier`): ty
 
 ```
 node run.mjs add <brief.json>                              queue an item (validates the brief, copies it to briefs/)
-node run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick]
+node run.mjs run [--once] [--interval <s>] [--dry-run] [--reintegrate] [--full|--quick] [--batch [2-4]]
                                                            tick every <s> seconds (default 30) until integration ends;
                                                            --dry-run prints what one tick would launch and writes nothing;
-                                                           --reintegrate resumes a batch whose integration failed
+                                                           --reintegrate resumes a batch whose integration failed;
+                                                           --batch (or ORCH_BATCH=N) groups easy first attempts of one area with
+                                                           disjoint allowedFiles into one implementer session and one shared
+                                                           check:quick, and picks a hard item's design once both exist
+                                                           (reports/batching-analysis.md)
 node run.mjs integrate [--full|--quick]                    rerun integration once (previous result kept in history), rewrite the summary
 node run.mjs status                                        table of items and states
 node run.mjs design <id> --pick claude|codex               choose the design of a hard item in `designing`
