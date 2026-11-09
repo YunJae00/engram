@@ -23,6 +23,8 @@ export interface BotFact {
 export interface BotMemoryFile {
   facts: BotFact[]
   turns: number
+  // Leading facts that came from the shared layer; set only by mergeMemory.
+  shared?: number
 }
 
 const MEMORY_DIR = 'bot-memory'
@@ -169,39 +171,59 @@ export async function forgetFactText(paths: VaultPaths, botId: string, text: str
 // each comet's own: what one comet learns about how they work, the next knows.
 export const PERSON_MEMORY = '_person'
 
+// The whole classifier: a fact naming one of these is about the person and
+// shared; anything else belongs to the comet that learned it.
+export const IDENTITY_PHRASES = ['my name', 'their name', "person's name", 'preferred name', 'time zone', 'timezone', 'pronouns'] as const
+
+export function isIdentityFact(text: string): boolean {
+  const lower = text.toLowerCase()
+  return IDENTITY_PHRASES.some((phrase) => lower.includes(phrase))
+}
+
 // Shared and own facts as one list, each line once, the fresher clock kept.
 export function mergeMemory(...files: BotMemoryFile[]): BotMemoryFile {
   const byText = new Map<string, BotFact>()
-  for (const fact of files.flatMap((file) => file.facts)) {
-    const key = normalizeFact(fact.text).toLowerCase()
-    const prior = byText.get(key)
-    if (!prior || prior.touchedAt < fact.touchedAt) byText.set(key, fact)
-  }
-  return { facts: [...byText.values()], turns: files.reduce((sum, file) => sum + file.turns, 0) }
+  let shared = 0
+  files.forEach((file, index) => {
+    for (const fact of file.facts) {
+      const key = normalizeFact(fact.text).toLowerCase()
+      const prior = byText.get(key)
+      if (!prior || prior.touchedAt < fact.touchedAt) byText.set(key, fact)
+    }
+    if (index === 0) shared = byText.size
+  })
+  return { facts: [...byText.values()], turns: files.reduce((sum, file) => sum + file.turns, 0), shared }
 }
 
 export async function forgetBotMemory(paths: VaultPaths, botId: string): Promise<void> {
   await rm(memoryPath(paths, botId), { force: true }).catch(() => undefined)
 }
 
-// The facts that ride in the prompt: the freshest within the budget, rendered
-// in the order they were first written.
+const memoryLine = (f: BotFact) => `- (${f.at.slice(0, 10)}) ${f.text}`.replace(/\s+/g, ' ')
+
+// The facts that ride in the prompt: shared facts first, then the comet's
+// own, each the freshest that fit the rendered budget, and each layer in the
+// order its facts were first written.
 export function selectForPrompt(file: BotMemoryFile, now = new Date()): BotFact[] {
-  const ranked = [...file.facts].sort((a, b) => factScore(b, now) - factScore(a, now))
-  const chosen: BotFact[] = []
-  let chars = 0
-  for (const fact of ranked) {
-    if (chosen.length >= MEMORY_LINES || chars + fact.text.length > MEMORY_CHARS) break
-    chosen.push(fact)
-    chars += fact.text.length
-  }
-  return chosen.sort((a, b) => a.at.localeCompare(b.at))
+  const split = file.shared ?? file.facts.length
+  const byScore = (facts: BotFact[]) => [...facts].sort((a, b) => factScore(b, now) - factScore(a, now))
+  let chars = -1
+  let count = 0
+  return [file.facts.slice(0, split), file.facts.slice(split)].flatMap((layer) => {
+    const chosen: BotFact[] = []
+    for (const fact of byScore(layer)) {
+      const next = chars + 1 + memoryLine(fact).length
+      if (count >= MEMORY_LINES || next > MEMORY_CHARS) continue
+      chosen.push(fact)
+      chars = next
+      count++
+    }
+    return chosen.sort((a, b) => a.at.localeCompare(b.at))
+  })
 }
 
 export function renderMemory(file: BotMemoryFile, now = new Date()): string {
-  const chosen = selectForPrompt(file, now)
-  if (chosen.length === 0) return ''
-  return chosen.map((f) => `- (${f.at.slice(0, 10)}) ${f.text}`).join('\n')
+  return selectForPrompt(file, now).map(memoryLine).join('\n')
 }
 
 // The one prompt of the feature. Short on purpose: the model that reads it

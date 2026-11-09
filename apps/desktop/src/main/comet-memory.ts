@@ -13,12 +13,14 @@ import {
   parseFactLines,
   REMEMBER_TOKENS,
   rememberPrompt,
+  recordFacts,
   withoutSecrets,
   type Engine,
   type VaultPaths,
   type NoteStore,
   noteTitle,
 } from 'core'
+import { isIdentityFact } from 'core/src/bot-memory'
 import type { BotFactDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -34,6 +36,7 @@ type EngineCwd = Parameters<typeof collectResult>[1]['workdir']
 // they go one at a time and are given room to wait for it.
 const REMEMBER_TIMEOUT_MS = 120_000
 let remembering: Promise<unknown> = Promise.resolve()
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export function taskRecall(store: Pick<NoteStore, 'search' | 'get'>, task: string): string {
   const notes = store.search(task.slice(0, 256)).slice(0, 12).flatMap((hit) => {
@@ -108,14 +111,26 @@ export async function rememberTurn(deps: {
     raw = await call
   } catch (err) {
     if (deps.signal?.aborted) return
-    flog('comet-memory', `remembering failed — ${err instanceof Error ? err.message : String(err)}`)
+    flog('comet-memory', `remembering failed — ${errorText(err)}`)
     return
   }
   const lines = parseFactLines(raw, known)
-  const change = { added: lines.length, touched: 0 }
-  if (lines.length) {
-    await syncPersonNote(deps.paths, new Date(), lines)
+  const shared = lines.filter(isIdentityFact)
+  const own = lines.filter((line) => !isIdentityFact(line))
+  const change = { added: 0, touched: 0 }
+  const kept = await Promise.allSettled([
+    own.length ? recordFacts(deps.paths, deps.botId, own) : null,
+    shared.length ? recordFacts(deps.paths, PERSON_MEMORY, shared) : null,
+  ])
+  for (const result of kept) {
+    if (result.status === 'rejected') flog('comet-memory', `keeping failed — ${errorText(result.reason)}`)
+    else if (result.value) {
+      change.added += result.value.added
+      change.touched += result.value.touched
+    }
   }
+  // Facts are already on disk, so a failed note sync loses nothing; the next turn publishes them.
+  if (shared.length) await syncPersonNote(deps.paths, new Date(), shared).catch((err) => flog('comet-memory', `profile note sync failed — ${errorText(err)}`))
   flog('comet-memory', `kept ${change.added} new, ${change.touched} said again`)
   broadcast({ type: 'comet:remembered', channel: deps.channel, botId: deps.botId, added: change.added, touched: change.touched })
 }
