@@ -209,3 +209,60 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
     }
   } finally { await closeTestApp(app) }
 })
+
+test('a finished web card at pane width keeps its label and snapshot age apart', async () => {
+  await mkdir(TMP, { recursive: true })
+  const paths = await initVault(await mkdtemp(join(TMP, 'preview-caption-')), { git: false })
+  const bot = await createBot(paths, { name: 'Caption bot' })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Ready.', at: new Date().toISOString() })
+  const app = await electron.launch({
+    args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
+    env: { ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'preview-caption-user-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' },
+  })
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByTestId('shell')).toBeVisible()
+    await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('native:enabled'); ipcMain.handle('native:enabled', () => false) })
+    await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), [bot.id])
+    await page.reload()
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900))
+    await openActivity(page, 'mission')
+    await page.getByTestId('mission-layout-4').click()
+    const mini = page.getByTestId(`mini-chat-${bot.id}`)
+    await expect(mini).toBeVisible()
+    const size = { width: 1280, height: 720 }
+    const data = await app.evaluate(({ nativeImage }, size) => nativeImage.createFromBuffer(Buffer.alloc(size.width * size.height * 4, 0xf0), size).toDataURL(), size)
+    const lane = `bot-${bot.id}`
+    const url = 'https://a-very-long-subdomain-name.en.wikipedia.org/wiki/Page'
+    await app.evaluate(({ BrowserWindow }, events) => {
+      const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+      for (const event of events) window.webContents.send('engram:event', event)
+    }, [{ type: 'comet:working', channel: lane, working: true }, { type: 'agent:tabs', lane, tabs: [{ id: 'tab-1', url, active: true }] },
+      { type: 'mission:frame', frame: { lane, on: true, url, data: data.split(',')[1], at: Date.now() } }])
+    const card = mini.getByTestId('preview-card')
+    const collapsed = mini.getByTestId('preview-card-collapsed')
+    await expect(card.or(collapsed)).toBeVisible()
+    if (await collapsed.isVisible()) await collapsed.click()
+    await expect(card.locator('canvas')).toHaveAttribute('data-painted', '')
+    await app.evaluate(({ BrowserWindow }, lane) => {
+      const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
+      window.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false })
+    }, lane)
+    await expect(card.locator('.preview-card-stale')).toBeVisible()
+    await expect.poll(() => card.evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(264)
+    const boxes = await card.evaluate(element => {
+      const [caption, label, stale] = ['.preview-card-caption', '.preview-card-label', '.preview-card-stale'].map(selector => element.querySelector(selector)!.getBoundingClientRect())
+      return { caption: caption!.toJSON(), label: label!.toJSON(), stale: stale!.toJSON() } as Record<string, DOMRect>
+    })
+    const { caption, label, stale } = boxes as { caption: DOMRect, label: DOMRect, stale: DOMRect }
+    expect(stale.left - label.right).toBeGreaterThanOrEqual(8)
+    for (const part of ['.preview-card-label', '.preview-card-stale']) await expect(card.locator(part)).toHaveCSS('text-overflow', 'ellipsis')
+    for (const box of [label, stale]) {
+      expect(box.width).toBeGreaterThan(0)
+      expect(box.left).toBeGreaterThanOrEqual(caption.left)
+      expect(box.right).toBeLessThanOrEqual(caption.right)
+      expect(box.top).toBeGreaterThanOrEqual(caption.top)
+      expect(box.bottom).toBeLessThanOrEqual(caption.bottom)
+    }
+  } finally { await closeTestApp(app) }
+})
