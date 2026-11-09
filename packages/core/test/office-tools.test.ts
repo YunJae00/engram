@@ -54,22 +54,48 @@ describe('excel_write validation and dispatch', () => {
   })
 })
 
-describe('outlook_draft never sends and needs a recipient or a reply target', () => {
+describe('outlook_draft never sends; a recipient is optional', () => {
   it('passes a new draft through', async () => {
     const { tool, calls } = setup()
     await tool('outlook_draft').run({ to: 'a@b.com', subject: 'Hi', body: 'text' })
-    expect(calls[0]!.op).toBe('outlook.draft')
+    expect(calls.map((c) => c.op)).toEqual(['outlook.draft'])
     expect(calls[0]!.args).toMatchObject({ to: 'a@b.com', subject: 'Hi', body: 'text' })
   })
   it('accepts a reply by id', async () => {
     const { tool, calls } = setup()
     await tool('outlook_draft').run({ replyTo: 'ENTRY-ID', replyAll: true, body: 'ok' })
+    expect(calls.map((c) => c.op)).toEqual(['outlook.draft'])
     expect(calls[0]!.args).toMatchObject({ replyTo: 'ENTRY-ID', replyAll: true })
   })
-  it('refuses a draft with neither to nor replyTo', async () => {
+  it('accepts a body alone', async () => {
+    const { tool, calls } = setup()
+    await tool('outlook_draft').run({ body: 'text' })
+    expect(calls.map((c) => c.op)).toEqual(['outlook.draft'])
+    expect(calls[0]!.args).toEqual({ body: 'text' })
+    expect('to' in calls[0]!.args).toBe(false)
+  })
+  it('treats a blank to/cc/subject as absent', async () => {
+    const { tool, calls } = setup()
+    await tool('outlook_draft').run({ body: 't', to: '', cc: '  ', subject: ' ' })
+    expect(calls.map((c) => c.op)).toEqual(['outlook.draft'])
+    expect(calls[0]!.args).toEqual({ body: 't' })
+  })
+  it.each(['', '   '])('keeps a blank replyTo an error (%j)', async (replyTo) => {
     const { tool, run } = setup()
-    await expect(tool('outlook_draft').run({ body: 'text' })).rejects.toThrow('needs to')
+    await expect(tool('outlook_draft').run({ body: 't', replyTo })).rejects.toThrow('replyTo must be text')
     expect(run).not.toHaveBeenCalled()
+  })
+  it('keeps the reply target when to is blank', async () => {
+    const { tool, calls } = setup()
+    await tool('outlook_draft').run({ body: 't', replyTo: 'ID', to: '' })
+    expect(calls[0]!.args).toEqual({ body: 't', replyTo: 'ID' })
+  })
+  it('says a draft without a recipient is allowed and the mail text is shown', () => {
+    const { description } = setup().tools.find((t) => t.name === 'outlook_draft')!
+    expect(description).toMatch(/Never sends/)
+    expect(description).toMatch(/A recipient is not required/)
+    expect(description).toMatch(/without a recipient/)
+    expect(description).toMatch(/show the person the mail text you wrote/)
   })
 })
 

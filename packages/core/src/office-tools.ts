@@ -182,7 +182,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'outlook_draft',
-      description: 'Write a mail as a draft and open it in Outlook for the person to read and send. Never sends. Either replyTo (an id from outlook_mail, with replyAll true or false) or to/cc/subject for a new mail; body is the text you wrote.',
+      description: 'Write a mail as a draft and open it in Outlook for the person to read and send. Never sends. Either replyTo (an id from outlook_mail, with replyAll true or false) or to/cc/subject for a new mail; body is the text you wrote. A recipient is not required: with no address given, leave to out and the draft opens without a recipient for the person to fill in. Also show the person the mail text you wrote in your reply.',
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['body'],
         properties: { body: { type: 'string' }, to: { type: 'string' }, cc: { type: 'string' }, subject: { type: 'string' }, replyTo: { type: 'string' }, replyAll: { type: 'boolean' } },
@@ -191,9 +191,9 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         if (!plain(args)) throw new Error('outlook_draft takes an object.')
         only(args, ['body', 'to', 'cc', 'subject', 'replyTo', 'replyAll'], 'outlook_draft')
         const out: Record<string, unknown> = { body: optionalText(args['body'], TEXT_CAP, 'body') }
-        for (const key of ['to', 'cc', 'subject', 'replyTo'] as const) { const value = optionalText(args[key], key === 'replyTo' ? 600 : 1_000, key); if (value) out[key] = value }
+        for (const key of ['to', 'cc', 'subject'] as const) { const raw = args[key]; if (typeof raw === 'string' && !raw.trim()) continue; const value = optionalText(raw, 1_000, key); if (value) out[key] = value }
+        const replyTo = optionalText(args['replyTo'], 600, 'replyTo'); if (replyTo) out['replyTo'] = replyTo
         if (args['replyAll'] !== undefined) { if (typeof args['replyAll'] !== 'boolean') throw new Error('replyAll is true or false.'); out['replyAll'] = args['replyAll'] }
-        if (!out['replyTo'] && !out['to']) throw new Error('A new mail needs to; a reply needs replyTo.')
         return call('outlook.draft', out, context)
       },
     },
