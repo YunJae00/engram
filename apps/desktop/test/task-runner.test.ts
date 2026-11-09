@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createTask, findPlaybook, listTasks, TASK_MAX_TURNS, updateTask } from 'core'
 import type { TurnOutcome } from '../src/main/task-runner.js'
-import { done, setup, pressed, readback } from './task-runner-fixture.js'
+import { cards, command, done, setup, pressed, readback } from './task-runner-fixture.js'
 
 it('does not add a check turn to an answer that changed nothing', async () => {
   const t = await setup(async () => ({ ...done('Read three pages', 3), trail: [{ tool: 'open_page', args: { url: 'https://docs.example' }, observation: 'opened' }, { tool: 'press', args: { target: 'Submit' }, observation: '"Submit" was not pressed: it waits' }] }))
@@ -346,4 +346,55 @@ it.each(['approve', 'approve-task'] as const)('bounds app %s to its turn or task
   const result = await t.settle(answer === 'approve' ? 'waiting' : 'done')
   expect(result.approvals).toHaveLength(answer === 'approve' ? 2 : 1)
   if (answer === 'approve') await t.runner.stopChannel('bot-bot-1')
+})
+
+it.each([['approve-task', 'sequential'], ['approve-task', 'together'], ['approve-task', 'deferred'], ['approve', 'sequential'], ['approve', 'together'], ['approve', 'deferred']] as const)('after %s, a different command in a %s task asks once per kind', async (answer, mode) => {
+  const confirm = vi.fn(async () => 'approve' as const)
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, mode === 'deferred' ? 0 : 5000)!
+    return done((mode === 'sequential' ? [await ask(command('pwd')), await ask(command('ls'))] : await Promise.all([ask(command('pwd')), ask(command('ls'))])).join(' '))
+  })
+  const running = t.chat('Retitle the Word file')
+  const first = await cards(t.paths, 1)
+  await new Promise(resolve => setTimeout(resolve, 1100))
+  expect((await listTasks(t.paths)).at(-1)!.approvals).toHaveLength(1)
+  await t.call('tasks:decide', first.id, first.approvals[0]!.id, answer)
+  if (answer === 'approve') { const second = await cards(t.paths, 2); await t.call('tasks:decide', second.id, second.approvals[1]!.id, 'approve') }
+  await running
+  const task = await t.settle('done')
+  expect([task.result, task.approvals.length, confirm.mock.calls.length]).toEqual(['approve approve', answer === 'approve-task' ? 1 : 2, 2])
+  const next = t.chat('Retitle another file')
+  await cards(t.paths, 1, task.id)
+  await t.runner.stopChannel('bot-bot-1').then(() => next)
+}, 15000)
+
+it('keeps a saved decline and a saved task allowance after a restart', async () => {
+  const confirm = vi.fn(async () => 'approve' as const)
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, confirm, 0)!
+    return done([await ask(command('rm -rf out')), await ask(command('pwd'))].join(' '))
+  })
+  const saved = await createTask(t.paths, 'Retitle the Word file', 'bot-1'), at = new Date().toISOString()
+  await updateTask(t.paths, saved.id, x => {
+    x.state = 'waiting'; x.question = 'Continue?'
+    x.approvals = [{ id: 'a-1', ...command('rm -rf out'), host: '', at, answer: 'decline', settled: true }, { id: 'a-2', ...command('ls'), host: '', at, answer: 'approve-task', settled: true }]
+  })
+  const task = await t.chat('Continue').then(() => t.settle('done'))
+  expect([task.result, confirm.mock.calls.length, task.approvals.length]).toEqual(['cancel approve', 1, 2])
+})
+
+it('scopes a command allowance to its file host and sandbox side, not its folder', async () => {
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, async () => 'approve', 0)!
+    const asks = turn === 1 ? [command('pwd')] : [command('pwd'), command('ls', 'file:///tmp/other'), command('ls', 'file://server/tmp/work'), { words: 'Allow commands for this comet?', url: 'file:///tmp/work' }]
+    const verdicts: string[] = []
+    for (const one of asks) verdicts.push(await ask(one))
+    return done(verdicts.join(' '))
+  })
+  const waiting = await t.chat('Retitle the Word file').then(() => t.settle('waiting'))
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, 'approve-task')
+  await vi.waitFor(async () => expect((await listTasks(t.paths)).at(-1)!.result).toBe('approve approve later later'), { timeout: 5000 })
+  const after = await t.settle('waiting')
+  expect(after.approvals.slice(1).map(a => a.url)).toEqual([command('ls', 'file://server/tmp/work').url, 'file:///tmp/work'])
+  await t.runner.stopChannel('bot-bot-1')
 })

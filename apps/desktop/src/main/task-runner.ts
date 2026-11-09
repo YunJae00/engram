@@ -36,6 +36,12 @@ const AUTO_CONTINUE_MAX = 3
 const WORTH_KEEPING_STEPS = 3
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
+const exactKey = (url: string, words: string) => `${url}\n${words}`
+// Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
+const kindOf = (url: string, words: string): string => {
+  if (!url.startsWith('file:')) return exactKey(url, words)
+  try { const u = new URL(url); return `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
+}
 
 export function taskRunner(deps: {
   paths: VaultPaths
@@ -76,6 +82,17 @@ export function taskRunner(deps: {
   const continuations = new Map<string, { count: number; reason: string }>()
   const verifyAttempts = new Set<string>()
   const verifyNext = new Set<string>()
+  // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
+  const held = new Map<string, Map<string, { url: string; words: string }[]>>()
+  const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
+  const keep = (id: string, a: { url: string; words: string; answer?: string }) => {
+    if (a.answer === 'approve-task') alwaysFor.set(id, (alwaysFor.get(id) ?? new Set()).add(kindOf(a.url, a.words)))
+    if (a.answer === 'decline') declined.set(id, (declined.get(id) ?? new Set()).add(exactKey(a.url, a.words)))
+  }
+  const covered = (t: DelegatedTask, url: string, words: string) => !!alwaysFor.get(t.id)?.has(kindOf(url, words)) || (url.startsWith('file:') && t.approvals.some(a => a.answer === 'approve-task' && kindOf(a.url, a.words) === kindOf(url, words)))
+  const refused = (t: DelegatedTask, url: string, words: string) => !!declined.get(t.id)?.has(exactKey(url, words)) || t.approvals.some(a => a.answer === 'decline' && a.settled && a.url === url && a.words === words)
+  const blocker = (t: DelegatedTask, url: string, words: string) => url.startsWith('file:') ? t.approvals.find(a => !a.answer && !a.settled && (a.url !== url || a.words !== words) && kindOf(a.url, a.words) === kindOf(url, words)) : undefined
+  const hold = (id: string, cardId: string, url: string, words: string) => { const byCard = held.get(id) ?? new Map<string, { url: string; words: string }[]>(); byCard.set(cardId, [...(byCard.get(cardId) ?? []).filter(h => h.url !== url || h.words !== words), { url, words }]); held.set(id, byCard) }
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
@@ -152,16 +169,15 @@ export function taskRunner(deps: {
 
   async function takeDecisions(task: DelegatedTask): Promise<string> {
     const decided = task.approvals.filter(a => a.answer && !a.settled)
-    for (const a of decided) if (a.answer === 'approve-task') alwaysFor.set(task.id, (alwaysFor.get(task.id) ?? new Set()).add(`${a.url}\n${a.words}`))
+    for (const a of decided) keep(task.id, a)
     approved.set(task.id, decided.filter(a => a.answer === 'approve').map(a => ({ url: a.url, words: a.words })))
-    for (const a of decided) if (a.answer === 'decline') declined.set(task.id, (declined.get(task.id) ?? new Set()).add(`${a.url}\n${a.words}`))
     await edit(task.id, t => { for (const a of t.approvals) if (decided.some(d => d.id === a.id)) a.settled = true })
     return decided.map(a => `- ${a.answer !== 'decline' ? 'Approved' : 'Declined'}: "${a.words}" on ${a.host} (${a.url})`).join('\n')
   }
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -221,7 +237,7 @@ export function taskRunner(deps: {
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
         if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
-        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
+        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         owners.set(channel, task.id)
         const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
@@ -253,7 +269,7 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); declined.delete(task.id); trails.delete(task.id)
+        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
@@ -276,7 +292,7 @@ export function taskRunner(deps: {
           if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
           const current = (await listTasks(paths)).find(t => t.id === id)
           if (current?.state !== 'running') return 'cancel'
-          const key = `${url}\n${cardWords}`
+          const key = exactKey(url, cardWords)
           if (scope && url.startsWith('engram://app/')) {
             const scopes = approvalScopes.get(id) ?? new Map<string, string>()
             const previous = scopes.get(key)
@@ -287,34 +303,40 @@ export function taskRunner(deps: {
             }
             scopes.set(key, scope); approvalScopes.set(id, scopes)
           }
-          if (alwaysFor.get(id)?.has(`${url}\n${cardWords}`)) return confirm({ words, url })
-          const granted = approved.get(id) ?? []
-          const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
-          if (index >= 0) { if (!url.startsWith('engram://app/')) granted.splice(index, 1); return confirm({ words, url }) }
-          if (declined.get(id)?.has(`${url}\n${cardWords}`)) return 'cancel'
-          await edit(id, (t) => {
-            if (t.state !== 'running' || stopped.has(channel) || t.approvals.some((a) => !a.settled && a.url === url && a.words === cardWords)) return
-            t.approvals.push({ id: `a-${Date.now().toString(36)}-${t.approvals.length}`, words: cardWords, host: hostOf(url) ?? '', url, at: new Date().toISOString() })
-          })
-          for (const until = Date.now() + waitMs; Date.now() < until;) {
+          let live = current
+          for (const until = Date.now() + waitMs; ;) {
+            const own = live.approvals.find(a => a.url === url && a.words === cardWords && !a.settled)
+            if (!own?.answer) {
+              if (refused(live, url, cardWords)) return 'cancel'
+              if (covered(live, url, cardWords)) return confirm({ words, url })
+              const granted = approved.get(id) ?? []
+              const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
+              if (index >= 0) { if (!url.startsWith('engram://app/')) granted.splice(index, 1); return confirm({ words, url }) }
+            }
+            let blockedBy = own ? undefined : blocker(live, url, cardWords)?.id
+            let answer: 'approve' | 'approve-task' | 'decline' | undefined
+            if (own?.answer || (!own && !blockedBy)) await edit(id, t => {
+              if (t.state !== 'running' || stopped.has(channel)) return
+              const card = t.approvals.find(a => a.url === url && a.words === cardWords && !a.settled)
+              if (card?.answer) { answer = card.answer; card.settled = true; return }
+              if (card) return
+              if (covered(t, url, cardWords)) { answer = 'approve-task'; return }
+              blockedBy = blocker(t, url, cardWords)?.id
+              if (!blockedBy) newCard(t, url, cardWords)
+            })
+            if (answer) {
+              if (answer === 'approve' && url.startsWith('engram://app/')) approved.set(id, [...(approved.get(id) ?? []), { url, words: cardWords }])
+              keep(id, { url, words: cardWords, answer })
+              if (answer === 'decline') refusedThisTurn.add(id)
+              return answer !== 'decline' ? confirm({ words, url }) : 'cancel'
+            }
+            if (Date.now() >= until) { if (blockedBy) hold(id, blockedBy, url, cardWords); return 'later' }
             await new Promise((resolve) => setTimeout(resolve, 1000))
             if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
-            const live = (await listTasks(paths)).find(t => t.id === id)
-            if (live?.state !== 'running') return 'cancel'
-            if (!live.approvals.some(a => a.url === url && a.words === cardWords && a.answer && !a.settled)) continue
-            let answer: 'approve' | 'approve-task' | 'decline' | undefined
-            await edit(id, t => {
-              if (t.state !== 'running' || stopped.has(channel)) return
-              const card = t.approvals.find(a => a.url === url && a.words === cardWords && a.answer && !a.settled)
-              if (card) { answer = card.answer; card.settled = true }
-            })
-            if (!answer) continue
-            if (answer === 'approve' && url.startsWith('engram://app/')) approved.set(id, [...(approved.get(id) ?? []), { url, words: cardWords }])
-            if (answer === 'approve-task') alwaysFor.set(id, (alwaysFor.get(id) ?? new Set()).add(`${url}\n${cardWords}`))
-            if (answer === 'decline') { declined.set(id, (declined.get(id) ?? new Set()).add(`${url}\n${cardWords}`)); refusedThisTurn.add(id) }
-            return answer !== 'decline' ? confirm({ words, url }) : 'cancel'
+            const next = (await listTasks(paths)).find(t => t.id === id)
+            if (next?.state !== 'running') return 'cancel'
+            live = next
           }
-          return 'later'
         } finally {
           const left = (waiting.get(channel) ?? 1) - 1
           if (left) waiting.set(channel, left); else waiting.delete(channel)
@@ -331,6 +353,9 @@ export function taskRunner(deps: {
           const a = t.approvals.find((one) => one.id === approvalId && !one.answer)
           if (!a) return
           a.answer = answer; logTask(t, `${answer !== 'decline' ? 'Approved' : 'Declined'}: "${a.words}"`)
+          const follow = (held.get(id)?.get(a.id) ?? []).filter(f => !t.approvals.some(x => !x.settled && x.url === f.url && x.words === f.words))
+          held.get(id)?.delete(a.id)
+          if (answer !== 'approve-task' && follow.length) { const next = newCard(t, follow[0]!.url, follow[0]!.words); for (const f of follow.slice(1)) hold(id, next, f.url, f.words) }
           if (t.state !== 'waiting') return
           ready = t.approvals.every(one => !!one.answer)
           if (ready) t.state = 'queued'

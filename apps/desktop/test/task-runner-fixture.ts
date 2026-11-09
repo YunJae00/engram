@@ -57,3 +57,11 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
 // A press that commits something, as an approved Save or Submit does; a plain navigation press carries no `committed`.
 export const pressed = (target: string, committed = true) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"`, ...(committed ? { committed: true } : {}) })
 export const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
+
+export const command = (text: string, folder = 'file:///tmp/work') => ({ words: `Run this command outside the sandbox?\n${text}`, url: `${folder}#${Buffer.from(text).toString('hex')}` })
+export const cards = (paths: VaultPaths, n: number, not?: string) => vi.waitFor(async () => {
+  const task = (await listTasks(paths)).at(-1)!
+  expect(task.id).not.toBe(not)
+  expect(task.approvals).toHaveLength(n)
+  return task
+}, { timeout: 5000 })
