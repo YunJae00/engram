@@ -11,6 +11,16 @@ const active = new WeakMap<CometThreadsStore, Set<string>>()
 const draining = new WeakMap<CometThreadsStore, Set<string>>()
 const seats = (map: WeakMap<CometThreadsStore, Set<string>>, store: CometThreadsStore) => { let set = map.get(store); if (!set) { set = new Set(); map.set(store, set) } return set }
 
+// A reload from disk drops bubbles only shown here; a queued message counts the
+// bubbles bearing its words when queued, so fewer later means its own is gone.
+const shownCounts = new WeakMap<object, number>()
+const bubbleCount = (store: CometThreadsStore, botId: string, text: string) => store.thread(botId).messages.filter(one => one.role === 'user' && one.text === text).length
+function enqueueShown(store: CometThreadsStore, botId: string, draft: string, attachments: ChatAttachmentDto[]): void {
+  store.enqueue(botId, draft, attachments, true)
+  const item = store.thread(botId).queued.at(-1)
+  if (item) shownCounts.set(item, bubbleCount(store, botId, chatMessage(draft, attachments)))
+}
+
 const queueWatches = new WeakMap<CometThreadsStore, () => void>()
 function watchQueue(api: ChatApi, store: CometThreadsStore): void {
   if (!api.chatQueued || queueWatches.has(store)) return
@@ -42,7 +52,9 @@ export async function flushQueuedCometMessages(api: ChatApi, store: CometThreads
     }
     if (store.thread(botId).busy) return
     const message = store.takeQueued(botId)
-    if (message) await sendNow(api, store, botId, message.draft, message.attachments, true, message.shown)
+    if (!message) return
+    const still = !!message.shown && bubbleCount(store, botId, chatMessage(message.draft, message.attachments)) >= (shownCounts.get(message) ?? Infinity)
+    await sendNow(api, store, botId, message.draft, message.attachments, true, still)
   } catch { /* What could not start is not kept waiting out of sight. */ }
   finally { seats(draining, store).delete(botId); queueWatches.get(store)?.(); if (!store.thread(botId).busy && store.thread(botId).queued.length) setTimeout(() => void flushQueuedCometMessages(api, store, botId), retry ? 500 : 0) }
 }
@@ -64,14 +76,14 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     if (attachments.length || !api.chatSay) {
       if (attachments.length) store.setAttachments(botId, [])
       store.noteWork(botId, `said: ${words('aside.next')}`)
-      store.enqueue(botId, draft, attachments, true)
+      enqueueShown(store, botId, draft, attachments)
       return
     }
     const answer = await api.chatSay(cometChannel(botId), draft.trim()).catch(() => ({ ok: false as const }))
     if (store.thread(botId).stopCount !== stopCount) return
     if (!answer.ok) {
       store.noteWork(botId, `said: ${words('aside.next')}`)
-      store.enqueue(botId, draft, [], true)
+      enqueueShown(store, botId, draft, [])
       void flushQueuedCometMessages(api, store, botId)
       return
     }
@@ -86,7 +98,7 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     store.noteUser(botId, chatMessage(draft, attachments), attachments.map(file => file.id))
     if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
     if (attachments.length) store.setAttachments(botId, [])
-    store.enqueue(botId, draft, attachments, true)
+    enqueueShown(store, botId, draft, attachments)
     void flushQueuedCometMessages(api, store, botId)
     return
   }

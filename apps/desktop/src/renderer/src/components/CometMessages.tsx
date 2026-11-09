@@ -28,7 +28,10 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
 }) {
   const lastAssistant = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
   const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
-  const last = messages.at(-1)
+  // An empty placeholder from background work must not tear down the chips under a pending click.
+  let settledIndex = messages.length - 1
+  while (settledIndex >= 0 && messages[settledIndex]!.role === 'assistant' && messages[settledIndex]!.streaming && !messages[settledIndex]!.text) settledIndex--
+  const settled = messages[settledIndex]
   const lang = threadLang(messages)
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
@@ -52,6 +55,6 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
-    {!busy && !offerOpen && last?.role === 'assistant' && !last.streaming && !last.progress && !failed(last) && <ReplyChips text={last.text} onPick={onReply} />}
+    {settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${settledIndex}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
   </>
 }
