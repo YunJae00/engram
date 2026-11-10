@@ -356,7 +356,7 @@ export const ko1 = {
   'brain.graphOpen': '코스모스에서 보기',
   'brain.showMore': '{count}개 더 보기',
   'empty.capture': '아래의 기억하기를 누르고 생각을 적은 뒤 Enter를 누르세요. 사서가 알아서 정리해 줘요.',
-  'activity.list': '목록',
+  'activity.list': '라이브러리',
   'banner.noBrain': '정리가 일시 중지됐어요. 설정에서 정리에 쓸 AI를 연결하거나 선택하세요.',
   'banner.getBrain': 'AI 설정',
   'banner.waiting': '{n}개 대기 중',

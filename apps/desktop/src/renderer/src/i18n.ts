@@ -266,7 +266,7 @@ export const en = {
   'empty.capture': 'Press Remember below, type a thought, hit Enter — the librarian files it for you.',
   'brain.graphOpen': 'View in the cosmos',
   'brain.showMore': 'Show {count} more',
-  'activity.list': 'List',
+  'activity.list': 'Library',
   'topbar.canvas': 'Canvas',
   'topbar.syncNone': 'sync —',
   'topbar.syncError': 'sync error',

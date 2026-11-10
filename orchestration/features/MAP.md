@@ -17,7 +17,7 @@ A new scenario is a file `scripts/verify-scenarios/<name>.mjs` exporting that `r
 | Surface | How to reach it | Scenario | What the scenario asserts |
 | --- | --- | --- | --- |
 | Shell / boot | Launch. Home is Comets. | `boot` | `shell`, `topbar`, `bots-view` (`App.tsx`, `TopBar.tsx`, `BotsView.tsx`) |
-| List / timeline | Engram menu → List, or `openActivity(page, 'list')` → `activity-list` | `list-filter` | `list-view` shows 3 `list-row`s; `.list-date` is newest-first across the three distinct `happened_at` days (`chronoDate` in `ListView.tsx` is `happened_at` or `updated`); filter "Hello" leaves 1; the row opens `note-sheet` |
+| List / timeline | Engram menu → Library, or `openActivity(page, 'list')` → `activity-list` | `list-filter` | `list-view` shows 3 `list-row`s; `.list-date` is newest-first across the three distinct `happened_at` days (`chronoDate` in `ListView.tsx` is `happened_at` or `updated`); filter "Hello" leaves 1; the row opens `note-sheet` |
 | Note open | Cosmos star, or the list row | `note-open` | `openActivity(page, 'sky')`, collapse `cosmos-chat-collapse`, click `[data-node-id="n-hello-0001"]`, `note-sheet` contains "The very first note", Escape closes it |
 | Palette | Ctrl/Cmd+P | `palette` | `palette-input` query "Hello" opens `note-editor` / `cm-host` |
 | Cosmos | Engram menu → Cosmos, or `openActivity(page, 'sky')` → `activity-sky` | `cosmos` | `sky-view`, `brain-graph` (`SkyCanvas.tsx`), `cosmos-chat`; collapse, then `cosmos-chat-open` restores `cosmos-chat-input` |
