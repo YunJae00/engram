@@ -184,6 +184,15 @@ describe('integration culprit loop', () => {
     expect(briefScenarios(item)).toEqual(['note-open'])
     expect(integrationScenarios([item])).toEqual(['boot', 'note-open'])
   })
+
+  it('ignores verify-cli paths and flags that are not a scenario run', () => {
+    const item = { scenarios: [], criteria: [
+      { id: 'list', cmd: 'node ./scripts/verify-cli.mjs --list | grep -x bot-create', expect: '0' },
+      { id: 'size', cmd: 'git diff --quiet $B -- apps scripts/verify-cli.mjs scripts/verify-scenarios/lib', expect: '0' },
+      { id: 'ui', cmd: 'pnpm build && xvfb-run -a node ./scripts/verify-cli.mjs palette', expect: 'ok true' },
+    ] }
+    expect(briefScenarios(item)).toEqual(['palette'])
+  })
 })
 
 describe('desktop verifier selection', () => {

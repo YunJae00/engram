@@ -144,7 +144,8 @@ export function suggestBump(items) {
   return items.some((item) => /^(add|introduce|support)\b/.test(item.title)) ? 'minor' : 'patch'
 }
 
-const VERIFY_SCENARIO = /(?:^|\s)scripts\/verify-cli\.mjs\s+([a-z0-9-]+)/
+// Only a `node` invocation counts: a bare path (a `git diff -- scripts/verify-cli.mjs scripts/...` argument) or a flag (`--list`) is not a scenario.
+const VERIFY_SCENARIO = /(?:^|[\s;&|(])node\s+(?:\.\/)?scripts\/verify-cli\.mjs\s+([a-z0-9][a-z0-9-]*)/
 
 // Names in `scenarios`, plus any criterion whose command is `node scripts/verify-cli.mjs <scenario>`.
 export function briefScenarios(brief) {
