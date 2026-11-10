@@ -13,6 +13,7 @@ import {
   playbookContext,
   readBotTranscript,
   recordPlaybook,
+  routineCardExpired,
   TASK_MAX_TURNS,
   TASK_TOKEN_BUDGET,
   tasksToResume,
@@ -20,6 +21,7 @@ import {
   withoutReplies,
   type DelegatedTask,
   type MeaningScores,
+  type ReviewRule,
   type TurnStep,
   type VaultPaths,
 } from 'core'
@@ -28,6 +30,7 @@ import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { freshResultReadback } from './task-result-state.js'
+import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
@@ -57,6 +60,8 @@ export function taskRunner(deps: {
   notify(task: DelegatedTask): void
   offered?(channel: string): boolean
   meaning?: MeaningScores
+  reviewRules?: () => Promise<readonly ReviewRule[]>
+  now?: () => number
 }) {
   const { paths } = deps
   const running = new Set<string>()
@@ -78,6 +83,8 @@ export function taskRunner(deps: {
   const declined = new Map<string, Set<string>>()
   // Tasks whose person declined a card during the turn now running; that turn is not continued automatically.
   const refusedThisTurn = new Set<string>()
+  // Tasks created by a scheduled routine in this app session; their unanswered cards expire.
+  const routine = new Set<string>()
   const trails = new Map<string, TurnStep[]>()
   const handedBack = new Set<string>()
   const continuations = new Map<string, { count: number; reason: string }>()
@@ -178,7 +185,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -238,8 +245,9 @@ export function taskRunner(deps: {
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
         if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
-        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
+        for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); routine.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
+        if (task !== resumed && request.scheduled === true) routine.add(task.id)
         owners.set(channel, task.id)
         const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
         const extra = asked
@@ -270,7 +278,7 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id)
+        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
@@ -305,6 +313,8 @@ export function taskRunner(deps: {
             scopes.set(key, scope); approvalScopes.set(id, scopes)
           }
           let live = current
+          let rules: readonly ReviewRule[] | undefined
+          const refresh = async () => stopped.has(channel) || owners.get(channel) !== id ? undefined : (await listTasks(paths)).find(t => t.id === id && t.state === 'running')
           for (const until = Date.now() + waitMs; ;) {
             const own = live.approvals.find(a => a.url === url && a.words === cardWords && !a.settled)
             if (!own?.answer) {
@@ -313,6 +323,22 @@ export function taskRunner(deps: {
               const granted = approved.get(id) ?? []
               const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
               if (index >= 0) { if (!url.startsWith('engram://app/')) granted.splice(index, 1); return confirm({ words, url }) }
+              if (!own && reviewAction(url)) {
+                // The read awaits outside code, so a card or decision made meanwhile is seen before the rules apply.
+                if (!rules) { rules = await readRules(deps.reviewRules); const next = await refresh(); if (!next) return 'cancel'; live = next; continue }
+                if (allowedByRule(rules, url)) return confirm({ words, url })
+              }
+            }
+            if (own && !own.answer && routine.has(id) && routineCardExpired(own.at, (deps.now ?? Date.now)())) {
+              let expired = false
+              await edit(id, t => {
+                const card = t.approvals.find(a => a.id === own.id && !a.answer && !a.settled)
+                if (!card || t.state !== 'running' || stopped.has(channel)) return
+                card.answer = 'decline'; card.settled = true; expired = true
+                logTask(t, 'Approval card expired after 30 minutes')
+              })
+              if (expired) { keep(id, { url, words: cardWords, answer: 'decline' }); refusedThisTurn.add(id); return 'cancel' }
+              const next = await refresh(); if (!next) return 'cancel'; live = next; continue
             }
             let blockedBy = own ? undefined : blocker(live, url, cardWords)?.id
             let answer: 'approve' | 'approve-task' | 'decline' | undefined
@@ -333,9 +359,8 @@ export function taskRunner(deps: {
             }
             if (Date.now() >= until) { if (blockedBy) hold(id, blockedBy, url, cardWords); return 'later' }
             await new Promise((resolve) => setTimeout(resolve, 1000))
-            if (stopped.has(channel) || owners.get(channel) !== id) return 'cancel'
-            const next = (await listTasks(paths)).find(t => t.id === id)
-            if (next?.state !== 'running') return 'cancel'
+            const next = await refresh()
+            if (!next) return 'cancel'
             live = next
           }
         } finally {

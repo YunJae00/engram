@@ -1789,6 +1789,7 @@ export function registerIpc(ctx: VaultContext): void {
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
+    reviewRules: () => approvals.reviewRules(),
     deliver: async (channel, text, since, trail, evidence) => {
       const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(finishProgress(channel, text)).text, since, latestResultOutputs(trail, []).map(output => output.path))
       await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
