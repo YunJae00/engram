@@ -5,9 +5,9 @@
 :is(.bots-thread, .mini-chat-thread).conversation-thread { gap: 6px; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg { position: relative; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant,
-:is(.bots-thread, .mini-chat-thread) .comet-work-line.said { align-self: flex-start; max-width: min(88%, 680px); padding: 10px 15px; border-radius: 18px 18px 18px 6px; background: var(--hover-bg); color: var(--fg); line-height: var(--lh-chat); }
-:is(.bots-thread, .mini-chat-thread) .bubble-msg.user { max-width: min(80%, 620px); padding: 10px 15px; border-radius: 18px 18px 6px 18px; margin-top: 10px; }
-:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--hover-bg); border: 0; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.said { align-self: flex-start; max-width: var(--bubble-max); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--bubble-bg); color: var(--fg); line-height: var(--lh-chat); }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.user { max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--bubble-bg); border: 0; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.checking { opacity: 0.55; transition: opacity 200ms ease; }
 :is(.bots-thread, .mini-chat-thread) .comet-work { gap: 6px; margin: 0; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { gap: 6px; }
@@ -18,6 +18,8 @@
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions:focus-within { opacity: 1; }
 :is(.bots-thread, .mini-chat-thread) .answer-sites { margin-top: 8px; }
 .mini-chat-thread :is(.bubble-msg, .comet-work-line.said) { font-size: 13px; padding: 8px 12px; }
+/* Two messages far apart in time get the time between them. */
+:is(.bots-thread, .mini-chat-thread) .bubble-time-divider { align-self: stretch; margin: 18px 0; text-align: center; font-size: var(--fs-meta); line-height: 18px; color: var(--fg-faint); }
 
 /* The pending status: a light line under the last message, not a bubble of its own. */
 .chat-status-line { align-self: flex-start; max-width: 100%; margin: 2px 0 0; padding: 2px 2px; background: transparent; color: var(--fg-dim); line-height: 1.5; animation: fade-in 160ms ease; }
@@ -58,7 +60,7 @@
 /* Cutting in on a reply in progress: the waiting message goes now. */
 
 /* What the person wrote while the work was going sits in the work where it was said, as their own bubble. */
-:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, 620px); padding: 10px 15px; border-radius: 18px 18px 6px 18px; background: var(--selected-soft); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--selected-soft); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { align-items: stretch; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines > li.said { align-self: flex-start; }
 

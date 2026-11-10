@@ -155,7 +155,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let at = turns.length - 2; at >= 0 && turns[at]!.role === 'user'; at--) asked.push(turns[at]!.text)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      patch(id, { messages: [...turns.filter((turn, index) => !turn.progress || turn.role !== 'assistant' || !turns.slice(index + 1).find(next => next.role === 'assistant' && !next.progress)?.text.startsWith(turn.text)).map((turn) => ({ role: turn.role, text: turn.text, ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })), ...tail], loaded: true })
+      patch(id, { messages: [...turns.filter((turn, index) => !turn.progress || turn.role !== 'assistant' || !turns.slice(index + 1).find(next => next.role === 'assistant' && !next.progress)?.text.startsWith(turn.text)).map((turn) => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })), ...tail], loaded: true })
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)

@@ -12,7 +12,7 @@ export function Choices({ options, t, onPick }: { options: string[]; t: Translat
       <DecisionCard icon={<CircleHelp size={14} />} label={t('card.choose')} title={t('bots.offerAsked')}>
         {options.map((label, i) => (
           <button key={label} className="secondary bots-choice" data-testid={`bots-choice-${i}`} onClick={() => onPick(label)}>
-            <span className="bots-choice-number" aria-hidden>{i + 1}</span><span>{label}</span><ArrowRight size={15} aria-hidden />
+            <span className="bots-choice-number decision-card-badge" aria-hidden>{String.fromCharCode(65 + i)}</span><span>{label}</span><ArrowRight size={15} aria-hidden />
           </button>
         ))}
       </DecisionCard>

@@ -10,6 +10,7 @@ import { UserMessage } from './ChatAttachment.js'
 import { ReplyChips } from './ReplyChips.js'
 import { Thinking } from './Thinking.js'
 import { displayTaskAnswer, threadLang, threadWords } from '../lib/threadLang.js'
+import { dividerBefore, dividerLabel } from '../lib/timeDivider.js'
 
 export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
   messages: CometMessage[]
@@ -33,15 +34,18 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   while (settledIndex >= 0 && messages[settledIndex]!.role === 'assistant' && messages[settledIndex]!.streaming && !messages[settledIndex]!.text) settledIndex--
   const settled = messages[settledIndex]
   const lang = threadLang(messages)
+  const dividers = dividerBefore(messages), now = new Date()
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
     {messages.map((m, i) => {
-      if (m.role !== 'assistant') return <div key={i} className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
+      const divider = dividers[i] && <div className="bubble-time-divider">{dividerLabel(m.at!, lang, now)}</div>
+      if (m.role !== 'assistant') return <Fragment key={i}>{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
         {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
         <UserMessage text={m.text} attachments={m.attachments} />
-      </div>
+      </div></Fragment>
       const live = i === lastAssistant && busy
       return <Fragment key={i}>
+        {divider}
         <CometWork busy={live} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
           ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
