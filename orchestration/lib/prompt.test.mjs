@@ -172,4 +172,34 @@ describe('runner-executed tests verifier', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('runs criteria on the tree that would merge: the report commit is hidden, then restored', async () => {
+    const { runChecks } = await import('./phase-verify.mjs')
+    const { execFileSync } = await import('node:child_process')
+    const { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'orch-checks-git-'))
+    const g = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' })
+    try {
+      g('init', '-q')
+      writeFileSync(join(dir, 'a.txt'), 'a\n')
+      g('add', '.'); g('commit', '-qm', 'base'); g('tag', 'base')
+      writeFileSync(join(dir, 'a.txt'), 'b\n')
+      mkdirSync(join(dir, 'orchestration/reports'), { recursive: true })
+      writeFileSync(join(dir, 'orchestration/reports/x.json'), '{}\n')
+      g('add', '.'); g('commit', '-qm', 'change and report')
+      const seen = []
+      const run = async (cwd, cmd, args) => {
+        if (args[1] !== 'npm run check:quick') seen.push(execFileSync('git', ['diff', '--name-only', 'base', '--', '.'], { cwd, encoding: 'utf8' }).trim())
+        return { code: 0, out: '' }
+      }
+      await runChecks({ base: 'base' }, dir, { criteria: [{ id: 'untouched', cmd: 'true', expect: 'exit 0' }] }, 'x-1-tests', run)
+      expect(seen).toEqual(['a.txt'])
+      expect(existsSync(join(dir, 'orchestration/reports/x.json'))).toBe(true)
+      expect(g('status', '--porcelain', '--', 'orchestration/reports')).toBe('')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

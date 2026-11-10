@@ -60,7 +60,11 @@ export async function runChecks(ctx, worktree, brief, name, run = sh, shared = n
     ...(shared ? [] : [{ id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } }]),
     ...scopedCriteria(brief).map((c) => ({ id: c.id, cmd: c.cmd, expect: c.expect })),
   ]
+  // Criteria judge the tree that would merge: squashMerge drops orchestration/reports, so hide it here too
+  // (an "untouched" criterion diffing `-- .` otherwise always sees the required report commit), then restore it.
+  await sh(worktree, 'git', ['rm', '-r', '-q', '--ignore-unmatch', '--', 'orchestration/reports'])
   const results = await runCommands(worktree, name, commands, 30 * 60_000, run)
+  await sh(worktree, 'git', ['checkout', 'HEAD', '--', 'orchestration/reports'])
   return shared ? [sharedResult(shared, worktree, name), ...results] : results
 }
 
