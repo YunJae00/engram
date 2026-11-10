@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
@@ -10,6 +10,17 @@ async function tempPaths(): Promise<VaultPaths> {
   await mkdir(dir, { recursive: true })
   const root = await mkdtemp(join(dir, 'engram-standing-'))
   return { root, workspace: root, cache: join(root, '.engram') } as unknown as VaultPaths
+}
+
+async function setPaused(paths: VaultPaths, taskId: string, paused: boolean): Promise<void> {
+  const file = join(paths.cache, 'bots.json')
+  const stored = JSON.parse(await readFile(file, 'utf8')) as { bots: { tasks?: { id: string; paused?: true }[] }[] }
+  for (const bot of stored.bots) for (const task of bot.tasks ?? []) {
+    if (task.id !== taskId) continue
+    if (paused) task.paused = true
+    else delete task.paused
+  }
+  await writeFile(file, JSON.stringify(stored, null, 2))
 }
 
 // A standing task starts through the routine door when it is due, once a
@@ -92,6 +103,48 @@ describe('standingTick', () => {
       { goal: 'Sort new mail\n\n(2 new in outlook_mail since the last look; ids: b)', into: 'chat-1' },
     ])
     expect((await loadBots(paths))[0]?.tasks?.[0]).toMatchObject({ seen: ['b', 'a', 'c9f'], chat: 'chat-1' })
+  })
+
+  it('paused task skipped: not run, not removed, not marked, and does not stop the next due task', async () => {
+    const paths = await tempPaths()
+    const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })
+    const routine = await addBotTask(paths, bot.id, { name: 'Notice', goal: 'x', routineId: 'rt-paused', schedule: { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 } })
+    const old = await addBotTask(paths, bot.id, { name: 'Gone', goal: 'Old one', schedule: { days: [], hour: 8, minute: 0, on: '2026-08-20' } })
+    const today = await addBotTask(paths, bot.id, { name: 'Call', goal: 'Remind me to call', schedule: { days: [], hour: 9, minute: 0, on: '2026-08-25' } })
+    const next = await addBotTask(paths, bot.id, { name: 'Next', goal: 'y', routineId: 'rt-next', schedule: { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 } })
+    for (const task of [routine, old, today]) await setPaused(paths, task.id, true)
+    const ran: string[] = []
+    const said: string[] = []
+    const now = () => new Date(2026, 7, 25, 9, 10)
+    const deps = { paths, now, runRoutine: async (id: string) => (ran.push(id), { ok: true }), runPrompt: async (name: string) => (said.push(name), { ok: true }) }
+    expect(await standingTick(deps)).toEqual([next.id])
+    expect(ran).toEqual(['rt-next'])
+    expect(said).toEqual([])
+    const tasks = (await loadBots(paths))[0]?.tasks ?? []
+    expect(tasks.map((t) => t.name)).toEqual(['Notice', 'Gone', 'Call', 'Next'])
+    expect(tasks.find((t) => t.id === routine.id)?.lastRunAt).toBeUndefined()
+    expect(tasks.find((t) => t.id === today.id)?.lastRunAt).toBeUndefined()
+    expect(tasks.find((t) => t.id === next.id)?.lastRunAt).toBe(now().toISOString())
+  })
+
+  it('resumed task runs at next due time, without catching up a missed window', async () => {
+    const paths = await tempPaths()
+    const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })
+    const task = await addBotTask(paths, bot.id, { name: 'Notice', goal: 'x', routineId: 'rt-1', schedule: { days: [1, 2, 3, 4, 5], hour: 9, minute: 0 } })
+    await setPaused(paths, task.id, true)
+    const ran: string[] = []
+    let clock = new Date(2026, 7, 25, 9, 10)
+    const deps = { paths, now: () => clock, runRoutine: async (id: string) => (ran.push(id), { ok: true }) }
+    expect(await standingTick(deps)).toEqual([])
+    await setPaused(paths, task.id, false)
+    clock = new Date(2026, 7, 25, 12, 0)
+    expect(await standingTick(deps)).toEqual([])
+    expect(ran).toEqual([])
+    clock = new Date(2026, 7, 26, 9, 10)
+    expect(await standingTick(deps)).toEqual([task.id])
+    expect(await standingTick(deps)).toEqual([])
+    expect(ran).toEqual(['rt-1'])
+    expect((await loadBots(paths))[0]?.tasks?.[0]?.lastRunAt).toBe(clock.toISOString())
   })
 })
 

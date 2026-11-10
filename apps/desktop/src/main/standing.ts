@@ -29,6 +29,7 @@ export async function standingTick(deps: StandingDeps): Promise<string[]> {
   for (const bot of await loadBots(deps.paths)) {
     for (const task of bot.tasks ?? []) {
       if (!task.schedule) continue
+      if (task.paused === true) continue
       // A one-day request whose moment went by while the app was closed is
       // finished with, not kept forever.
       if (!task.routineId && scheduleOver(task.schedule, now)) { await removeBotTask(deps.paths, bot.id, task.id); continue }
