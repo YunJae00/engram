@@ -26,11 +26,14 @@ export function stats(values: readonly number[]): Stat {
   return { median, p95: sorted[Math.ceil(0.95 * n) - 1]! }
 }
 
-export function passes(value: number | null, target: number, baseline: number | undefined): boolean {
+// Event Timing durations are rounded to 8ms, so an unchanged build lands one step either side of its baseline.
+export const QUANTUM_MS: Record<string, number> = { eventMs: 8, maxEventMs: 8 }
+
+export function passes(value: number | null, target: number, baseline: number | undefined, quantum = 0): boolean {
   if (value === null) return false
   if (baseline === undefined) return value <= target
-  if (baseline > target) return value < baseline
-  return value <= target && value <= baseline * 1.1
+  if (baseline > target) return value < baseline || (quantum > 0 && value <= baseline * 1.1 + quantum)
+  return value <= target && value <= baseline * 1.1 + quantum
 }
 
 export function unstable(prev: number, cur: number): boolean {
@@ -67,7 +70,7 @@ export function judge(id: MetricId, result: MetricResult, baseline: MetricResult
     const value = result.parts[name]?.p95 ?? null
     if (value === null) { hard.push(`${id}.${name} is null`); continue }
     const base = baseline?.parts[name]?.p95 ?? undefined
-    if (!passes(value, target, base ?? undefined)) soft.push(`${id}.${name} p95 ${value} misses target ${target}${base === undefined || base === null ? '' : ` / baseline ${base}`}`)
+    if (!passes(value, target, base ?? undefined, QUANTUM_MS[name])) soft.push(`${id}.${name} p95 ${value} misses target ${target}${base === undefined || base === null ? '' : ` / baseline ${base}`}`)
   }
   if (id === 'P1' && !passes(result.median, P1_MEDIAN_TARGET, baseline?.median)) soft.push(`P1 median ${result.median} misses ${P1_MEDIAN_TARGET}${baseline ? ` / baseline ${baseline.median}` : ''}`)
   const referenceOnly = previous !== undefined && unstable(previous.median, result.median)

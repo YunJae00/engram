@@ -302,6 +302,8 @@ export async function finish(ctx, attempt, outcome) {
 }
 
 export async function checkImplementation(ctx, ledger, item, attempt) {
+  // A batch session still edits its members' worktrees and branches; verifying one now would bounce and delete them under it.
+  if (batchOf(attempt) && alive(attempt.pid) && !timedOut(attempt.deadlineAt)) return
   const cloud = isCloud(attempt.implementer)
   const ref = attemptRef(ctx, attempt)
   const path = reportPath(item.id)

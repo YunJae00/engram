@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 
 const remote = vi.hoisted(() => ({ files: new Map(), deleted: [], launches: [], missing: new Set() }))
@@ -11,6 +12,7 @@ vi.mock('./git.mjs', async (original) => ({
   fetchBranch: async () => {},
   lsRemote: async (_opts, branch) => ([...remote.files.keys()].some((key) => key.startsWith(`origin/${branch}:`)) ? 'sha' : null),
   fileAtRef: async (_opts, ref, path) => remote.files.get(`${ref}:${path}`) ?? null,
+  changedFiles: async () => [],
   tipSha: async (_opts, ref) => (remote.missing.has(ref) ? null : 'a'.repeat(40)),
   deleteRemoteBranch: async (_opts, branch) => { remote.deleted.push(branch) },
 }))
@@ -33,7 +35,7 @@ vi.mock('./runtime.mjs', async (original) => {
 const { loadRoles } = await import('./ledger.mjs')
 const { verifyAttempt, settle } = await import('./phase-verify.mjs')
 const { checkImplementation } = await import('./phase-implement.mjs')
-const { loadJobs } = await import('./runtime.mjs')
+const { loadJobs, reportPath } = await import('./runtime.mjs')
 
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const head = 'a'.repeat(40)
@@ -192,5 +194,26 @@ describe('implementation timebox in the loop', () => {
     await settle(ctx, ledger, item)
     expect(item.bounces).toBe(1)
     expect(decisions()).toMatch(/attempt 2 timeout\tno report 40 min after launch 2; no relaunch left/)
+  })
+})
+
+describe('batched implementer still running', () => {
+  it('does not check, verify or bounce a member whose report landed until the shared session exits', async () => {
+    const attempt = {
+      n: 1, implementer: 'claude-local', verifier: 'codex-local', branch: 'orch/x-1', startedAt: T0.toISOString(),
+      deadlineAt: minutes(60).toISOString(), logPath: '/logs/batch-x-x2.log', pid: process.pid,
+    }
+    const item = { ...ledgerItem(attempt), state: 'implementing' }
+    const ledger = { batch: 'b', items: [item] }
+    remote.files.set(`orch/x-1:${reportPath('x')}`, '{}') // landed, and invalid: unguarded it would end the attempt at once
+
+    vi.setSystemTime(minutes(10))
+    await checkImplementation(ctx, ledger, item, attempt)
+    expect(attempt.outcome).toBeUndefined()
+    expect(attempt.headSha).toBeUndefined()
+
+    attempt.pid = 2 ** 22 + 12_345 // above macOS/Linux pid_max defaults: never a live process
+    await checkImplementation(ctx, ledger, item, attempt)
+    expect(attempt.outcome).toBe('invalid')
   })
 })
