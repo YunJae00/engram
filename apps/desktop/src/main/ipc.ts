@@ -147,6 +147,7 @@ import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
 import { botPreviews, botSearch, botConversations, botUpdate } from './bot-previews.js'
+import { botAvatarImage, clearBotAvatarImage, setBotAvatarImage } from './bot-avatar.js'
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList } from './bot-templates-ipc.js'
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
@@ -1351,6 +1352,9 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:transcriptPage', (_e, id: unknown, before: unknown, limit: unknown) => readBotTranscriptPage(paths, id, before, limit))
   ipcMain.handle('bots:archivedTranscript', (_e, id: unknown, stamp: unknown, before: unknown, limit: unknown) => readArchivedTranscript(paths, id, stamp, before, limit))
   ipcMain.handle('bots:update', (_e, id: unknown, patch: unknown) => botUpdate(paths, id, patch, () => broadcast({ type: 'bots:changed' })))
+  ipcMain.handle('bots:avatarSet', (_e, id: unknown, data: unknown) => setBotAvatarImage(paths, id, data, () => broadcast({ type: 'bots:changed' })))
+  ipcMain.handle('bots:avatarClear', (_e, id: unknown) => clearBotAvatarImage(paths, id, () => broadcast({ type: 'bots:changed' })))
+  ipcMain.handle('bots:avatarImage', (_e, id: unknown) => botAvatarImage(paths, id))
   ipcMain.handle('bots:conversations', (_e, id: unknown) => botConversations(paths, id))
   const templateCreated = async (bot: { id: string }) => {
     await rememberSelections([`bot-${bot.id}`])
