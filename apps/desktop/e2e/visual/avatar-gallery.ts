@@ -55,3 +55,38 @@ export async function galleryHtml(theme: Theme): Promise<string> {
 .gallery-cell { display: flex; align-items: center; justify-content: center; }`
   return `<!doctype html><html data-theme="${theme}" data-window-focused="true"><head><meta charset="utf-8"><style>${css}\n${page}</style></head><body>${cells.join('')}</body></html>`
 }
+
+type ArtCell = { body: number | 'sun'; palette: number | 'sun'; face: number; size: number }
+
+export async function artGalleryHtml(theme: Theme): Promise<string> {
+  renderer ??= load()
+  const render = await renderer
+  const css = await readFile(new URL('bot-avatar.css', CSS_DIR), 'utf8')
+  const cell = ({ body, palette, face, size }: ArtCell) => {
+    const props = body === 'sun'
+      ? { id: 'art-sun', primary: true, size, state: 'idle', theme }
+      : { id: `art-${body}-${palette}-${face}`, override: { body, face, accessory: 0, palette }, primary: false, size, state: 'idle', theme }
+    return `<div class="art-cell" data-size="${size}" data-body="${body}" data-palette="${palette}">${render(props)}</div>`
+  }
+  const row = (cells: ArtCell[]) => `<div class="art-row">${cells.map(cell).join('')}</div>`
+  const rows: string[] = []
+  for (const size of SIZES) {
+    const cells: ArtCell[] = [{ body: 'sun', palette: 'sun', face: 0, size }]
+    for (const body of [0, 1, 2, 3, 4, 5]) for (const palette of [0, 3, 5]) cells.push({ body, palette, face: 0, size })
+    rows.push(row(cells))
+  }
+  rows.push(row([0, 1, 2, 3, 4, 5, 6, 7].map(palette => ({ body: 0, palette, face: 0, size: 36 }))))
+  rows.push(row([0, 1, 2, 3, 4, 5].map(face => ({ body: 0, palette: 0, face, size: 64 }))))
+  const names = ['Orchestrator', 'Reliability', 'Test runner', 'Developer', 'Office', 'Designer']
+  const strip = [0, 1, 2, 3, 4, 5].map((body, i) => `<div class="art-strip-row">${cell({ body, palette: [0, 1, 2, 3, 4, 5][i]!, face: i % 6, size: 36 })}<span>${names[i]}</span></div>`)
+  const sidebar = `<div class="art-strip"><div class="art-strip-hero">${cell({ body: 'sun', palette: 'sun', face: 0, size: 64 })}<span>Primary</span></div>${strip.join('')}</div>`
+  const color = theme === 'dark' ? '#e6e6e6' : '#1c1c1c'
+  const page = `body { margin: 0; padding: 12px; background: ${await railBg(theme)}; color: ${color}; font: 14px -apple-system, sans-serif; display: flex; gap: 24px; align-items: flex-start; }
+.art-rows { display: flex; flex-direction: column; gap: 12px; }
+.art-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.art-cell { display: flex; align-items: center; justify-content: center; }
+.art-strip { width: 240px; display: flex; flex-direction: column; gap: 14px; padding: 12px; box-sizing: border-box; }
+.art-strip-hero { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 8px; }
+.art-strip-row { display: flex; align-items: center; gap: 12px; }`
+  return `<!doctype html><html data-theme="${theme}" data-window-focused="true"><head><meta charset="utf-8"><style>${css}\n${page}</style></head><body><div class="art-rows">${rows.join('')}</div>${sidebar}</body></html>`
+}

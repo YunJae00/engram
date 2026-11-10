@@ -7,23 +7,23 @@ export type DrawnSpec = { kind: 'drawn'; body: number | 'sun'; face: number; acc
 export type ImageSpec = { kind: 'image'; image: string }
 export type AvatarSpec = DrawnSpec | ImageSpec
 
-export type Tone = { fill: string; line: string }
-export type Palette = { light: Tone; dark: Tone; ink: string }
+export type Tone = { fill: string }
+export type Palette = { light: Tone; dark: Tone }
 
-const tone = (fill: string, line: string): Tone => ({ fill, line })
+const tone = (light: string, dark: string): Palette => ({ light: { fill: light }, dark: { fill: dark } })
 
 export const PALETTES: readonly Palette[] = [
-  { light: tone('#FF8A7A', '#D9584A'), dark: tone('#E8705F', '#FFB3A8'), ink: '#3A1712' },
-  { light: tone('#FFB04D', '#C9741A'), dark: tone('#E8953A', '#FFD09A'), ink: '#3B2208' },
-  { light: tone('#FFD84D', '#A88410'), dark: tone('#E0BC33', '#FFE88F'), ink: '#3A3005' },
-  { light: tone('#5ED6B0', '#22876A'), dark: tone('#3FBF98', '#9AEBD2'), ink: '#0C3328' },
-  { light: tone('#6EC1FF', '#2A7FC2'), dark: tone('#4FA8EE', '#A9DBFF'), ink: '#0B2C45' },
-  { light: tone('#B49CFF', '#6E52D6'), dark: tone('#9A80F0', '#D2C5FF'), ink: '#24164F' },
-  { light: tone('#FF9CCB', '#C9528C'), dark: tone('#EC7FB3', '#FFC6E1'), ink: '#45122D' },
-  { light: tone('#A9B4C2', '#5E6A7A'), dark: tone('#8C98A8', '#CDD5DF'), ink: '#1C232C' },
+  tone('#2F6FEB', '#4C86F0'),
+  tone('#D63F8C', '#E25A9C'),
+  tone('#0A86B8', '#1197CC'),
+  tone('#E2560E', '#EC6A2A'),
+  tone('#7A4FE0', '#9068EC'),
+  tone('#0F8F80', '#1EA393'),
+  tone('#2E8F3E', '#3DA34E'),
+  tone('#56607A', '#7A859C'),
 ]
 
-export const SUN_PALETTE: Palette = { light: tone('#FFC233', '#C77A00'), dark: tone('#F0AE1A', '#FFDB80'), ink: '#3B2208' }
+export const SUN_PALETTE: Palette = tone('#D46A00', '#E07A0A')
 
 export function paletteOf(palette: number | 'sun'): Palette {
   return palette === 'sun' ? SUN_PALETTE : PALETTES[palette]!
@@ -36,13 +36,6 @@ export function fnv1a(id: string): number {
     h = Math.imul(h, 0x01000193) >>> 0
   }
   return h
-}
-
-const hexChannels = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
-
-export function blush(fill: string, coral: string): string {
-  const c = hexChannels(coral)
-  return '#' + hexChannels(fill).map((v, i) => Math.round(0.6 * v + 0.4 * c[i]!).toString(16).padStart(2, '0')).join('')
 }
 
 type Parts = Record<Part, number>
@@ -85,33 +78,9 @@ export function avatarSpec(id: string, override?: unknown, primary = false): Ava
 }
 
 export const PATHS = {
-  planetShade: 'M18 52a30 30 0 0 0 60 0a30 13 0 0 1 -60 0Z',
-  ringFront: 'M4 52a44 10 0 0 0 88 0',
-  cometTails: 'M66 30L84 12M74 42L90 30M56 24L64 8',
-  star: 'M44.1 19.3Q48 13 51.9 19.3L62.1 35.6L80.7 40.2Q87.9 42 83.2 47.7L70.8 62.4L72.2 81.5Q72.7 89 65.8 86.2L48 79L30.2 86.2Q23.3 89 23.8 81.5L25.2 62.4L12.8 47.7Q8.1 42 15.3 40.2L33.9 35.6Z',
-  nebula: 'M12 58a20 20 0 1 0 40 0a20 20 0 1 0 -40 0ZM44 58a20 20 0 1 0 40 0a20 20 0 1 0 -40 0ZM26 40a22 22 0 1 0 44 0a22 22 0 1 0 -44 0Z',
-  sunRays: 'M84 52L90 52M73.5 77.5L77.7 81.7M48 88L48 94M22.5 77.5L18.3 81.7M12 52L6 52M22.5 26.5L18.3 22.3M48 16L48 10M73.5 26.5L77.7 22.3',
-  smile: 'M42 60q6 6 12 0',
-  grin: 'M40 59q8 9 16 0',
-  happyLeft: 'M32 53l6-6l6 6',
-  happyRight: 'M52 53l6-6l6 6',
-  winkRight: 'M52 51q6-6 12 0',
-  dashLeft: 'M32 50h12',
-  dashRight: 'M52 50h12',
-  calmLeft: 'M32 48q6 6 12 0',
-  calmRight: 'M52 48q6 6 12 0',
-  headsetBand: 'M20 48a28 28 0 0 1 56 0',
-  headsetMic: 'M80 58q0 14-14 16',
-  glasses: 'M29 50a9 9 0 1 0 18 0a9 9 0 1 0 -18 0ZM49 50a9 9 0 1 0 18 0a9 9 0 1 0 -18 0ZM47 50h2',
-  pencil: 'M62 88l20-20l7 7l-20 20Z',
-  pencilTip: 'M62 88l-3 9l10-2Z',
-  magnifierHandle: 'M78 80l9 9',
-  calendarRings: 'M68 62v7M80 62v7',
-  bookPages: 'M72 70v20',
-  cup: 'M62 70h18v12a6 6 0 0 1-6 6h-6a6 6 0 0 1-6-6Z',
-  cupHandle: 'M80 73h3a4 4 0 0 1 0 8h-3',
-  steam: 'M68 66q-3-3 0-7M75 66q-3-3 0-7',
-  envelopeFlap: 'M60 70l13 9l13-9',
+  sunRays: 'M73.5 42.8L86.8 44.1Q91.5 48 86.8 51.9L73.5 53.2ZM69.7 62.4L78.2 72.7Q78.8 78.8 72.7 78.2L62.4 69.7ZM53.2 73.5L51.9 86.8Q48 91.5 44.1 86.8L42.8 73.5ZM33.6 69.7L23.3 78.2Q17.2 78.8 17.8 72.7L26.3 62.4ZM22.5 53.2L9.2 51.9Q4.5 48 9.2 44.1L22.5 42.8ZM26.3 33.6L17.8 23.3Q17.2 17.2 23.3 17.8L33.6 26.3ZM42.8 22.5L44.1 9.2Q48 4.5 51.9 9.2L53.2 22.5ZM62.4 26.3L72.7 17.8Q78.8 17.2 78.2 23.3L69.7 33.6Z',
+  ring: 'M4 50a44 16 0 1 0 88 0a44 16 0 1 0 -88 0ZM14 50a34 8 0 1 0 68 0a34 8 0 1 0 -68 0Z',
+  comet: 'M14 14L66.8 31.4A28 28 0 1 1 31.4 66.8Z',
+  moon: 'M33 16.3A36 36 0 1 1 16 59.9A26 26 0 0 0 33 16.3Z',
+  star: 'M43.2 12.8Q48 4 52.8 12.8L59.3 24.6Q62.7 30.8 69.6 32.1L82.9 34.6Q92.7 36.5 85.8 43.8L76.6 53.6Q71.8 58.7 72.7 65.7L74.4 79.1Q75.6 89 66.6 84.8L54.3 79Q48 76 41.7 79L29.4 84.8Q20.4 89 21.6 79.1L23.3 65.7Q24.2 58.7 19.4 53.6L10.2 43.8Q3.3 36.5 13.1 34.6L26.4 32.1Q33.3 30.8 36.7 24.6Z',
 } as const
-
-export const CRATERS = [[64, 36, 4], [72, 60, 3], [30, 38, 3]] as const

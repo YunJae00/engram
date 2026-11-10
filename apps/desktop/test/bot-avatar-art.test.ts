@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { AVATAR_RANGES as CORE_RANGES } from 'core/src/bot-fields'
 import { contrastRatio, type Rgba } from '../e2e/visual/spec.js'
-import { AVATAR_RANGES, avatarSpec, CRATERS, fnv1a, PALETTES, PATHS, SUN_PALETTE } from '../src/renderer/src/lib/botAvatar.js'
+import { AVATAR_RANGES, avatarSpec, fnv1a, paletteOf, PALETTES, PATHS, SUN_PALETTE } from '../src/renderer/src/lib/botAvatar.js'
 import { BotAvatar, type BotAvatarProps } from '../src/renderer/src/components/BotAvatar.js'
 
 const SRC = join(__dirname, '../src/renderer/src')
@@ -15,6 +15,8 @@ const THEMES = ['light', 'dark'] as const
 const BASE = { body: 0, face: 0, accessory: 0, palette: 0 }
 
 type Props = Partial<BotAvatarProps> & { id?: string }
+const channels = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
+const distance = (x: string, y: string) => Math.hypot(...channels(x).map((v, i) => v - channels(y)[i]!))
 const render = (props: Props = {}) =>
   renderToStaticMarkup(createElement(BotAvatar, { id: 'bot-x', size: 64, state: 'idle', theme: 'light', ...props }))
 
@@ -70,10 +72,9 @@ describe('bot avatar', () => {
       ...[0, 1, 2, 3, 4, 5].map((body): [string, Props] => [`body-${body}`, { override: { ...BASE, body } }]),
       ['body-sun', { primary: true }],
       ...[0, 1, 2, 3, 4, 5].map((face): [string, Props] => [`face-${face}`, { override: { ...BASE, face } }]),
-      ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((accessory): [string, Props] => [`accessory-${accessory}`, { override: { ...BASE, accessory } }]),
       ...[0, 1, 2, 3, 4, 5, 6, 7].map((palette): [string, Props] => [`palette-${palette}`, { override: { ...BASE, palette } }]),
     ]
-    expect(variants).toHaveLength(30)
+    expect(variants).toHaveLength(21)
     for (const [name, props] of variants) {
       for (const size of SIZES) {
         for (const theme of THEMES) expect(render({ id: 'bot-snap', size, theme, ...props })).toMatchSnapshot(`${name} ${size} ${theme}`)
@@ -102,37 +103,98 @@ describe('bot avatar', () => {
     const ratio = (fg: string, bg: string) => contrastRatio(rgba(fg), [rgba(bg)])!
     for (const palette of [...PALETTES, SUN_PALETTE]) {
       for (const theme of THEMES) {
-        expect(ratio(palette.ink, palette[theme].fill), `${palette.ink} on ${palette[theme].fill}`).toBeGreaterThanOrEqual(4.5)
+        const fill = palette[theme].fill
+        expect(ratio('#FFFFFF', fill), `white on ${fill}`).toBeGreaterThanOrEqual(3)
         for (const surface of ['--app-bg', '--rail-bg']) {
-          expect(ratio(palette[theme].line, hex(theme, surface)), `${theme} ${palette[theme].line} on ${surface}`).toBeGreaterThanOrEqual(3)
+          expect(ratio(fill, hex(theme, surface)), `${theme} ${fill} on ${surface}`).toBeGreaterThanOrEqual(3)
         }
       }
+    }
+    const badge = /\.bot-avatar-primary \{[^}]*background: ([^;]+);/.exec(readFileSync(join(SRC, 'bot-avatar.css'), 'utf8'))?.[1]?.trim() ?? ''
+    expect(badge).toMatch(/^#[0-9a-fA-F]{6}$/)
+    for (const theme of THEMES) expect(distance(badge, SUN_PALETTE[theme].fill)).toBeGreaterThanOrEqual(60)
+  })
+
+  it('has distinct palettes', () => {
+    expect(PALETTES).toHaveLength(8)
+    for (const theme of THEMES) {
+      const fills = PALETTES.map(p => p[theme].fill)
+      for (const fill of [...fills, SUN_PALETTE[theme].fill]) expect(fill).toMatch(/^#[0-9A-F]{6}$/i)
+      for (let i = 0; i < fills.length; i++) {
+        expect(distance(SUN_PALETTE[theme].fill, fills[i]!), `sun vs ${i}`).toBeGreaterThanOrEqual(24)
+        for (let j = i + 1; j < fills.length; j++) expect(distance(fills[i]!, fills[j]!), `${theme} ${i}/${j}`).toBeGreaterThanOrEqual(48)
+      }
+    }
+  })
+
+  it('draws flat art', () => {
+    const bodies = [0, 1, 2, 3, 4, 5, 'sun'] as const
+    const bodyGroups = new Map<string, string>(), faceEyes = new Map<number, string>()
+    const check = (props: Props, fill: string) => {
+      const html = render(props)
+      expect(html).not.toMatch(/<defs|Gradient|<filter|<mask|<clipPath|opacity=|fill="none"|<line|<polyline|<text|<image|href|url\(|<foreignObject/)
+      const svg = /<svg[^>]*>(.*)<\/svg>/.exec(html)![1]!
+      const m = /^<g class="bot-avatar-body" fill="([^"]+)" stroke="([^"]+)" stroke-width="([\d.]+)" stroke-linejoin="round">(.*?)<\/g><g class="bot-avatar-eyes" fill="#FFFFFF">(.*?)<\/g>$/.exec(svg)
+      expect(m, html).not.toBeNull()
+      const [, f, stroke, width, shapes, eyes] = m!
+      expect([f, stroke]).toEqual([fill, fill])
+      expect(Number(width)).toBeGreaterThanOrEqual(7.2)
+      const parts = shapes!.match(/<([a-z]+)[^>]*><\/\1>/g) ?? []
+      expect(parts.join('')).toBe(shapes)
+      expect(parts.length).toBeGreaterThanOrEqual(1)
+      expect(parts.length).toBeLessThanOrEqual(5)
+      for (const part of parts) {
+        expect(part).toMatch(/^<(circle|ellipse|rect|path) /)
+        expect(part).not.toMatch(/ (fill|stroke|opacity|class|style)=/)
+      }
+      const ellipses = [...eyes!.matchAll(/<ellipse cx="([\d.-]+)" cy="([\d.-]+)" rx="([\d.]+)" ry="([\d.]+)"(?: transform="rotate\(([\d.-]+) [\d.-]+ [\d.-]+\)")?><\/ellipse>/g)]
+      expect(ellipses.map(e => e[0]).join('')).toBe(eyes)
+      expect(ellipses).toHaveLength(2)
+      for (const [, , cy, rx, ry, rot] of ellipses) {
+        expect(2 * Math.min(Number(rx), Number(ry))).toBeGreaterThanOrEqual(7.2)
+        expect(2 * Math.max(Number(rx), Number(ry))).toBeLessThanOrEqual(24)
+        expect(Number(cy)).toBeLessThanOrEqual(46)
+        expect(Math.abs(Number(rot ?? 0))).toBeLessThanOrEqual(30)
+      }
+      const [a, b] = ellipses.map(e => [Number(e[1]), Number(e[2])] as const)
+      expect(Math.hypot(a![0] - b![0], a![1] - b![1])).toBeGreaterThanOrEqual(12)
+      expect(Math.hypot(a![0] - b![0], a![1] - b![1])).toBeLessThanOrEqual(26)
+      expect((a![0] + b![0]) / 2).toBeGreaterThanOrEqual(48)
+      expect((a![0] + b![0]) / 2).toBeLessThanOrEqual(60)
+      expect(new Set(html.match(/#[0-9A-Fa-f]{6}/g)!.filter(c => c !== '#FFFFFF')).size).toBe(1)
+      return { shapes: shapes!, eyes: eyes! }
+    }
+    for (const body of bodies) for (let face = 0; face <= 5; face++) for (const size of SIZES) for (const theme of THEMES) for (const state of ['idle', 'working', 'attention'] as const) {
+      const props: Props = body === 'sun' ? { primary: true, override: { ...BASE, face }, size, theme, state } : { override: { ...BASE, body, face }, size, theme, state }
+      const out = check(props, PALETTES[0]![theme].fill)
+      if (face === 0 && state === 'idle') bodyGroups.set(String(body), out.shapes)
+      if (body === 0 && state === 'idle') faceEyes.set(face, out.eyes)
+      if (body === 0 && state === 'attention') expect(out.eyes).toBe(faceEyes.get(4) ?? check({ override: { ...BASE, face: 4 }, size, theme }, PALETTES[0]![theme].fill).eyes)
+      if (body === 'sun' && face === 0) check({ primary: true, size, theme, state }, SUN_PALETTE[theme].fill)
+    }
+    expect(new Set(bodyGroups.values()).size).toBe(7)
+    expect(new Set(faceEyes.values()).size).toBe(6)
+    for (const size of [20, 96] as const) for (const theme of THEMES) {
+      for (let palette = 0; palette <= 7; palette++) check({ override: { ...BASE, palette }, size, theme }, paletteOf(palette)[theme].fill)
+      for (let accessory = 0; accessory <= 8; accessory++) expect(render({ override: { ...BASE, accessory }, size, theme })).toBe(render({ override: BASE, size, theme }))
     }
   })
 
   it('is self-contained and cheap', () => {
     expect(AVATAR_RANGES).toEqual(CORE_RANGES)
-    const budget = { 20: 12, 36: 24, 64: 40, 96: 40 }
-    for (const theme of THEMES) {
+        for (const theme of THEMES) {
       for (const size of SIZES) {
         for (const part of ['body', 'face', 'accessory', 'palette'] as const) {
           for (let n = 0; n <= AVATAR_RANGES[part]; n++) {
             for (const primary of [false, true]) {
               const html = render({ override: { ...BASE, [part]: n }, size, theme, state: 'attention', primary })
               expect(html).not.toMatch(/<image|href|url\(|<foreignObject|<text/)
-              expect(elementCount(html), `${part}-${n} ${size} ${primary}`).toBeLessThanOrEqual(budget[size])
+              expect(elementCount(html), `${part}-${n} ${size} ${primary}`).toBeLessThanOrEqual(11)
             }
           }
         }
       }
     }
-    const small = (body: number) => render({ override: { ...BASE, body }, size: 20 })
-    expect(small(0)).not.toContain(PATHS.planetShade)
-    expect(small(3)).not.toContain(`cx="${CRATERS[0][0]}"`)
-    expect(small(1)).not.toContain(PATHS.ringFront)
-    expect(small(0)).not.toContain('<path')
-    expect(render({ override: { ...BASE, body: 0 }, size: 36 })).toContain(PATHS.planetShade)
-
     const batch = () => {
       for (let i = 0; i < 50; i++) for (const size of SIZES) render({ id: `bot-perf-${i}`, size })
     }

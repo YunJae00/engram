@@ -8,6 +8,7 @@
 
 .bot-avatar-art { display: block; width: 100%; height: 100%; }
 .bot-avatar-art > svg { display: block; overflow: visible; }
+.bot-avatar-body { shape-rendering: geometricPrecision; }
 .bot-avatar-img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 
 .bot-avatar-alert {
@@ -20,7 +21,7 @@
 
 .bot-avatar-primary {
   position: absolute; right: 0; bottom: 0; box-sizing: border-box; width: 18px; height: 18px;
-  border: 2px solid #FFFFFF; border-radius: 50%; background: #C9741A;
+  border: 2px solid #FFFFFF; border-radius: 50%; background: #1F2329;
 }
 .bot-avatar-primary::before {
   content: ''; position: absolute; inset: 2px; background: #FFFFFF;
