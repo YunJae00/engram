@@ -1,4 +1,4 @@
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -79,6 +79,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
+  botUpdate(id: string, patch: Partial<Pick<BotDto, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }): Promise<BotDto>
+  botConversations(id: string): Promise<BotConversationDto[]>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
   botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>

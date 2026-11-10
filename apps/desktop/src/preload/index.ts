@@ -169,6 +169,8 @@ const api: EngramApi = {
   botRename: (id: string, name: string) => ipcRenderer.invoke('bots:rename', id, name),
   botDelete: (id: string) => ipcRenderer.invoke('bots:delete', id),
   botTranscript: (id: string) => ipcRenderer.invoke('bots:transcript', id),
+  botUpdate: (id, patch) => ipcRenderer.invoke('bots:update', id, patch),
+  botConversations: (id) => ipcRenderer.invoke('bots:conversations', id),
   botTaskAdd: (botId: string, input: { name: string; goal: string; schedule?: { days: number[]; hour: number; minute: number }; routineId?: string }) =>
     ipcRenderer.invoke('bots:taskAdd', botId, input),
   botStandingDecline: (botId: string, goal: string) => ipcRenderer.invoke('bots:standingDecline', botId, goal),

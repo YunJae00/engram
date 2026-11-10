@@ -112,7 +112,17 @@ export interface BotDto {
   lastMessage?: { role: 'user' | 'assistant'; text: string; at: string }
   webSites?: { origin: string; visits: number }[]
   tasks?: BotTaskDto[]
+  avatar?: { body: number; face: number; accessory: number; palette: number } | { image: string }
+  label?: string
+  primary?: true
+  hidden?: true
+  notify?: 'all' | 'attention' | 'off'
+  skills?: string[]
+  templateId?: string
+  updatedAt?: string
 }
+
+export interface BotConversationDto { stamp: string; turns: number }
 
 export interface BotTurnDto {
   role: 'user' | 'assistant'

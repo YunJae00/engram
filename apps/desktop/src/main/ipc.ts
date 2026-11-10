@@ -145,7 +145,7 @@ import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
-import { botPreviews, botSearch } from './bot-previews.js'
+import { botPreviews, botSearch, botConversations, botUpdate } from './bot-previews.js'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -1346,6 +1346,8 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
+  ipcMain.handle('bots:update', (_e, id: unknown, patch: unknown) => botUpdate(paths, id, patch, () => broadcast({ type: 'bots:changed' })))
+  ipcMain.handle('bots:conversations', (_e, id: unknown) => botConversations(paths, id))
   // A routine kept or removed shows up wherever routines are listed - the
   // rail as much as the comet's own row - so both say so.
   ipcMain.handle('bots:taskAdd', async (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) => {

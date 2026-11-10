@@ -1,7 +1,8 @@
-import { stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readBotTranscript, type Bot, type VaultPaths } from 'core'
-import type { BotDto } from '../shared/types.js'
+import { updateBot, type BotPatch } from 'core/src/bots'
+import type { BotConversationDto, BotDto } from '../shared/types.js'
 
 const cached = new Map<string, { stamp: string; value: Promise<BotDto['lastMessage']> }>()
 
@@ -58,4 +59,49 @@ export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): 
     }))
   }
   return hits
+}
+
+const BOT_ID = /^[\w-]+$/
+
+export async function botUpdate(paths: VaultPaths, id: unknown, patch: unknown, changed: () => void): Promise<BotDto> {
+  if (typeof id !== 'string' || !BOT_ID.test(id)) throw new Error('no such comet')
+  const bot = await updateBot(paths, id, patch as BotPatch)
+  changed()
+  return bot
+}
+
+const skippable = (error: unknown) => ['ENOENT', 'EISDIR'].includes((error as NodeJS.ErrnoException).code ?? '')
+
+export async function botConversations(paths: VaultPaths, id: unknown): Promise<BotConversationDto[]> {
+  if (typeof id !== 'string' || !BOT_ID.test(id)) return []
+  const dir = join(paths.cache, 'bot-chats')
+  let names: string[]
+  try { names = await readdir(dir) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+  const archive = new RegExp(`^${id}\\.(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})\\.jsonl$`)
+  const stamps = names.flatMap(name => archive.exec(name)?.[1] ?? []).sort().reverse()
+  const rows: BotConversationDto[] = []
+  for (let offset = 0; offset < stamps.length; offset += 8) {
+    rows.push(...(await Promise.all(stamps.slice(offset, offset + 8).map(async stamp => {
+      try { return [{ stamp, turns: countTurns(await readFile(join(dir, `${id}.${stamp}.jsonl`), 'utf8')) }] } catch (error) {
+        if (skippable(error)) return []
+        throw error
+      }
+    }))).flat())
+  }
+  return rows
+}
+
+function countTurns(raw: string): number {
+  let turns = 0
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const row = JSON.parse(line) as { role?: unknown; text?: unknown; progress?: unknown } | null
+      if (typeof row === 'object' && row !== null && (row.role === 'user' || row.role === 'assistant') && typeof row.text === 'string' && row.progress !== true) turns++
+    } catch { /* a corrupt line is not a turn */ }
+  }
+  return turns
 }
