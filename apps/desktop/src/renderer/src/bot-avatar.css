@@ -1,0 +1,55 @@
+.bot-avatar {
+  position: relative; display: inline-block; flex: none; box-sizing: border-box;
+  width: 36px; height: 36px; line-height: 0;
+}
+.bot-avatar[data-size='20'] { width: 20px; height: 20px; }
+.bot-avatar[data-size='64'] { width: 64px; height: 64px; }
+.bot-avatar[data-size='96'] { width: 96px; height: 96px; }
+
+.bot-avatar-art { display: block; width: 100%; height: 100%; }
+.bot-avatar-art > svg { display: block; overflow: visible; }
+.bot-avatar-img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+.bot-avatar-alert {
+  position: absolute; top: 0; right: 0; width: max(30%, 8px); height: max(30%, 8px);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: #C9741A; color: #FFFFFF; font-weight: 700; line-height: 1;
+}
+.bot-avatar[data-size='64'] .bot-avatar-alert::after,
+.bot-avatar[data-size='96'] .bot-avatar-alert::after { content: '!'; font-size: 13px; }
+
+.bot-avatar-primary {
+  position: absolute; right: 0; bottom: 0; box-sizing: border-box; width: 18px; height: 18px;
+  border: 2px solid #FFFFFF; border-radius: 50%; background: #C9741A;
+}
+.bot-avatar-primary::before {
+  content: ''; position: absolute; inset: 2px; background: #FFFFFF;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.bot-avatar[data-state='working'] .bot-avatar-art { animation: bot-avatar-bob 2.4s ease-in-out infinite; }
+.bot-avatar[data-state='working'][data-size='20'] .bot-avatar-art { animation-name: bot-avatar-bob-small; }
+.bot-avatar[data-state='working'] .bot-avatar-eyes {
+  transform-box: fill-box; transform-origin: center; animation: bot-avatar-blink 4s ease-in-out infinite;
+}
+
+@keyframes bot-avatar-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+@keyframes bot-avatar-bob-small {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+@keyframes bot-avatar-blink {
+  0%, 46%, 54%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.1); }
+}
+
+:root:not([data-window-focused='true']) .bot-avatar,
+:root:not([data-window-focused='true']) .bot-avatar .bot-avatar-art,
+:root:not([data-window-focused='true']) .bot-avatar .bot-avatar-eyes { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bot-avatar, .bot-avatar * { animation: none !important; }
+}
