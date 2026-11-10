@@ -79,6 +79,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botTranscript(id: string): Promise<BotTurnDto[]>
+  botTranscriptPage(id: string, before: number, limit?: number): Promise<BotTurnDto[]>
+  botArchivedTranscript(id: string, stamp: string, before?: number, limit?: number): Promise<BotTurnDto[]>
   botUpdate(id: string, patch: Partial<Pick<BotDto, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }): Promise<BotDto>
   botConversations(id: string): Promise<BotConversationDto[]>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>

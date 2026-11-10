@@ -146,6 +146,7 @@ import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
 import { botPreviews, botSearch, botConversations, botUpdate } from './bot-previews.js'
+import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -1346,6 +1347,8 @@ export function registerIpc(ctx: VaultContext): void {
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:transcript', (_e, id: string) => readBotTranscript(paths, id))
+  ipcMain.handle('bots:transcriptPage', (_e, id: unknown, before: unknown, limit: unknown) => readBotTranscriptPage(paths, id, before, limit))
+  ipcMain.handle('bots:archivedTranscript', (_e, id: unknown, stamp: unknown, before: unknown, limit: unknown) => readArchivedTranscript(paths, id, stamp, before, limit))
   ipcMain.handle('bots:update', (_e, id: unknown, patch: unknown) => botUpdate(paths, id, patch, () => broadcast({ type: 'bots:changed' })))
   ipcMain.handle('bots:conversations', (_e, id: unknown) => botConversations(paths, id))
   // A routine kept or removed shows up wherever routines are listed - the
