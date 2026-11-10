@@ -28,6 +28,19 @@ async function openPopup() {
   await expect(popup.getByTestId('quick-capture')).toBeVisible()
   await expect.poll(visible).toBe(true)
 }
+async function primaryId() {
+  return page.evaluate(() => window.engram.botsList().then(bots => bots.find(bot => bot.primary)!.id))
+}
+async function transcriptHas(id: string, text: string) {
+  await expect.poll(() => page.evaluate(({ id, text }) => window.engram.botTranscript(id).then(turns => turns.some(turn => turn.role === 'user' && turn.text === text)), { id, text })).toBe(true)
+}
+async function answeredAndIdle(id: string, text: string) {
+  await expect.poll(() => page.evaluate(async ({ id, text }) => {
+    const turns = await window.engram.botTranscript(id)
+    const asked = turns.map(turn => turn.role === 'user' && turn.text === text).lastIndexOf(true)
+    return asked >= 0 && turns.slice(asked + 1).some(turn => turn.role === 'assistant') && !(await window.engram.chatActive()).includes(`bot-${id}`)
+  }, { id, text }), { timeout: 60_000 }).toBe(true)
+}
 
 test('Developers entry points are hidden without removing stored preferences', async () => {
   await expect(page.getByTestId('activity-developers')).toHaveCount(0)
@@ -107,13 +120,13 @@ test('the add menu expands above the input, attaches files and opens the app wit
   await expect(popup.getByTestId('quick-input')).toHaveValue('Use this attachment')
   await popup.getByTestId('quick-input').press('Enter')
   await expect.poll(visible).toBe(false)
-  await expect.poll(() => page.evaluate(async () => {
-    const bot = (await window.engram.botsList()).at(-1)!
-    return (await window.engram.botTranscript(bot.id)).some(turn => turn.role === 'user' && turn.attachments?.length === 1)
-  })).toBe(true)
+  const id = await primaryId()
+  await expect.poll(() => page.evaluate(async id => (await window.engram.botTranscript(id)).some(turn => turn.role === 'user' && turn.attachments?.length === 1), id)).toBe(true)
+  await answeredAndIdle(id, 'Use this attachment')
 })
 
-test('invalid input creates nothing; Enter creates one Comet and starts the normal task', async () => {
+test('invalid input creates nothing; Enter sends to the primary bot and starts the normal task', async () => {
+  const id = await primaryId()
   const initial = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
   for (const text of ['', ' ', 'x'.repeat(20_001)]) {
     expect(await page.evaluate(text => window.engram.quickComet(text).then(() => false).catch(() => true), text)).toBe(true)
@@ -123,18 +136,31 @@ test('invalid input creates nothing; Enter creates one Comet and starts the norm
   await popup.getByTestId('quick-input').fill('Say hello from my quick Comet')
   await popup.getByTestId('quick-input').press('Enter')
   await expect.poll(visible).toBe(false)
-  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(initial + 1)
+  await transcriptHas(id, 'Say hello from my quick Comet')
+  expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(initial)
   await expect(page.getByTestId('bots-view')).toBeVisible()
   await expect(page.locator('.conversation-title svg')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread').getByText('Say hello from my quick Comet', { exact: true })).toBeVisible()
-  await expect.poll(() => page.evaluate(async () => {
-    const bot = (await window.engram.botsList()).at(-1)!
-    const turns = await window.engram.botTranscript(bot.id)
-    return turns.some(turn => turn.role === 'assistant')
-  }), { timeout: 60_000 }).toBe(true)
+  await answeredAndIdle(id, 'Say hello from my quick Comet')
   await openPopup()
   await expect(popup.getByTestId('quick-input')).toHaveValue('')
   await popup.getByTestId('quick-input').press('Escape')
+})
+
+test('a quick send keeps the primary chat draft', async () => {
+  const id = await primaryId()
+  const initial = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
+  await expect(page.getByTestId('bots-view')).toBeVisible()
+  await page.getByTestId('bots-input').fill('Unsent primary draft')
+  await openPopup()
+  await popup.getByTestId('quick-input').fill('Second quick message')
+  await popup.getByTestId('quick-input').press('Enter')
+  await expect.poll(visible).toBe(false)
+  await transcriptHas(id, 'Second quick message')
+  await expect(page.getByTestId('bots-input')).toHaveValue('Unsent primary draft')
+  expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(initial)
+  await answeredAndIdle(id, 'Second quick message')
+  await page.getByTestId('bots-input').fill('')
 })
 
 test('missing AI keeps the draft, and composition Enter never submits', async () => {

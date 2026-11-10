@@ -45,7 +45,10 @@ export async function loadCometThread(id: string): Promise<void> {
 
 api.onEvent((event) => {
   if (event.type === 'comet:quick') {
+    const { draft, attachments } = cometThreads.thread(event.botId)
     cometThreads.begin(event.botId, event.message, event.attachments)
+    cometThreads.setDraft(event.botId, draft)
+    cometThreads.setAttachments(event.botId, attachments)
     return
   }
   if (event.type === 'comet:scheduled') {

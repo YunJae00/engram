@@ -1,5 +1,6 @@
 import { finishProgress, progressWork } from './conversation-progress.js'
 import { availableMemory } from './available-memory.js'
+import { quickPrimary } from './quick-comet.js'
 import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
@@ -1328,12 +1329,11 @@ export function registerIpc(ctx: VaultContext): void {
     const message = input.trim()
     await readChatAttachments(paths, attachments)
     if (!await chatEngine('new-comet', ctx.engines)) throw new Error('Connect an AI in Engram Settings before starting a Comet.')
-    const bot = await createBot(paths, { name: UNTITLED_BOT_NAME })
-    await rememberSelections([`bot-${bot.id}`])
-    broadcast({ type: 'bots:changed' })
+    const { bot, channel, history } = await quickPrimary(paths, lane => answering.has(lane) || tasks.activeChannels().includes(lane))
+    await rememberSelections([channel])
     broadcast({ type: 'comet:quick', botId: bot.id, message, attachments })
     surfaceComet()
-    const request = { engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message, history: [], attachments }
+    const request = { engineId: '', botId: bot.id, channel, message, history, attachments }
     void (message.startsWith('/') ? sendChat(request) : tasks.chat(request)).catch(error => flog('quick-comet', error))
     return bot.id
   })
