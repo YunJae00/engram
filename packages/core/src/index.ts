@@ -158,3 +158,4 @@ export * from './helper-tool.js'
 
 export { type DesktopReadOptions } from './desktop-read-options.js'
 export { appNameMatch, similarApps } from './app-names.js'
+export { BUILTIN_TEMPLATES, exportTemplate, importTemplate, type BotTemplate } from './bot-templates.js'
