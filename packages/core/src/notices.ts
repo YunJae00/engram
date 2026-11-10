@@ -10,7 +10,7 @@ import type { VaultPaths } from './vault.js'
 
 export interface NoticeItem {
   id: string
-  kind: 'scheduled' | 'habit'
+  kind: 'scheduled' | 'habit' | 'system'
   title: string
   text: string
   at: string

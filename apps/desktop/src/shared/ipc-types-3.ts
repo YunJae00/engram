@@ -265,7 +265,7 @@ export interface ScheduledDto { id: string; botId: string; name: string; goal: s
 
 export interface StudyDto { id: string; botId: string; what: string; where: string[]; ask: string; state: 'offered' | 'studying' | 'review'; findings?: { title: string; description: string; body: string } }
 
-export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit'; title: string; text: string; at: string; read: boolean; running: boolean }[]; scheduled: ScheduledDto[] }
+export interface NoticesDto { items: { id: string; kind: 'scheduled' | 'habit' | 'system'; title: string; text: string; at: string; read: boolean; running: boolean }[]; scheduled: ScheduledDto[] }
 
 export interface AppUseDto { app: string; label: string; hours: number; days: number; notes: number; on: boolean; icon?: string }
 

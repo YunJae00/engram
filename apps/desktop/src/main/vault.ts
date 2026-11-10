@@ -8,7 +8,7 @@ import {
   type BinaryProvider,
   type Engine,
   type EngineId,
-  type VaultPaths, ENGINE_ORDER, keepsEngine } from 'core'
+  type VaultPaths, ENGINE_ORDER, keepsEngine, resetBotsToV2 } from 'core'
 import { loadSettings } from './settings.js'
 import { aiSelection, withModel } from './ai-selection.js'
 import { app } from 'electron'
@@ -148,6 +148,11 @@ export async function openVaultContext(root: string): Promise<VaultContext> {
   const paths = useGit ? await vaultGit('init', root) : await initVault(root, { git: false, provider })
   const git = useGit ? { autoCommit: (message: string) => vaultGit('commit', root, message) } : null
   const store = await NoteStore.open(paths)
+  try {
+    await resetBotsToV2(paths)
+  } catch (error) {
+    console.error(`[vault] bot list reset failed, retrying on next open: ${error instanceof Error ? error.message : String(error)}`)
+  }
   // Engines start EMPTY and are detected in the background (bootVault kicks it
   // off). Detection spawns `claude --version` and `claude auth status` — two
   // subprocesses measured at 3.6s together on an idle machine, against 88ms for

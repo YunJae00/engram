@@ -139,6 +139,7 @@ export { auditDeck, deckBodyLayout, describeDeckFindings, type DeckFinding, type
 export { withoutMissingParts } from './package-tidy.js'
 export { resolveTheme, THEME_NEEDED, type OfficeTheme, type ThemeInput } from './office-theme.js'
 export { renameWithRetry } from './rename-with-retry.js'
+export { resetBotsToV2 } from './bots-reset.js'
 export type { ReasoningEffort } from './engine/types.js'
 export { REASONING_EFFORTS } from './engine/types.js'
 export { gitEnv, bundledGitEnv } from './git.js'
