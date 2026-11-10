@@ -12,7 +12,9 @@ import { Thinking } from './Thinking.js'
 import { displayTaskAnswer, threadLang, threadWords } from '../lib/threadLang.js'
 import { dividerBefore, dividerLabel } from '../lib/timeDivider.js'
 
-export function CometMessages({ messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
+export function CometMessages({ firstKey = 0, messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
+  // Key of the first message, so a page put in front keeps every existing key.
+  firstKey?: number
   messages: CometMessage[]
   busy: boolean
   status: string
@@ -41,12 +43,12 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   return <>
     {messages.map((m, i) => {
       const divider = dividers[i] && <div className="bubble-time-divider">{dividerLabel(m.at!, lang, now)}</div>
-      if (m.role !== 'assistant') return <div key={i} className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
+      if (m.role !== 'assistant') return <div key={firstKey + i} className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
         {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
         <UserMessage text={m.text} attachments={m.attachments} />
       </div></div>
       const live = i === lastAssistant && busy
-      return <div key={i} className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
+      return <div key={firstKey + i} className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
         {divider}
         <CometWork busy={live} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
@@ -61,6 +63,6 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
-    {settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${settledIndex}-${settled.text}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
+    {settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${firstKey + settledIndex}-${settled.text}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
   </>
 }

@@ -6,7 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { EngramEvent } from '../../src/shared/types.js'
 import { closeTestApp } from '../navigation.js'
-import { awaitSettled, frameP95, keyEventDurations, startProbe, stopProbe, svgCount, unpausedAnimations, watchStream } from './frame-probe.js'
+import { awaitSettled, frameP95, keyEventDurations, measureAnchor, startProbe, stopProbe, svgCount, unpausedAnimations, watchStream } from './frame-probe.js'
 import { droppedPct, judge, stats, summarize, type MetricId, type MetricResult } from './perf-rules.js'
 import { MOCK_REPLY_CHARS, REPLY_SENTINEL, SEEDED, seedPerfVault, writeMockDir } from './seed-bots.js'
 
@@ -272,9 +272,8 @@ test('P4 long thread scroll', async () => {
       s.droppedPct!.push(droppedPct(data.intervals))
       s.longtasksOver100!.push(data.longtasks.filter(ms => ms > 100).length)
       s.heapMB!.push(await page.evaluate(() => (performance as Performance & { memory: { usedJSHeapSize: number } }).memory.usedJSHeapSize / 1048576))
-      s.anchorPx!.push(null)
+      s.anchorPx!.push(await measureAnchor(page))
     }
-    console.log('[perf] P4 anchorPx is null: load-earlier (rd-load-earlier) does not exist yet, so there is no anchor to measure')
     record('P4', s)
   })
 })

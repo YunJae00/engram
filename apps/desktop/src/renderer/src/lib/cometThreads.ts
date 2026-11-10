@@ -1,6 +1,5 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 
-
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
   error?: boolean
@@ -38,6 +37,10 @@ export interface CometThread {
   stopCount?: number
   startedAt: number | null
   doneSeen: number
+  // Paging: key offset of prepended messages, raw disk turns represented, the last read's identities,
+  // every represented raw turn oldest first, and newer turns a page already saw before the next read.
+  older: number; cursor: number; pageDone: boolean; pageLoading: boolean
+  window: string[]; coverage: string[]; unseenAppend: number
 }
 
 export interface CometThreadsSnapshot {
@@ -47,9 +50,38 @@ export interface CometThreadsSnapshot {
 
 export type CometThreadsStore = ReturnType<typeof createCometThreads>
 
-const EMPTY: CometThread = { unapplied: [], queued: [], messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', attachments: [], adopted: false, stopped: false, startedAt: null, doneSeen: 0 }
+const EMPTY: CometThread = { unapplied: [], queued: [], messages: [], loaded: false, busy: false, workLines: [], keptWork: [], offer: null, draft: '', attachments: [], adopted: false, stopped: false, startedAt: null, doneSeen: 0, older: 0, cursor: 0, pageDone: false, pageLoading: false, window: [], coverage: [], unseenAppend: 0 }
 const CHANNEL_PREFIX = 'bot-'
 const WORK_LINES_KEPT = 64
+const TRANSCRIPT_CAP = 400
+export const PAGE_SIZE = 100
+
+type PageRead = (id: string, before: number, limit: number) => Promise<ChatTurnDto[]>
+
+const identity = (turn: { role: string; at?: string; text: string }): string => `${turn.role}\n${turn.at ?? ''}\n${turn.text}`
+
+// A progress turn whose text a later full answer starts with is already said by that answer.
+function shown(list: ChatTurnDto[], index: number): boolean {
+  const turn = list[index]!
+  if (!turn.progress || turn.role !== 'assistant') return true
+  for (let at = index + 1; at < list.length; at++) {
+    const next = list[at]!
+    if (next.role === 'assistant' && !next.progress) return !next.text.startsWith(turn.text)
+  }
+  return true
+}
+
+const toMessage = (turn: ChatTurnDto): CometMessage => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })
+
+// Where `next` starts inside `coverage` so their overlap runs to the end of `coverage`, or -1.
+function alignAt(coverage: string[], next: string[]): number {
+  for (let start = 0; start < coverage.length; start++) {
+    let same = coverage[start] === next[0]
+    for (let i = 1; start + i < coverage.length && i < next.length && same; i++) same = coverage[start + i] === next[i]
+    if (same) return start
+  }
+  return -1
+}
 
 export function cometChannel(botId: string): string {
   return `${CHANNEL_PREFIX}${botId}`
@@ -77,6 +109,8 @@ function pendingTail(list: CometMessage[]): CometMessage[] {
 export function createCometThreads(initialSelected: string | null = null) {
   let snapshot: CometThreadsSnapshot = { selectedId: initialSelected, threads: {} }
   let queueSerial = 0
+  let pageSerial = 0
+  const pageTokens = new Map<string, number>()
   const listeners = new Set<() => void>()
   const emit = () => {
     for (const listener of listeners) listener()
@@ -144,7 +178,8 @@ export function createCometThreads(initialSelected: string | null = null) {
       emit()
     },
     fresh(id: string): void {
-      patch(id, { ...EMPTY, loaded: true })
+      pageTokens.delete(id)
+      patch(id, { ...EMPTY, loaded: true, pageDone: true })
     },
     load(id: string, turns: ChatTurnDto[], seenDone?: number): void {
       const current = thread(id)
@@ -155,7 +190,53 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let at = turns.length - 2; at >= 0 && turns[at]!.role === 'user'; at--) asked.push(turns[at]!.text)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      patch(id, { messages: [...turns.filter((turn, index) => !turn.progress || turn.role !== 'assistant' || !turns.slice(index + 1).find(next => next.role === 'assistant' && !next.progress)?.text.startsWith(turn.text)).map((turn) => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })), ...tail], loaded: true })
+      const window: string[] = [], fromDisk: CometMessage[] = []
+      let firstShown: string | undefined
+      for (let at = 0; at < turns.length; at++) {
+        window.push(identity(turns[at]!))
+        if (shown(turns, at)) { fromDisk.push(toMessage(turns[at]!)); firstShown ??= window[at] }
+      }
+      // Raw overlap proves continuity; the first shown new turn marks where the kept messages end.
+      const start = current.older > 0 && window.length ? alignAt(current.coverage, window) : -1
+      const keep = start >= 0 && firstShown !== undefined ? current.messages.findIndex((message, at) => at >= current.older && identity(message) === firstShown) : -1
+      const arrived = window.length - (current.coverage.length - start)
+      const paging: Partial<CometThread> = keep >= 0
+        ? { cursor: current.cursor + Math.max(0, arrived - current.unseenAppend), coverage: [...current.coverage.slice(0, start), ...window], unseenAppend: 0 }
+        : { older: 0, cursor: turns.length, pageDone: turns.length < TRANSCRIPT_CAP, coverage: window, unseenAppend: 0 }
+      if (paging.cursor !== current.cursor || window.length !== current.window.length || window.some((one, at) => one !== current.window[at])) {
+        pageTokens.delete(id)
+        paging.pageLoading = false
+      }
+      patch(id, { messages: [...(keep >= 0 ? current.messages.slice(0, keep) : []), ...fromDisk, ...tail], loaded: true, window, ...paging })
+    },
+    // Reads the page of disk turns just older than what the thread holds and puts it in front, once per call.
+    async loadEarlier(id: string, read: PageRead, beforeCommit?: () => void): Promise<number> {
+      const start = thread(id)
+      if (!snapshot.threads[id] || !start.loaded || start.pageDone || start.pageLoading) return 0
+      const token = ++pageSerial, before = start.cursor
+      pageTokens.set(id, token)
+      patch(id, { pageLoading: true })
+      const page = await read(id, before, PAGE_SIZE).catch(() => null)
+      if (!page) { if (pageTokens.get(id) === token && pageTokens.delete(id)) patch(id, { pageLoading: false }); return 0 }
+      const current = thread(id)
+      if (!snapshot.threads[id] || pageTokens.get(id) !== token || current.cursor !== before) return 0
+      pageTokens.delete(id)
+      // Turns appended on disk after the cursor was read shift the page newer; its tail then overlaps coverage.
+      const overlap = page.length ? current.coverage.indexOf(identity(page[page.length - 1]!)) + 1 : 0
+      let fits = overlap <= page.length
+      for (let at = 0; at < overlap && fits; at++) fits = identity(page[page.length - overlap + at]!) === current.coverage[at]
+      if (!fits) { patch(id, { pageLoading: false }); return 0 }
+      const had = new Set(current.messages.map(identity))
+      const combined: ChatTurnDto[] = [...page, ...current.messages]
+      const added: CometMessage[] = [], seen: string[] = []
+      for (let at = 0; at < page.length; at++) {
+        const key = identity(page[at]!)
+        if (at < page.length - overlap) seen.push(key)
+        if (!had.has(key) && shown(combined, at)) { had.add(key); added.push(toMessage(page[at]!)) }
+      }
+      if (added.length) beforeCommit?.()
+      patch(id, { messages: [...added, ...current.messages], older: current.older + added.length, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })
+      return added.length
     },
     setDraft(id: string, draft: string): void {
       const current = thread(id)
@@ -174,6 +255,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       patch(id, { offer: null })
     },
     forget(id: string): void {
+      pageTokens.delete(id)
       const rest = Object.fromEntries(Object.entries(snapshot.threads).filter(([key]) => key !== id))
       snapshot = { ...snapshot, threads: rest, selectedId: snapshot.selectedId === id ? null : snapshot.selectedId }
       emit()

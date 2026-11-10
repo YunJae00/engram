@@ -24,6 +24,10 @@ const reloadFromDisk = (id: string) => {
     .catch(() => undefined)
 }
 
+// One page of older turns per call, applied to this bot only; a failed read stays quiet.
+export const loadEarlierTurns = (id: string, beforeCommit?: () => void) =>
+  cometThreads.loadEarlier(id, (bot, before, limit) => api.botTranscriptPage(bot, before, limit), beforeCommit)
+
 // Disk first, then whatever main is still producing for this comet: a
 // renderer that reloaded mid-answer would otherwise never see it land. The
 // two reads are sequenced, and a completion that lands between them (noted

@@ -7,6 +7,7 @@ import { ThreadOffers } from '../components/ThreadOffers.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
 import { threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
+import { useLoadEarlier } from '../lib/useLoadEarlier.js'
 import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
@@ -116,7 +117,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
-  useStickToBottom(listRef, messages, selectedId)
+  const older = cometThreads.thread(selected?.id ?? null).older
+  useStickToBottom(listRef, messages.slice(older), selectedId)
+  useLoadEarlier(listRef, selected?.id ?? null, older)
   // The bubble the current work belongs to: the last one the comet wrote.
 
   // A tapped choice goes the same way as typed words: through the thread,
@@ -151,7 +154,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
-              <CometMessages messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
+              <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
                 <ThreadOffers botId={selected.id} onSend={sendChip} />
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
               </CometMessages>

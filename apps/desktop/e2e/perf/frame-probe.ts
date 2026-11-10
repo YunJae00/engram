@@ -120,3 +120,29 @@ export async function awaitSettled(page: Page, sentinel: string, timeoutMs: numb
     requestAnimationFrame(check)
   }), { sentinel, timeoutMs })
 }
+
+// Scrolls the bot thread to its top and returns how far the top bubble moved when the earlier page landed.
+export async function measureAnchor(page: Page): Promise<number> {
+  return page.evaluate(() => new Promise<number>((resolve, reject) => {
+    const thread = document.querySelector('[data-testid="bots-thread"]')
+    if (!thread) { reject(new Error('P4: no bots-thread')); return }
+    const frame = () => new Promise(done => requestAnimationFrame(() => done(undefined)))
+    const count = () => thread.querySelectorAll('.bubble-msg').length
+    void (async () => {
+      // Leave the top first so reaching it is a fresh top reach even after the wheel probe ended there.
+      thread.scrollTop = 40
+      await frame(); await frame()
+      thread.scrollTop = 0
+      const edge = thread.getBoundingClientRect().top
+      const anchor = [...thread.querySelectorAll('.bubble-msg')].find(el => el.getBoundingClientRect().top >= edge)
+      if (!anchor) { reject(new Error('P4: no bubble at the top')); return }
+      const oldTop = anchor.getBoundingClientRect().top, before = count(), deadline = performance.now() + 5000
+      while (count() <= before) {
+        if (performance.now() > deadline) { reject(new Error('P4: no earlier page loaded')); return }
+        await frame()
+      }
+      await frame(); await frame()
+      resolve(Math.abs(anchor.getBoundingClientRect().top - oldTop))
+    })()
+  }))
+}
