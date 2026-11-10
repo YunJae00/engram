@@ -46,10 +46,11 @@ it('keeps a bounded origin-only website history per comet without overwriting co
 describe('bots — named colleagues with charters and their own conversations', () => {
   it('created, listed, deleted', async () => {
     const paths = await initVault(await tmpVaultRoot('bots-crud'), { git: false })
+    await createBot(paths, { name: 'Lead' })
     const bot = await createBot(paths, { name: 'Release keeper', purpose: 'Tracks release decisions.' })
-    expect((await loadBots(paths)).map((b) => b.name)).toEqual(['Release keeper'])
+    expect((await loadBots(paths)).map((b) => b.name)).toEqual(['Lead', 'Release keeper'])
     await deleteBot(paths, bot.id)
-    expect(await loadBots(paths)).toEqual([])
+    expect((await loadBots(paths)).map((b) => b.name)).toEqual(['Lead'])
   })
 
   it('a bot needs a name and nothing more; its first words can name it later', async () => {
@@ -330,14 +331,18 @@ describe('bot v2 fields', () => {
     expect(await bytes()).toEqual(before)
     await updateBot(paths, a.id, { primary: false })
     expect(await primaries()).toEqual(['B'])
+    const held = await bytes()
+    await expect(deleteBot(paths, b.id)).rejects.toThrow(/primary/)
+    expect(await bytes()).toEqual(held)
+    await updateBot(paths, a.id, { primary: true })
     await deleteBot(paths, b.id)
     expect(await primaries()).toEqual(['A'])
     await deleteBot(paths, c.id)
     expect(await primaries()).toEqual(['A'])
-    await deleteBot(paths, a.id)
+    await expect(deleteBot(paths, a.id)).rejects.toThrow(/primary/)
     const left = await stored()
-    expect(left).toMatchObject({ extra: 1, bots: [{ name: 'malformed' }] })
-    expect(await loadBots(paths)).toEqual([])
+    expect(left).toMatchObject({ extra: 1, bots: [{ name: 'malformed' }, { name: 'A', primary: true }] })
+    expect((await loadBots(paths)).map((x) => x.name)).toEqual(['A'])
 
     const fresh = await setup('bots-v2-primary-race')
     const [x, y, z] = [await createBot(fresh.paths, { name: 'X' }), await createBot(fresh.paths, { name: 'Y' }), await createBot(fresh.paths, { name: 'Z' })]

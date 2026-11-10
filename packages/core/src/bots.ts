@@ -255,13 +255,13 @@ export async function renameBot(paths: VaultPaths, id: string, name: string): Pr
   })
 }
 
-export async function deleteBot(paths: VaultPaths, id: string): Promise<void> {
-  await mutateBots(paths, (bots) => {
-    const at = bots.findIndex((b) => b.id === id)
-    if (at < 0) return
-    const [gone] = bots.splice(at, 1)
-    // Interim: the primary may still be deleted, so the first survivor takes it in the same write.
-    if (gone!.primary && bots[0]) bots[0].primary = true
+export async function deleteBot(paths: VaultPaths, id: string, opts: { undoCreate?: Bot } = {}): Promise<void> {
+  await serialized(paths, async () => {
+    const stored = await readForWrite(paths), same = stored.bots.filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null && (b as Bot).id === id)
+    if (same.length === 0) return
+    const [undo, one] = [opts.undoCreate, same[0]], undoing = !!undo && same.length === 1 && one!.createdAt === undo.createdAt && one!.updatedAt === undo.updatedAt && Object.keys(one!).every((k) => ['id', 'name', 'purpose', 'createdAt', 'updatedAt', 'primary'].includes(k))
+    if (same.some((b) => b.primary === true) && !undoing) throw new Error('the primary comet cannot be deleted; make another comet primary first')
+    await writeBotsFile(paths, { ...stored.raw, bots: stored.bots.filter((b) => !same.includes(b as Record<string, unknown>)), dismissed: stored.dismissed })
   })
   // Its memory of the person goes with it; the transcript stays on disk until a vault reset.
   await forgetBotMemory(paths, id)

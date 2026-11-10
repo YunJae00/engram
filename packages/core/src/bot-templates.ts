@@ -102,7 +102,7 @@ export function importTemplate(paths: VaultPaths, template: unknown): Promise<Bo
   const run = importQueue.then(async () => {
     const bot = await createBot(paths, { name: checked.name, purpose: checked.purpose }, await freeCreationTime(paths))
     try { return await updateBot(paths, bot.id, checked.patch) } catch (cause) {
-      await deleteBot(paths, bot.id).catch(() => undefined)
+      await deleteBot(paths, bot.id, { undoCreate: bot }).catch(() => undefined)
       throw cause
     }
   })
