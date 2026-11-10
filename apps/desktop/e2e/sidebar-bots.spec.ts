@@ -55,7 +55,7 @@ test.describe.serial('sidebar bots', () => {
     await page.locator('button[aria-label="Options for Budget review"]').click()
     const menu = page.locator('[role="dialog"][aria-label="Options for Budget review"]')
     await expect(menu).toBeVisible()
-    await expect(menu.getByRole('button')).toHaveText(['Rename', 'Pin', 'Delete'])
+    await expect(menu.getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to Home', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
     await page.keyboard.press('Escape')
     await expect(menu).toHaveCount(0)
   })

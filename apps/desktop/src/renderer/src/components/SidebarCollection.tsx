@@ -1,11 +1,12 @@
-import { ChevronDown, EyeOff, Folder, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff, Folder, FolderInput, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, Star, Trash2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/types.js'
+import type { BotDto, SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/types.js'
+import { botMenuItems, type BotMenuRun } from '../lib/sidebarBots.js'
 import { SidebarDisclosure } from './SidebarDisclosure.js'
 import { DeleteConversationDialog } from './DeleteConversationDialog.js'
 
-interface Item { id: string; name: string; active?: boolean; recency?: number; leading?: ReactNode; content?: ReactNode }
+interface Item { id: string; name: string; active?: boolean; recency?: number; leading?: ReactNode; content?: ReactNode; bot?: BotDto }
 interface Props {
   kind: SidebarKind; items: Item[]; layout: SidebarLayout[SidebarKind]; newFolder: number
   onChange(change: SidebarChange['change']): Promise<void>
@@ -13,14 +14,19 @@ interface Props {
   onError(message: string): void
   /** Bot-list mode: a tree with loose pinned rows first and these hidden rows in a closed group last. */
   hidden?: Item[]; search?: boolean
+  /** Bot rows: every section (unfiltered by search) and the bot writes their menu dispatches. */
+  sections?: readonly { id: string; name: string }[]
+  onBotUpdate?(id: string, patch: { hidden?: true; primary?: true }): Promise<void>
+  onNewSection?(id: string, name: string): Promise<void>
 }
 const MIME = 'application/x-engram-sidebar'
 type Entry = { type: 'folder' | 'item'; id: string }
+const BOT_ICONS: Record<string, typeof Pin> = { Rename: Pencil, Pin, Unpin: PinOff, 'Move to new section': FolderPlus, 'Hide from sidebar': EyeOff, Show: Eye, 'Make primary': Star, Delete: Trash2 }
 
-export function SidebarCollection({ kind, items, layout, newFolder, onChange, onOpen, onRename, onRemove, onError, hidden, search = false }: Props) {
+export function SidebarCollection({ kind, items, layout, newFolder, onChange, onOpen, onRename, onRemove, onError, hidden, search = false, sections = [], onBotUpdate, onNewSection }: Props) {
   const tree = hidden !== undefined
   const [showHidden, setShowHidden] = useState(false)
-  const [editing, setEditing] = useState<{ type: 'folder' | 'item' | 'new'; id: string; name: string } | null>(null)
+  const [editing, setEditing] = useState<{ type: 'folder' | 'item' | 'new'; id: string; name: string; target?: string } | null>(null)
   const [menu, setMenu] = useState<Entry | null>(null)
   const [deleting, setDeleting] = useState<{ entry: Entry; name: string; ids: string[] } | null>(null)
   const [over, setOver] = useState<string | null>(null)
@@ -69,7 +75,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     if (!editing || renaming.current) return
     renaming.current = true
     const entry = editing; setEditing(null)
-    if (entry.name.trim()) await attempt(() => entry.type === 'item' ? onRename(entry.id, entry.name.trim()) : onChange(entry.type === 'new' ? { action: 'create-folder', name: entry.name } : { action: 'rename-folder', id: entry.id, name: entry.name }))
+    if (entry.name.trim()) await attempt(() => entry.type === 'item' ? onRename(entry.id, entry.name.trim()) : entry.target && onNewSection ? onNewSection(entry.target, entry.name.trim()) : onChange(entry.type === 'new' ? { action: 'create-folder', name: entry.name } : { action: 'rename-folder', id: entry.id, name: entry.name }))
     renaming.current = false
   }
   const input = () => <input className="sidebar-rename" autoFocus maxLength={80} aria-label={editing?.type === 'new' ? 'Folder name' : 'Rename'} data-testid={editing?.type === 'item' ? `sidebar-${kind}-name-${editing.id}` : `sidebar-${kind}-folder-name`} value={editing?.name ?? ''}
@@ -100,7 +106,29 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     // Pinned rows keep their manual order; unpinned rows follow the latest activity.
     .sort((a, b) => kind === 'chat' ? Number(!!b.pinned) - Number(!!a.pinned) || (a.pinned ? 0 : (byId.get(b.id)?.recency ?? 0) - (byId.get(a.id)?.recency ?? 0)) : 0)
     .flatMap(one => { const item = byId.get(one.id); return item ? [{ ...item, pinned: kind === 'chat' && !!one.pinned }] : [] })
-  const controls = (entry: Entry, name: string, pinned = false) => <>
+  const openMenu = (row: HTMLElement, entry: Entry) => {
+    const more = row.closest('li')?.querySelector<HTMLButtonElement>('.sidebar-more')
+    if (!more) return
+    menuAnchor.current = more; setMenu(entry)
+  }
+  const runBot = (item: Item, run: BotMenuRun) => {
+    setMenu(null)
+    if (run.kind === 'rename') setEditing({ type: 'item', id: item.id, name: item.name })
+    else if (run.kind === 'new-section') setEditing({ type: 'new', id: '', name: '', target: item.id })
+    else if (run.kind === 'delete') setDeleting({ entry: { type: 'item', id: item.id }, name: item.name, ids: [] })
+    else {
+      menuAnchor.current?.focus()
+      void attempt(async () => { if (run.kind === 'layout') await onChange(run.change); else await onBotUpdate?.(item.id, run.patch) })
+    }
+  }
+  const botActions = (item: Item) => {
+    const place = layout.items.find(one => one.id === item.id)
+    return item.bot && botMenuItems(item.bot, { folder: place?.folder ?? null, pinned: !!place?.pinned }, sections).map(({ label, run }) => {
+      const Icon = BOT_ICONS[label] ?? FolderInput
+      return <button key={label} disabled={saving && run.kind !== 'rename'} data-testid={run.kind === 'rename' ? `sidebar-${kind}-rename-${item.id}` : undefined} onClick={() => runBot(item, run)}><Icon size={13} aria-hidden /><span className="sidebar-menu-label" title={label}>{label}</span></button>
+    })
+  }
+  const controls = (entry: Entry, name: string, pinned = false, item?: Item) => <>
     <div className="sidebar-row-actions">
       <button className="sidebar-more" aria-label={`Options for ${name}`} aria-haspopup="dialog" aria-expanded={menu?.id === entry.id} data-testid={entry.type === 'item' ? `sidebar-${kind}-menu-${entry.id}` : undefined} onClick={event => { menuAnchor.current = event.currentTarget; setMenu(current => current?.id === entry.id ? null : entry) }}><MoreHorizontal size={15} aria-hidden /></button>
       {pinned && <span className="sidebar-pin" role="img" aria-label="Pinned conversation" title="Pinned conversation"><Pin size={12} aria-hidden /></span>}
@@ -114,11 +142,12 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
       const at = buttons.indexOf(document.activeElement as HTMLButtonElement)
       buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (at + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus()
     }}>
+      {item?.bot ? botActions(item) : <>
       <button data-testid={entry.type === 'item' ? `sidebar-${kind}-rename-${entry.id}` : undefined} onClick={() => { setEditing({ ...entry, name }); setMenu(null) }}><Pencil size={13} aria-hidden />Rename</button>
       {entry.type === 'item' && kind === 'chat' && <button disabled={saving} onClick={() => { void attempt(() => onChange({ action: 'pin-item', id: entry.id, pinned: !pinned })); setMenu(null); menuAnchor.current?.focus() }}>{pinned ? <PinOff size={13} aria-hidden /> : <Pin size={13} aria-hidden />}{pinned ? 'Unpin' : 'Pin'}</button>}
       <button disabled={saving} onClick={() => {
         setDeleting({ entry, name, ids: layout.items.filter(item => item.folder === entry.id).map(item => item.id) }); setMenu(null)
-      }}><Trash2 size={13} aria-hidden />Delete</button>
+      }}><Trash2 size={13} aria-hidden />Delete</button></>}
     </div>, document.body)}
   </>
   const rows = (folder: string | null, only?: boolean, fixed?: Item[]) => {
@@ -139,9 +168,9 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     }}
     onDrop={event => {
       if (!fixed) drop(event, folder, beforeAt(event, index))
-    }}>
-    {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ' sidebar-routine-row'}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
-    {controls({ type: 'item', id: item.id }, item.name, item.pinned)}
+    }} onContextMenu={item.bot ? event => { event.preventDefault(); openMenu(event.currentTarget, { type: 'item', id: item.id }) } : undefined}>
+    {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ' sidebar-routine-row'}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)} onKeyDown={item.bot ? event => { if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') { event.preventDefault(); openMenu(event.currentTarget, { type: 'item', id: item.id }) } } : undefined}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
+    {controls({ type: 'item', id: item.id }, item.name, item.pinned, item)}
   </li>)}</ul>
   }
   const folders = layout.folders.map(one => <div className={`sidebar-folder${over === one.id ? ' sidebar-drop-target' : ''}`} key={one.id} data-testid={`sidebar-folder-${one.id}`}>
@@ -153,7 +182,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     </div>)
   const hiddenOpen = search || showHidden
   return <div className={`sidebar-collection${dragging ? ' dragging' : ''}`} data-testid={`sidebar-${kind}-collection`} aria-busy={saving} onDragEnd={() => { setDragging(false); setInsertion(null) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { setOver(null); setInsertion(null) } }}>
-    {deleting && <DeleteConversationDialog kind={kind} name={deleting.name} count={deleting.entry.type === 'folder' ? deleting.ids.length : undefined} onClose={() => { setDeleting(null); menuAnchor.current?.focus() }} onDelete={async contents => {
+    {deleting && <DeleteConversationDialog kind={kind} name={deleting.name} summaryId={deleting.entry.type === 'item' && kind === 'chat' ? deleting.entry.id : undefined} count={deleting.entry.type === 'folder' ? deleting.ids.length : undefined} onClose={() => { setDeleting(null); menuAnchor.current?.focus() }} onDelete={async contents => {
       if (deleting.entry.type === 'item') await onRemove(deleting.entry.id)
       else {
         if (contents) for (const id of deleting.ids) await onRemove(id)

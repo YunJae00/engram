@@ -150,6 +150,7 @@ import { botPreviews, botSearch, botConversations, botUpdate } from './bot-previ
 import { botAvatarImage, clearBotAvatarImage, setBotAvatarImage } from './bot-avatar.js'
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList } from './bot-templates-ipc.js'
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
+import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
@@ -1338,6 +1339,7 @@ export function registerIpc(ctx: VaultContext): void {
     void (message.startsWith('/') ? sendChat(request) : tasks.chat(request)).catch(error => flog('quick-comet', error))
     return bot.id
   })
+  ipcMain.handle('bots:deleteSummary', (_e, id: unknown) => deleteSummary(paths, id as string))
   ipcMain.handle('bots:delete', async (_e, id: string) => {
     abortAllChat(`bot-${id}`)
     await tasks.stopChannel(`bot-${id}`)

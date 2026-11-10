@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BotDto } from '../src/shared/types.js'
-import { groupSidebarBots, matchesSidebarSearch } from '../src/renderer/src/lib/sidebarBots.js'
+import { botMenuItems, groupSidebarBots, matchesSidebarSearch } from '../src/renderer/src/lib/sidebarBots.js'
 
 const bot = (id: string, extra: Partial<BotDto> = {}): BotDto => ({ id, name: `Bot ${id}`, purpose: `purpose ${id}`, createdAt: '2026-01-01T00:00:00.000Z', ...extra })
 
@@ -33,5 +33,32 @@ describe('sidebar bots', () => {
     expect(matchesSidebarSearch(one, 'zebra', new Set(['x']))).toBe(true)
     expect(matchesSidebarSearch(one, 'zebra', new Set(['y']))).toBe(false)
     expect(matchesSidebarSearch(bot('plain'), 'seasonal', none)).toBe(false)
+  })
+
+  it('menu actions map to bots:update/sidebar:change', () => {
+    const folders = [{ id: 'fa', name: 'Section A' }, { id: 'fb', name: 'Section B' }]
+    const listed = botMenuItems(bot('b'), { folder: 'fb', pinned: false }, folders)
+    expect(listed.map(item => item.label)).toEqual(['Rename', 'Pin', 'Move to Section A', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+    expect(listed.map(item => item.run)).toEqual([
+      { kind: 'rename' },
+      { kind: 'layout', change: { action: 'pin-item', id: 'b', pinned: true } },
+      { kind: 'layout', change: { action: 'move-item', id: 'b', folder: 'fa' } },
+      { kind: 'new-section' },
+      { kind: 'update', patch: { hidden: true } },
+      { kind: 'update', patch: { primary: true } },
+      { kind: 'delete' },
+    ])
+    const loose = botMenuItems(bot('p'), { folder: null, pinned: true }, folders)
+    expect(loose.map(item => item.label)).toEqual(['Rename', 'Unpin', 'Move to Section A', 'Move to Section B', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+    expect(loose[1].run).toEqual({ kind: 'layout', change: { action: 'pin-item', id: 'p', pinned: false } })
+    const hidden = botMenuItems(bot('h', { hidden: true }), { folder: null, pinned: false }, folders)
+    expect(hidden.map(item => item.label)).toEqual(['Rename', 'Show', 'Make primary', 'Delete'])
+    const show = hidden[1].run
+    if (show.kind !== 'update') throw new Error('Show is not an update')
+    expect(Object.keys(show.patch)).toEqual(['hidden'])
+    expect(Object.hasOwn(show.patch, 'hidden') && show.patch.hidden === undefined).toBe(true)
+    expect(botMenuItems(bot('m', { primary: true }), { folder: null, pinned: false }, folders)).toEqual([])
+    expect(botMenuItems(bot('mh', { primary: true, hidden: true }), { folder: null, pinned: false }, folders)).toEqual([])
+    for (const item of [...listed, ...loose, ...hidden]) if (item.run.kind === 'update') expect(Object.keys(item.run.patch)).toHaveLength(1)
   })
 })

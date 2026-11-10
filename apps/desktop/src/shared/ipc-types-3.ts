@@ -78,6 +78,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
+  botDeleteSummary(id: string): Promise<{ routines: number; facts: number; archivedChats: number }>
   botTranscript(id: string): Promise<BotTurnDto[]>
   botTranscriptPage(id: string, before: number, limit?: number): Promise<BotTurnDto[]>
   botArchivedTranscript(id: string, stamp: string, before?: number, limit?: number): Promise<BotTurnDto[]>

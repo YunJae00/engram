@@ -202,7 +202,7 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   expect(alignment.heights).toBeLessThan(1)
 
   await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
-  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Pin', 'Delete'])
+  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
   await page.getByTestId(`sidebar-chat-rename-${bot.id}`).click()
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).fill('Field Scout')
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).press('Enter')

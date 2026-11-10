@@ -83,7 +83,15 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   }, [vaultReady, library])
   useEffect(() => { setQuery('') }, [library])
   const navigate = (next: 'bots' | 'developers' | 'sky' | 'list' | 'mission') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
-  const change = async (kind: SidebarKind, change: SidebarChange['change']) => { setLayout(await api.sidebarChange({ kind, change })) }
+  const change = async (kind: SidebarKind, change: SidebarChange['change']) => { const next = await api.sidebarChange({ kind, change }); setLayout(next); return next }
+  const updateBot = async (id: string, patch: { hidden?: true; primary?: true }) => { await api.botUpdate(id, patch); await reload() }
+  // The new section is the one folder id the create call added; names can repeat, so never look it up by name.
+  const newSection = async (id: string, name: string) => {
+    const before = new Set((await api.sidebarLayout('chat')).chat.folders.map(folder => folder.id))
+    const added = (await change('chat', { action: 'create-folder', name })).chat.folders.filter(folder => !before.has(folder.id))
+    if (added.length !== 1 || !added[0]) throw new Error('Could not tell which section was created; the bot was not moved.')
+    await change('chat', { action: 'move-item', id, folder: added[0].id })
+  }
   const rename = async (kind: SidebarKind, id: string, name: string) => { if (kind === 'chat') await api.botRename(id, name); else await api.routineRename(id, name); await reload() }
   const remove = async (kind: SidebarKind, id: string) => { if (kind === 'chat') { await api.botDelete(id); cometThreads.forget(id) } else await api.routineRemove(id); await reload() }
   const newFolder = (kind: SidebarKind) => setCreating(current => ({ ...current, [kind]: current[kind] + 1 }))
@@ -99,7 +107,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} /> })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
@@ -107,10 +115,10 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const routineIds = new Set(matchingRoutines.map(routine => routine.id))
   const routineLayout = search && layout ? { ...layout.routine, folders: layout.routine.folders.filter(folder => layout.routine.items.some(item => item.folder === folder.id && routineIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.routine
   const collection = (kind: SidebarKind) => <SidebarCollection key={kind} kind={kind} newFolder={creating[kind]}
-    {...kind === 'chat' ? { hidden: matchingHidden.map(botItem), search: !!search } : {}}
+    {...kind === 'chat' ? { hidden: matchingHidden.map(botItem), search: !!search, sections: layout?.chat.folders ?? [], onBotUpdate: updateBot, onNewSection: newSection } : {}}
     items={kind === 'chat' ? matchingBots.map(botItem) : matchingRoutines.map(routine => ({ ...routine, active: routine.id === selectedRoutineId, content: <><span className="sidebar-routine-icon"><Repeat2 size={17} strokeWidth={1.6} aria-hidden /></span><span className="sidebar-routine-copy"><strong>{routine.name}</strong><small>{routine.task ? routine.task.surface === 'web' ? 'Browser task' : 'Comet task' : `${routine.steps.length} steps`}{routine.lastOutcome && ` · ${routine.lastOutcome === 'done' ? 'Last run completed' : routine.lastOutcome === 'aborted' ? 'Paused' : 'Needs attention'}`}</small></span></> }))}
     layout={(kind === 'chat' ? matchingLayout : routineLayout) ?? { folders: [], items: (kind === 'chat' ? listed : routines).map(one => ({ id: one.id, folder: null })) }}
-    onChange={changeValue => change(kind, changeValue)} onRename={(id, name) => rename(kind, id, name)} onRemove={id => remove(kind, id)} onError={showToast}
+    onChange={async changeValue => { await change(kind, changeValue) }} onRename={(id, name) => rename(kind, id, name)} onRemove={id => remove(kind, id)} onError={showToast}
     onOpen={id => { if (kind === 'chat') openBot(id); else { onSelectRoutine(id); if (window.innerWidth <= 900) onToggle() } }} />
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
     <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>

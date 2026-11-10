@@ -31,7 +31,10 @@
 .sidebar-folder-head .sidebar-item-main { gap: 6px; }
 .sidebar-item-main > .site-icon { margin-right: 8px; }
 .sidebar-folder-head .sidebar-item-main > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-organize-menu { position: fixed; right: auto; width: 192px; max-height: calc(100vh - 16px); overflow-y: auto; z-index: 300; }
+.sidebar-organize-menu { position: fixed; right: auto; width: 192px; max-height: calc(100vh - 16px); overflow-y: auto; z-index: 300; border-radius: 12px; }
+.sidebar-organize-menu > button { flex: none; box-sizing: border-box; height: 32px; min-height: 32px; }
+.sidebar-organize-menu > button > svg { flex: none; }
+.sidebar-organize-menu .sidebar-menu-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-folder-head .sidebar-item-main > svg { flex: none; }
 .sidebar-folder-head .sidebar-item-main > svg:first-child { transition: transform 180ms ease; }
 .sidebar-folder-head .folded { transform: rotate(-90deg); }
@@ -224,3 +227,4 @@
 @keyframes first-setup-sheen { from { background-position: -100% 0; } to { background-position: 200% 0; } }
 .shell.arriving { animation: fade-in 420ms var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .first-setup-screen, .first-setup-screen.leaving, .onboard-card.first-setup, .first-setup-mark > svg, .first-setup-step, .first-setup-pause, .first-setup-bar > span::after, .shell.arriving { animation: none; } }
+.delete-conversation-dialog .delete-summary { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
