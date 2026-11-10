@@ -173,6 +173,10 @@ const api: EngramApi = {
   botArchivedTranscript: (id, stamp, before, limit) => ipcRenderer.invoke('bots:archivedTranscript', id, stamp, before, limit),
   botUpdate: (id, patch) => ipcRenderer.invoke('bots:update', id, patch),
   botConversations: (id) => ipcRenderer.invoke('bots:conversations', id),
+  botTemplates: () => ipcRenderer.invoke('bots:templates'),
+  botCreateFromTemplate: (templateId, options) => ipcRenderer.invoke('bots:createFromTemplate', templateId, options),
+  botExportTemplate: (id) => ipcRenderer.invoke('bots:exportTemplate', id),
+  botImportTemplate: () => ipcRenderer.invoke('bots:importTemplate'),
   botTaskAdd: (botId: string, input: { name: string; goal: string; schedule?: { days: number[]; hour: number; minute: number }; routineId?: string }) =>
     ipcRenderer.invoke('bots:taskAdd', botId, input),
   botStandingDecline: (botId: string, goal: string) => ipcRenderer.invoke('bots:standingDecline', botId, goal),

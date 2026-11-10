@@ -146,6 +146,7 @@ import { notificationsTool } from './notification-watch.js'
 import { flog } from './flog.js'
 import { siteIcon } from './site-icons.js'
 import { botPreviews, botSearch, botConversations, botUpdate } from './bot-previews.js'
+import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList } from './bot-templates-ipc.js'
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
@@ -201,7 +202,7 @@ import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSou
 import { routineDriver } from './routine-driver.js'
 import { routineRecovery, startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
-import { app, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { open, readdir, readFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -1351,6 +1352,28 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:archivedTranscript', (_e, id: unknown, stamp: unknown, before: unknown, limit: unknown) => readArchivedTranscript(paths, id, stamp, before, limit))
   ipcMain.handle('bots:update', (_e, id: unknown, patch: unknown) => botUpdate(paths, id, patch, () => broadcast({ type: 'bots:changed' })))
   ipcMain.handle('bots:conversations', (_e, id: unknown) => botConversations(paths, id))
+  const templateCreated = async (bot: { id: string }) => {
+    await rememberSelections([`bot-${bot.id}`])
+    broadcast({ type: 'bots:changed' })
+  }
+  const templateFilters = [{ name: 'JSON', extensions: ['json'] }]
+  ipcMain.handle('bots:templates', () => templateList())
+  ipcMain.handle('bots:createFromTemplate', (_e, templateId: unknown, options: unknown) => createFromTemplate(paths, templateId, options, templateCreated))
+  ipcMain.handle('bots:exportTemplate', async (event, id: unknown) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options = { defaultPath: 'template.json', filters: templateFilters }
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    await exportTemplateTo(paths, id, result.filePath)
+    return result.filePath
+  })
+  ipcMain.handle('bots:importTemplate', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options = { properties: ['openFile' as const], filters: templateFilters }
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return importTemplateFrom(paths, result.filePaths[0], templateCreated)
+  })
   // A routine kept or removed shows up wherever routines are listed - the
   // rail as much as the comet's own row - so both say so.
   ipcMain.handle('bots:taskAdd', async (_e, botId: string, input: { name: string; goal: string; schedule?: Schedule; routineId?: string }) => {

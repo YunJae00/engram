@@ -83,6 +83,10 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botArchivedTranscript(id: string, stamp: string, before?: number, limit?: number): Promise<BotTurnDto[]>
   botUpdate(id: string, patch: Partial<Pick<BotDto, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }): Promise<BotDto>
   botConversations(id: string): Promise<BotConversationDto[]>
+  botTemplates(): Promise<BotTemplateDto[]>
+  botCreateFromTemplate(templateId: string, options?: { name?: string }): Promise<BotDto>
+  botExportTemplate(id: string): Promise<string | null>
+  botImportTemplate(): Promise<BotDto | null>
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
   botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>
@@ -300,3 +304,5 @@ export interface InstalledBrowserDto {
   path: string
   chosen: boolean
 }
+
+export interface BotTemplateDto { id: string; name: string; purpose: string; label?: string; avatar?: { body: number; face: number; accessory: number; palette: number }; skills?: string[] }
