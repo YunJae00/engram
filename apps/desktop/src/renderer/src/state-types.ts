@@ -96,7 +96,8 @@ export interface AppState {
     force?: boolean,
     slots?: Record<string, string>,
   ): Promise<{ ok: boolean; error?: string; blocked?: RoutineBlockDto; botId?: string }>
-  toast: string | null
+  toast: { id: number; message: string } | null
   showToast(message: string): void
+  hideToast(): void
   t: Translate
 }

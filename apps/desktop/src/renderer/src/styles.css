@@ -2028,20 +2028,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .github-error .setting-hint { color: var(--fg-dim); }
 
 /* ── Toast ────────────────────────────────────────────────────── */
-/* Keep transient notices clear of the composer and connection controls. */
-.toast {
-  position: fixed; top: calc(anchor(--status-banner bottom, 44px) + 8px); right: 16px;
-  max-width: min(32rem, calc(100vw - 32px));
-  pointer-events: none;
-  background: color-mix(in srgb, var(--widget-bg) 92%, transparent);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  color: var(--fg);
-  border: none;
-  border-radius: var(--radius-card); padding: 10px 16px; z-index: 200; font-size: var(--fs-body);
-  box-shadow: var(--shadow-float);
-  animation: slide-in 150ms ease-out;
-}
-@keyframes slide-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Workspace switcher (top-bar vault selector) ─────────────── */
 .workspace-switcher { position: relative; flex: none; -webkit-app-region: no-drag; }

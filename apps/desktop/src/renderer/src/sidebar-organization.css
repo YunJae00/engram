@@ -1,6 +1,6 @@
 .sidebar-collection { position: relative; min-width: 0; }
 .sidebar-library-tools { display: flex; align-items: center; gap: 8px; margin: 12px; }
-.sidebar-section.sidebar-conversations { margin-top: 0; }
+.sidebar-section.sidebar-conversations { margin: 0 -4px; padding: 0 4px; }
 .sidebar-library-tools .sidebar-search { flex: 1; min-width: 0; margin: 0; border-radius: 999px; }
 .sidebar-create { border-radius: 50% !important; border: 1px solid var(--border-soft); }
 .sidebar-create-menu { position: fixed; margin: 0; width: 200px; padding: 5px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); }

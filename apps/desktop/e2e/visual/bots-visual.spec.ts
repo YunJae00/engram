@@ -67,14 +67,14 @@ test.describe('visual', () => {
     }
   })
 
-  const capture = async (state: StateName, show: (page: Page, theme: Theme) => Promise<void>) => {
+  const capture = async (state: StateName, show: (page: Page, theme: Theme, app: ElectronApplication) => Promise<void>) => {
     await mkdir(OUT, { recursive: true })
     for (const theme of THEMES) for (const ext of ['png', 'metrics.json']) await rm(join(OUT, `${state}-${theme}.${ext}`), { force: true })
     for (const theme of THEMES) {
       const { app, dirs } = await launch(theme)
       try {
         const page = await prepare(app)
-        await show(page, theme)
+        await show(page, theme, app)
         await page.evaluate(() => document.fonts.ready.then(() => undefined))
         const rows = await measureState(page, state)
         await page.screenshot({ path: join(OUT, `${state}-${theme}.png`), caret: 'hide', animations: 'disabled', scale: 'css' })
@@ -98,7 +98,19 @@ test.describe('visual', () => {
     await capture('avatar-gallery', async (page, theme) => { await page.setContent(await galleryHtml(theme)) })
   })
 
-  for (const state of ['info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
+  test('toast', async () => {
+    await capture('toast', async (page, _theme, app) => {
+      await app.evaluate(({ BrowserWindow }) => {
+        for (const w of BrowserWindow.getAllWindows()) w.webContents.send('engram:event', { type: 'task:notice', message: 'Visual toast' })
+      })
+      const toast = page.locator('.toast')
+      await expect(toast).toBeVisible()
+      const box = await toast.boundingBox()
+      if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    })
+  })
+
+  for (const state of ['info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
     test.fixme(state, () => undefined)
   }
 })

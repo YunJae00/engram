@@ -86,7 +86,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [routineWall, setRoutineWall] = useState<AppState['routineWall']>(null)
   const [routineSubmit, setRoutineSubmit] = useState<AppState['routineSubmit']>(null)
   const [pressAsks, setPressAsks] = useState<AppState['pressAsks']>([])
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<AppState['toast']>(null)
+  const toastId = useRef(0)
   // Fire the "absorbed" toast once per absorbing session, on the pending→0 edge.
   const wasAbsorbing = useRef(false)
   // After a run finishes (pending→0) the 43/43·100% bar lingers as a completion
@@ -181,9 +182,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme])
 
   const showToast = useCallback((message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(null), 2500)
+    toastId.current += 1
+    setToast({ id: toastId.current, message })
   }, [])
+  const hideToast = useCallback(() => setToast(null), [])
 
   // Keep the freshest t/showToast for the long-lived event handler below so the
   // absorbed toast follows the active language without re-subscribing.
@@ -335,9 +337,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startRoutine,
       toast,
       showToast,
+      hideToast,
       t,
     }),
-    [activity, theme, vaultReady, vaultError, enginesDetected, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, openNote, closeNote, reviewOpen, openReview, closeReview, inboxOpen, openInbox, closeInbox, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, pressAsks, answerPressAsk, startRoutine, toast, showToast],
+    [activity, theme, vaultReady, vaultError, enginesDetected, fabric, notes, cards, inbox, engines, refresh, sheetNoteId, openNote, closeNote, reviewOpen, openReview, closeReview, inboxOpen, openInbox, closeInbox, selectedCardId, sweepStatus, filing, absorb, pendingWork, sweepJob, sweepStartedAt, runSweep, errand, errandWall, answerErrandWall, startErrand, routine, routineWall, answerRoutineWall, routineSubmit, answerRoutineSubmit, pressAsks, answerPressAsk, startRoutine, toast, showToast, hideToast],
   )
 
   return (

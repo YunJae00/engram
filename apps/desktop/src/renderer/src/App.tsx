@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { api } from './api.js'
-import { AppNotices } from './components/AppNotices.js'
+import { AppNotices, Toast, useToastDismiss } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
 import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
@@ -47,6 +47,7 @@ const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) =
 
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
+  const hideToast = useToastDismiss()
   const { startRoutine } = useCometState()
   const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
   const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers'))
@@ -346,7 +347,7 @@ function Shell() {
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
         {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>
-      {toast && <div className="toast" role="status">{toast}</div>}
+      {toast && <Toast key={toast.id} message={toast.message} onDone={hideToast} />}
       <ComputerStatus />
     </div>
   )

@@ -291,7 +291,20 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
       return [near('title pill height', PILL, h(pill), 36, 2), ...size('title pill avatar', `${PILL} .bot-avatar`, av, 20, 1),
         near('title pill center offset', PILL, main && pill ? pill.centerX - main.centerX : null, 0, 4, 'body center ±4')]
     }
-    case 14: return STATE_DEFERRED(14, 'toast', 'deferred: toast state is fixme')
+    case 14: {
+      const T = '.toast', ICON = '.toast .toast-icon', TITLE = '.toast .toast-title', CLOSE = '.toast .toast-close'
+      const toast = await q(T), icon = await q(ICON), title = await q(TITLE)
+      const box = await page.evaluate(({ t, c }) => {
+        const el = document.querySelector<HTMLElement>(t), close = document.querySelector<HTMLElement>(c)
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { top: r.top, right: document.documentElement.clientWidth - r.right, pe: getComputedStyle(el).pointerEvents, closePe: close ? getComputedStyle(close).pointerEvents : null }
+      }, { t: T, c: CLOSE })
+      return [near('toast width', T, w(toast), 340, 8), near('toast top', T, box?.top ?? null, 16, 2), near('toast right', T, box?.right ?? null, 16, 2),
+        near('toast radius', T, radius(toast), 18, 0), ...size('toast icon tile', ICON, icon, 32, 1), near('toast icon tile radius', ICON, radius(icon), 8, 0),
+        near('toast title font-size', TITLE, pxOf(st(title, 'fontSize')), 14, 0), near('toast title font-weight', TITLE, numOf(st(title, 'fontWeight')), 600, 0),
+        equals('toast pointer-events', T, box?.pe ?? null, 'none'), equals('toast close pointer-events', CLOSE, box?.closePe ?? null, 'auto')]
+    }
     case 15: return STATE_DEFERRED(15, 'info pane', 'deferred: info pane state is fixme')
     case 16: return [
       atLeast('assistant text contrast', ASSISTANT, await textContrast(page, ASSISTANT), 4.5, '≥4.5:1'),

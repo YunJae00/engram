@@ -1,9 +1,9 @@
-import { Download, LoaderCircle, PlugZap } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { Bell, Download, LoaderCircle, PlugZap, X } from 'lucide-react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { AppSettingsDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import type { AppState } from '../state.js'
+import { useApp, type AppState } from '../state.js'
 
 interface AppNoticesProps {
   showAiNotices?: boolean
@@ -103,3 +103,61 @@ export const AppNotices = memo(function AppNotices({
     </div>
   )
 })
+
+const TOAST_MS = 6000, TOAST_EXIT_MS = 120
+
+export function useToastDismiss(): () => void {
+  return useApp().hideToast
+}
+
+export function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useRef<() => void>(() => undefined)
+  const [leaving, setLeaving] = useState(false)
+  // A toast that appears under a still pointer pauses on the first pointer move: the click-through surface cannot report :hover.
+  useEffect(() => {
+    let remaining = TOAST_MS, started = performance.now(), hovered = false, done = false
+    let timer: number | undefined = window.setTimeout(() => finish(), remaining), exit: number | undefined
+    const finish = () => {
+      if (done) return
+      done = true
+      window.clearTimeout(timer)
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return onDone()
+      setLeaving(true)
+      exit = window.setTimeout(onDone, TOAST_EXIT_MS)
+    }
+    const hover = (inside: boolean) => {
+      if (done || inside === hovered) return
+      hovered = inside
+      if (inside) {
+        window.clearTimeout(timer)
+        remaining -= performance.now() - started
+      } else {
+        started = performance.now()
+        timer = window.setTimeout(finish, remaining)
+      }
+    }
+    // The toast is click-through, so it never receives pointerenter itself.
+    const move = (e: PointerEvent) => {
+      const r = ref.current?.getBoundingClientRect()
+      hover(!!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom)
+    }
+    const out = (e: PointerEvent) => { if (e.relatedTarget === null) hover(false) }
+    close.current = finish
+    window.addEventListener('pointermove', move)
+    document.addEventListener('pointerout', out)
+    return () => {
+      window.clearTimeout(timer)
+      window.clearTimeout(exit)
+      window.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerout', out)
+    }
+  }, [onDone])
+  return (
+    <div ref={ref} className={leaving ? 'toast toast-leaving' : 'toast'} role="status">
+      <span className="toast-icon" aria-hidden="true"><Bell size={16} aria-hidden /></span>
+      <strong className="toast-title">{message}</strong>
+      <button type="button" className="toast-close" aria-label={t('topbar.close')} onClick={() => close.current()}><X size={14} aria-hidden /></button>
+    </div>
+  )
+}
