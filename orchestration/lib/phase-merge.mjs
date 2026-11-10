@@ -10,14 +10,30 @@ import { attemptRef, git, isCloud, note, prepareNext, readJsonOrNull, save, sh, 
 import { integrationBase, integrationCommands, integrationEnv, integrationTier, tierScenarios } from './tier.mjs'
 import { roleMinutes } from './timebox.mjs'
 
+const MERGE_TRIES = 3
+const MERGE_RETRY_MS = 15_000
+
 export async function mergeVerified(ctx, ledger) {
   for (const item of ledger.items.filter((i) => i.state === 'verified')) {
     const winner = item.attempts.find((a) => a.outcome === 'pass')
     if (isCloud(winner.implementer)) await fetchBranch(ctx.opts, winner.branch)
-    const worktree = await prepareNext(ctx)
+    let worktree
     try {
-      item.mergeSha = await squashMerge(ctx.opts, worktree, attemptRef(ctx, winner), item.title)
-      await push(ctx.opts, worktree, ctx.roles.baseBranch)
+      // A push can be rejected transiently (remote hiccup or a concurrent merge): retry on a fresh next.
+      for (let tryNo = 1; ; tryNo++) {
+        worktree = await prepareNext(ctx)
+        try {
+          item.mergeSha = await squashMerge(ctx.opts, worktree, attemptRef(ctx, winner), item.title)
+          await push(ctx.opts, worktree, ctx.roles.baseBranch)
+          break
+        } catch (error) {
+          if (tryNo >= MERGE_TRIES) throw error
+          delete item.mergeSha
+          await git(worktree, 'reset', '--hard').catch(() => '')
+          note(ctx, item.id, 'merge', 'retry', `merge try ${tryNo} failed, retrying: ${String(error.message).slice(0, 120)}`)
+          await sleep(MERGE_RETRY_MS * tryNo)
+        }
+      }
     } catch (error) {
       delete item.mergeSha
       await git(worktree, 'reset', '--hard').catch(() => '')
