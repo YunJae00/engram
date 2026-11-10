@@ -29,6 +29,8 @@
   --font: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK KR', 'Malgun Gothic', system-ui, sans-serif;
   --mono: 'SFMono-Regular', Consolas, 'Pretendard Variable', 'Malgun Gothic', monospace;
   --fs-chat: 15px;
+  --fs-meta: 13px;
+  --lh-chat: 22px;
   /* Shared geometry for controls, content surfaces and docked panels. */
   --radius-s: 8px;
   --radius-m: 12px;
@@ -36,6 +38,12 @@
   --radius-card: 16px;
   --radius-panel: 22px;
   --radius-composer: 22px;
+  --radius-bubble: 18px;
+  --radius-row: 10px;
+  --radius-menu: 12px;
+  --radius-toast: 18px;
+  --radius-pill: 999px;
+  --radius-badge: 6px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -47,7 +55,9 @@
   --toolbar-height: 44px;
   --section-height: 56px;
   --reading-width: 740px;
-  --composer-width: 820px;
+  --composer-width: 960px;
+  --bubble-max: 560px;
+  --info-pane-width: 320px;
   --dialog-gutter: var(--space-6);
   --control: 34px;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -64,10 +74,10 @@
   --panel-bg: #ffffff;
   --tab-inactive-bg: #ffffff;
   --tab-border: rgba(43, 43, 51, 0.16);
-  --fg: #2b2b33;
+  --fg: #1d1d1f;
   --fg-strong: #1c1c22;
-  --fg-dim: #606060;
-  --fg-faint: #747474;
+  --fg-dim: #606066;
+  --fg-faint: #6a6a6e;
   --border: rgba(43, 43, 51, 0.13);
   --border-soft: rgba(43, 43, 51, 0.08);
   --input-bg: #ffffff;
@@ -75,8 +85,10 @@
   --hover-bg: rgba(43, 43, 51, 0.05);
   /* Rails and docked panels: the page's white, barely tinted with the ink,
      so a sidebar reads as a surface without a line drawn around it. */
-  --rail-bg: #f6f6f6;
-  --selected-soft: rgba(0, 0, 0, 0.07);
+  --rail-bg: #f7f7f8;
+  --bubble-bg: #f2f2f3;
+  --selected-soft: #ebebed;
+  --accent-blue: #2563eb;
   --selected-bg: #2b2b33;
   --selected-fg: #ffffff;
   --accent: #242424;
@@ -121,17 +133,19 @@
   --panel-bg: #1c1c1c;
   --tab-inactive-bg: #242424;
   --tab-border: #3c3c3c;
-  --fg: #dedede;
+  --fg: #ececec;
   --fg-strong: #f5f5f5;
   --fg-dim: #b0b0b0;
-  --fg-faint: #909090;
+  --fg-faint: #969696;
   --border: #3c3c3c;
   --border-soft: #323232;
   --input-bg: #262626;
   --input-border: #444444;
   --hover-bg: #333333;
-  --rail-bg: #202020;
-  --selected-soft: #363636;
+  --rail-bg: #171717;
+  --bubble-bg: #2a2a2a;
+  --selected-soft: #2f2f2f;
+  --accent-blue: #4b8df8;
   --selected-bg: #eeeeee;
   --selected-fg: #1c1c1c;
   --accent: #eeeeee;
@@ -226,11 +240,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent-line); bo
 input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 
 .shell {
-  --sidebar-width: 300px;
+  --sidebar-width: 240px;
   position: relative; display: flex; flex-direction: row; height: 100%;
   background: var(--canvas-bg); overflow: hidden;
 }
 .shell.sidebar-closed { --sidebar-width: 0px; }
+.shell:has(.canvas-slot:not([hidden]) > .bots-view) { --sidebar-tint: none; }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .canvas { position: relative; display: flex; flex: 1; min-height: 0; background: var(--canvas-bg); }
 /* The slots wrap the kept-mounted views; the views fill them either way. */
@@ -324,7 +339,7 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
   transition: width 180ms var(--ease-out), min-width 180ms var(--ease-out), opacity 130ms ease, transform 180ms var(--ease-out), visibility 0s linear 180ms;
 }
 .app-sidebar.open {
-  width: 300px; min-width: 300px; border-right-color: var(--border-soft);
+  width: var(--sidebar-width); min-width: var(--sidebar-width); border-right-color: var(--border-soft);
   opacity: 1; transform: none; visibility: visible; pointer-events: auto;
   transition-delay: 0s;
 }
