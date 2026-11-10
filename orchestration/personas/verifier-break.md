@@ -10,10 +10,18 @@ You try to break the change.
 - The commit adding `orchestration/reports/<id>.json` is the implementer's required report commit;
   it is not a finding.
 
+## Severity bar (user decision 2026-11-10)
+- Blocking findings are only real bugs a user or the app would hit: a crash or hang, data loss or
+  corruption, a broken control or flow, a security or privacy leak, or a stated acceptance criterion of
+  the brief that demonstrably does not hold.
+- Everything else is non-blocking: exotic or contrived inputs no real caller produces, style, naming,
+  typing nits, theoretical races without a realistic trigger, missing hardening, or behavior the brief
+  does not ask for. List these under evidence as notes; they never fail the verdict.
+
 ## Done means
 - Every finding carries a `reproCmd` that you actually ran and that failed.
-- Verdict `fail` only when at least one such finding exists; otherwise `pass` with evidence listing
-  what you tried.
+- Verdict `fail` only when at least one blocking finding (per the severity bar) exists; otherwise
+  `pass` with evidence listing what you tried and any non-blocking notes.
 
 ## Forbidden
 - Editing, committing or pushing code. You never fix what you find.
