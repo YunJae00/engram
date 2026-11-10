@@ -1,7 +1,6 @@
 import { ArrowLeft, FolderPlus, PanelLeftClose, Plus, Repeat2, Search, Settings, X } from 'lucide-react'
 import { NoticesBell } from './NoticesBell.js'
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { flushSync } from 'react-dom'
 import type { BotDto, RoutineDto, SidebarLayout, SidebarKind, SidebarChange } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -15,6 +14,8 @@ import { SidebarCollection } from './SidebarCollection.js'
 import { SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
+import { SidebarPrimary } from './SidebarPrimary.js'
+import { groupSidebarBots, matchesSidebarSearch } from '../lib/sidebarBots.js'
 
 interface Props {
   developer: boolean
@@ -22,7 +23,7 @@ interface Props {
   selectedRoutineId: string | null; onSelectRoutine(id: string): void
 }
 
-const DAY_MS = 86_400_000
+const NO_HITS: ReadonlySet<string> = new Set()
 
 export function AppSidebar({ developer, open, onToggle, onOpenSettings, selectedRoutineId, onSelectRoutine }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
@@ -32,16 +33,10 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [query, setQuery] = useState('')
   const [bodyHits, setBodyHits] = useState<{ query: string; ids: Set<string> }>({ query: '', ids: new Set() })
-  const createId = useId(), createMenu = useRef<HTMLDivElement>(null)
+  const createId = useId(), createMenu = useRef<HTMLDivElement>(null), searchInput = useRef<HTMLInputElement>(null)
   const [layout, setLayout] = useState<SidebarLayout | null>(null)
   const [layoutError, setLayoutError] = useState('')
   const [creating, setCreating] = useState({ chat: 0, routine: 0 })
-  const [showEarlier, setShowEarlier] = useState(false)
-  const toggleEarlier = () => {
-    const update = () => flushSync(() => setShowEarlier(value => !value))
-    if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) update()
-    else document.startViewTransition(update)
-  }
   const [waiting, setWaiting] = useState<Set<string>>(new Set())
   const reloadGeneration = useRef(0)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
@@ -99,39 +94,40 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     const timer = window.setTimeout(() => void api.botsSearch(search).then(ids => { if (live) setBodyHits({ query: search, ids: new Set(ids) }) }).catch(() => undefined), 150)
     return () => { live = false; window.clearTimeout(timer) }
   }, [search, library, vaultReady, bots])
-  // A conversation quiet for a day leaves the list, not the disk; search and
-  // Show earlier still reach it.
-  const pinned = new Set(layout?.chat.items.filter(item => item.pinned).map(item => item.id) ?? [])
-  const recent = (bot: BotDto) => Date.now() - Date.parse(bot.lastMessage?.at ?? bot.createdAt) < DAY_MS || bot.id === selectedId || pinned.has(bot.id) || waiting.has(bot.id) || activityOf(bot) !== 'ready'
   const live = (bot: BotDto) => waiting.has(bot.id) || ['running', 'waiting'].includes(activityOf(bot))
-  const earlier = bots.filter(bot => !recent(bot)).length
-  const matchingBots = search ? bots.filter(bot => `${bot.name} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search) || (bodyHits.query === search && bodyHits.ids.has(bot.id))) : showEarlier ? bots : bots.filter(recent)
+  const { hero, listed, hidden } = groupSidebarBots(bots)
+  const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
+  const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
+  const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} /> })
+  const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
   const matchingRoutines = search ? routines.filter(routine => routine.name.toLocaleLowerCase().includes(search)) : routines
   const routineIds = new Set(matchingRoutines.map(routine => routine.id))
   const routineLayout = search && layout ? { ...layout.routine, folders: layout.routine.folders.filter(folder => layout.routine.items.some(item => item.folder === folder.id && routineIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.routine
   const collection = (kind: SidebarKind) => <SidebarCollection key={kind} kind={kind} newFolder={creating[kind]}
-    items={kind === 'chat' ? matchingBots.map(bot => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} /> })) : matchingRoutines.map(routine => ({ ...routine, active: routine.id === selectedRoutineId, content: <><span className="sidebar-routine-icon"><Repeat2 size={17} strokeWidth={1.6} aria-hidden /></span><span className="sidebar-routine-copy"><strong>{routine.name}</strong><small>{routine.task ? routine.task.surface === 'web' ? 'Browser task' : 'Comet task' : `${routine.steps.length} steps`}{routine.lastOutcome && ` · ${routine.lastOutcome === 'done' ? 'Last run completed' : routine.lastOutcome === 'aborted' ? 'Paused' : 'Needs attention'}`}</small></span></> }))}
-    layout={(kind === 'chat' ? matchingLayout : routineLayout) ?? { folders: [], items: (kind === 'chat' ? bots : routines).map(one => ({ id: one.id, folder: null })) }}
+    {...kind === 'chat' ? { hidden: matchingHidden.map(botItem), search: !!search } : {}}
+    items={kind === 'chat' ? matchingBots.map(botItem) : matchingRoutines.map(routine => ({ ...routine, active: routine.id === selectedRoutineId, content: <><span className="sidebar-routine-icon"><Repeat2 size={17} strokeWidth={1.6} aria-hidden /></span><span className="sidebar-routine-copy"><strong>{routine.name}</strong><small>{routine.task ? routine.task.surface === 'web' ? 'Browser task' : 'Comet task' : `${routine.steps.length} steps`}{routine.lastOutcome && ` · ${routine.lastOutcome === 'done' ? 'Last run completed' : routine.lastOutcome === 'aborted' ? 'Paused' : 'Needs attention'}`}</small></span></> }))}
+    layout={(kind === 'chat' ? matchingLayout : routineLayout) ?? { folders: [], items: (kind === 'chat' ? listed : routines).map(one => ({ id: one.id, folder: null })) }}
     onChange={changeValue => change(kind, changeValue)} onRename={(id, name) => rename(kind, id, name)} onRemove={id => remove(kind, id)} onError={showToast}
-    onOpen={id => { if (kind === 'chat') { selectComet(id); navigate('bots') } else { onSelectRoutine(id); if (window.innerWidth <= 900) onToggle() } }} />
+    onOpen={id => { if (kind === 'chat') openBot(id); else { onSelectRoutine(id); if (window.innerWidth <= 900) onToggle() } }} />
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
     <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
     {developer ? <div id="developer-sidebar" className="developer-sidebar-content" /> : <>
-    <div className="sidebar-library-tools"><div className="sidebar-search"><Search size={14} aria-hidden /><input aria-label={library ? 'Search routines' : 'Search conversations'} placeholder={library ? 'Search routines' : 'Search conversations'} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && query && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); setQuery('') } }} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={13} aria-hidden /></button>}</div>{!library && <NoticesBell disabled={!vaultReady} onOpen={id => { selectComet(id); navigate('bots') }} />}<button className="sidebar-icon-button sidebar-create" data-testid="sidebar-create" aria-label="Create" title="Create" disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
+    <div className="sidebar-library-tools"><div className="sidebar-search"><Search size={14} aria-hidden /><input ref={searchInput} aria-label={library ? 'Search routines' : 'Search conversations'} placeholder={library ? 'Search routines' : 'Search conversations'} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && query && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); setQuery('') } }} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={13} aria-hidden /></button>}</div>{!library && <NoticesBell disabled={!vaultReady} onOpen={openBot} />}{!library && <button className="sidebar-icon-button bots-top-button" aria-label="Search" title="Search" onClick={() => searchInput.current?.focus()}><Search size={17} aria-hidden /></button>}<button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label="Create" title="Create" disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
     <div id={createId} ref={createMenu} {...{ popover: "auto" }} className="sidebar-create-menu" aria-label="Create">
       {!library && <button data-testid="bots-new" disabled={!vaultReady} onClick={() => { createMenu.current?.hidePopover(); setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle() }}><Plus size={16} aria-hidden />{t('bots.new')}</button>}
       <button aria-label={library ? 'New routine folder' : 'New chat folder'} onClick={() => { createMenu.current?.hidePopover(); newFolder(library ? 'routine' : 'chat') }}><FolderPlus size={16} aria-hidden />New folder</button>
     </div>
     {library && <button className="sidebar-new" onClick={() => navigate('bots')}><ArrowLeft size={17} aria-hidden /><span>Conversations</span></button>}
     <div className="sidebar-scroll">
+      {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && (activity === 'bots' || activity === 'mission')} onOpen={openBot} />}
       {layoutError && <p className="sidebar-empty" role="alert">{layoutError}</p>}
       <section className="sidebar-section sidebar-conversations" aria-label={library ? 'Saved routines' : 'Conversations'}>
         {library && <h2 className="sidebar-library-title">Routines</h2>}
-        {collection(library ? 'routine' : 'chat')}
-        {!library && !search && earlier > 0 && <button className="sidebar-new" data-testid="sidebar-earlier" aria-expanded={showEarlier} onClick={toggleEarlier}><span>{showEarlier ? 'Hide earlier' : `Show earlier (${earlier})`}</span></button>}
-        {!(library ? matchingRoutines : matchingBots).length && <p className="sidebar-empty">{search ? 'No matches found' : library ? t('sidebar.noRoutines') : 'Your conversations will appear here.'}</p>}
+        {library ? collection('routine') : <div role="tree" aria-label="Bots" className="sidebar-bots-tree">{collection('chat')}</div>}
+        {!(library ? matchingRoutines : [...matchingBots, ...matchingHidden]).length && <p className="sidebar-empty">{search ? 'No matches found' : library ? t('sidebar.noRoutines') : 'Your conversations will appear here.'}</p>}
       </section>
     </div>
     </>}

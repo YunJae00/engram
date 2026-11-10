@@ -223,9 +223,9 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
         make('sidebar background', SIDEBAR, bg ? `rgba(${bg.join(',')})` : null, want ? `= --rail-bg rgba(${want.join(',')})` : '= --rail-bg (unresolved)', same)]
     }
     case 2: {
-      const avatar = await q(`${PRIMARY} .bot-avatar`), badge = await q(`${PRIMARY}-badge`), name = await q(`${PRIMARY}-name`)
+      const avatar = await q(`${PRIMARY} .bot-avatar`), badge = await q(`${PRIMARY} .bot-avatar-primary`), name = await q(`${PRIMARY}-name`)
       return [...size('primary avatar', `${PRIMARY} .bot-avatar`, avatar, 64, 1), deferred('primary avatar sun silhouette', `${PRIMARY} .bot-avatar`, 'deferred: sun silhouette is not measurable by geometry'),
-        ...size('primary badge', `${PRIMARY}-badge`, badge, 18, 1), near('primary name font-size', `${PRIMARY}-name`, pxOf(st(name, 'fontSize')), 12, 0)]
+        ...size('primary badge', `${PRIMARY} .bot-avatar-primary`, badge, 18, 1), near('primary name font-size', `${PRIMARY}-name`, pxOf(st(name, 'fontSize')), 12, 0)]
     }
     case 3: {
       const sel = '.sidebar-folder-head .sidebar-item-main > span', head = await q(sel)
@@ -248,7 +248,7 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
         near('active row radius', ACTIVE, radius(active), 10, 1)]
     }
     case 6: {
-      const sel = `${MAIN} .bots-top-button`, b = await q(sel)
+      const sel = `${SIDEBAR} .bots-top-button`, b = await q(sel)
       return [...size('top button', sel, b, 34, 2), b ? atLeast('top button radius', sel, radius(b), Math.min(b.width, b.height) / 2 - 0.5, '50% (≥ min(w,h)/2 − 0.5)') : make('top button radius', sel, null, '50% (≥ min(w,h)/2 − 0.5)', null)]
     }
     case 7: {

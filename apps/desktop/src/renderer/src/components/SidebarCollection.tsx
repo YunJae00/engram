@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import { ChevronDown, EyeOff, Folder, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/types.js'
@@ -11,11 +11,15 @@ interface Props {
   onChange(change: SidebarChange['change']): Promise<void>
   onOpen(id: string): void; onRename(id: string, name: string): Promise<void>; onRemove(id: string): Promise<void>
   onError(message: string): void
+  /** Bot-list mode: a tree with loose pinned rows first and these hidden rows in a closed group last. */
+  hidden?: Item[]; search?: boolean
 }
 const MIME = 'application/x-engram-sidebar'
 type Entry = { type: 'folder' | 'item'; id: string }
 
-export function SidebarCollection({ kind, items, layout, newFolder, onChange, onOpen, onRename, onRemove, onError }: Props) {
+export function SidebarCollection({ kind, items, layout, newFolder, onChange, onOpen, onRename, onRemove, onError, hidden, search = false }: Props) {
+  const tree = hidden !== undefined
+  const [showHidden, setShowHidden] = useState(false)
   const [editing, setEditing] = useState<{ type: 'folder' | 'item' | 'new'; id: string; name: string } | null>(null)
   const [menu, setMenu] = useState<Entry | null>(null)
   const [deleting, setDeleting] = useState<{ entry: Entry; name: string; ids: string[] } | null>(null)
@@ -89,7 +93,10 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     else if (source.type === 'item') void attempt(() => onChange({ action: 'move-item', id: source.id, folder: destination, ...(before ? { before } : {}) }))
   }
   const byId = new Map(items.map(item => [item.id, item]))
-  const itemRows = (folder: string | null) => layout.items.filter(one => one.folder === folder)
+  const placed = new Set(layout.items.map(one => one.id))
+  // A bot the layout has not caught up with yet still shows as a loose row.
+  const layoutItems = tree ? [...layout.items, ...items.filter(item => !placed.has(item.id)).map(item => ({ id: item.id, folder: null, pinned: false }))] : layout.items
+  const itemRows = (folder: string | null) => layoutItems.filter(one => one.folder === folder)
     // Pinned rows keep their manual order; unpinned rows follow the latest activity.
     .sort((a, b) => kind === 'chat' ? Number(!!b.pinned) - Number(!!a.pinned) || (a.pinned ? 0 : (byId.get(b.id)?.recency ?? 0) - (byId.get(a.id)?.recency ?? 0)) : 0)
     .flatMap(one => { const item = byId.get(one.id); return item ? [{ ...item, pinned: kind === 'chat' && !!one.pinned }] : [] })
@@ -114,29 +121,37 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
       }}><Trash2 size={13} aria-hidden />Delete</button>
     </div>, document.body)}
   </>
-  const rows = (folder: string | null) => {
-    const siblings = itemRows(folder)
+  const rows = (folder: string | null, only?: boolean, fixed?: Item[]) => {
+    const siblings = fixed ? [...fixed].sort((a, b) => (b.recency ?? 0) - (a.recency ?? 0)).map(item => ({ ...item, pinned: false })) : itemRows(folder).filter(item => only === undefined || item.pinned === only)
     const pinned = kind === 'chat' && !!layout.items.find(one => one.id === drag.current?.id)?.pinned
     const slot = insertion?.folder === folder ? insertion.before ? siblings.findIndex(item => item.id === insertion.before) : pinned ? siblings.filter(item => item.pinned).length : siblings.length : -1
     const beforeAt = (event: DragEvent, index: number) => {
       const after = event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.clientHeight / 2
       return siblings.slice(index + Number(after)).find(one => one.id !== drag.current?.id && one.pinned === pinned)?.id
     }
-    return <ul className="sidebar-list" data-testid={folder === null ? `sidebar-${kind === 'chat' ? 'chats' : 'routines'}` : undefined}>{siblings.map((item, index) => <li key={item.id} className={`sidebar-item${item.active ? ' active' : ''}`} data-pinned={item.pinned || undefined} data-drag-source={dragging && drag.current?.id === item.id || undefined} data-insert={slot === index ? 'before' : slot === siblings.length && index === siblings.length - 1 ? 'after' : undefined} data-shift={slot < 0 ? undefined : index < slot ? 'up' : 'down'} draggable={!editing && !saving}
-    onDragStart={event => start(event, { type: 'item', id: item.id })} onDragEnd={() => { drag.current = null; setOver(null); setInsertion(null) }} onDragOver={event => {
-      if (drag.current?.type !== 'item' || !event.dataTransfer.types.includes(MIME)) return
+    return <ul className="sidebar-list" role={tree ? 'group' : undefined} data-testid={folder === null && only !== true && !fixed ? `sidebar-${kind === 'chat' ? 'chats' : 'routines'}` : undefined}>{siblings.map((item, index) => <li key={item.id} role={tree ? 'treeitem' : undefined} className={`sidebar-item${item.active ? ' active' : ''}`} data-pinned={item.pinned || undefined} data-drag-source={dragging && drag.current?.id === item.id || undefined} data-insert={slot === index ? 'before' : slot === siblings.length && index === siblings.length - 1 ? 'after' : undefined} data-shift={slot < 0 ? undefined : index < slot ? 'up' : 'down'} draggable={!fixed && !editing && !saving}
+    onDragStart={event => { if (fixed) event.preventDefault(); else start(event, { type: 'item', id: item.id }) }} onDragEnd={() => { drag.current = null; setOver(null); setInsertion(null) }} onDragOver={event => {
+      if (fixed || drag.current?.type !== 'item' || !event.dataTransfer.types.includes(MIME)) return
       if (drag.current.id === item.id) { setInsertion(null); return }
       event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(null)
       const before = beforeAt(event, index)
       setInsertion(current => current?.folder === folder && current.before === before ? current : { folder, before })
     }}
     onDrop={event => {
-      drop(event, folder, beforeAt(event, index))
+      if (!fixed) drop(event, folder, beforeAt(event, index))
     }}>
     {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ' sidebar-routine-row'}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} onClick={() => onOpen(item.id)}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
     {controls({ type: 'item', id: item.id }, item.name, item.pinned)}
   </li>)}</ul>
   }
+  const folders = layout.folders.map(one => <div className={`sidebar-folder${over === one.id ? ' sidebar-drop-target' : ''}`} key={one.id} data-testid={`sidebar-folder-${one.id}`}>
+      <div className="sidebar-item sidebar-folder-head" draggable={!editing && !saving} onDragStart={event => start(event, { type: 'folder', id: one.id })} onDragEnd={() => { drag.current = null; setOver(null) }} onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id, undefined, one.id)}>
+        {editing?.type === 'folder' && editing.id === one.id ? input() : <button className="sidebar-item-main" aria-expanded={!one.collapsed} aria-controls={`folder-${one.id}`} onClick={() => void attempt(() => onChange({ action: 'fold-folder', id: one.id, collapsed: !one.collapsed }))}><ChevronDown size={12} className={one.collapsed ? 'folded' : ''} aria-hidden /><Folder size={14} aria-hidden /><span>{one.name}</span><small>{itemRows(one.id).length}</small></button>}
+        {controls({ type: 'folder', id: one.id }, one.name)}
+      </div>
+      <SidebarDisclosure id={`folder-${one.id}`} open={!one.collapsed}>{rows(one.id)}{dragging && itemRows(one.id).length === 0 && <div className="sidebar-folder-empty" onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id)}>Drop here</div>}</SidebarDisclosure>
+    </div>)
+  const hiddenOpen = search || showHidden
   return <div className={`sidebar-collection${dragging ? ' dragging' : ''}`} data-testid={`sidebar-${kind}-collection`} aria-busy={saving} onDragEnd={() => { setDragging(false); setInsertion(null) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { setOver(null); setInsertion(null) } }}>
     {deleting && <DeleteConversationDialog kind={kind} name={deleting.name} count={deleting.entry.type === 'folder' ? deleting.ids.length : undefined} onClose={() => { setDeleting(null); menuAnchor.current?.focus() }} onDelete={async contents => {
       if (deleting.entry.type === 'item') await onRemove(deleting.entry.id)
@@ -146,14 +161,11 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
       }
     }} />}
     {editing?.type === 'new' && <div className="sidebar-folder-create"><Folder size={14} aria-hidden />{input()}</div>}
-    {layout.folders.map(one => <div className={`sidebar-folder${over === one.id ? ' sidebar-drop-target' : ''}`} key={one.id} data-testid={`sidebar-folder-${one.id}`}>
-      <div className="sidebar-item sidebar-folder-head" draggable={!editing && !saving} onDragStart={event => start(event, { type: 'folder', id: one.id })} onDragEnd={() => { drag.current = null; setOver(null) }} onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id, undefined, one.id)}>
-        {editing?.type === 'folder' && editing.id === one.id ? input() : <button className="sidebar-item-main" aria-expanded={!one.collapsed} aria-controls={`folder-${one.id}`} onClick={() => void attempt(() => onChange({ action: 'fold-folder', id: one.id, collapsed: !one.collapsed }))}><ChevronDown size={12} className={one.collapsed ? 'folded' : ''} aria-hidden /><Folder size={14} aria-hidden /><span>{one.name}</span><small>{itemRows(one.id).length}</small></button>}
-        {controls({ type: 'folder', id: one.id }, one.name)}
-      </div>
-      <SidebarDisclosure id={`folder-${one.id}`} open={!one.collapsed}>{rows(one.id)}{dragging && itemRows(one.id).length === 0 && <div className="sidebar-folder-empty" onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id)}>Drop here</div>}</SidebarDisclosure>
-    </div>)}
-    {rows(null)}
+    {tree ? <>{rows(null, true)}{folders}{rows(null, false)}</> : <>{folders}{rows(null)}</>}
+    {tree && hidden.length > 0 && <div className="sidebar-hidden-group">
+      <div className="sidebar-item sidebar-folder-head"><button className="sidebar-item-main" aria-expanded={hiddenOpen} onClick={() => setShowHidden(value => !value)}><ChevronDown size={12} className={hiddenOpen ? '' : 'folded'} aria-hidden /><EyeOff size={14} aria-hidden /><span>{`Hidden bots (${hidden.length})`}</span></button></div>
+      {hiddenOpen && rows(null, undefined, hidden)}
+    </div>}
     {dragging && layout.folders.length > 0 && <div className={`sidebar-unfile${over === 'root' ? ' sidebar-drop-target' : ''}`} onDragOver={event => accept(event, 'root')} onDrop={event => drop(event, null)}>Move out of folders</div>}
   </div>
 }

@@ -9,9 +9,6 @@ import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
 import { displayTaskAnswer, threadLang } from '../lib/threadLang.js'
 
-const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
-const calendar = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-
 export const SidebarConversation = memo(function SidebarConversation({ bot, state }: { bot: BotDto; state: CometActivity }) {
   const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
@@ -28,15 +25,15 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
       if (message.error) return message.errorKind === 'outage' ? `${message.provider || 'The AI'} did not answer` : 'Could not finish'
       if (message.text.trim()) { last = message; break }
     }
+    if (bot.label) return bot.label
     return last ? `${last.role === 'user' ? 'You: ' : ''}${sidebarPreview(displayTaskAnswer(last.text, threadLang(thread.messages)))}` : sidebarPreview(bot.purpose) || 'Start a conversation'
-  }, [thread, state, bot.lastMessage, bot.purpose])
+  }, [thread, state, bot.label, bot.lastMessage, bot.purpose])
   const date = new Date(bot.lastMessage?.at ?? bot.createdAt)
   const valid = Number.isFinite(date.getTime())
-  const time = valid ? (date.toDateString() === new Date().toDateString() ? clock : calendar).format(date) : ''
   return <>
     <span className="sidebar-conversation-avatar"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={36} state={avatarState(state)} theme={theme} /><CometActivityIndicator state={state} /></span>
-    <span className="sidebar-conversation-content">
-      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span>{time && <time dateTime={date.toISOString()} title={date.toLocaleString('en-US')}>{time}</time>}</span>
+    <span className="sidebar-conversation-content" title={valid ? date.toLocaleString('en-US') : undefined}>
+      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span></span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>
     </span>
   </>
