@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeTestApp } from '../navigation.js'
 import { visualDir, writeReviewSheet } from './review-sheet.js'
-import { seedVisualVault } from './seed.js'
+import { CHAT_ID, seedVisualVault } from './seed.js'
 import { galleryHtml } from './avatar-gallery.js'
 import { measureChat, measureState, serializeMetrics, type StateName } from './spec.js'
 
@@ -110,7 +110,20 @@ test.describe('visual', () => {
     })
   })
 
-  for (const state of ['info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
+  test('info-overview', async () => {
+    await capture('info-overview', async page => {
+      const row = page.getByTestId(`bot-${CHAT_ID}`)
+      const earlier = page.getByTestId('sidebar-earlier')
+      if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
+      await row.click()
+      await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').first()).toBeVisible()
+      await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+      await expect(page.getByTestId('bot-info-pane')).toBeVisible()
+      await expect(page.locator('#bot-info-tab-overview')).toHaveAttribute('aria-selected', 'true')
+    })
+  })
+
+  for (const state of ['info-routines', 'info-past', 'create-dialog', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
     test.fixme(state, () => undefined)
   }
 })

@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { measureInfoPane } from './info-pane.js'
 
 export type Rgba = [number, number, number, number]
 export type CheckStatus = 'pass' | 'fail' | 'missing' | 'deferred'
@@ -212,6 +213,11 @@ async function boxes(page: Page, root: string): Promise<RawBox[] | null> {
 
 const STATE_DEFERRED = (row: number, what: string, reason: string): Check[] => [deferred(`row ${row} ${what}`, '-', reason)]
 
+async function shellOverflow(page: Page): Promise<number | null> {
+  const all = await boxes(page, '[data-testid="shell"]')
+  return all ? overflowCount(all.map(b => ({ scrollWidth: b.scrollWidth, clientWidth: b.clientWidth, ellipsis: hasEllipsis(b, b.descendants.map(d => ({ ...d, holdsPreviewText: previewHolder(d.ownText, b.wholeText) }))) }))) : null
+}
+
 async function measureRow(page: Page, row: number): Promise<Check[]> {
   const q = (sel: string) => probe(page, sel)
   switch (row) {
@@ -305,7 +311,7 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
         near('toast title font-size', TITLE, pxOf(st(title, 'fontSize')), 14, 0), near('toast title font-weight', TITLE, numOf(st(title, 'fontWeight')), 600, 0),
         equals('toast pointer-events', T, box?.pe ?? null, 'none'), equals('toast close pointer-events', CLOSE, box?.closePe ?? null, 'auto')]
     }
-    case 15: return STATE_DEFERRED(15, 'info pane', 'deferred: info pane state is fixme')
+    case 15: return measureInfoPane(page, { probe: q, shellOverflow: () => shellOverflow(page), main: MAIN, column: COLUMN, pill: PILL })
     case 16: return [
       atLeast('assistant text contrast', ASSISTANT, await textContrast(page, ASSISTANT), 4.5, '≥4.5:1'),
       atLeast('preview text contrast', `${PREVIEW} > span`, await textContrast(page, `${PREVIEW} > span`), 4.5, '≥4.5:1'),

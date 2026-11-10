@@ -1,0 +1,39 @@
+button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
+.bot-info-pane {
+  flex: none; width: var(--info-pane-width); max-width: 100%; box-sizing: border-box; min-height: 0;
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  border-left: 1px solid var(--border-soft); background: var(--panel-bg);
+}
+.bot-info-pane.entering { animation: bot-info-in 180ms var(--ease-out); }
+.bot-info-pane.closing { pointer-events: none; animation: bot-info-out 180ms var(--ease-out) forwards; }
+.bots-view.info-open .bots-chat { min-width: 0; --page-gutter: 24px; }
+@keyframes bot-info-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bot-info-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(16px); }
+}
+.bot-info-pane [role="tablist"] { flex: none; display: flex; flex-wrap: wrap; gap: 2px; padding: 12px; border-bottom: 1px solid var(--border-soft); }
+.bot-info-pane [role="tab"] { border: 0; background: transparent; color: var(--fg-dim); font: inherit; font-size: var(--fs-small); padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+.bot-info-pane [role="tab"]:hover, .bot-info-pane [role="tab"][aria-selected="true"] { color: var(--fg); background: var(--hover-bg); }
+.bot-info-pane [role="tab"][aria-selected="true"] { font-weight: 600; }
+.bot-info-panel { padding: 16px; min-width: 0; }
+.bot-info-panel[hidden] { display: none; }
+.bot-info-overview { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.bot-info-overview h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.bot-info-overview > p { margin: 0; font-size: var(--fs-small); color: var(--fg-dim); overflow-wrap: anywhere; }
+.bot-info-overview > label, .bot-info-overview [role="radiogroup"] { display: flex; flex-direction: column; gap: 6px; align-self: stretch; min-width: 0; }
+.bot-info-overview > label > span, .bot-info-overview [role="radiogroup"] > span { font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim); }
+.bot-info-overview textarea { box-sizing: border-box; width: 100%; resize: vertical; font: inherit; font-size: var(--fs-small); }
+.bot-info-overview [role="radiogroup"] label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-small); color: var(--fg); }
+.bot-info-pane .bots-memory {
+  position: static; align-self: stretch; max-height: none; overflow: visible; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; animation: none; z-index: auto;
+}
+.bot-info-panel:not(.bot-info-overview) > div { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.bot-info-panel:not(.bot-info-overview) > div > p { margin: 0; font-size: 13px; color: var(--fg-faint); }
+@media (prefers-reduced-motion: reduce) {
+  .bot-info-pane.entering, .bot-info-pane.closing { animation: none; }
+}

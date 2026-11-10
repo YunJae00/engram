@@ -12,10 +12,18 @@
 :is(.bots-thread, .mini-chat-thread) .comet-work { gap: 6px; margin: 0; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { gap: 6px; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-line.said { display: block; font-size: var(--fs-chat); }
-/* Copy sits outside the bubble and shows on hover, so a bubble is only its words. */
-:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions { position: absolute; left: calc(100% + 4px); bottom: 2px; min-height: 0; margin: 0; opacity: 0; transition: opacity 120ms ease; }
+/* Copy sits outside the bubble and shows on hover, so a bubble is only its words.
+   Anchored rather than absolute so it never widens the bubble's scroll width. */
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant { anchor-name: var(--copy-anchor); }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions { position: fixed; position-anchor: var(--copy-anchor); left: calc(anchor(right) + 4px); bottom: calc(anchor(bottom) + 2px); min-height: 0; margin: 0; opacity: 0; transition: opacity 120ms ease; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant:hover .answer-actions,
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant .answer-actions:focus-within { opacity: 1; }
+/* One wrapper per message so a long bots thread skips laying out off-screen turns; it holds the copy control, unlike the bubble. */
+.bubble-turn { display: contents; }
+.bots-thread .bubble-turn { display: flex; flex-direction: column; gap: 6px; }
+.bots-thread .bubble-turn > * { flex-shrink: 0; }
+.bots-thread .bubble-turn:empty { display: none; }
+.bots-thread .bubble-turn:not(.live) { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 :is(.bots-thread, .mini-chat-thread) .answer-sites { margin-top: 8px; }
 .mini-chat-thread :is(.bubble-msg, .comet-work-line.said) { font-size: 13px; padding: 8px 12px; }
 /* Two messages far apart in time get the time between them. */

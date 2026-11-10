@@ -16,6 +16,7 @@
 @import './provider-picker.css';
 @import './routine-workspace.css';
 @import './developers.css';
+@import './bot-info.css';
 
 :root {
   /* Type scale: every font-size in this file resolves to one of these. */

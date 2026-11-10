@@ -18,6 +18,7 @@ import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { BotTitlePill } from '../components/CometTitle.js'
+import { BotInfoPane } from '../components/BotInfoPane.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
@@ -43,6 +44,25 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [info, setInfo] = useState<'closed' | 'open' | 'closing'>('closed')
+  // Only the bot the pill opened the pane on plays the open animation; a bot switch does not.
+  const [infoEnter, setInfoEnter] = useState<string | null>(null)
+  const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearInfoTimer = () => { if (infoTimer.current) clearTimeout(infoTimer.current); infoTimer.current = null }
+  const finishInfoClose = () => { clearInfoTimer(); setInfo((prior) => (prior === 'closing' ? 'closed' : prior)) }
+  const closeInfo = () => {
+    clearInfoTimer()
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return setInfo('closed')
+    setInfo('closing')
+    infoTimer.current = setTimeout(finishInfoClose, 180)
+  }
+  const toggleInfo = () => {
+    if (info === 'open') return closeInfo()
+    clearInfoTimer()
+    setInfoEnter(selectedId)
+    setInfo('open')
+  }
+  useEffect(() => clearInfoTimer, [])
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
@@ -91,6 +111,8 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   // from disk underneath; a turn still streaming stays on top of the reload.
   useEffect(() => {
     setMemoryOpen(false)
+    clearInfoTimer()
+    setInfo((prior) => (!selectedId || prior === 'closing' ? 'closed' : prior))
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
@@ -117,14 +139,14 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   }
 
   return (
-    <div className="bots-view" data-testid="bots-view">
+    <div className={`bots-view${selected && info !== 'closed' ? ' info-open' : ''}`} data-testid="bots-view">
       <section className="bots-main">
         {selected ? (
           <>
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
-            <BotTitlePill bot={selected} />
+            <BotTitlePill bot={selected} open={info === 'open'} onToggle={toggleInfo} />
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
@@ -179,6 +201,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
           </div>
         )}
       </section>
+      {selected && info !== 'closed' && <BotInfoPane key={selected.id} bot={selected} entering={infoEnter === selected.id} closing={info === 'closing'} onClose={closeInfo} onClosed={finishInfoClose} onEntered={() => setInfoEnter(null)} />}
     </div>
   )
 })

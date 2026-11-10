@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import { Fragment, type ReactNode } from 'react'
+import { useId, type CSSProperties, type ReactNode } from 'react'
 import type { CometMessage } from '../lib/cometThreads.js'
 import { answerBubbles } from '../markdown.js'
 import { CometWork } from './CometWork.js'
@@ -34,28 +34,30 @@ export function CometMessages({ messages, busy, status, since, workLines, keptWo
   while (settledIndex >= 0 && messages[settledIndex]!.role === 'assistant' && messages[settledIndex]!.streaming && !messages[settledIndex]!.text) settledIndex--
   const settled = messages[settledIndex]
   const lang = threadLang(messages)
+  // Each bubble gets its own anchor name so its copy control binds to it and not to the last bubble.
+  const anchorBase = `--copy-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const dividers = dividerBefore(messages), now = new Date()
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
     {messages.map((m, i) => {
       const divider = dividers[i] && <div className="bubble-time-divider">{dividerLabel(m.at!, lang, now)}</div>
-      if (m.role !== 'assistant') return <Fragment key={i}>{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
+      if (m.role !== 'assistant') return <div key={i} className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
         {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
         <UserMessage text={m.text} attachments={m.attachments} />
-      </div></Fragment>
+      </div></div>
       const live = i === lastAssistant && busy
-      return <Fragment key={i}>
+      return <div key={i} className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
         {divider}
         <CometWork busy={live} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
         {failed(m)
           ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
           : m.text ? answerBubbles(displayTaskAnswer(m.text, lang)).map((part, k, parts) => (
-            <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`}>
+            <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchorBase}-${i}-${k}` } as CSSProperties}>
               <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
               {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} lang={lang} />}
             </div>
           )) : null}
-      </Fragment>
+      </div>
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}

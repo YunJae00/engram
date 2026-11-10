@@ -27,7 +27,7 @@ export function CometTitle({ ready }: { ready: boolean }) {
   return <span className="conversation-title"><span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
 }
 
-export function BotTitlePill({ bot }: { bot: BotDto }) {
+export function BotTitlePill({ bot, open, onToggle }: { bot: BotDto; open: boolean; onToggle: () => void }) {
   const { theme } = useApp()
-  return <div className="bots-title-pill" data-testid="bots-title-pill"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={20} state="idle" theme={theme} /><span className="bots-title-pill-name">{bot.name}</span></div>
+  return <button type="button" className="bots-title-pill" data-testid="bots-title-pill" aria-expanded={open} aria-controls="bot-info-pane" onClick={onToggle}><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={20} state="idle" theme={theme} /><span className="bots-title-pill-name">{bot.name}</span></button>
 }
