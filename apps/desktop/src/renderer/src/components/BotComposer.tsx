@@ -41,6 +41,11 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
       const style = getComputedStyle(composer)
       const space = composer.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
       host.style.setProperty('--composer-space', `${space}px`)
+      const box = composer.querySelector('.chat-write textarea')
+      if (!box) return
+      const text = getComputedStyle(box)
+      const oneLine = parseFloat(text.lineHeight) + parseFloat(text.paddingTop) + parseFloat(text.paddingBottom)
+      composer.toggleAttribute('data-multiline', box.getBoundingClientRect().height > oneLine + 1)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(composer)
@@ -97,7 +102,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
   }
 
   return (
-    <div className="bots-write conversation-dock" ref={rootRef}>
+    <div className="bots-write conversation-dock bots-column" ref={rootRef}>
       {computerOpen && <ComputerDialog lane={cometChannel(botId)} lang={lang} onClose={() => setComputerOpen(false)} />}
       {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer

@@ -3,6 +3,8 @@ import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
+import { useApp } from '../state.js'
+import { BotAvatar } from './BotAvatar.js'
 
 export function CometTitle({ ready }: { ready: boolean }) {
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
@@ -23,4 +25,9 @@ export function CometTitle({ ready }: { ready: boolean }) {
   }, [ready])
   const selected = bots.find((bot) => bot.id === selectedId)
   return <span className="conversation-title"><span className="bots-head-name" title={selected ? [selected.name, selected.purpose].filter(Boolean).join(' — ') : undefined}>{selected?.name ?? t('topbar.tabBots')}</span></span>
+}
+
+export function BotTitlePill({ bot }: { bot: BotDto }) {
+  const { theme } = useApp()
+  return <div className="bots-title-pill" data-testid="bots-title-pill"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={20} state="idle" theme={theme} /><span className="bots-title-pill-name">{bot.name}</span></div>
 }

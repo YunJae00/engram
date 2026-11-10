@@ -17,6 +17,7 @@ import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
 import { BotComposer } from '../components/BotComposer.js'
+import { BotTitlePill } from '../components/CometTitle.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
@@ -123,6 +124,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
+            <BotTitlePill bot={selected} />
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}

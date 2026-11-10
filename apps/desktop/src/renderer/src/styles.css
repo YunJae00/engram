@@ -1853,7 +1853,26 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
    the padding grows so the column stays centred under the composer. */
 .bots-thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--reading-gutter); display: flex; flex-direction: column; gap: var(--space-4); }
 .bots-hint { color: var(--fg-dim); font-size: var(--fs-body); line-height: 1.55; max-width: 460px; }
-.bots-write { position: relative; flex: none; z-index: 32; margin: var(--space-2) var(--composer-gutter) var(--space-6); }
+.bots-write { position: relative; flex: none; z-index: 32; margin: var(--space-2) var(--composer-gutter) 16px; }
+.bots-write .chat-write { min-height: 44px; max-height: 200px; box-sizing: border-box; padding: 6px; border-radius: var(--radius-pill); overflow-y: auto; }
+.bots-write[data-multiline] .chat-write { border-radius: 22px; }
+.bots-write .chat-write textarea { min-height: 30px; max-height: 186px; padding: 4px var(--space-1); }
+.bots-write .chat-write-footer { min-height: 30px; }
+.bots-write .model-picker-btn { height: 30px; }
+.bots-write .chat-add-button { width: 28px; height: 28px; }
+.bots-write .chat-send-btn { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--accent-blue); color: #ffffff; }
+.bots-write .chat-send-btn:hover:not(:disabled) { background: var(--accent-blue); }
+.bots-write .chat-send-btn:disabled { opacity: 1; background: var(--selected-soft); color: var(--fg-dim); }
+.bots-write .bubble-stop, .bots-write .bubble-stop:hover:not(:disabled) { background: var(--clay); }
+.bots-title-pill {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 36px; max-width: min(960px, calc(100% - 32px)); padding: 0 14px 0 8px;
+  border-radius: var(--radius-pill); background: var(--editor-bg); color: var(--fg); box-shadow: var(--shadow-float);
+  white-space: nowrap; cursor: default;
+}
+.bots-title-pill > .bot-avatar { flex: none; }
+.bots-title-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 500; }
+.bots-title-pill ~ .bots-thread { padding-top: 56px; }
 /* Not read yet: a quiet pulse, no claim about what will be there. */
 .bots-loading { color: var(--fg-faint); }
 .bots-empty {
