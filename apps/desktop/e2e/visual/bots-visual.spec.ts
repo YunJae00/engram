@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp } from '../navigation.js'
 import { visualDir, writeReviewSheet } from './review-sheet.js'
 import { seedVisualVault } from './seed.js'
-import { measureChat, serializeMetrics } from './spec.js'
+import { galleryHtml } from './avatar-gallery.js'
+import { measureChat, measureState, serializeMetrics, type StateName } from './spec.js'
 
 const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const TMP = join(REPO, 'tmp')
@@ -66,7 +67,38 @@ test.describe('visual', () => {
     }
   })
 
-  for (const state of ['sidebar-states', 'info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-gallery', 'avatar-picker'] as const) {
+  const capture = async (state: StateName, show: (page: Page, theme: Theme) => Promise<void>) => {
+    await mkdir(OUT, { recursive: true })
+    for (const theme of THEMES) for (const ext of ['png', 'metrics.json']) await rm(join(OUT, `${state}-${theme}.${ext}`), { force: true })
+    for (const theme of THEMES) {
+      const { app, dirs } = await launch(theme)
+      try {
+        const page = await prepare(app)
+        await show(page, theme)
+        await page.evaluate(() => document.fonts.ready.then(() => undefined))
+        const rows = await measureState(page, state)
+        await page.screenshot({ path: join(OUT, `${state}-${theme}.png`), caret: 'hide', animations: 'disabled', scale: 'css' })
+        await writeFile(join(OUT, `${state}-${theme}.metrics.json`), serializeMetrics(rows))
+      } finally {
+        await closeTestApp(app)
+        for (const dir of dirs) await rm(dir, { recursive: true, force: true })
+      }
+    }
+  }
+
+  test('sidebar-states', async () => {
+    await capture('sidebar-states', async page => {
+      const earlier = page.getByTestId('sidebar-earlier')
+      if (!await page.getByTestId('bot-vis-chat').isVisible() && await earlier.isVisible()) await earlier.click()
+      await expect(page.locator('.sidebar-conversations .bots-row .bot-avatar').first()).toBeVisible()
+    })
+  })
+
+  test('avatar-gallery', async () => {
+    await capture('avatar-gallery', async (page, theme) => { await page.setContent(await galleryHtml(theme)) })
+  })
+
+  for (const state of ['info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
     test.fixme(state, () => undefined)
   }
 })

@@ -22,7 +22,7 @@ export async function removeScheduled(paths: VaultPaths, id: string): Promise<bo
   return true
 }
 
-const dto = (item: NoticeItem): NoticesDto['items'][number] => ({ id: item.id, kind: item.kind, title: item.title, text: item.text, at: item.at, read: item.read, running: item.running === true })
+const dto = (item: NoticeItem): NoticesDto['items'][number] => ({ id: item.id, kind: item.kind, title: item.title, text: item.text, at: item.at, read: item.read, running: item.running === true, ...(typeof item.botId === 'string' ? { botId: item.botId } : {}) })
 
 export function registerNoticesIpc(ctx: VaultContext): void {
   const list = async (): Promise<NoticesDto> => ({ items: (await readNotices(ctx.paths)).map(dto), scheduled: await scheduledTasks(ctx.paths) })

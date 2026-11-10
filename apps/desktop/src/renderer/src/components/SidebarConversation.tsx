@@ -3,7 +3,7 @@ import type { BotDto } from '../../../shared/types.js'
 import type { CometActivity } from '../lib/cometActivity.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { isSaidLine, workLabel } from '../lib/pendingStatus.js'
-import { CometAvatar } from './CometAvatar.js'
+import { avatarState, BotAvatar, useAvatarTheme } from './BotAvatar.js'
 import { CometActivityIndicator } from './CometActivityIndicator.js'
 import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
@@ -13,6 +13,7 @@ const clock = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-dig
 const calendar = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
 
 export const SidebarConversation = memo(function SidebarConversation({ bot, state }: { bot: BotDto; state: CometActivity }) {
+  const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
   const preview = useMemo(() => {
     if (state === 'waiting') return 'Waiting for you'
@@ -33,7 +34,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
   const valid = Number.isFinite(date.getTime())
   const time = valid ? (date.toDateString() === new Date().toDateString() ? clock : calendar).format(date) : ''
   return <>
-    <span className="sidebar-conversation-avatar"><CometAvatar id={bot.id} face /><CometActivityIndicator state={state} /></span>
+    <span className="sidebar-conversation-avatar"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={36} state={avatarState(state)} theme={theme} /><CometActivityIndicator state={state} /></span>
     <span className="sidebar-conversation-content">
       <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span>{time && <time dateTime={date.toISOString()} title={date.toLocaleString('en-US')}>{time}</time>}</span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>

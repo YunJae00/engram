@@ -233,10 +233,10 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
         equals('section head text-transform', sel, st(head, 'textTransform') ?? null, 'none')]
     }
     case 4: {
-      const r = await q(ROW), av = await q(`${ROW} .comet-avatar`), name = await q(`${ROW} .sidebar-conversation-name`)
+      const r = await q(ROW), av = await q(`${ROW} .bot-avatar`), name = await q(`${ROW} .sidebar-conversation-name`)
       const pv = await q(PREVIEW), all = await boxes(page, '.sidebar-conversations'), previews = all?.filter(b => b.preview) ?? []
       const ok = previews.filter(b => hasEllipsis(b, b.descendants.map(d => ({ ...d, holdsPreviewText: previewHolder(d.ownText, b.wholeText) })))).length
-      return [near('bot row height', ROW, h(r), 58, 2), ...size('bot row avatar', `${ROW} .comet-avatar`, av, 36, 1),
+      return [near('bot row height', ROW, h(r), 58, 2), ...size('bot row avatar', `${ROW} .bot-avatar`, av, 36, 1),
         near('bot name font-size', `${ROW} .sidebar-conversation-name`, pxOf(st(name, 'fontSize')), 15, 0),
         near('bot name font-weight', `${ROW} .sidebar-conversation-name`, numOf(st(name, 'fontWeight')), 500, 0),
         near('preview font-size', PREVIEW, pxOf(st(pv, 'fontSize')), 13, 0),
@@ -303,7 +303,7 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
       const items = all?.map(b => ({ scrollWidth: b.scrollWidth, clientWidth: b.clientWidth, ellipsis: hasEllipsis(b, b.descendants.map(d => ({ ...d, holdsPreviewText: previewHolder(d.ownText, b.wholeText) }))) }))
       return [items ? near('non-ellipsis horizontal overflow count', `${sel}, ${sel} *`, overflowCount(items), 0, 0, '0') : make('non-ellipsis horizontal overflow count', `${sel}, ${sel} *`, null, '0', null)]
     }
-    default: return STATE_DEFERRED(18, 'avatar gallery', 'deferred: avatar gallery state is owned by B3-1')
+    default: return await page.locator('.gallery-cell').count() ? measureGallery(page) : STATE_DEFERRED(18, 'avatar gallery', 'deferred: avatar gallery state is owned by B3-1')
   }
 }
 
@@ -314,6 +314,54 @@ export async function measureChat(page: Page): Promise<RowRecord[]> {
     rows.push({ row: item.row, status: rowStatus(checks), checks })
   }
   return rows
+}
+
+export async function measureState(page: Page, state: StateName): Promise<RowRecord[]> {
+  const rows: RowRecord[] = []
+  for (const item of CHECKLIST) {
+    const checks = item.states.includes(state) ? await measureRow(page, item.row) : [deferred(`row ${item.row} not in ${state}`, '-', `deferred: row not measured in ${state}`)]
+    rows.push({ row: item.row, status: rowStatus(checks), checks })
+  }
+  return rows
+}
+
+const CELL = '.gallery-cell', frame = (page: Page) => page.evaluate(() => new Promise(done => requestAnimationFrame(() => done(undefined))))
+const ratio = (what: string, ok: number, n: number, want: number, expected: string) => make(what, CELL, n ? `${ok}/${n}` : null, expected, n ? ok === n && n === want : null)
+
+async function measureGallery(page: Page): Promise<Check[]> {
+  const g = await page.evaluate(() => {
+    const box = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? { top: r.top, right: r.right, bottom: r.bottom, left: r.left, width: r.width, height: r.height } : null }
+    return [...document.querySelectorAll<HTMLElement>('.gallery-cell')].map(cell => ({
+      size: Number(cell.dataset['size']), state: cell.dataset['state'], primary: cell.dataset['primary'] === 'true',
+      avatar: box(cell.querySelector(':scope > .bot-avatar')), alert: box(cell.querySelector('.bot-avatar-alert')), badge: box(cell.querySelector('.bot-avatar-primary')),
+      stroke: cell.querySelector('svg [stroke]')?.getAttribute('stroke') ?? null,
+    }))
+  })
+  const sized = g.filter(c => c.avatar && Math.abs(c.avatar.width - c.size) <= 1 && Math.abs(c.avatar.height - c.size) <= 1).length
+  const strokes = g.map(c => c.stroke)
+  const [bg, ...fgs] = strokes.every(Boolean) && g.length ? await rgbaOf(page, [await page.evaluate(() => getComputedStyle(document.body).backgroundColor), ...strokes as string[]]) : [null]
+  const ratios = bg && fgs.every(Boolean) ? fgs.map(fg => contrastRatio(fg!, [bg])) : []
+  const low = ratios.length && ratios.every(r => r !== null) ? Math.min(...ratios as number[]) : null
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
+  await frame(page)
+  const props = await page.evaluate(() => [...new Set(document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('[data-state="working"]'))
+    .flatMap(a => (a.effect as KeyframeEffect).getKeyframes().flatMap(k => Object.keys(k))).filter(k => !['offset', 'easing', 'composite', 'computedOffset'].includes(k)))].sort().join(','))
+  await page.evaluate(() => { delete document.documentElement.dataset['windowFocused'] })
+  await frame(page)
+  const unpaused = await page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-avatar') && a.playState !== 'paused').length)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await frame(page)
+  const running = await page.evaluate(() => document.getAnimations().length)
+  const within = (a: number, b: number) => Math.abs(a - b) <= 1
+  const prim = g.filter(c => c.primary && c.size >= 36), att = g.filter(c => c.state === 'attention'), both = prim.filter(c => c.state === 'attention')
+  return [make('gallery cell sizes', CELL, `${sized}/${g.length}`, '107 cells, each .bot-avatar = data-size ±1', g.length === 107 && sized === 107),
+    atLeast('outline contrast', `${CELL} svg [stroke]`, low, 3, '≥3:1'),
+    equals('working animated properties', `${CELL}[data-state=working]`, props, 'transform'),
+    near('blur paused animations', `${CELL} .bot-avatar`, unpaused, 0, 0), near('reduced motion animations', 'document', running, 0, 0),
+    ratio('primary badge bottom-right', prim.filter(c => c.avatar && c.badge && within(c.badge.right, c.avatar.right) && within(c.badge.bottom, c.avatar.bottom)).length, prim.length, 9, '9/9 within 1px'),
+    ratio('attention badge top-right', att.filter(c => c.avatar && c.alert && within(c.alert.top, c.avatar.top) && within(c.alert.right, c.avatar.right)).length, att.length, 28, '28/28 within 1px'),
+    ratio('badges do not overlap', both.filter(c => c.alert && c.badge && (c.alert.bottom <= c.badge.top || c.badge.right <= c.alert.left || c.alert.right <= c.badge.left || c.badge.bottom <= c.alert.top)).length, both.length, 3, '3/3 apart')]
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10

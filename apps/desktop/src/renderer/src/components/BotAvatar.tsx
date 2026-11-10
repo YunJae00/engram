@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { avatarSpec, blush, CRATERS, PALETTES, paletteOf, PATHS, type DrawnSpec } from '../lib/botAvatar.js'
+import { useSyncExternalStore } from 'react'
+import type { CometActivity } from '../lib/cometActivity.js'
 
 export type BotAvatarProps = {
   id: string
@@ -103,4 +105,22 @@ export function BotAvatar({ id, override, primary, size, state, theme, imageUrl 
       {isPrimary && size >= 36 && <span className="bot-avatar-primary" />}
     </span>
   )
+}
+
+export function avatarState(activity: CometActivity): BotAvatarProps['state'] {
+  if (activity === 'running') return 'working'
+  if (activity === 'waiting' || activity === 'error') return 'attention'
+  return 'idle'
+}
+
+const themeOf = (): 'light' | 'dark' => (document.documentElement.dataset['theme'] === 'dark' ? 'dark' : 'light')
+const lightTheme = (): 'light' => 'light'
+function watchTheme(change: () => void): () => void {
+  const observer = new MutationObserver(change)
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  return () => observer.disconnect()
+}
+
+export function useAvatarTheme(): 'light' | 'dark' {
+  return useSyncExternalStore(watchTheme, themeOf, lightTheme)
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
@@ -7,7 +7,8 @@ import { ModelPicker } from './ModelPicker.js'
 import { t } from '../i18n.js'
 import { CometFace } from './Icon.js'
 import { Globe } from 'lucide-react'
-import type { ChatAttachmentDto } from '../../../shared/types.js'
+import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
+import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 import { chatMessage, sendCometMessage } from '../lib/attachments.js'
 import { webPane } from '../lib/webPane.js'
 import { selectDesktopSurface } from '../lib/desktopSession.js'
@@ -19,6 +20,18 @@ export function CometWelcome() {
   const [attachments, setAttachments] = useState<ChatAttachmentDto[]>([])
   const [attaching, setAttaching] = useState(false)
   const pending = useRef(false)
+  const [primary, setPrimary] = useState<BotDto | null>(null)
+  const theme = useAvatarTheme()
+  useEffect(() => {
+    let alive = true, request = 0
+    const load = () => {
+      const mine = ++request
+      void api.botsList().then(bots => { if (alive && mine === request) setPrimary(bots.find(bot => bot.primary === true) ?? null) }).catch(() => undefined)
+    }
+    load()
+    const off = api.onEvent(event => { if (event.type === 'bots:changed') load() })
+    return () => { alive = false; off() }
+  }, [])
   const send = async () => {
     const message = chatMessage(draft, attachments)
     if (!message || pending.current || attaching) return
@@ -48,7 +61,7 @@ export function CometWelcome() {
     finally { pending.current = false; setCreating(false) }
   }
   return <section className="comet-welcome" data-testid="comet-welcome">
-    <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span /><CometFace size={38} /></div></div>
+    <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span />{primary ? <div><BotAvatar id={primary.id} override={primary.avatar} primary size={64} state="idle" theme={theme} /></div> : <CometFace size={38} />}</div></div>
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
       placeholder="Ask Engram…" maxLength={2000} busy={false} disabled={creating} testId="welcome-input" autoFocus attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}
       actions={<button className="composer-web" data-testid="welcome-web" aria-label="Open the page panel" title="Open the page panel" disabled={creating || attaching} onClick={() => void openWeb()}><Globe size={15} strokeWidth={1.9} aria-hidden /><span>Open the page panel</span></button>} tools={<ModelPicker />} />

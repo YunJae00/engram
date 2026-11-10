@@ -1,8 +1,9 @@
 import { Bell, BellDot, Clock, LoaderCircle, Route, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
-import type { NoticesDto } from '../../../shared/types.js'
+import type { BotDto, NoticesDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { CometFace } from './Icon.js'
+import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 
 const EMPTY: NoticesDto = { items: [], scheduled: [] }
 
@@ -12,17 +13,27 @@ function when(at: string): string {
   return today ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function NoticeFace({ bot, theme }: { bot: BotDto | undefined; theme: 'light' | 'dark' }) {
+  return bot ? <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={20} state="idle" theme={theme} /> : <CometFace size={16} />
+}
+
 // The bell by the search box: what Engram brought on its own - a scheduled
 // request that ran, a way of working it noticed - and what is set to run.
 // Opening one opens its conversation, a new one when it has none yet.
 export function NoticesBell({ disabled, onOpen }: { disabled?: boolean; onOpen(botId: string): void }) {
   const [inbox, setInbox] = useState<NoticesDto>(EMPTY)
+  const [bots, setBots] = useState<BotDto[]>([])
   const [error, setError] = useState('')
+  const theme = useAvatarTheme()
   const panel = useRef<HTMLDivElement>(null)
   const id = useId()
   useEffect(() => {
-    let alive = true
-    const load = () => void api.noticesList().then(next => { if (alive) setInbox(next) }).catch(() => undefined)
+    let alive = true, request = 0
+    const load = () => {
+      const mine = ++request
+      void api.noticesList().then(next => { if (alive && mine === request) setInbox(next) }).catch(() => undefined)
+      void api.botsList().then(next => { if (alive && mine === request) setBots(next) }).catch(() => undefined)
+    }
     load()
     const off = api.onEvent(event => { if (event.type === 'notices:changed' || event.type === 'bots:changed') load() })
     return () => { alive = false; off() }
@@ -45,7 +56,7 @@ export function NoticesBell({ disabled, onOpen }: { disabled?: boolean; onOpen(b
       <ul className="notices-items">
         {inbox.items.map(item => <li key={item.id}>
           <button className={`notices-item${item.read ? '' : ' unread'}`} data-testid="notices-item" onClick={() => void open(item.id)}>
-            <span className="notices-item-icon" aria-hidden>{item.running ? <LoaderCircle size={15} className="computer-spinner" /> : item.kind === 'habit' ? <Route size={15} /> : <CometFace size={16} />}</span>
+            <span className="notices-item-icon" aria-hidden>{item.running ? <LoaderCircle size={15} className="computer-spinner" /> : item.kind === 'habit' ? <Route size={15} /> : <NoticeFace bot={bots.find(bot => bot.id === item.botId)} theme={theme} />}</span>
             <span className="notices-item-text"><strong>{item.title}</strong><small>{item.running ? 'Running…' : item.text}</small></span>
             <time dateTime={item.at}>{when(item.at)}</time>
           </button>
