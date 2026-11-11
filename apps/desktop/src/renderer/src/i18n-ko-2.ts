@@ -375,4 +375,7 @@ export const ko2 = {
   'botInfo.runFailed': '실패',
   'botInfo.pause': '일시정지',
   'botInfo.resume': '다시 시작',
+  'botInfo.browserTabs': '브라우저 탭',
+  'botInfo.desktop': '데스크톱',
+  'botInfo.newTab': '새 탭',
 } satisfies Partial<Record<StringKey, string>>

@@ -52,3 +52,9 @@ button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
 .bot-info-panel.bot-info-past > div[data-testid="bot-past-view"] { align-items: stretch; }
 .bot-info-past .bots-thread { flex: none; overflow: visible; padding: 0; }
 .bot-info-panel.bot-info-past .bots-thread .bubble-turn { content-visibility: visible; }
+.bot-info-panel.bot-info-computer > div[data-testid="bot-computer"] { align-items: stretch; min-width: 0; }
+.bot-info-computer section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bot-info-computer h3 { margin: 0; font-size: var(--fs-small); color: var(--fg-faint); font-weight: 600; }
+.bot-info-computer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.bot-info-computer li, .bot-info-computer section > p { margin: 0; font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
+.bot-info-computer li[data-active="true"] { font-weight: 600; }
