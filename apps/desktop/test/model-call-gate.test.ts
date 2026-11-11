@@ -1,6 +1,7 @@
+import { AsyncResource } from 'node:async_hooks'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Engine, EngineCwd } from 'core'
-import { enterModelCall, gateModelCalls, holdModelTaskEngine } from '../src/main/model-call-gate.js'
+import { MODEL_IDLE_MS, enterModelCall, gateModelCalls, holdModelTaskEngine } from '../src/main/model-call-gate.js'
 import { flog } from '../src/main/flog.js'
 import { modelCall, withModelCallContext } from '../src/main/model-call-metrics.js'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
@@ -68,4 +69,19 @@ it('emits no new background model-call starts while a human task is thinking bet
   finish(); await task
   await vi.advanceTimersByTimeAsync(30_000); await pending
   expect(starts().map(row => row.purpose)).toEqual(['task', 'task', 'habit-drafts'])
+})
+
+it('a hold taken after its task finished does not block background calls', async () => {
+  vi.useFakeTimers()
+  let held = false
+  await withModelCallContext({ channel: 'bot-x', purpose: 'task' }, async () => {
+    // Fake timers drop async context, so the callback is bound to the task's context as a real timer would be.
+    setTimeout(AsyncResource.bind(() => { holdModelTaskEngine('gate-late'); held = true }), 10)
+  })
+  await vi.advanceTimersByTimeAsync(10)
+  expect(held).toBe(true)
+  let entered = false
+  void enterModelCall('gate-late', false).then(() => { entered = true })
+  await vi.advanceTimersByTimeAsync(MODEL_IDLE_MS + 2000)
+  expect(entered).toBe(true)
 })

@@ -4,12 +4,14 @@ import { currentModelCallContext, withModelCallContext } from './model-call-metr
 
 const scopes = new AsyncLocalStorage<Map<string, () => void>>()
 const engines = new Map<string, { tasks: number; idleAt: number }>()
+// A hold that lands after its task finished would never be released, so it is ignored.
+const finished = new WeakSet<Map<string, () => void>>()
 export const MODEL_IDLE_MS = 30_000
 
 export function modelTaskScope<T>(run: () => T): T {
   if (scopes.getStore()) return run()
   const held = new Map<string, () => void>()
-  const finish = () => { for (const release of held.values()) release(); held.clear() }
+  const finish = () => { finished.add(held); for (const release of held.values()) release(); held.clear() }
   return scopes.run(held, () => {
     try {
       const result = run()
@@ -25,7 +27,7 @@ export async function enterModelCall(engine: string, task: boolean, signal?: Abo
   engines.set(engine, state)
   if (task) {
     const scope = scopes.getStore()
-    if (scope?.has(engine)) return () => {}
+    if (scope && (scope.has(engine) || finished.has(scope))) return () => {}
     state.tasks++
     const release = () => { state.tasks--; state.idleAt = Date.now() }
     if (scope) { scope.set(engine, release); return () => {} }
