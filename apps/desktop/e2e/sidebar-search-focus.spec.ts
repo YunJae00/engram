@@ -32,12 +32,12 @@ test('typing without a click goes into the welcome composer', async () => {
   await expect(page.getByTestId('welcome-input')).toBeFocused()
   await page.keyboard.type('hello')
   await expect(page.getByTestId('welcome-input')).toHaveValue('hello')
-  await expect(search()).toHaveValue('')
+  await page.getByTestId('sidebar-search-toggle').click(); await expect(search()).toHaveValue('')
   await page.getByTestId('welcome-input').fill('')
 })
 
 test('Escape clears the conversation search', async () => {
-  await search().click()
+  await page.getByTestId('sidebar-search-toggle').click();
   await page.keyboard.type('stray text')
   await expect(search()).toHaveValue('stray text')
   await page.keyboard.press('Escape')
@@ -45,7 +45,7 @@ test('Escape clears the conversation search', async () => {
 })
 
 test('a thread started during a non-matching search stays visible', async () => {
-  await search().fill('nothing matches this')
+  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('nothing matches this')
   await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
   const input = page.getByTestId('welcome-input')
   await input.fill('Plan the garden layout')

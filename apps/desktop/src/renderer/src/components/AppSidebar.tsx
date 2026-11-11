@@ -1,6 +1,7 @@
 import { ArrowLeft, FolderPlus, PanelLeftClose, Plus, Repeat2, Search, Settings, X } from 'lucide-react'
 import { NoticesBell } from './NoticesBell.js'
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import type { BotDto, RoutineDto, SidebarLayout, SidebarKind, SidebarChange } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
@@ -33,6 +34,8 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [bots, setBots] = useState<BotDto[]>([])
   const [routines, setRoutines] = useState<RoutineDto[]>([])
   const [query, setQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchId = useId(), searchToggle = useRef<HTMLButtonElement>(null), composing = useRef(false)
   const [bodyHits, setBodyHits] = useState<{ query: string; ids: Set<string> }>({ query: '', ids: new Set() })
   const createId = useId(), createMenu = useRef<HTMLDivElement>(null), searchInput = useRef<HTMLInputElement>(null)
   const [layout, setLayout] = useState<SidebarLayout | null>(null)
@@ -84,7 +87,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     })
     return () => { reloadGeneration.current++; window.clearTimeout(debounce); off() }
   }, [vaultReady, library])
-  useEffect(() => { setQuery('') }, [library])
+  useEffect(() => { setQuery(''); setSearchOpen(false) }, [library])
   const navigate = (next: 'bots' | 'developers' | 'sky' | 'list' | 'mission') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
   const change = async (kind: SidebarKind, change: SidebarChange['change']) => { const next = await api.sidebarChange({ kind, change }); setLayout(next); return next }
   const updateBot = async (id: string, patch: { hidden?: true; primary?: true }) => { await api.botUpdate(id, patch); await reload() }
@@ -126,7 +129,14 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
     <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
     {developer ? <div id="developer-sidebar" className="developer-sidebar-content" /> : <>
-    <div className="sidebar-library-tools"><div className="sidebar-search"><Search size={14} aria-hidden /><input ref={searchInput} aria-label={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} placeholder={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && query && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); setQuery('') } }} />{query && <button aria-label={t('sidebar.clearSearch')} onClick={() => setQuery('')}><X size={13} aria-hidden /></button>}</div>{!library && <NoticesBell disabled={!vaultReady} onOpen={openBot} />}{!library && <button className="sidebar-icon-button bots-top-button" aria-label={t('sidebar.searchButton')} title={t('sidebar.searchButton')} onClick={() => searchInput.current?.focus()}><Search size={17} aria-hidden /></button>}<button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label={t('sidebar.create')} title={t('sidebar.create')} disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
+    <div className={`sidebar-library-tools${searchOpen ? ' searching' : ''}`}><button ref={searchToggle} className="sidebar-icon-button bots-top-button sidebar-search-toggle" data-testid="sidebar-search-toggle" aria-label={t('sidebar.searchButton')} title={t('sidebar.searchButton')} aria-expanded={searchOpen} aria-controls={searchId} onClick={() => { flushSync(() => setSearchOpen(true)); searchInput.current?.focus() }}><Search size={17} aria-hidden /></button>
+    <div id={searchId} className={`sidebar-search${searchOpen ? ' open' : ''}`} {...searchOpen ? {} : { inert: '', 'aria-hidden': true }} onBlur={event => { if (!query && !composing.current && !event.currentTarget.contains(event.relatedTarget as Node | null)) setSearchOpen(false) }}><Search size={14} aria-hidden /><input ref={searchInput} aria-label={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} placeholder={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} value={query} onChange={event => setQuery(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={event => {
+      if (event.key !== 'Escape' || event.nativeEvent.isComposing || event.keyCode === 229) return
+      // Stop here so the overlay's window Esc handler closes the sidebar only on the next press.
+      event.stopPropagation()
+      if (query) { event.preventDefault(); setQuery('') } else { flushSync(() => setSearchOpen(false)); searchToggle.current?.focus() }
+    }} />{query && <button aria-label={t('sidebar.clearSearch')} onClick={() => { setQuery(''); searchInput.current?.focus() }}><X size={13} aria-hidden /></button>}</div>
+    <button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label={t('sidebar.create')} title={t('sidebar.create')} disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
     <div id={createId} ref={createMenu} {...{ popover: "auto" }} className="sidebar-create-menu" aria-label={t('sidebar.create')}>
       {!library && <button data-testid="bots-new" disabled={!vaultReady} onClick={() => { createMenu.current?.hidePopover(); setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle(); setCreatingBot(true) }}><Plus size={16} aria-hidden />{t('bots.new')}</button>}
       <button aria-label={library ? t('sidebar.newRoutineFolder') : t('sidebar.newSection')} onClick={() => { createMenu.current?.hidePopover(); newFolder(library ? 'routine' : 'chat') }}><FolderPlus size={16} aria-hidden />{library ? t('sidebar.newFolder') : t('sidebar.newSection')}</button>
@@ -144,6 +154,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     </>}
     <footer className="sidebar-footer">
       <SidebarStatus />
+      {!library && !developer && <NoticesBell disabled={!vaultReady} onOpen={openBot} />}
       <button data-testid="activity-settings" aria-label={t('sidebar.settings')} title={t('sidebar.settings')} onClick={onOpenSettings}><Settings size={16} aria-hidden /><span>{t('sidebar.settings')}</span></button>
     </footer>
     {creatingBot && <CreateBotDialog onClose={() => setCreatingBot(false)} onCreated={bot => openBot(bot.id)} />}

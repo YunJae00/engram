@@ -18,7 +18,7 @@ function NoticeFace({ bot, theme }: { bot: BotDto | undefined; theme: 'light' | 
   return bot ? <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={20} state="idle" theme={theme} /> : <CometFace size={16} />
 }
 
-// The bell by the search box: what Engram brought on its own - a scheduled
+// What Engram brought on its own - a scheduled
 // request that ran, a way of working it noticed - and what is set to run.
 // Opening one opens its conversation, a new one when it has none yet.
 export function NoticesBell({ disabled, onOpen }: { disabled?: boolean; onOpen(botId: string): void }) {
@@ -48,7 +48,7 @@ export function NoticesBell({ disabled, onOpen }: { disabled?: boolean; onOpen(b
   const label = unread ? t('sidebar.notificationsNew', { n: unread }) : t('sidebar.notifications')
   return <>
     <button className={`sidebar-icon-button sidebar-notices${unread ? ' unread' : ''}`} data-testid="notices-bell" aria-label={label} title={label} disabled={disabled} {...{ popovertarget: id }}
-      onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (panel.current) Object.assign(panel.current.style, { left: `${Math.max(8, rect.right - 320)}px`, top: `${rect.bottom + 6}px` }) }}>
+      onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (panel.current) Object.assign(panel.current.style, { left: `${Math.max(8, Math.min(rect.left, window.innerWidth - 328))}px`, top: 'auto', bottom: `${window.innerHeight - rect.top + 6}px` }) }}>
       {unread ? <BellDot size={17} strokeWidth={1.8} aria-hidden /> : <Bell size={17} strokeWidth={1.8} aria-hidden />}
     </button>
     <div id={id} ref={panel} {...{ popover: 'auto' }} className="notices-panel" data-testid="notices-panel" aria-label={t('sidebar.notifications')}>

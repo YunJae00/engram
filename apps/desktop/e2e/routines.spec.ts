@@ -119,7 +119,7 @@ test('Routines replaces the workspace and selecting a saved case shows its recor
   await capture('routine-library.png')
   await expect(page.getByTestId('sidebar-chat-collection')).toHaveCount(0)
   await expect(page.getByTestId('bots-new')).toHaveCount(0)
-  const search = page.getByRole('textbox', { name: 'Search routines', exact: true })
+  await page.getByTestId('sidebar-search-toggle').click(); const search = page.getByRole('textbox', { name: 'Search routines', exact: true })
   await search.fill('unrelated routine name')
   await expect(page.getByTestId(`sidebar-routine-run-${routine.id}`)).toHaveCount(0)
   await search.fill('PORTAL')

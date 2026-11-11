@@ -55,7 +55,7 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   await expect(targetRow).toHaveCount(0)
   const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
   for (const query of ['QX-7731', 'qx-7731']) {
-    await input.fill(query)
+    await page.getByTestId('sidebar-search-toggle').click(); await input.fill(query)
     await expect(targetRow).toBeVisible()
     await expect(otherRow).toHaveCount(0)
     await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)

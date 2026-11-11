@@ -57,7 +57,9 @@ test('keyboard open, Esc closes and typing lands in the composer', async () => {
   await page.keyboard.press('ControlOrMeta+B')
   await expectOpen()
   await screenshot('overlay-esc-before.png')
-  await page.getByRole('textbox', { name: 'Search conversations' }).focus()
+  await page.getByTestId('sidebar-search-toggle').focus(); await page.keyboard.press('Enter')
+  await expect(page.getByRole('textbox', { name: 'Search conversations' })).toBeFocused()
+  await page.keyboard.press('Escape'); await expect(page.getByTestId('sidebar-search-toggle')).toBeFocused()
   await page.keyboard.press('Escape')
   await expectClosed()
   await typesInto(composer(), 'hello')
@@ -116,13 +118,14 @@ test('the create popover takes the first Esc', async () => {
 
 test('IME composition Esc is ignored', async () => {
   await openByPointer()
-  await page.getByRole('textbox', { name: 'Search conversations' }).evaluate(input => {
+  await page.getByTestId('sidebar-search-toggle').click(); await page.getByRole('textbox', { name: 'Search conversations' }).evaluate(input => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }))
     const legacy = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     Object.defineProperty(legacy, 'keyCode', { value: 229 })
     input.dispatchEvent(legacy)
   })
   await expectOpen()
+  await page.keyboard.press('Escape'); await expectOpen()
   await page.keyboard.press('Escape')
   await expectClosed()
 })

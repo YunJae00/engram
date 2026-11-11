@@ -1,7 +1,13 @@
 .sidebar-collection { position: relative; min-width: 0; }
 .sidebar-library-tools { display: flex; align-items: center; gap: 8px; margin: 12px; }
 .sidebar-section.sidebar-conversations { margin: 0 -4px; padding: 0 4px; }
-.sidebar-library-tools .sidebar-search { flex: 1; min-width: 0; margin: 0; border-radius: 999px; }
+.sidebar-library-tools .sidebar-search { flex: 0 0 auto; width: 0; min-width: 0; margin: 0; padding: 0; border-radius: 999px; opacity: 0; visibility: hidden; pointer-events: none; overflow: hidden; transition: width 160ms ease-out, opacity 160ms ease-out, visibility 160ms; }
+.sidebar-library-tools .sidebar-search.open { width: calc(100% - 84px); padding: 0 9px; opacity: 1; visibility: visible; pointer-events: auto; transition: width 160ms ease-out, opacity 160ms ease-out; }
+.sidebar-library-tools .sidebar-create { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .sidebar-library-tools .sidebar-search, .sidebar-library-tools .sidebar-search.open { transition: none; } }
+.app-sidebar .sidebar-footer:has(.sidebar-notices) { grid-template-columns: minmax(0, 1fr) 32px 32px; }
+.app-sidebar .sidebar-footer .sidebar-notices { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; color: var(--fg-dim); }
+.app-sidebar .sidebar-footer .sidebar-notices:hover { background: var(--hover-bg); color: var(--fg); }
 .sidebar-create { border-radius: 50% !important; border: 1px solid var(--border-soft); }
 .sidebar-create-menu { position: fixed; margin: 0; width: 200px; padding: 5px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); }
 .sidebar-create-menu > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border-radius: 9px; text-align: left; }

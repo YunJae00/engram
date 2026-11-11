@@ -39,7 +39,7 @@ const empty = () => page.getByText('No matches found', { exact: true })
 const row = (bot: Bot | string) => page.getByTestId(`bot-${typeof bot === 'string' ? bot : bot.id}`)
 const clear = () => page.getByRole('button', { name: 'Clear search', exact: true }).click()
 async function typeQuery(query: string): Promise<void> {
-  await search().click()
+  await page.getByTestId('sidebar-search-toggle').click();
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.press('Backspace')
   await page.keyboard.type(query)
@@ -50,7 +50,7 @@ test('a query found nowhere lists no conversation, even the open one', async () 
   await expect(row(beta)).toHaveClass(/active/)
   for (const [query, typed] of [['qqqzzz', true], ['없는단어xyz', true], ['qqqzzz', false]] as const) {
     expect(await page.evaluate(q => window.engram.botsSearch(q), query)).toEqual([])
-    if (typed) await typeQuery(query); else await search().fill(query)
+    if (typed) await typeQuery(query); else { await page.getByTestId('sidebar-search-toggle').click(); await search().fill(query) }
     await expect(search()).toHaveValue(query)
     await expect(rows()).toHaveCount(0)
     await expect(row(beta)).toHaveCount(0)
@@ -95,7 +95,7 @@ test('a chat started during a non-matching search is not listed until the search
   await page.getByTestId('sidebar-create').click()
   await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
-  await search().fill('qqqzzz')
+  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('qqqzzz')
   await expect(empty()).toBeVisible()
   const input = page.getByTestId('welcome-input')
   await input.fill('Plan the garden layout')

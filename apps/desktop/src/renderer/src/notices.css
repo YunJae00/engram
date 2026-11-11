@@ -1,4 +1,4 @@
-.sidebar-library-tools .sidebar-notices.unread { color: var(--fg-strong); }
+.app-sidebar .sidebar-footer .sidebar-notices.unread { color: var(--fg-strong); }
 .notices-panel { position: fixed; margin: 0; width: 320px; max-height: min(520px, calc(100vh - 80px)); overflow: auto; padding: 6px; border: 1px solid var(--border-soft); border-radius: 16px; background: var(--panel-bg); color: var(--fg); box-shadow: var(--shadow-float); }
 .notices-panel:popover-open { animation: view-in 160ms ease-out; }
 .notices-panel header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 6px; }

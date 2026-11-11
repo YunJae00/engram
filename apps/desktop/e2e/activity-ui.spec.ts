@@ -65,16 +65,17 @@ test('low memory rejects a new embedded browser without blocking the app', async
 test('Engram keeps navigation in its menu with aligned icons and leaves status in the sidebar footer', async () => {
   const sidebar = page.getByTestId('app-sidebar')
   await expect(sidebar.locator('.sidebar-nav-row')).toHaveCount(0)
+  await sidebar.getByTestId('sidebar-search-toggle').click()
   await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
+  const searchBox = await sidebar.getByRole('textbox', { name: 'Search conversations' }).boundingBox()
+  const newBox = await sidebar.getByTestId('sidebar-create').boundingBox()
+  expect(Math.abs(newBox!.y + newBox!.height / 2 - searchBox!.y - searchBox!.height / 2)).toBeLessThanOrEqual(1)
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
   await expect(page.getByTestId('activity-routines')).toHaveCount(0)
   await expect(menu.getByRole('button', { name: 'Search Cosmos' })).toHaveCount(0)
   await expect(sidebar.locator('.recent-web')).toHaveCount(0)
-  const searchBox = await sidebar.getByRole('textbox', { name: 'Search conversations' }).boundingBox()
-  const newBox = await sidebar.getByTestId('sidebar-create').boundingBox()
-  expect(Math.abs(newBox!.y + newBox!.height / 2 - searchBox!.y - searchBox!.height / 2)).toBeLessThanOrEqual(1)
   const positions = await menu.locator('.sidebar-nav-row').evaluateAll((rows) => {
     return rows.map((row) => {
       const icon = row.firstElementChild!.getBoundingClientRect()

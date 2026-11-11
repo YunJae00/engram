@@ -221,6 +221,7 @@ export async function run(page, { paths }) {
     const queries = [['zqlabel', 'Alpha Bot'], ['zqpurpose', 'Beta Bot'], ['zqchat', 'Loose Bot'], ['Alpha', 'Alpha Bot'], ['zqnone', null]]
     try {
       for (const [query, expected] of queries) {
+        await SIDEBAR.getByTestId('sidebar-search-toggle').click({ timeout: WAIT_MS })
         await SEARCH.fill(query, { timeout: WAIT_MS })
         let shown = []
         const reason = await until(async () => {
