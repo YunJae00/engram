@@ -7,7 +7,7 @@ import { closeTestApp } from '../navigation.js'
 import { visualDir, writeReviewSheet } from './review-sheet.js'
 import { CHAT_ID, seedVisualVault } from './seed.js'
 import { galleryHtml } from './avatar-gallery.js'
-import { measureChat, measureState, serializeMetrics, type StateName } from './spec.js'
+import { contrastRatio, measureChat, measureState, serializeMetrics, type Rgba, type StateName } from './spec.js'
 
 const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const TMP = join(REPO, 'tmp')
@@ -214,7 +214,70 @@ test.describe('visual', () => {
     }
   })
 
-  for (const state of ['settings-review', 'onboarding-bot'] as const) {
-    test.fixme(state, () => undefined)
-  }
+  test('settings-review', async () => {
+    const contrast: { theme: Theme; text: number | null; headings: (number | null)[]; ring: number | null }[] = []
+    await capture('settings-review', async (page, theme) => {
+      const openAi = async () => {
+        await page.getByTestId('activity-settings').click()
+        await page.getByTestId('settings-nav-ai').click()
+        await expect(page.getByTestId('review-rules')).toBeVisible()
+      }
+      await openAi()
+      for (const [kind, host] of [['ask-first', 'example.com'], ['allow', 'docs.example.org']] as const) {
+        await page.getByTestId(`review-rule-input-${kind}`).fill(host)
+        await page.getByTestId(`review-rule-add-${kind}`).click()
+        await expect(page.getByTestId(`review-rules-${kind}`).getByTestId('review-rule-row')).toHaveText([new RegExp(host.replace('.', '\\.'))])
+      }
+      await page.reload()
+      await expect(page.getByTestId('shell')).toBeVisible()
+      await openAi()
+      await expect(page.getByTestId('review-rule-row')).toHaveCount(2)
+      expect(await page.evaluate(() => window.engram.reviewRulesList())).toEqual([
+        { kind: 'ask-first', operation: 'submit', target: 'example.com' },
+        { kind: 'allow', operation: 'submit', target: 'docs.example.org' },
+      ])
+      const input = page.getByTestId('review-rule-input-ask-first')
+      await page.getByTestId('review-rules').scrollIntoViewIfNeeded()
+      await input.focus()
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Tab')
+      await expect(input).toBeFocused()
+      const colors = await page.evaluate(() => {
+        const layers = (el: Element | null) => { const out: string[] = []; for (; el; el = el.parentElement) out.push(getComputedStyle(el).backgroundColor); return out }
+        const host = document.querySelector('[data-testid="review-rule-row"] > span')!
+        const heads = [...document.querySelectorAll('[data-testid="review-rules"] h4')]
+        const field = document.querySelector<HTMLElement>('[data-testid="review-rule-input-ask-first"]')!
+        const cs = getComputedStyle(field)
+        const ring = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 ? cs.outlineColor : cs.boxShadow.match(/rgba?\([^)]*\)/)?.[0] ?? ''
+        return { text: [getComputedStyle(host).color, ...layers(host)], heads: heads.map(h => [getComputedStyle(h).color, ...layers(h)]), ring: [ring, ...layers(field.parentElement)] }
+      })
+      const rgba = (list: string[]) => page.evaluate(values => {
+        const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!
+        ctx.canvas.width = 1
+        ctx.canvas.height = 1
+        ctx.globalCompositeOperation = 'copy'
+        return values.map(value => {
+          ctx.fillStyle = value
+          ctx.fillRect(0, 0, 1, 1)
+          const d = ctx.getImageData(0, 0, 1, 1).data
+          return [d[0]!, d[1]!, d[2]!, d[3]! / 255] as [number, number, number, number]
+        })
+      }, list)
+      const ratio = async ([fg, ...layers]: string[]) => { const [f, ...l] = await rgba([fg!, ...layers]); return contrastRatio(f as Rgba, l as Rgba[]) }
+      contrast.push({ theme, text: await ratio(colors.text), headings: await Promise.all(colors.heads.map(ratio)), ring: colors.ring[0] ? await ratio(colors.ring) : null })
+    })
+    for (const theme of THEMES) {
+      const rows = JSON.parse(await readFile(join(OUT, `settings-review-${theme}.metrics.json`), 'utf8')) as { row: number; status: string }[]
+      expect(rows.find(r => r.row === 17)?.status).toBe('pass')
+    }
+    expect(contrast.map(c => c.theme)).toEqual([...THEMES])
+    for (const c of contrast) {
+      expect(c.text, `${c.theme} host text`).toBeGreaterThanOrEqual(4.5)
+      expect(c.headings, `${c.theme} headings`).toHaveLength(2)
+      for (const h of c.headings) expect(h, `${c.theme} heading`).toBeGreaterThanOrEqual(4.5)
+      expect(c.ring, `${c.theme} focus ring`).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  test.fixme('onboarding-bot', () => undefined)
 })

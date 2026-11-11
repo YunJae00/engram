@@ -5,6 +5,7 @@ import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { EngineSettings } from '../components/EngineSettings.js'
+import { ReviewRulesSettings } from '../components/ReviewRulesSettings.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
@@ -147,6 +148,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
         <h2>AI &amp; accounts</h2>
         {section === 'ai' && <EngineSettings />}
+        {section === 'ai' && <ReviewRulesSettings />}
         </section>
         <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
         <h2>Memory &amp; data</h2>

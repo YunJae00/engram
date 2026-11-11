@@ -153,7 +153,7 @@ import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList 
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
-import { approvalsStore } from './approvals.js'
+import { approvalsStore, reviewRuleInput } from './approvals.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -1755,6 +1755,9 @@ export function registerIpc(ctx: VaultContext): void {
   })
   ipcMain.handle('approvals:list', () => approvals.list())
   ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
+  ipcMain.handle('reviewRules:list', () => approvals.reviewRules())
+  ipcMain.handle('reviewRules:add', (_e, input: unknown) => approvals.addReviewRule(reviewRuleInput(input)))
+  ipcMain.handle('reviewRules:remove', (_e, input: unknown) => approvals.removeReviewRule(reviewRuleInput(input)))
   // Standing tasks go through the same door as a press of Run.
   startStanding({
     paths,

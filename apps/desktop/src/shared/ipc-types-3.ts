@@ -4,6 +4,7 @@ import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
 import type { SidebarChange } from 'core'
 import type { SidebarKind } from 'core'
+import type { ReviewRule } from 'core'
 
 export interface EngramApi extends DesktopApi, DevelopersApi {
   artifactReveal(id: string): Promise<void>
@@ -134,6 +135,9 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   pressAskDone(channel: string, verdict: 'approve' | 'always' | 'cancel'): Promise<void>
   approvalsList(): Promise<ApprovalRuleDto[]>
   approvalForget(fingerprint: string): Promise<void>
+  reviewRulesList(): Promise<ReviewRule[]>
+  reviewRuleAdd(input: { kind: ReviewRule['kind']; target: string }): Promise<ReviewRule[]>
+  reviewRuleRemove(input: { kind: ReviewRule['kind']; target: string }): Promise<ReviewRule[]>
   browsersList(): Promise<{ id: string; name: string; userData: string; running: boolean }[]>
   browserImport(id: string): Promise<{ ok: boolean; copied?: number; error?: string }>
   browserForget(): Promise<void>
