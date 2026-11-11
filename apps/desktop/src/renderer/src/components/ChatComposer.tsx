@@ -125,7 +125,7 @@ export const ChatComposer = memo(
 
     const attach = async (files: File[]) => {
       if (!onAttachmentsChange || (busy && !canQueue) || disabled || attachingRef.current || !files.length) return
-      if (attachments.length + files.length > ATTACHMENT_MAX_COUNT) { setError(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`); return }
+      if (attachments.length + files.length > ATTACHMENT_MAX_COUNT) { setError(t('composer.attachLimit', { count: ATTACHMENT_MAX_COUNT })); return }
       const invalid = files.map(file => attachmentError(file.name, file.size)).find(Boolean)
       if (invalid) { setError(invalid); return }
       attachingRef.current = true
@@ -169,12 +169,12 @@ export const ChatComposer = memo(
         event.stopPropagation()
         void attach(Array.from(event.dataTransfer.files))
       }}>
-        {attachments.length > 0 && <div className="chat-file-list" aria-label="Attached files">{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || (busy && !canQueue) || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
-        {named.length > 0 && <div className="chat-mention-list" aria-label="Apps named" data-testid={testId ? `${testId}-named` : undefined}>{named.map(app => <span key={app.label} className="chat-mention-chip">{appMark(app, 14)}<span>{app.label}</span></span>)}</div>}
+        {attachments.length > 0 && <div className="chat-file-list" aria-label={t('composer.attachedFiles')}>{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || (busy && !canQueue) || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
+        {named.length > 0 && <div className="chat-mention-list" aria-label={t('composer.appsNamed')} data-testid={testId ? `${testId}-named` : undefined}>{named.map(app => <span key={app.label} className="chat-mention-chip">{appMark(app, 14)}<span>{app.label}</span></span>)}</div>}
         {(onAttachmentsChange || actions) && <>
-          <button type="button" ref={addRef} className="chat-add-button" aria-label="Add to conversation" data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
-          <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label="Conversation actions" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
-            {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label="Attach files" title="Attach files · up to 8 files, 20 MB each" disabled={attaching || (busy && !canQueue) || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>Attach files</span></button>}
+          <button type="button" ref={addRef} className="chat-add-button" aria-label={t('composer.add')} data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
+          <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label={t('composer.actions')} onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
+            {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label={t('composer.attach')} title={t('composer.attachHint')} disabled={attaching || (busy && !canQueue) || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>{t('composer.attach')}</span></button>}
             {actions}
           </div>
         </>}
@@ -198,7 +198,7 @@ export const ChatComposer = memo(
             void attach(files.length ? files : [new File([text], 'Pasted text.txt', { type: 'text/plain' })])
           }}
         />
-        <div ref={mentionRef} className="chat-add-menu chat-mention-menu" {...{ popover: 'manual' }} role="listbox" aria-label="Apps" data-testid={testId ? `${testId}-mentions` : undefined}>
+        <div ref={mentionRef} className="chat-add-menu chat-mention-menu" {...{ popover: 'manual' }} role="listbox" aria-label={t('composer.apps')} data-testid={testId ? `${testId}-mentions` : undefined}>
           {mention?.options.map((app, index) => (
             <button key={app.label} type="button" role="option" aria-selected={index === mention.pick} className={index === mention.pick ? 'picked' : undefined} onMouseDown={event => { event.preventDefault(); chooseMention(app.label) }}>
               {appMark(app, 16)}<span>@{app.label}</span>
@@ -218,8 +218,8 @@ export const ChatComposer = memo(
             <button
               className="chat-send-btn armed"
               data-testid={testId ? `${testId}-send` : undefined}
-              aria-label={busy ? 'Queue message' : t('chat.send')}
-              title={busy ? 'Send after this reply' : undefined}
+              aria-label={busy ? t('composer.queue') : t('chat.send')}
+              title={busy ? t('composer.queueHint') : undefined}
               disabled={disabled || attaching || (!value.trim() && !attachments.length)}
               onClick={send}
             >
@@ -228,7 +228,7 @@ export const ChatComposer = memo(
           )}
         </div>
         {error && <p className="chat-attachment-error" role="alert">{error}</p>}
-        {attaching && <span className="chat-attachment-status" role="status">Attaching files…</span>}
+        {attaching && <span className="chat-attachment-status" role="status">{t('composer.attaching')}</span>}
       </div>
     )
   }),

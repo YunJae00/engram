@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppSettingsDto, EngineStatusDto, ModelChoiceDto } from '../../../shared/types.js'
 import { api } from '../api.js'
-import { t } from '../i18n.js'
+import { t, uiLocale, type StringKey } from '../i18n.js'
 import { useShellState } from '../state-slices.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import type { ReasoningEffort } from 'core'
@@ -16,6 +16,7 @@ type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
 const catalogs = new Map<string, { rows: ModelChoiceDto[]; checked: number; pending?: Promise<ModelChoiceDto[]> }>()
 api.onEvent(event => { if (event.type === 'models:changed') catalogs.clear() })
+const EFFORT_KEYS: Record<ReasoningEffort, StringKey> = { none: 'model.effortNone', minimal: 'model.effortMinimal', low: 'model.effortLow', medium: 'model.effortMedium', high: 'model.effortHigh', xhigh: 'model.effortXhigh', max: 'model.effortMax', ultra: 'model.effortUltra' }
 const catalogKey = (engine: Provider, profile: string) => profile === 'system' ? engine : `${engine}.${profile}`
 function cachedModels(engine: Provider, profile: string): ModelChoiceDto[] {
   const key = catalogKey(engine, profile)
@@ -83,7 +84,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
   const engine = selection?.engine ?? settings?.defaultEngine ?? null
   const profiles = useAccountProfiles()
   const profile = controlled?.accountProfile ?? (engine ? profiles?.selected[engine] : undefined) ?? 'system'
-  const accountName = profiles?.profiles.find(row => row.id === profile)?.name ?? 'System account'
+  const accountName = profiles?.profiles.find(row => row.id === profile)?.name ?? t('model.systemAccount')
   const account = useAccountUsage().find(row => row.provider === engine && row.profile === profile)
   const limits = account?.usage?.windows ?? []
   const known = limits.filter(window => typeof window.used === 'number' && Number.isFinite(window.used))
@@ -97,7 +98,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
     if (controlled) return
     let alive = true
     let revision = 0
-    void api.settingsGet().then((value) => { if (alive && revision === 0) setSettings(value) }).catch(() => { if (alive) setSaveError('Could not load settings. Open AI settings to retry.') })
+    void api.settingsGet().then((value) => { if (alive && revision === 0) setSettings(value) }).catch(() => { if (alive) setSaveError(t('model.loadFailed')) })
     const off = api.onEvent((event) => {
       if (event.type === 'settings:changed') { revision++; setSettings(event.settings) }
     })
@@ -111,7 +112,7 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       const at = ++serial
       const request = controlled?.accountProfile ? Promise.all([api.accountProfileStates(), api.engineStates()]).then(([rows, defaults]) => [...defaults.filter(row => row.id !== engine), ...rows.filter(row => row.provider === engine && row.id === controlled.accountProfile).map(row => ({ ...row, id: row.provider }))]) : api.engineStates()
       void request.then((next) => { if (alive && at === serial) setStates(next) }).catch(() => {
-        if (alive && at === serial) setSaveError('Could not check connections. Open AI settings to retry.')
+        if (alive && at === serial) setSaveError(t('model.checkFailed'))
       })
     }
     if (open || !states) read()
@@ -200,27 +201,27 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
         setSettings(value => value ? { ...value, aiSelections: { ...value.aiSelections, [scope]: chosen } } : value)
       } else { await api.settingsSet(change); setSettings(value => ({ ...(value ?? current), ...change })) }
       if (close) { setOpen(false); trigger.current?.focus() }
-    } catch { setSaveError('Could not save your selection. Try again.') }
+    } catch { setSaveError(t('model.saveFailed')) }
     finally { setSaving(false) }
   }
   const stateFor = (id: Provider) => states?.find((one) => one.id === id) ?? engines.find((one) => one.id === id)
   const selectedState = engine ? stateFor(engine) : undefined
   const selectedHealth = engines.find((one) => one.id === engine)
   const providerName = PROVIDERS.find((one) => one.id === engine)?.name ?? 'AI'
-  const status = selectedHealth?.healthy === false ? 'Needs attention' : !states && !enginesDetected ? 'Checking connection…' : connectionLabel(selectedState, engine ?? '')
+  const status = selectedHealth?.healthy === false ? t('model.needsAttention') : !states && !enginesDetected ? t('connection.checking') : connectionLabel(selectedState, engine ?? '')
   const modelLabel = rows.find((row) => row.value === model)?.label ?? (model || t('settings.modelAuto'))
   const label = modelLabel
   const efforts = rows.find(row => row.value === model)?.efforts ?? []
-  const effortLabel = (level?: string) => level ? level === 'xhigh' ? 'Extra high' : level.charAt(0).toUpperCase() + level.slice(1) : 'Auto'
-  const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: 'Saved selection' }] : [])]
-  const description = `${providerName} · ${label}${effort ? ` · ${effortLabel(effort)}` : ''} · ${accountName}\n${status}\n${limits.length ? limits.map(window => `${window.name}: ${window.used === undefined ? 'Unavailable' : `${Math.round(100 - window.used)}% left`}${window.resetsAt !== undefined ? ` · Resets ${new Date(window.resetsAt).toLocaleString('en-US')}` : ''}`).join('\n') : account?.loading ? 'Checking limits…' : 'Limits unavailable'}\nChoose provider and model`
+  const effortLabel = (level?: string) => level ? level in EFFORT_KEYS ? t(EFFORT_KEYS[level as ReasoningEffort]) : level.charAt(0).toUpperCase() + level.slice(1) : t('model.effortAuto')
+  const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: t('model.savedSelection') }] : [])]
+  const description = `${providerName} · ${label}${effort ? ` · ${effortLabel(effort)}` : ''} · ${accountName}\n${status}\n${limits.length ? limits.map(window => `${window.name}: ${window.used === undefined ? t('model.limitUnavailable') : t('model.percentLeft', { percent: Math.round(100 - window.used) })}${window.resetsAt !== undefined ? t('model.resets', { time: new Date(window.resetsAt).toLocaleString(uiLocale()) }) : ''}`).join('\n') : account?.loading ? t('model.checkingLimits') : t('model.limitsUnavailable')}\n${t('model.choose')}`
 
-  if (!settings && !controlled) return <div className="model-picker" role="status" aria-label="Loading model selection"><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>Open AI settings</button>}</div>
+  if (!settings && !controlled) return <div className="model-picker" role="status" aria-label={t('model.loadingSelection')}><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>{t('model.openSettings')}</button>}</div>
 
   return <div className={`model-picker${sidebar ? ' provider-picker-sidebar' : ''}`} ref={box}>
     <button type="button" ref={trigger} disabled={controlled?.disabled} aria-disabled={saving || undefined} className={sidebar ? 'sidebar-status-row sidebar-engine-status' : 'model-picker-btn'}
       data-testid={sidebar ? 'engine-status' : 'model-picker'} title={description}
-      aria-label={`${providerName} · ${label} · ${accountName} · Choose provider and model`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
+      aria-label={`${providerName} · ${label} · ${accountName} · ${t('model.choose')}`} aria-expanded={open} aria-haspopup="menu" aria-controls={open ? menuId : undefined}
       onClick={() => { if (saving) return; focusLast.current = false; setOpen(!open) }}
       onKeyDown={(event) => { if (saving) return; if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); focusLast.current = event.key === 'ArrowUp'; setOpen(true) } }}>
       <span className="provider-usage-icon">
@@ -229,34 +230,34 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       </span>
     </button>
     {accountsOpen && engine && <ProfileDialog provider={engine} sessionProfile={controlled?.accountProfile} close={() => { setAccountsOpen(false); trigger.current?.focus() }} />}
-    {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={'Provider and model'} data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
+    {open && createPortal(<div className="model-picker-menu provider-picker-menu" ref={menu} id={menuId} role="menu" aria-label={t('model.menu')} data-testid={sidebar ? 'provider-picker-menu' : 'model-picker-menu'} aria-busy={saving}>
       <>
-      <div className="provider-picker-heading">{controlled ? 'This session' : scope === 'filing' ? 'Filing provider' : scope ? 'This conversation' : 'New conversations'}</div>
+      <div className="provider-picker-heading">{controlled ? t('model.headingSession') : scope === 'filing' ? t('model.headingFiling') : scope ? t('model.headingConversation') : t('model.headingNew')}</div>
       {PROVIDERS.map(({ id, name }) => {
         const state = stateFor(id)
         const connected = connectionConfirmed(state)
-        const detail = connected ? 'Connected' : !states && !state ? 'Open AI settings' : state?.installed ? 'Connect in settings' : 'Set up in settings'
+        const detail = connected ? t('connection.connected') : !states && !state ? t('model.openSettings') : state?.installed ? t('model.connectInSettings') : t('model.setUpInSettings')
         return <button type="button" key={id} role="menuitemradio" aria-checked={engine === id} tabIndex={-1} disabled={saving || controlled?.disabled} className="model-picker-item provider-picker-option" data-testid={`provider-pick-${id}`}
           onClick={() => { if (!connected) setup(); else if (engine !== id) void save({ defaultEngine: id }, false) }}>
-          <ProviderIcon provider={id} size={18} /><span className="model-picker-name" title={detail}>{name}{!connected && <span className="model-picker-detail">Connect</span>}</span>
+          <ProviderIcon provider={id} size={18} /><span className="model-picker-name" title={detail}>{name}{!connected && <span className="model-picker-detail">{t('model.connect')}</span>}</span>
           {engine === id && <Check className="provider-picker-check" size={14} aria-hidden />}
         </button>
       })}
       <div className="provider-picker-divider" role="separator" />
-      <div className="provider-picker-heading">{providerName} models</div>
+      <div className="provider-picker-heading">{t('model.providerModels', { provider: providerName })}</div>
       {choices.map((row) => <button type="button" key={row.value || 'auto'} role="menuitemradio" aria-checked={model === row.value} tabIndex={-1} disabled={saving || !engine}
         className="model-picker-item" title={row.detail} data-testid={`model-pick-${row.value || 'auto'}`}
         onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexModel' : 'claudeModel']: row.value }, !controlled) }}>
         <span className="model-picker-tick">{model === row.value && <Check size={12} strokeWidth={2.4} aria-hidden />}</span>
         <span className="model-picker-text"><span className="model-picker-name">{row.label}</span>{row.detail && row.value && <small className="model-picker-hint">{row.detail}</small>}</span>
       </button>)}
-      {loading && <div className="model-picker-note inline-loading" role="status"><LoaderCircle size={14} className="computer-spinner" aria-hidden />{rows.length ? 'Updating models…' : 'Loading models…'}</div>}
+      {loading && <div className="model-picker-note inline-loading" role="status"><LoaderCircle size={14} className="computer-spinner" aria-hidden />{rows.length ? t('model.updating') : t('model.loading')}</div>}
       {loading && !rows.length && <div className="model-loading-skeleton" aria-hidden>{[0, 1, 2].map(index => <span key={index} className="skeleton-line" />)}</div>}
-      {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>Models unavailable · Retry</button>}
-      {!sidebar && efforts.length > 0 && <><div className="provider-picker-divider" role="separator" /><div className="provider-picker-heading">Reasoning effort</div><div className="dev-effort-scale">{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
+      {error && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={refresh}>{t('model.retry')}</button>}
+      {!sidebar && efforts.length > 0 && <><div className="provider-picker-divider" role="separator" /><div className="provider-picker-heading">{t('model.effortHeading')}</div><div className="dev-effort-scale">{[undefined, ...efforts].map(level => <button key={level ?? 'auto'} type="button" className="model-picker-item" role="menuitemradio" tabIndex={-1} aria-checked={effort === level} disabled={saving || controlled?.disabled} data-testid={`effort-pick-${level ?? 'auto'}`} onClick={() => { if (engine) void save({ [engine === 'codex' ? 'codexEffort' : 'claudeEffort']: level }, true) }}><span className="model-picker-name">{effortLabel(level)}</span>{effort === level && <Check size={14} aria-hidden />}</button>)}</div></>}
       <div className="provider-picker-divider" role="separator" />
-      {showAccounts && engine && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={() => { setOpen(false); setAccountsOpen(true) }} aria-label={`Manage ${providerName} accounts`}><Users size={16} aria-hidden /><span className="model-picker-name">{accountName}<small className="model-picker-detail">{remaining === undefined ? account?.loading ? 'Checking limits…' : 'Limits unavailable' : `${Math.round(remaining)}% left`} · Accounts</small></span></button>}
-      <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />AI settings</button>
+      {showAccounts && engine && <button type="button" className="model-picker-item" role="menuitem" tabIndex={-1} onClick={() => { setOpen(false); setAccountsOpen(true) }} aria-label={t('model.manageAccounts', { provider: providerName })}><Users size={16} aria-hidden /><span className="model-picker-name">{accountName}<small className="model-picker-detail">{remaining === undefined ? account?.loading ? t('model.checkingLimits') : t('model.limitsUnavailable') : t('model.percentLeft', { percent: Math.round(remaining) })}{t('model.accounts')}</small></span></button>}
+      <button type="button" className="model-picker-item provider-picker-settings" role="menuitem" tabIndex={-1} onClick={setup}><Settings size={14} aria-hidden />{t('model.aiSettings')}</button>
       </>
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}
     </div>, document.body)}
