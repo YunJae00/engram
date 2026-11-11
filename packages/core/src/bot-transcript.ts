@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { open, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readBotTranscript, type BotTurn } from './bots.js'
 import type { VaultPaths } from './vault.js'
@@ -56,4 +56,51 @@ export async function readArchivedTranscript(paths: VaultPaths, botId: unknown, 
   const rows = parseTurns(raw)
   const end = Math.max(0, rows.length - skip)
   return rows.slice(Math.max(0, end - size), end)
+}
+
+const TAIL = 16384
+
+function lastTurnIn(bytes: Buffer, whole: boolean): BotTurn | undefined {
+  const first = whole ? 0 : bytes.indexOf(0x0a) + 1
+  if (!whole && first === 0) return undefined
+  let end = bytes.length
+  while (end > first) {
+    const cut = bytes.lastIndexOf(0x0a, end - 1)
+    const start = Math.max(cut + 1, first)
+    const line = bytes.subarray(start, end).toString('utf8')
+    end = cut < first ? first : cut
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as BotTurn
+      if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string' && !parsed.progress) return parsed
+    } catch {
+      // one corrupt line must not cost the preview
+    }
+  }
+  return undefined
+}
+
+// Reads a growing tail of the live transcript until it holds the last non-progress turn; bytes read never exceed the file size.
+export async function readLastBotTurn(paths: VaultPaths, botId: string): Promise<BotTurn | undefined> {
+  let handle
+  try {
+    handle = await open(join(paths.cache, 'bot-chats', `${botId}.jsonl`), 'r')
+    const { size } = await handle.stat()
+    let held = Buffer.alloc(0)
+    let window = TAIL
+    for (;;) {
+      const start = Math.max(0, size - window)
+      const fresh = Buffer.alloc(size - start - held.length)
+      const { bytesRead } = await handle.read(fresh, 0, fresh.length, start)
+      if (bytesRead < fresh.length) return undefined
+      held = Buffer.concat([fresh, held])
+      const turn = lastTurnIn(held, start === 0)
+      if (turn || start === 0) return turn
+      window *= 2
+    }
+  } catch {
+    return undefined
+  } finally {
+    await handle?.close()
+  }
 }

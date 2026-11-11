@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readBotTranscript, type Bot, type VaultPaths } from 'core'
+import { readLastBotTurn } from 'core/src/bot-transcript'
 import { updateBot, type BotPatch } from 'core/src/bots'
 import type { BotConversationDto, BotDto } from '../shared/types.js'
 
@@ -17,10 +18,8 @@ export async function botPreviews(paths: VaultPaths, bots: Bot[]): Promise<BotDt
         const stamp = `${info.mtimeMs}:${info.size}`
         let held = cached.get(path)
         if (!held || held.stamp !== stamp) {
-          const value = readBotTranscript(paths, bot.id).then(turns => {
-            const turn = turns.filter(turn => !turn.progress).at(-1)
-            return turn ? { role: turn.role, text: turn.text.replace(/\s+/g, ' ').trim().slice(0, 200), at: turn.at } : undefined
-          })
+          const value = readLastBotTurn(paths, bot.id).then(turn =>
+            turn ? { role: turn.role, text: turn.text.replace(/\s+/g, ' ').trim().slice(0, 200), at: turn.at } : undefined)
           held = { stamp, value }
           if (cached.size >= 256) cached.delete(cached.keys().next().value!)
           cached.set(path, held)
