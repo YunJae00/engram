@@ -929,6 +929,8 @@ export const en = {
   'onboard.filesFrom': 'files from',
   'onboard.chooseFolder': 'Choose a folder…',
   'onboard.skip': 'Skip',
+  'onboard.botTitle': 'Name your first bot',
+  'onboard.botLabel': 'Label (optional)',
   'onboard.s4Title': 'Working with a team?',
   'onboard.s4Sub': 'Paste an invite URL to join a shared vault, or set this up later from the command palette.',
   'onboard.invitePlaceholder': 'Invite URL (optional)',

@@ -279,5 +279,55 @@ test.describe('visual', () => {
     }
   })
 
-  test.fixme('onboarding-bot', () => undefined)
+  test('onboarding-bot', async () => {
+    await mkdir(OUT, { recursive: true })
+    for (const theme of THEMES) {
+      const profile = await mkdtemp(join(TMP, 'visual-onboard-profile-')), root = await mkdtemp(join(TMP, 'visual-onboard-root-'))
+      await writeFile(join(profile, 'settings.json'), JSON.stringify({ theme }))
+      await mkdir(join(profile, 'mock')); await writeFile(join(profile, 'mock', 'default.txt'), 'OK')
+      const app = await electron.launch({ args: [fileURLToPath(new URL('../../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
+        ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: profile, ENGRAM_ONBOARD_ROOT: join(root, 'Engram'),
+        ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_BROWSER_EXTERNAL: '0',
+      } })
+      try {
+        const page = await app.firstWindow()
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' }); await page.reload()
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }]) })
+        await page.getByTestId('onboard-next').click()
+        await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
+          process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
+          ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+          for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
+        }, join(profile, 'mock'))
+        await page.getByTestId('onboard-choose-codex').check()
+        await page.getByTestId('onboard-model').click(); await page.getByRole('menuitemradio', { name: 'Quick model', exact: true }).click()
+        await page.getByTestId('onboard-ai-next').click()
+        await page.getByTestId('onboard-prefs-next').click()
+        await expect(page.getByTestId('onboard-step-4')).toBeVisible()
+        await page.evaluate(() => document.fonts.ready.then(() => undefined))
+        // Row 17 probes the shell; onboarding has none, so its root stands in only while measured.
+        await page.getByTestId('onboarding').evaluate(el => el.setAttribute('data-testid', 'shell'))
+        const rows = await measureState(page, 'onboarding-bot')
+        await page.getByTestId('shell').evaluate(el => el.setAttribute('data-testid', 'onboarding'))
+        expect(rows.find(r => r.row === 17)?.status, `${theme} row 17`).toBe('pass')
+        const avatar = (await page.locator('[data-testid="onboard-step-4"] .bot-avatar').boundingBox())!
+        expect(Math.abs(avatar.width - 64)).toBeLessThanOrEqual(1)
+        expect(Math.abs(avatar.height - 64)).toBeLessThanOrEqual(1)
+        const pairs = await page.evaluate(() => {
+          const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!
+          ctx.canvas.width = 1; ctx.canvas.height = 1; ctx.globalCompositeOperation = 'copy'
+          const rgba = (value: string) => { ctx.fillStyle = value; ctx.fillRect(0, 0, 1, 1); const d = ctx.getImageData(0, 0, 1, 1).data; return [d[0]!, d[1]!, d[2]!, d[3]! / 255] as [number, number, number, number] }
+          const stack = (el: Element) => { const out = [rgba(getComputedStyle(el).color)]; for (let at: Element | null = el; at; at = at.parentElement) out.push(rgba(getComputedStyle(at).backgroundColor)); return out }
+          return [stack(document.querySelector('[data-testid="onboard-step-4"] h1')!), stack(document.querySelector('[data-testid="onboard-bot-name"]')!)]
+        })
+        for (const [fg, ...layers] of pairs) expect(contrastRatio(fg as Rgba, layers as Rgba[]), `${theme} text contrast`).toBeGreaterThanOrEqual(4.5)
+        await page.screenshot({ path: join(OUT, `onboarding-bot-${theme}.png`), caret: 'hide', animations: 'disabled', scale: 'css' })
+        await writeFile(join(OUT, `onboarding-bot-${theme}.metrics.json`), serializeMetrics(rows))
+      } finally {
+        await closeTestApp(app)
+        for (const dir of [profile, root]) await rm(dir, { recursive: true, force: true })
+      }
+    }
+  })
 })

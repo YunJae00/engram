@@ -1429,6 +1429,12 @@ body.quick-host { background: transparent; }
 .onboard-card input:not(.switch), .onboard-card textarea { width: 100%; font-size: var(--fs-body); padding: 7px 11px; }
 .onboard-card textarea { resize: none; }
 .onboard-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+button.onboard-skip { height: var(--control); padding: 0 12px; border-radius: 999px; color: var(--fg-dim); font-size: var(--fs-body); white-space: nowrap; }
+button.onboard-skip:hover:not(:disabled) { color: var(--fg); background: var(--hover-bg); }
+button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
+.onboard-bot { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.onboard-bot-field { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 320px; min-width: 0; font-size: var(--fs-small); color: var(--fg-dim); }
+.onboard-bot-field input { width: 100%; min-width: 0; color: var(--fg); }
 .engine-lights { list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .engine-lights li { display: flex; align-items: center; gap: 8px; }
 .engine-name { color: var(--fg); }

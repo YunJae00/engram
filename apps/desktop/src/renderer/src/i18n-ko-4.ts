@@ -1,6 +1,8 @@
 import type { StringKey } from './i18n'
 
 export const ko4 = {
+  'onboard.botTitle': '첫 봇의 이름을 정해 주세요',
+  'onboard.botLabel': '레이블 (선택)',
   'botEmpty.default1': '무엇을 도와줄 수 있나요?',
   'botEmpty.default2': '나에 대해 기억하는 게 있나요?',
   'botEmpty.default3': '이번 주 노트를 요약해 주세요',

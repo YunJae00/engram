@@ -27,6 +27,7 @@ import { BotEmpty } from '../components/BotEmpty.js'
 import { MessageSquarePlus } from 'lucide-react'
 import { FreshStartDialog } from '../components/FreshStartDialog.js'
 import { startOver } from '../lib/freshStart.js'
+import { takeOnboardBot } from '../lib/onboardBot.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
 // is a charter over the same brain — its own conversation, the vault behind
@@ -99,6 +100,16 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
     if (generation !== reloadGeneration.current) return
     setBots(list)
     setLoaded(true)
+    const handoff = takeOnboardBot()
+    const primary = handoff && list.find((b) => b.primary === true)
+    if (handoff && primary) {
+      selectComet(primary.id)
+      const patch = {
+        ...(handoff.name !== null && handoff.name !== primary.name ? { name: handoff.name } : {}),
+        ...(handoff.label !== null && handoff.label !== primary.label ? { label: handoff.label } : {}),
+      }
+      if (Object.keys(patch).length) void api.botUpdate(primary.id, patch).catch(() => undefined)
+    }
     const current = cometThreads.getSnapshot().selectedId
     if (current && current === selectedBefore && !list.some((b) => b.id === current)) selectComet(null)
   }
