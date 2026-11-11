@@ -97,7 +97,6 @@
 @media (prefers-reduced-motion: reduce) { .comet-welcome-mark > svg { animation: none; } }
 .comet-welcome > p { margin: 12px 0 28px; color: var(--fg-dim); }
 .comet-welcome .chat-write { flex: none; text-align: left; box-shadow: var(--shadow-card-rest); }
-.bots-thread.conversation-thread { mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 18px), transparent); }
 .site-icon { flex: 0 0 auto; width: 16px; height: 16px; object-fit: contain; border-radius: 3px; }
 .answer-sites { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .answer-site { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 4px 8px; border-radius: 7px; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-small); text-decoration: none; }
