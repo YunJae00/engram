@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t, type StringKey } from '../i18n.js'
@@ -7,10 +7,23 @@ import { useApp } from '../state.js'
 import { useShellState } from '../state-slices.js'
 import { BotAvatar } from './BotAvatar.js'
 import { CometMemory } from './CometMemory.js'
+import { ChatAttachment } from './ChatAttachment.js'
+import { AnswerFiles } from './AnswerFiles.js'
+import { cometThreads } from '../lib/cometThreadsLive.js'
+import { botFiles } from '../lib/botFiles.js'
 
 const TABS = [['overview', 'botInfo.overview'], ['routines', 'botInfo.routines'], ['files', 'botInfo.files'], ['computer', 'botInfo.computer'], ['past', 'botInfo.past']] as const
 type TabKey = typeof TABS[number][0]
 const NOTIFY: [NonNullable<BotDto['notify']>, StringKey][] = [['all', 'botInfo.notifyAll'], ['attention', 'botInfo.notifyAttention'], ['off', 'botInfo.notifyOff']]
+
+function FilesTab({ botId, empty }: { botId: string; empty: ReactNode }) {
+  const messages = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).messages)
+  const files = useMemo(() => botFiles(messages), [messages])
+  if (!files.length) return empty
+  return <div data-testid="bot-files">{files.map(file => file.kind === 'attachment'
+    ? <ChatAttachment key={`a:${file.id}`} id={file.id} />
+    : <AnswerFiles key={`f:${file.id}`} files={[{ id: file.id, name: file.name }]} />)}</div>
+}
 
 export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEntered }: { bot: BotDto; entering: boolean; closing: boolean; onClose: () => void; onClosed: () => void; onEntered: () => void }) {
   const { theme } = useApp()
@@ -77,7 +90,7 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
                 ))}
               </div>
             </>
-          ) : (
+          ) : ((empty) => key === 'files' ? <FilesTab botId={bot.id} empty={empty} /> : empty)(
             <div data-testid="bot-info-empty">
               <p>{t('botInfo.emptySoon')}</p>
               <button type="button" className="secondary" onClick={close}>{t('topbar.close')}</button>

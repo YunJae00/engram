@@ -28,5 +28,14 @@ export async function measureInfoPane(page: Page, { probe, shellOverflow, main, 
     near('chat column width after close', column, after?.width ?? null, view ? Math.min(960, view.width - 48) : 0, 2))
   await page.locator(pill).click()
   await until(() => pane.isVisible())
+  const line = '#bot-info-panel-files [data-testid="bot-info-empty"] p', overflowSelector = '[data-testid="shell"], [data-testid="shell"] *'
+  await page.locator('#bot-info-tab-files').click({ timeout: 5000 }).catch(() => undefined)
+  await until(() => page.locator(line).isVisible())
+  if (await page.locator(line).isVisible()) {
+    const size = await page.locator(line).evaluate(node => parseFloat(getComputedStyle(node).fontSize))
+    checks.push(near('files empty line font size', line, Number.isFinite(size) ? size : null, 13, 0), near('files tab overflow', overflowSelector, await shellOverflow(), 0, 0))
+  } else checks.push(near('files empty line font size', line, null, 13, 0), near('files tab overflow', overflowSelector, null, 0, 0))
+  await page.locator('#bot-info-tab-overview').click({ timeout: 5000 }).catch(() => undefined)
+  await until(async () => await page.locator('#bot-info-tab-overview').getAttribute('aria-selected') === 'true')
   return checks
 }
