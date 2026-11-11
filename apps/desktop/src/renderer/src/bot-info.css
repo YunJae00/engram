@@ -40,3 +40,12 @@ button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
 .bots-fresh { position: relative; z-index: 30; order: -1; flex: none; align-self: flex-end; box-sizing: border-box; width: 36px; height: 36px; margin: 8px 16px -44px 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: var(--editor-bg); color: var(--fg-dim); box-shadow: var(--shadow-float); cursor: pointer; }
 .bots-fresh:hover { color: var(--fg); }
 .bots-fresh:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.bot-info-panel.bot-info-routines > div[data-testid="bot-routines"] { align-items: stretch; min-width: 0; }
+.bot-info-routines ul, .bot-info-routines ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.bot-info-routines ul > li { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); min-width: 0; }
+.bot-info-routines strong { font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
+.bot-info-routines li > span { font-size: var(--fs-small); color: var(--fg-dim); overflow-wrap: anywhere; min-width: 0; }
+.bot-info-routines li > div { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.bot-info-routines section h3 { margin: 0 0 6px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim); }
+.bot-info-routines ol > li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
+.bot-info-routines ol time { color: var(--fg-faint); }

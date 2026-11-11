@@ -140,7 +140,20 @@ test.describe('visual', () => {
     })
   })
 
-  for (const state of ['info-routines', 'info-past', 'empty-bot', 'settings-review', 'onboarding-bot'] as const) {
+  test('info-routines', async () => {
+    await capture('info-routines', async page => {
+      const row = page.getByTestId('bot-vis-paused')
+      const earlier = page.getByTestId('sidebar-earlier')
+      if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
+      await row.click()
+      await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+      await expect(page.getByTestId('bot-info-pane')).toBeVisible()
+      await page.locator('#bot-info-tab-routines').click()
+      await expect(page.getByTestId('bot-routine-vis-paused-task')).toBeVisible()
+    })
+  })
+
+  for (const state of ['info-past', 'empty-bot', 'settings-review', 'onboarding-bot'] as const) {
     test.fixme(state, () => undefined)
   }
 })

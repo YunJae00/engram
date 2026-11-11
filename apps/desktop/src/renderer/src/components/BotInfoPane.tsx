@@ -14,6 +14,7 @@ import { ChatAttachment } from './ChatAttachment.js'
 import { AnswerFiles } from './AnswerFiles.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { botFiles } from '../lib/botFiles.js'
+import { BotRoutinesTab } from './BotRoutinesTab.js'
 
 const TABS = [['overview', 'botInfo.overview'], ['routines', 'botInfo.routines'], ['files', 'botInfo.files'], ['computer', 'botInfo.computer'], ['past', 'botInfo.past']] as const
 type TabKey = typeof TABS[number][0]
@@ -110,7 +111,7 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
                 ))}
               </div>
             </>
-          ) : ((empty) => key === 'files' ? <FilesTab botId={bot.id} empty={empty} /> : empty)(
+          ) : ((empty) => key === 'files' ? <FilesTab botId={bot.id} empty={empty} /> : key === 'routines' ? <BotRoutinesTab bot={bot} empty={empty} /> : empty)(
             <div data-testid="bot-info-empty">
               <p>{t('botInfo.emptySoon')}</p>
               <button type="button" className="secondary" onClick={close}>{t('topbar.close')}</button>
