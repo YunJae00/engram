@@ -3,8 +3,9 @@
 // what looks secret: it reads the value the person themselves labelled — "my
 // password is X" — and keeps that exact value out of anything written down or
 // said back. Nothing here is stored, logged, or sent anywhere.
+// The label must be a whole word, so PINEAPPLE, shopping-list.md or 암호화폐 carry no secret.
 const LABELLED =
-  /(?:비밀번호|패스워드|암호|비번|password|passcode|passphrase|pin|otp|api\s*key|token)\s*(?:는|은|이|가|:|=|is)?\s*["'`]?([^\s"'`,.]{3,80})/gi
+  /(?<![A-Za-z0-9])(?:비밀번호|패스워드|암호|비번|password|passcode|passphrase|pin|otp|api\s*key|token)(?=\s|:|=|는|은|이|가|$)\s*(?:는|은|이|가|:|=|is)?\s*["'`]?([^\s"'`,.]{3,80})/gi
 
 // The values the person marked as secret in what they wrote.
 export function secretsIn(text: string): string[] {

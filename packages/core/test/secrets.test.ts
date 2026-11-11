@@ -22,4 +22,19 @@ describe('secrets the person marked themselves', () => {
     expect(carriesSecret('# 로그인\n\nhunter2', asked)).toBe(true)
     expect(carriesSecret('# 로그인\n\n사람이 직접 로그인해야 합니다', asked)).toBe(false)
   })
+
+  it('ordinary words are not secrets', () => {
+    for (const text of ['Reply with exactly the word PINEAPPLE', 'Create shopping-list.md', 'spinach and garlic', 'a footprint of 3MB', 'the tokenizer splits words', '암호화폐 시세 알려줘', 'spin around twice']) expect(secretsIn(text)).toEqual([])
+    expect(withoutSecrets('PINEAPPLE', 'say PINEAPPLE')).toBe('PINEAPPLE')
+  })
+
+  it('labelled values are still found', () => {
+    expect(secretsIn('my pin is 4821')).toEqual(['4821'])
+    expect(secretsIn('PIN: 4821')).toEqual(['4821'])
+    expect(secretsIn('otp=839201')).toEqual(['839201'])
+    expect(secretsIn('token: ghp_abc123')).toEqual(['ghp_abc123'])
+    expect(secretsIn('비밀번호는 hunter2 야')).toEqual(['hunter2'])
+    expect(secretsIn('비번 qwer1234')).toEqual(['qwer1234'])
+    expect(secretsIn('my password is s3cr3t!')).toContain('s3cr3t!')
+  })
 })
