@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import { useId, type CSSProperties, type ReactNode } from 'react'
+import { memo, useCallback, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { CometMessage } from '../lib/cometThreads.js'
 import { answerBubbles } from '../markdown.js'
 import { CometWork } from './CometWork.js'
@@ -9,8 +9,33 @@ import { ErrorAnswer, isProviderError } from './ErrorAnswer.js'
 import { UserMessage } from './ChatAttachment.js'
 import { ReplyChips } from './ReplyChips.js'
 import { Thinking } from './Thinking.js'
-import { displayTaskAnswer, threadLang, threadWords } from '../lib/threadLang.js'
+import { displayTaskAnswer, threadLang, threadWords, type ThreadLang } from '../lib/threadLang.js'
+import { sameTurn } from '../lib/sameTurn.js'
 import { dividerBefore, dividerLabel } from '../lib/timeDivider.js'
+
+const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
+
+type TurnProps = { message: CometMessage; live: boolean; divider: string | null; lang: ThreadLang; anchor: string; work: readonly string[]; retry: boolean; onRetry(): void }
+
+const MessageTurn = memo(function MessageTurn({ message: m, live, divider: label, lang, anchor, work, retry, onRetry }: TurnProps) {
+  const divider = label !== null && <div className="bubble-time-divider">{label}</div>
+  if (m.role !== 'assistant') return <div className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
+    {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
+    <UserMessage text={m.text} attachments={m.attachments} />
+  </div></div>
+  return <div className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
+    {divider}
+    <CometWork busy={live} lines={[...work]} />
+    {failed(m)
+      ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(retry ? { onRetry } : {})} /></div>
+      : m.text ? answerBubbles(displayTaskAnswer(m.text, lang)).map((part, k, parts) => (
+        <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchor}-${k}` } as CSSProperties}>
+          <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
+          {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} lang={lang} />}
+        </div>
+      )) : null}
+  </div>
+}, sameTurn)
 
 export function CometMessages({ firstKey = 0, messages, busy, status, since, workLines, keptWork, offerOpen = false, onReply, onResend, children }: {
   // Key of the first message, so a page put in front keeps every existing key.
@@ -30,7 +55,6 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
   children?: ReactNode
 }) {
   const lastAssistant = messages.reduce((found, message, index) => message.role === 'assistant' ? index : found, -1)
-  const failed = (message: CometMessage) => !!message.error || (message.role === 'assistant' && isProviderError(message.text))
   // An empty placeholder from background work must not tear down the chips under a pending click.
   let settledIndex = messages.length - 1
   while (settledIndex >= 0 && messages[settledIndex]!.role === 'assistant' && messages[settledIndex]!.streaming && !messages[settledIndex]!.text) settledIndex--
@@ -39,27 +63,15 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
   // Each bubble gets its own anchor name so its copy control binds to it and not to the last bubble.
   const anchorBase = `--copy-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const dividers = dividerBefore(messages), now = new Date()
+  const resend = useRef(onResend)
+  useLayoutEffect(() => { resend.current = onResend }, [onResend])
+  const retry = useCallback(() => resend.current?.(), [])
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
   return <>
     {messages.map((m, i) => {
-      const divider = dividers[i] && <div className="bubble-time-divider">{dividerLabel(m.at!, lang, now)}</div>
-      if (m.role !== 'assistant') return <div key={firstKey + i} className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
-        {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
-        <UserMessage text={m.text} attachments={m.attachments} />
-      </div></div>
       const live = i === lastAssistant && busy
-      return <div key={firstKey + i} className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
-        {divider}
-        <CometWork busy={live} lines={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} />
-        {failed(m)
-          ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} {...(resendable && i === messages.length - 1 ? { onRetry: onResend } : {})} /></div>
-          : m.text ? answerBubbles(displayTaskAnswer(m.text, lang)).map((part, k, parts) => (
-            <div key={k} className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchorBase}-${i}-${k}` } as CSSProperties}>
-              <StreamingAnswer text={part} done={!m.streaming || k < parts.length - 1} />
-              {k === parts.length - 1 && !m.streaming && m.evidence && <CheckEvidence evidence={m.evidence} lang={lang} />}
-            </div>
-          )) : null}
-      </div>
+      return <MessageTurn key={firstKey + i} message={m} live={live} divider={dividers[i] ? dividerLabel(m.at!, lang, now) : null} lang={lang} anchor={`${anchorBase}-${i}`}
+        work={live ? workLines : m.work ?? (i === lastAssistant ? keptWork : [])} retry={!!resendable && i === messages.length - 1} onRetry={retry} />
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
