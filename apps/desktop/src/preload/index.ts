@@ -185,6 +185,7 @@ const api: EngramApi = {
     ipcRenderer.invoke('bots:taskAdd', botId, input),
   botStandingDecline: (botId: string, goal: string) => ipcRenderer.invoke('bots:standingDecline', botId, goal),
   botTaskRemove: (botId: string, taskId: string) => ipcRenderer.invoke('bots:taskRemove', botId, taskId),
+  botTaskPause: (botId: string, taskId: string, paused: boolean) => ipcRenderer.invoke('bots:taskPause', botId, taskId, paused),
   botTaskRan: (botId: string, taskId: string) => ipcRenderer.invoke('bots:taskRan', botId, taskId),
   botsRecommend: () => ipcRenderer.invoke('bots:recommend'),
   botSuggestionDismiss: (name: string) => ipcRenderer.invoke('bots:dismissSuggestion', name),

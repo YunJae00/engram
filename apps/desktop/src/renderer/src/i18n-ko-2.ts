@@ -373,4 +373,6 @@ export const ko2 = {
   'botInfo.runRunning': '실행 중',
   'botInfo.runSucceeded': '성공',
   'botInfo.runFailed': '실패',
+  'botInfo.pause': '일시정지',
+  'botInfo.resume': '다시 시작',
 } satisfies Partial<Record<StringKey, string>>

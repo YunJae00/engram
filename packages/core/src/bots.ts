@@ -309,6 +309,17 @@ export async function removeBotTask(paths: VaultPaths, botId: string, taskId: st
   })
 }
 
+export async function setBotTaskPaused(paths: VaultPaths, botId: string, taskId: string, paused: boolean): Promise<void> {
+  if (typeof paused !== 'boolean') throw new TypeError('paused must be a boolean')
+  if (typeof botId !== 'string' || !botId || typeof taskId !== 'string' || !taskId) throw new Error('no such task')
+  await mutateBots(paths, (bots) => {
+    const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)
+    if (!task) throw new Error('no such task')
+    if (paused) task.paused = true
+    else delete task.paused
+  })
+}
+
 export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: string, now: Date = new Date(), kept: { seen?: string[]; chat?: string } = {}): Promise<void> {
   await mutateBots(paths, (bots) => {
     const task = bots.find((b) => b.id === botId)?.tasks?.find((x) => x.id === taskId)

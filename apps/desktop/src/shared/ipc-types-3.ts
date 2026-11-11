@@ -94,6 +94,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   botTaskAdd(botId: string, input: { name: string; goal: string; schedule?: ScheduleDto; routineId?: string }): Promise<BotTaskDto>
   botStandingDecline(botId: string, goal: string): Promise<void>
   botTaskRemove(botId: string, taskId: string): Promise<void>
+  botTaskPause(botId: string, taskId: string, paused: boolean): Promise<void>
   botTaskRan(botId: string, taskId: string): Promise<void>
   botsRecommend(): Promise<BotSuggestionDto[]>
   botSuggestionDismiss(name: string): Promise<void>

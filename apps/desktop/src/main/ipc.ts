@@ -67,6 +67,7 @@ import {
   refreshBrief,
   readBotTranscript,
   removeBotTask,
+  setBotTaskPaused,
   readErrandJournal,
   readNote,
   recommendBots,
@@ -1408,6 +1409,10 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:standingDecline', (_e, botId: string, goal: string) => declineStanding(paths, botId, askKey(goal)))
   ipcMain.handle('bots:taskRemove', async (_e, botId: string, taskId: string) => {
     await removeBotTask(paths, botId, taskId)
+    broadcast({ type: 'bots:changed' })
+  })
+  ipcMain.handle('bots:taskPause', async (_e, botId: string, taskId: string, paused: boolean) => {
+    await setBotTaskPaused(paths, botId, taskId, paused)
     broadcast({ type: 'bots:changed' })
   })
   ipcMain.handle('bots:taskRan', (_e, botId: string, taskId: string) => markBotTaskRun(paths, botId, taskId))

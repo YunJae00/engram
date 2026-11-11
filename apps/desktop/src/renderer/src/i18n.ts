@@ -246,6 +246,8 @@ export const en = {
   'botInfo.runRunning': 'Running',
   'botInfo.runSucceeded': 'Succeeded',
   'botInfo.runFailed': 'Failed',
+  'botInfo.pause': 'Pause',
+  'botInfo.resume': 'Resume',
   'createBot.title': 'New bot',
   'createBot.name': 'Name',
   'createBot.label': 'Label',

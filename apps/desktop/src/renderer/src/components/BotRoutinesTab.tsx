@@ -13,6 +13,7 @@ export function BotRoutinesTab({ bot, empty }: { bot: BotDto; empty: ReactNode }
   const { showToast } = useShellState()
   const [runs, setRuns] = useState<DelegatedTaskDto[]>([])
   const [armed, setArmed] = useState<string | null>(null)
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
   useEffect(() => {
     const load = () => void api.tasksList().then(setRuns).catch(() => undefined)
     load()
@@ -25,6 +26,12 @@ export function BotRoutinesTab({ bot, empty }: { bot: BotDto; empty: ReactNode }
     if (armed !== id) { setArmed(id); return }
     setArmed(null)
     void api.botTaskRemove(bot.id, id).catch((error: unknown) => showToast(String(error)))
+  }
+  const togglePause = (id: string, paused: boolean) => {
+    setBusy(prev => new Set(prev).add(id))
+    void api.botTaskPause(bot.id, id, !paused)
+      .catch((error: unknown) => showToast(String(error)))
+      .finally(() => setBusy(prev => { const next = new Set(prev); next.delete(id); return next }))
   }
   return (
     <div data-testid="bot-routines">
@@ -39,6 +46,7 @@ export function BotRoutinesTab({ bot, empty }: { bot: BotDto; empty: ReactNode }
                 <button type="button" className="secondary" onClick={() => { if (row.routineId) void startRoutine(row.routineId, row.name) }}>{t('botInfo.test')}</button>
                 <button type="button" className="secondary" onClick={() => window.dispatchEvent(new Event('engram:open-routines'))}>{t('botInfo.edit')}</button>
               </>}
+              <button type="button" className="secondary" data-testid={`bot-routine-pause-${row.id}`} disabled={busy.has(row.id)} onClick={() => togglePause(row.id, row.paused)}>{row.paused ? t('botInfo.resume') : t('botInfo.pause')}</button>
               <button type="button" className="secondary" onClick={() => remove(row.id)}>{armed === row.id ? t('routines.deleteArmed') : t('botInfo.delete')}</button>
             </div>
           </li>
