@@ -49,3 +49,6 @@ button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
 .bot-info-routines section h3 { margin: 0 0 6px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim); }
 .bot-info-routines ol > li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
 .bot-info-routines ol time { color: var(--fg-faint); }
+.bot-info-panel.bot-info-past > div[data-testid="bot-past-view"] { align-items: stretch; }
+.bot-info-past .bots-thread { flex: none; overflow: visible; padding: 0; }
+.bot-info-panel.bot-info-past .bots-thread .bubble-turn { content-visibility: visible; }
