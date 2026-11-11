@@ -59,7 +59,7 @@ test.describe.serial('bot avatar ui', () => {
 
   test('welcome shows the primary bot at 64px', async () => {
     await page.getByTestId('sidebar-create').click()
-    await page.getByTestId('bots-new').click()
+    await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
     const avatar = page.locator('[data-testid="comet-welcome"] .comet-welcome-mark .bot-avatar[data-size="64"][data-state="idle"]')
     await expect(avatar).toBeVisible()
     await square(avatar, 64)

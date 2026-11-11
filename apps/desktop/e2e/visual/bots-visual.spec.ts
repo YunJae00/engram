@@ -123,7 +123,15 @@ test.describe('visual', () => {
     })
   })
 
-  for (const state of ['info-routines', 'info-past', 'create-dialog', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
+  test('create-dialog', async () => {
+    await capture('create-dialog', async page => {
+      await page.getByTestId('sidebar-create').click()
+      await page.getByTestId('bots-new').click()
+      await expect(page.getByTestId('create-bot-dialog')).toBeVisible()
+    })
+  })
+
+  for (const state of ['info-routines', 'info-past', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
     test.fixme(state, () => undefined)
   }
 })

@@ -16,6 +16,7 @@ import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 import { SidebarPrimary } from './SidebarPrimary.js'
 import { groupSidebarBots, matchesSidebarSearch } from '../lib/sidebarBots.js'
+import { CreateBotDialog } from './CreateBotDialog.js'
 
 interface Props {
   developer: boolean
@@ -38,6 +39,8 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [layoutError, setLayoutError] = useState('')
   const [creating, setCreating] = useState({ chat: 0, routine: 0 })
   const [waiting, setWaiting] = useState<Set<string>>(new Set())
+  const [creatingBot, setCreatingBot] = useState(false)
+  useEffect(() => { const open = () => setCreatingBot(true); window.addEventListener('engram:open-create-bot', open); return () => window.removeEventListener('engram:open-create-bot', open) }, [])
   const reloadGeneration = useRef(0)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const activityOf = useCometActivity()
@@ -125,7 +128,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     {developer ? <div id="developer-sidebar" className="developer-sidebar-content" /> : <>
     <div className="sidebar-library-tools"><div className="sidebar-search"><Search size={14} aria-hidden /><input ref={searchInput} aria-label={library ? 'Search routines' : 'Search conversations'} placeholder={library ? 'Search routines' : 'Search conversations'} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && query && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); setQuery('') } }} />{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={13} aria-hidden /></button>}</div>{!library && <NoticesBell disabled={!vaultReady} onOpen={openBot} />}{!library && <button className="sidebar-icon-button bots-top-button" aria-label="Search" title="Search" onClick={() => searchInput.current?.focus()}><Search size={17} aria-hidden /></button>}<button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label="Create" title="Create" disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
     <div id={createId} ref={createMenu} {...{ popover: "auto" }} className="sidebar-create-menu" aria-label="Create">
-      {!library && <button data-testid="bots-new" disabled={!vaultReady} onClick={() => { createMenu.current?.hidePopover(); setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle() }}><Plus size={16} aria-hidden />{t('bots.new')}</button>}
+      {!library && <button data-testid="bots-new" disabled={!vaultReady} onClick={() => { createMenu.current?.hidePopover(); setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle(); setCreatingBot(true) }}><Plus size={16} aria-hidden />{t('bots.new')}</button>}
       <button aria-label={library ? 'New routine folder' : 'New chat folder'} onClick={() => { createMenu.current?.hidePopover(); newFolder(library ? 'routine' : 'chat') }}><FolderPlus size={16} aria-hidden />New folder</button>
     </div>
     {library && <button className="sidebar-new" onClick={() => navigate('bots')}><ArrowLeft size={17} aria-hidden /><span>Conversations</span></button>}
@@ -143,5 +146,6 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       <SidebarStatus />
       <button data-testid="activity-settings" aria-label={t('sidebar.settings')} title={t('sidebar.settings')} onClick={onOpenSettings}><Settings size={16} aria-hidden /><span>{t('sidebar.settings')}</span></button>
     </footer>
+    {creatingBot && <CreateBotDialog onClose={() => setCreatingBot(false)} onCreated={bot => openBot(bot.id)} />}
   </aside>
 }

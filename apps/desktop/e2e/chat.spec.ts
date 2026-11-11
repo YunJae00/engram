@@ -64,7 +64,7 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   const composer = page.getByTestId('welcome-input')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
@@ -198,7 +198,7 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
 })
 test('the selected comet is remembered across tabs', async () => {
   const count = await page.locator('.bots-row').count()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.bots-row')).toHaveCount(count)
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()

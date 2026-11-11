@@ -17,6 +17,7 @@
 @import './routine-workspace.css';
 @import './developers.css';
 @import './bot-info.css';
+@import './create-bot.css';
 
 :root {
   /* Type scale: every font-size in this file resolves to one of these. */

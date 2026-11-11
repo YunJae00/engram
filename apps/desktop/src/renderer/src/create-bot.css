@@ -1,0 +1,11 @@
+.create-bot-dialog { width: 440px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); margin: auto; box-sizing: border-box; padding: 24px; border: 1px solid var(--border-soft); border-radius: 22px; color: var(--fg); background: var(--panel-bg); box-shadow: var(--shadow-card-rest); }
+.create-bot-dialog::backdrop { background: #0006; }
+.create-bot-dialog form { display: flex; flex-direction: column; gap: 14px; }
+.create-bot-dialog h2 { margin: 0; font-size: var(--fs-head); }
+.create-bot-look { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.create-bot-preview { display: flex; width: 96px; height: 96px; }
+.create-bot-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--fs-meta); color: var(--fg-faint); }
+.create-bot-field input, .create-bot-field select, .create-bot-field textarea { width: 100%; box-sizing: border-box; font-size: var(--fs-body); color: var(--fg); }
+.create-bot-field textarea { resize: vertical; }
+.create-bot-error { margin: 0; font-size: var(--fs-meta); color: var(--danger); }
+.create-bot-actions { display: flex; justify-content: flex-end; gap: 8px; }

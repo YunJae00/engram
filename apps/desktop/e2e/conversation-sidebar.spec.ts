@@ -199,7 +199,7 @@ test('Create stays visible while long conversations scroll', async () => {
   const after = await button.boundingBox()
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
   await button.click()
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.comet-welcome-mark [data-icon="comet-face"]')).toBeVisible()
   await capture('restored-conversation-icons.png')
@@ -335,7 +335,7 @@ test('conversation menus replace dates on interaction and pin without losing fol
 
 test('welcome Web opens a new selected chat and transfers its draft without sending', async () => {
   await showSidebar()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const draft = 'Check the release checklist on the project website.'
   await page.getByTestId('welcome-input').fill(draft)

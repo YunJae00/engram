@@ -47,7 +47,7 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   const before = await page.evaluate(() => window.engram.sidebarLayout())
   await openActivity(page, 'bots')
   await page.getByTestId('sidebar-create').click()
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const targetRow = page.getByTestId(`bot-${target.id}`)
   const otherRow = page.getByTestId(`bot-${other.id}`)

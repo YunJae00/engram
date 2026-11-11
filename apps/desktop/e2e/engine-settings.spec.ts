@@ -230,7 +230,7 @@ test('welcome and conversation footer controls align and keep long model names i
   }, label)
   await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), defaultEngine: 'codex', codexModel: 'codex-fast' }))
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   for (const surface of ['welcome', 'conversation']) {
     if (surface === 'conversation') {
       await page.setViewportSize({ width: 1280, height: 880 })
@@ -353,7 +353,7 @@ test('a cached model menu remains usable after reload while the catalog request 
     ipcMain.handle('models:list', () => new Promise<void>(resolve => { replies.push(resolve) }))
   })
   await page.reload()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   const picker = page.getByTestId('model-picker')
   await picker.click()
   await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })

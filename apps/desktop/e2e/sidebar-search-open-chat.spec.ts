@@ -93,7 +93,7 @@ test('a pinned open chat that does not match is hidden too', async () => {
 
 test('a chat started during a non-matching search is not listed until the search is cleared', async () => {
   await page.getByTestId('sidebar-create').click()
-  await page.getByTestId('bots-new').click()
+  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await search().fill('qqqzzz')
   await expect(empty()).toBeVisible()

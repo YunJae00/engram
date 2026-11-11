@@ -236,7 +236,7 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await page.getByTestId('app-sidebar-open').click()
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
 
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click()
+  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion')).toHaveCount(0)
   await page.reload()

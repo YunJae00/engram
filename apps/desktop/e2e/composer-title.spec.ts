@@ -108,7 +108,7 @@ for (const theme of ['light', 'dark'] as const) {
       expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-title-pill"]`)).bottom)
 
       await page.getByTestId('sidebar-create').click()
-      await page.getByTestId('bots-new').click()
+      await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
       await expect(page.getByTestId('welcome-input')).toBeVisible()
       await expect(page.locator('.comet-welcome .chat-write')).toHaveCSS('border-radius', '22px')
       const welcomeSend = await box(page, '.comet-welcome .chat-send-btn')
