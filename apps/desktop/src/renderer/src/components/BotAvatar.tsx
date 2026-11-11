@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { avatarSpec, paletteOf, PATHS, type DrawnSpec } from '../lib/botAvatar.js'
 import { useSyncExternalStore } from 'react'
 import type { CometActivity } from '../lib/cometActivity.js'
+import { useBotImage } from '../lib/botImage.js'
 
 export type BotAvatarProps = {
   id: string
@@ -53,12 +54,14 @@ function Drawn({ spec, state, theme }: { spec: DrawnSpec; state: BotAvatarProps[
 export function BotAvatar({ id, override, primary, size, state, theme, imageUrl }: BotAvatarProps) {
   const isPrimary = primary === true
   const spec = avatarSpec(id, override, isPrimary)
-  const showImage = spec.kind === 'image' && typeof imageUrl === 'string' && imageUrl !== ''
+  const fetched = useBotImage(id, spec.kind === 'image' && !imageUrl ? spec.image : null)
+  const url = imageUrl || fetched
+  const showImage = spec.kind === 'image' && typeof url === 'string' && url !== ''
   const drawn = spec.kind === 'drawn' ? spec : avatarSpec(id, undefined, isPrimary) as DrawnSpec
   return (
     <span className="bot-avatar" data-size={size} data-state={state} aria-hidden="true">
       <span className="bot-avatar-art">
-        {showImage ? <img className="bot-avatar-img" alt="" src={imageUrl} /> : <Drawn spec={drawn} state={state} theme={theme} />}
+        {showImage ? <img className="bot-avatar-img" alt="" src={url} /> : <Drawn spec={drawn} state={state} theme={theme} />}
       </span>
       {state === 'attention' && <span className="bot-avatar-alert" />}
       {isPrimary && size >= 36 && <span className="bot-avatar-primary" />}

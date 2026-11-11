@@ -5,7 +5,9 @@ import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { sendCometMessage } from '../lib/attachments.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
-import { canCreate, clipLabel, createFromDraft, CreateBotError, previewCharacter, templatePrefill } from '../lib/createBot.js'
+import { canCreate, clipLabel, createFromDraft, CreateBotError, previewCharacter, templatePrefill, type Character } from '../lib/createBot.js'
+import { withPart } from '../lib/avatarPicker.js'
+import { AvatarPicker } from './AvatarPicker.js'
 import { useShellState } from '../state-slices.js'
 import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 
@@ -23,7 +25,11 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<'' | 'createBot.failed' | 'createBot.saveFailed'>('')
   const created = useRef<BotDto | undefined>(undefined)
-  const character = useMemo(() => previewCharacter(provisionalId, accessory), [provisionalId, accessory])
+  const [picking, setPicking] = useState(false)
+  const [picked, setPicked] = useState<Character | null>(null)
+  const [photo, setPhoto] = useState<{ data: Uint8Array; url: string } | null>(null)
+  const character = useMemo(() => picked ?? previewCharacter(provisionalId, accessory), [picked, provisionalId, accessory])
+  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
 
   useLayoutEffect(() => {
     dialog.current?.showModal()
@@ -43,6 +49,7 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     setName(prefill.name)
     setLabel(clipLabel(prefill.label))
     setAccessory(prefill.accessory)
+    setPicked(prior => prior && withPart(prior, 'accessory', prefill.accessory))
   }
   const cancel = () => { if (!busy) onClose() }
   const onKeyDown = (event: KeyboardEvent) => {
@@ -56,8 +63,10 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     if (!canCreate(name) || busy) return
     setBusy(true)
     const draft = { name, label, templateId, task, avatar: character }
+    const held = photo
     try {
-      const bot = await createFromDraft(api, draft, created.current)
+      const made = await createFromDraft(api, draft, created.current)
+      const bot = held ? await api.botAvatarSet(made.id, held.data).catch((failure: unknown) => { throw new CreateBotError(made, failure) }) : made
       onClose()
       onCreated(bot)
       if (draft.task.trim()) sendCometMessage(api, cometThreads, bot.id, draft.task).catch((failure: unknown) => showToast(String(failure)))
@@ -76,10 +85,14 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
       <h2 id="create-bot-title">{t('createBot.title')}</h2>
       <div className="create-bot-look">
         <div className="create-bot-preview" data-testid="create-bot-preview" data-avatar={`${character.body}-${character.face}-${character.accessory}-${character.palette}`}>
-          <BotAvatar id={provisionalId} override={character} size={96} state="idle" theme={theme} />
+          <BotAvatar id={provisionalId} override={photo ? { image: 'pending' } : character} imageUrl={photo?.url} size={96} state="idle" theme={theme} />
         </div>
-        <button type="button" className="secondary" data-testid="create-bot-avatar-change" disabled>{t('createBot.avatarChange')}</button>
+        <button type="button" className="secondary" data-testid="create-bot-avatar-change" aria-expanded={picking} aria-controls={`avatar-picker-${provisionalId}`}
+          onClick={() => setPicking(open => !open)}>{t('createBot.avatarChange')}</button>
       </div>
+      {picking && <AvatarPicker id={provisionalId} primary={false} value={character} theme={theme}
+        onPick={next => { setPicked(next); setPhoto(null) }} onDefault={() => { setPicked(null); setPhoto(null) }}
+        onPhoto={data => setPhoto({ data, url: URL.createObjectURL(new Blob([data as BlobPart], { type: data[0] === 0x89 ? 'image/png' : 'image/jpeg' })) })} />}
       <label className="create-bot-field">
         <span>{t('createBot.name')}</span>
         <input ref={nameInput} data-testid="create-bot-name" value={name} maxLength={60} onChange={event => setName(event.target.value)} />

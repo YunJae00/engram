@@ -131,7 +131,16 @@ test.describe('visual', () => {
     })
   })
 
-  for (const state of ['info-routines', 'info-past', 'empty-bot', 'settings-review', 'onboarding-bot', 'avatar-picker'] as const) {
+  test('avatar-picker', async () => {
+    await capture('avatar-picker', async page => {
+      await page.getByTestId('sidebar-create').click()
+      await page.getByTestId('bots-new').click()
+      await page.getByTestId('create-bot-avatar-change').click()
+      await expect(page.locator('[data-testid="avatar-picker"]')).toBeVisible()
+    })
+  })
+
+  for (const state of ['info-routines', 'info-past', 'empty-bot', 'settings-review', 'onboarding-bot'] as const) {
     test.fixme(state, () => undefined)
   }
 })

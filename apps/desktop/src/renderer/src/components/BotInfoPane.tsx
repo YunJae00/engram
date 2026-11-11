@@ -6,6 +6,9 @@ import { INSTRUCTIONS_MAX, capInstructions, instructionsSaver } from '../lib/bot
 import { useApp } from '../state.js'
 import { useShellState } from '../state-slices.js'
 import { BotAvatar } from './BotAvatar.js'
+import { AvatarPicker } from './AvatarPicker.js'
+import { avatarSaver, type AvatarChange } from '../lib/avatarPicker.js'
+import { forgetBotImage } from '../lib/botImage.js'
 import { CometMemory } from './CometMemory.js'
 import { ChatAttachment } from './ChatAttachment.js'
 import { AnswerFiles } from './AnswerFiles.js'
@@ -35,6 +38,19 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
   toast.current = showToast
   const saver = useRef<ReturnType<typeof instructionsSaver> | null>(null)
   saver.current ??= instructionsSaver((id, purpose) => api.botUpdate(id, { purpose }), (error) => toast.current(String(error)))
+
+  const [picking, setPicking] = useState(false)
+  const [local, setLocal] = useState<{ avatar: unknown } | null>(null)
+  const avatarWrites = useRef<ReturnType<typeof avatarSaver> | null>(null)
+  avatarWrites.current ??= avatarSaver(bot.id, {
+    update: avatar => api.botUpdate(bot.id, { avatar }), set: data => api.botAvatarSet(bot.id, data), clear: () => api.botAvatarClear(bot.id),
+  }, (error) => {
+    forgetBotImage(bot.id)
+    if (error !== undefined) toast.current(String(error))
+    if (avatarWrites.current?.idle()) setLocal(error === undefined ? { avatar: avatarWrites.current.latest() } : null)
+  })
+  useEffect(() => { if (avatarWrites.current?.idle()) setLocal(null) }, [bot.avatar])
+  const saveAvatar = (change: AvatarChange, shown: unknown) => { setLocal({ avatar: shown }); avatarWrites.current?.save(change, bot.avatar) }
 
   useEffect(() => () => saver.current?.flush(), [])
   useLayoutEffect(() => { if (closing) saver.current?.flush() }, [closing])
@@ -69,7 +85,11 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
         <div key={key} role="tabpanel" id={`bot-info-panel-${key}`} aria-labelledby={`bot-info-tab-${key}`} className={`bot-info-panel bot-info-${key}`} hidden={tab !== key}>
           {key === 'overview' ? (
             <>
+              <button type="button" className="bot-info-avatar" data-testid="bot-info-avatar" aria-label={t('avatarPicker.open')} aria-expanded={picking} aria-controls="bot-info-avatar-picker" onClick={() => setPicking(open => !open)}>
               <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={96} state="idle" theme={theme} />
+              </button>
+              {picking && <div id="bot-info-avatar-picker"><AvatarPicker id={bot.id} primary={bot.primary === true} value={local ? local.avatar : bot.avatar} theme={theme}
+                onPick={next => saveAvatar({ kind: 'pick', next }, next)} onDefault={() => saveAvatar({ kind: 'default' }, undefined)} onPhoto={data => saveAvatar({ kind: 'photo', data }, { image: 'pending' })} /></div>}
               <h2>{bot.name}</h2>
               {bot.label && <p>{bot.label}</p>}
               <label>
