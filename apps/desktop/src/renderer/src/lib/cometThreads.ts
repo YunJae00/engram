@@ -179,7 +179,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     fresh(id: string): void {
       pageTokens.delete(id)
-      patch(id, { ...EMPTY, loaded: true, pageDone: true })
+      patch(id, { ...EMPTY, loaded: true, pageDone: true, doneSeen: thread(id).doneSeen + 1 })
     },
     load(id: string, turns: ChatTurnDto[], seenDone?: number): void {
       const current = thread(id)
