@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
 import { dismissSidebar, useSidebarEscape } from './lib/sidebarOverlay.js'
+import { isNewBotShortcut } from './lib/newBotShortcut.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
 import { useCometState, useShellState } from './state-slices.js'
@@ -171,6 +172,11 @@ function Shell() {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
       const key = e.key.toLowerCase()
+      if (isNewBotShortcut(e)) {
+        e.preventDefault()
+        window.dispatchEvent(new Event('engram:open-create-bot'))
+        return
+      }
       if (key === 'p' && e.shiftKey) {
         e.preventDefault()
         setPalette('commands')
