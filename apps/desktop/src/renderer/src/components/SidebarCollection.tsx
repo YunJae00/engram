@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, EyeOff, Folder, FolderInput, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, Star, Trash2 } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff, FolderInput, FolderPlus, MoreHorizontal, Pencil, Pin, PinOff, Star, Trash2 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent as KeyEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { BotDto, SidebarChange, SidebarKind, SidebarLayout } from '../../../shared/types.js'
@@ -206,7 +206,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
   }
   const folders = layout.folders.map(one => <div className={`sidebar-folder${over === one.id ? ' sidebar-drop-target' : ''}`} key={one.id} data-testid={`sidebar-folder-${one.id}`} {...tree ? { role: 'treeitem', 'aria-expanded': !one.collapsed, 'aria-label': one.name, 'data-tree-item': `folder:${one.id}`, onContextMenu: (event: MouseEvent<HTMLDivElement>) => { const target = event.target as Element; if (target.closest('[role="treeitem"]') !== event.currentTarget || target.closest('input')) return; event.preventDefault(); openMenu(event.currentTarget, { type: 'folder', id: one.id }) } } : {}}>
       <div className="sidebar-item sidebar-folder-head" draggable={!editing && !saving} onDragStart={event => start(event, { type: 'folder', id: one.id })} onDragEnd={() => { drag.current = null; setOver(null) }} onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id, undefined, one.id)}>
-        {editing?.type === 'folder' && editing.id === one.id ? input() : <button className="sidebar-item-main" aria-expanded={!one.collapsed} aria-controls={`folder-${one.id}`} tabIndex={tree ? -1 : undefined} onClick={() => void attempt(() => onChange({ action: 'fold-folder', id: one.id, collapsed: !one.collapsed }))}><ChevronDown size={12} className={one.collapsed ? 'folded' : ''} aria-hidden /><Folder size={14} aria-hidden /><span>{one.name}</span><small>{itemRows(one.id).length}</small></button>}
+        {editing?.type === 'folder' && editing.id === one.id ? input() : <button className="sidebar-item-main" aria-expanded={!one.collapsed} aria-controls={`folder-${one.id}`} tabIndex={tree ? -1 : undefined} onClick={() => void attempt(() => onChange({ action: 'fold-folder', id: one.id, collapsed: !one.collapsed }))}><ChevronDown size={12} className={one.collapsed ? 'folded' : ''} aria-hidden /><span>{one.name}</span><small>{itemRows(one.id).length}</small></button>}
         {controls({ type: 'folder', id: one.id }, one.name)}
       </div>
       <SidebarDisclosure id={`folder-${one.id}`} open={!one.collapsed}>{rows(one.id)}{dragging && itemRows(one.id).length === 0 && <div className="sidebar-folder-empty" onDragOver={event => accept(event, one.id)} onDrop={event => drop(event, one.id)}>{t('sidebar.dropHere')}</div>}</SidebarDisclosure>
@@ -245,7 +245,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
         await onChange({ action: 'remove-folder', id: deleting.entry.id })
       }
     }} />}
-    {editing?.type === 'new' && <div className="sidebar-folder-create"><Folder size={14} aria-hidden />{input()}</div>}
+    {editing?.type === 'new' && <div className="sidebar-folder-create">{input()}</div>}
     {tree ? <>{rows(null, true)}{folders}{rows(null, false)}</> : <>{folders}{rows(null)}</>}
     {tree && hidden.length > 0 && <div className="sidebar-hidden-group" role="treeitem" aria-expanded={hiddenOpen} aria-label={t('sidebar.hiddenBots', { n: hidden.length })} data-tree-item="hidden">
       <div className="sidebar-item sidebar-folder-head"><button className="sidebar-item-main" aria-expanded={hiddenOpen} tabIndex={-1} onClick={() => setShowHidden(value => !value)}><ChevronDown size={12} className={hiddenOpen ? '' : 'folded'} aria-hidden /><EyeOff size={14} aria-hidden /><span>{t('sidebar.hiddenBots', { n: hidden.length })}</span></button></div>
