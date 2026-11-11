@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BotDto } from '../src/shared/types.js'
-import { botMenuItems, groupSidebarBots, matchesSidebarSearch } from '../src/renderer/src/lib/sidebarBots.js'
+import { botMenuItems, groupSidebarBots, matchesSidebarSearch, sidebarSearchEmpty } from '../src/renderer/src/lib/sidebarBots.js'
 
 const bot = (id: string, extra: Partial<BotDto> = {}): BotDto => ({ id, name: `Bot ${id}`, purpose: `purpose ${id}`, createdAt: '2026-01-01T00:00:00.000Z', ...extra })
 
@@ -33,6 +33,20 @@ describe('sidebar bots', () => {
     expect(matchesSidebarSearch(one, 'zebra', new Set(['x']))).toBe(true)
     expect(matchesSidebarSearch(one, 'zebra', new Set(['y']))).toBe(false)
     expect(matchesSidebarSearch(bot('plain'), 'seasonal', none)).toBe(false)
+  })
+
+  it('primary bot match is not an empty search', () => {
+    const hero = bot('main', { primary: true, name: 'Research Buddy' })
+    const listed = [bot('a')], hidden = [bot('h', { hidden: true })]
+    const none = new Set<string>()
+    expect(sidebarSearchEmpty(hero, listed, hidden, 'printing', new Set(['main']))).toBe(false)
+    expect(sidebarSearchEmpty(hero, listed, hidden, 'research', none)).toBe(false)
+    expect(sidebarSearchEmpty(hero, listed, hidden, 'printing', none)).toBe(true)
+    expect(sidebarSearchEmpty(null, listed, hidden, 'printing', new Set(['main']))).toBe(true)
+    expect(sidebarSearchEmpty(hero, listed, hidden, 'printing', new Set(['a']))).toBe(false)
+    expect(sidebarSearchEmpty(hero, listed, hidden, 'printing', new Set(['h']))).toBe(false)
+    expect(sidebarSearchEmpty(hero, listed, hidden, '', none)).toBe(false)
+    expect(sidebarSearchEmpty(null, [], [], '', none)).toBe(false)
   })
 
   it('menu actions map to bots:update/sidebar:change', () => {

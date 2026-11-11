@@ -13,6 +13,11 @@ export function matchesSidebarSearch(bot: BotDto, search: string, bodyHits: Read
   return `${bot.name} ${bot.label ?? ''} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search) || bodyHits.has(bot.id)
 }
 
+export function sidebarSearchEmpty(hero: BotDto | null, listed: readonly BotDto[], hidden: readonly BotDto[], search: string, bodyHits: ReadonlySet<string>): boolean {
+  if (!search) return false
+  return ![...(hero ? [hero] : []), ...listed, ...hidden].some(bot => matchesSidebarSearch(bot, search, bodyHits))
+}
+
 export type BotMenuRun =
   | { kind: 'update'; patch: { hidden?: true; primary?: true } }
   | { kind: 'layout'; change: import('../../../shared/types.js').SidebarChange['change'] }

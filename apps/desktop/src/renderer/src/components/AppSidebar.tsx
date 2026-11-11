@@ -16,7 +16,7 @@ import { SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 import { SidebarPrimary } from './SidebarPrimary.js'
-import { groupSidebarBots, matchesSidebarSearch } from '../lib/sidebarBots.js'
+import { groupSidebarBots, matchesSidebarSearch, sidebarSearchEmpty } from '../lib/sidebarBots.js'
 import { CreateBotDialog } from './CreateBotDialog.js'
 
 interface Props {
@@ -148,7 +148,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       <section className="sidebar-section sidebar-conversations" aria-label={library ? t('sidebar.savedRoutines') : t('sidebar.conversations')}>
         {library && <h2 className="sidebar-library-title">{t('sidebar.routines')}</h2>}
         {library ? collection('routine') : <div role="tree" aria-label={t('sidebar.bots')} className="sidebar-bots-tree">{collection('chat')}</div>}
-        {!(library ? matchingRoutines : [...matchingBots, ...matchingHidden]).length && <p className="sidebar-empty">{search ? t('sidebar.noMatches') : library ? t('sidebar.noRoutines') : t('sidebar.empty')}</p>}
+        {(library ? !matchingRoutines.length : search ? sidebarSearchEmpty(hero, listed, hidden, search, hits) : !(matchingBots.length + matchingHidden.length)) && <p className="sidebar-empty">{search ? t('sidebar.noMatches') : library ? t('sidebar.noRoutines') : t('sidebar.empty')}</p>}
       </section>
     </div>
     </>}
