@@ -49,7 +49,7 @@ test('a new chat in an empty grid pane takes the keyboard and its body click ret
   await expect(input).toHaveValue('hello')
   await expect(other).toHaveValue('Keep this draft')
 
-  await page.locator('.topbar-title').click()
+  await page.locator('[data-testid="topbar"] .topbar-spacer').click()
   await expect(input).not.toBeFocused()
   const body = tile.locator('.mission-tile-body')
   const box = (await body.boundingBox())!

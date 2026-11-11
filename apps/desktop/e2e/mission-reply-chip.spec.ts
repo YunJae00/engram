@@ -150,5 +150,5 @@ test('two panes, typed sends, a queued chip and the explicit open button keep th
   await expectGrid(2)
   await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
   await expect(page.getByTestId('mission-layout-1')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.bots-head-name')).toHaveText(NAMES[0]!)
+  await expect(page.locator('[data-testid="bots-view"] .bots-title-pill-name')).toHaveText(NAMES[0]!)
 })

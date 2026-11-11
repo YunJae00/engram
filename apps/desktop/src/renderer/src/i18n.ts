@@ -1277,6 +1277,7 @@ export const en = {
   'settingsUi.copyConfig': 'Copy configuration',
   'settingsUi.sessionsStopped': 'Sessions stopped. Check any partial changes before retrying.',
   'settingsUi.stopSessions': 'Stop sessions',
+  'banner.filingNotReady': "{provider} is selected for filing but isn't ready. Check its connection or choose another AI in Settings.",
 } as const
 
 export type StringKey = keyof typeof en

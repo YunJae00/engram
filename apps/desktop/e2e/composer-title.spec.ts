@@ -101,7 +101,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(pill.locator(".bot-avatar[data-size='20']")).toHaveCount(1)
       for (const attr of ['role', 'tabindex', 'onclick']) await expect(pill).not.toHaveAttribute(attr)
       if (theme === 'light') await expect(pill).toHaveCSS('background-color', 'rgb(255, 255, 255)')
-      await expect(page.locator('.topbar .bots-head-name')).toBeVisible()
+      await expect(page.locator('.topbar .bots-head-name')).toHaveCount(0)
 
       await page.getByTestId('bots-thread').evaluate(node => { node.scrollTop = 0 })
       const first = await box(page, `${VIEW} [data-testid="bots-thread"] .bubble-msg`)

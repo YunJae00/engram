@@ -1,6 +1,6 @@
 import { Bell, Download, LoaderCircle, PlugZap, X } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
-import type { AppSettingsDto, UpdateCheckDto } from '../../../shared/types.js'
+import type { UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
 import { useApp, type AppState } from '../state.js'
@@ -18,24 +18,11 @@ interface AppNoticesProps {
 export const AppNotices = memo(function AppNotices({
   showAiNotices = true,
   engines,
-  enginesDetected,
-  pendingWork,
   update,
-  vaultReady,
   onOpenSettings,
 }: AppNoticesProps) {
   const [checking, setChecking] = useState(false)
   const [error, setError] = useState(false)
-  const [filingProvider, setFilingProvider] = useState<string | null>(null)
-  useEffect(() => {
-    let alive = true, changed = false
-    const read = (settings: AppSettingsDto) => {
-      if (alive) setFilingProvider((settings.aiSelections?.filing?.engine ?? settings.defaultEngine) === 'codex' ? 'ChatGPT' : 'Claude')
-    }
-    void api.settingsGet().then(settings => { if (!changed) read(settings) }).catch(() => undefined)
-    const off = api.onEvent(event => { if (event.type === 'settings:changed') { changed = true; read(event.settings) } })
-    return () => { alive = false; off() }
-  }, [])
   useEffect(() => setError(false), [update?.version, update?.state])
   // A provider failing on its side is said where it failed, in the conversation;
   // the background work waits it out on its own.
@@ -50,22 +37,9 @@ export const AppNotices = memo(function AppNotices({
         : reason === 'network'
           ? t('banner.offline', { ids: unhealthyIds })
           : t('banner.notResponding', { ids: unhealthyIds })
-  const waiting = pendingWork.inbox + pendingWork.notes
 
   return (
     <div className="notices">
-      {showAiNotices && vaultReady && enginesDetected && engines.length === 0 && (
-        <div className="connect-banner" data-testid="connect-banner">
-          <PlugZap size={14} strokeWidth={1.8} aria-hidden />
-          <span>
-            {filingProvider ? `${filingProvider} is selected for filing but isn't ready. Check its connection or choose another AI in Settings.` : t('banner.noBrain')}
-            {waiting > 0 && ` · ${t('banner.waiting', { n: waiting })}`}
-          </span>
-          <button className="connect-banner-btn" onClick={onOpenSettings}>
-            {t('banner.getBrain')}
-          </button>
-        </div>
-      )}
       {showAiNotices && unhealthy.length > 0 && (
         <div className="connect-banner" data-testid="unhealthy-banner">
           <PlugZap size={14} strokeWidth={1.8} aria-hidden />

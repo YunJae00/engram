@@ -319,4 +319,5 @@ export const ko4 = {
   'settingsUi.copyConfig': '구성 복사',
   'settingsUi.sessionsStopped': '세션을 중지했어요. 다시 시도하기 전에 일부만 적용된 변경이 있는지 확인해 주세요.',
   'settingsUi.stopSessions': '세션 중지',
+  'banner.filingNotReady': '정리에 쓰도록 선택한 AI가 준비되지 않았어요: {provider}. 연결을 확인하거나 설정에서 다른 AI를 고르세요.',
 } satisfies Partial<Record<StringKey, string>>

@@ -1,12 +1,12 @@
-import { Columns2, Globe, Grid2X2, PanelLeftOpen, Square } from 'lucide-react'
+import { Columns2, Globe, Grid2X2, PanelLeftOpen, PlugZap, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { SyncStatusDto } from '../../../shared/types.js'
+import type { AppSettingsDto, SyncStatusDto } from '../../../shared/types.js'
 import { t, type Translate } from '../i18n.js'
 import { api } from '../api.js'
-import { useTopBarState } from '../state-slices.js'
+import { useShellState, useTopBarState } from '../state-slices.js'
 import { DialogHeader } from './DialogHeader.js'
-import { CometTitle } from './CometTitle.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
+import '../topbar-banner.css'
 
 function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   if (!status || status.state === 'no-remote') return t('topbar.syncNone')
@@ -16,6 +16,31 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
   if (status.ahead > 0) parts.push(`↑${status.ahead}`)
   if (status.behind > 0) parts.push(`↓${status.behind}`)
   return parts.join(' ')
+}
+
+function ConnectBanner({ waiting }: { waiting: number }) {
+  const [filingProvider, setFilingProvider] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true, changed = false
+    const read = (settings: AppSettingsDto) => {
+      if (alive) setFilingProvider((settings.aiSelections?.filing?.engine ?? settings.defaultEngine) === 'codex' ? 'ChatGPT' : 'Claude')
+    }
+    void api.settingsGet().then(settings => { if (!changed) read(settings) }).catch(() => undefined)
+    const off = api.onEvent(event => { if (event.type === 'settings:changed') { changed = true; read(event.settings) } })
+    return () => { alive = false; off() }
+  }, [])
+  return (
+    <div className="connect-banner" data-testid="connect-banner">
+      <PlugZap size={14} strokeWidth={1.8} aria-hidden />
+      <span>
+        {filingProvider ? t('banner.filingNotReady', { provider: filingProvider }) : t('banner.noBrain')}
+        {waiting > 0 && ` · ${t('banner.waiting', { n: waiting })}`}
+      </span>
+      <button className="connect-banner-btn" onClick={() => window.dispatchEvent(new Event('engram:open-brain-setup'))}>
+        {t('banner.getBrain')}
+      </button>
+    </div>
+  )
 }
 
 // The title strip keeps the current view visible without competing with its
@@ -29,6 +54,10 @@ export function TopBar({ sidebarOpen, developer, onToggleSidebar, splitLayout, o
   onMode(mode: 'bots' | 'developers'): void
 }) {
   const { activity, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
+  const { engines, enginesDetected, pendingWork } = useShellState()
+  const showConnect = vaultReady && enginesDetected && engines.length === 0
+  const botView = activity === 'bots' || activity === 'mission'
+  const label = botView ? null : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : activity === 'developers' ? 'Developers' : t('activity.list')
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   useEffect(() => {
@@ -90,9 +119,12 @@ export function TopBar({ sidebarOpen, developer, onToggleSidebar, splitLayout, o
           <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
         </button>
       )}
-      <span className="topbar-title">
-        {activity === 'bots' || activity === 'mission' ? <CometTitle ready={vaultReady} /> : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : activity === 'developers' ? 'Developers' : t('activity.list')}
-      </span>
+      {showConnect ? (
+        <div className="topbar-title topbar-banner-slot">
+          {label}
+          <ConnectBanner waiting={pendingWork.inbox + pendingWork.notes} />
+        </div>
+      ) : label && <span className="topbar-title">{label}</span>}
 
       <div className="topbar-spacer" />
       {(activity === 'bots' || activity === 'mission' || activity === 'developers') && <div className="mission-layout" aria-label="Split conversation view">

@@ -1,0 +1,14 @@
+/* The AI connect banner sits in the title slot of the top bar. */
+.topbar .topbar-banner-slot {
+  flex: 0 1 auto; display: flex; align-items: center; gap: 12px;
+  min-width: 0; height: 100%;
+}
+.topbar .topbar-banner-slot .connect-banner {
+  flex: 0 1 auto; width: auto; min-width: 0; min-height: 0; padding: 0;
+  font-weight: 400;
+}
+.topbar .topbar-banner-slot .connect-banner > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* The spacer stays a real, clickable gap even when the banner fills the row. */
+.topbar > .topbar-spacer { align-self: stretch; min-width: 16px; }
