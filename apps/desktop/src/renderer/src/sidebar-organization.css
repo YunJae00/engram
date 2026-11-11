@@ -237,3 +237,5 @@
 @media (prefers-reduced-motion: reduce) { .sidebar-status-dot { animation: none; } }
 .sidebar-conversation-name[data-unread='true'] { font-weight: 650; color: var(--fg-strong); }
 .sidebar-bell-off { flex: none; width: 12px; height: 12px; color: var(--fg-faint); }
+.sidebar-bots-tree [role="treeitem"]:focus-visible { outline: none; }
+.sidebar-bots-tree li[role="treeitem"]:focus-visible, .sidebar-bots-tree [role="treeitem"]:focus-visible > .sidebar-folder-head { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
