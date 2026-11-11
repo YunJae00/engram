@@ -110,7 +110,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} />, bot })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat

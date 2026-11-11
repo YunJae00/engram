@@ -42,19 +42,19 @@ function flushNotice(botId: string): void {
   notice.tell()
 }
 
-export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void): void {
+export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string): void {
   // A hidden run has nobody watching to tell.
   if (process.env['ENGRAM_HIDDEN'] === '1') return
   if (task.state === 'done' && (queued.has(task.botId) || clientQueues.has(task.botId))) {
     clearTimeout(held.get(task.botId)?.timer)
     const timer = setTimeout(() => flushNotice(task.botId), HOLD_MS)
-    held.set(task.botId, { tell: () => tell(task, broadcast), timer })
+    held.set(task.botId, { tell: () => tell(task, broadcast, level), timer })
     return
   }
-  tell(task, broadcast)
+  tell(task, broadcast, level)
 }
 
-function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void): void {
+function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string): void {
   if (task.state === 'done' && task.id) {
     if (notified.has(task.id)) return
     notified.add(task.id)
@@ -64,6 +64,7 @@ function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void): voi
     : task.state === 'failed' ? 'Task stopped'
       : task.question ? 'Your answer is needed' : 'Your approval is needed'
   if (BrowserWindow.getFocusedWindow()) { broadcast({ type: 'task:notice', message: title }); return }
+  if (level === 'off' || (level === 'attention' && task.state !== 'failed' && (task.state !== 'waiting' || paused))) return
   if (!Notification.isSupported()) return
   // Notifications can appear on the lock screen; keep task contents in the app.
   const body = paused ? 'The unfinished result is ready. Click to continue with an instruction.' : task.state === 'done' ? 'The answer is ready. Click to see it.'

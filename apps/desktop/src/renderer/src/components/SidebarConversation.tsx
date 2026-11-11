@@ -1,15 +1,18 @@
 import { memo, useMemo, useSyncExternalStore } from 'react'
+import { BellOff } from 'lucide-react'
 import type { BotDto } from '../../../shared/types.js'
 import type { CometActivity } from '../lib/cometActivity.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { isSaidLine, workLabel } from '../lib/pendingStatus.js'
 import { avatarState, BotAvatar, useAvatarTheme } from './BotAvatar.js'
-import { CometActivityIndicator } from './CometActivityIndicator.js'
+import { CometActivityIndicator, cometActivityLabel } from './CometActivityIndicator.js'
 import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
+import { markUnread, rowStatus } from '../lib/botRowStatus.js'
+import { t } from '../i18n.js'
 import { displayTaskAnswer, threadLang } from '../lib/threadLang.js'
 
-export const SidebarConversation = memo(function SidebarConversation({ bot, state }: { bot: BotDto; state: CometActivity }) {
+export const SidebarConversation = memo(function SidebarConversation({ bot, state, active }: { bot: BotDto; state: CometActivity; active: boolean }) {
   const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
   const preview = useMemo(() => {
@@ -30,11 +33,14 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
   }, [thread, state, bot.label, bot.lastMessage, bot.purpose])
   const date = new Date(bot.lastMessage?.at ?? bot.createdAt)
   const valid = Number.isFinite(date.getTime())
+  const unread = markUnread(bot.id, bot.lastMessage, active)
+  const status = rowStatus(state, unread)
   return <>
     <span className="sidebar-conversation-avatar"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={36} state={avatarState(state)} theme={theme} /><CometActivityIndicator state={state} /></span>
     <span className="sidebar-conversation-content" title={valid ? date.toLocaleString('en-US') : undefined}>
-      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name">{bot.name}</span></span>
+      <span className="sidebar-conversation-top"><span className="sidebar-conversation-name" data-unread={unread || undefined}>{bot.name}</span>{bot.notify === 'off' && <BellOff className="sidebar-bell-off" size={12} role="img" aria-label={`${t('botInfo.notify')}: ${t('botInfo.notifyOff')}`} />}</span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>
     </span>
+    {status && <span className="sidebar-status-dot" data-status={status} role="img" aria-label={status === 'unread' ? 'Unread activity' : cometActivityLabel(status === 'working' ? 'running' : state)} />}
   </>
 })

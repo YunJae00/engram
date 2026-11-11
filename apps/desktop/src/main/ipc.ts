@@ -1798,7 +1798,7 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer) => learnFromAnswer(ctx, question, answer),
-    notify: (task) => notifyTask(task, broadcast),
+    notify: (task) => { void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(level => notifyTask(task, broadcast, level)).catch(error => flog('task-notify', error)) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,
     // A check gets a bounded share of time; past it the draft is the answer.

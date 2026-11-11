@@ -228,3 +228,12 @@
 .shell.arriving { animation: fade-in 420ms var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .first-setup-screen, .first-setup-screen.leaving, .onboard-card.first-setup, .first-setup-mark > svg, .first-setup-step, .first-setup-pause, .first-setup-bar > span::after, .shell.arriving { animation: none; } }
 .delete-conversation-dialog .delete-summary { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.sidebar-item-main > span.sidebar-status-dot[data-status] { flex: none; width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.sidebar-status-dot[data-status='attention'] { background: var(--work-waiting); }
+.sidebar-status-dot[data-status='unread'] { background: var(--accent-blue); }
+.sidebar-status-dot[data-status='working'] { background: var(--work-running); animation: sidebar-status-pulse 1.4s ease-in-out infinite; }
+@keyframes sidebar-status-pulse { 50% { opacity: 0.45; transform: scale(0.8); } }
+:root:not([data-window-focused='true']) .sidebar-status-dot { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .sidebar-status-dot { animation: none; } }
+.sidebar-conversation-name[data-unread='true'] { font-weight: 650; color: var(--fg-strong); }
+.sidebar-bell-off { flex: none; width: 12px; height: 12px; color: var(--fg-faint); }

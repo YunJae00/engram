@@ -71,3 +71,31 @@ it('holds completion while the renderer has queued work even after host pending 
   clearClientTaskQueues(99)
   expect(mocks.show).toHaveBeenCalledOnce()
 })
+
+const at = (id: string, state: string, extra: object = {}) => ({ id, botId: `bot-${id}`, state, approvals: [], ...extra }) as unknown as DelegatedTask
+const open = { approvals: [{ answer: undefined }] }
+
+it('notify off suppresses OS notification', () => {
+  for (const task of [at('off-done', 'done'), at('off-failed', 'failed'), at('off-q', 'waiting', { question: 'Which?' }), at('off-ap', 'waiting', open)]) notifyTask(task, vi.fn(), 'off')
+  expect(mocks.show).not.toHaveBeenCalled()
+  mocks.focused = true
+  const broadcast = vi.fn()
+  notifyTask(at('off-focused', 'failed'), broadcast, 'off')
+  expect(broadcast).toHaveBeenCalledWith({ type: 'task:notice', message: 'Task stopped' })
+})
+
+it('attention level shows only questions, approvals and failures', () => {
+  for (const task of [at('att-done', 'done'), at('att-paused', 'waiting')]) notifyTask(task, vi.fn(), 'attention')
+  expect(mocks.show).not.toHaveBeenCalled()
+  for (const [n, task] of [at('att-failed', 'failed'), at('att-q', 'waiting', { question: 'Which?' }), at('att-ap', 'waiting', open)].entries()) {
+    notifyTask(task, vi.fn(), 'attention')
+    expect(mocks.show).toHaveBeenCalledTimes(n + 1)
+  }
+})
+
+it('unknown or missing level behaves as all', () => {
+  for (const [n, level] of [undefined, 'all', 'bogus'].entries()) {
+    notifyTask(at(`lvl-${n}`, 'done'), vi.fn(), level)
+    expect(mocks.show).toHaveBeenCalledTimes(n + 1)
+  }
+})
