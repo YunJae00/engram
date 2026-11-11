@@ -237,6 +237,8 @@ describe('resetBotsToV2', () => {
     await chmod(join(unreadable.cache, 'backups', BASE, 'bots.json'), 0)
     await resetBotsToV2(unreadable, { now: NOW })
     const text = (await readNotices(unreadable))[0]?.text
-    expect(process.getuid?.() === 0 ? text?.startsWith(TEXT(BASE)) : text === TEXT(BASE)).toBe(true)
+    // chmod 0 cannot block reads for root, nor on Windows (it only sets the read-only attribute)
+    const stillReadable = process.getuid?.() === 0 || process.platform === 'win32'
+    expect(stillReadable ? text?.startsWith(TEXT(BASE)) : text === TEXT(BASE)).toBe(true)
   })
 })
