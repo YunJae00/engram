@@ -280,7 +280,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
       return result
     }, kind)
-    await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: kind === 'chat' ? 'New chat folder' : 'New routine folder' }).click()
+    await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: kind === 'chat' ? 'New section' : 'New routine folder' }).click()
     const input = page.getByTestId(`sidebar-${kind}-folder-name`)
     await input.fill(`${kind} Work`)
     await input.press('Enter')
@@ -341,7 +341,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
     const menu = page.getByRole('dialog', { name: `Options for ${kind} Work`, exact: true })
     await menu.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(box).toBeVisible()
-    await page.getByRole('dialog', { name: 'Delete folder?', exact: true }).getByRole('button', { name: 'Delete folder only', exact: true }).click()
+    await page.getByRole('dialog', { name: kind === 'chat' ? 'Delete section?' : 'Delete folder?', exact: true }).getByRole('button', { name: kind === 'chat' ? 'Delete section only' : 'Delete folder only', exact: true }).click()
     await expect(box).toHaveCount(0)
     for (const id of ids) await expect(item(id)).toBeVisible()
   }

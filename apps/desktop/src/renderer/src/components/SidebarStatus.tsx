@@ -17,7 +17,7 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
       if (status.deferred > 0) return translate('topbar.sweepDeferred', { n: status.deferred })
       return translate('topbar.sweepDone', { executed: status.executed, skipped: status.skipped })
     case 'error':
-      return /No engine available/.test(status.message) ? 'Filing AI unavailable' : apiErrorText(status.message)
+      return /No engine available/.test(status.message) ? t('sidebar.filingUnavailable') : apiErrorText(status.message)
     default:
       return ''
   }
@@ -32,7 +32,7 @@ export function SidebarStatus() {
     if (pending.current) return
     pending.current = true; setRetrying(true)
     try { if (!engines.some(engine => connectionConfirmed(engine) && engine.healthy !== false)) await api.aiCheck(); await api.sweep() }
-    catch (error) { const message = apiErrorText(error instanceof Error ? error.message : String(error)); showToast(/No engine available/.test(message) ? 'Filing is paused. Choose a connected AI for filing in Settings.' : message) }
+    catch (error) { const message = apiErrorText(error instanceof Error ? error.message : String(error)); showToast(/No engine available/.test(message) ? t('sidebar.filingPaused') : message) }
     finally { pending.current = false; setRetrying(false) }
   }
   const jobKey: StringKey | null = sweepJob?.job && /^J[1-8]$/.test(sweepJob.job) ? (`topbar.job${sweepJob.job}` as StringKey) : null
@@ -58,7 +58,7 @@ export function SidebarStatus() {
   const activityText = errandText || sweepText || absorbText
   const working = errand.running || sweepStatus.running || filingOnly || retrying
   const ready = engines.some(engine => connectionConfirmed(engine) && engine.healthy !== false)
-  const idleLabel = !enginesDetected ? 'Checking AI…' : ready ? 'Filing ready' : 'Filing AI unavailable'
+  const idleLabel = !enginesDetected ? t('sidebar.checkingAi') : ready ? t('sidebar.filingReady') : t('sidebar.filingUnavailable')
   const paused = sweepStatus.kind === 'error' || sweepStatus.kind === 'done' && (!!sweepStatus.haltReason || sweepStatus.deferred > 0)
 
   return (
@@ -67,7 +67,7 @@ export function SidebarStatus() {
           <span className="sidebar-status-icon">{working || !enginesDetected ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused || !ready ? <CircleAlert size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText || idleLabel}</span>
         </div>
-      <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label="Retry filing" title="Retry filing with the selected filing AI" disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>
+      <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label={t('sidebar.retryFiling')} title={t('sidebar.retryFilingHint')} disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>
     </div>
   )
 }

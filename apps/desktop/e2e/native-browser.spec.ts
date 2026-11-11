@@ -307,9 +307,9 @@ test('conversation deletion opens above the live browser without deleting on can
   await shell.evaluate(() => window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Native fixture folder' } }))
   await shell.getByRole('button', { name: 'Options for Native fixture folder', exact: true }).click()
   await shell.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete folder?' })).toBeVisible()
+  await expect(shell.getByRole('dialog', { name: 'Delete section?' })).toBeVisible()
   await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete folder?' })).toHaveCount(0)
+  await expect(shell.getByRole('dialog', { name: 'Delete section?' })).toHaveCount(0)
   await shell.screenshot({ path: join(tmp, 'release-0710-split.png') })
 })
 

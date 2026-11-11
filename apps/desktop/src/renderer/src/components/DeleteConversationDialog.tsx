@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
+import { t } from '../i18n.js'
 
 export function DeleteConversationDialog({ name, count, kind, summaryId, onClose, onDelete }: {
   name: string; count?: number; kind: 'chat' | 'routine'; summaryId?: string; onClose(): void; onDelete(contents: boolean): Promise<void>
@@ -22,8 +21,8 @@ export function DeleteConversationDialog({ name, count, kind, summaryId, onClose
   const blocked = summaryId !== undefined && !summary
   const close = useRef(onClose)
   useLayoutEffect(() => { close.current = onClose }, [onClose])
-  const noun = kind === 'chat' ? 'conversation' : 'routine'
-  const items = `${count} ${noun}${count === 1 ? '' : 's'}`
+  const chat = kind === 'chat'
+  const items = chat ? count === 1 ? t('sidebar.conversationsOne', { n: 1 }) : t('sidebar.conversationsMany', { n: count ?? 0 }) : count === 1 ? t('sidebar.routinesOne', { n: 1 }) : t('sidebar.routinesMany', { n: count ?? 0 })
   useLayoutEffect(() => { dialog.current?.showModal() }, [])
   useEffect(() => {
     if (!closing) return
@@ -34,25 +33,25 @@ export function DeleteConversationDialog({ name, count, kind, summaryId, onClose
     if (busy || closing || blocked) return
     setBusy(true)
     try { await onDelete(contents); setClosing(true) }
-    catch { setError('Could not finish deleting. Any remaining items have been kept.'); setBusy(false) }
+    catch { setError(t('sidebar.deleteFailed')); setBusy(false) }
   }
   return createPortal(<dialog ref={dialog} className="delete-conversation-dialog" data-closing={closing} data-folder={count !== undefined && count > 0} aria-labelledby="delete-conversation-title" onCancel={event => { event.preventDefault(); if (!busy) setClosing(true) }}>
-    <h2 id="delete-conversation-title">Delete {count === undefined ? noun : 'folder'}?</h2>
+    <h2 id="delete-conversation-title">{count === undefined ? chat ? t('sidebar.deleteTitleConversation') : t('sidebar.deleteTitleRoutine') : chat ? t('sidebar.deleteTitleSection') : t('sidebar.deleteTitleFolder')}</h2>
     <p className="delete-conversation-name">{name}</p>
-    <p>{count === undefined ? `This removes the ${noun} from your library.` : `${items} in this folder. You can keep them in the sidebar or delete them too.`}</p>
+    <p>{count === undefined ? chat ? t('sidebar.removesConversation') : t('sidebar.removesRoutine') : chat ? t('sidebar.inSection', { items }) : t('sidebar.inFolder', { items })}</p>
     {summaryId && (summary ? <>
       <ul className="delete-summary">
-        <li data-testid="delete-summary-routines" data-count={summary.routines}>{plural(summary.routines, 'routine')}</li>
-        <li data-testid="delete-summary-facts" data-count={summary.facts}>{plural(summary.facts, 'remembered fact')}</li>
-        <li data-testid="delete-summary-archived" data-count={summary.archivedChats}>{plural(summary.archivedChats, 'archived chat')}</li>
+        <li data-testid="delete-summary-routines" data-count={summary.routines}>{summary.routines === 1 ? t('sidebar.routinesOne', { n: 1 }) : t('sidebar.routinesMany', { n: summary.routines })}</li>
+        <li data-testid="delete-summary-facts" data-count={summary.facts}>{summary.facts === 1 ? t('sidebar.factsOne', { n: 1 }) : t('sidebar.factsMany', { n: summary.facts })}</li>
+        <li data-testid="delete-summary-archived" data-count={summary.archivedChats}>{summary.archivedChats === 1 ? t('sidebar.archivedOne', { n: 1 }) : t('sidebar.archivedMany', { n: summary.archivedChats })}</li>
       </ul>
-      <p>Routines and remembered facts are deleted with the bot. Archived chats stay on disk.</p>
-    </> : !error && <p>Counting what goes with this bot…</p>)}
+      <p>{t('sidebar.deleteSummaryNote')}</p>
+    </> : !error && <p>{t('sidebar.counting')}</p>)}
     {error && <p role="alert">{error}</p>}
     <div className="delete-conversation-actions">
-      <button className="secondary" autoFocus disabled={busy || closing} onClick={() => setClosing(true)}>Cancel</button>
-      {count !== undefined && <button className="secondary" disabled={busy} onClick={() => void remove(false)}>Delete folder only</button>}
-      {(count === undefined || count > 0) && <button className="danger" disabled={busy || blocked} onClick={() => void remove(true)}>{count === undefined ? `Delete ${noun}` : `Delete folder and ${items}`}</button>}
+      <button className="secondary" autoFocus disabled={busy || closing} onClick={() => setClosing(true)}>{t('sidebar.cancel')}</button>
+      {count !== undefined && <button className="secondary" disabled={busy} onClick={() => void remove(false)}>{chat ? t('sidebar.deleteSectionOnly') : t('sidebar.deleteFolderOnly')}</button>}
+      {(count === undefined || count > 0) && <button className="danger" disabled={busy || blocked} onClick={() => void remove(true)}>{count === undefined ? chat ? t('sidebar.deleteConversation') : t('sidebar.deleteRoutine') : chat ? t('sidebar.deleteSectionAnd', { items }) : t('sidebar.deleteFolderAnd', { items })}</button>}
     </div>
   </dialog>, document.body)
 }

@@ -127,8 +127,8 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
         className="workspace-trigger"
         data-testid="workspace-switcher"
         onClick={() => setOpen((v) => !v)}
-        title="Engram menu"
-        aria-label="Engram menu"
+        title={t('sidebar.engramMenu')}
+        aria-label={t('sidebar.engramMenu')}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -137,7 +137,7 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
       </button>
 
       {open && createPortal(
-        <div className="workspace-menu" ref={menuRef} role="dialog" aria-label="Engram menu" data-testid="workspace-menu" onKeyDown={event => {
+        <div className="workspace-menu" ref={menuRef} role="dialog" aria-label={t('sidebar.engramMenu')} data-testid="workspace-menu" onKeyDown={event => {
           if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
           const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('button, summary')].filter(row => row.getClientRects().length > 0 && !row.hasAttribute('disabled'))
           if (!rows.length) return
@@ -146,15 +146,15 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : (at + (event.key === 'ArrowUp' ? -1 : 1) + rows.length) % rows.length
           rows[next]?.focus()
         }}>
-          <nav className="sidebar-nav" aria-label="Explore Engram">
+          <nav className="sidebar-nav" aria-label={t('sidebar.explore')}>
             {([
-              ['bots', 'Comets', <MessageSquare key="bots" size={17} aria-hidden />],
+              ['bots', t('topbar.tabBots'), <MessageSquare key="bots" size={17} aria-hidden />],
               ['sky', t('topbar.tabSky'), <Orbit key="sky" size={17} aria-hidden />],
               ['list', t('activity.list'), <List key="list" size={17} aria-hidden />],
             ] as const).map(([key, label, icon]) => <button key={key} className={`sidebar-nav-row${activity === key ? ' active' : ''}`} aria-current={activity === key ? 'page' : undefined} data-testid={`activity-${key}`} onClick={() => { setOpen(false); onNavigate(key) }}>{icon}<span>{label}</span></button>)}
           </nav>
           <div className="workspace-divider" />
-          <details className="workspace-management"><summary>Workspaces<ChevronDown size={13} aria-hidden /></summary>
+          <details className="workspace-management"><summary>{t('sidebar.workspaces')}<ChevronDown size={13} aria-hidden /></summary>
           {registry.vaults.map((v) => (
             <div key={v.id} className="workspace-entry">
             <button className="workspace-row" disabled={busy} onClick={() => onSwitch(v.id)}>
@@ -168,7 +168,7 @@ export function WorkspaceSwitcher({ activity, onNavigate }: {
                 <Check className="workspace-check" size={13} strokeWidth={1.8} aria-hidden />
               )}
             </button>
-            <button className="workspace-delete" disabled={busy} aria-label={`Delete workspace ${displayName(v)}`} title="Delete workspace" onClick={() => void remove(v.id)}><Trash2 size={14} aria-hidden /></button>
+            <button className="workspace-delete" disabled={busy} aria-label={t('sidebar.deleteWorkspaceNamed', { name: displayName(v) })} title={t('sidebar.deleteWorkspace')} onClick={() => void remove(v.id)}><Trash2 size={14} aria-hidden /></button>
             </div>
           ))}
           {registry.vaults.length > 0 && <div className="workspace-divider" />}

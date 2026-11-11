@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, initVault, type Bot, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,7 +26,7 @@ async function launch(): Promise<void> {
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   root = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-'))
-  paths = await initVault(root, { git: false })
+  paths = await initVault(root, { git: false }); await resetBotsToV2(paths) // v2 list with its own primary, so launch keeps the seeded bots and bots[0] is a row
   screenshots = await mkdtemp(join(TMP, 'conversation-sidebar-shots-'))
   for (let index = 0; index < 28; index++) {
     const bot = await createBot(paths, { name: index === 0 ? FIRST_TITLE : `Project ${String(index).padStart(2, '0')} planning and delivery conversation` })
@@ -74,7 +74,7 @@ test('folder deletion offers cancellation and includes conversations hidden by s
   await page.getByRole('textbox', { name: 'Search conversations', exact: true }).fill('Visible deletion')
   await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Delete folder?', exact: true })
+  const dialog = page.getByRole('dialog', { name: 'Delete section?', exact: true })
   await expect(dialog).toContainText('2 conversations')
   await expect.poll(() => dialog.evaluate(node => { const rect = node.getBoundingClientRect(); return Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2 && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 2 })).toBe(true)
   expect(await dialog.locator('button').evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().height))).size)).toBe(1)
@@ -92,7 +92,7 @@ test('folder deletion offers cancellation and includes conversations hidden by s
   expect(await page.evaluate(async ids => (await window.engram.botsList()).filter(bot => ids.includes(bot.id)).length, ids)).toBe(2)
   await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Delete folder and 2 conversations', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Delete section and 2 conversations', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   expect(await page.evaluate(async ids => (await window.engram.botsList()).some(bot => ids.includes(bot.id)), ids)).toBe(false)
   await page.getByRole('button', { name: 'Clear search', exact: true }).click()
@@ -122,8 +122,8 @@ test('conversation rows show persisted previews, timestamps and avatars after re
   const first = page.getByTestId(`bot-${bots[0]!.id}`)
   await expect(first.locator('.sidebar-conversation-name')).toHaveText(bots[0]!.name)
   await expect(first.locator('.sidebar-conversation-preview')).toHaveText('Tomorrow’s checkpoint is ready.')
-  await expect(first.locator('time')).toHaveAttribute('datetime', STAMP)
-  await expect(first.locator('time')).not.toHaveText('')
+  await expect(first.locator('.sidebar-conversation-content')).toHaveAttribute('title', new Date(STAMP).toLocaleString('en-US'))
+  await expect(first.locator('time')).toHaveCount(0)
   await expect(first.locator('.bot-avatar svg')).toBeVisible()
   await expect(page.getByTestId(`bot-${bots[1]!.id}`).locator('.sidebar-conversation-preview')).toHaveText('You: Please verify the handoff checklist.')
   const saved = await page.evaluate(id => window.engram.botsList().then(list => list.find(bot => bot.id === id)), bots[0]!.id)
@@ -132,7 +132,7 @@ test('conversation rows show persisted previews, timestamps and avatars after re
   await expect(page.getByTestId('bots-thread')).toContainText('Tomorrow’s checkpoint is ready.')
   await page.reload()
   await expect(first.locator('.sidebar-conversation-preview')).toHaveText('Tomorrow’s checkpoint is ready.')
-  await expect(first.locator('time')).toHaveAttribute('datetime', STAMP)
+  await expect(first.locator('.sidebar-conversation-content')).toHaveAttribute('title', new Date(STAMP).toLocaleString('en-US'))
 })
 
 test('Engram navigation is inside its menu and the menu stays within the window', async () => {
@@ -172,7 +172,7 @@ test('one create menu is keyboard accessible, dismissible, and compact in both t
     await trigger.focus(); await page.keyboard.press('Enter')
     await expect(menu).toBeVisible()
     await expect(menu.getByTestId('bots-new')).toBeVisible()
-    await expect(menu.getByRole('button', { name: 'New chat folder' })).toBeVisible()
+    await expect(menu.getByRole('button', { name: 'New section' })).toBeVisible()
     await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
     await capture(`minimal-create-${theme}.png`)
     await page.keyboard.press('Escape')
