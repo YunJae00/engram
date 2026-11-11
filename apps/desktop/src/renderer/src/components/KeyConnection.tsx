@@ -2,23 +2,24 @@ import { KeyRound, LoaderCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { BrainConnectionDto, BrainConnectionProvider } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { t, type StringKey } from '../i18n.js'
 import { SettingsItem } from './SettingsLayout.js'
 
 // A brain reached with a key instead of a sign-in: the address that speaks the
 // runtime's API, the key it issued, and the model to ask for. The key is shown
 // once, on entry; afterwards only its last letters come back.
-const LABEL: Record<BrainConnectionProvider, string> = { claude: 'Claude', codex: 'ChatGPT', decision: 'Decision model' }
-const HINT: Record<BrainConnectionProvider, string> = {
-  claude: 'An address that speaks the Anthropic Messages API, such as a company gateway.',
-  codex: 'An address that speaks the OpenAI Responses API, such as a company gateway.',
-  decision: 'The decisions endpoint of a gateway or of the model vendor; used to pick the next step in an app quickly.',
+const label = (provider: BrainConnectionProvider): string => provider === 'claude' ? 'Claude' : provider === 'codex' ? 'ChatGPT' : t('settingsUi.decisionModel')
+const HINT: Record<BrainConnectionProvider, StringKey> = {
+  claude: 'settingsUi.hintClaude',
+  codex: 'settingsUi.hintCodex',
+  decision: 'settingsUi.hintDecision',
 }
 
 // One line under the row when no key is set: what a key is for here.
-const SHORT: Record<BrainConnectionProvider, string> = {
-  claude: 'Use a company gateway or your own key instead of signing in.',
-  codex: 'Use a company gateway or your own key instead of signing in.',
-  decision: 'Optional. A fast model that picks the next step in an app.',
+const SHORT: Record<BrainConnectionProvider, StringKey> = {
+  claude: 'settingsUi.shortKey',
+  codex: 'settingsUi.shortKey',
+  decision: 'settingsUi.shortDecision',
 }
 
 export function KeyConnection({ provider, onChanged }: { provider: BrainConnectionProvider; onChanged?: () => void }) {
@@ -48,24 +49,24 @@ export function KeyConnection({ provider, onChanged }: { provider: BrainConnecti
     finally { setBusy(false) }
   }
   if (current === undefined) return null
-  const summary = current ? `${current.usable ? 'API key saved · model tested when saved' : 'Key unavailable · reconnect'} · ${current.baseUrl}${current.model ? ` · ${current.model}` : ''}${current.keyHint ? ` · key ${current.keyHint}` : ''}` : SHORT[provider]
-  return <div className="key-connection" data-saved={!!current}><SettingsItem testId={`key-connection-${provider}`} icon={<KeyRound size={18} />} title={provider === 'decision' ? 'Decision model' : 'API key'} description={open ? undefined : summary}
-    below={open && <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={`${LABEL[provider]} API key`}>
-      <p className="setting-hint">{HINT[provider]}</p>
-      {provider !== 'decision' && <p className="setting-hint">This key is used only for the selected account.</p>}
-      <p className="setting-hint">A short model test may use API credits. {provider === 'decision' ? 'App controls, visible text and your goal are sent to this address during app actions.' : 'Conversation content is sent to this address when you use this connection.'}</p>
-      <label>Address<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://…" autoComplete="off" spellCheck={false} data-testid={`key-connection-${provider}-url`} /></label>
-      <label>API key<input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder={current ? 'Enter the key again to change it' : 'Paste the key'} autoComplete="off" data-testid={`key-connection-${provider}-key`} /></label>
-      <label>Model<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Model ID" required autoComplete="off" spellCheck={false} data-testid={`key-connection-${provider}-model`} /></label>
+  const summary = current ? `${current.usable ? t('settingsUi.keySaved') : t('settingsUi.keyUnavailable')} · ${current.baseUrl}${current.model ? ` · ${current.model}` : ''}${current.keyHint ? ` · ${t('settingsUi.keyHint', { hint: current.keyHint })}` : ''}` : t(SHORT[provider])
+  return <div className="key-connection" data-saved={!!current}><SettingsItem testId={`key-connection-${provider}`} icon={<KeyRound size={18} />} title={provider === 'decision' ? t('settingsUi.decisionModel') : t('settingsUi.apiKey')} description={open ? undefined : summary}
+    below={open && <form className="key-connection-form" onSubmit={(event) => { event.preventDefault(); void save() }} aria-label={t('settingsUi.providerApiKey', { name: label(provider) })}>
+      <p className="setting-hint">{t(HINT[provider])}</p>
+      {provider !== 'decision' && <p className="setting-hint">{t('settingsUi.keyAccountOnly')}</p>}
+      <p className="setting-hint">{t('settingsUi.creditsNote')} {provider === 'decision' ? t('settingsUi.decisionSent') : t('settingsUi.convSent')}</p>
+      <label>{t('settingsUi.address')}<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://…" autoComplete="off" spellCheck={false} data-testid={`key-connection-${provider}-url`} /></label>
+      <label>{t('settingsUi.apiKey')}<input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder={current ? t('settingsUi.enterKeyAgain') : t('settingsUi.pasteKey')} autoComplete="off" data-testid={`key-connection-${provider}-key`} /></label>
+      <label>{t('settingsUi.model')}<input value={model} onChange={(event) => setModel(event.target.value)} placeholder={t('settingsUi.modelId')} required autoComplete="off" spellCheck={false} data-testid={`key-connection-${provider}-model`} /></label>
       <div className="engine-actions">
-        <button type="submit" disabled={busy} data-testid={`key-connection-${provider}-save`}>{busy ? <><LoaderCircle size={13} className="spin" aria-hidden /> Checking…</> : 'Connect'}</button>
-        <button type="button" className="secondary" disabled={busy} onClick={() => { setOpen(false); setError(''); setKey('') }}>Cancel</button>
+        <button type="submit" disabled={busy} data-testid={`key-connection-${provider}-save`}>{busy ? <><LoaderCircle size={13} className="spin" aria-hidden /> {t('settingsUi.checking')}</> : t('model.connect')}</button>
+        <button type="button" className="secondary" disabled={busy} onClick={() => { setOpen(false); setError(''); setKey('') }}>{t('settingsUi.cancel')}</button>
       </div>
       {error && <p role="alert" className="engine-message">{error}</p>}
     </form>}>
     {!open && (current ? <>
-      <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(true)}>Change</button>
-      <button type="button" className="secondary" data-testid={`key-connection-${provider}-remove`} disabled={busy} onClick={() => void remove()}>Remove</button>
-    </> : <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}>Use an API key</button>)}
+      <button type="button" className="secondary" disabled={busy} onClick={() => setOpen(true)}>{t('settingsUi.change')}</button>
+      <button type="button" className="secondary" data-testid={`key-connection-${provider}-remove`} disabled={busy} onClick={() => void remove()}>{t('settingsUi.remove')}</button>
+    </> : <button type="button" className="secondary" data-testid={`key-connection-${provider}-open`} onClick={() => setOpen(true)}>{t('settingsUi.useApiKey')}</button>)}
   </SettingsItem></div>
 }

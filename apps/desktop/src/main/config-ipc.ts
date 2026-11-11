@@ -51,6 +51,7 @@ export function registerSettingsIpc(): void {
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Invalid settings')
     if (settings.defaultEngine !== undefined && !['claude', 'codex'].includes(settings.defaultEngine)) throw new Error('Invalid AI provider')
     if (settings.theme !== undefined && !['system', 'light', 'dark'].includes(settings.theme)) throw new Error('Invalid appearance')
+    if (settings.uiLanguage !== undefined && !['system', 'ko', 'en'].includes(settings.uiLanguage)) throw new Error('Invalid interface language')
     for (const key of ['autoStart', 'computerUse', 'workMap', 'workFiles', 'workApps'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'boolean') throw new Error('Invalid setting: ' + key)
     for (const key of ['searchTemplate', 'agentBrowser', 'claudeModel', 'codexModel', 'semanticModel'] as const) if (settings[key] !== undefined && typeof settings[key] !== 'string') throw new Error('Invalid setting: ' + key)
     if (settings.appsOff !== undefined) settings = { ...settings, appsOff: appsOffOf(settings.appsOff) }

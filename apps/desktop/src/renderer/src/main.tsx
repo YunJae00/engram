@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { api } from './api.js'
 import { App } from './App.js'
+import { uiLanguage } from './i18n.js'
 import './styles.css'
 
 for (const key of Object.keys(localStorage)) {
@@ -38,11 +39,19 @@ api.onEvent((event) => {
   else delete document.documentElement.dataset['fullscreen']
 })
 
-createRoot(document.getElementById('root')!).render(
+const root = createRoot(document.getElementById('root')!)
+let language = uiLanguage()
+const render = () => root.render(
   <React.StrictMode>
-    <App />
+    <App key={language} />
   </React.StrictMode>,
 )
+render()
+api.onEvent((event) => {
+  if (event.type !== 'settings:changed' || uiLanguage() === language) return
+  language = uiLanguage()
+  render()
+})
 
 // The boot word stays through React's first paint and fades on the next
 // frame, so opening reads as one dissolve instead of a swap.

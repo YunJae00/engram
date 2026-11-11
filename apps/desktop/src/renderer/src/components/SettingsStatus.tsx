@@ -24,14 +24,14 @@ export function SettingsStatus({ checkingUpdate, semantic, update, version, onCh
     void api
       .updateCheck()
       .then(onUpdate)
-      .catch(() => onUpdate({ state: 'error', message: 'Could not check for updates. Try again.', selfInstalls: false }))
+      .catch(() => onUpdate({ state: 'error', message: t('settingsUi.updateCheckFailed'), selfInstalls: false }))
       .finally(() => onCheckingUpdate(false))
   }
   const install = () => {
     setInstalling(true)
     void api.updateInstall().then((result) => {
       if (!result.started) return api.updateCheck().then(onUpdate)
-    }).catch(() => onUpdate({ state: 'error', message: 'Could not open the update. Try again.', selfInstalls: false })).finally(() => setInstalling(false))
+    }).catch(() => onUpdate({ state: 'error', message: t('settingsUi.updateOpenFailed'), selfInstalls: false })).finally(() => setInstalling(false))
   }
   const downloading = update?.state === 'downloading'
   const offered = update?.state === 'ready' || update?.state === 'available'
@@ -45,12 +45,12 @@ export function SettingsStatus({ checkingUpdate, semantic, update, version, onCh
   const searching = !semantic || ['loading', 'indexing'].includes(semantic.status)
   const searchWords = semantic && semantic.status !== 'off'
     ? `${{ loading: t('settings.semanticLoading'), indexing: t('settings.semanticIndexing'), ready: t('settings.semanticReady'), error: t('settings.semanticError') }[semantic.status]}${semantic.detail ? ` — ${semantic.detail}` : ''}`
-    : semantic ? t('settings.semanticIdle') : 'Checking…'
+    : semantic ? t('settings.semanticIdle') : t('settingsUi.checking')
   return <>
     <SettingsItem icon={<Info size={18} />} title={t('settings.versionKey')}><span className="settings-item-value" data-testid="settings-version">{version ?? '—'}</span></SettingsItem>
     <div data-testid="settings-update" aria-busy={checkingUpdate || installing || downloading}><SettingsItem icon={<Download size={18} />} title={t('settings.updateKey')} description={updateWords}
-      below={downloading && <progress className="update-progress" max={100} value={percent} aria-label="Update download" />}>
-      {offered ? <button className="secondary" disabled={installing} onClick={install}>{installing ? <><LoaderCircle size={14} className="spin" aria-hidden />Opening…</> : update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}</button>
+      below={downloading && <progress className="update-progress" max={100} value={percent} aria-label={t('settingsUi.updateDownload')} />}>
+      {offered ? <button className="secondary" disabled={installing} onClick={install}>{installing ? <><LoaderCircle size={14} className="spin" aria-hidden />{t('settingsUi.opening')}</> : update.selfInstalls ? t('banner.updateRestart') : t('settings.updateGet')}</button>
         : !downloading && <button className="secondary" data-testid="settings-update-check" disabled={checkingUpdate} onClick={checkForUpdate}>{checkingUpdate && <LoaderCircle size={14} className="spin" aria-hidden />}{t('settings.updateCheck')}</button>}
     </SettingsItem></div>
     <SettingsItem icon={<Search size={18} />} title={t('settings.semanticTitle')} description={<span data-testid="semantic-status" role="status" aria-busy={searching} title={t('settings.semanticHint')}>{searching && <LoaderCircle size={12} className="spin" aria-hidden />}{searchWords}</span>} />

@@ -56,9 +56,9 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
       api.activityGet().then(setDeskJournal),
       // Refresh the feed even when an older release is already downloaded.
       api.updateCheck().then(value => { if (alive) setUpdate(value) })
-        .catch(() => { if (alive) setUpdate({ state: 'error', message: 'Could not check for updates. Try again.', selfInstalls: false }) })
+        .catch(() => { if (alive) setUpdate({ state: 'error', message: t('settingsUi.updateCheckFailed'), selfInstalls: false }) })
         .finally(() => { if (alive) setCheckingUpdate(false) }),
-      api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: 'Could not check status. Retrying…', model: '' })),
+      api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: t('settingsUi.statusRetrying'), model: '' })),
     ]
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
@@ -129,31 +129,31 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
-        <DialogHeader closeLabel="Close settings" disabled={saving} onClose={onClose}>{t('settings.title')}</DialogHeader>
+        <DialogHeader closeLabel={t('settingsUi.close')} disabled={saving} onClose={onClose}>{t('settings.title')}</DialogHeader>
 
         <div className="settings-body">
         <SettingsNavigation selected={section} onSelect={setSection} />
         <div className="settings-scroll" ref={scroll}>
-        <section className="settings-panel" hidden={section !== 'general'} aria-label="General">
-        <h2>General</h2>
-        <SettingsGroup title="Appearance"><div className="settings-item"><AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} /></div></SettingsGroup>
-        <SettingsGroup title="App">
+        <section className="settings-panel" hidden={section !== 'general'} aria-label={t('settingsUi.general')}>
+        <h2>{t('settingsUi.general')}</h2>
+        <SettingsGroup title={t('settingsUi.appearance')}><div className="settings-item"><AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} language={settings.uiLanguage} onLanguage={(uiLanguage) => void patch({ uiLanguage })} /></div></SettingsGroup>
+        <SettingsGroup title={t('settingsUi.app')}>
           <SettingsItem icon={<Power size={18} />} title={t('settings.autoStart')} description={t(AUTO_START_KEY)} htmlFor="setting-autostart">
             <input id="setting-autostart" type="checkbox" className="switch" data-testid="setting-autostart" checked={settings.autoStart} disabled={saving} onChange={(e) => void patch({ autoStart: e.target.checked })} />
           </SettingsItem>
-          <SettingsItem icon={<Sparkles size={18} />} title="New Comet anywhere" description="Starts a conversation next to the pointer, from any app."><Keys keys={[MOD_LABEL, 'Shift', 'Space']} /></SettingsItem>
+          <SettingsItem icon={<Sparkles size={18} />} title={t('settingsUi.newComet')} description={t('settingsUi.newCometHint')}><Keys keys={[MOD_LABEL, 'Shift', t('settingsUi.keySpace')]} /></SettingsItem>
         </SettingsGroup>
         {section === 'general' && <ComputerSettings />}
         </section>
-        <section className="settings-panel" hidden={section !== 'ai'} aria-label="AI connection">
-        <h2>AI &amp; accounts</h2>
+        <section className="settings-panel" hidden={section !== 'ai'} aria-label={t('settingsUi.aiSection')}>
+        <h2>{t('settingsUi.ai')}</h2>
         {section === 'ai' && <EngineSettings />}
         {section === 'ai' && <ReviewRulesSettings />}
         </section>
-        <section className="settings-panel" hidden={section !== 'memory'} aria-label="Memory and data">
-        <h2>Memory &amp; data</h2>
-        <SettingsGroup title="Learn from this computer" note="Only names, titles and notifications are kept, as notes your AI can read. Pages and files are never opened.">
-          <SettingsItem icon={<Activity size={18} />} title={ACTIVITY.name} description={ACTIVITY.detail} htmlFor="setting-desk-journal">
+        <section className="settings-panel" hidden={section !== 'memory'} aria-label={t('settingsUi.memorySection')}>
+        <h2>{t('settingsUi.memory')}</h2>
+        <SettingsGroup title={t('settingsUi.learnTitle')} note={t('settingsUi.learnNote')}>
+          <SettingsItem icon={<Activity size={18} />} title={t(ACTIVITY.nameKey)} description={t(ACTIVITY.detailKey)} htmlFor="setting-desk-journal">
             <input
               id="setting-desk-journal"
               type="checkbox"
@@ -167,7 +167,7 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
                 void api
                   .activitySet(e.target.checked)
                   .then(setDeskJournal)
-                  .catch(() => showToast('Could not save app activity. Try again.'))
+                  .catch(() => showToast(t('settingsUi.activityFailed')))
                   .finally(() => setJournalSaving(false))
               }}
             />
@@ -175,25 +175,25 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
           {section === 'memory' && <WorkMapSettings />}
         </SettingsGroup>
         {section === 'memory' && <WorkHabitsSettings />}
-        <SettingsGroup title="Your data">
-          <SettingsItem icon={<ScrollText size={18} />} title={t('settings.auditTitle')} description="Every action and approval, kept on this computer." testId="setting-audit">
-            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast('Could not open the activity log.'))}><FolderOpen size={15} aria-hidden />Open</button>
+        <SettingsGroup title={t('settingsUi.yourData')}>
+          <SettingsItem icon={<ScrollText size={18} />} title={t('settings.auditTitle')} description={t('settingsUi.auditHint')} testId="setting-audit">
+            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast(t('settingsUi.auditFailed')))}><FolderOpen size={15} aria-hidden />{t('settingsUi.open')}</button>
           </SettingsItem>
-          <SettingsItem icon={<CloudUpload size={18} />} title={t('settings.githubTitle')} description="Keep a copy in a private GitHub repository.">
-            <button className="secondary" data-testid="settings-github-backup" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-github')) }}>Set up</button>
+          <SettingsItem icon={<CloudUpload size={18} />} title={t('settings.githubTitle')} description={t('settingsUi.githubHint')}>
+            <button className="secondary" data-testid="settings-github-backup" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-github')) }}>{t('settingsUi.setUp')}</button>
           </SettingsItem>
           {section === 'memory' && <ResetSettings />}
         </SettingsGroup>
         </section>
-        {api.developerUiEnabled && <section className="settings-panel" hidden={section !== 'developers'} aria-label="Advanced"><h2>Advanced</h2>{section === 'developers' && <DeveloperSettings />}</section>}
-        <section className="settings-panel" hidden={section !== 'help'} aria-label="About" data-testid="help-panel">
-        <h2>About</h2>
+        {api.developerUiEnabled && <section className="settings-panel" hidden={section !== 'developers'} aria-label={t('settingsUi.advanced')}><h2>{t('settingsUi.advanced')}</h2>{section === 'developers' && <DeveloperSettings />}</section>}
+        <section className="settings-panel" hidden={section !== 'help'} aria-label={t('settingsUi.about')} data-testid="help-panel">
+        <h2>{t('settingsUi.about')}</h2>
         <SettingsGroup title="Engram">
           <SettingsStatus checkingUpdate={checkingUpdate} semantic={semantic} update={update} version={version} onCheckingUpdate={setCheckingUpdate} onUpdate={setUpdate} />
         </SettingsGroup>
-        <SettingsGroup title="Support">
-          <SettingsItem icon={<FileDown size={18} />} title="Logs" description="Save recent logs to a file to send when something goes wrong.">
-            <button className="secondary" data-testid="settings-export-logs" disabled={exporting} onClick={() => void exportLogs()}>{exporting ? <><LoaderCircle size={14} className="spin" aria-hidden />Saving…</> : 'Export logs'}</button>
+        <SettingsGroup title={t('settingsUi.support')}>
+          <SettingsItem icon={<FileDown size={18} />} title={t('settingsUi.logs')} description={t('settingsUi.logsHint')}>
+            <button className="secondary" data-testid="settings-export-logs" disabled={exporting} onClick={() => void exportLogs()}>{exporting ? <><LoaderCircle size={14} className="spin" aria-hidden />{t('settingsUi.saving')}</> : t('settingsUi.exportLogs')}</button>
           </SettingsItem>
         </SettingsGroup>
         </section>
@@ -201,8 +201,8 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
         </div>
 
         <div className="dialog-actions">
-          {saveError ? <span className="settings-save-status" role="alert">{saveError}</span> : <span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={14} className="spin" aria-hidden />Saving…</> : saved ? <><Check size={14} aria-hidden />Saved</> : null}</span>}
-          <button className="primary" disabled={saving} onClick={onClose}>Done</button>
+          {saveError ? <span className="settings-save-status" role="alert">{saveError}</span> : <span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={14} className="spin" aria-hidden />{t('settingsUi.saving')}</> : saved ? <><Check size={14} aria-hidden />{t('settingsUi.saved')}</> : null}</span>}
+          <button className="primary" disabled={saving} onClick={onClose}>{t('settingsUi.done')}</button>
         </div>
       </div>
     </div>

@@ -1,13 +1,14 @@
 import { useEffect } from 'react'
 import type { DesktopControlStatusDto } from '../../../shared/desktop.js'
+import { t } from '../i18n.js'
 import { desktopError, stopComputerControl, useDesktopSession } from '../lib/desktopSession.js'
 
 export function computerStateLabel(control: DesktopControlStatusDto): string {
-  const who = control.engineLabel ?? 'The comet'
-  if (control.state === 'running') return `${who} is controlling your computer`
-  if (control.state === 'ready') return `${who} is about to use your computer`
-  if (control.state === 'needs-person') return 'Your attention is needed'
-  return control.resumable ? 'You took over' : 'Computer control is off'
+  const who = control.engineLabel ?? t('settingsUi.theComet')
+  if (control.state === 'running') return t('settingsUi.controlling', { who })
+  if (control.state === 'ready') return t('settingsUi.aboutToUse', { who })
+  if (control.state === 'needs-person') return t('settingsUi.attention')
+  return control.resumable ? t('settingsUi.tookOver') : t('settingsUi.controlOff')
 }
 
 export function ComputerStatus() {

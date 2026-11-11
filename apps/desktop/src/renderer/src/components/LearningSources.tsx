@@ -1,26 +1,27 @@
 import { useId } from 'react'
+import { t, type StringKey } from '../i18n.js'
 
 // What Engram may learn from on this computer, each chosen on its own. The
 // same list and words at onboarding and in Settings.
 export type LearningKey = 'workMap' | 'workFiles' | 'workApps' | 'activity'
 export type LearningChoice = Record<LearningKey, boolean>
 
-export const LEARNING_SOURCES: { key: LearningKey; name: string; detail: string }[] = [
-  { key: 'workMap', name: 'Browser history, bookmarks and downloads', detail: 'Site names, page titles and downloaded file names from the last 30 days.' },
-  { key: 'workFiles', name: 'Recent files and folders', detail: 'Names and locations of files you opened. Contents are not read.' },
-  { key: 'workApps', name: 'Apps you use', detail: 'App names and how often you use them.' },
-  { key: 'activity', name: 'App activity while Engram is open', detail: 'App names, window titles and notifications, kept while Engram runs.' },
+export const LEARNING_SOURCES: { key: LearningKey; nameKey: StringKey; detailKey: StringKey }[] = [
+  { key: 'workMap', nameKey: 'settingsUi.srcWorkMap', detailKey: 'settingsUi.srcWorkMapDetail' },
+  { key: 'workFiles', nameKey: 'settingsUi.srcFiles', detailKey: 'settingsUi.srcFilesDetail' },
+  { key: 'workApps', nameKey: 'settingsUi.srcApps', detailKey: 'settingsUi.srcAppsDetail' },
+  { key: 'activity', nameKey: 'settingsUi.srcActivity', detailKey: 'settingsUi.srcActivityDetail' },
 ]
-export const LEARNING_NOTE = 'Pages and files are never opened. What you allow is saved as notes in your workspace, and your AI reads them to organize Cosmos.'
+export const LEARNING_NOTE: StringKey = 'settingsUi.learnNoteLong'
 
 export function LearningSources({ value, disabled, onChange, testPrefix, compact = false }: { value: LearningChoice; disabled?: boolean; onChange(key: LearningKey, on: boolean): void; testPrefix: string; compact?: boolean }) {
   const note = useId()
   return <fieldset className="learning-sources" aria-describedby={note} data-testid={`${testPrefix}-sources`}>
-    <legend>What Engram may learn from</legend>
-    {LEARNING_SOURCES.map(source => <label key={source.key} className={`learning-source${compact ? ' learning-source-compact' : ''}`} title={compact ? source.detail : undefined}>
-      <input type="checkbox" className={compact ? 'switch' : undefined} aria-description={compact ? source.detail : undefined} data-testid={`${testPrefix}-source-${source.key}`} checked={value[source.key]} disabled={disabled} onChange={event => onChange(source.key, event.target.checked)} />
-      <span><strong>{source.name}</strong>{!compact && <small>{source.detail}</small>}</span>
+    <legend>{t('settingsUi.learnLegend')}</legend>
+    {LEARNING_SOURCES.map(source => <label key={source.key} className={`learning-source${compact ? ' learning-source-compact' : ''}`} title={compact ? t(source.detailKey) : undefined}>
+      <input type="checkbox" className={compact ? 'switch' : undefined} aria-description={compact ? t(source.detailKey) : undefined} data-testid={`${testPrefix}-source-${source.key}`} checked={value[source.key]} disabled={disabled} onChange={event => onChange(source.key, event.target.checked)} />
+      <span><strong>{t(source.nameKey)}</strong>{!compact && <small>{t(source.detailKey)}</small>}</span>
     </label>)}
-    <p className="setting-hint" id={note}>{compact ? 'Names, window titles and notifications are saved and shared with your AI. Browser history: last 30 days. Pages and file contents are not read.' : LEARNING_NOTE}</p>
+    <p className="setting-hint" id={note}>{t(compact ? 'settingsUi.learnCompact' : LEARNING_NOTE)}</p>
   </fieldset>
 }

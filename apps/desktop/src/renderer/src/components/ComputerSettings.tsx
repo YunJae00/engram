@@ -1,6 +1,7 @@
 import { Monitor, Square, X } from 'lucide-react'
 import { useState } from 'react'
 import { desktopError, stopComputerControl, useDesktopSession } from '../lib/desktopSession.js'
+import { t } from '../i18n.js'
 import { computerStateLabel } from './ComputerStatus.js'
 import { SettingsItem, SettingsGroup } from './SettingsLayout.js'
 
@@ -11,12 +12,12 @@ export function ComputerSettings() {
   const [error, setError] = useState('')
   const active = control && control.state !== 'idle'
   const dismiss = control?.state === 'paused' && !control.resumable
-  const value = available === null ? 'Checking…' : available === false ? 'Unavailable on this build' : active && control ? computerStateLabel(control) : 'Ready'
+  const value = available === null ? t('settingsUi.checking') : available === false ? t('settingsUi.unavailableBuild') : active && control ? computerStateLabel(control) : t('settingsUi.ready')
   return <div className="computer-settings" data-testid="computer-settings">
-    <SettingsGroup title="Computer use">
-      <SettingsItem icon={<Monitor size={18} />} title="Apps on this computer" description="Engram uses your mouse and keyboard when a task needs an app. Move the mouse to pause, press Esc to stop. Passwords and sign-in pages stay off limits."
+    <SettingsGroup title={t('settingsUi.computerUse')}>
+      <SettingsItem icon={<Monitor size={18} />} title={t('settingsUi.computerApps')} description={t('settingsUi.computerHint')}
         below={(active || error) && <>
-          {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? 'Dismiss' : 'Stop computer control'}</button>}
+          {active && <button className="computer-stop" onClick={() => { setError(''); void stopComputerControl().catch((cause: unknown) => setError(desktopError(cause))) }}>{dismiss ? <X size={12} aria-hidden /> : <Square size={10} fill="currentColor" aria-hidden />}{dismiss ? t('settingsUi.dismiss') : t('settingsUi.stopControl')}</button>}
           {error && <p className="computer-error" role="alert">{error}</p>}
         </>}>
         <span className="settings-item-state" role="status" data-testid="computer-use-state">{value}</span>

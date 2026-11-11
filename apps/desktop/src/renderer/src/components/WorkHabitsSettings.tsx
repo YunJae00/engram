@@ -2,13 +2,15 @@ import { AppWindow, ChevronRight, RefreshCw, Route } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AppUseDto, HabitDraftDto } from '../../../shared/types.js'
 import { api } from '../api.js'
+import { t } from '../i18n.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { SettingsGroup, SettingsItem } from './SettingsLayout.js'
 
 const SHOWN = 8
 
-const plural = (count: number, one: string): string => `${count} ${one}${count === 1 ? '' : 's'}`
-const appUse = (app: AppUseDto): string => [app.days ? `${app.hours} h · ${plural(app.days, 'day')}` : '', app.notes ? plural(app.notes, 'notification') : ''].filter(Boolean).join(' · ') + ' in the last 30 days'
+const days = (count: number): string => t(count === 1 ? 'settingsUi.dayOne' : 'settingsUi.dayMany', { count })
+const notes = (count: number): string => t(count === 1 ? 'settingsUi.noteOne' : 'settingsUi.noteMany', { count })
+const appUse = (app: AppUseDto): string => t('settingsUi.lastMonth', { usage: [app.days ? `${t('settingsUi.appHours', { hours: app.hours })} · ${days(app.days)}` : '', app.notes ? notes(app.notes) : ''].filter(Boolean).join(' · ') })
 
 // The apps used lately, each one Engram may learn from and work in or not,
 // and the ways of working noticed in them, waiting for the person to say
@@ -36,29 +38,29 @@ export function WorkHabitsSettings() {
   const toggle = (app: AppUseDto, on: boolean) => run(`app:${app.app}`, async () => {
     await api.appsSet(app.app, app.label, on)
     setApps(current => current?.map(one => one.app === app.app ? { ...one, on } : one) ?? null)
-  }, 'Could not save the setting.')
-  const scan = () => run('scan', async () => setDrafts(await api.habitsScan()), 'Could not look this time. Try again later.')
-  const answer = (draft: HabitDraftDto, keep: boolean) => run(draft.key, async () => setDrafts(await api.habitsAnswer(draft.key, keep)), 'Could not save your answer.')
+  }, t('settingsUi.saveSettingFailed'))
+  const scan = () => run('scan', async () => setDrafts(await api.habitsScan()), t('settingsUi.lookFailed'))
+  const answer = (draft: HabitDraftDto, keep: boolean) => run(draft.key, async () => setDrafts(await api.habitsAnswer(draft.key, keep)), t('settingsUi.answerFailed'))
   const shown = all ? apps ?? [] : (apps ?? []).slice(0, SHOWN)
   return <>
-    <SettingsGroup title="Apps Engram may use" testId="apps-settings" note="Engram keeps what the apps turned on here show: their windows and their notifications. An app turned off is not recorded, learned from or worked in.">
-      {apps === null && <SettingsItem title="Loading…" />}
-      {apps?.length === 0 && <SettingsItem icon={<AppWindow size={18} />} title="No apps yet" description="Apps appear here as you use them while Engram is open." />}
+    <SettingsGroup title={t('settingsUi.appsTitle')} testId="apps-settings" note={t('settingsUi.appsNote')}>
+      {apps === null && <SettingsItem title={t('settingsUi.loading')} />}
+      {apps?.length === 0 && <SettingsItem icon={<AppWindow size={18} />} title={t('settingsUi.noApps')} description={t('settingsUi.noAppsHint')} />}
       {shown.map(app => <SettingsItem key={app.app} icon={app.icon ? <img className="app-icon" src={app.icon} alt="" /> : <AppWindow size={18} />} title={app.label} htmlFor={`app-${app.app}`} testId={`app-row-${app.app}`}
-        description={app.on ? appUse(app) : 'Turned off'}>
-        <input id={`app-${app.app}`} type="checkbox" className="switch" data-testid={`app-on-${app.app}`} aria-label={`Let Engram use ${app.label}`} checked={app.on} disabled={busy === `app:${app.app}`} onChange={event => void toggle(app, event.target.checked)} />
+        description={app.on ? appUse(app) : t('settingsUi.turnedOff')}>
+        <input id={`app-${app.app}`} type="checkbox" className="switch" data-testid={`app-on-${app.app}`} aria-label={t('settingsUi.letUse', { app: app.label })} checked={app.on} disabled={busy === `app:${app.app}`} onChange={event => void toggle(app, event.target.checked)} />
       </SettingsItem>)}
-      {(apps?.length ?? 0) > SHOWN && <SettingsItem title={all ? 'Show fewer' : `Show all ${apps!.length}`}><button type="button" className="secondary" data-testid="apps-more" onClick={() => setAll(!all)}>{all ? 'Fewer' : 'All'}</button></SettingsItem>}
+      {(apps?.length ?? 0) > SHOWN && <SettingsItem title={all ? t('settingsUi.showFewer') : t('settingsUi.showAll', { count: apps!.length })}><button type="button" className="secondary" data-testid="apps-more" onClick={() => setAll(!all)}>{all ? t('settingsUi.fewer') : t('settingsUi.all')}</button></SettingsItem>}
     </SettingsGroup>
-    <SettingsGroup title="Ways of working noticed" testId="habits-settings" note="Kept ones are how-tos your AI follows when the same job comes up.">
-      <SettingsItem icon={<Route size={18} />} title={drafts.length ? `${drafts.length} to check` : 'Nothing to check'} description={drafts.length ? 'Is this how you do it?' : 'When you go through the same apps for one job a few times, a how-to is drafted here.'}>
-        <button type="button" className="settings-icon-action" data-testid="habits-scan" aria-label="Look now" title="Look now" disabled={busy === 'scan'} onClick={() => void scan()}><RefreshCw size={14} className={busy === 'scan' ? 'computer-spinner' : undefined} aria-hidden /></button>
+    <SettingsGroup title={t('settingsUi.habitsTitle')} testId="habits-settings" note={t('settingsUi.habitsNote')}>
+      <SettingsItem icon={<Route size={18} />} title={drafts.length ? t('settingsUi.toCheck', { count: drafts.length }) : t('settingsUi.nothingToCheck')} description={drafts.length ? t('settingsUi.isThisHow') : t('settingsUi.habitsHint')}>
+        <button type="button" className="settings-icon-action" data-testid="habits-scan" aria-label={t('settingsUi.lookNow')} title={t('settingsUi.lookNow')} disabled={busy === 'scan'} onClick={() => void scan()}><RefreshCw size={14} className={busy === 'scan' ? 'computer-spinner' : undefined} aria-hidden /></button>
       </SettingsItem>
       {drafts.map(draft => <SettingsItem key={draft.key} testId="habit-draft" title={draft.title}
-        description={<>{draft.labels.join(' → ')} · {draft.times} times<br />{draft.description}</>}
-        below={<details className="habit-draft-body"><summary><ChevronRight size={13} aria-hidden />How-to</summary><div className="bubble-msg-body">{renderMarkdown(draft.body)}</div></details>}>
-        <button type="button" className="secondary" data-testid="habit-dismiss" disabled={busy === draft.key} onClick={() => void answer(draft, false)}>Not right</button>
-        <button type="button" className="primary" data-testid="habit-keep" disabled={busy === draft.key} onClick={() => void answer(draft, true)}>Keep</button>
+        description={<>{draft.labels.join(' → ')} · {t('settingsUi.times', { count: draft.times })}<br />{draft.description}</>}
+        below={<details className="habit-draft-body"><summary><ChevronRight size={13} aria-hidden />{t('settingsUi.howTo')}</summary><div className="bubble-msg-body">{renderMarkdown(draft.body)}</div></details>}>
+        <button type="button" className="secondary" data-testid="habit-dismiss" disabled={busy === draft.key} onClick={() => void answer(draft, false)}>{t('settingsUi.notRight')}</button>
+        <button type="button" className="primary" data-testid="habit-keep" disabled={busy === draft.key} onClick={() => void answer(draft, true)}>{t('settingsUi.keep')}</button>
       </SettingsItem>)}
     </SettingsGroup>
     {error && <p className="computer-error" role="alert">{error}</p>}
