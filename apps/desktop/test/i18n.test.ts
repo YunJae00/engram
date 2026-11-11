@@ -7,6 +7,7 @@ import { ko } from '../src/renderer/src/i18n-ko'
 import { ko1 } from '../src/renderer/src/i18n-ko-1'
 import { ko2 } from '../src/renderer/src/i18n-ko-2'
 import { ko3 } from '../src/renderer/src/i18n-ko-3'
+import { ko4 } from '../src/renderer/src/i18n-ko-4'
 import { threadT } from '../src/renderer/src/lib/threadLang'
 import { KO } from '../src/renderer/src/lib/threadLangKo'
 
@@ -33,7 +34,7 @@ function fakeBridge(initial: unknown) {
 
 describe('i18n', () => {
   it('ko and en have identical keys and placeholders', () => {
-    const partKeys = [...Object.keys(ko1), ...Object.keys(ko2), ...Object.keys(ko3)]
+    const partKeys = [...Object.keys(ko1), ...Object.keys(ko2), ...Object.keys(ko3), ...Object.keys(ko4)]
     expect(new Set(partKeys).size).toBe(partKeys.length)
     expect(partKeys.sort()).toEqual(Object.keys(en).sort())
     expect(Object.keys(ko).sort()).toEqual(Object.keys(en).sort())

@@ -436,7 +436,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .sidebar-footer button { min-height: 32px; padding: 5px 9px; display: flex; align-items: center; gap: 10px; color: var(--fg-dim); text-align: left; }
 .sidebar-footer button:hover { background: var(--hover-bg); color: var(--fg); }
 .sidebar-scrim { display: none; }
-.sidebar-suggestions-head { padding: 8px 2px 1px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-faint); }
 
 /* ── Top bar ─────────────────────────────────────────────────── */
 .topbar {
@@ -1624,16 +1623,6 @@ body.quick-host { background: transparent; }
 /* A mounted-but-hidden canvas keeps its state and costs no paint. */
 .canvas-slot { flex: 1; min-width: 0; min-height: 0; display: flex; }
 .canvas-slot[hidden] { display: none; }
-.bots-suggested { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
-.bots-suggestion { border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
-.bots-suggestion-name { font-size: var(--fs-small); font-weight: 650; color: var(--fg); }
-.bots-suggestion-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.bots-suggestion-x {
-  flex: none; display: inline-flex; padding: 2px; border-radius: 6px;
-  color: var(--fg-faint); opacity: 0.6; background: transparent; border: 0;
-}
-.bots-suggestion-x:hover { opacity: 1; color: var(--clay); background: var(--hover-bg); }
-.bots-suggestion-reason { font-size: var(--fs-micro); color: var(--fg-faint); }
 .bots-main { flex: 1; min-width: 0; display: flex; flex-direction: row; position: relative; background: var(--panel-bg); }
 .bots-chat, .dev-pane { --composer-gutter: max(var(--page-gutter), calc((100% - var(--composer-width)) / 2)); --reading-gutter: max(calc(var(--composer-gutter) + var(--space-4)), calc((100% - var(--reading-width)) / 2)); }
 .bots-chat { flex: 1; min-width: 320px; min-height: 0; display: flex; flex-direction: column; }
@@ -1854,7 +1843,10 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 /* The thread reads in one column of a readable measure; on a wide window
    the padding grows so the column stays centred under the composer. */
 .bots-thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--reading-gutter); display: flex; flex-direction: column; gap: var(--space-4); }
-.bots-hint { color: var(--fg-dim); font-size: var(--fs-body); line-height: 1.55; max-width: 460px; }
+.bot-empty { margin: auto 0; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; text-align: center; }
+.bot-empty-name { margin: 8px 0 0; font-size: 18px; font-weight: 600; color: var(--fg); }
+.bot-empty-label { margin: 0; font-size: 13px; color: var(--fg-faint); }
+.bot-empty-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .bots-write { position: relative; flex: none; z-index: 32; margin: var(--space-2) var(--composer-gutter) 16px; }
 .bots-write .chat-write { min-height: 44px; max-height: 200px; box-sizing: border-box; padding: 6px; border-radius: var(--radius-pill); overflow-y: auto; }
 .bots-write[data-multiline] .chat-write { border-radius: 22px; }

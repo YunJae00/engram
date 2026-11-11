@@ -187,7 +187,34 @@ test.describe('visual', () => {
     }
   })
 
-  for (const state of ['empty-bot', 'settings-review', 'onboarding-bot'] as const) {
+  test('empty-bot', async () => {
+    await capture('empty-bot', async page => {
+      await page.evaluate(() => window.engram.botUpdate('vis-new', { label: 'Helper' }))
+      const row = page.getByTestId('bot-vis-new')
+      const earlier = page.getByTestId('sidebar-earlier')
+      if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
+      await row.click()
+      const empty = page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"]')
+      await expect(empty).toBeVisible()
+      await expect(empty.getByTestId('bot-empty-chip')).toHaveCount(3)
+      await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-input"]')).toBeFocused()
+      const avatar = (await empty.locator('.bot-avatar').first().boundingBox())!, thread = (await page.getByTestId('bots-thread').boundingBox())!
+      expect(Math.abs(avatar.width - 64)).toBeLessThanOrEqual(1)
+      expect(Math.abs(avatar.height - 64)).toBeLessThanOrEqual(1)
+      expect(Math.abs(avatar.x + avatar.width / 2 - (thread.x + thread.width / 2))).toBeLessThanOrEqual(4)
+      const font = (sel: string) => empty.locator(sel).evaluate(el => (s => [s.fontSize, s.fontWeight])(getComputedStyle(el)))
+      await expect(empty.locator('.bot-empty-name')).toHaveText('New helper')
+      expect(await font('.bot-empty-name')).toEqual(['18px', '600'])
+      await expect(empty.locator('.bot-empty-label')).toHaveText('Helper')
+      expect((await font('.bot-empty-label'))[0]).toBe('13px')
+    })
+    for (const theme of THEMES) {
+      const rows = JSON.parse(await readFile(join(OUT, `empty-bot-${theme}.metrics.json`), 'utf8')) as { row: number; status: string }[]
+      expect(rows.find(r => r.row === 17)?.status).toBe('pass')
+    }
+  })
+
+  for (const state of ['settings-review', 'onboarding-bot'] as const) {
     test.fixme(state, () => undefined)
   }
 })

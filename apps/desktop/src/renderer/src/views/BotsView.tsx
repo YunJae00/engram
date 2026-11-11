@@ -23,6 +23,7 @@ import { BotInfoPane } from '../components/BotInfoPane.js'
 import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
+import { BotEmpty } from '../components/BotEmpty.js'
 import { MessageSquarePlus } from 'lucide-react'
 import { FreshStartDialog } from '../components/FreshStartDialog.js'
 import { startOver } from '../lib/freshStart.js'
@@ -166,7 +167,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
-              {messages.length === 0 && threadLoaded && <div className="bots-hint">{t('bots.threadEmpty', { name: selected.name })}</div>}
+              {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} onPick={sendChip} />}
               <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
                 <ThreadOffers botId={selected.id} onSend={sendChip} />
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
