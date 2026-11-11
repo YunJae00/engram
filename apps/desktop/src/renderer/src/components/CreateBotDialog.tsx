@@ -98,20 +98,23 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
         <input ref={nameInput} data-testid="create-bot-name" value={name} maxLength={60} onChange={event => setName(event.target.value)} />
       </label>
       <label className="create-bot-field">
-        <span>{t('createBot.label')}</span>
-        <input data-testid="create-bot-label" value={label} onChange={event => setLabel(clipLabel(event.target.value))} />
-      </label>
-      <label className="create-bot-field">
-        <span>{t('createBot.template')}</span>
-        <select data-testid="create-bot-template" value={templateId} onChange={event => pickTemplate(event.target.value)}>
-          <option value="">{t('createBot.templateNone')}</option>
-          {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
-        </select>
-      </label>
-      <label className="create-bot-field">
         <span>{t('createBot.task')}</span>
         <textarea data-testid="create-bot-task" rows={3} value={task} onChange={event => setTask(event.target.value)} />
       </label>
+      <details className="create-bot-more" data-testid="create-bot-more">
+        <summary>{t('sidebar.more')}</summary>
+        <label className="create-bot-field">
+          <span>{t('createBot.label')}</span>
+          <input data-testid="create-bot-label" value={label} onChange={event => setLabel(clipLabel(event.target.value))} />
+        </label>
+        <label className="create-bot-field">
+          <span>{t('createBot.template')}</span>
+          <select data-testid="create-bot-template" value={templateId} onChange={event => pickTemplate(event.target.value)}>
+            <option value="">{t('createBot.templateNone')}</option>
+            {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </select>
+        </label>
+      </details>
       {error && <p className="create-bot-error" role="alert">{t(error)}</p>}
       <div className="create-bot-actions">
         <button type="button" className="secondary" onClick={cancel} disabled={busy}>{t('createBot.cancel')}</button>

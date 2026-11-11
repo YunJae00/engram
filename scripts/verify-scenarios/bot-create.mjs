@@ -45,6 +45,8 @@ export async function run(page, { paths }) {
   const NAME = DIALOG.locator('[data-testid="create-bot-name"]')
   const LABEL = DIALOG.locator('[data-testid="create-bot-label"]')
   const TEMPLATE = DIALOG.locator('[data-testid="create-bot-template"]')
+  const MORE = DIALOG.locator('[data-testid="create-bot-more"]')
+  const openMore = async () => { if (await MORE.getAttribute('open', { timeout: WAIT_MS }) === null) await MORE.locator('summary').click({ timeout: WAIT_MS }) }
   const TASK = DIALOG.locator('[data-testid="create-bot-task"]')
   const SUBMIT = DIALOG.locator('[data-testid="create-bot-submit"]')
   const CHANGE = DIALOG.locator('[data-testid="create-bot-avatar-change"]')
@@ -85,8 +87,11 @@ export async function run(page, { paths }) {
   const opened = await check('plus-opens', async () => {
     const open = await openFromPlus()
     if (open) return open
-    for (const [loc, what] of [[NAME, 'create-bot-name'], [LABEL, 'create-bot-label'], [TEMPLATE, 'create-bot-template'], [TASK, 'create-bot-task'], [SUBMIT, 'create-bot-submit']]) {
+    for (const [loc, what] of [[NAME, 'create-bot-name'], [TASK, 'create-bot-task'], [SUBMIT, 'create-bot-submit'], [MORE, 'create-bot-more']]) {
       if (!await loc.isVisible()) return `${what} not visible`
+    }
+    for (const [loc, what] of [[LABEL, 'create-bot-label'], [TEMPLATE, 'create-bot-template']]) {
+      if (await loc.isVisible()) return `${what} visible before More options is opened`
     }
     if (!await PREVIEW.isVisible()) return 'create-bot-preview avatar not visible'
     const box = await PREVIEW.boundingBox()
@@ -96,6 +101,10 @@ export async function run(page, { paths }) {
     const fill = await fillOf(PREVIEW.locator('.bot-avatar-body').first())
     if (!fill?.trim()) return 'preview .bot-avatar-body has no fill'
     FILL = fill
+    await openMore()
+    for (const [loc, what] of [[LABEL, 'create-bot-label'], [TEMPLATE, 'create-bot-template']]) {
+      if (!await loc.isVisible()) return `${what} not visible after More options is opened`
+    }
     return ''
   })
 
@@ -115,6 +124,7 @@ export async function run(page, { paths }) {
   // N3
   await check('create-opens-chat', async () => {
     await NAME.fill('Created Bot', { timeout: WAIT_MS })
+    await openMore()
     await LABEL.fill('zq label', { timeout: WAIT_MS })
     await SUBMIT.click({ timeout: WAIT_MS })
     const shut = await until(closed)
