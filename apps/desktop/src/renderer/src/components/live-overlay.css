@@ -1,6 +1,4 @@
-/* A permanent top slot: the deck docks inside it, so a card arriving or leaving never moves the thread. */
 .bots-chat { position: relative; }
-.bots-chat::before { content: ''; flex: 0 1 min(35%, 300px); }
 .live-overlay-deck { touch-action: none; user-select: none; cursor: grab; }
 .bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--live-fit-space, 30px) * var(--deck-depth, 0)); width: var(--live-fit-width, var(--pc-w)); max-width: none; margin: 0; }
 .bots-chat > .preview-card-reopen { position: absolute; z-index: 5; right: var(--panel-gutter); top: 12px; margin: 0; }

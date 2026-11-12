@@ -68,7 +68,7 @@ const inside = (box, outer, slack = 1) => box.left >= outer.left - slack && box.
 
 export function packedBlocks(measure) {
   if (!measure) return { ok: false, reasons: ['chat, deck, card, thread or composer is missing'] }
-  const { viewport, main, chat, card, thread, composer, stack, input, cardOnTop, pane, floating } = measure
+  const { viewport, main, chat, card, thread, composer, stack, input, cardOnTop, pane } = measure
   const reasons = []
   const show = box => `${Math.round(box.left)},${Math.round(box.top)}-${Math.round(box.right)},${Math.round(box.bottom)}`
   if (card.right > viewport.width + 1 || card.bottom > viewport.height + 1) reasons.push(`card ${show(card)} leaves the window`)
@@ -79,7 +79,6 @@ export function packedBlocks(measure) {
     if (!box.exposed) reasons.push(`stack card ${box.position} has no exposed corner`)
   }
   if (card.bottom > thread.bottom + 1 || card.bottom > composer.top) reasons.push(`card ${show(card)} runs past the thread onto the composer`)
-  if (!floating && card.bottom > thread.top + 1) reasons.push(`docked card ${show(card)} covers the thread top ${Math.round(thread.top)}`)
   if (!inside(input, chat)) reasons.push('composer leaves the chat')
   if (Math.abs(chat.width - main.width) >= 2) reasons.push('chat is narrowed beside the card')
   if (pane) reasons.push('a web pane is open beside the chat')

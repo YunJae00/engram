@@ -70,7 +70,7 @@ it('takes the Bots overlay deck and its pill out of flow in every state, docked 
   expect(rule('.bots-chat > .live-overlay-deck')).toMatch(/position: absolute;.*margin: 0;/)
   expect(rule('.bots-chat > .preview-card-reopen')).toMatch(/position: absolute;.*margin: 0;/)
   expect(rule('.bots-chat')).toContain('position: relative;')
-  expect(rule('.bots-chat::before')).toMatch(/flex: 0 1 \S/)
+  expect(css).not.toContain('.bots-chat::before')
   expect(css).not.toMatch(/\.bots-chat[^{]*:has\(/)
   expect(css).not.toMatch(/\.bots-chat > \.live-overlay-deck\[data-floating\]/)
 })

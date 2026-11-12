@@ -1,11 +1,10 @@
 /* global document, window, getComputedStyle */
 import { createBot, appendBotTurn } from '../../packages/core/src/index.ts'
-import { armPointer, constrainFloor, deckAt, deckDriver, describeBlocks, expectPacked, flowGeometry, measureChat, packedBlocks, pollPacked, resizeWindow, settle } from './lib/chat-layout.mjs'
+import { armPointer, constrainFloor, deckAt, deckDriver, describeBlocks, flowGeometry, expectPacked, measureChat, packedBlocks, pollPacked, resizeWindow, settle } from './lib/chat-layout.mjs'
 import { pngFrame, sendAppFrames, sendUnavailableFrame, showWebFrame, solidFrame } from './lib/frame-fixture.mjs'
 
 const BOT = 'Live overlay'
 const URL = 'https://example.test/live'
-
 export async function run(page, { app, paths, expect, openActivity }) {
   const errors = []; page.on('pageerror', error => errors.push(String(error)))
   const bot = await createBot(paths, { name: BOT, purpose: '' })
@@ -28,9 +27,11 @@ export async function run(page, { app, paths, expect, openActivity }) {
   let flow
   const expectFlow = async label => expect(await flowGeometry(page), label).toEqual(flow)
 
-  // Live rendering: a real PNG paints into the card without a web pane, docked in the fixed slot above the thread until it is dragged.
+  // Live rendering: a real PNG paints into the card without a web pane, docked at the top right over a full-height thread until dragged.
   await settle(page)
   flow = await flowGeometry(page)
+  const bare = await page.evaluate(() => { const box = s => document.querySelector(s).getBoundingClientRect(); return { chat: box('.bots-chat').top, top: box('.bots-thread').top, height: box('.bots-thread').height } })
+  expect(bare.top - bare.chat, 'no empty band above the thread').toBeLessThanOrEqual(60)
   await showWebFrame(app, { lane, url: URL, frame })
   await expect(card).toBeVisible()
   await expect(card.locator('canvas')).toHaveAttribute('data-painted', '', { timeout: 15_000 })
@@ -46,6 +47,8 @@ export async function run(page, { app, paths, expect, openActivity }) {
   expect([anchored.left, anchored.floating]).toEqual(['', false])
   const before = await measureChat(page)
   expect(packedBlocks(before).reasons, 'docked before any drag').toEqual([])
+  expect([Math.abs(before.thread.top - bare.top) <= 4, before.thread.height >= bare.height - 4], 'the thread keeps its full height').toEqual([true, true])
+  expect([before.card.top - before.chat.top <= 20, Math.abs(before.card.right - before.chat.right) <= 40], 'docked at the chat top right').toEqual([true, true])
 
   // Untouched bounds: a four-card stack stays inside the chat and above the thread floor through resizes and a growing draft.
   await sendAppFrames(app, lane, ['second', 'third', 'fourth'], small)
@@ -170,7 +173,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await card.hover()
     await card.locator('.preview-card-actions button').nth(index).click()
     await expect(card).toHaveCount(0)
-    expect(await page.getByTestId(testId).evaluate(node => node.getBoundingClientRect().bottom - document.querySelector('.bots-thread').getBoundingClientRect().top), `${testId} above the thread`).toBeLessThanOrEqual(1)
+    expect(await page.getByTestId(testId).evaluate(node => node.getBoundingClientRect().bottom - Math.min(document.querySelector('.bots-thread').getBoundingClientRect().bottom, document.querySelector('.bots-chat > .bots-write').getBoundingClientRect().top)), `${testId} above the thread floor`).toBeLessThanOrEqual(1)
     await page.getByTestId(testId).click()
     await visible()
     await expectAt(restored, `after ${testId}`)
@@ -330,6 +333,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await visible()
     await pollPacked(page, expect, 'fitted again after a collapse')
     const composerFitted = (await flowGeometry(page))[1].slice(2, 4)
+    await page.evaluate(() => { document.querySelector('.bots-thread').style.padding = '0' })
     expect(await constrainFloor(page, 30), 'thread floor below a 44px card').toBeLessThan(44)
     await expect.poll(async () => (await deckAt(page)).suspended).toBe(true)
     await expect(card).toBeHidden()
@@ -339,7 +343,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await expectIdle()
     await page.mouse.up()
     expect((await flowGeometry(page))[1].slice(2, 4)).toEqual(composerFitted)
-  } finally { await constrainFloor(page, null) }
+  } finally { await page.evaluate(() => { document.querySelector('.bots-thread').style.padding = '' }); await constrainFloor(page, null) }
   await expect.poll(async () => { const now = await deckAt(page); return [now.suspended, now.spacing, now.height, now.x, now.y] }).toEqual([false, 30, freshSpot.height, freshSpot.x, freshSpot.y])
   await escapeDrag(-60, -30)
   await expectAt(freshSpot, 'escape after a committed drag')
@@ -386,9 +390,8 @@ export async function run(page, { app, paths, expect, openActivity }) {
   return {
     ok: true,
     evidence: `agent:frame ${frame.width}x${frame.height} png painted preview-card for ${lane} with no web pane; docked: ${describeBlocks(before)}; floating after the drag: ${describeBlocks(after)}; `
-      + `untouched decks docked in a fixed slot above the thread, a thread that keeps its place as cards mount, clear and lift, four-card bounds at 1000x560/1400x600 and under a draft, a stable thread once the card floats, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
-      + `second pointer and refused capture ignored, corner and composer-floor clamps, reopen position, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, `
-      + `lane spots and a dropped lane-switch drag, 600px floor under a growing draft, fit to a 100px floor, suspension below 44px, six frames cycling four cards, empty-frame remounts, `
-      + `unavailable frame recovery, browser open and a reload back to the anchor verified; last press at ${Math.round(press.x)},${Math.round(press.y)}`,
+      + `untouched decks docked top right while the thread keeps its full height, a thread that keeps its place as cards mount, clear and lift, four-card bounds at 1000x560/1400x600 and under a draft, a stable thread once the card floats, right anchor through tab and widths, popover dismissal, escape/cancel/lostcapture/blur/tab cancellations, `
+      + `second pointer and refused capture ignored, corner and composer-floor clamps, reopen position, held drag through incoming frames and a replaced image, depth growth and resize with 1px rebase, lane spots and a dropped lane-switch drag, `
+      + `600px floor under a growing draft, fit to a 100px floor, suspension below 44px, six frames cycling four cards, empty-frame remounts, unavailable frame recovery, browser open and a reload back to the anchor verified; last press at ${Math.round(press.x)},${Math.round(press.y)}`,
   }
 }

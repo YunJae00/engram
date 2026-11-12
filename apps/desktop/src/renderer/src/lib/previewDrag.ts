@@ -40,8 +40,8 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const bounds = (docked = false): Bounds | undefined => {
       const width = chat.clientWidth, height = chat.clientHeight
       if (!width || !height) return undefined
-      if (docked) return { width, floor: (thread ? thread.offsetTop : height) - DOCK_INSET, depth: 0 }
       const floor = Math.min(thread ? thread.offsetTop + thread.offsetHeight : height, height)
+      if (docked) return { width, floor: floor - DOCK_INSET, depth: 0 }
       return { width, floor, depth: stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0) }
     }
     const place = (point: Point, { width, floor, depth }: Bounds): Point => {
@@ -70,7 +70,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       style('--live-fit-stage', `${Math.min(natural.height, space.floor - depth)}px`)
       return { ...space, depth }
     }
-    // The CSS anchor docks the deck at the slot's top inset; the fit keeps its bottom at or above the thread top.
+    // The CSS anchor docks the deck at the chat's top inset over the thread; the fit keeps its bottom at or above the thread floor.
     const dock = () => {
       for (const name of ['left', 'top', 'right']) style(name, '')
       flag('data-floating', false)
@@ -79,7 +79,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       flag('data-suspended', !room)
       if (space && room) fit(space)
     }
-    // An untouched deck stays docked in the slot above the thread; only a moved drag or a committed spot floats it over the chat.
+    // An untouched deck stays docked at the top right; only a moved drag or a committed spot floats it over the chat.
     const layout = () => {
       if (!live) return
       const requested = drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)
