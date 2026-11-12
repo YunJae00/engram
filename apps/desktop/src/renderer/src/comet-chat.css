@@ -7,7 +7,8 @@
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant,
 :is(.bots-thread, .mini-chat-thread) .comet-work-line.said { align-self: flex-start; max-width: var(--bubble-max); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--assistant-bg, var(--bubble-bg)); color: var(--fg); line-height: var(--lh-chat); }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.user { max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); }
-:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--bubble-bg); border: 0; color: var(--fg); }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--bubble-bg); border: 0; color: var(--danger); }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error .answer-error-heading { color: var(--danger); }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.checking { opacity: 0.55; transition: opacity 200ms ease; }
 :is(.bots-thread, .mini-chat-thread) .comet-work { gap: 6px; margin: 0; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { gap: 6px; }

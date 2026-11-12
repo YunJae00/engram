@@ -11,3 +11,5 @@
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 30px)); --deck-y: calc(-3 * var(--live-fit-space, 30px)); }
 .bots-chat > .bots-thread { padding-right: max(var(--reading-gutter), var(--live-clear-right, 0px)); }
+.bots-chat .preview-card, .mini-chat .preview-card { background: var(--bg-surface, var(--panel-bg)); box-shadow: var(--shadow, var(--shadow-card)); }
+.preview-card .preview-card-caption::before { content: ''; flex: none; width: 20px; height: 20px; background: url('../assets/engram-chars/07-oval@opt.png') center / contain no-repeat; }

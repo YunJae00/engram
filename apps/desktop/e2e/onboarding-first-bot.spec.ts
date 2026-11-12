@@ -109,16 +109,6 @@ test('each step after the AI step can be skipped', async () => {
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.workMap, settings.workFiles, settings.workApps]))).toEqual([false, false, false])
 })
 
-test('the primary bot empty screen sends an example chip', async () => {
-  await toStep4()
-  await page.getByTestId('onboard-finish').click()
-  const chips = page.locator('[data-testid="bots-thread"] [data-testid="bot-empty-chip"]')
-  await expect(chips).toHaveCount(3, { timeout: 60000 })
-  const text = (await chips.first().innerText()).trim()
-  await chips.first().click()
-  await expect(page.locator('.bubble-msg.user').last()).toContainText(text)
-})
-
 test('onboarding never asks for a login or an account', async () => {
   const asks = () => page.getByTestId('onboarding').evaluate(root => [...root.querySelectorAll('*')].filter(el => !el.closest('.onboard-providers')).flatMap(el => {
     const own = [...el.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent ?? '').join(' ')

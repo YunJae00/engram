@@ -4,8 +4,8 @@ button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
   display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
   border-left: 1px solid var(--border-soft); background: var(--panel-bg);
 }
-.bot-info-pane.entering { animation: bot-info-in 180ms var(--ease-out); }
-.bot-info-pane.closing { pointer-events: none; animation: bot-info-out 180ms var(--ease-out) forwards; }
+.bot-info-pane.entering { animation: bot-info-in 180ms ease; }
+.bot-info-pane.closing { pointer-events: none; animation: bot-info-out 180ms ease forwards; }
 .bots-view.info-open .bots-chat { min-width: 0; --page-gutter: 24px; }
 @keyframes bot-info-in {
   from { opacity: 0; transform: translateX(16px); }

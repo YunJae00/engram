@@ -1,11 +1,11 @@
-.preview-card { --pc-w: 320px; flex: 0 0 auto; align-self: flex-end; box-sizing: border-box; width: min(var(--pc-w), 100%); max-width: calc(100% - 2 * var(--panel-gutter)); margin: var(--space-2) var(--panel-gutter) 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); container: preview / inline-size; transform-origin: top right; animation: preview-card-in 200ms var(--ease-out); }
+.preview-card { --pc-w: 320px; flex: 0 0 auto; align-self: flex-end; box-sizing: border-box; width: min(var(--pc-w), 100%); max-width: calc(100% - 2 * var(--panel-gutter)); margin: var(--space-2) var(--panel-gutter) 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); container: preview / inline-size; transform-origin: top right; animation: preview-card-in 180ms ease; }
 .mini-chat .preview-card { --pc-w: 264px; }
-.preview-card-stage { --pc-stage-max: var(--pc-stage-cap, 50vh); position: relative; width: 100%; aspect-ratio: var(--pc-ratio, 16 / 10); min-height: 96px; max-height: var(--pc-stage-max); margin: 0; overflow: hidden; border-radius: inherit; background: var(--hover-bg); animation: preview-card-in 160ms var(--ease-out); }
+.preview-card-stage { --pc-stage-max: var(--pc-stage-cap, 50vh); position: relative; width: 100%; aspect-ratio: var(--pc-ratio, 16 / 10); min-height: 96px; max-height: var(--pc-stage-max); margin: 0; overflow: hidden; border-radius: inherit; background: var(--hover-bg); animation: preview-card-in 160ms ease; }
 .preview-card-stage img, .preview-card-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .preview-card-stage canvas:not([data-painted]) { visibility: hidden; }
 .preview-card-stage:not([data-phase="unavailable"]):has(canvas[data-painted]) .preview-card-state { display: none; }
 .preview-card-state { position: absolute; inset: 0; display: flex; justify-content: center; align-items: center; gap: var(--space-2); padding: var(--space-3); font-size: var(--fs-micro); font-weight: 400; color: var(--fg-dim); text-align: center; }
-.preview-card-reopen { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; align-self: flex-end; height: 28px; margin: var(--space-2) var(--panel-gutter) 0; padding: 0 var(--space-3); border: none; border-radius: 999px; background: var(--panel-bg); box-shadow: var(--shadow-card); color: var(--fg-dim); font-size: var(--fs-badge); font-weight: 500; cursor: pointer; transform-origin: top right; animation: preview-card-in 160ms var(--ease-out); }
+.preview-card-reopen { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; align-self: flex-end; height: 28px; margin: var(--space-2) var(--panel-gutter) 0; padding: 0 var(--space-3); border: none; border-radius: 999px; background: var(--panel-bg); box-shadow: var(--shadow-card); color: var(--fg-dim); font-size: var(--fs-badge); font-weight: 500; cursor: pointer; transform-origin: top right; animation: preview-card-in 160ms ease; }
 .preview-card-reopen:hover { background: var(--hover-bg); }
 .preview-card-reopen:focus-visible { outline-offset: 2px; }
 .bots-chat, .mini-chat { overflow: hidden; }
@@ -41,16 +41,13 @@
 .mission-grid-2 .mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
 /* Two tall panes keep a slim card slot so the conversation fills the pane. */
 @container tile (min-height: 560px) { .mission-grid-2 .mini-chat-preview { flex-basis: min(12%, 96px); } }
-.preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 280ms var(--ease-out), filter 280ms var(--ease-out), opacity 200ms; }
-.preview-deck-card[data-position="0"] { animation: preview-deck-forward 280ms var(--ease-out); }
+.preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease; }
 .preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; }
 .preview-deck .preview-card { width: 100%; max-width: none; margin: 0; }
 .preview-deck-back { position: relative; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); cursor: pointer; }
 .preview-deck-back img { width: 100%; height: 100%; object-fit: cover; }
 .preview-deck-title { position: absolute; inset: 0 0 auto; height: 28px; box-sizing: border-box; padding: 6px var(--space-3); overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: var(--fs-badge); color: #fff; background: linear-gradient(to bottom, #000b, #0004); }
 .preview-deck:focus-visible, .preview-deck-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* The overshoot animates the independent scale property so it composes with the transform transition instead of overriding it. */
-@keyframes preview-deck-forward { 0%, 100% { scale: 1; } 45% { scale: 1.02; } }
 @media (prefers-reduced-motion: reduce) { .preview-deck-card { transition: none; animation: none; } }
 
 .preview-deck-card[data-position="1"] { --deck-rotate: 0deg; --deck-x: -30px; --deck-y: -30px; }

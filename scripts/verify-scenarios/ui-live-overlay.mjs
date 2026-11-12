@@ -207,7 +207,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     await expect(card).toHaveAttribute('data-source', source)
   }
   await settle(page)
-  expect(await deck.locator('[data-position="0"]').evaluate(node => getComputedStyle(node).animationName)).toBe('preview-deck-forward')
+  expect(await deck.locator('[data-position="0"]').evaluate(node => { const s = getComputedStyle(node); return [s.animationName, s.transitionTimingFunction.split(', ').every(t => t === 'ease'), s.transitionDuration.split(', ').every(d => parseFloat(d) >= 0.15 && parseFloat(d) <= 0.2)] }), 'front card: no forward animation, 150-200ms ease').toEqual(['none', true, true])
   await expectFlow('after cycling cards')
 
   // A chosen spot is clamped by a narrower window and comes back when the width returns.

@@ -19,7 +19,7 @@
 .mission-change { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 8px; text-align: left; }
 .mission-change:hover { background: var(--hover-bg); }
 .mission-change span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mission-change svg { flex: none; color: var(--fg-faint); transition: transform 220ms var(--ease-out); }
+.mission-change svg { flex: none; color: var(--fg-faint); transition: transform 180ms ease; }
 .mission-change[aria-expanded='true'] svg { transform: rotate(180deg); }
 .mission-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--fg-faint); white-space: nowrap; margin-right: 4px; }
 .mission-tile[data-state='ready'] .mission-status { display: none; }
@@ -34,11 +34,11 @@
   position: relative; flex: 1; min-height: 0; display: grid; background: var(--canvas-bg);
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   grid-template-rows: minmax(0, 1fr);
-  transition: grid-template-columns 240ms var(--ease-out), grid-template-rows 240ms var(--ease-out);
+  transition: grid-template-columns 180ms ease, grid-template-rows 180ms ease;
 }
 .mission-tile-body[data-chat-open='false'] { grid-template-columns: minmax(0, 1fr) minmax(0, 0fr); }
 .mission-chat-slot { min-width: 0; min-height: 0; overflow: hidden; display: flex; opacity: 1; transition: opacity 180ms ease, visibility 0s; }
-.mission-chat-slot[aria-hidden='true'] { opacity: 0; visibility: hidden; transition: opacity 160ms ease, visibility 0s 240ms; }
+.mission-chat-slot[aria-hidden='true'] { opacity: 0; visibility: hidden; transition: opacity 160ms ease, visibility 0s 180ms; }
 .mission-preview { position: relative; min-width: 0; min-height: 0; width: 100%; padding: 0; overflow: hidden; border-radius: 0; color: var(--fg); background: var(--panel-bg); }
 .mission-preview canvas { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; visibility: hidden; }
 .mission-preview canvas[data-painted] { visibility: visible; }
