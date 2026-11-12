@@ -55,7 +55,6 @@ export function AvatarPicker({ id, primary, value, theme, onPick, onDefault }: P
 
   return (
     <div className="avatar-picker" data-testid="avatar-picker" id={`avatar-picker-${id}`}>
-      <div className="avatar-picker-preview"><BotAvatar id={id} override={value} primary={primary} size={96} state="idle" theme={theme} /></div>
       {ROWS.map(([part, label]) => row(part, label))}
       <div className="avatar-picker-actions">
         <button type="button" className="secondary" data-testid="avatar-picker-random" onClick={() => onPick(randomCharacter(id, ++random.current, character.accessory))}>{t('avatarPicker.random')}</button>

@@ -66,7 +66,7 @@ test.describe('avatar picker', () => {
           return { width: style.outlineWidth, style: style.outlineStyle, color: parse(style.outlineColor), bg }
         })
         return {
-          preview: box(node.querySelector('.avatar-picker-preview .bot-avatar')!),
+          preview: box(node.closest('dialog')!.querySelector('[data-testid="create-bot-preview"] .bot-avatar')!),
           cells: [...node.querySelectorAll('.avatar-picker-cell')].map(box),
           swatches: [...node.querySelectorAll('.avatar-picker-swatch')].map(box),
           rings,
@@ -162,5 +162,39 @@ test.describe('avatar picker', () => {
     const pane = page.locator('#bot-info-avatar-picker')
     await expect(pane.getByTestId('avatar-picker')).toBeVisible()
     await noUpload(pane)
+  })
+
+  test('one avatar preview while the picker is open', async () => {
+    const page = await launch('light')
+    const app = apps.at(-1)!
+    const large = (scope: Locator) => scope.evaluate(node => [...node.querySelectorAll('.bot-avatar')]
+      .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 64 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) })
+      .map(el => el.outerHTML))
+    const shot = async (name: string) => {
+      const png = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))
+      await test.info().attach(name, { body: Buffer.from(png, 'base64'), contentType: 'image/png' })
+    }
+    const pickOtherBody = async (picker: Locator) => {
+      await picker.locator('[data-part="body"] [role="radio"][aria-checked="false"]').first().click()
+    }
+    const check = async (scope: Locator, picker: Locator, where: string) => {
+      const before = await large(scope)
+      expect(before.length, `ONE-PREVIEW ${where}: ${before.length} large avatars while the picker is open`).toBe(1)
+      await pickOtherBody(picker)
+      await expect.poll(() => large(scope), { message: `ONE-PREVIEW ${where}: the preview does not update on pick` }).not.toEqual(before)
+      const after = await large(scope)
+      expect(after.length, `ONE-PREVIEW ${where}: ${after.length} large avatars after a pick`).toBe(1)
+      await shot(`${where}.png`)
+    }
+    const picker = await openPicker(page)
+    await check(page.getByTestId('create-bot-dialog'), picker, 'new-bot-dialog')
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
+    await page.getByTestId(`bot-${CHAT_ID}`).click()
+    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+    await page.getByTestId('bot-info-avatar').click()
+    const pane = page.getByTestId('bot-info-pane')
+    await expect(pane.getByTestId('avatar-picker')).toBeVisible()
+    await check(pane, pane.getByTestId('avatar-picker'), 'details-pane')
   })
 })

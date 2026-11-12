@@ -58,7 +58,7 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
       onAnimationEnd={(event) => { if (event.target !== event.currentTarget) return; if (closing) onClosed(); else onEntered() }}>
       <div className="bot-info-panel">
         <button type="button" className="bot-info-avatar" data-testid="bot-info-avatar" aria-label={t('avatarPicker.open')} aria-expanded={picking} aria-controls="bot-info-avatar-picker" onClick={() => setPicking(open => !open)}>
-        <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={96} state="idle" theme={theme} />
+        <BotAvatar id={bot.id} override={local ? local.avatar : bot.avatar} primary={bot.primary === true} size={96} state="idle" theme={theme} />
         </button>
         {picking && <div id="bot-info-avatar-picker"><AvatarPicker id={bot.id} primary={bot.primary === true} value={local ? local.avatar : bot.avatar} theme={theme}
           onPick={next => saveAvatar({ kind: 'pick', next }, next)} onDefault={() => saveAvatar({ kind: 'default' }, undefined)} /></div>}

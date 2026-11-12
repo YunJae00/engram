@@ -62,5 +62,4 @@
 .avatar-picker-cell[aria-checked="true"], .avatar-picker-cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .avatar-picker-cell > .bot-avatar { pointer-events: none; }
 .avatar-picker-swatch { width: 24px; height: 24px; border-radius: 50%; }
-.avatar-picker-preview { width: 96px; height: 96px; }
 .bot-info-avatar { padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; line-height: 0; }
