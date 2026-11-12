@@ -1,154 +1,72 @@
-import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { encodePng, loadMaster, resample } from './gen-engram-char-sizes.mjs'
 
-const SS = 4 // supersampling factor for smooth edges
+const SS = 4 // supersampling factor for the plate's rounded corners
 
-// A rounded square plate in the app's own ink, the comet on it in white.
-const PLATE = [0x2b, 0x2b, 0x33]
-const MARK = [0xff, 0xff, 0xff]
+// 08-knob on a cream rounded square, nothing else: no gradient, glass or letter.
+const PLATE = [0xf6, 0xf3, 0xee]
 const CORNER = 0.225 // corner radius as a fraction of the side
+export const MARGIN = 0.13 // per-side gap between the plate edge and the knob body
+const knob = loadMaster('08-knob')
 
-// The comet: a five-point star leaning into flight, its tips rounded by a
-// thick round-joined stroke, and three fading dots trailing down-left. Same
-// numbers as the in-app mark (Icon.tsx) and the tray glyph (tray.ts), in the
-// 24 grid they were drawn on.
-const STAR = { cx: 13.9, cy: 10.1, R: 5.25, r: 3.2, sw: 2.25, tilt: (12 * Math.PI) / 180 }
-const TRAIL = [
-  [8.6, 15.4, 1.6],
-  [5.8, 18.0, 1.15],
-  [3.75, 20.05, 0.75],
-]
-// The mark's bounding box in grid units, used to centre it on the plate.
-const MARK_BOX = { cx: 11.65, cy: 12.25, size: 17.3 }
-
-const VERTS = Array.from({ length: 10 }, (_, k) => {
-  const a = -Math.PI / 2 + (k * Math.PI) / 5 + STAR.tilt
-  const rad = k % 2 === 0 ? STAR.R : STAR.r
-  return [STAR.cx + rad * Math.cos(a), STAR.cy + rad * Math.sin(a)]
-})
-
-function inPoly(x, y) {
-  let inside = false
-  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
-    const [xi, yi] = VERTS[i]
-    const [xj, yj] = VERTS[j]
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+function bodyBox(img) {
+  let x0 = img.width, y0 = img.height, x1 = -1, y1 = -1
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      if (img.data[(y * img.width + x) * 4 + 3] < 128) continue
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
+    }
   }
-  return inside
+  return { x0, y0, x1: x1 + 1, y1: y1 + 1 }
 }
 
-function edgeDist(x, y) {
-  let best = Infinity
-  for (let i = 0, j = VERTS.length - 1; i < VERTS.length; j = i++) {
-    const [ax, ay] = VERTS[j]
-    const [bx, by] = VERTS[i]
-    const dx = bx - ax
-    const dy = by - ay
-    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
-    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)))
+// A square window of `img` centred on the body, wide enough that the body fills 1 - 2*MARGIN of it.
+function framed(img, box) {
+  const side = Math.round((box.x1 - box.x0) / (1 - 2 * MARGIN))
+  const left = Math.round((box.x0 + box.x1 - side) / 2)
+  const top = Math.round((box.y0 + box.y1 - side) / 2)
+  const data = Buffer.alloc(side * side * 4)
+  for (let y = 0; y < side; y++) {
+    for (let x = 0; x < side; x++) {
+      const sx = x + left, sy = y + top
+      if (sx < 0 || sy < 0 || sx >= img.width || sy >= img.height) continue
+      img.data.copy(data, (y * side + x) * 4, (sy * img.width + sx) * 4, (sy * img.width + sx) * 4 + 4)
+    }
   }
-  return best
+  return { width: side, height: side, data }
 }
 
-// 1 inside the comet, else 0. The body is the star polygon plus half the
-// stroke around it, which is what rounds the tips. Below 32px the third dot
-// is sub-pixel, so only two trail.
-function cometAlpha(gx, gy, px) {
-  if (inPoly(gx, gy) || edgeDist(gx, gy) <= STAR.sw / 2) return 1
-  const dots = px < 32 ? 2 : 3
-  for (let i = 0; i < dots; i++) {
-    const [x, y, r] = TRAIL[i]
-    if ((gx - x) ** 2 + (gy - y) ** 2 <= r * r) return 1
+const box = bodyBox(knob.flat)
+const regularArt = framed(knob.flat, box)
+const opticalArt = framed(knob.opt, box)
+
+function plateCoverage(ox, oy, px) {
+  const W = px * SS, half = W / 2, r = CORNER * W
+  let n = 0
+  for (let sy = 0; sy < SS; sy++) {
+    for (let sx = 0; sx < SS; sx++) {
+      const dx = Math.abs(ox * SS + sx + 0.5 - half), dy = Math.abs(oy * SS + sy + 0.5 - half)
+      if (dx <= half - r || dy <= half - r || (dx - (half - r)) ** 2 + (dy - (half - r)) ** 2 <= r * r) n++
+    }
   }
-  return 0
+  return n / (SS * SS)
 }
 
-// Inside the full-bleed rounded square?
-function onPlate(x, y, W) {
-  const half = W / 2, r = CORNER * W
-  const dx = Math.abs(x - half), dy = Math.abs(y - half)
-  if (dx > half || dy > half) return false
-  if (dx <= half - r || dy <= half - r) return true
-  return (dx - (half - r)) ** 2 + (dy - (half - r)) ** 2 <= r * r
-}
-
-// Renders the plate with the comet at `px` pixels; straight-alpha RGBA.
+// Renders the plate with the knob at `px` pixels; straight-alpha RGBA. 24px and below use the optical face.
 export function renderIcon(px) {
-  const W = px * SS
-  const half = W / 2
+  const art = resample(px <= 24 ? opticalArt : regularArt, px).data
   const out = Buffer.alloc(px * px * 4)
-  // Small icons get a bigger comet: at 16 and 24px the plate would swallow it.
-  const fill = px <= 32 ? 0.7 : 0.56
-  const scale = (W * fill) / MARK_BOX.size
-  const offX = half - MARK_BOX.cx * scale
-  const offY = half - MARK_BOX.cy * scale
-  for (let oy = 0; oy < px; oy++) {
-    for (let ox = 0; ox < px; ox++) {
-      let sumR = 0
-      let sumG = 0
-      let sumB = 0
-      let sumA = 0
-      for (let sy = 0; sy < SS; sy++) {
-        for (let sx = 0; sx < SS; sx++) {
-          const x = ox * SS + sx + 0.5
-          const y = oy * SS + sy + 0.5
-          if (!onPlate(x, y, W)) continue
-          const a = cometAlpha((x - offX) / scale, (y - offY) / scale, px)
-          sumR += MARK[0] * a + PLATE[0] * (1 - a)
-          sumG += MARK[1] * a + PLATE[1] * (1 - a)
-          sumB += MARK[2] * a + PLATE[2] * (1 - a)
-          sumA += 1
-        }
-      }
-      const n = SS * SS
-      const i = (oy * px + ox) * 4
-      out[i] = sumA > 0 ? Math.round(sumR / sumA) : 0
-      out[i + 1] = sumA > 0 ? Math.round(sumG / sumA) : 0
-      out[i + 2] = sumA > 0 ? Math.round(sumB / sumA) : 0
-      out[i + 3] = Math.round((sumA / n) * 255)
+  for (let y = 0; y < px; y++) {
+    for (let x = 0; x < px; x++) {
+      const i = (y * px + x) * 4
+      const a = art[i + 3] / 255
+      for (let c = 0; c < 3; c++) out[i + c] = Math.round(art[i + c] * a + PLATE[c] * (1 - a))
+      out[i + 3] = Math.round(plateCoverage(x, y, px) * 255)
     }
   }
   return out
-}
-
-// ── PNG encoding ──────────────────────────────────────────────────
-function crc32(buf) {
-  let crc = 0xffffffff
-  for (let i = 0; i < buf.length; i++) {
-    crc ^= buf[i]
-    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
-  }
-  return (crc ^ 0xffffffff) >>> 0
-}
-
-function chunk(type, data) {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(body))
-  return Buffer.concat([len, body, crc])
-}
-
-export function encodePng(px, rgba) {
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(px, 0)
-  ihdr.writeUInt32BE(px, 4)
-  ihdr[8] = 8
-  ihdr[9] = 6
-  const raw = Buffer.alloc(px * (px * 4 + 1))
-  for (let y = 0; y < px; y++) {
-    raw[y * (px * 4 + 1)] = 0
-    rgba.copy(raw, y * (px * 4 + 1) + 1, y * px * 4, (y + 1) * px * 4)
-  }
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ])
 }
 
 // ── ICO container (PNG-compressed entries, Vista+) ────────────────
@@ -207,8 +125,7 @@ writeFileSync(join(dir, 'icon.png'), master)
 // actool compiles this set at package time (scripts/adhoc-sign.mjs); these
 // are the sources it reads.
 //
-// Each size is RENDERED, never downscaled: at 16px the comet has to be
-// redrawn to stay legible, not resampled into mush.
+// Each size is rendered from the 1024 masters, the optical face at 24px and below.
 const APPICON_SIZES = [16, 32, 128, 256, 512]
 
 function writeAppIconSet(root) {
