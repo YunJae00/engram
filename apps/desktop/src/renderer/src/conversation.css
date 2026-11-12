@@ -23,6 +23,8 @@
 .bots-thread.conversation-thread, .cosmos-chat-thread.conversation-thread, .mini-chat-thread.conversation-thread {
   padding-bottom: 24px;
   scroll-padding-bottom: 24px;
+}
+.bots-thread.conversation-thread, .cosmos-chat-thread.conversation-thread {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
 }
 .conversation-thread > * { flex-shrink: 0; }
