@@ -1,17 +1,11 @@
-import type { BotDto, BotTemplateDto, EngramApi } from '../../../shared/types.js'
-import { avatarSpec } from './botAvatar.js'
+import type { BotDto, EngramApi } from '../../../shared/types.js'
+import type { CharacterId } from './botAvatar.js'
 
-export type Character = { body: number; face: number; accessory: number; palette: number }
-export type BotDraft = { name: string; label: string; templateId: string; task: string; avatar: Character }
+// character null means the person did not pick: the main process assigns from the real id.
+export type BotDraft = { name: string; label: string; templateId: string; task: string; character: CharacterId | null }
 export type CreateApi = Pick<EngramApi, 'botCreate' | 'botCreateFromTemplate' | 'botUpdate'>
 
 const LABEL_CHARS = 40
-
-export function previewCharacter(id: string, accessory = 0): Character {
-  const spec = avatarSpec(id)
-  if (spec.kind !== 'drawn' || typeof spec.body !== 'number' || typeof spec.palette !== 'number') throw new Error('a new bot always gets a drawn character')
-  return { body: spec.body, face: spec.face, accessory, palette: spec.palette }
-}
 
 export function canCreate(name: string): boolean {
   return name.trim() !== ''
@@ -26,10 +20,6 @@ export function clipLabel(text: string): string {
   return out
 }
 
-export function templatePrefill(template: Pick<BotTemplateDto, 'name' | 'label' | 'avatar'>): { name: string; label: string; accessory: number } {
-  return { name: template.name, label: template.label ?? '', accessory: template.avatar?.accessory ?? 0 }
-}
-
 export class CreateBotError extends Error {
   constructor(readonly bot: BotDto, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause))
@@ -39,10 +29,18 @@ export class CreateBotError extends Error {
 export async function createFromDraft(api: CreateApi, draft: BotDraft, existing?: BotDto): Promise<BotDto> {
   if (!canCreate(draft.name)) throw new Error('a bot needs a name')
   const name = draft.name.trim()
-  const bot = existing ?? (draft.templateId ? await api.botCreateFromTemplate(draft.templateId, { name }) : await api.botCreate({ name }))
-  const { body, face, accessory, palette } = draft.avatar
+  const character = draft.character
+  const bot = existing ?? (draft.templateId
+    ? await api.botCreateFromTemplate(draft.templateId, { name })
+    : await api.botCreate(character ? { name, character } : { name }))
+  const patch: Parameters<CreateApi['botUpdate']>[1] = {}
+  const label = clipLabel(draft.label.trim())
+  if (label) patch.label = label
+  // The template route has no pick parameter, so an explicit pick is saved right after it.
+  if (draft.templateId && character) patch.avatar = { character }
+  if (Object.keys(patch).length === 0) return bot
   try {
-    return await api.botUpdate(bot.id, { avatar: { body, face, accessory, palette }, label: clipLabel(draft.label.trim()) || undefined })
+    return await api.botUpdate(bot.id, patch)
   } catch (error) {
     throw new CreateBotError(bot, error)
   }

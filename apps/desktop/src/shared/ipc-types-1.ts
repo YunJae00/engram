@@ -1,3 +1,4 @@
+import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
 import type { AppSettingsDto } from './types.js'
 
 export interface McpInfoDto {
@@ -112,7 +113,7 @@ export interface BotDto {
   lastMessage?: { role: 'user' | 'assistant'; text: string; at: string }
   webSites?: { origin: string; visits: number }[]
   tasks?: BotTaskDto[]
-  avatar?: { body: number; face: number; accessory: number; palette: number } | { image: string }
+  avatar?: { body: number; face: number; accessory: number; palette: number } | { image: string } | { character: CharacterId }
   label?: string
   primary?: true
   hidden?: true

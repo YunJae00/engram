@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { BotDto } from '../src/shared/types.js'
-import { avatarSpec } from '../src/renderer/src/lib/botAvatar.js'
-import { canCreate, clipLabel, createFromDraft, previewCharacter, templatePrefill, type BotDraft, type CreateApi } from '../src/renderer/src/lib/createBot.js'
+import { canCreate, clipLabel, createFromDraft, type BotDraft, type CreateApi } from '../src/renderer/src/lib/createBot.js'
 
-const bot = (id: string) => ({ id, name: 'Bot', createdAt: '2026-01-01T00:00:00.000Z' }) as unknown as BotDto
-const avatar = { body: 1, face: 2, accessory: 4, palette: 3 }
-const draft = (over: Partial<BotDraft> = {}): BotDraft => ({ name: '  Helper  ', label: ' Notes ', templateId: '', task: '', avatar, ...over })
+const bot = (id: string) => ({ id, name: 'Bot', createdAt: '2026-01-01T00:00:00.000Z', avatar: { character: '03-cashew' } }) as unknown as BotDto
+const draft = (over: Partial<BotDraft> = {}): BotDraft => ({ name: '  Helper  ', label: ' Notes ', templateId: '', task: '', character: null, ...over })
 
 function fakeApi(fail: { create?: boolean; update?: boolean } = {}) {
   const calls: [string, ...unknown[]][] = []
@@ -18,36 +16,37 @@ function fakeApi(fail: { create?: boolean; update?: boolean } = {}) {
 }
 
 describe('create bot dialog logic', () => {
-  it("empty name blocked; template prefill sets accessory; preview uses new id's avatar", async () => {
+  it('empty name blocked; an unpicked create sends no face and never saves a preview', async () => {
     for (const blank of ['', '   ', '　']) expect(canCreate(blank)).toBe(false)
     expect(canCreate(' a ')).toBe(true)
     const { api, calls } = fakeApi()
     await expect(createFromDraft(api, draft({ name: '　 ' }))).rejects.toThrow()
     expect(calls).toEqual([])
-    const shapes = [['morning-briefing', 7], ['research', 4], ['mail-draft', 8], ['schedule', 5], ['study-helper', 2]] as const
-    for (const [id, accessory] of shapes) {
-      expect(templatePrefill({ name: id, label: `${id} label`, avatar: { body: 0, face: 1, accessory, palette: 2 } })).toEqual({ name: id, label: `${id} label`, accessory })
-    }
-    expect(templatePrefill({ name: 'Plain' })).toEqual({ name: 'Plain', label: '', accessory: 0 })
-    const id = 'new-6f1c2a8e-0000-4000-8000-000000000000'
-    const spec = avatarSpec(id)
-    expect(previewCharacter(id)).toEqual(spec.kind === 'drawn' ? { body: spec.body, face: spec.face, accessory: 0, palette: spec.palette } : null)
-    expect(previewCharacter(id, 4)).toEqual({ ...previewCharacter(id), accessory: 4 })
+    const quiet = fakeApi()
+    const made = await createFromDraft(quiet.api, draft({ label: '  ' }))
+    expect(quiet.calls).toEqual([['botCreate', { name: 'Helper' }]])
+    expect(made.avatar).toEqual({ character: '03-cashew' })
   })
 
-  it('create then update in order; update failure keeps the bot and retries only the update', async () => {
-    const plain = fakeApi()
-    await createFromDraft(plain.api, draft())
-    expect(plain.calls).toEqual([['botCreate', { name: 'Helper' }], ['botUpdate', 'b1', { avatar, label: 'Notes' }]])
-    expect(Object.keys(plain.calls[1]![2] as object).sort()).toEqual(['avatar', 'label'])
+  it('an explicit pick rides the create call; only real metadata is updated after', async () => {
+    const picked = fakeApi()
+    await createFromDraft(picked.api, draft({ character: '11-peanut' }))
+    expect(picked.calls).toEqual([['botCreate', { name: 'Helper', character: '11-peanut' }], ['botUpdate', 'b1', { label: 'Notes' }]])
     const templated = fakeApi()
     await createFromDraft(templated.api, draft({ templateId: 'research', label: '  ' }))
-    expect(templated.calls).toEqual([['botCreateFromTemplate', 'research', { name: 'Helper' }], ['botUpdate', 'b2', { avatar, label: undefined }]])
+    expect(templated.calls).toEqual([['botCreateFromTemplate', 'research', { name: 'Helper' }]])
+    const templatedPick = fakeApi()
+    await createFromDraft(templatedPick.api, draft({ templateId: 'research', label: '', character: '02-cloud' }))
+    expect(templatedPick.calls).toEqual([['botCreateFromTemplate', 'research', { name: 'Helper' }], ['botUpdate', 'b2', { avatar: { character: '02-cloud' } }]])
+  })
+
+  it('update failure keeps the bot and retries only the update; create failure stops', async () => {
     const broken = fakeApi({ update: true })
     const failure = await createFromDraft(broken.api, draft()).catch((error: unknown) => error as { bot?: BotDto })
     expect(failure.bot?.id).toBe('b1')
     await createFromDraft(broken.api, draft(), failure.bot).catch(() => undefined)
     expect(broken.calls.map(call => call[0])).toEqual(['botCreate', 'botUpdate', 'botUpdate'])
+    expect(broken.calls[2]).toEqual(['botUpdate', 'b1', { label: 'Notes' }])
     const noCreate = fakeApi({ create: true })
     await expect(createFromDraft(noCreate.api, draft())).rejects.toThrow('create')
     expect(noCreate.calls.map(call => call[0])).toEqual(['botCreate'])

@@ -54,7 +54,7 @@ export function exportTemplate(bot: Bot): BotTemplate {
   // Masking can lengthen a label past the limit, and the export must import again.
   if (typeof bot.label === 'string') out.label = clip(mask(bot.label), BOT_LABEL_CHARS)
   const a = bot.avatar
-  if (a && !('image' in a)) out.avatar = { body: a.body, face: a.face, accessory: a.accessory, palette: a.palette }
+  if (a && 'body' in a) out.avatar = { body: a.body, face: a.face, accessory: a.accessory, palette: a.palette }
   if (bot.skills) out.skills = copyList(bot.skills)
   return out
 }
@@ -84,8 +84,8 @@ function validPatch(template: unknown): { name: string; purpose: string; patch: 
   const patch: BotPatch = { templateId: id }
   if (label !== undefined) patch.label = label as string
   if (avatar !== undefined) {
-    if (!isBotAvatar(avatar) || 'image' in avatar) throw new Error('a template avatar must be a character, not a photo')
-    patch.avatar = { body: avatar.body, face: avatar.face, accessory: avatar.accessory, palette: avatar.palette }
+    // Still checked so old templates fail the same way, but never applied: the new bot keeps its assigned face.
+    if (!isBotAvatar(avatar) || !('body' in avatar)) throw new Error('a template avatar must be a character, not a photo')
   }
   if (skills !== undefined) {
     if (!isStringList(skills)) throw new Error('skills must be a list of text')

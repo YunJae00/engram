@@ -6,6 +6,7 @@ import { forgetBotMemory } from './bot-memory.js'
 import { isSchedule, type Schedule } from './schedule.js'
 import { renameWithRetry } from './rename-with-retry.js'
 import { botPatchError } from './bot-fields.js'
+import { assignCharacter, isCharacterId, newBotId, type CharacterId } from './bot-character.js'
 export { AVATAR_RANGES } from './bot-fields.js'
 
 // A task is the work a person repeats, saved on the comet that owns it and run with one click.
@@ -47,7 +48,7 @@ export interface Bot {
   updatedAt?: string
 }
 
-export type BotAvatar = { body: number; face: number; accessory: number; palette: number } | { image: string }
+export type BotAvatar = { body: number; face: number; accessory: number; palette: number } | { image: string } | { character: CharacterId }
 export type BotPatch = Partial<Pick<Bot, 'name' | 'purpose' | 'avatar' | 'label' | 'hidden' | 'notify' | 'skills' | 'templateId'>> & { primary?: boolean }
 
 // How a checked answer was checked: verdicts with their basis, sources read, and the confirmed record.
@@ -225,21 +226,19 @@ export function titleFromMessage(message: string): string {
 
 export async function createBot(
   paths: VaultPaths,
-  input: { name: string; purpose?: string },
+  input: { name: string; purpose?: string; character?: CharacterId },
   now: Date = new Date(),
 ): Promise<Bot> {
   const name = input.name.trim().slice(0, 60)
   // The charter is optional: most comets are a conversation, not a role.
   const purpose = (input.purpose ?? '').trim().slice(0, 2000)
   if (!name) throw new Error('a bot needs a name')
-  const bot: Bot = {
-    id: `bot-${now.getTime().toString(36)}-${Math.floor(Math.random() * 0xffff).toString(16)}`,
-    name,
-    purpose,
-    createdAt: now.toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
+  if (input.character !== undefined && !isCharacterId(input.character)) throw new Error('avatar must be one of the 16 characters')
+  const bot: Bot = { id: '', name, purpose, createdAt: now.toISOString(), updatedAt: new Date().toISOString() }
+  // The id and face are chosen in the same queue turn that appends, so concurrent creates see each other.
   await mutateBots(paths, (bots) => {
+    bot.id = newBotId(new Set(bots.map((b) => b.id)), now)
+    bot.avatar = { character: assignCharacter(bot.id, bots.at(-1), input.character) }
     bots.push(bot)
     if (!bots.some((b) => b.primary === true)) bot.primary = true
   })
@@ -259,7 +258,7 @@ export async function deleteBot(paths: VaultPaths, id: string, opts: { undoCreat
   await serialized(paths, async () => {
     const stored = await readForWrite(paths), same = stored.bots.filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null && (b as Bot).id === id)
     if (same.length === 0) return
-    const [undo, one] = [opts.undoCreate, same[0]], undoing = !!undo && same.length === 1 && one!.createdAt === undo.createdAt && one!.updatedAt === undo.updatedAt && Object.keys(one!).every((k) => ['id', 'name', 'purpose', 'createdAt', 'updatedAt', 'primary'].includes(k))
+    const [undo, one] = [opts.undoCreate, same[0]], undoing = !!undo && same.length === 1 && one!.createdAt === undo.createdAt && one!.updatedAt === undo.updatedAt && Object.keys(one!).every((k) => ['id', 'name', 'purpose', 'createdAt', 'updatedAt', 'primary', 'avatar'].includes(k))
     if (same.some((b) => b.primary === true) && !undoing) throw new Error('the primary comet cannot be deleted; make another comet primary first')
     await writeBotsFile(paths, { ...stored.raw, bots: stored.bots.filter((b) => !same.includes(b as Record<string, unknown>)), dismissed: stored.dismissed })
   })

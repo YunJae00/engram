@@ -1,75 +1,45 @@
-import type { StringKey } from '../i18n.js'
-import { AVATAR_RANGES, avatarSpec } from './botAvatar.js'
-import { previewCharacter, type Character } from './createBot.js'
+import { CHARACTERS, defaultCharacter, type CharacterId } from './botAvatar.js'
 
-export type Part = 'body' | 'face' | 'accessory' | 'palette'
+export const PICKER_COLUMNS = 4
 
-export function currentCharacter(id: string, avatar: unknown): Character {
-  const spec = avatarSpec(id, avatar, false)
-  if (spec.kind === 'drawn' && typeof spec.body === 'number' && typeof spec.palette === 'number') {
-    return { body: spec.body, face: spec.face, accessory: spec.accessory, palette: spec.palette }
-  }
-  return previewCharacter(id, 0)
-}
-
-function upTo(max: number): number[] {
-  const values: number[] = []
-  for (let i = 0; i <= max; i++) values.push(i)
-  return values
-}
-
-export function pickerOptions(primary: boolean): { body: readonly (number | 'sun')[]; face: readonly number[]; accessory: readonly number[]; palette: readonly number[] } {
-  return {
-    body: primary ? ['sun'] : upTo(AVATAR_RANGES.body),
-    face: upTo(AVATAR_RANGES.face),
-    accessory: upTo(AVATAR_RANGES.accessory),
-    palette: upTo(AVATAR_RANGES.palette),
-  }
-}
-
-export function withPart(character: Character, part: Part, value: number): Character {
-  return { ...character, [part]: value }
-}
-
-export function randomCharacter(id: string, n: number, accessory: number): Character {
-  return previewCharacter(`${id}${n}`, accessory)
-}
-
-export function stepRadio(index: number, count: number, key: string): number | null {
-  if (key === 'ArrowRight' || key === 'ArrowDown') return (index + 1) % count
-  if (key === 'ArrowLeft' || key === 'ArrowUp') return (index - 1 + count) % count
+// Arrows move ±1 across and ±4 down, wrapping, in the 4x4 grid.
+export function stepGrid(index: number, count: number, key: string): number | null {
+  if (key === 'ArrowRight') return (index + 1) % count
+  if (key === 'ArrowLeft') return (index - 1 + count) % count
+  if (key === 'ArrowDown') return (index + PICKER_COLUMNS) % count
+  if (key === 'ArrowUp') return (index - PICKER_COLUMNS + count) % count
   if (key === 'Home') return 0
   if (key === 'End') return count - 1
   return null
 }
 
-export function optionLabel(part: Part, value: number | 'sun'): StringKey {
-  return value === 'sun' ? 'avatarPicker.bodySun' : `avatarPicker.${part}${value}` as StringKey
+export function pickerOptions(): readonly CharacterId[] {
+  return CHARACTERS
 }
 
-export type AvatarChange = { kind: 'pick'; next: Character } | { kind: 'default' } | { kind: 'photo'; data: Uint8Array }
-export type AvatarOps = {
-  update(avatar: Character | undefined): Promise<{ avatar?: unknown }>
-  set(data: Uint8Array): Promise<{ avatar?: unknown }>
-  clear(): Promise<{ avatar?: unknown }>
+export type AvatarChange = { kind: 'pick'; next: CharacterId } | { kind: 'default' }
+export type AvatarOps = { update(avatar: { character: CharacterId }): Promise<{ avatar?: unknown }> }
+
+// A later manual Default uses the plain hash of the real id; the no-repeat step only applies at creation.
+export function changedAvatar(id: string, change: AvatarChange): { character: CharacterId } {
+  return { character: change.kind === 'pick' ? change.next : defaultCharacter(id) }
 }
 
-// Writes run one at a time in call order; Default reads the last stored value, never a stale prop.
+// Writes for one bot run one at a time in call order; after stop() no completion is reported.
 export function avatarSaver(id: string, ops: AvatarOps, done: (error?: unknown) => void) {
   let latest: unknown
   let pending = 0
+  let stopped = false
   let tail: Promise<void> = Promise.resolve()
-  const run = async (change: AvatarChange) => {
-    const saved = change.kind === 'pick' ? await ops.update(change.next)
-      : change.kind === 'photo' ? await ops.set(change.data)
-        : avatarSpec(id, latest).kind === 'image' ? await ops.clear() : await ops.update(undefined)
-    latest = saved.avatar
-  }
+  const run = async (change: AvatarChange) => { latest = (await ops.update(changedAvatar(id, change))).avatar }
+  const finish = (error?: unknown) => { pending--; if (!stopped) done(error) }
   return {
+    id,
     save(change: AvatarChange, current: unknown) {
       if (pending++ === 0) latest = current
-      tail = tail.then(() => run(change)).then(() => { pending--; done() }, (error: unknown) => { pending--; done(error) })
+      tail = tail.then(() => run(change)).then(() => finish(), (error: unknown) => finish(error))
     },
+    stop() { stopped = true },
     idle: () => pending === 0,
     latest: () => latest,
   }

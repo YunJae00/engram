@@ -8,12 +8,12 @@ import { artGalleryHtml } from './avatar-gallery.js'
 
 const REPO = fileURLToPath(new URL('../../../../', import.meta.url))
 const TMP = join(REPO, 'tmp')
-const OUT = join(TMP, 'visual')
+const OUT = join(TMP, 'visual', 'rd-avatar-system-v1')
 
 test.describe('avatar art', () => {
   test.skip(process.env['ENGRAM_VISUAL'] !== '1', 'Opt-in visual harness: set ENGRAM_VISUAL=1')
 
-  test('gallery fills its box and keeps eyes on the body', async () => {
+  test('gallery shows all 16 faces loaded at every size, @opt at 24px and below', async () => {
     await mkdir(OUT, { recursive: true })
     const vault = await mkdtemp(join(TMP, 'avatar-art-vault-')), profile = await mkdtemp(join(TMP, 'avatar-art-profile-'))
     await seedVisualVault(vault)
@@ -26,35 +26,22 @@ test.describe('avatar art', () => {
       const page = await app.firstWindow()
       for (const theme of ['light', 'dark'] as const) {
         await page.setContent(await artGalleryHtml(theme))
+        await page.waitForFunction(() => [...document.images].every(img => img.complete))
         const file = join(OUT, `avatar-art-${theme}.png`)
         await page.screenshot({ path: file, fullPage: true, animations: 'disabled', scale: 'device' })
         console.log(file)
         const failures = await page.evaluate(() => {
           const bad: string[] = []
-          const cells = [...document.querySelectorAll<HTMLElement>('.art-rows .art-cell[data-size="96"]')]
-          cells.forEach((cell, i) => {
-            const name = `cell ${i} body ${cell.dataset['body']} palette ${cell.dataset['palette']}`
-            const svg = cell.querySelector('svg')!
-            const body = svg.querySelector<SVGGElement>('.bot-avatar-body')!
-            const half = Number(body.getAttribute('stroke-width')) / 2
-            const boxes = [...body.children].map(el => (el as SVGGraphicsElement).getBBox())
-            const left = Math.min(...boxes.map(b => b.x)) - half, top = Math.min(...boxes.map(b => b.y)) - half
-            const right = Math.max(...boxes.map(b => b.x + b.width)) + half, bottom = Math.max(...boxes.map(b => b.y + b.height)) + half
-            if (Math.max(right - left, bottom - top) < 76) bad.push(`${name}: body spans ${Math.max(right - left, bottom - top).toFixed(1)} < 76`)
-            if (left < -0.5 || top < -0.5 || right > 96.5 || bottom > 96.5) bad.push(`${name}: body box ${left.toFixed(1)},${top.toFixed(1)},${right.toFixed(1)},${bottom.toFixed(1)} leaves 0..96`)
-            const ctm = svg.getScreenCTM()!
-            for (const eye of svg.querySelectorAll<SVGEllipseElement>('.bot-avatar-eyes ellipse')) {
-              const [cx, cy, rx, ry] = ['cx', 'cy', 'rx', 'ry'].map(a => Number(eye.getAttribute(a)))
-              const angle = Number(/rotate\(([-\d.]+)/.exec(eye.getAttribute('transform') ?? '')?.[1] ?? 0) * Math.PI / 180
-              const [cos, sin] = [Math.cos(angle), Math.sin(angle)]
-              const points = [[0, 0], [0.8 * rx!, 0], [-0.8 * rx!, 0], [0, 0.8 * ry!], [0, -0.8 * ry!]].map(([u, v]) => [cx! + u! * cos - v! * sin, cy! + u! * sin + v! * cos])
-              for (const [x, y] of points) {
-                const sx = ctm.a * x! + ctm.c * y! + ctm.e, sy = ctm.b * x! + ctm.d * y! + ctm.f
-                if (!document.elementsFromPoint(sx, sy).some(el => el.parentNode === body)) bad.push(`${name}: eye point ${x!.toFixed(1)},${y!.toFixed(1)} is off the body`)
-              }
-            }
-          })
-          return cells.length ? bad : ['no 96px cells']
+          const cells = [...document.querySelectorAll<HTMLElement>('.art-rows .art-cell')]
+          for (const cell of cells) {
+            const size = Number(cell.dataset['size'])
+            const img = cell.querySelector('img')!
+            const r = img.getBoundingClientRect()
+            const name = `${cell.dataset['character']} ${size}`
+            if (!img.complete || img.naturalWidth < size * 2) bad.push(`${name}: not loaded at ${img.naturalWidth}px`)
+            if (Math.abs(r.width - size) > 0.5 || Math.abs(r.height - size) > 0.5) bad.push(`${name}: drawn ${r.width}x${r.height}`)
+          }
+          return cells.length === 16 * 7 ? bad : [`${cells.length} cells, not 112`]
         })
         expect(failures, theme).toEqual([])
       }

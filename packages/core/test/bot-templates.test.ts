@@ -67,6 +67,7 @@ describe('bot templates', () => {
     expect(out.skills).not.toBe(bot.skills)
     expect(exportTemplate({ ...bot, templateId: 'research' }).id).toBe('research')
     expect(exportTemplate({ ...bot, avatar: { image: 'face.png' } }).avatar).toBeUndefined()
+    expect(exportTemplate({ ...bot, avatar: { character: '02-cloud' } }).avatar).toBeUndefined()
     const label = `pin abc ${'x'.repeat(32)}`
     expect([...label].length).toBe(40)
     const masked = exportTemplate({ ...bot, label })
@@ -86,7 +87,9 @@ describe('bot templates', () => {
     expect(second.id).not.toBe(first.id)
     const stored = await loadBots(paths)
     expect(stored.map(b => b.id)).toEqual([first.id, second.id])
-    expect(stored[0]).toMatchObject({ label: '자료 조사', avatar: valid.avatar, templateId: 'research' })
+    expect(stored[0]).toMatchObject({ label: '자료 조사', templateId: 'research' })
+    expect(stored[0]!.avatar).toEqual(first.avatar)
+    expect(stored[0]!.avatar).toEqual({ character: expect.stringMatching(/^\d\d-/) })
   })
 
   it('import creates new id even when time and random repeat', async () => {

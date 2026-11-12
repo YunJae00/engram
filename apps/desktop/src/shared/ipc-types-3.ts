@@ -1,3 +1,4 @@
+import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
 import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
@@ -76,7 +77,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
   sidebarLayout(kind?: SidebarKind): Promise<SidebarLayout>
   sidebarChange(request: SidebarChange): Promise<SidebarLayout>
-  botCreate(input: { name: string; purpose?: string }): Promise<BotDto>
+  botCreate(input: { name: string; purpose?: string; character?: CharacterId }): Promise<BotDto>
   botRename(id: string, name: string): Promise<void>
   botDelete(id: string): Promise<void>
   botDeleteSummary(id: string): Promise<{ routines: number; facts: number; archivedChats: number }>

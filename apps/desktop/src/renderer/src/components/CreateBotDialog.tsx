@@ -1,9 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { canCreate, createFromDraft, CreateBotError, previewCharacter, type Character } from '../lib/createBot.js'
+import { canCreate, createFromDraft, CreateBotError } from '../lib/createBot.js'
+import { avatarCharacter, type CharacterId } from '../lib/botAvatar.js'
 import { AvatarPicker } from './AvatarPicker.js'
 import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 
@@ -16,8 +17,10 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
   const [error, setError] = useState<'' | 'createBot.failed' | 'createBot.saveFailed'>('')
   const created = useRef<BotDto | undefined>(undefined)
   const [picking, setPicking] = useState(false)
-  const [picked, setPicked] = useState<Character | null>(null)
-  const character = useMemo(() => picked ?? previewCharacter(provisionalId), [picked, provisionalId])
+  const [picked, setPicked] = useState<CharacterId | null>(null)
+  const [preview, setPreview] = useState<BotDto | null>(null)
+  // Unpicked, the preview hashes the provisional id but nothing derived from it is saved.
+  const shown = preview ? avatarCharacter(preview.id, preview.avatar) : picked ?? avatarCharacter(provisionalId)
 
   useLayoutEffect(() => {
     dialog.current?.showModal()
@@ -35,9 +38,10 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     event.preventDefault()
     if (!canCreate(name) || busy) return
     setBusy(true)
-    const draft = { name, label: '', templateId: '', task: '', avatar: character }
+    const draft = { name, label: '', templateId: '', task: '', character: picked }
     try {
       const bot = await createFromDraft(api, draft, created.current)
+      setPreview(bot)
       onClose()
       onCreated(bot)
       requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
@@ -54,13 +58,13 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     <form onSubmit={event => void submit(event)}>
       <h2 id="create-bot-title">{t('createBot.title')}</h2>
       <div className="create-bot-look">
-        <div className="create-bot-preview" data-testid="create-bot-preview" data-avatar={`${character.body}-${character.face}-${character.accessory}-${character.palette}`}>
-          <BotAvatar id={provisionalId} override={character} size={96} state="idle" theme={theme} />
+        <div className="create-bot-preview" data-testid="create-bot-preview" data-avatar={shown} data-picked={picked !== null}>
+          <BotAvatar id={provisionalId} override={{ character: shown }} size={64} state="idle" theme={theme} />
         </div>
         <button type="button" className="secondary" data-testid="create-bot-avatar-change" aria-expanded={picking} aria-controls={`avatar-picker-${provisionalId}`}
           onClick={() => setPicking(open => !open)}>{t('createBot.avatarChange')}</button>
       </div>
-      {picking && <AvatarPicker id={provisionalId} primary={false} value={character} theme={theme}
+      {picking && <AvatarPicker id={provisionalId} value={{ character: shown }} picked={picked !== null} theme={theme}
         onPick={setPicked} onDefault={() => setPicked(null)} />}
       <label className="create-bot-field">
         <span>{t('createBot.name')}</span>

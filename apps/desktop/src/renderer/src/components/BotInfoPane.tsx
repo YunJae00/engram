@@ -7,8 +7,7 @@ import { useApp } from '../state.js'
 import { useShellState } from '../state-slices.js'
 import { BotAvatar } from './BotAvatar.js'
 import { AvatarPicker } from './AvatarPicker.js'
-import { avatarSaver, type AvatarChange } from '../lib/avatarPicker.js'
-import { forgetBotImage } from '../lib/botImage.js'
+import { avatarSaver, changedAvatar, type AvatarChange } from '../lib/avatarPicker.js'
 import { CometMemory } from './CometMemory.js'
 import { BotRoutinesTab } from './BotRoutinesTab.js'
 
@@ -26,15 +25,16 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
   const [picking, setPicking] = useState(false)
   const [local, setLocal] = useState<{ avatar: unknown } | null>(null)
   const avatarWrites = useRef<ReturnType<typeof avatarSaver> | null>(null)
-  avatarWrites.current ??= avatarSaver(bot.id, {
-    update: avatar => api.botUpdate(bot.id, { avatar }), set: data => api.botAvatarSet(bot.id, data), clear: () => api.botAvatarClear(bot.id),
-  }, (error) => {
-    forgetBotImage(bot.id)
-    if (error !== undefined) toast.current(String(error))
-    if (avatarWrites.current?.idle()) setLocal(error === undefined ? { avatar: avatarWrites.current.latest() } : null)
-  })
-  useEffect(() => { if (avatarWrites.current?.idle()) setLocal(null) }, [bot.avatar])
-  const saveAvatar = (change: AvatarChange, shown: unknown) => { setLocal({ avatar: shown }); avatarWrites.current?.save(change, bot.avatar) }
+  if (avatarWrites.current?.id !== bot.id) {
+    avatarWrites.current?.stop()
+    const writes = avatarSaver(bot.id, { update: avatar => api.botUpdate(bot.id, { avatar }) }, (error) => {
+      if (error !== undefined) toast.current(String(error))
+      if (writes.idle()) setLocal(error === undefined ? { avatar: writes.latest() } : null)
+    })
+    avatarWrites.current = writes
+  }
+  useEffect(() => { if (avatarWrites.current?.idle()) setLocal(null) }, [bot.avatar, bot.id])
+  const saveAvatar = (change: AvatarChange) => { setLocal({ avatar: changedAvatar(bot.id, change) }); avatarWrites.current?.save(change, bot.avatar) }
 
   useEffect(() => () => saver.current?.flush(), [])
   useLayoutEffect(() => { if (closing) saver.current?.flush() }, [closing])
@@ -58,10 +58,10 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
       onAnimationEnd={(event) => { if (event.target !== event.currentTarget) return; if (closing) onClosed(); else onEntered() }}>
       <div className="bot-info-panel">
         <button type="button" className="bot-info-avatar" data-testid="bot-info-avatar" aria-label={t('avatarPicker.open')} aria-expanded={picking} aria-controls="bot-info-avatar-picker" onClick={() => setPicking(open => !open)}>
-        <BotAvatar id={bot.id} override={local ? local.avatar : bot.avatar} primary={bot.primary === true} size={96} state="idle" theme={theme} />
+          <BotAvatar id={bot.id} override={local ? local.avatar : bot.avatar} primary={bot.primary === true} size={48} state="idle" theme={theme} />
         </button>
-        {picking && <div id="bot-info-avatar-picker"><AvatarPicker id={bot.id} primary={bot.primary === true} value={local ? local.avatar : bot.avatar} theme={theme}
-          onPick={next => saveAvatar({ kind: 'pick', next }, next)} onDefault={() => saveAvatar({ kind: 'default' }, undefined)} /></div>}
+        {picking && <div id="bot-info-avatar-picker"><AvatarPicker id={bot.id} value={local ? local.avatar : bot.avatar} theme={theme}
+          onPick={next => saveAvatar({ kind: 'pick', next })} onDefault={() => saveAvatar({ kind: 'default' })} /></div>}
         <h2>{bot.name}</h2>
         {bot.label && <p>{bot.label}</p>}
         <label>

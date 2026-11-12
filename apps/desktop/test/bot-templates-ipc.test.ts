@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { appendBotTurn, BUILTIN_TEMPLATES, createBot, initVault, loadBots, recordFacts, type Bot, type VaultPaths } from 'core'
 import { updateBot } from 'core/src/bots'
+import { assignCharacter, CHARACTERS } from 'core/src/bot-character'
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList, templateSecrets } from '../src/main/bot-templates-ipc.js'
 
 const KEYS = ['id', 'name', 'purpose', 'label', 'avatar', 'skills']
@@ -36,7 +37,7 @@ async function writeTemplate(p: VaultPaths, name: string, value: unknown): Promi
 
 const missing = (file: string) => expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' })
 
-it('createFromTemplate returns bot with template fields and avatar accessory', async () => {
+it('createFromTemplate returns bot with template fields and its assigned character', async () => {
   const paths = await vault()
   await rejectsClean(paths, created => createFromTemplate(paths, 'nope', undefined, created), /no such template/)
   expect(await botsBytes(paths)).toBeNull()
@@ -44,7 +45,9 @@ it('createFromTemplate returns bot with template fields and avatar accessory', a
   const bot = await createFromTemplate(paths, 'research', undefined, s.fn)
   expect(bot.id).toMatch(/^bot-/)
   expect(bot).toMatchObject({ name: '리서치', label: '자료 조사', templateId: 'research', purpose: BUILTIN_TEMPLATES[1]!.purpose })
-  expect(bot.avatar).toEqual({ body: 1, face: 3, accessory: 4, palette: 4 })
+  const assigned = assignCharacter(bot.id, undefined)
+  expect(CHARACTERS).toContain(assigned)
+  expect(bot.avatar).toEqual({ character: assigned })
   expect((await loadBots(paths)).find(b => b.id === bot.id)).toEqual(bot)
   expect(s.calls).toEqual([bot])
   const mine = await createFromTemplate(paths, 'research', { name: '내 리서치' }, () => {})
@@ -148,7 +151,9 @@ it('import fails closed and always makes a new id', async () => {
   const copy = await importTemplateFrom(paths, file, s.fn)
   expect(copy.id).not.toBe(r.id)
   expect(copy).toMatchObject({ templateId: 'research', label: '자료 조사' })
-  expect(copy.avatar).toMatchObject({ accessory: 4 })
+  const picked = assignCharacter(copy.id, r)
+  expect(CHARACTERS).toContain(picked)
+  expect(copy.avatar).toEqual({ character: picked })
   expect(s.calls).toEqual([copy])
 
   const masked = await createBot(paths, { name: 'Masked', purpose: 'password is hunter22' })

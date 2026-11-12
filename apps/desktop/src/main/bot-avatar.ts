@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto'
-import { constants, mkdir, open, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { constants, open, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadBots, type Bot, type VaultPaths } from 'core'
 import { updateBot } from 'core/src/bots'
@@ -54,39 +53,9 @@ function locked<T>(paths: VaultPaths, id: unknown, work: () => Promise<T>): Prom
   return next
 }
 
-export function setBotAvatarImage(paths: VaultPaths, id: unknown, data: unknown, changed: () => void): Promise<BotDto> {
-  return locked(paths, id, async () => {
-    const bot = await existing(paths, id)
-    if (!bot) throw new Error('no such comet')
-    const ext = imageType(data)
-    const bytes = data as Uint8Array
-    const previous = bot.avatar
-    const dir = join(paths.cache, DIR)
-    await mkdir(dir, { recursive: true })
-    const prefix = `.${bot.id}.`
-    for (const name of await readdir(dir)) if (name.startsWith(prefix) && name.endsWith('.tmp')) await drop(join(dir, name))
-    const final = join(dir, `${bot.id}.${ext}`)
-    const tmp = join(dir, `${prefix}${randomUUID()}.tmp`)
-    let saved: BotDto
-    try {
-      await writeFile(tmp, bytes)
-      saved = await updateBot(paths, bot.id, { avatar: { image: `${DIR}/${bot.id}.${ext}` } })
-    } catch (error) {
-      await drop(tmp).catch(() => {})
-      throw error
-    }
-    try {
-      await rename(tmp, final)
-    } catch (error) {
-      await updateBot(paths, bot.id, { avatar: previous }).catch(() => {})
-      await drop(tmp).catch(() => {})
-      throw error
-    }
-    try {
-      await drop(join(dir, `${bot.id}.${ext === 'png' ? 'jpg' : 'png'}`))
-    } finally { changed() }
-    return saved
-  })
+// Photo avatars are gone: every face is one of the 16 characters, so a new photo is refused before any write.
+export function setBotAvatarImage(): Promise<BotDto> {
+  return Promise.reject(new Error('photo avatars are no longer supported; pick one of the 16 characters'))
 }
 
 export function clearBotAvatarImage(paths: VaultPaths, id: unknown, changed: () => void): Promise<BotDto> {

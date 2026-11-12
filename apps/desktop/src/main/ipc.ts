@@ -1316,8 +1316,8 @@ export function registerIpc(ctx: VaultContext): void {
   })
   // Creation and deletion say so, like every other change: the views stay
   // mounted across tabs now, so nothing re-reads the list by remounting.
-  ipcMain.handle('bots:create', async (_e, input: { name: string; purpose?: string }) => {
-    const bot = await createBot(paths, input)
+  ipcMain.handle('bots:create', async (_e, input: Parameters<typeof createBot>[1]) => {
+    const bot = await createBot(paths, { name: input.name, purpose: input.purpose, ...(Object.hasOwn(input, 'character') ? { character: input.character } : {}) })
     await rememberSelections([`bot-${bot.id}`])
     broadcast({ type: 'bots:changed' })
     return bot
@@ -1355,7 +1355,7 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('bots:transcriptPage', (_e, id: unknown, before: unknown, limit: unknown) => readBotTranscriptPage(paths, id, before, limit))
   ipcMain.handle('bots:archivedTranscript', (_e, id: unknown, stamp: unknown, before: unknown, limit: unknown) => readArchivedTranscript(paths, id, stamp, before, limit))
   ipcMain.handle('bots:update', (_e, id: unknown, patch: unknown) => botUpdate(paths, id, patch, () => broadcast({ type: 'bots:changed' })))
-  ipcMain.handle('bots:avatarSet', (_e, id: unknown, data: unknown) => setBotAvatarImage(paths, id, data, () => broadcast({ type: 'bots:changed' })))
+  ipcMain.handle('bots:avatarSet', () => setBotAvatarImage())
   ipcMain.handle('bots:avatarClear', (_e, id: unknown) => clearBotAvatarImage(paths, id, () => broadcast({ type: 'bots:changed' })))
   ipcMain.handle('bots:avatarImage', (_e, id: unknown) => botAvatarImage(paths, id))
   ipcMain.handle('bots:conversations', (_e, id: unknown) => botConversations(paths, id))

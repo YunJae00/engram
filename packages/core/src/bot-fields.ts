@@ -1,4 +1,5 @@
 import type { BotAvatar, BotPatch } from './bots.js'
+import { isCharacterId } from './bot-character.js'
 
 // Inclusive maxima; every part starts at 0.
 export const AVATAR_RANGES = { body: 5, face: 5, accessory: 8, palette: 7 } as const
@@ -19,6 +20,7 @@ function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): 
 export function isBotAvatar(value: unknown): value is BotAvatar {
   if (!isRecord(value)) return false
   if (hasExactKeys(value, ['image'])) return typeof value.image === 'string'
+  if (hasExactKeys(value, ['character'])) return isCharacterId(value.character)
   const parts = Object.keys(AVATAR_RANGES) as (keyof typeof AVATAR_RANGES)[]
   return hasExactKeys(value, parts) && parts.every(part => {
     const n = value[part]
@@ -42,7 +44,7 @@ export function botPatchError(copy: BotPatch): string | undefined {
   const optional = (key: keyof BotPatch, ok: (value: unknown) => boolean) => !has(key) || copy[key] === undefined || ok(copy[key])
   if (has('name') && (typeof copy.name !== 'string' || !copy.name.trim())) return 'a bot needs a name'
   if (has('purpose') && typeof copy.purpose !== 'string') return 'purpose must be text'
-  if (!optional('avatar', isBotAvatar)) return 'avatar must be body 0-5, face 0-5, accessory 0-8, palette 0-7, or an image'
+  if (!optional('avatar', isBotAvatar)) return 'avatar must be one of the 16 characters, body 0-5, face 0-5, accessory 0-8, palette 0-7, or an image'
   if (!optional('label', v => typeof v === 'string' && Array.from(v).length <= BOT_LABEL_CHARS)) return `a label is at most ${BOT_LABEL_CHARS} characters`
   if (has('primary') && copy.primary !== undefined && typeof copy.primary !== 'boolean') return 'primary must be true or false'
   if (!optional('hidden', v => v === true)) return 'hidden must be true'

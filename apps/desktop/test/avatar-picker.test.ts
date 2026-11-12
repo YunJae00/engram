@@ -1,108 +1,92 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { en } from '../src/renderer/src/i18n'
-import { ko } from '../src/renderer/src/i18n-ko'
-import { avatarSaver, currentCharacter, optionLabel, pickerOptions, randomCharacter, stepRadio, withPart, type AvatarOps, type Part } from '../src/renderer/src/lib/avatarPicker.js'
-import { previewCharacter } from '../src/renderer/src/lib/createBot.js'
-
-const PARTS: Part[] = ['body', 'face', 'accessory', 'palette']
+import { avatarSaver, changedAvatar, pickerOptions, stepGrid, type AvatarOps } from '../src/renderer/src/lib/avatarPicker.js'
+import { CHARACTERS, defaultCharacter } from '../src/renderer/src/lib/botAvatar.js'
+import { AvatarPicker } from '../src/renderer/src/components/AvatarPicker.js'
 
 function deferredOps() {
   const calls: string[] = []
   const queue: { resolve(avatar: unknown): void; reject(error: unknown): void }[] = []
-  const op = (name: string) => () => {
-    calls.push(name)
-    return new Promise<{ avatar?: unknown }>((resolve, reject) => queue.push({ resolve: avatar => resolve({ avatar }), reject }))
-  }
   const ops: AvatarOps = {
-    update: avatar => op(`update:${JSON.stringify(avatar)}`)(),
-    set: () => op('set')(),
-    clear: () => op('clear')(),
+    update: avatar => {
+      calls.push(JSON.stringify(avatar))
+      return new Promise((resolve, reject) => queue.push({ resolve: saved => resolve({ avatar: saved }), reject }))
+    },
   }
   return { ops, calls, queue }
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0))
+const picker = (props: Record<string, unknown>) => renderToStaticMarkup(createElement(AvatarPicker, { id: 'bot-x', value: undefined, theme: 'light', onPick() {}, onDefault() {}, ...props }))
 
 describe('avatar picker logic', () => {
-  it('picker edits: a pick saves the four parts, Default returns the id character, Random follows hash(id + n), no sun for a non-primary bot', async () => {
-    const id = 'bot-x'
-    const start = currentCharacter(id, undefined)
-    expect(start).toEqual(previewCharacter(id, 0))
-    const picked = withPart(withPart(start, 'face', 3), 'palette', 6)
-    expect(picked).not.toBe(start)
-    expect(currentCharacter(id, picked)).toEqual(picked)
-    expect(Object.keys(picked).sort()).toEqual(['accessory', 'body', 'face', 'palette'])
-    expect(currentCharacter(id, { image: 'bot-avatars/x.png' })).toEqual(previewCharacter(id, 0))
-    for (const n of [1, 2]) {
-      expect(randomCharacter(id, n, 5)).toEqual(previewCharacter(`${id}${n}`, 5))
-      expect(randomCharacter(id, n, 5)).toEqual(randomCharacter(id, n, 5))
-      expect(randomCharacter(id, n, 5).accessory).toBe(5)
-    }
-    expect(pickerOptions(false).body).toEqual([0, 1, 2, 3, 4, 5])
-    expect(pickerOptions(false).body).not.toContain('sun')
-    expect(pickerOptions(true).body).toEqual(['sun'])
-
-    const two = deferredOps(), doneTwo: unknown[] = []
-    const saverTwo = avatarSaver(id, two.ops, error => doneTwo.push(error))
-    saverTwo.save({ kind: 'pick', next: withPart(start, 'face', 3) }, undefined)
-    saverTwo.save({ kind: 'pick', next: withPart(withPart(start, 'face', 3), 'palette', 1) }, undefined)
-    await tick()
-    expect(two.calls).toHaveLength(1)
-    two.queue[0]!.resolve(withPart(start, 'face', 3))
-    await tick()
-    expect(two.calls[1]).toBe(`update:${JSON.stringify(withPart(withPart(start, 'face', 3), 'palette', 1))}`)
-    two.queue[1]!.resolve(withPart(withPart(start, 'face', 3), 'palette', 1))
-    await tick()
-    expect(saverTwo.idle()).toBe(true)
-
-    const photo = deferredOps()
-    const saverPhoto = avatarSaver(id, photo.ops, () => undefined)
-    saverPhoto.save({ kind: 'photo', data: new Uint8Array([1]) }, start)
-    saverPhoto.save({ kind: 'default' }, start)
-    await tick()
-    photo.queue[0]!.resolve({ image: 'bot-avatars/x.png' })
-    await tick()
-    expect(photo.calls).toEqual(['set', 'clear'])
-    photo.queue[1]!.resolve(undefined)
-    await tick()
-
-    const failing = deferredOps(), errors: unknown[] = []
-    const saverFail = avatarSaver(id, failing.ops, error => errors.push(error))
-    saverFail.save({ kind: 'pick', next: start }, start)
-    saverFail.save({ kind: 'default' }, start)
-    await tick()
-    failing.queue[0]!.reject(new Error('disk'))
-    await tick()
-    expect(errors[0]).toBeInstanceOf(Error)
-    expect(failing.calls[1]).toBe('update:undefined')
-
-    const idle = deferredOps()
-    const saverIdle = avatarSaver(id, idle.ops, () => undefined)
-    saverIdle.save({ kind: 'default' }, { image: 'bot-avatars/x.png' })
-    await tick()
-    expect(idle.calls).toEqual(['clear'])
+  it('offers exactly the 16 characters; pick saves the exact shape, Default the plain hash of the real id', () => {
+    expect(pickerOptions()).toEqual(CHARACTERS)
+    expect(changedAvatar('bot-x', { kind: 'pick', next: '05-squircle' })).toEqual({ character: '05-squircle' })
+    expect(changedAvatar('bot-x', { kind: 'default' })).toEqual({ character: defaultCharacter('bot-x') })
   })
 
-  it('each row is a radiogroup with arrow keys; every option has a ko and en aria-label', () => {
-    expect(stepRadio(0, 6, 'ArrowRight')).toBe(1)
-    expect(stepRadio(5, 6, 'ArrowRight')).toBe(0)
-    expect(stepRadio(2, 6, 'ArrowDown')).toBe(3)
-    expect(stepRadio(0, 6, 'ArrowLeft')).toBe(5)
-    expect(stepRadio(3, 6, 'ArrowUp')).toBe(2)
-    expect(stepRadio(3, 6, 'Home')).toBe(0)
-    expect(stepRadio(3, 6, 'End')).toBe(5)
-    expect(stepRadio(0, 1, 'ArrowRight')).toBe(0)
-    expect(stepRadio(3, 6, 'Tab')).toBeNull()
-    expect(stepRadio(3, 6, 'a')).toBeNull()
-    for (const primary of [false, true]) {
-      const options = pickerOptions(primary)
-      for (const part of PARTS) {
-        const values: readonly (number | 'sun')[] = options[part]
-        for (const table of [en, ko] as Record<string, string>[]) {
-          const labels = values.map(v => table[optionLabel(part, v)])
-          for (const label of labels) expect(label).toBeTruthy()
-          expect(new Set(labels).size).toBe(labels.length)
-        }
-      }
-    }
+  it('grid keys move ±1 across, ±4 down, wrap, and Home/End jump', () => {
+    expect(stepGrid(0, 16, 'ArrowRight')).toBe(1)
+    expect(stepGrid(15, 16, 'ArrowRight')).toBe(0)
+    expect(stepGrid(0, 16, 'ArrowLeft')).toBe(15)
+    expect(stepGrid(1, 16, 'ArrowDown')).toBe(5)
+    expect(stepGrid(13, 16, 'ArrowDown')).toBe(1)
+    expect(stepGrid(2, 16, 'ArrowUp')).toBe(14)
+    expect(stepGrid(7, 16, 'Home')).toBe(0)
+    expect(stepGrid(7, 16, 'End')).toBe(15)
+    expect(stepGrid(7, 16, 'a')).toBeNull()
+  })
+
+  it('renders one 4x4 radiogroup named by id, one tab stop, no upload control', () => {
+    const html = picker({ value: { character: '06-triangle' } })
+    expect(html.match(/role="radio"/g)).toHaveLength(16)
+    expect(html.match(/role="radiogroup"/g)).toHaveLength(1)
+    expect(html.match(/tabindex="0"/g)).toHaveLength(1)
+    expect(html).toMatch(/aria-label="06-triangle" aria-checked="true" tabindex="0"/)
+    for (const id of CHARACTERS) expect(html).toContain(`aria-label="${id}"`)
+    expect(html).not.toMatch(/type="file"|avatar-picker-random|photo/i)
+    expect(picker({ value: { character: '06-triangle' }, picked: false })).not.toContain('aria-checked="true"')
+    const css = readFileSync(join(__dirname, '../src/renderer/src/bot-avatar.css'), 'utf8')
+    expect(css).toContain('grid-template-columns: repeat(4, 40px)')
+    expect(css).toContain('.avatar-picker-cell[aria-checked="true"] { outline: 2px solid var(--ink, #1C1B19)')
+    expect(css).not.toMatch(/avatar-picker[^{]*\{[^}]*--focus-ring/)
+  })
+
+  it('saves serially in call order and reports the last stored value', async () => {
+    const { ops, calls, queue } = deferredOps()
+    const done: unknown[] = []
+    const saver = avatarSaver('bot-x', ops, error => done.push(error))
+    saver.save({ kind: 'pick', next: '02-cloud' }, undefined)
+    saver.save({ kind: 'default' }, undefined)
+    await tick()
+    expect(calls).toEqual(['{"character":"02-cloud"}'])
+    queue[0]!.resolve({ character: '02-cloud' })
+    await tick()
+    expect(calls).toHaveLength(2)
+    expect(saver.idle()).toBe(false)
+    queue[1]!.reject(new Error('disk full'))
+    await tick()
+    expect(done).toEqual([undefined, new Error('disk full')])
+    expect(saver.idle()).toBe(true)
+    expect(saver.latest()).toEqual({ character: '02-cloud' })
+  })
+
+  it('a stopped saver for another bot reports nothing when its write finishes', async () => {
+    const { ops, queue } = deferredOps()
+    const done: unknown[] = []
+    const saver = avatarSaver('bot-old', ops, error => done.push(error))
+    saver.save({ kind: 'pick', next: '03-cashew' }, undefined)
+    await tick()
+    saver.stop()
+    queue[0]!.resolve({ character: '03-cashew' })
+    await tick()
+    expect(done).toEqual([])
+    expect(saver.idle()).toBe(true)
+    const pane = readFileSync(join(__dirname, '../src/renderer/src/components/BotInfoPane.tsx'), 'utf8')
+    expect(pane).toContain('if (avatarWrites.current?.id !== bot.id) {')
+    expect(pane).toContain('avatarWrites.current?.stop()')
   })
 })

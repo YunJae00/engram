@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeTestApp } from './navigation.js'
-import { contrastRatio, type Rgba } from './visual/spec.js'
 import { seedVisualVault, CHAT_ID } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
@@ -41,6 +40,7 @@ async function openPicker(page: Page): Promise<Locator> {
   return picker
 }
 
+const ringOf = (cell: Locator) => cell.evaluate(node => { const s = getComputedStyle(node); return { width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor } })
 const avatarOf = (page: Page, id: string) => page.evaluate(async id => (await window.engram.botsList()).find(bot => bot.id === id)?.avatar ?? null, id)
 
 test.afterEach(async () => {
@@ -49,97 +49,66 @@ test.afterEach(async () => {
 })
 
 test.describe('avatar picker', () => {
-  test('picker geometry: 96 preview, 40 cells, 24 swatches and a 2px ring with 3:1 contrast in light and dark', async () => {
-    for (const theme of ['light', 'dark'] as const) {
-      const page = await launch(theme)
-      const picker = await openPicker(page)
-      const m = await picker.evaluate(node => {
-        const box = (el: Element) => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height } }
-        const parse = (text: string) => (text.match(/[\d.]+/g) ?? []).map(Number)
-        const rings = [...node.querySelectorAll('.avatar-picker-cell[aria-checked="true"]')].map(cell => {
-          const style = getComputedStyle(cell)
-          let bg: number[] = []
-          for (let el: Element | null = cell; el; el = el.parentElement) {
-            const c = parse(getComputedStyle(el).backgroundColor)
-            if (c.length === 3 || (c.length === 4 && c[3] === 1)) { bg = c; break }
-          }
-          return { width: style.outlineWidth, style: style.outlineStyle, color: parse(style.outlineColor), bg }
-        })
-        return {
-          preview: box(node.closest('dialog')!.querySelector('[data-testid="create-bot-preview"] .bot-avatar')!),
-          cells: [...node.querySelectorAll('.avatar-picker-cell')].map(box),
-          swatches: [...node.querySelectorAll('.avatar-picker-swatch')].map(box),
-          rings,
-        }
-      })
-      expect(Math.abs(m.preview.width - 96)).toBeLessThanOrEqual(1)
-      expect(Math.abs(m.preview.height - 96)).toBeLessThanOrEqual(1)
-      expect(m.cells.length).toBe(6 + 6 + 9 + 8)
-      for (const cell of m.cells) { expect(Math.abs(cell.width - 40)).toBeLessThanOrEqual(1); expect(Math.abs(cell.height - 40)).toBeLessThanOrEqual(1) }
-      expect(m.swatches.length).toBe(8)
-      for (const swatch of m.swatches) { expect(Math.abs(swatch.width - 24)).toBeLessThanOrEqual(1); expect(Math.abs(swatch.height - 24)).toBeLessThanOrEqual(1) }
-      expect(m.rings.length).toBe(4)
-      for (const ring of m.rings) {
-        expect(ring.width).toBe('2px')
-        expect(ring.style).toBe('solid')
-        const rgba = (c: number[]): Rgba => [c[0]!, c[1]!, c[2]!, c[3] ?? 1]
-        expect(contrastRatio(rgba(ring.color), [rgba(ring.bg)])).toBeGreaterThanOrEqual(3)
-      }
-      while (apps.length) await closeTestApp(apps.pop())
-    }
+  test('picker geometry: 64 preview, a 4x4 grid of 40px cells, and a 2px ink ring, never blue', async () => {
+    const page = await launch('light')
+    const picker = await openPicker(page)
+    await expect(picker.locator('[aria-checked="true"]')).toHaveCount(0)
+    await picker.getByRole('radio', { name: '05-squircle', exact: true }).click()
+    const m = await picker.evaluate(node => {
+      const box = (el: Element) => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height, left: Math.round(r.left), top: Math.round(r.top) } }
+      return { preview: box(node.closest('dialog')!.querySelector('[data-testid="create-bot-preview"] .bot-avatar')!), cells: [...node.querySelectorAll('.avatar-picker-cell')].map(box) }
+    })
+    expect(Math.abs(m.preview.width - 64)).toBeLessThanOrEqual(1)
+    expect(m.cells.length).toBe(16)
+    for (const cell of m.cells) { expect(Math.abs(cell.width - 40)).toBeLessThanOrEqual(1); expect(Math.abs(cell.height - 40)).toBeLessThanOrEqual(1) }
+    expect(new Set(m.cells.map(c => c.left)).size).toBe(4)
+    expect(new Set(m.cells.map(c => c.top)).size).toBe(4)
+    const checked = picker.locator('[aria-checked="true"]')
+    await expect(checked).toHaveCount(1)
+    expect(await ringOf(checked)).toEqual({ width: '2px', style: 'solid', color: 'rgb(28, 27, 25)' })
+    await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', '05-squircle')
   })
 
-  test('info pane: the avatar opens the picker, a pick is saved, Default clears it, and the accessory row wraps to two lines', async () => {
+  test('info pane: the avatar opens the picker, a pick is saved as a character, Default saves the id face', async () => {
     const page = await launch('light')
     await page.getByTestId(`bot-${CHAT_ID}`).click()
     await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
     await expect(page.getByTestId('bot-info-pane')).toBeVisible()
+    await expect(page.getByTestId('bot-info-pane').getByRole('tab')).toHaveCount(0)
     await page.getByTestId('bot-info-avatar').click()
     const picker = page.locator('#bot-info-avatar-picker [data-testid="avatar-picker"]')
     await expect(picker).toBeVisible()
-    const layout = await picker.evaluate(node => ({
-      tops: new Set([...node.querySelectorAll<HTMLElement>('[data-part="accessory"] .avatar-picker-cell')].map(cell => cell.offsetTop)).size,
-      fits: node.scrollWidth <= node.clientWidth,
-    }))
-    expect(layout).toEqual({ tops: 2, fits: true })
-    const face = picker.locator('[data-part="face"]')
-    await face.getByRole('radio', { name: 'Face 3', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toMatchObject({ face: 2 })
-    const saved = await avatarOf(page, CHAT_ID) as Record<string, unknown>
-    expect(Object.keys(saved).sort()).toEqual(['accessory', 'body', 'face', 'palette'])
-    for (const value of Object.values(saved)) expect(Number.isInteger(value)).toBe(true)
-    await face.getByRole('radio', { name: 'Face 4', exact: true }).click()
-    await picker.locator('[data-part="palette"]').getByRole('radio', { name: 'Pink', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toMatchObject({ face: 3, palette: 1 })
+    expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    await picker.getByRole('radio', { name: '12-crescent', exact: true }).click()
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: '12-crescent' })
+    await picker.getByRole('radio', { name: '03-cashew', exact: true }).click()
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: '03-cashew' })
     await picker.getByTestId('avatar-picker-default').click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toBeNull()
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: expect.stringMatching(/^\d\d-[a-z-]+$/) })
     await expect.poll(() => page.evaluate(id => window.engram.botAvatarImage(id), CHAT_ID)).toBeNull()
-    await face.getByRole('radio', { name: 'Face 2', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toMatchObject({ face: 1 })
-    await picker.getByTestId('avatar-picker-default').click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toBeNull()
   })
 
-  test('arrow keys move the checked cell within a row and Tab leaves the row', async () => {
+  test('arrow keys move ±1 and ±4 in the grid and Tab leaves it', async () => {
     const page = await launch('light')
     const picker = await openPicker(page)
-    const row = picker.locator('[data-part="face"]')
-    const radios = row.getByRole('radio')
-    await row.locator('[aria-checked="true"]').focus()
-    const start = await radios.evaluateAll(cells => cells.findIndex(cell => cell.getAttribute('aria-checked') === 'true'))
-    const focusedIndex = () => row.evaluate(node => [...node.querySelectorAll('[role="radio"]')].indexOf(document.activeElement as Element))
+    const grid = picker.getByRole('radiogroup')
+    const radios = grid.getByRole('radio')
+    await expect(radios).toHaveCount(16)
+    await grid.locator('[tabindex="0"]').focus()
+    await page.keyboard.press('Home')
+    const focusedIndex = () => grid.evaluate(node => [...node.querySelectorAll('[role="radio"]')].indexOf(document.activeElement as Element))
     const checkedIndex = () => radios.evaluateAll(cells => cells.findIndex(cell => cell.getAttribute('aria-checked') === 'true'))
+    await expect.poll(checkedIndex).toBe(0)
     await page.keyboard.press('ArrowRight')
-    await expect.poll(focusedIndex).toBe((start + 1) % 6)
-    await expect.poll(checkedIndex).toBe((start + 1) % 6)
-    await page.keyboard.press('End')
+    await expect.poll(focusedIndex).toBe(1)
+    await page.keyboard.press('ArrowDown')
     await expect.poll(focusedIndex).toBe(5)
     await expect.poll(checkedIndex).toBe(5)
-    await page.keyboard.press('Home')
-    await expect.poll(focusedIndex).toBe(0)
-    await expect.poll(checkedIndex).toBe(0)
+    await page.keyboard.press('End')
+    await expect.poll(checkedIndex).toBe(15)
+    expect((await ringOf(radios.nth(15))).color).toBe('rgb(28, 27, 25)')
     await page.keyboard.press('Tab')
-    expect(await row.evaluate(node => node.contains(document.activeElement))).toBe(false)
+    expect(await grid.evaluate(node => node.contains(document.activeElement))).toBe(false)
   })
 
   test('the avatar picker has no photo upload', async () => {
@@ -151,7 +120,6 @@ test.describe('avatar picker', () => {
       await expect(scope.getByText('PNG', { exact: false })).toHaveCount(0)
     }
     const picker = await openPicker(page)
-    await expect(picker.getByTestId('avatar-picker-random')).toBeVisible()
     await expect(picker.getByTestId('avatar-picker-default')).toBeVisible()
     await noUpload(page.getByTestId('create-bot-dialog'))
     await page.keyboard.press('Escape')
@@ -162,29 +130,20 @@ test.describe('avatar picker', () => {
     const pane = page.locator('#bot-info-avatar-picker')
     await expect(pane.getByTestId('avatar-picker')).toBeVisible()
     await noUpload(pane)
+    await expect(page.evaluate(id => window.engram.botAvatarSet(id, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), CHAT_ID)).rejects.toThrow(/no longer supported/)
   })
 
   test('one avatar preview while the picker is open', async () => {
     const page = await launch('light')
-    const app = apps.at(-1)!
     const large = (scope: Locator) => scope.evaluate(node => [...node.querySelectorAll('.bot-avatar')]
-      .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 64 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) })
-      .map(el => el.outerHTML))
-    const shot = async (name: string) => {
-      const png = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))
-      await test.info().attach(name, { body: Buffer.from(png, 'base64'), contentType: 'image/png' })
-    }
-    const pickOtherBody = async (picker: Locator) => {
-      await picker.locator('[data-part="body"] [role="radio"][aria-checked="false"]').first().click()
-    }
+      .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 48 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) })
+      .map(el => el.getAttribute('data-character')))
     const check = async (scope: Locator, picker: Locator, where: string) => {
       const before = await large(scope)
-      expect(before.length, `ONE-PREVIEW ${where}: ${before.length} large avatars while the picker is open`).toBe(1)
-      await pickOtherBody(picker)
+      expect(before.length, `ONE-PREVIEW ${where}`).toBe(1)
+      await picker.locator('[role="radio"]:not([data-character="' + before[0] + '"])').first().click()
       await expect.poll(() => large(scope), { message: `ONE-PREVIEW ${where}: the preview does not update on pick` }).not.toEqual(before)
-      const after = await large(scope)
-      expect(after.length, `ONE-PREVIEW ${where}: ${after.length} large avatars after a pick`).toBe(1)
-      await shot(`${where}.png`)
+      expect((await large(scope)).length).toBe(1)
     }
     const picker = await openPicker(page)
     await check(page.getByTestId('create-bot-dialog'), picker, 'new-bot-dialog')

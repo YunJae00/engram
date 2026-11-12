@@ -3,7 +3,7 @@
 .create-bot-dialog form { display: flex; flex-direction: column; gap: 14px; }
 .create-bot-dialog h2 { margin: 0; font-size: var(--fs-head); }
 .create-bot-look { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.create-bot-preview { display: flex; width: 96px; height: 96px; }
+.create-bot-preview { display: flex; width: 64px; height: 64px; }
 .create-bot-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--fs-meta); color: var(--fg-faint); }
 .create-bot-field input { width: 100%; box-sizing: border-box; font-size: var(--fs-body); color: var(--fg); }
 .create-bot-error { margin: 0; font-size: var(--fs-meta); color: var(--danger); }
