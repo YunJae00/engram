@@ -2,7 +2,6 @@ import { expect, test, _electron as electron, type ElectronApplication, type Pag
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { vaultPaths } from 'core'
 import { closeTestApp } from '../navigation.js'
 import { visualDir, writeReviewSheet } from './review-sheet.js'
 import { CHAT_ID, seedVisualVault } from './seed.js'
@@ -120,7 +119,7 @@ test.describe('visual', () => {
       await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').first()).toBeVisible()
       await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
       await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-      await expect(page.locator('#bot-info-tab-overview')).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByTestId('bot-info-pane').locator('[role=tablist], [role=tab]')).toHaveCount(0)
     })
   })
 
@@ -149,42 +148,8 @@ test.describe('visual', () => {
       await row.click()
       await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
       await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-      await page.locator('#bot-info-tab-routines').click()
       await expect(page.getByTestId('bot-routine-vis-paused-task')).toBeVisible()
     })
-  })
-
-  test('info-past', async () => {
-    await capture('info-past', async (page, _theme, app) => {
-      const vault = await app.evaluate(() => process.env['ENGRAM_VAULT']!)
-      const file = join(vaultPaths(vault).cache, 'bot-chats', `${CHAT_ID}.2026-01-05T12-00-00.jsonl`)
-      await writeFile(file, [
-        { role: 'user', text: 'Which bulbs did we pick last autumn?', at: '2026-01-05T12:00:00.000Z' },
-        { role: 'assistant', text: 'Tulips and daffodils, planted along the fence.', at: '2026-01-05T12:00:04.000Z' },
-      ].map(turn => JSON.stringify(turn)).join('\n') + '\n')
-      const row = page.getByTestId(`bot-${CHAT_ID}`)
-      const earlier = page.getByTestId('sidebar-earlier')
-      if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
-      await row.click()
-      await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').first()).toBeVisible()
-      await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-      const pane = page.getByTestId('bot-info-pane'), panel = page.locator('#bot-info-panel-past')
-      await expect(pane).toBeVisible()
-      await page.locator('#bot-info-tab-past').click()
-      await expect(panel.getByTestId('bot-past-item')).toHaveCount(1)
-      await panel.getByTestId('bot-past-item').click()
-      await expect(pane.getByTestId('bot-past-view').locator('.bubble-msg')).toHaveCount(2)
-      await expect(panel.locator('textarea, input, [contenteditable="true"]')).toHaveCount(0)
-      await expect(pane.locator('[data-testid="bots-input"]')).toHaveCount(0)
-      const style = (sel: string) => page.locator(sel).first().evaluate(el => (s => [s.backgroundColor, s.color, s.fontSize, s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius, s.paddingTop, s.paddingLeft])(getComputedStyle(el)))
-      for (const role of ['user', 'assistant']) {
-        expect(await style(`[data-testid="bot-past-view"] .bubble-msg.${role}`)).toEqual(await style(`[data-testid="bots-thread"] .bubble-msg.${role}`))
-      }
-    })
-    for (const theme of THEMES) {
-      const rows = JSON.parse(await readFile(join(OUT, `info-past-${theme}.metrics.json`), 'utf8')) as { row: number; status: string }[]
-      expect(rows.find(r => r.row === 17)?.status).toBe('pass')
-    }
   })
 
   test('empty-bot', async () => {

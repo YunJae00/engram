@@ -1,5 +1,5 @@
 // Korean UI: sets uiLanguage 'ko' through settingsSet and reloads, then scans the sidebar and its + menu, the primary
-// bot's chat, all five info pane tabs, the New bot dialog and Settings for visible text and aria-label/title/placeholder/alt
+// bot's chat, the info pane, the New bot dialog and Settings for visible text and aria-label/title/placeholder/alt
 // values that still hold English (3+ ASCII letters outside a short allowlist, the vault's own bot names, labels,
 // purposes and note titles, URLs and paths). It then sets uiLanguage 'en', reloads and requires an English sidebar.
 // UI_KOREAN_REGIONS (comma list of sidebar, chat, info, create, settings) limits the scanned regions. Many surfaces are
@@ -166,13 +166,10 @@ export async function run(page) {
     await page.locator(`${VIEW_SEL} [data-testid="bots-title-pill"]`).click({ timeout: WAIT_MS })
     const shown = await visibleOf(PANE_SEL, 'bot-info-pane')
     if (shown) return shown
-    const tabs = page.locator(`${PANE_SEL} [role="tab"]`)
-    const count = await tabs.count()
-    const reasons = count === 5 ? [] : [`${count} info pane tabs, expected 5`]
-    for (let i = 0; i < count; i++) {
-      await tabs.nth(i).click({ timeout: WAIT_MS })
-      reasons.push(await scan('info', PANE_SEL))
-    }
+    const count = await page.locator(`${PANE_SEL} [role="tab"], ${PANE_SEL} [role="tablist"]`).count()
+    const reasons = count === 0 ? [] : [`${count} info pane tab elements, expected none`]
+    reasons.push(await scan('info', PANE_SEL))
+    await page.locator(`${PANE_SEL} textarea`).focus({ timeout: WAIT_MS })
     await page.keyboard.press('Escape')
     reasons.push(await goneOf(PANE_SEL, 'bot-info-pane'))
     return reasons.filter(Boolean).join('; ')

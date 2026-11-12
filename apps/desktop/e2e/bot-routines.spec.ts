@@ -37,8 +37,7 @@ async function openRoutines(page: Page, botId: string) {
   await expect(page.getByTestId('bots-view')).toBeVisible()
   if (!await page.getByTestId('bot-info-pane').isVisible()) await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
   await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-  await page.locator('#bot-info-tab-routines').click()
-  const tab = page.locator('#bot-info-panel-routines')
+  const tab = page.getByTestId('bot-info-pane').getByTestId('bot-routines')
   await expect(tab).toBeVisible()
   return tab
 }
@@ -50,7 +49,7 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test.describe('bot routines tab', () => {
+test.describe('bot routines in the info pane', () => {
   test('Routines tab lists the seeded tasks with paused and unscheduled lines', async () => {
     const page = await launch()
     let tab = await openRoutines(page, 'vis-paused')

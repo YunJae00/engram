@@ -7,7 +7,7 @@ export type RowStatus = CheckStatus | 'partial'
 export interface Check { what: string; selector: string; measured: number | string | null; expected: string; status: CheckStatus }
 export interface RowRecord { row: number; status: RowStatus; checks: Check[] }
 
-export const STATES = ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-gallery', 'avatar-picker'] as const
+export const STATES = ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-gallery', 'avatar-picker'] as const
 export type StateName = typeof STATES[number]
 export const ROW_STATUSES: readonly RowStatus[] = ['pass', 'fail', 'missing', 'partial', 'deferred']
 export const CHECK_STATUSES: readonly CheckStatus[] = ['pass', 'fail', 'missing', 'deferred']
@@ -32,7 +32,7 @@ export const CHECKLIST: ChecklistRow[] = [
   { row: 14, target: '토스트', assertion: '폭 340±8, 위·오른쪽 16±2, 모서리 18', states: ['toast'] },
   { row: 15, target: '정보 창', assertion: '폭 320±2, 개요 아바타 96±1, 열고 닫을 때 대화 열 넘침 없음', states: ['info-overview'] },
   { row: 16, target: '대비', assertion: '본문·미리보기·시각 ≥4.5:1, 포커스 링 ≥3:1 (light/dark)', states: SIDE },
-  { row: 17, target: '넘침', assertion: '보이는 요소 중 말줄임이 아닌데 `scrollWidth > clientWidth`인 것 0개', states: ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'info-past', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] },
+  { row: 17, target: '넘침', assertion: '보이는 요소 중 말줄임이 아닌데 `scrollWidth > clientWidth`인 것 0개', states: ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] },
   { row: 18, target: '아바타', assertion: '갤러리의 모든 칸이 20/36/64/96 ±1. 외곽 대비 ≥3:1. 작업 중 애니메이션 속성은 `transform`만. 모션 줄이기 설정이면 `getAnimations()`가 0개', states: ['avatar-gallery'] },
 ]
 
