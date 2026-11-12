@@ -59,7 +59,7 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
         if (input.top < parent.top || input.bottom > parent.bottom) return false
         const controls = [...element.querySelectorAll('textarea, .decision-card button, .bubble-msg')]
         return preview.left >= parent.left && preview.right <= parent.right && preview.top >= parent.top && preview.bottom <= parent.bottom
-          && preview.bottom <= thread.top + 1 && controls.every(control => {
+          && preview.bottom <= Math.min(thread.bottom, input.top) + 1 && controls.every(control => {
             const box = control.getBoundingClientRect()
             const inThread = !!control.closest('.conversation-thread')
             const top = inThread ? Math.max(box.top, thread.top) : box.top
