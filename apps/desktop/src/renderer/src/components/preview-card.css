@@ -38,6 +38,9 @@
 .mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--mini-stack)); --deck-y: calc(-2 * var(--mini-stack)); }
 .mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--mini-stack)); --deck-y: calc(-3 * var(--mini-stack)); }
 .mini-chat-preview > .preview-card-reopen { position: absolute; top: 8px; right: var(--panel-gutter); margin: 0; }
+.mission-grid-2 .mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
+/* Two tall panes keep a slim card slot so the conversation fills the pane. */
+@container tile (min-height: 560px) { .mission-grid-2 .mini-chat-preview { flex-basis: min(12%, 96px); } }
 .preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 280ms var(--ease-out), filter 280ms var(--ease-out), opacity 200ms; }
 .preview-deck-card[data-position="0"] { animation: preview-deck-forward 280ms var(--ease-out); }
 .preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; }
