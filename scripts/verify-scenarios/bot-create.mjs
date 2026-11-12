@@ -1,12 +1,9 @@
 // Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the name-only New bot dialog (name and a
 // 96px avatar preview, no first-task, label or More options); an empty or blank name creates nothing; Create adds exactly
 // one bot, opens its chat with the composer focused and keeps the previewed character; Cmd/Ctrl+N opens the dialog; the
-// Photo tab uploads a PNG that becomes the bot's avatar.
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+// avatar picker has no Photo tab and no file input.
 
 const WAIT_MS = 5_000
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
 const PLUS_SEL = '.app-sidebar [data-testid="sidebar-create"]'
 const NEW_ITEM_SEL = '[data-testid="bots-new"]'
 const DIALOG_SEL = '[role="dialog"][data-testid="create-bot-dialog"]'
@@ -30,7 +27,7 @@ async function until(probe, ms = WAIT_MS) {
   return reason
 }
 
-export async function run(page, { paths }) {
+export async function run(page) {
   await page.evaluate(() => globalThis.engram.settingsSet({ uiLanguage: 'en' }))
   await page.reload()
   await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 60_000 })
@@ -74,7 +71,6 @@ export async function run(page, { paths }) {
   const B = (await listBots()).map((bot) => bot.id)
   let FILL = null
   let C = null
-  let P = null
 
   // N1
   const opened = await check('plus-opens', async () => {
@@ -171,36 +167,18 @@ export async function run(page, { paths }) {
   })
 
   // N6
-  await check('photo-upload', async () => {
+  await check('no-photo-upload', async () => {
     const stuck = await ensureClosed()
     if (stuck) return stuck
     const open = await openFromPlus()
     if (open) return open
-    await NAME.fill('Photo Bot', { timeout: WAIT_MS })
     await CHANGE.click({ timeout: WAIT_MS })
     const picker = await until(visible(PICKER, 'avatar-picker'))
     if (picker) return picker
-    const tab = PICKER.getByRole('tab', { name: 'Photo', exact: true })
-    await tab.click({ timeout: WAIT_MS })
-    const selected = await until(async () => await tab.getAttribute('aria-selected', { timeout: WAIT_MS }) === 'true' ? '' : 'Photo tab not aria-selected')
-    if (selected) return selected
-    await PICKER.locator('input[type="file"]').setInputFiles({ name: 'face.png', mimeType: 'image/png', buffer: PNG }, { timeout: WAIT_MS })
-    await SUBMIT.click({ timeout: WAIT_MS })
-    const shut = await until(closed)
-    if (shut) return shut
-    const found = await until(async () => {
-      P = (await listBots()).find((bot) => bot.name === 'Photo Bot') ?? null
-      return P ? '' : 'no bot named Photo Bot'
-    })
-    if (found) return found
-    const a = P.avatar
-    const want = `bot-avatars/${P.id}.png`
-    if (a === null || typeof a !== 'object' || Array.isArray(a) || JSON.stringify(Object.keys(a)) !== '["image"]' || a.image !== want) {
-      return `avatar ${JSON.stringify(a)}, expected {"image":"${want}"}`
-    }
-    const buf = await readFile(join(paths.cache, 'bot-avatars', `${P.id}.png`))
-    return buf.equals(PNG) ? '' : 'stored avatar bytes differ from the uploaded PNG'
+    const found = { tabs: await PICKER.getByRole('tab').count(), files: await DIALOG.locator('input[type="file"]').count(), testid: await DIALOG.getByTestId('avatar-picker-file').count() }
+    await page.keyboard.press('Escape')
+    return found.tabs + found.files + found.testid === 0 ? '' : `photo upload still present: ${JSON.stringify(found)}`
   })
 
-  return { ok: failures.length === 0, evidence: { before: B.length, created: { created: C?.id, photo: P?.id }, checks, failures } }
+  return { ok: failures.length === 0, evidence: { before: B.length, created: C?.id, checks, failures } }
 }

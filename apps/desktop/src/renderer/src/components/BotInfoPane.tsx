@@ -92,7 +92,7 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
               <BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={96} state="idle" theme={theme} />
               </button>
               {picking && <div id="bot-info-avatar-picker"><AvatarPicker id={bot.id} primary={bot.primary === true} value={local ? local.avatar : bot.avatar} theme={theme}
-                onPick={next => saveAvatar({ kind: 'pick', next }, next)} onDefault={() => saveAvatar({ kind: 'default' }, undefined)} onPhoto={data => saveAvatar({ kind: 'photo', data }, { image: 'pending' })} /></div>}
+                onPick={next => saveAvatar({ kind: 'pick', next }, next)} onDefault={() => saveAvatar({ kind: 'default' }, undefined)} /></div>}
               <h2>{bot.name}</h2>
               {bot.label && <p>{bot.label}</p>}
               <label>

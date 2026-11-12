@@ -56,14 +56,11 @@
 }
 
 .avatar-picker { display: flex; flex-direction: column; gap: 12px; min-width: 0; align-self: stretch; }
-.avatar-picker [role="tablist"], .avatar-picker-actions { display: flex; gap: 8px; }
-.avatar-picker-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.avatar-picker-actions { display: flex; gap: 8px; }
 .avatar-picker .avatar-picker-row[role="radiogroup"] { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px; }
 .avatar-picker-cell { box-sizing: border-box; width: 40px; height: 40px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
 .avatar-picker-cell[aria-checked="true"], .avatar-picker-cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .avatar-picker-cell > .bot-avatar { pointer-events: none; }
 .avatar-picker-swatch { width: 24px; height: 24px; border-radius: 50%; }
 .avatar-picker-preview { width: 96px; height: 96px; }
-.avatar-picker-upload { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.avatar-picker-upload input { max-width: 100%; }
 .bot-info-avatar { padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; line-height: 0; }

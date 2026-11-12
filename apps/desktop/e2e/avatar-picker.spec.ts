@@ -7,7 +7,6 @@ import { contrastRatio, type Rgba } from './visual/spec.js'
 import { seedVisualVault, CHAT_ID } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
 const apps: ElectronApplication[] = []
 const dirs: string[] = []
 
@@ -112,9 +111,6 @@ test.describe('avatar picker', () => {
     await face.getByRole('radio', { name: 'Face 4', exact: true }).click()
     await picker.locator('[data-part="palette"]').getByRole('radio', { name: 'Pink', exact: true }).click()
     await expect.poll(() => avatarOf(page, CHAT_ID)).toMatchObject({ face: 3, palette: 1 })
-    await picker.getByRole('tab', { name: 'Photo', exact: true }).click()
-    await picker.locator('input[type="file"]').setInputFiles({ name: 'one.png', mimeType: 'image/png', buffer: PNG })
-    await picker.getByRole('tab', { name: 'Character', exact: true }).click()
     await picker.getByTestId('avatar-picker-default').click()
     await expect.poll(() => avatarOf(page, CHAT_ID)).toBeNull()
     await expect.poll(() => page.evaluate(id => window.engram.botAvatarImage(id), CHAT_ID)).toBeNull()
@@ -146,19 +142,25 @@ test.describe('avatar picker', () => {
     expect(await row.evaluate(node => node.contains(document.activeElement))).toBe(false)
   })
 
-  test("a photo picked in the dialog is uploaded at Create and drawn as the bot's avatar", async () => {
+  test('the avatar picker has no photo upload', async () => {
     const page = await launch('light')
-    const before = new Set((await page.evaluate(() => window.engram.botsList())).map(bot => bot.id))
+    const noUpload = async (scope: Locator) => {
+      await expect(scope.getByRole('tab')).toHaveCount(0)
+      await expect(scope.locator('input[type="file"]')).toHaveCount(0)
+      await expect(scope.getByTestId('avatar-picker-file')).toHaveCount(0)
+      await expect(scope.getByText('PNG', { exact: false })).toHaveCount(0)
+    }
     const picker = await openPicker(page)
-    await page.getByTestId('create-bot-name').fill('Photo Bot')
-    await picker.getByRole('tab', { name: 'Photo', exact: true }).click()
-    await picker.locator('input[type="file"]').setInputFiles({ name: 'one.png', mimeType: 'image/png', buffer: PNG })
-    await page.getByTestId('create-bot-submit').click()
+    await expect(picker.getByTestId('avatar-picker-random')).toBeVisible()
+    await expect(picker.getByTestId('avatar-picker-default')).toBeVisible()
+    await noUpload(page.getByTestId('create-bot-dialog'))
+    await page.keyboard.press('Escape')
     await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
-    const created = (await page.evaluate(() => window.engram.botsList())).find(bot => !before.has(bot.id))
-    expect(created?.avatar).toEqual({ image: `bot-avatars/${created?.id}.png` })
-    const img = page.getByTestId(`bot-${created!.id}`).locator('img.bot-avatar-img')
-    await expect(img).toBeVisible()
-    expect(await img.getAttribute('src')).toMatch(/^blob:/)
+    await page.getByTestId(`bot-${CHAT_ID}`).click()
+    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+    await page.getByTestId('bot-info-avatar').click()
+    const pane = page.locator('#bot-info-avatar-picker')
+    await expect(pane.getByTestId('avatar-picker')).toBeVisible()
+    await noUpload(pane)
   })
 })

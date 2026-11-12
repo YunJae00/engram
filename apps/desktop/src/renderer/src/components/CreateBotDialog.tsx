@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
@@ -17,9 +17,7 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
   const created = useRef<BotDto | undefined>(undefined)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<Character | null>(null)
-  const [photo, setPhoto] = useState<{ data: Uint8Array; url: string } | null>(null)
   const character = useMemo(() => picked ?? previewCharacter(provisionalId), [picked, provisionalId])
-  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
 
   useLayoutEffect(() => {
     dialog.current?.showModal()
@@ -38,10 +36,8 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     if (!canCreate(name) || busy) return
     setBusy(true)
     const draft = { name, label: '', templateId: '', task: '', avatar: character }
-    const held = photo
     try {
-      const made = await createFromDraft(api, draft, created.current)
-      const bot = held ? await api.botAvatarSet(made.id, held.data).catch((failure: unknown) => { throw new CreateBotError(made, failure) }) : made
+      const bot = await createFromDraft(api, draft, created.current)
       onClose()
       onCreated(bot)
       requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
@@ -59,14 +55,13 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
       <h2 id="create-bot-title">{t('createBot.title')}</h2>
       <div className="create-bot-look">
         <div className="create-bot-preview" data-testid="create-bot-preview" data-avatar={`${character.body}-${character.face}-${character.accessory}-${character.palette}`}>
-          <BotAvatar id={provisionalId} override={photo ? { image: 'pending' } : character} imageUrl={photo?.url} size={96} state="idle" theme={theme} />
+          <BotAvatar id={provisionalId} override={character} size={96} state="idle" theme={theme} />
         </div>
         <button type="button" className="secondary" data-testid="create-bot-avatar-change" aria-expanded={picking} aria-controls={`avatar-picker-${provisionalId}`}
           onClick={() => setPicking(open => !open)}>{t('createBot.avatarChange')}</button>
       </div>
       {picking && <AvatarPicker id={provisionalId} primary={false} value={character} theme={theme}
-        onPick={next => { setPicked(next); setPhoto(null) }} onDefault={() => { setPicked(null); setPhoto(null) }}
-        onPhoto={data => setPhoto({ data, url: URL.createObjectURL(new Blob([data as BlobPart], { type: data[0] === 0x89 ? 'image/png' : 'image/jpeg' })) })} />}
+        onPick={setPicked} onDefault={() => setPicked(null)} />}
       <label className="create-bot-field">
         <span>{t('createBot.name')}</span>
         <input ref={nameInput} data-testid="create-bot-name" value={name} maxLength={60} onChange={event => setName(event.target.value)} />
