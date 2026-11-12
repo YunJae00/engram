@@ -95,6 +95,7 @@ export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRul
 export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_CARD_TTL_MS, routineCardExpired, serializeReviewRules, type ReviewAction, type ReviewDecision, type ReviewRule, type ReviewRuleKind } from './review-rules.js'
 export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'
 export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools.js'
+export { teamTool } from './team-tools.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,

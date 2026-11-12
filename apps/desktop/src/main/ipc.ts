@@ -38,7 +38,7 @@ import {
   listCards,
   loadAliasGroups,
   addBotTask,
-  scheduleTool,
+  scheduleTool, teamTool,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -342,7 +342,7 @@ const WALL_HOLD_MS = 10 * 60_000
 // A provider failing on its side usually answers again within seconds to minutes.
 const OUTAGE_RESEND_MS = 15_000
 // Tools that change files or applications; plan mode leaves them off.
-const PLAN_BLOCKED = /^(file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
+const PLAN_BLOCKED = /^(new_bot|file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
 const wallHolds = new Map<string, () => void>()
 function releaseWallHold(channel: string): void {
   const release = wallHolds.get(channel)
@@ -2432,7 +2432,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length))] : []),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })] : []),
     deskActivityTool,
     notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),

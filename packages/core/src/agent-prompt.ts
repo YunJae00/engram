@@ -317,6 +317,7 @@ export function wrapUpPrompt(
 
 // Prioritize capabilities before applying the small-model menu limit.
 const MENU_CAP = 5
+const NEW_BOT = /new (bot|comet)|\b(make|create|set up|add) (me )?(a|an|another)( new)? (bot|comet)\b|새(로운)?\s*(봇|코멧)|(봇|코멧)(을|를)?\s*(하나\s*)?(더\s*)?(만들|생성|추가)/i
 
 export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[], conversed = false): AgentTool[] {
   const by = (name: string): AgentTool | undefined => all.find((t) => t.name === name)
@@ -376,6 +377,8 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const skill = by('open_skill')
   const draft = by('draft_routine')
   if (draft && /routine|루틴/i.test(task) && !picked.includes(draft)) picked.push(draft)
+  const newBot = by('new_bot')
+  if (newBot && NEW_BOT.test(task) && !picked.includes(newBot)) picked.push(newBot)
   if (skill && !picked.includes(skill)) picked.push(skill)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
   const evidence = /screenshot|reproduc|evidence|upload|attach|verify|스크린샷|재현|증거|첨부|업로드|검증/i.test(task)

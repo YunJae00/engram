@@ -30,12 +30,28 @@ function described(task: BotTask): Record<string, string> {
   return { id: task.id, what: task.goal, when: task.schedule ? scheduleWords(task.schedule) : 'not scheduled', ...(task.watch ? { onlyWhenNew: task.watch.tool } : {}), ...(task.lastRunAt ? { lastRun: task.lastRunAt } : {}) }
 }
 
+export function scheduleFrom(args: Record<string, unknown>, now: Date): Schedule {
+  const every = args['every']
+  if (every !== undefined && (!Number.isInteger(every) || (every as number) < EVERY_MIN || (every as number) > EVERY_MAX)) throw new Error(`every is whole minutes, ${EVERY_MIN} to ${EVERY_MAX}.`)
+  const time = TIME.exec(typeof args['time'] === 'string' ? args['time'].trim() : every !== undefined && args['time'] === undefined ? '00:00' : '')
+  if (!time) throw new Error('time is the local time as HH:MM, 24-hour.')
+  const date = typeof args['date'] === 'string' ? args['date'].trim() : undefined
+  if (date && every !== undefined) throw new Error('every repeats on days; leave date out.')
+  const days = Array.isArray(args['days']) ? [...new Set(args['days'] as number[])].sort((a, b) => a - b) : every !== undefined ? [0, 1, 2, 3, 4, 5, 6] : []
+  if (!date && !days.length) throw new Error('Give days (0 Sunday to 6 Saturday) for a repeat, or date (YYYY-MM-DD) for once.')
+  const schedule: Schedule = { days: date ? [] : days, hour: Number(time[1]), minute: Number(time[2]), ...(date ? { on: date } : {}), ...(every !== undefined ? { every: every as number } : {}) }
+  if (!isSchedule(schedule)) throw new Error('days are whole numbers 0 to 6 and date is a real day as YYYY-MM-DD.')
+  if (date && (date < localDay(now) || (date === localDay(now) && schedule.hour * 60 + schedule.minute < now.getHours() * 60 + now.getMinutes())))
+    throw new Error(`That time has passed; it is now ${localDay(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}.`)
+  return schedule
+}
+
 export function scheduleTool(deps: ScheduleDeps): AgentTool {
   const watchable = deps.watchable ?? []
   const watchNote = watchable.length ? ` onlyWhenNew {tool, args} (tool one of ${watchable.join(', ')}, args as that tool takes them) makes each run wait until that listing shows items not seen at the last run; the new items come with the request.` : ''
   return {
     name: 'schedule',
-    description: `Keep something the person wants done later, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone in a new conversation), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. every (minutes, ${EVERY_MIN} to ${EVERY_MAX}) repeats it on those days from that time, answering in one conversation.${watchNote} At that time it runs in a new conversation and the result waits in their notifications (the bell by the search box). "list" shows everything kept; "remove" with id stops one. Only when they ask for something later or repeated.`,
+    description: `Keep something the person wants done later, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone in a new conversation), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. every (minutes, ${EVERY_MIN} to ${EVERY_MAX}) repeats it on those days from that time, answering in one conversation.${watchNote} At that time it runs in a new conversation and the result waits in their notifications (the bell by the search box). "list" shows everything kept; "remove" with id stops one. Only when they ask for something later or repeated. Kept on this bot; when they ask for a new bot to do it, use new_bot instead.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['action'],
       properties: {
@@ -61,16 +77,7 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
       if (action !== 'add') throw new Error('action is "add", "list" or "remove".')
       const what = typeof args['what'] === 'string' ? args['what'].trim() : ''
       if (!what || what.length > 500) throw new Error('what is the request to run, 1 to 500 characters.')
-      const every = args['every']
-      if (every !== undefined && (!Number.isInteger(every) || (every as number) < EVERY_MIN || (every as number) > EVERY_MAX)) throw new Error(`every is whole minutes, ${EVERY_MIN} to ${EVERY_MAX}.`)
-      const time = TIME.exec(typeof args['time'] === 'string' ? args['time'].trim() : every !== undefined && args['time'] === undefined ? '00:00' : '')
-      if (!time) throw new Error('time is the local time as HH:MM, 24-hour.')
-      const date = typeof args['date'] === 'string' ? args['date'].trim() : undefined
-      if (date && every !== undefined) throw new Error('every repeats on days; leave date out.')
-      const days = Array.isArray(args['days']) ? [...new Set(args['days'] as number[])].sort((a, b) => a - b) : every !== undefined ? [0, 1, 2, 3, 4, 5, 6] : []
-      if (!date && !days.length) throw new Error('Give days (0 Sunday to 6 Saturday) for a repeat, or date (YYYY-MM-DD) for once.')
-      const schedule: Schedule = { days: date ? [] : days, hour: Number(time[1]), minute: Number(time[2]), ...(date ? { on: date } : {}), ...(every !== undefined ? { every: every as number } : {}) }
-      if (!isSchedule(schedule)) throw new Error('days are whole numbers 0 to 6 and date is a real day as YYYY-MM-DD.')
+      const schedule = scheduleFrom(args, deps.now?.() ?? new Date())
       const asked = args['onlyWhenNew']
       let watch: TaskWatch | undefined
       if (asked !== undefined) {
@@ -81,9 +88,6 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
         if (typeof toolArgs !== 'object' || toolArgs === null || Array.isArray(toolArgs)) throw new Error('onlyWhenNew.args is an object.')
         watch = { tool, args: toolArgs as Record<string, unknown> }
       }
-      const now = deps.now?.() ?? new Date()
-      if (date && (date < localDay(now) || (date === localDay(now) && schedule.hour * 60 + schedule.minute < now.getHours() * 60 + now.getMinutes())))
-        throw new Error(`That time has passed; it is now ${localDay(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}.`)
       const task = await deps.add({ name: what.slice(0, 60), goal: what, schedule, ...(watch ? { watch } : {}) })
       return JSON.stringify({ scheduled: described(task), note: 'Say back in one line what will run and when.' })
     },
