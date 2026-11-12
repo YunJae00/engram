@@ -14,7 +14,7 @@ const TURNS = [
 const apps: ElectronApplication[] = []
 const dirs: string[] = []
 
-async function launch(): Promise<{ page: Page; id: string }> {
+async function launch(): Promise<{ page: Page }> {
   await mkdir(TMP, { recursive: true })
   const vault = await mkdtemp(join(TMP, 'e2e-fresh-start-')), profile = await mkdtemp(join(TMP, 'e2e-fresh-start-profile-'))
   dirs.push(vault, profile)
@@ -38,11 +38,8 @@ async function launch(): Promise<{ page: Page; id: string }> {
   await expect(page.getByTestId('shell')).toBeVisible()
   await page.locator(`[data-testid="bot-${id}"]`).first().click()
   for (const turn of TURNS) await expect(page.getByTestId('bots-thread')).toContainText(turn.text)
-  return { page, id }
+  return { page }
 }
-
-const dialog = (page: Page) => page.locator('[role="dialog"][data-testid="bots-fresh-confirm"]')
-const fresh = (page: Page) => page.locator('[data-testid="bots-view"] [data-testid="bots-fresh"]')
 
 test.afterEach(async () => {
   while (apps.length) await closeTestApp(apps.pop())
@@ -50,47 +47,15 @@ test.afterEach(async () => {
 })
 
 test.describe('start over', () => {
-  test('Cancel and Escape leave the conversation untouched', async () => {
-    const { page, id } = await launch()
-    const transcript = await page.evaluate(botId => window.engram.botTranscript(botId), id)
-    const untouched = async () => {
-      await expect(dialog(page)).toHaveCount(0)
-      for (const turn of TURNS) await expect(page.getByTestId('bots-thread')).toContainText(turn.text)
-      expect(await page.evaluate(botId => window.engram.botTranscript(botId), id)).toEqual(transcript)
-      expect(await page.evaluate(botId => window.engram.botConversations(botId), id)).toEqual([])
-    }
-    await fresh(page).click()
-    await expect(dialog(page)).toBeVisible()
-    await dialog(page).getByTestId('bots-fresh-confirm-cancel').click()
-    await untouched()
-    await fresh(page).click()
-    await expect(dialog(page)).toBeVisible()
-    await page.keyboard.press('Escape')
-    await untouched()
-  })
-
-  test('Start over button sits at the top right of the chat and is named', async () => {
+  test('the chat has no start-over button', async () => {
     const { page } = await launch()
-    await expect(fresh(page)).toBeVisible()
-    await expect(fresh(page)).toHaveAttribute('aria-label', 'New chat')
-    const box = await page.evaluate(() => {
-      const rect = (sel: string) => document.querySelector(`[data-testid="bots-view"] ${sel}`)!.getBoundingClientRect().toJSON() as DOMRect
-      const chat = document.querySelector('[data-testid="bots-view"] .bots-chat')!
-      const slot = parseFloat(getComputedStyle(chat, '::before').height)
-      return { button: rect('[data-testid="bots-fresh"]'), chat: rect('.bots-chat'), pill: rect('[data-testid="bots-title-pill"]'), thread: rect('[data-testid="bots-thread"]'), slot }
-    })
-    expect(Math.abs(box.button.width - 36)).toBeLessThanOrEqual(1)
-    expect(Math.abs(box.button.height - 36)).toBeLessThanOrEqual(1)
-    expect(Math.abs(box.button.top - box.chat.top - 8)).toBeLessThanOrEqual(2)
-    expect(Math.abs(box.chat.right - box.button.right - 16)).toBeLessThanOrEqual(2)
-    const overlaps = box.button.left < box.pill.right && box.pill.left < box.button.right && box.button.top < box.pill.bottom && box.pill.top < box.button.bottom
-    expect(overlaps).toBe(false)
-    expect(box.slot).toBeGreaterThan(0)
-    expect(Math.abs(box.thread.top - box.chat.top - box.slot)).toBeLessThanOrEqual(1)
-    await fresh(page).click()
-    await dialog(page).getByTestId('bots-fresh-confirm-ok').click()
-    await expect(dialog(page)).toHaveCount(0)
-    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('bots-input')
-    await expect(page.getByTestId('bots-thread')).not.toContainText(TURNS[0]!.text)
+    const chat = page.locator('[data-testid="bots-view"] .bots-chat')
+    await expect(chat.getByTestId('bots-title-pill')).toBeVisible()
+    await expect(chat.getByTestId('bots-input')).toBeVisible()
+    await expect(page.getByTestId('bots-fresh')).toHaveCount(0)
+    await expect(chat.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)
+    await expect(chat.locator('.lucide-message-square-plus')).toHaveCount(0)
+    await expect(page.getByTestId('bots-fresh-confirm')).toHaveCount(0)
+    for (const turn of TURNS) await expect(page.getByTestId('bots-thread')).toContainText(turn.text)
   })
 })

@@ -24,9 +24,6 @@ import { useCometState, useShellState } from '../state-slices.js'
 import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 import { BotEmpty } from '../components/BotEmpty.js'
-import { MessageSquarePlus } from 'lucide-react'
-import { FreshStartDialog } from '../components/FreshStartDialog.js'
-import { startOver } from '../lib/freshStart.js'
 import { takeOnboardBot } from '../lib/onboardBot.js'
 
 // The first tab: bots as colleagues, not a feature behind a palette. Each bot
@@ -150,15 +147,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
     return false
   }
 
-  const [freshId, setFreshId] = useState<string | null>(null), [freshBusy, setFreshBusy] = useState(false)
-  const freshPending = useRef(false), freshFocus = useRef(false)
-  useEffect(() => { if (freshId || !freshFocus.current) return; freshFocus.current = false; document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus() }, [freshId])
-  const confirmFresh = async (id: string) => {
-    if (freshPending.current) return
-    freshPending.current = true; setFreshBusy(true)
-    try { await startOver(api, cometThreads, id); freshFocus.current = true } catch (error) { showToast(String(error)) } finally { freshPending.current = false; setFreshBusy(false); setFreshId(null) }
-  }
-
   const stop = async () => {
     if (!selected) return
     cometThreads.stop(selected.id, t('bubble.stopped'))
@@ -174,7 +162,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
             <BotTitlePill bot={selected} open={info === 'open'} onToggle={toggleInfo} />
-            <button type="button" className="bots-fresh" data-testid="bots-fresh" aria-label={t('bots.fresh')} title={t('bots.freshHint')} onClick={() => setFreshId(selected.id)}><MessageSquarePlus size={16} strokeWidth={1.8} aria-hidden /></button>
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
@@ -230,7 +217,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
         )}
       </section>
       {selected && info !== 'closed' && <BotInfoPane key={selected.id} bot={selected} entering={infoEnter === selected.id} closing={info === 'closing'} onClose={closeInfo} onClosed={finishInfoClose} onEntered={() => setInfoEnter(null)} />}
-      {freshId && <FreshStartDialog busy={freshBusy} onCancel={() => { if (!freshPending.current) setFreshId(null) }} onConfirm={() => void confirmFresh(freshId)} />}
     </div>
   )
 })
