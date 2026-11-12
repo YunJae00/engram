@@ -25,7 +25,9 @@ export async function run(page, { app, paths, expect, openActivity }) {
   const count = async n => { await expect(deck.locator('.preview-deck-card')).toHaveCount(n); await settle(page) }
   const visible = async () => { await expect(card).toBeVisible(); await settle(page) }
   let flow
-  const expectFlow = async label => expect(await flowGeometry(page), label).toEqual(flow)
+  // Bubbles may reflow sideways to clear the card; the thread box, the composer and every bubble's top and height must not move.
+  const vertical = geometry => [geometry[0], geometry[1], ...geometry.slice(2).map(([, y, , height]) => [y, height])]
+  const expectFlow = async label => expect(vertical(await flowGeometry(page)), label).toEqual(vertical(flow))
 
   // Live rendering: a real PNG paints into the card without a web pane, docked at the top right over a full-height thread until dragged.
   await settle(page)

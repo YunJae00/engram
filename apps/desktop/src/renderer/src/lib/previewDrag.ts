@@ -1,12 +1,15 @@
-import { useEffect, type RefObject } from 'react'
+import { useLayoutEffect, type RefObject } from 'react'
 
 type Point = { x: number; y: number }
-type Bounds = { width: number; floor: number; depth: number }
+type Bounds = { width: number; room: number; floor: number; depth: number }
 type Drag = { id: number; start: Point; last: Point; origin: Point; shown: Point; provisional?: Point; moved: boolean }
 
 const SPACING = 30
 const MIN_CARD = 44
 const DOCK_INSET = 12
+const TEXT_LANE = 120
+const CLEAR_GAP = 12
+const CLEAR_VAR = '--live-clear-right'
 const FIT_VARS = ['--live-fit-width', '--live-fit-stage', '--live-fit-space']
 // Committed lane preferences for this renderer lifetime; a drag writes one only on release.
 const positions = new Map<string, Point>()
@@ -26,7 +29,7 @@ export function fitSpacing(width: number, floor: number, stack: number, spacing 
 const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y
 
 export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean, lane: string): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const deck = ref.current
     const chat = deck?.parentElement
     if (!enabled || !deck || !chat) return
@@ -37,12 +40,21 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const flag = (name: string, on: boolean) => { if (deck.hasAttribute(name) !== on) { if (on) deck.setAttribute(name, ''); else deck.removeAttribute(name) } }
     const shown = (): Point => ({ x: deck.offsetLeft, y: deck.offsetTop })
     const stack = () => Math.min(3, Math.max(0, Number(deck.style.getPropertyValue('--deck-depth')) || 0))
+    const spaced = () => stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0)
+    // The docked deck leaves chat text a readable lane on its left: the thread's own left padding plus TEXT_LANE and a gap.
+    const textLane = () => (thread ? parseFloat(getComputedStyle(thread).paddingLeft) || 0 : 0) + TEXT_LANE + CLEAR_GAP
     const bounds = (docked = false): Bounds | undefined => {
       const width = chat.clientWidth, height = chat.clientHeight
       if (!width || !height) return undefined
       const floor = Math.min(thread ? thread.offsetTop + thread.offsetHeight : height, height)
-      if (docked) return { width, floor: floor - DOCK_INSET, depth: 0 }
-      return { width, floor, depth: stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0) }
+      if (docked) return { width, room: width - textLane() - DOCK_INSET, floor: floor - DOCK_INSET, depth: 0 }
+      return { width, room: width, floor, depth: spaced() }
+    }
+    // Only the docked deck pushes bubbles left; a card the person dragged floats over the chat as before.
+    const clear = () => {
+      if (!thread || deck.hasAttribute('data-suspended') || deck.hasAttribute('data-floating')) { chat.style.removeProperty(CLEAR_VAR); return }
+      const value = `${Math.ceil(chat.clientWidth - (deck.offsetLeft - spaced()) + CLEAR_GAP)}px`
+      if (chat.style.getPropertyValue(CLEAR_VAR) !== value) chat.style.setProperty(CLEAR_VAR, value)
     }
     const place = (point: Point, { width, floor, depth }: Bounds): Point => {
       const next = clampPreview(point, width, floor, deck.offsetWidth, deck.offsetHeight, depth)
@@ -61,12 +73,12 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       if (settle) layout()
     }
     const fit = (space: Bounds) => {
-      const spacing = fitSpacing(space.width, space.floor, stack())
+      const spacing = fitSpacing(space.room, space.floor, stack())
       const depth = stack() * spacing
       for (const name of FIT_VARS) style(name, '')
       const natural = { width: deck.offsetWidth, height: deck.offsetHeight }
       style('--live-fit-space', `${spacing}px`)
-      style('--live-fit-width', `${Math.min(natural.width, space.width - depth)}px`)
+      style('--live-fit-width', `${Math.min(natural.width, space.room - depth)}px`)
       style('--live-fit-stage', `${Math.min(natural.height, space.floor - depth)}px`)
       return { ...space, depth }
     }
@@ -75,7 +87,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       for (const name of ['left', 'top', 'right']) style(name, '')
       flag('data-floating', false)
       const space = bounds(true)
-      const room = !!space && space.width >= MIN_CARD && space.floor >= MIN_CARD
+      const room = !!space && space.room >= MIN_CARD && space.floor >= MIN_CARD
       flag('data-suspended', !room)
       if (space && room) fit(space)
     }
@@ -83,13 +95,14 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const layout = () => {
       if (!live) return
       const requested = drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)
-      if (!requested) { dock(); return }
+      if (!requested) { dock(); clear(); return }
       flag('data-floating', true)
       const space = bounds()
-      if (!space) { finish(false, false); return }
-      if (space.width < MIN_CARD || space.floor < MIN_CARD) { finish(false, false); flag('data-suspended', true); return }
+      if (!space) { finish(false, false); clear(); return }
+      if (space.room < MIN_CARD || space.floor < MIN_CARD) { finish(false, false); flag('data-suspended', true); clear(); return }
       flag('data-suspended', false)
       const next = place(requested, fit(space))
+      clear()
       if (drag?.moved) { drag.origin = next; drag.start = drag.last; drag.shown = next; drag.provisional = next }
     }
     const down = (event: PointerEvent) => {
@@ -117,6 +130,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       if (!space) return
       drag.shown = place(target, space)
       drag.provisional = drag.shown
+      clear()
     }
     const up = (event: PointerEvent) => { if (drag?.id === event.pointerId) finish(true) }
     const cancel = (event: PointerEvent) => { if (drag?.id === event.pointerId) finish(false) }
@@ -145,6 +159,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     return () => {
       live = false
       finish(false, false)
+      chat.style.removeProperty(CLEAR_VAR)
       resize.disconnect()
       depthWatch.disconnect()
       deck.removeEventListener('pointerdown', down)

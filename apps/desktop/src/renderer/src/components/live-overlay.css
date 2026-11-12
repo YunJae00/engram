@@ -10,3 +10,4 @@
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 30px)); --deck-y: calc(-1 * var(--live-fit-space, 30px)); }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 30px)); --deck-y: calc(-3 * var(--live-fit-space, 30px)); }
+.bots-chat > .bots-thread { padding-right: max(var(--reading-gutter), var(--live-clear-right, 0px)); }
