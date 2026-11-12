@@ -181,26 +181,10 @@ test.describe.serial('sidebar search expands in place', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
   })
 
-  test('the notices inbox opens from the sidebar footer, not the header', async () => {
+  test('the sidebar has no notifications bell; the footer keeps status and settings', async () => {
     await showSidebar()
-    await expect(page.locator('.sidebar-footer [data-testid="notices-bell"]')).toHaveCount(1)
-    await expect(page.locator('.sidebar-library-tools [data-testid="notices-bell"], .app-sidebar-head [data-testid="notices-bell"]')).toHaveCount(0)
-    const bell = page.getByTestId('notices-bell')
-    await expect(bell).toHaveAttribute('aria-label', 'Notifications')
-    for (const size of [{ width: 1280, height: 800 }, { width: 780, height: 720 }]) {
-      await page.setViewportSize(size)
-      await showSidebar()
-      await bell.click()
-      const panel = page.getByTestId('notices-panel')
-      await expect(panel).toBeVisible()
-      const [box, button] = [await panel.boundingBox(), await bell.boundingBox()]
-      expect(box!.y + box!.height).toBeLessThanOrEqual(button!.y)
-      expect(box!.y).toBeGreaterThanOrEqual(0)
-      expect(box!.x).toBeGreaterThanOrEqual(8)
-      expect(box!.x + box!.width).toBeLessThanOrEqual(size.width - 8)
-      await page.keyboard.press('Escape')
-      await expect(panel).toBeHidden()
-    }
-    await page.setViewportSize({ width: 1280, height: 800 })
+    await expect(page.locator('.app-sidebar [data-testid="notices-bell"]')).toHaveCount(0)
+    await expect(page.locator('.sidebar-footer > .sidebar-status-block')).toBeVisible()
+    await expect(page.locator('.sidebar-footer [data-testid="activity-settings"]')).toBeVisible()
   })
 })

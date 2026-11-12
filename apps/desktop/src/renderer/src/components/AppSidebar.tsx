@@ -1,5 +1,4 @@
 import { ArrowLeft, FolderPlus, PanelLeftClose, Plus, Repeat2, Search, Settings, X } from 'lucide-react'
-import { NoticesBell } from './NoticesBell.js'
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import type { BotDto, RoutineDto, SidebarLayout, SidebarKind, SidebarChange } from '../../../shared/types.js'
@@ -154,7 +153,6 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     </>}
     <footer className="sidebar-footer">
       <SidebarStatus />
-      {!library && !developer && <NoticesBell disabled={!vaultReady} onOpen={openBot} />}
       <button data-testid="activity-settings" aria-label={t('sidebar.settings')} title={t('sidebar.settings')} onClick={onOpenSettings}><Settings size={16} aria-hidden /><span>{t('sidebar.settings')}</span></button>
     </footer>
     {creatingBot && <CreateBotDialog onClose={() => setCreatingBot(false)} onCreated={bot => openBot(bot.id)} />}

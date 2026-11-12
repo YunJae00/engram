@@ -1,5 +1,4 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { addNotice, vaultPaths } from 'core'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,8 +36,6 @@ test.describe.serial('bot avatar ui', () => {
     const vault = await mkdtemp(join(TMP, 'e2e-bot-avatar-ui-')), profile = await mkdtemp(join(TMP, 'e2e-bot-avatar-ui-profile-'))
     dirs.push(vault, profile)
     await seedVisualVault(vault)
-    await addNotice(vaultPaths(vault), { kind: 'system', title: 'Garden notice', text: 'From the garden planner', botId: 'vis-chat' })
-    await addNotice(vaultPaths(vault), { kind: 'system', title: 'Plain notice', text: 'No conversation' })
     await writeFile(join(profile, 'settings.json'), JSON.stringify({ theme: 'light' }))
     app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
       ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: profile,
@@ -116,19 +113,6 @@ test.describe.serial('bot avatar ui', () => {
     }, { type: 'chat:error', channel: 'bot-vis-primary', message: 'Could not finish' })
     await emit('vis-primary', false)
     await clear('error')
-  })
-
-  test('the bell shows the notice bot avatar or the comet face', async () => {
-    await page.getByTestId('notices-bell').click()
-    const garden = page.getByTestId('notices-item').filter({ hasText: 'Garden notice' })
-    const avatar = garden.locator('.notices-item-icon .bot-avatar[data-size="20"][data-state="idle"]')
-    await expect(avatar).toBeVisible()
-    await square(avatar, 20)
-    await expect(garden.locator('[data-icon="comet-face"]')).toHaveCount(0)
-    const plain = page.getByTestId('notices-item').filter({ hasText: 'Plain notice' })
-    await expect(plain.locator('.notices-item-icon [data-icon="comet-face"]')).toHaveCount(1)
-    await expect(plain.locator('.bot-avatar')).toHaveCount(0)
-    await page.keyboard.press('Escape')
   })
 
   test('avatars come back after a reload', async () => {
