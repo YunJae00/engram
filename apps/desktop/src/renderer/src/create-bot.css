@@ -5,9 +5,6 @@
 .create-bot-look { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .create-bot-preview { display: flex; width: 96px; height: 96px; }
 .create-bot-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--fs-meta); color: var(--fg-faint); }
-.create-bot-field input, .create-bot-field select, .create-bot-field textarea { width: 100%; box-sizing: border-box; font-size: var(--fs-body); color: var(--fg); }
-.create-bot-field textarea { resize: vertical; }
+.create-bot-field input { width: 100%; box-sizing: border-box; font-size: var(--fs-body); color: var(--fg); }
 .create-bot-error { margin: 0; font-size: var(--fs-meta); color: var(--danger); }
 .create-bot-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.create-bot-more[open] { display: flex; flex-direction: column; gap: 14px; }
-.create-bot-more summary { width: fit-content; cursor: pointer; font-size: var(--fs-meta); color: var(--fg-faint); }

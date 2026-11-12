@@ -1,9 +1,7 @@
-// Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the New bot dialog with name, label,
-// template, first-task fields and a 96px avatar preview; an empty or blank name creates nothing; Create adds exactly one
-// bot, opens its chat with the composer focused and keeps the previewed character; Cmd/Ctrl+N opens the dialog; the
-// Photo tab uploads a PNG that becomes the bot's avatar. Until rd-create-bot-dialog, rd-create-shortcut and
-// rd-avatar-picker land, the dialog, shortcut and picker do not exist and this scenario returns ok:false with evidence
-// naming the failed checks; that is the expected result on current code.
+// Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the name-only New bot dialog (name and a
+// 96px avatar preview, no first-task, label or More options); an empty or blank name creates nothing; Create adds exactly
+// one bot, opens its chat with the composer focused and keeps the previewed character; Cmd/Ctrl+N opens the dialog; the
+// Photo tab uploads a PNG that becomes the bot's avatar.
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -43,11 +41,6 @@ export async function run(page, { paths }) {
   const NEW_ITEM = page.locator(NEW_ITEM_SEL)
   const DIALOG = page.locator(DIALOG_SEL)
   const NAME = DIALOG.locator('[data-testid="create-bot-name"]')
-  const LABEL = DIALOG.locator('[data-testid="create-bot-label"]')
-  const TEMPLATE = DIALOG.locator('[data-testid="create-bot-template"]')
-  const MORE = DIALOG.locator('[data-testid="create-bot-more"]')
-  const openMore = async () => { if (await MORE.getAttribute('open', { timeout: WAIT_MS }) === null) await MORE.locator('summary').click({ timeout: WAIT_MS }) }
-  const TASK = DIALOG.locator('[data-testid="create-bot-task"]')
   const SUBMIT = DIALOG.locator('[data-testid="create-bot-submit"]')
   const CHANGE = DIALOG.locator('[data-testid="create-bot-avatar-change"]')
   const PREVIEW = DIALOG.locator(PREVIEW_SEL)
@@ -87,11 +80,11 @@ export async function run(page, { paths }) {
   const opened = await check('plus-opens', async () => {
     const open = await openFromPlus()
     if (open) return open
-    for (const [loc, what] of [[NAME, 'create-bot-name'], [TASK, 'create-bot-task'], [SUBMIT, 'create-bot-submit'], [MORE, 'create-bot-more']]) {
+    for (const [loc, what] of [[NAME, 'create-bot-name'], [SUBMIT, 'create-bot-submit']]) {
       if (!await loc.isVisible()) return `${what} not visible`
     }
-    for (const [loc, what] of [[LABEL, 'create-bot-label'], [TEMPLATE, 'create-bot-template']]) {
-      if (await loc.isVisible()) return `${what} visible before More options is opened`
+    for (const id of ['create-bot-task', 'create-bot-label', 'create-bot-more', 'create-bot-template']) {
+      if (await DIALOG.locator(`[data-testid="${id}"]`).count()) return `${id} present in the name-only dialog`
     }
     if (!await PREVIEW.isVisible()) return 'create-bot-preview avatar not visible'
     const box = await PREVIEW.boundingBox()
@@ -101,10 +94,6 @@ export async function run(page, { paths }) {
     const fill = await fillOf(PREVIEW.locator('.bot-avatar-body').first())
     if (!fill?.trim()) return 'preview .bot-avatar-body has no fill'
     FILL = fill
-    await openMore()
-    for (const [loc, what] of [[LABEL, 'create-bot-label'], [TEMPLATE, 'create-bot-template']]) {
-      if (!await loc.isVisible()) return `${what} not visible after More options is opened`
-    }
     return ''
   })
 
@@ -124,8 +113,6 @@ export async function run(page, { paths }) {
   // N3
   await check('create-opens-chat', async () => {
     await NAME.fill('Created Bot', { timeout: WAIT_MS })
-    await openMore()
-    await LABEL.fill('zq label', { timeout: WAIT_MS })
     await SUBMIT.click({ timeout: WAIT_MS })
     const shut = await until(closed)
     if (shut) return shut
@@ -138,7 +125,7 @@ export async function run(page, { paths }) {
     })
     if (added) return added
     if (C.name !== 'Created Bot') return `name ${JSON.stringify(C.name)}, expected 'Created Bot'`
-    if (C.label !== 'zq label') return `label ${JSON.stringify(C.label)}, expected 'zq label'`
+    if (C.label) return `label ${JSON.stringify(C.label)}, expected none`
     const row = page.locator(ROW_SEL(C.id))
     if ((await row.count()) !== 1) return `${await row.count()} sidebar rows for the new bot, expected 1`
     if (!await row.isVisible()) return 'new bot row not visible'

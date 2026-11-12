@@ -1,56 +1,31 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { BotDto, BotTemplateDto } from '../../../shared/types.js'
+import type { BotDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { sendCometMessage } from '../lib/attachments.js'
-import { cometThreads } from '../lib/cometThreadsLive.js'
-import { canCreate, clipLabel, createFromDraft, CreateBotError, previewCharacter, templatePrefill, type Character } from '../lib/createBot.js'
-import { withPart } from '../lib/avatarPicker.js'
+import { canCreate, createFromDraft, CreateBotError, previewCharacter, type Character } from '../lib/createBot.js'
 import { AvatarPicker } from './AvatarPicker.js'
-import { useShellState } from '../state-slices.js'
 import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 
 export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCreated(bot: BotDto): void }) {
   const dialog = useRef<HTMLDialogElement>(null), nameInput = useRef<HTMLInputElement>(null)
-  const { showToast } = useShellState()
   const theme = useAvatarTheme()
   const [provisionalId] = useState(() => `new-${crypto.randomUUID()}`)
   const [name, setName] = useState('')
-  const [label, setLabel] = useState('')
-  const [templateId, setTemplateId] = useState('')
-  const [accessory, setAccessory] = useState(0)
-  const [task, setTask] = useState('')
-  const [templates, setTemplates] = useState<BotTemplateDto[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<'' | 'createBot.failed' | 'createBot.saveFailed'>('')
   const created = useRef<BotDto | undefined>(undefined)
   const [picking, setPicking] = useState(false)
   const [picked, setPicked] = useState<Character | null>(null)
   const [photo, setPhoto] = useState<{ data: Uint8Array; url: string } | null>(null)
-  const character = useMemo(() => picked ?? previewCharacter(provisionalId, accessory), [picked, provisionalId, accessory])
+  const character = useMemo(() => picked ?? previewCharacter(provisionalId), [picked, provisionalId])
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
 
   useLayoutEffect(() => {
     dialog.current?.showModal()
     nameInput.current?.focus()
   }, [])
-  useEffect(() => {
-    let live = true
-    api.botTemplates().then(list => { if (live) setTemplates(list) }, () => undefined)
-    return () => { live = false }
-  }, [])
 
-  const pickTemplate = (id: string) => {
-    setTemplateId(id)
-    const template = templates.find(one => one.id === id)
-    if (!template) { setAccessory(0); return }
-    const prefill = templatePrefill(template)
-    setName(prefill.name)
-    setLabel(clipLabel(prefill.label))
-    setAccessory(prefill.accessory)
-    setPicked(prior => prior && withPart(prior, 'accessory', prefill.accessory))
-  }
   const cancel = () => { if (!busy) onClose() }
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return
@@ -62,14 +37,13 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
     event.preventDefault()
     if (!canCreate(name) || busy) return
     setBusy(true)
-    const draft = { name, label, templateId, task, avatar: character }
+    const draft = { name, label: '', templateId: '', task: '', avatar: character }
     const held = photo
     try {
       const made = await createFromDraft(api, draft, created.current)
       const bot = held ? await api.botAvatarSet(made.id, held.data).catch((failure: unknown) => { throw new CreateBotError(made, failure) }) : made
       onClose()
       onCreated(bot)
-      if (draft.task.trim()) sendCometMessage(api, cometThreads, bot.id, draft.task).catch((failure: unknown) => showToast(String(failure)))
       requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
     } catch (failure) {
       if (failure instanceof CreateBotError) created.current = failure.bot
@@ -97,24 +71,6 @@ export function CreateBotDialog({ onClose, onCreated }: { onClose(): void; onCre
         <span>{t('createBot.name')}</span>
         <input ref={nameInput} data-testid="create-bot-name" value={name} maxLength={60} onChange={event => setName(event.target.value)} />
       </label>
-      <label className="create-bot-field">
-        <span>{t('createBot.task')}</span>
-        <textarea data-testid="create-bot-task" rows={3} value={task} onChange={event => setTask(event.target.value)} />
-      </label>
-      <details className="create-bot-more" data-testid="create-bot-more">
-        <summary>{t('sidebar.more')}</summary>
-        <label className="create-bot-field">
-          <span>{t('createBot.label')}</span>
-          <input data-testid="create-bot-label" value={label} onChange={event => setLabel(clipLabel(event.target.value))} />
-        </label>
-        <label className="create-bot-field">
-          <span>{t('createBot.template')}</span>
-          <select data-testid="create-bot-template" value={templateId} onChange={event => pickTemplate(event.target.value)}>
-            <option value="">{t('createBot.templateNone')}</option>
-            {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
-        </label>
-      </details>
       {error && <p className="create-bot-error" role="alert">{t(error)}</p>}
       <div className="create-bot-actions">
         <button type="button" className="secondary" onClick={cancel} disabled={busy}>{t('createBot.cancel')}</button>
