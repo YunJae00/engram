@@ -1,5 +1,6 @@
 import type { EngramApi } from '../../shared/types.js'
 import { ko } from './i18n-ko'
+import { withParticles } from './lib/koParticle'
 
 export const en = {
   'mission.title': 'Orbit',
@@ -1334,6 +1335,7 @@ export function tIn(lang: 'ko' | 'en', key: StringKey, vars?: Record<string, str
   let template: string = (lang === 'en' ? en : ko)[key]
   if (isMac) template = template.replace(/\bCtrl\+/g, 'Cmd+')
   if (!vars) return template
+  if (lang === 'ko') return withParticles(template, vars)
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match))
 }
 
