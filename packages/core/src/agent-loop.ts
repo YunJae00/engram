@@ -351,7 +351,7 @@ async function agentLoop(
   const conversed = (options.history?.length ?? 0) > 0
   const guided = options.guided !== false
   const available = textStepTools(deps.tools)
-  const menu = (steps: AgentLoopStep[]): AgentTool[] => (guided ? pickTools(available, task, steps, conversed) : available)
+  const menu = (steps: AgentLoopStep[]): AgentTool[] => (guided ? pickTools(available, task, steps, conversed, (options.history ?? []).slice(-3).filter((turn) => turn.role === 'user').map((turn) => turn.text).join('\n')) : available)
   let tools = menu([])
   const maxCalls = options.maxCalls ?? (guided ? MAX_CALLS : OPEN_MAX_CALLS)
   const steps: AgentLoopStep[] = []

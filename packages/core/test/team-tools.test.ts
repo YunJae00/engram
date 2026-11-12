@@ -61,3 +61,13 @@ test('a guided bot is offered new_bot when asked for a new bot', () => {
   for (const task of ['매일 오전 9시에 서울 날씨 알려줘', 'remind me tomorrow at 9'])
     expect(menu(task)).not.toContain('new_bot')
 })
+
+test('a guided bot keeps new_bot on the turn that agrees the details', () => {
+  const tools = ['search_memory', 'read_note', 'find_procedure', 'open_skill', 'propose_note', 'search_web', 'schedule', 'new_bot']
+    .map(name => ({ name, description: name, argsSchema: { type: 'object' }, run: async () => '' }))
+  const task = '네, 매일 오전 9시에 서울 날씨 알려줘'
+  const menu = (earlier: string) => pickTools(tools, task, [], true, earlier).map(t => t.name)
+  expect(menu('새로운 봇 만들어줄 수 있어?')).toContain('new_bot')
+  for (const earlier of ['', '오늘 날씨 어때?', '뭐 할 수 있어?'])
+    expect(menu(earlier)).not.toContain('new_bot')
+})
