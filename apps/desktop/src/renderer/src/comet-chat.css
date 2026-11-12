@@ -5,9 +5,9 @@
 :is(.bots-thread, .mini-chat-thread).conversation-thread { gap: 6px; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg { position: relative; }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant,
-:is(.bots-thread, .mini-chat-thread) .comet-work-line.said { align-self: flex-start; max-width: var(--bubble-max); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--bubble-bg); color: var(--fg); line-height: var(--lh-chat); }
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.said { align-self: flex-start; max-width: var(--bubble-max); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--assistant-bg, var(--bubble-bg)); color: var(--fg); line-height: var(--lh-chat); }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.user { max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); }
-:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--bubble-bg); border: 0; }
+:is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.error { background: var(--bubble-bg); border: 0; color: var(--fg); }
 :is(.bots-thread, .mini-chat-thread) .bubble-msg.assistant.checking { opacity: 0.55; transition: opacity 200ms ease; }
 :is(.bots-thread, .mini-chat-thread) .comet-work { gap: 6px; margin: 0; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { gap: 6px; }
@@ -68,7 +68,7 @@
 /* Cutting in on a reply in progress: the waiting message goes now. */
 
 /* What the person wrote while the work was going sits in the work where it was said, as their own bubble. */
-:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--selected-soft); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
+:is(.bots-thread, .mini-chat-thread) .comet-work-line.you { display: block; align-self: flex-end; max-width: min(80%, var(--bubble-max)); padding: 10px 14px; border-radius: var(--radius-bubble); background: var(--bg-user-bubble, var(--selected-soft)); color: var(--fg-strong); font-size: var(--fs-chat); line-height: 1.6; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines { align-items: stretch; }
 :is(.bots-thread, .mini-chat-thread) .comet-work-lines > li.said { align-self: flex-start; }
 

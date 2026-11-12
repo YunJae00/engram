@@ -1,7 +1,7 @@
 :root {
-  --work-running: #3c7cce;
-  --work-waiting: #b96e22;
-  --work-error: #ce767a;
+  --work-running: #1C1B19;
+  --work-waiting: #6F6B66;
+  --work-error: #A63D2F;
 }
 [data-theme='dark'] {
   --work-running: #77aff5;

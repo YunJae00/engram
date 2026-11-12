@@ -68,62 +68,43 @@
 
 [data-theme='light'] {
   color-scheme: light;
-  --ink: #2b2b33;
-  --app-bg: #ffffff;
-  --canvas-bg: #ffffff;
-  --editor-bg: #ffffff;
-  --sidebar-bg: #ffffff;
-  --activity-bg: #2b2b33;
-  --panel-bg: #ffffff;
-  --tab-inactive-bg: #ffffff;
-  --tab-border: rgba(43, 43, 51, 0.16);
-  --fg: #1d1d1f;
-  --fg-strong: #1c1c22;
-  --fg-dim: #606066;
-  --fg-faint: #6a6a6e;
-  --border: rgba(43, 43, 51, 0.13);
-  --border-soft: rgba(43, 43, 51, 0.08);
-  --input-bg: #ffffff;
-  --input-border: rgba(43, 43, 51, 0.18);
-  --hover-bg: rgba(43, 43, 51, 0.05);
-  /* Rails and docked panels: the page's white, barely tinted with the ink,
-     so a sidebar reads as a surface without a line drawn around it. */
-  --rail-bg: #f7f7f8;
-  --bubble-bg: #f2f2f3;
-  --selected-soft: #ebebed;
-  --accent-blue: #2563eb;
-  --selected-bg: #2b2b33;
-  --selected-fg: #ffffff;
-  --accent: #242424;
-  --accent-hover: #080808;
-  --accent-soft: rgba(0, 0, 0, 0.05);
-  --accent-line: rgba(0, 0, 0, 0.22);
-  --sidebar-tint: linear-gradient(165deg, #edf5fc 0%, #f2f6fa 48%, #f4f8ee 100%);
-  --button-bg: #2b2b33;
-  --button-hover: #1c1c22;
-  --button-fg: #ffffff;
-  --statusbar-bg: #2b2b33;
-  --statusbar-fg: #ffffff;
-  --danger: #b0603b;
-  --clay: #b0603b;
-  --clay-soft: rgba(176, 96, 59, 0.12);
-  --gild: #a9832f;
-  --teal: #3c6b66;
-  --ok: #5f8a4c;
-  --focus-ring: #555555;
-  --widget-bg: #ffffff;
-  --widget-border: rgba(43, 43, 51, 0.16);
-  --card-top: #ffffff;
-  --card-bot: #ffffff;
-  --chrome-top: #ffffff;
-  --chrome-bot: #ffffff;
-  --canvas-dot: rgba(43, 43, 51, 0.09);
-  /* Shadows are soft and low: depth comes from a blur, never from a ring. */
-  --shadow-card-rest: 0 1px 2px rgba(43, 43, 51, 0.06);
-  --shadow-card: 0 4px 14px -6px rgba(43, 43, 51, 0.16), 0 0 0 1px rgba(43, 43, 51, 0.05);
-  --shadow-card-hover: 0 8px 22px -8px rgba(43, 43, 51, 0.22), 0 0 0 1px rgba(43, 43, 51, 0.07);
-  --shadow-float: 0 10px 32px -12px rgba(43, 43, 51, 0.28), 0 0 0 1px rgba(43, 43, 51, 0.06);
-  --shadow-sheet: 0 32px 80px -24px rgba(43, 43, 51, 0.38), 0 0 0 1px rgba(43, 43, 51, 0.05);
+  /* Cream + ink, 1:1 with the Designer token table; aliases below map onto it. */
+  --bg-canvas: #F6F3EE;
+  --bg-surface: #FCFAF7;
+  --bg-surface-hover: #F3EFEA;
+  --bg-user-bubble: #EFEBE6;
+  --ink: #1C1B19;
+  --ink-secondary: #6F6B66;
+  --ink-tertiary: #9A958E;
+  --line: #E4E0DB;
+  --line-strong: #C8C2BA;
+  --cta: #1C1B19;
+  --cta-fg: #F6F3EE;
+  --focus: #1C1B19;
+  --focus-outer: rgba(28,27,25,0.20);
+  --danger: #A63D2F;
+  --success: #3F6B4F;
+  --shadow: 0 1px 2px rgba(28,27,25,0.06), 0 8px 24px rgba(28,27,25,0.06);
+  --app-bg: #F6F3EE;
+  --rail-bg: #FCFAF7;
+  --canvas-bg: var(--bg-canvas); --editor-bg: var(--bg-surface);
+  --sidebar-bg: var(--bg-surface); --activity-bg: var(--ink); --panel-bg: var(--bg-surface);
+  --tab-inactive-bg: var(--bg-surface); --tab-border: var(--line); --fg: var(--ink);
+  --fg-strong: var(--ink); --fg-dim: var(--ink-secondary); --fg-faint: var(--ink-tertiary);
+  --border: var(--line); --border-soft: var(--line); --input-bg: var(--bg-surface);
+  --input-border: var(--line-strong); --hover-bg: var(--bg-surface-hover);
+  --bubble-bg: var(--bg-user-bubble); --selected-soft: var(--bg-surface-hover); --accent-blue: var(--ink);
+  --selected-bg: var(--cta); --selected-fg: var(--cta-fg); --accent: var(--cta);
+  --accent-hover: var(--cta); --accent-soft: var(--bg-surface-hover); --accent-line: var(--line-strong);
+  --sidebar-tint: none; --button-bg: var(--cta); --button-hover: var(--cta);
+  --button-fg: var(--cta-fg); --statusbar-bg: var(--ink); --statusbar-fg: var(--cta-fg);
+  --clay: var(--danger); --clay-soft: rgba(166, 61, 47, 0.12); --gild: var(--ink-secondary);
+  --teal: var(--ink-secondary); --ok: var(--success); --focus-ring: var(--focus);
+  --widget-bg: var(--bg-surface); --widget-border: var(--line); --card-top: var(--bg-surface);
+  --card-bot: var(--bg-surface); --chrome-top: var(--bg-canvas); --chrome-bot: var(--bg-canvas);
+  --canvas-dot: rgba(28,27,25,0.06); --scroll-thumb: var(--line-strong); --shadow-card-rest: var(--shadow);
+  --shadow-card: var(--shadow); --shadow-card-hover: var(--shadow); --shadow-float: var(--shadow);
+  --shadow-sheet: var(--shadow); --assistant-bg: transparent;
 }
 
 [data-theme='dark'] {
@@ -197,12 +178,12 @@ body {
   overflow-wrap: break-word;
 }
 
-/* Overlay-style scrollbars: invisible at rest, a slim thumb while you're
-   actually over a scrolling region — no permanent chrome anywhere. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 :hover::-webkit-scrollbar-thumb, *:hover > ::-webkit-scrollbar-thumb { background: rgba(120, 123, 140, 0.3); }
 ::-webkit-scrollbar-thumb:hover { background: rgba(120, 123, 140, 0.55); }
+[data-theme='light'] :hover::-webkit-scrollbar-thumb, [data-theme='light'] *:hover > ::-webkit-scrollbar-thumb, [data-theme='light'] ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb); }
+[data-theme='light'] ::selection { background: var(--ink); color: var(--bg-canvas); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
@@ -211,6 +192,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
 }
+[data-theme='light'] button:focus-visible, [data-theme='light'] input:focus-visible, [data-theme='light'] textarea:focus-visible, [data-theme='light'] select:focus-visible, [data-theme='light'] a:focus-visible, [data-theme='light'] [tabindex]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -1px; box-shadow: 0 0 0 4px var(--focus-outer); }
+[data-theme='light'] a, [data-theme='light'] a.answer-site { color: inherit; text-decoration: underline; }
 /* Buttons are flat: one fill, one hairline, no gradient or shadow to catch
    the light. Icon and label share a centred 20px line inside a 30px pill, so
    a button with an icon sits level with one without. */
@@ -730,7 +713,7 @@ body.bubble-host { background: transparent; }
   font-size: var(--fs-chat); line-height: 1.75; border-radius: 18px; padding: 9px 14px;
   overflow-wrap: anywhere;
 }
-.bubble-msg.user { align-self: flex-end; max-width: 78%; background: var(--selected-soft); color: var(--fg-strong); }
+.bubble-msg.user { align-self: flex-end; max-width: 78%; background: var(--bg-user-bubble, var(--selected-soft)); color: var(--fg-strong); }
 .bubble-msg.assistant { align-self: flex-start; max-width: 100%; padding: 4px 2px; background: transparent; color: var(--fg); }
 .bubble-msg.assistant.error { padding: 16px 18px; border: 1px solid var(--border-soft); border-radius: 14px; background: var(--hover-bg); color: var(--fg); }
 .bubble-msg-body :is(p, ul, ol) { margin: 0 0 14px; }
@@ -1288,7 +1271,7 @@ body.bubble-host { background: transparent; }
   resize: none; overflow-y: auto;
 }
 .chat-write textarea:focus { border: none; box-shadow: none; outline: none; }
-.chat-write-footer { grid-column: 3; display: flex; align-items: center; gap: 6px; min-height: var(--write-control); }
+.chat-write-footer { grid-column: 3; display: flex; align-items: center; gap: 8px; min-height: var(--write-control); }
 .chat-write > .chat-file-list, .chat-write > .chat-attachment-error, .chat-write > .chat-attachment-status { grid-column: 1 / -1; }
 .chat-add-button { grid-column: 1; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 50%; color: var(--fg-dim); }
 .chat-add-button:hover { background: var(--hover-bg); color: var(--fg); }
@@ -1860,9 +1843,9 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-write .chat-write-footer { min-height: 30px; }
 .bots-write .model-picker-btn { height: 30px; }
 .bots-write .chat-add-button { width: 28px; height: 28px; }
-.bots-write .chat-send-btn { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--accent-blue); color: #ffffff; }
-.bots-write .chat-send-btn:hover:not(:disabled) { background: var(--accent-blue); }
+.bots-write .chat-send-btn, .bots-write .chat-send-btn:hover:not(:disabled) { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--cta, var(--accent-blue)); color: var(--cta-fg, #ffffff); }
 .bots-write .chat-send-btn:disabled { opacity: 1; background: var(--selected-soft); color: var(--fg-dim); }
+[data-theme='light'] .bots-write .chat-send-btn:disabled { opacity: 0.4; background: var(--cta); color: var(--cta-fg); }
 .bots-write .bubble-stop, .bots-write .bubble-stop:hover:not(:disabled) { background: var(--clay); }
 .bots-title-pill {
   position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;

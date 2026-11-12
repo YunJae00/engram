@@ -65,7 +65,7 @@
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions { flex-wrap: wrap; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions button { max-width: 100%; white-space: normal; }
 :is(.bots-thread, .mini-chat-thread) .decision-card-actions button { min-height: 36px; box-sizing: border-box; }
-:is(.bots-thread, .mini-chat-thread) .decision-card-badge { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-blue); color: #fff; font-weight: 600; }
+:is(.bots-thread, .mini-chat-thread) .decision-card-badge { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-blue); color: var(--cta-fg, #fff); font-weight: 600; }
 @container (max-width: 420px) {
   :is(.bots-thread, .mini-chat-thread) .decision-card-actions, :is(.bots-thread, .mini-chat-thread) .decision-card-body { padding-left: 0; }
 }
