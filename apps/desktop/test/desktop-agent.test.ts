@@ -24,8 +24,7 @@ function look(signal?: AbortSignal) {
   return desktopAgentTools('bot-one').find((item) => item.name === 'look_desktop')!.runRich!({}, { task: 'Inspect the fixture', ...(signal ? { signal } : {}) })
 }
 beforeEach(() => {
-  forgetTypedUnsent('bot-one')
-  vi.clearAllMocks()
+  forgetTypedUnsent('bot-one'); vi.clearAllMocks()
   fake.binding = { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn().mockResolvedValue(captured()) } }
   fake.lookup.mockImplementation(() => fake.binding)
   fake.available = true
