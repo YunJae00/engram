@@ -143,7 +143,7 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     if (unchanged) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(desktopFailure('No observed effect', { delivered: true, container: /treeitem|row|group|cell/i.test(control.type) })) }); return finish('blocked') }
     const sends = kind === 'press' && request.send && textSet && SEND.test(control.name)
     // With text in any field, any button may send it (an icon labelled ↑ is still Send): that press is left for the person.
-    const draftButton = kind === 'press' && /button/i.test(control.type) && observation.controls.some(item => item.can.set && !!item.value?.trim())
+    const draftButton = kind === 'press' && /button/i.test(control.type) && observation.controls.some(item => item.can.set && !!item.value)
     if (kind !== 'set' && !kind.startsWith('scroll_') && (irreversibleName(control.name) || draftButton) && !sends) {
       steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'looks irreversible; left for the person to approve' })
       return finish('needs-person')

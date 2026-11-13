@@ -94,11 +94,11 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const container = /treeitem|row|group/i.test(previous?.controls.find(item => item.id === control)?.type ?? '')
       const field = previous?.controls.find(item => item.id === control)
       const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
-      const sendsKey = activationKey && field?.can.set && !!field.value?.trim()
+      const sendsKey = activationKey && field?.can.set && !!field.value
       // Text already in a field (typed by the person, by Engram, or before a restart) can go out through any button,
       // whatever its name (an icon labelled ↑ is still Send), so a plain button press then asks too.
       const draftButton = !options?.action && !options?.state && (!options?.key || activationKey) && /button/i.test(field?.type ?? '')
-        && !!previous?.controls.some(item => item.can.set && !!item.value?.trim())
+        && !!previous?.controls.some(item => item.can.set && !!item.value)
       const consequential = sendsKey || draftButton || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
       let confirmedResult
       if (consequential) {
@@ -189,7 +189,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (hit.some(node => irreversibleName(node.name ?? ''))) return true
       // A draft already in any field, typed by the person or before a restart, can go out through any button whatever
       // its name (an icon labelled ↑ is still Send); a target without a known type counts as a button.
-      const draft = view.nodes.some(node => FIELD.test(node.controlType) && !!node.value?.trim())
+      const draft = view.nodes.some(node => FIELD.test(node.controlType) && !!node.value)
       const buttonish = action.target && !hit.length ? !action.target.controlType || /Button/i.test(action.target.controlType) : hit.some(node => /Button/i.test(node.controlType))
       if (!afterTyping) return draft && buttonish
       // Every control under the point counts: an icon button drawn over the field must not hide behind it.
