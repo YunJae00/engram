@@ -2,7 +2,7 @@ import type { DesktopActionContext } from './desktop-opt-in.js'
 import { showWorkPreview } from './work-preview.js'
 import type { QuietObservationDto } from '../shared/desktop.js'
 import { desktopTools, liveDocumentTools, quietDesktopTools, type AgentTool, type ToolOutcome } from 'core'
-import { permissionFailure } from './desktop-permission.js'
+import { permissionFailure, retryOnPermission } from './desktop-permission.js'
 import { desktopFailure } from './desktop-failure.js'
 import { desktopImage } from './desktop-image.js'
 import { bindDesktopForLane, catalogHost, desktopBinding, desktopWindows } from './desktop-access.js'
@@ -14,7 +14,7 @@ import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-
 import { formatDo, irreversibleName, quietDo } from './desktop-quiet-do.js'
 import { prepareQuietConfirmation, pressQuietConfirmed, confirmationFailure } from './desktop-quiet-confirm.js'
 import { flog } from './flog.js'
-import { korean, permissionDenied, stillOffHint, waitForPermission } from './desktop-permission-state.js'
+import { permissionDenied } from './desktop-permission-state.js'
 export { permissionWaiting, registerPermissionCardIpc } from './desktop-permission-state.js'
 import { brainConnection } from './brain-connections.js'
 
@@ -151,17 +151,8 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       throw new Error(`Computer control stopped: ${current.reason ?? 'control is no longer active'}. Ask the person before requesting it again.`)
     }
   }
-  // A denied permission shows a card, waits for it to turn on, then runs the call once more.
-  const blocked = async <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> => {
-    context.signal?.throwIfAborted()
-    const failure = await permissionFailure(error, lane, { ask: context.task })
-    const waited = await waitForPermission(lane, failure, context)
-    if (waited === 'on') {
-      try { return await again() }
-      catch (retry) { context.signal?.throwIfAborted(); return wrap(JSON.stringify(await permissionFailure(retry, lane, { ask: context.task }))) }
-    }
-    return wrap(JSON.stringify(waited === 'off' ? { ...failure, hint: stillOffHint(failure.permission!, korean(context.task)) } : failure))
-  }
+  const blocked = <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> =>
+    retryOnPermission(lane, error, context, again, wrap)
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
     try { return await tool.run(args, context) }
     catch (error) { return blocked(error, context, () => tool.run(args, context), json => json) }

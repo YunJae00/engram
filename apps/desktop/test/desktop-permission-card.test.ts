@@ -15,7 +15,7 @@ vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ accessi
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('../src/main/desktop-access.js', () => ({ catalogHost: () => fake.host }))
 import { openPermissionPane, permissionCard, permissionDenied, permissionWaiting, registerPermissionCardIpc, stillOffHint, waitForPermission, type PermissionName } from '../src/main/desktop-permission-state.js'
-import { permissionFailure } from '../src/main/desktop-permission.js'
+import { permissionFailure, retryOnPermission } from '../src/main/desktop-permission.js'
 import { PRIVACY_PANE, isAllowedExternalUrl } from '../src/main/security.js'
 import { desktopFailure } from '../src/main/desktop-failure.js'
 import { answerHtml } from '../src/renderer/src/markdown.js'
@@ -28,13 +28,9 @@ const NAMES = Object.keys(DENIED) as PermissionName[]
 beforeEach(() => { vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin'); fake.send.mockClear(); fake.open.mockClear(); fake.ax.mockClear(); fake.screen = 'denied' })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
-// The same retry the desktop agent wraps around a tool call.
-async function blocked(lane: string, error: unknown, context: { task: string; signal?: AbortSignal }, again: () => Promise<string>): Promise<string> {
-  const failure = await permissionFailure(error, lane, { ask: context.task })
-  const waited = await waitForPermission(lane, failure, context)
-  if (waited === 'on') return again()
-  return JSON.stringify(waited === 'off' ? { ...failure, hint: stillOffHint(failure.permission!, context.task !== 'read it') } : failure)
-}
+// The desktop agent's own retry, with its tool call passed through unchanged.
+const blocked = (lane: string, error: unknown, context: { task: string; signal?: AbortSignal }, again: () => Promise<string>): Promise<string> =>
+  retryOnPermission(lane, error, context, again, json => json)
 const states = (screen: boolean[], rest = true) => vi.fn(async (method: string) => {
   expect(method).toBe('permissionState')
   return { accessibility: rest, inputMonitoring: rest, screenRecording: screen.length > 1 ? screen.shift()! : screen[0]! }

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { desktopFailure, type DesktopFailureObservation } from './desktop-failure.js'
 import { flog } from './flog.js'
-import { CODE_PERMISSION, korean, permissionGuidance, type PermissionCode, type PermissionName } from './desktop-permission-state.js'
+import { CODE_PERMISSION, korean, permissionGuidance, stillOffHint, waitForPermission, type PermissionCode, type PermissionName } from './desktop-permission-state.js'
 
 const denials = new Map<string, number>()
 let trustedVersion: string | undefined
@@ -31,4 +31,15 @@ export async function permissionFailure(error: unknown, lane: string, options: P
   if (!(result.error in CODE_PERMISSION)) return result
   const code = result.error as PermissionCode
   return { ...result, permission: CODE_PERMISSION[code], ...(korean(ask) ? { hint: `${permissionGuidance(code, true)} 로컬 앱 읽기를 웹 검색으로 대신하지 말고, 접근이 막혔다고 알려 주세요.` } : {}) }
+}
+// A denied permission shows a card, waits for it to turn on, then runs the call once more.
+export async function retryOnPermission<T>(lane: string, error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> {
+  context.signal?.throwIfAborted()
+  const failure = await permissionFailure(error, lane, { ask: context.task })
+  const waited = await waitForPermission(lane, failure, context)
+  if (waited === 'on') {
+    try { return await again() }
+    catch (retry) { context.signal?.throwIfAborted(); return wrap(JSON.stringify(await permissionFailure(retry, lane, { ask: context.task }))) }
+  }
+  return wrap(JSON.stringify(waited === 'off' ? { ...failure, hint: stillOffHint(failure.permission!, korean(context.task)) } : failure))
 }
