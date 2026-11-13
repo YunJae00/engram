@@ -2923,8 +2923,7 @@ export function registerIpc(ctx: VaultContext): void {
         )
       } finally {
         clearApplicationWork(channel)
-        endDesktopTurn(channel)
-        forgetPermissionGiveUp(channel)
+        endDesktopTurn(channel); forgetPermissionGiveUp(channel)
         warmLater(3_000)
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
