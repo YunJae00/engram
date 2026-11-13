@@ -1,6 +1,6 @@
 .preview-card { --pc-w: 320px; flex: 0 0 auto; align-self: flex-end; box-sizing: border-box; width: min(var(--pc-w), 100%); max-width: calc(100% - 2 * var(--panel-gutter)); margin: var(--space-2) var(--panel-gutter) 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); container: preview / inline-size; transform-origin: top right; animation: preview-card-in 180ms ease; }
 .mini-chat .preview-card { --pc-w: 264px; }
-.preview-card-stage { --pc-stage-max: var(--pc-stage-cap, 50vh); position: relative; width: 100%; aspect-ratio: var(--pc-ratio, 16 / 10); min-height: 96px; max-height: var(--pc-stage-max); margin: 0; overflow: hidden; border-radius: inherit; background: var(--hover-bg); animation: preview-card-in 160ms ease; }
+.preview-card-stage { position: relative; width: 100%; aspect-ratio: var(--pc-ratio, 16 / 10); margin: 0; overflow: hidden; border-radius: inherit; background: var(--hover-bg); animation: preview-card-in 160ms ease; }
 .preview-card-stage img, .preview-card-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
 .preview-card-stage canvas:not([data-painted]) { visibility: hidden; }
 .preview-card-stage:not([data-phase="unavailable"]):has(canvas[data-painted]) .preview-card-state { display: none; }
@@ -31,19 +31,20 @@
 @media (prefers-reduced-motion: reduce) { .preview-card, .preview-card-stage, .preview-card-reopen, .computer-spinner { animation: none; } }
 .preview-deck { --pc-w: 320px; position: relative; flex: 0 0 auto; align-self: flex-end; width: min(var(--pc-w), calc(100% - 30px * var(--deck-depth, 0))); max-width: calc(100% - 2 * var(--panel-gutter) - 30px * var(--deck-depth, 0)); margin: calc(12px + 30px * var(--deck-depth, 0)) var(--panel-gutter) 0; isolation: isolate; }
 /* The mini chat keeps a permanent top slot so a card never squeezes or covers the transcript. */
-.mini-chat-preview { position: relative; flex: 0 1 min(35%, 220px); min-height: 0; container-type: size; --mini-stack: 12px; }
-.mini-chat-preview > .preview-deck { --pc-w: 264px; position: absolute; top: calc(8px + var(--mini-stack) * var(--deck-depth, 0)); right: var(--panel-gutter); width: min(var(--pc-w), calc(100% - 2 * var(--panel-gutter) - var(--mini-stack) * var(--deck-depth, 0))); max-width: none; margin: 0; }
-.mini-chat-preview .preview-card-stage { min-height: 0; max-height: max(0px, calc(100cqh - 8px - var(--mini-stack) * var(--deck-depth, 0))); }
-.mini-chat-preview .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--mini-stack)); --deck-y: calc(-1 * var(--mini-stack)); }
-.mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--mini-stack)); --deck-y: calc(-2 * var(--mini-stack)); }
-.mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--mini-stack)); --deck-y: calc(-3 * var(--mini-stack)); }
+.mini-chat-preview { position: relative; flex: 0 1 min(35%, 220px); min-height: 0; container-type: size; }
+.mini-chat { position: relative; }
+.mini-chat-preview:has(> .preview-deck) { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.mini-chat-preview > .preview-deck { --pc-w: 264px; position: absolute; top: calc(8px + var(--live-fit-space, 12px) * var(--deck-depth, 0)); right: var(--panel-gutter); width: max-content; max-width: none; margin: 0; pointer-events: auto; }
+.mini-chat-preview .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 12px)); --deck-y: calc(-1 * var(--live-fit-space, 12px)); }
+.mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 12px)); --deck-y: calc(-2 * var(--live-fit-space, 12px)); }
+.mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 12px)); --deck-y: calc(-3 * var(--live-fit-space, 12px)); }
 .mini-chat-preview > .preview-card-reopen { position: absolute; top: 8px; right: var(--panel-gutter); margin: 0; }
 .mission-grid-2 .mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
 /* Two tall panes keep a slim card slot so the conversation fills the pane. */
 @container tile (min-height: 560px) { .mission-grid-2 .mini-chat-preview { flex-basis: min(12%, 96px); } }
 .preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease; }
 .preview-deck-card:not([data-position="0"]) { position: absolute; inset: 0; }
-.preview-deck .preview-card { width: 100%; max-width: none; margin: 0; }
+.preview-deck .preview-card { width: min(var(--pc-w), var(--live-fit-width, 100vw), calc(min(var(--pc-stage-cap, 50vh), var(--live-fit-stage, 100vh)) * var(--pc-ratio, 1.6))); max-width: none; margin: 0; }
 .preview-deck-back { position: relative; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; border: none; border-radius: var(--radius-card); background: var(--panel-bg); box-shadow: var(--shadow-card); cursor: pointer; }
 .preview-deck-back img { width: 100%; height: 100%; object-fit: cover; }
 .preview-deck-title { position: absolute; inset: 0 0 auto; height: 28px; box-sizing: border-box; padding: 6px var(--space-3); overflow: hidden; text-overflow: ellipsis; text-align: left; font-size: var(--fs-badge); color: #fff; background: linear-gradient(to bottom, #000b, #0004); }
