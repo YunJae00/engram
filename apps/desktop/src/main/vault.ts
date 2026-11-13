@@ -67,7 +67,8 @@ export async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Eng
   if (engineFlag === 'mock') {
     const dir = process.env['ENGRAM_MOCK_DIR']
     const hang = !app.isPackaged && process.env['ENGRAM_TEST_HANG_CHAT'] === '1' ? { hangTimes: Number.MAX_SAFE_INTEGER } : {}
-    return [dir ? await MockEngine.fromDir(dir) : new MockEngine({}, hang)]
+    const gapMs = app.isPackaged ? NaN : Number(process.env['ENGRAM_TEST_MOCK_GAP_MS'])
+    return [dir ? await MockEngine.fromDir(dir, Number.isFinite(gapMs) ? { gapMs } : {}) : new MockEngine({}, hang)]
   }
   if (engineFlag === 'none') return []
   const selection = aiSelection(await loadSettings(), 'filing')

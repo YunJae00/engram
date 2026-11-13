@@ -5,13 +5,14 @@ import { appendBotTurn, withoutSecrets, type VaultPaths } from 'core'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { asides, relayed, STEER_CAP, workSoFar } from './turn-state.js'
+import { asides, STEER_CAP, workSoFar } from './turn-state.js'
 
 export interface AsideIpcDeps {
   paths: VaultPaths
   // A turn is running, or a task is still finishing, in this conversation.
   busy(channel: string): boolean
-  deliver?(channel: string, text: string): Promise<boolean>
+  // Queues words said mid-turn to be answered as their own turn; taken before any await so a Stop in between drops them.
+  followUp?(channel: string): (text: string) => void
   setOffersAside(botId: string): Promise<void>
 }
 
@@ -45,6 +46,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: 'relay'; instruction?: string }> => {
     if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
     if (!deps.busy(channel)) return { ok: false }
+    const hold = deps.followUp?.(channel)
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
     await progress.flush(channel)
@@ -52,8 +54,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
-    const delivered = await deps.deliver?.(channel, said).catch(error => { flog('aside', error); return false })
-    if (!delivered && deps.busy(channel)) relayed.set(channel, [...(relayed.get(channel) ?? []), said])
+    hold?.(said)
     const pending = await readCheckpoint(deps.paths, botId).catch(() => ({ pending: [said] }))
     taskQueued(botId, pending.pending.length > 0)
     return { ok: true, action: 'relay', instruction: said }

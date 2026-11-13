@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +10,7 @@ test.beforeEach(async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-queue-'))
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths)
   botId = (await createBot(paths, { name: 'Queue fixture' })).id
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-queue-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow()

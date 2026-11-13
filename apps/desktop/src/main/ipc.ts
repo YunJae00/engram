@@ -5,7 +5,8 @@ import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint }
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
-import { afterChecks, answering, handedOver, heard, offeredIn, relayed, steers, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
+import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, savedFollowUp } from './midstream-followup.js'
+import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
@@ -746,6 +747,7 @@ const chatAborts = new Set<{ controller: AbortController; channel: string }>()
 // Channel-scoped: closing the main window must stop the PANEL's stream, not
 // an answer another surface is mid-sentence on. No argument aborts all.
 export function abortAllChat(channel?: string): void {
+  dropFollowUps(channel)
   for (const [lane, answer] of pressAskWaiters) {
     if (channel === undefined || channel === lane) answer('cancel')
   }
@@ -1106,17 +1108,10 @@ export function registerIpc(ctx: VaultContext): void {
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
     stop: (channel) => abortAllChat(channel),
   })
-  const liveInputs = new Map<string, (messages: string[]) => Promise<boolean>>()
   registerAsideIpc({
     paths,
-    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel),
-    deliver: async (channel, text) => {
-      const steer = liveInputs.get(channel)
-      if (!steer || !await steer([text])) return false
-      handedOver.set(channel, [...(handedOver.get(channel) ?? []), text])
-      if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), state => ({ ...state, pending: state.pending.filter(message => message !== text) })).catch(error => flog('checkpoint', error))
-      return true
-    },
+    busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
+    followUp: followUpFor,
     setOffersAside,
   })
 
@@ -1812,6 +1807,7 @@ export function registerIpc(ctx: VaultContext): void {
     // A check gets a bounded share of time; past it the draft is the answer.
     checkBudgetMs: 5 * 60_000,
   })
+  tasks.chat = answerFollowUps(tasks.chat, channel => answering.has(channel) || tasks.activeChannels().includes(channel))
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
   registerWorkMapIpc(ctx)
@@ -2290,7 +2286,6 @@ export function registerIpc(ctx: VaultContext): void {
     answering.add(entry.channel)
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
-    handedOver.delete(entry.channel)
     // The voice opens with the turn, so words said while it works are answered at once.
     if (entry.channel.startsWith('bot-')) void chatEngine(entry.channel, ctx.engines).then(live => live?.warmQuick?.(engineCwd(paths))).catch(() => undefined)
     workSoFar.delete(entry.channel)
@@ -2303,10 +2298,8 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
-      steers.delete(entry.channel)
-      relayed.delete(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
-      heard.delete(entry.channel)
+      afterTurn(entry.channel)
       takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
       releaseBrowser()
@@ -2487,7 +2480,7 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress)
-    if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request)) {
+    if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request) && !savedFollowUp(channel, request.message)) {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
     }
@@ -2747,8 +2740,6 @@ export function registerIpc(ctx: VaultContext): void {
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
             history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),
-            onSteerable: steer => { if (steer) liveInputs.set(channel, steer); else liveInputs.delete(channel) },
-            takeSteer: () => { const said = steers.get(channel) ?? []; steers.delete(channel); if (said.length) heard.set(channel, [...(heard.get(channel) ?? []), ...said]); const told = relayed.get(channel) ?? []; relayed.delete(channel); const handed = [...said, ...told]; if (handed.length) handedOver.set(channel, [...(handedOver.get(channel) ?? []), ...handed]); return handed },
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
             ...(native ? { native } : {}),
@@ -2838,7 +2829,7 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'vault:changed' })
         }
         const checkpoint = resumeCheckpoint(request.message, result)
-        await acknowledgeHanded(paths, bot.id, [...stored.pending, ...(handedOver.get(channel) ?? [])], checkpoint)
+        await acknowledgeHanded(paths, bot.id, stored.pending, checkpoint)
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
@@ -2846,7 +2837,6 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'bots:changed' })
         }
         signal.throwIfAborted()
-        handedOver.delete(channel)
         turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
           broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })

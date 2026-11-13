@@ -10,19 +10,19 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
-import { relayed } from '../src/main/turn-state.js'
 
-it('keeps a message saved during turn completion for the next call without resending it', async () => {
+it('hands a message said as the turn completes to the follow-up queue once', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const cache = await mkdtemp(join(temporary, 'aside-input-'))
   const paths = { cache } as VaultPaths
   let calls = 0
-  registerAsideIpc({ paths, busy: () => ++calls === 1, setOffersAside: async () => {} })
+  const held: string[] = []
+  registerAsideIpc({ paths, busy: () => ++calls === 1, followUp: () => text => held.push(text), setOffersAside: async () => {} })
   expect(handlers.has('chat:steer')).toBe(false)
   try {
     expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit' })
-    expect(relayed.has('bot-late')).toBe(false)
+    expect(held).toEqual(['Do not submit'])
     expect((await readBotTranscript(paths, 'late')).map(turn => turn.text)).toEqual(['Do not submit'])
     const next = await readCheckpoint(paths, 'late')
     expect(next.pending).toEqual(['Do not submit'])
@@ -52,7 +52,7 @@ it('acknowledges a persisted user row even when checkpoint storage fails afterwa
   const paths = { cache } as VaultPaths
   const checkpoint = await import('../src/main/comet-checkpoint.js')
   const change = vi.spyOn(checkpoint, 'changeCheckpoint').mockRejectedValueOnce(new Error('disk unavailable'))
-  registerAsideIpc({ paths, busy: () => true, deliver: async () => true, setOffersAside: async () => {} })
+  registerAsideIpc({ paths, busy: () => true, followUp: () => () => {}, setOffersAside: async () => {} })
   try {
     await expect(handlers.get('chat:say')!({}, 'bot-persisted', 'Only Claude Desktop')).resolves.toMatchObject({ ok: true })
     expect((await readBotTranscript(paths, 'persisted')).map(turn => turn.text)).toEqual(['Only Claude Desktop'])

@@ -13,19 +13,19 @@ export class MockEngine implements Engine {
 
   constructor(
     private responses: Record<string, MockResponse> = {},
-    private opts: { hangTimes?: number } = {},
+    private opts: { hangTimes?: number; gapMs?: number } = {},
   ) {}
 
   private calls = 0
 
-  static async fromDir(dir: string): Promise<MockEngine> {
+  static async fromDir(dir: string, opts: { gapMs?: number } = {}): Promise<MockEngine> {
     const responses: Record<string, MockResponse> = {}
     for (const file of await readdir(dir)) {
       const ext = extname(file)
       if (!['.json', '.md', '.txt'].includes(ext)) continue
       responses[file.slice(0, -ext.length)] = await readFile(join(dir, file), 'utf8')
     }
-    return new MockEngine(responses)
+    return new MockEngine(responses, opts)
   }
 
   async detect(): Promise<EngineDetection> {
@@ -57,13 +57,13 @@ export class MockEngine implements Engine {
       yield { type: 'error', message: `mock: no canned response for job kind "${kind}"` }
       return
     }
-    const text = typeof canned === 'function' ? canned(job.prompt) : canned
+    const text = (typeof canned === 'function' ? canned(job.prompt) : canned).replaceAll('{{task}}', /^Task: (.*)$/m.exec(job.prompt)?.[1] ?? '')
     // Emit token events with a small gap so streaming consumers render
     // progressively (chat panel acceptance).
     const step = Math.max(1, Math.ceil(text.length / 4))
     for (let i = 0; i < text.length; i += step) {
       yield { type: 'token', text: text.slice(i, i + step) }
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      await new Promise((resolve) => setTimeout(resolve, this.opts.gapMs ?? 20))
     }
     yield { type: 'result', text }
   }
