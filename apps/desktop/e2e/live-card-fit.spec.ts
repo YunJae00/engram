@@ -101,6 +101,7 @@ test('a live card never covers chat bubbles', async () => {
     for (const view of ['single', 'two', 'four'] as const) {
       await show(page, view, bots[0]!)
       await expect(page.locator('.preview-card:visible').first()).toBeVisible({ timeout: 20_000 })
+      let banded = false
       for (const at of ['top', 'middle', 'bottom'] as const) {
         await page.locator('.bots-thread, .mini-chat-thread').evaluateAll((nodes, at) => {
           for (const node of nodes) node.scrollTop = at === 'top' ? 0 : at === 'middle' ? (node.scrollHeight - node.clientHeight) / 2 : node.scrollHeight
@@ -109,16 +110,15 @@ test('a live card never covers chat bubbles', async () => {
         const panes = await scene(page)
         expect(panes.some(pane => pane.cards.length > 0), `${view} ${at}: a live card is showing`).toBe(true)
         expect(panes.some(pane => pane.bubbles.length > 0), `${view} ${at}: bubbles are in view`).toBe(true)
-        if (at === 'top') {
-          for (const pane of panes.filter(one => one.cards.length)) {
-            const top = Math.min(...pane.cards.map(one => one.top)), bottom = Math.max(...pane.cards.map(one => one.bottom))
-            expect(pane.bubbles.some(one => one.box.bottom > top && one.box.top < bottom), `${view} top: a bubble sits in the card's band`).toBe(true)
-          }
-        }
+        if (at === 'top') banded = panes.filter(one => one.cards.length).every(pane => {
+          const top = Math.min(...pane.cards.map(one => one.top)), bottom = Math.max(...pane.cards.map(one => one.bottom))
+          return pane.bubbles.some(one => one.box.bottom > top && one.box.top < bottom)
+        })
         const violations = async () => (await scene(page)).flatMap(pane => pane.bubbles.flatMap(bubble => pane.cards.filter(card => overlaps(bubble.box, card))
           .map(card => `LIVE-CARD-OVERLAP ${view} ${at}: "${bubble.text}" ${JSON.stringify(bubble.box)} vs card ${JSON.stringify(card)}`)))
         await expect.poll(violations, { message: `LIVE-CARD-OVERLAP ${view} ${at}`, timeout: 5_000 }).toEqual([])
       }
+      expect(banded, `${view} top: a bubble sits beside each card, in its band`).toBe(true)
     }
   } finally {
     await close()
