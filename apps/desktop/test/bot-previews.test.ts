@@ -183,3 +183,13 @@ it('list reads only the tail of live transcripts, never archives', async () => {
   expect((await preview('')).lastMessage).toBeUndefined()
   expect((await preview(`${Array.from({ length: 50 }, (_, index) => line(index, { progress: true })).join('\n')}\n`)).lastMessage).toBeUndefined()
 })
+
+it('previews the last reply without its suggested replies', async () => {
+  await mkdir(resolve('tmp'), { recursive: true })
+  const paths = await initVault(await mkdtemp(resolve('tmp/bot-previews-')), { git: false })
+  const bot = await createBot(paths, { name: 'Order' })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: '3\n\n```replies\n4번도 해줘\n고마워\n```', at: '2026-01-02T10:00:00Z' })
+  expect((await botPreviews(paths, [bot]))[0]?.lastMessage?.text).toBe('3')
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Counting.\n\n```replies\nMore up', at: '2026-01-02T10:01:00Z' })
+  expect((await botPreviews(paths, [bot]))[0]?.lastMessage?.text).toBe('Counting.')
+})

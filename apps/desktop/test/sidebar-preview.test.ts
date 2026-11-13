@@ -8,3 +8,8 @@ test('sidebar excerpts remove formatting and bound work on large malformed attac
   expect(sidebarPreview('['.repeat(1_000_000))).toBe('['.repeat(160))
   expect(sidebarPreview('word '.repeat(1_000_000))).toHaveLength(160)
 })
+
+test('sidebar excerpts drop suggested replies, closed or cut off', () => {
+  expect(sidebarPreview('3\n\n```replies\n4번도 해줘\n고마워\n```')).toBe('3')
+  expect(sidebarPreview('Counting.\n\n```replies\nMore')).toBe('Counting.')
+})

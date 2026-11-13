@@ -1,4 +1,5 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
+import { doneText, liveTail } from './answerTail.js'
 
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
@@ -33,7 +34,7 @@ export interface CometThread {
   attachments: ChatAttachmentDto[]
   adopted: boolean
   stopped: boolean
-  streamPrefix?: string
+  streamPrefix?: string; streamTail?: string
   stopCount?: number
   startedAt: number | null
   doneSeen: number
@@ -138,7 +139,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, ...extra })
+    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, streamPrefix: '', streamTail: '', ...extra })
   const fail = (id: string, text: string, kind?: string, provider?: string) => {
     const kept = thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming))
     const earlier = kept.at(-1)?.error ? kept.at(-1)! : undefined
@@ -270,7 +271,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         awaitingModel: false,
         adopted: false,
         stopped: false,
-        streamPrefix: '',
+        streamPrefix: '', streamTail: '',
         startedAt: Date.now(),
         workLines: [],
         keptWork: [],
@@ -318,7 +319,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       }
       messages.push({ role: 'user', text, ...(attachments.length ? { attachments } : {}) })
       if (current.busy) messages.push({ role: 'assistant', text: '', streaming: true })
-      patch(id, { messages, streamPrefix: (current.streamPrefix ?? '') + partial, ...(partial ? { workLines: [] } : {}) })
+      patch(id, { messages, streamPrefix: (current.streamPrefix ?? '') + (current.streamPrefix ? current.streamTail ?? '' : partial), streamTail: '', ...(partial ? { workLines: [] } : {}) })
     },
     noteWork(id: string, line: string): void {
       const current = thread(id)
@@ -344,7 +345,7 @@ export function createCometThreads(initialSelected: string | null = null) {
           startedAt: event.working ? current.startedAt ?? Date.now() : null,
           doneSeen: current.doneSeen + 1,
           ...(event.working && !current.busy ? { adopted: true, messages: [...current.messages, { role: 'assistant' as const, text: '', streaming: true }] } : {}),
-          ...(!event.working ? { workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
+          ...(!event.working ? { streamPrefix: '', streamTail: '', workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
         })
         return id
       }
@@ -378,14 +379,14 @@ export function createCometThreads(initialSelected: string | null = null) {
           patch(id, { messages: next, streamPrefix: '', workLines: next.length > current.messages.length ? [] : current.workLines }, true)
           return id
         }
-        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: next[at]!.text + event.text }
-        patch(id, { messages: next }, true)
+        const raw = current.streamPrefix && !next[at]!.checking ? (current.streamTail ?? '') + event.text : null
+        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: raw === null ? next[at]!.text + event.text : liveTail(current.streamPrefix ?? '', raw) }
+        patch(id, { messages: next, ...(raw === null ? {} : { streamTail: raw }) }, true)
         return id
       }
       if (event.type === 'chat:done') {
-        const at = streamingAt(current.messages)
-        const next = [...current.messages]
-        if (at >= 0) next[at] = { ...next[at]!, text: (current.streamPrefix && event.text.startsWith(current.streamPrefix) ? event.text.slice(current.streamPrefix.length) : event.text) || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
+        const at = streamingAt(current.messages), next = [...current.messages], text = at < 0 ? null : doneText(event.text, current.streamPrefix, next[at]!.text)
+        if (at >= 0) next.splice(at, 1, ...(text === null ? [] : [{ ...next[at]!, text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }]))
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

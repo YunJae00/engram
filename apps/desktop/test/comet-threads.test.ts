@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cometChannel, cometOfChannel, createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
+import { answerText, suggestedReplies } from '../src/renderer/src/markdown.js'
 
 const BOT = 'bot-abc-1'
 const channel = cometChannel(BOT)
@@ -371,4 +372,29 @@ it('keeps live steering progress separate from the final answer suffix', () => {
   store.handleEvent({ type: 'chat:token', channel, text: 'B' })
   store.handleEvent({ type: 'chat:done', channel, text: 'A B' })
   expect(store.thread(BOT).messages.map(message => message.text)).toEqual(['Start', 'A ', 'Q', 'B'])
+})
+it('shows no suggestion tail under messages sent while the replies block streamed', () => {
+  for (const cut of ['Counted.\n\n```replies\nMore', 'Counted.\n\n``']) {
+    const full = 'Counted.\n\n```replies\nMore\nThemes\n```', store = createCometThreads(BOT)
+    store.begin(BOT, 'Count')
+    store.handleEvent({ type: 'chat:token', channel, text: cut })
+    store.noteUser(BOT, 'Q')
+    store.handleEvent({ type: 'chat:token', channel, text: full.slice(cut.length, -4) })
+    expect(store.thread(BOT).messages.at(-1)).toMatchObject({ streaming: true, text: '' })
+    store.noteUser(BOT, 'R')
+    store.handleEvent({ type: 'chat:done', channel, text: full })
+    expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Count', cut, 'Q', 'R'])
+    expect(store.thread(BOT)).toMatchObject({ streamPrefix: '', streamTail: '' })
+  }
+})
+it('keeps the full answer suggestions as chips under a mid-stream tail', () => {
+  const store = createCometThreads(BOT)
+  store.begin(BOT, 'Start')
+  store.handleEvent({ type: 'chat:token', channel, text: 'A ' })
+  store.noteUser(BOT, 'Q')
+  store.handleEvent({ type: 'chat:token', channel, text: 'B\n\n```replies\nX' })
+  expect(store.thread(BOT).messages.at(-1)?.text).toBe('B')
+  store.handleEvent({ type: 'chat:done', channel, text: 'A B\n\n```replies\nX\nY\n```' })
+  const last = store.thread(BOT).messages.at(-1)!.text
+  expect([answerText(last), suggestedReplies(last)]).toEqual(['B', ['X', 'Y']])
 })
