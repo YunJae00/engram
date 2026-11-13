@@ -1,4 +1,7 @@
-import { systemPreferences } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, systemPreferences } from 'electron'
+import { PRIVACY_PANE, isAllowedExternalUrl } from './security.js'
+import { desktopFailure, type DesktopFailureObservation } from './desktop-failure.js'
+import type { PermissionCardDto } from '../shared/types.js'
 import type { AgentTool } from 'core'
 import type { DesktopHost } from './desktop-host.js'
 import { PERMISSION_STATE_DESCRIPTION } from './desktop-opt-in.js'
@@ -28,6 +31,7 @@ export type PermissionCode = keyof typeof CODE_PERMISSION
 export const korean = (text: string | undefined): boolean => /[가-힣]/.test(text ?? '')
 
 let lastRead: PermissionState | undefined
+const PERMISSION_READ_MS = 4000
 export async function readPermissionState(host: Pick<DesktopHost, 'request'>, signal?: AbortSignal): Promise<PermissionState> {
   const value = await host.request<unknown>('permissionState', {}, signal)
   const record = value as Record<string, unknown> | null
@@ -64,7 +68,6 @@ export function permissionStateNow(): KnownState {
   }
 }
 
-const PERMISSION_READ_MS = 4000
 export function permissionStateTool(host: () => Pick<DesktopHost, 'request'>): AgentTool {
   return {
     name: 'permission_state',
@@ -77,4 +80,116 @@ export function permissionStateTool(host: () => Pick<DesktopHost, 'request'>): A
       return describePermissionState(state ?? permissionStateNow(), korean(context.task))
     },
   }
+}
+
+const WHY = {
+  en: {
+    accessibility: 'Needed to read app windows and press or type in them.',
+    screenRecording: 'Needed to see what an app window shows, like a chat.',
+    inputMonitoring: 'Needed to stop at once when you move the mouse or press Esc.',
+  },
+  ko: {
+    accessibility: '앱 창을 읽고 누르거나 입력하려면 필요해요.',
+    screenRecording: '채팅처럼 앱 창에 보이는 내용을 보려면 필요해요.',
+    inputMonitoring: '마우스를 움직이거나 Esc를 누르면 바로 멈추려면 필요해요.',
+  },
+}
+export function permissionCard(name: PermissionName, ko: boolean): PermissionCardDto {
+  const label = LABEL[ko ? 'ko' : 'en'][name]
+  return ko
+    ? { permission: name, lang: 'ko', label: '켜 주시면 이어서 할게요', title: `'${label}' 권한이 꺼져 있어요`, why: WHY.ko[name], button: `${label} 설정 열기` }
+    : { permission: name, lang: 'en', label: "I'll continue once it's on", title: `${label} is off`, why: WHY.en[name], button: `Open ${label} settings` }
+}
+export function stillOffHint(name: PermissionName, ko: boolean): string {
+  const label = LABEL[ko ? 'ko' : 'en'][name]
+  return ko ? `'${label}' 권한이 아직 꺼져 있어 이 단계를 멈췄습니다. '${label}' 권한이 아직 꺼져 있다고 한 문장으로 알리고 이번 턴을 끝내세요.`
+    : `${label} is still off, so this step stopped. Tell the person in one plain sentence that ${label} is still off, and end the turn.`
+}
+export function permissionDenied(error: unknown): boolean {
+  const failure = desktopFailure(error)
+  return failure.retry === 'blocked' && failure.error in CODE_PERMISSION
+}
+
+const cards = new Map<string, PermissionCardDto>()
+function setCard(lane: string, card: PermissionCardDto | null): void {
+  if (card) cards.set(lane, card); else cards.delete(lane)
+  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('desktop:permissionCardChanged', lane, card)
+}
+export async function openPermissionPane(name: unknown): Promise<void> {
+  const url = typeof name === 'string' && Object.hasOwn(PRIVACY_PANE, name) ? PRIVACY_PANE[name as PermissionName] : undefined
+  if (!url || !isAllowedExternalUrl(url)) throw new Error('Unknown permission.')
+  await shell.openExternal(url)
+}
+export function registerPermissionCardIpc(): void {
+  const handle = (channel: string, run: (arg: unknown) => unknown) => {
+    ipcMain.removeHandler(channel)
+    ipcMain.handle(channel, (event, arg: unknown) => {
+      if (event.senderFrame !== event.sender.mainFrame) throw new Error('Only the main window can do this.')
+      return run(arg)
+    })
+  }
+  handle('desktop:permissionCard', lane => typeof lane === 'string' ? cards.get(lane) ?? null : null)
+  handle('desktop:permissionPane', openPermissionPane)
+  if (testing()) Object.assign(globalThis, { __engramPermissionWait: (lane: string, name: PermissionName, task: string) =>
+    waitForPermission(lane, { ...desktopFailure(`Allow Engram in System Settings → ${LABEL.en[name]}`), permission: name }, { task }) })
+}
+// E2E seam, never in a packaged build: the permission state comes from main's globalThis instead of the helper.
+const testing = () => !app.isPackaged && process.env['ENGRAM_TEST_PERMISSIONS'] === '1'
+const WAIT_MS = 10 * 60_000, FIRST_MS = 2000, MAX_MS = 5000
+const waits = new Map<string, { name: PermissionName; done: Promise<boolean> }>()
+// Each tool call gets its own signal, so a give-up is remembered per lane and task text: the same turn does not wait twice.
+const gaveUp = new Map<string, string>()
+// The tool budget pauses while the person is asked to turn a permission on.
+export const permissionWaiting = (lane: string): boolean => waits.has(lane)
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted()
+    const stop = () => { clearTimeout(timer); reject(signal!.reason) }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', stop); resolve() }, ms)
+    signal?.addEventListener('abort', stop, { once: true })
+  })
+}
+async function isOn(name: PermissionName, signal?: AbortSignal): Promise<boolean> {
+  if (testing()) return (globalThis as { __engramPermissionState?: Partial<PermissionState> }).__engramPermissionState?.[name] === true
+  const timeout = AbortSignal.timeout(PERMISSION_READ_MS)
+  const host = (await import('./desktop-access.js')).catalogHost()
+  const state: KnownState = await readPermissionState(host, signal ? AbortSignal.any([signal, timeout]) : timeout)
+    .catch(() => { signal?.throwIfAborted(); return permissionStateNow() })
+  return state[name] === true
+}
+async function poll(name: PermissionName, signal?: AbortSignal): Promise<boolean> {
+  const deadline = Date.now() + WAIT_MS
+  for (let delay = FIRST_MS; Date.now() < deadline; delay = Math.min(MAX_MS, delay * 1.5)) {
+    await sleep(Math.min(delay, Math.max(0, deadline - Date.now())), signal)
+    if (await isOn(name, signal)) return true
+  }
+  return false
+}
+export async function waitForPermission(lane: string, failure: DesktopFailureObservation & { permission?: PermissionName }, context: { task?: string; signal?: AbortSignal }): Promise<'none' | 'on' | 'off'> {
+  const name = failure.permission
+  if (!name || failure.delivery !== 'not_delivered' || process.platform !== 'darwin') return 'none'
+  const { signal } = context
+  const turn = `${name}\n${context.task ?? ''}`
+  if (gaveUp.get(lane) === turn) return 'off'
+  let current = waits.get(lane)
+  while (current && current.name !== name) {
+    await current.done.catch(() => false)
+    signal?.throwIfAborted()
+    current = waits.get(lane)
+  }
+  let on: boolean
+  if (current) { on = await current.done; signal?.throwIfAborted() }
+  else {
+    setCard(lane, permissionCard(name, korean(context.task)))
+    const entry = { name, done: poll(name, signal) }
+    waits.set(lane, entry)
+    try { on = await entry.done }
+    finally {
+      if (waits.get(lane) === entry) waits.delete(lane)
+      if (cards.get(lane)?.permission === name) setCard(lane, null)
+    }
+  }
+  if (on) { gaveUp.delete(lane); return 'on' }
+  gaveUp.set(lane, turn)
+  return 'off'
 }

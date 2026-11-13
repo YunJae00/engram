@@ -183,7 +183,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
-import { desktopAgentTools, desktopContext } from './desktop-agent.js'
+import { desktopAgentTools, desktopContext, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
 import { artifactDirectory, cometFileTools, newestRevisions, registerArtifactIpc } from './file-work.js'
@@ -1020,7 +1020,7 @@ export function registerIpc(ctx: VaultContext): void {
   // Boot check: a vault carrying old backlog (unswept edits, unlinked notes)
   // starts healing shortly after launch — no button required.
   scheduleAutoTidy(ctx, 120_000)
-
+  registerPermissionCardIpc()
   const { paths } = ctx
   const sidebarIds = async (kind?: unknown) => {
     if (kind !== undefined && kind !== 'chat' && kind !== 'routine') throw new Error('Invalid sidebar section')
@@ -2723,7 +2723,7 @@ export function registerIpc(ctx: VaultContext): void {
             signal,
             tokenBudget: turn?.tokenBudget,
             onUsage: tokens => { tokensUsed += tokens },
-            waitingForPerson: () => tasks.waitingForPerson(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel),
+            waitingForPerson: () => tasks.waitingForPerson(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),

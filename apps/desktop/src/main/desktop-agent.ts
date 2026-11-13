@@ -14,6 +14,8 @@ import { formatPress, formatScan, formatSet, formatText } from './desktop-quiet-
 import { formatDo, irreversibleName, quietDo } from './desktop-quiet-do.js'
 import { prepareQuietConfirmation, pressQuietConfirmed, confirmationFailure } from './desktop-quiet-confirm.js'
 import { flog } from './flog.js'
+import { korean, permissionDenied, stillOffHint, waitForPermission } from './desktop-permission-state.js'
+export { permissionWaiting, registerPermissionCardIpc } from './desktop-permission-state.js'
 import { brainConnection } from './brain-connections.js'
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
@@ -149,9 +151,20 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       throw new Error(`Computer control stopped: ${current.reason ?? 'control is no longer active'}. Ask the person before requesting it again.`)
     }
   }
+  // A denied permission shows a card, waits for it to turn on, then runs the call once more.
+  const blocked = async <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> => {
+    context.signal?.throwIfAborted()
+    const failure = await permissionFailure(error, lane, { ask: context.task })
+    const waited = await waitForPermission(lane, failure, context)
+    if (waited === 'on') {
+      try { return await again() }
+      catch (retry) { context.signal?.throwIfAborted(); return wrap(JSON.stringify(await permissionFailure(retry, lane, { ask: context.task }))) }
+    }
+    return wrap(JSON.stringify(waited === 'off' ? { ...failure, hint: stillOffHint(failure.permission!, korean(context.task)) } : failure))
+  }
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
     try { return await tool.run(args, context) }
-    catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
+    catch (error) { return blocked(error, context, () => tool.run(args, context), json => json) }
   } } satisfies AgentTool))
   return [...guardedQuiet, ...desktopTools({
     apps: async (signal) => { signal?.throwIfAborted(); return appCatalog() },
@@ -163,7 +176,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
       try { await actOnDesktop(lane, action, context.signal) }
-      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
+      catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
@@ -177,18 +190,19 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       await quietFirst(context)
       try {
         const result = JSON.parse(await desktopSequence(lane, actions, context.signal)) as Record<string, unknown>
+        if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
         return JSON.stringify(result)
-      } catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
+      } catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
     }),
   }), ...liveDocumentTools((method, args, context) => withDesktopActivity(lane, async () => { await quietFirst(context); return accessLiveDocument(lane, method, args, context.signal) }))].map(tool => {
     if (!['read_desktop', 'look_desktop', 'list_windows', 'open_app', 'desktop_action', 'desktop_sequence', 'edit_live_document', 'compose_live_document'].includes(tool.name)) return tool
     return { ...tool, ...(tool.runRich ? { async runRich(args, context) {
       try { return await tool.runRich!(args, context) }
-      catch (error) { context.signal?.throwIfAborted(); return { text: JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) } }
+      catch (error) { return blocked(error, context, () => tool.runRich!(args, context), json => ({ text: json })) }
     } } : {}), async run(args, context) {
       try { return await tool.run(args, context) }
-      catch (error) { context.signal?.throwIfAborted(); return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
+      catch (error) { return blocked(error, context, () => tool.run(args, context), json => json) }
     } } satisfies AgentTool
   })
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ ax: false, screen: 'denied', host: undefined as unknown }))
-vi.mock('electron', () => ({ app: { getVersion: () => '0.8.101' }, systemPreferences: { isTrustedAccessibilityClient: (prompt: boolean) => prompt ? (() => { throw new Error('prompted') })() : fake.ax, getMediaAccessStatus: () => fake.screen } }))
+vi.mock('electron', () => ({ app: { getVersion: () => '0.8.101' }, BrowserWindow: { getAllWindows: () => [] }, ipcMain: { handle: () => undefined, removeHandler: () => undefined }, shell: { openExternal: async () => undefined }, systemPreferences: { isTrustedAccessibilityClient: (prompt: boolean) => prompt ? (() => { throw new Error('prompted') })() : fake.ax, getMediaAccessStatus: () => fake.screen } }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ accessibilityTrustedVersion: '0.8.101' }), updateSettings: async () => undefined }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('../src/main/desktop-access.js', () => ({ catalogHost: () => fake.host }))
@@ -29,10 +29,12 @@ it('names the missing permission in its guidance', async () => {
   const screen = await permissionFailure('Allow Engram in System Settings → Privacy & Security → Screen Recording', 'a', { ask: '카톡 화면 보여 줘' })
   expect(screen).toMatchObject({ error: 'screen_recording_denied', permission: 'screenRecording', retry: 'blocked' })
   expect(screen.hint).toContain('화면 기록')
+  expect(screen.settingsUrl).toBe('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
   expect(screen.hint).not.toMatch(/손쉬운 사용|입력 모니터링/)
   const input = await permissionFailure('Allow Engram in System Settings → Privacy & Security → Input Monitoring', 'b', { ask: 'click send in Slack' })
   expect(input).toMatchObject({ error: 'input_monitoring_denied', permission: 'inputMonitoring' })
   expect(input.hint).toContain('Input Monitoring')
+  expect(input.settingsUrl).toBe('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent')
   const ax = await permissionFailure('Allow Engram in System Settings → Privacy & Security → Accessibility', 'c', { ask: '메모 앱 읽어 줘', delivered: true })
   expect(ax).toMatchObject({ error: 'accessibility_denied', permission: 'accessibility', delivery: 'delivered_unverified' })
   expect(ax.hint).toContain('손쉬운 사용')

@@ -8,7 +8,12 @@
 // arbitrary string to the OS. These predicates are the choke points.
 
 // Hosts we are willing to hand to the OS browser via shell.openExternal. The
-// only external navigation the app performs is the one-click GitHub backup.
+// only external navigation the app performs is the one-click GitHub backup; the three exact Settings panes below also open.
+export const PRIVACY_PANE = {
+  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  screenRecording: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+  inputMonitoring: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
+} as const
 const EXTERNAL_HOST_ALLOWLIST = ['github.com'] as const
 
 /**
@@ -18,7 +23,7 @@ const EXTERNAL_HOST_ALLOWLIST = ['github.com'] as const
  * shell.openExternal call and the setWindowOpenHandler external path.
  */
 export function isAllowedExternalUrl(raw: string): boolean {
-  if (raw === 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility') return true
+  if ((Object.values(PRIVACY_PANE) as string[]).includes(raw)) return true
   let url: URL
   try {
     url = new URL(raw)

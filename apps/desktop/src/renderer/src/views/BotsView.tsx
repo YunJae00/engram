@@ -17,6 +17,7 @@ import { usePreviewFrames } from '../components/usePreviewFrames.js'
 import { useCompactBrowser } from '../lib/useCompactBrowser.js'
 import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
+import { PermissionCard } from '../components/PermissionCard.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { BotTitlePill } from '../components/CometTitle.js'
 import { BotInfoPane } from '../components/BotInfoPane.js'
@@ -170,6 +171,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
                 <ThreadOffers botId={selected.id} onSend={sendChip} />
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
+                <PermissionCard lane={cometChannel(selected.id)} />
               </CometMessages>
               {errand.running && (
                 <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">

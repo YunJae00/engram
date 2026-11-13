@@ -1,3 +1,5 @@
+import { PRIVACY_PANE } from './security.js'
+
 export interface DesktopFailureObservation {
   error: 'stale_snapshot' | 'element_not_found' | 'ambiguous' | 'occluded' | 'timeout' | 'action_failed' | 'policy_denied' | 'accessibility_denied' | 'screen_recording_denied' | 'input_monitoring_denied'
   delivery: 'not_delivered' | 'delivery_uncertain' | 'delivered_unverified'
@@ -24,6 +26,7 @@ const PRECONDITIONS: { pattern: RegExp; code: DesktopFailureObservation['error']
   { pattern: /another surface covers the input position|cannot verify the input position|input position is covered or outside/i, code: 'occluded' },
   { pattern: /window is unavailable or requires manual control|surfaces require manual control|surface requires manual control|password fields are the person's|control is unavailable or protected|input position is protected or unverified/i, code: 'policy_denied' },
 ]
+const PANE: Record<string, string> = { accessibility_denied: PRIVACY_PANE.accessibility, screen_recording_denied: PRIVACY_PANE.screenRecording, input_monitoring_denied: PRIVACY_PANE.inputMonitoring }
 const TRANSIENT_PREPARATION = /returned control to the user|pointer target changed|window or desktop changed|control expired|user input changed|release your keyboard|release the keyboard modifiers|the selected window is no longer in front|selected application is no longer in the foreground|bring the chosen application to the foreground and grant control again|app did not acknowledge foreground activation|app changed while it was being read|observe this application again before sending input/i
 const STOP = /\besc\b|\bstop(?:ped)?\b|cancelled|canceled|permission|connection closed|disconnected/i
 
@@ -39,7 +42,7 @@ export function desktopFailure(error: unknown, options: { preparing?: boolean; d
   const delivery = options.delivered ? 'delivered_unverified' : blocked || safe || notSent ? 'not_delivered' : 'delivery_uncertain'
   return {
     reason: reason.slice(0, 300),
-    ...(known?.code === 'accessibility_denied' ? { settingsUrl: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility' } : {}),
+    ...(blocked && PANE[known!.code] ? { settingsUrl: PANE[known!.code] } : {}),
     error: blocked ? known!.code : timeout ? 'timeout' : known?.code ?? 'action_failed', delivery, retry: blocked ? 'blocked' : safe ? 'safe' : 'unsafe',
     hint: blocked ? `${known?.hint} Do not replace a local app read with web search; report that local access is blocked.`
       : options.container ? 'Read the app to check the effect, then target an inner actionable cell or button with the same name instead of repeating the container press.'

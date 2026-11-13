@@ -9,6 +9,7 @@ import type {
   RoutineStepDto,
   EngramApi,
   EngramEvent,
+  PermissionCardDto,
 } from '../shared/types.js'
 
 const api: EngramApi = {
@@ -54,6 +55,13 @@ const api: EngramApi = {
   desktopPreviewVisible: (lane, visible) => ipcRenderer.invoke('desktop:previewVisible', lane, visible),
   desktopPreviewStream: (lane, live) => ipcRenderer.invoke('desktop:previewStream', lane, live),
   desktopAvailable: () => ipcRenderer.invoke('desktop:available'),
+  desktopPermissionCard: lane => ipcRenderer.invoke('desktop:permissionCard', lane),
+  desktopPermissionPane: permission => ipcRenderer.invoke('desktop:permissionPane', permission),
+  onPermissionCard: listener => {
+    const wrapped = (_e: unknown, lane: string, card: PermissionCardDto | null) => listener(lane, card)
+    ipcRenderer.on('desktop:permissionCardChanged', wrapped)
+    return () => ipcRenderer.removeListener('desktop:permissionCardChanged', wrapped)
+  },
   desktopVisible: () => ipcRenderer.invoke('desktop:visible'),
   desktopWindows: () => ipcRenderer.invoke('desktop:windows'),
   desktopBindings: () => ipcRenderer.invoke('desktop:bindings'),

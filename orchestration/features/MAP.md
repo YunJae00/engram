@@ -40,6 +40,7 @@ A new scenario is a file `scripts/verify-scenarios/<name>.mjs` exporting that `r
 | Live preview overlay | Open a comet with an incoming `agent:frame`, then drag `preview-card` inside the chat | `ui-live-overlay` | Real PNG frame paints; chat stays packed before and after pointer drag, with the card and composer reachable (`scripts/verify-scenarios/ui-live-overlay.mjs`, supplied at integration) |
 | Live preview aspect | Open a comet with an incoming app frame (portrait, landscape, very tall) | `ui-preview-aspect` | `preview-card-stage` ratio equals the frame ratio and the frame fills the card (no bars, no crop); when the height reaches half the chat height the card gets narrower, at wide and narrow widths, in light and dark themes |
 | Live card fit | Open a bot with 30 turns and a live app card, in single, 2- and 4-pane view, scrolled to top, middle and bottom | `apps/desktop/e2e/live-card-fit.spec.ts` | the docked card never covers a chat bubble at any scroll position, and each card has its window's aspect with no letterbox |
+| Permission card | Open a bot, start main's real Screen Recording wait with a fake permission state, then turn it on | `apps/desktop/e2e/permission-card.spec.ts` | one card in the thread names the permission and why; its button opens only the exact Privacy_ScreenCapture pane; it leaves and the step continues when the permission is on |
 
 The memory graph (`brain-graph`) is part of Cosmos, proved by `cosmos` and `note-open`. The connected model is the Brain rows, proved by `brain`.
 
