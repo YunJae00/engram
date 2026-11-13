@@ -7,7 +7,7 @@ final class DesktopHost {
         for pid in hiddenApps { NSRunningApplication(processIdentifier: pid)?.unhide() }
         hiddenApps.removeAll()
     }
-    let monitor = InputMonitor()
+    let monitor = HostMonitor()
     let frame = ApplicationFrame()
     var snapshots: [String: Snapshot] = [:]
     var documents: [String: LiveRead] = [:]
@@ -71,7 +71,9 @@ final class DesktopHost {
     func receive(_ request: [String: Any]) throws -> Any {
         let method = try text(request, "method", limit: 32)
         if method == "stop" { monitor.stop("Computer control stopped"); frame.hide(); snapshots.removeAll(); documents.removeAll(); prepared = nil; return ["stopped": true] }
+        if method == "permissionState" { return permissionState() }
         if method == "inputState" {
+            try monitor.ensureRunning()
             let current = monitor.state()
             return ["intervention": String(current.intervention), "idleMs": current.idle, "escaped": current.escaped, "working": current.lease != nil]
         }
@@ -101,6 +103,8 @@ final class DesktopHost {
                 }
             }]
         }
+        // Reads need only Accessibility; anything that acts must watch the person's input first.
+        if ["click", "type", "replace", "key", "scroll", "prepare", "bind", "work", "idle", "activateWindow", "quietSet", "quietPress", "documentEdit", "documentCompose"].contains(method) { try monitor.ensureRunning() }
         let previous = NSWorkspace.shared.frontmostApplication
         let quiet = ["quietSet", "quietPress", "quietRead"].contains(method)
         defer { if quiet { _ = restoreForeground(previous) } }

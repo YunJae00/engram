@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { desktopFailure, type DesktopFailureObservation } from './desktop-failure.js'
 import { flog } from './flog.js'
+import { CODE_PERMISSION, korean, permissionGuidance, type PermissionCode, type PermissionName } from './desktop-permission-state.js'
 
 const denials = new Map<string, number>()
 let trustedVersion: string | undefined
@@ -15,8 +16,9 @@ export async function rememberAccessibilityTrust(method: string): Promise<void> 
     await updateSettings(settings => ({ ...settings, accessibilityTrustedVersion: version }))
   trustedVersion = version
 }
-export async function permissionFailure(error: unknown, lane: string, options?: Parameters<typeof desktopFailure>[1]): Promise<DesktopFailureObservation> {
-  const result = desktopFailure(error, options)
+export async function permissionFailure(error: unknown, lane: string, options: Parameters<typeof desktopFailure>[1] & { ask?: string } = {}): Promise<DesktopFailureObservation & { permission?: PermissionName }> {
+  const { ask, ...failure } = options
+  const result = desktopFailure(error, failure)
   if (result.retry !== 'blocked') return result
   const { loadSettings } = await import('./settings.js')
   const appVersion = app.getVersion()
@@ -26,5 +28,7 @@ export async function permissionFailure(error: unknown, lane: string, options?: 
   if (!denials.has(key) && denials.size >= 512) denials.delete(denials.keys().next().value!)
   denials.set(key, repeat)
   flog('desktop-permission', JSON.stringify({ code: result.error, appVersion, trustedVersion, repeat }))
-  return result
+  if (!(result.error in CODE_PERMISSION)) return result
+  const code = result.error as PermissionCode
+  return { ...result, permission: CODE_PERMISSION[code], ...(korean(ask) ? { hint: `${permissionGuidance(code, true)} 로컬 앱 읽기를 웹 검색으로 대신하지 말고, 접근이 막혔다고 알려 주세요.` } : {}) }
 }

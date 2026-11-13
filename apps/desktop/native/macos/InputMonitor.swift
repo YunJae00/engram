@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import IOKit.hid
 
 final class InputMonitor: @unchecked Sendable {
     private let lock = NSLock()
@@ -68,6 +69,7 @@ final class InputMonitor: @unchecked Sendable {
                   escape: type == .keyDown && event.getIntegerValueField(.keyboardEventKeycode) == 53)
     }
     func start() throws {
+        guard IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted else { throw DesktopFailure("Allow Engram in System Settings → Privacy & Security → Input Monitoring") }
         let ready = DispatchSemaphore(value: 0)
         Thread.detachNewThread { [self] in
             let mask: CGEventMask = [CGEventType.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .scrollWheel].reduce(0) { $0 | (1 << $1.rawValue) }

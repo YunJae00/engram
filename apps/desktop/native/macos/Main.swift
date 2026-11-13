@@ -107,8 +107,7 @@ final class Connection: @unchecked Sendable {
             connection.send(["type": "revoked", "lease": lease, "reason": reason])
             DispatchQueue.main.async { host.frame.hide(); host.documents.removeAll(); host.snapshots.removeAll() }
         }
-        do { try host.monitor.start() }
-        catch { connection.send(["type": "fatal", "error": String(describing: error)]); return }
+        if permissionState()["inputMonitoring"] == true { host.monitor.start() }
         let watchdog = DispatchSource.makeTimerSource(queue: .global())
         watchdog.schedule(deadline: .now() + 1, repeating: 1)
         watchdog.setEventHandler {

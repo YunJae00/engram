@@ -11,11 +11,11 @@ import { flog } from './flog.js'
 import { recoverableDesktopFailure } from './desktop-recovery.js'
 
 export type DesktopMethod = 'unhideApp' | 'listApps' | 'openApp' | 'inputState' | 'listWindows' | 'inspectWindow' | 'activateWindow' | 'applicationFrame' | 'observe' | 'capture' | 'prepare' | 'bind' | 'work' | 'idle' | 'click' | 'type' | 'replace' | 'scroll' | 'key' | 'stop' | 'documentRead' | 'documentEdit' | 'documentCompose'
-  | 'quietState' | 'quietScan' | 'quietRead' | 'quietSet' | 'quietPress' | 'applicationFrameHide'
+  | 'quietState' | 'quietScan' | 'quietRead' | 'quietSet' | 'quietPress' | 'applicationFrameHide' | 'permissionState'
 const METHODS = new Set<DesktopMethod>(['unhideApp', 'listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'activateWindow', 'applicationFrame', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose',
-  'quietState', 'quietScan', 'quietRead', 'quietSet', 'quietPress', 'applicationFrameHide'])
+  'quietState', 'quietScan', 'quietRead', 'quietSet', 'quietPress', 'applicationFrameHide', 'permissionState'])
 // Everything else names one window; these two speak about the session.
-const UNSCOPED = new Set<DesktopMethod>(['unhideApp', 'listApps', 'openApp', 'inputState', 'listWindows', 'stop'])
+const UNSCOPED = new Set<DesktopMethod>(['unhideApp', 'listApps', 'openApp', 'inputState', 'listWindows', 'stop', 'permissionState'])
 
 interface PendingRequest {
   method: DesktopMethod
