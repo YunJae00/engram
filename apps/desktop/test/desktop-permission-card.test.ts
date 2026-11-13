@@ -14,8 +14,9 @@ vi.mock('electron', () => ({
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => ({ accessibilityTrustedVersion: '0.8.136' }), updateSettings: async () => undefined }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => undefined }))
 vi.mock('../src/main/desktop-access.js', () => ({ catalogHost: () => fake.host }))
-import { openPermissionPane, permissionCard, permissionDenied, permissionWaiting, registerPermissionCardIpc, stillOffHint, waitForPermission, type PermissionName } from '../src/main/desktop-permission-state.js'
-import { permissionFailure, retryOnPermission } from '../src/main/desktop-permission.js'
+import { forgetPermissionGiveUp, openPermissionPane, permissionCard, permissionDenied, permissionWaiting, registerPermissionCardIpc, stillOffHint, waitForPermission, type PermissionName } from '../src/main/desktop-permission-state.js'
+import { permissionFailure } from '../src/main/desktop-permission.js'
+import { retryOnPermission } from '../src/main/desktop-permission-retry.js'
 import { PRIVACY_PANE, isAllowedExternalUrl } from '../src/main/security.js'
 import { desktopFailure } from '../src/main/desktop-failure.js'
 import { answerHtml } from '../src/renderer/src/markdown.js'
@@ -110,6 +111,14 @@ it('resumes the waiting step once the permission is on', async () => {
   expect(cardsSent().map(call => call[2] && 'card')).toEqual(['card', null])
   expect(await waitForPermission('bot-b', await permissionFailure(denial('screenRecording'), 'bot-b'), { task: 'read it' })).toBe('off')
   expect(cardsSent()).toHaveLength(2)
+  // The turn's end forgets the give-up: a later turn with the same words waits and resumes again.
+  forgetPermissionGiveUp('bot-b')
+  fake.host.request = states([false, false, true])
+  const later = waitForPermission('bot-b', await permissionFailure(denial('screenRecording'), 'bot-b'), { task: 'read it' })
+  await vi.advanceTimersByTimeAsync(20_000)
+  expect(await later).toBe('on')
+  expect(cardsSent().map(call => call[2] && 'card')).toEqual(['card', null, 'card', null])
+  fake.host.request = states([false])
 
   // Stop while waiting clears the card.
   fake.send.mockClear()

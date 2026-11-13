@@ -183,7 +183,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
-import { desktopAgentTools, desktopContext, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
+import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
 import { artifactDirectory, cometFileTools, newestRevisions, registerArtifactIpc } from './file-work.js'
@@ -2924,6 +2924,7 @@ export function registerIpc(ctx: VaultContext): void {
       } finally {
         clearApplicationWork(channel)
         endDesktopTurn(channel)
+        forgetPermissionGiveUp(channel)
         warmLater(3_000)
         // The window stays where the work left it: the page a comet worked on
         // is what the person reads the answer against, and closing it the
