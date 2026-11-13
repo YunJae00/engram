@@ -1,0 +1,17 @@
+{
+  "id": "qa133-work-guide-one-off-rule",
+  "status": "done",
+  "headSha": "36becaa043a07d8015979e442aabeee5ca4795ca",
+  "changedFiles": ["apps/desktop/src/main/work-guide-learn.ts", "apps/desktop/src/main/task-runner.ts", "apps/desktop/src/main/ipc.ts", "apps/desktop/test/work-guide-one-off.test.ts", "apps/desktop/test/work-guide-learn.test.ts"],
+  "testsAdded": ["apps/desktop/test/work-guide-one-off.test.ts: a question the person asked to be asked is not learned", "apps/desktop/test/work-guide-one-off.test.ts: a Korean ask-me instruction is not learned", "apps/desktop/test/work-guide-one-off.test.ts: an ordinary clarifying question is still learned", "apps/desktop/test/work-guide-learn.test.ts: does not learn from a question the person told this comet to ask, however it was phrased"],
+  "commandsRun": [
+    {"cmd": "unit-one-off criterion", "exit": 0},
+    {"cmd": "unit-existing criterion", "exit": 0},
+    {"cmd": "pnpm run typecheck", "exit": 0},
+    {"cmd": "pnpm run lint", "exit": 0},
+    {"cmd": "pnpm run check:quick", "exit": 0},
+    {"cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 1},
+    {"cmd": "pinned criterion (allowed-diff.sh)", "exit": 0}
+  ],
+  "openQuestions": ["ENGRAM_CHECK_BASE=next npm run check:quick fails only packages/core/test/e2e-runners.test.ts 'ignores version-only manifests...' because that test reads ENGRAM_CHECK_BASE from the environment; it fails identically on the unmodified base and passes without the variable."]
+}
