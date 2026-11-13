@@ -184,8 +184,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (hit.some(node => irreversibleName(node.name ?? ''))) return true
       // A draft already in a field (typed by the person) can go out through an unnamed icon button too.
       if (!afterTyping) return hit.some(node => /Button/i.test(node.controlType) && !(node.name ?? '').trim()) && view.nodes.some(node => FIELD.test(node.controlType) && !!node.value?.trim())
-      const type = action.target?.controlType ?? hit[0]?.controlType
-      return !type || !FIELD.test(type)
+      // Every control under the point counts: an icon button drawn over the field must not hide behind it.
+      const types = action.target?.controlType ? [action.target.controlType] : hit.map(node => node.controlType)
+      return !types.length || types.some(type => !FIELD.test(type))
     } catch { return afterTyping }
   }
   const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })

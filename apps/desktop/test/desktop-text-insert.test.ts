@@ -171,6 +171,10 @@ describe('desktop text insertion', () => {
     await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Enter' }, vi.fn().mockResolvedValue(true))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).toHaveBeenCalledOnce()
+    // A position click where an icon button overlaps the field still asks.
+    fake.observe.mockImplementation(() => ({ ...field(''), captureBounds: { x: 0, y: 0, width: 101, height: 101 }, nodes: [...field('').nodes.map(node => ({ ...node, bounds: { x: 0, y: 0, width: 100, height: 60 } })), icon] }))
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.7, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).toHaveBeenCalledOnce()
   })
 
   it('reports the strategy and read-back of text typed in a sequence', async () => {
