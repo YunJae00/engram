@@ -108,6 +108,20 @@ describe('answerHtml', () => {
     expect(partly).not.toContain('<em>')
     expect(partly).not.toContain('<strong>')
   })
+
+  it('keeps single newlines as line breaks outside code', () => {
+    const count = (s: string, sub: string) => s.split(sub).length - 1
+    const html = answerHtml(Array.from({ length: 30 }, (_, i) => `${i + 1} – item ${i + 1}`).join('\n'))
+    expect(count(html, '<br>')).toBe(29)
+    expect(count(html, '<p>')).toBe(1)
+    const code = answerHtml('```\nfirst line\nsecond line\n```')
+    expect(code).not.toContain('<br>')
+    expect(code).toContain('first line\nsecond line')
+    const paragraphs = answerHtml('a\n\nb')
+    expect(count(paragraphs, '<p>')).toBe(2)
+    expect(paragraphs).not.toContain('<br>')
+    expect(answerHtml('https://example.com\nhttps://example.com', ['https://example.com/'])).not.toContain('<a')
+  })
 })
 
 describe('found items and suggested replies', () => {
