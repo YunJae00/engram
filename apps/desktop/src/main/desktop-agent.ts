@@ -75,7 +75,8 @@ function appCatalog(): Promise<string> {
 }
 
 // Background observation must not acquire the foreground input lease.
-// Lanes whose typed text has not been sent yet this turn; the turn's end forgets them (ipc's finally).
+// Lanes holding typed text that has not been sent with approval. Marked before the text is dispatched (a failed
+// read-back must not hide it) and kept across turns: a draft left in the app stays unsent until an approved send.
 const typedUnsent = new Set<string>()
 export function forgetTypedUnsent(lane: string): void { typedUnsent.delete(lane) }
 export function desktopAgentTools(lane: string): AgentTool[] {
@@ -202,7 +203,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     look: (signal, app) => lookDesktop(lane, signal, app),
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
-      if (action.kind === 'type') typeArgs(action.text)
+      if (action.kind === 'type') { typeArgs(action.text); typedUnsent.add(lane) }
       if (sends(action)) { if (!await askSend(context, action.snapshot)) return notSent; typedUnsent.delete(lane) }
       let receipt: TypeReceipt | undefined
       try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
@@ -210,7 +211,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
-        if (action.kind === 'type') typedUnsent.add(lane)
         return JSON.stringify({ dispatched: true, observation, requiresVerification: true, ...(action.kind === 'type' ? { typed: typedReport(action.text, receipt, observation) } : {}) })
       } catch (error) {
         context.signal?.throwIfAborted()
@@ -227,10 +227,10 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       if (send >= 0) { if (!await askSend(context, actions[0]!.snapshot)) return notSent; typedUnsent.delete(lane) }
       try {
         const typed = actions.filter(action => action.kind === 'type').map(action => typeArgs(action.text).text)
+        if (typed.length) typedUnsent.add(lane)
         const [raw, receipt] = await withTypeReceipt(typed.length ? desktopBinding(lane)?.host : undefined, typed.at(-1) ?? '', () => desktopSequence(lane, actions, context.signal))
         const result = JSON.parse(raw) as Record<string, unknown>
         // The last text typed is the one the final observation can read back; its strategy comes from the native receipt.
-        if (typed.length) typedUnsent.add(lane)
         if (typed.length && !result['error'] && result['observation']) result['typed'] = typedReport(typed.at(-1)!, receipt, result['observation'] as DesktopObservationDto)
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 || typedUnverified(result['error']) ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })

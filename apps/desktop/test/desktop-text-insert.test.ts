@@ -149,6 +149,13 @@ describe('desktop text insertion', () => {
     await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
     expect(fake.act).toHaveBeenCalledOnce()
     expect(decline).toHaveBeenCalledTimes(2)
+    // A type whose read-back fails still leaves a draft: the icon button keeps asking, and a new tool set (next turn) remembers it.
+    forgetTypedUnsent('bot-one'); fake.act.mockClear(); decline.mockClear()
+    fake.read.mockRejectedValueOnce(new Error('read failed'))
+    await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
+    fake.act.mockClear()
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).not.toHaveBeenCalled()
   })
 
   it('reports the strategy and read-back of text typed in a sequence', async () => {
