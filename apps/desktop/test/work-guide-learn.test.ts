@@ -51,3 +51,15 @@ it('serializes learned changes so answers given together cannot overwrite one an
   expect(t.jobs[1]!.prompt).toContain('First learned rule')
   expect(await workGuide(t.paths)).toContain('Both learned rules')
 })
+
+it('does not learn from a question the person told this comet to ask, however it was phrased', async () => {
+  const t = await setup(() => guide('External recipients need approval'))
+  learnFromAnswer(t.ctx, 'Which color do you prefer?', 'Teal', 'Before answering, please ask which color I prefer.')
+  learnFromAnswer(t.ctx, 'Which color?', 'Green', 'Before answering, ask me which color I prefer: Red, Green, or Blue.')
+  await guideSettled(t.ctx)
+  expect(t.jobs).toHaveLength(0)
+  learnFromAnswer(t.ctx, 'Which recipients need approval?', 'External recipients', 'Send the weekly report to the team. Ask me for feedback after you send it.')
+  learnFromAnswer(t.ctx, 'Which recipients?', 'External recipients', '고객이 물어본 내용을 정리해줘')
+  await guideSettled(t.ctx)
+  expect(t.jobs).toHaveLength(2)
+})

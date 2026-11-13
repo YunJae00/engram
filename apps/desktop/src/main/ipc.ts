@@ -1800,7 +1800,7 @@ export function registerIpc(ctx: VaultContext): void {
       await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
-    learn: (question, answer) => learnFromAnswer(ctx, question, answer),
+    learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
     notify: (task) => { void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(level => notifyTask(task, broadcast, level)).catch(error => flog('task-notify', error)) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,

@@ -59,7 +59,7 @@ export function taskRunner(deps: {
   remember(text: string): Promise<void>
   deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence): Promise<void>
   checkBudgetMs?: number
-  learn?(question: string, answer: string): void
+  learn?(question: string, answer: string, goal: string): void
   notify(task: DelegatedTask): void
   offered?(channel: string): boolean
   meaning?: MeaningScores
@@ -250,7 +250,7 @@ export function taskRunner(deps: {
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
-        if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message)
+        if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message, asked.goal)
         for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); routine.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         if (task !== resumed && request.scheduled === true) routine.add(task.id)

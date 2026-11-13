@@ -75,9 +75,30 @@ function saveGuide(ctx: VaultContext, given: GuideAnswer[], signal: AbortSignal)
   return saving
 }
 
+const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
+const COMMON = new Set(['which', 'what', 'when', 'where', 'would', 'should', 'could', 'your', 'that', 'this', 'with', 'from', 'have', 'want', 'before', 'after', 'about'])
+
+// The parts of the person's message that tell the comet to ask them something.
+function askClauses(goal: string): string[] {
+  return goal.split(/[.!?\n。]+/).flatMap((sentence) => {
+    const english = sentence.match(/\b(?:ask|quiz)\w*\b(.*)/i)
+    if (english) return [english[1]!]
+    return /물어|질문|여쭤/.test(sentence) ? [sentence] : []
+  })
+}
+
+// Asked only because this one message said to: the answer is offered there, or the question repeats what it said to ask.
+function requestedAsk(goal: string, question: string, answer: string): boolean {
+  const said = words(answer), topic = [...words(question)].filter((w) => w.length >= 4 && !COMMON.has(w))
+  return askClauses(goal).some((clause) => {
+    const told = words(clause)
+    return (said.size > 0 && [...said].every((w) => told.has(w))) || topic.some((w) => told.has(w))
+  })
+}
+
 // An answer the person gave a comet's question, folded into their guide.
-export function learnFromAnswer(ctx: VaultContext, question: string, answer: string): void {
-  if (!question.trim() || !answer.trim() || question.length > 300 || answer.length > 1200) return
+export function learnFromAnswer(ctx: VaultContext, question: string, answer: string, goal = ''): void {
+  if (requestedAsk(goal, question, answer) || !question.trim() || !answer.trim() || question.length > 300 || answer.length > 1200) return
   void saveGuide(ctx, [{ question, answer }], AbortSignal.timeout(GUIDE_TIMEOUT_MS * 2))
     .catch(() => flog('work-guide', 'The work guide could not be updated. Existing guidance was kept.'))
 }
