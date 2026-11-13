@@ -75,30 +75,19 @@ function saveGuide(ctx: VaultContext, given: GuideAnswer[], signal: AbortSignal)
   return saving
 }
 
-const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
-const COMMON = new Set(['which', 'what', 'when', 'where', 'would', 'should', 'could', 'your', 'that', 'this', 'with', 'from', 'have', 'want', 'before', 'after', 'about'])
+// The person's message told the comet to ask them something before it works.
+// Then the comet's questions in that task are part of the request, not a habit to keep:
+// any paraphrase of the asked question is covered because the whole task is skipped.
+const ASK_LATER = /\b(?:after|once|later|next)\b|나중에|다음에|끝나면|끝난 ?(?:뒤|후)|한 ?(?:뒤|후)에?|하고 ?나서/i
+const ASK_ME = /\b(?:ask|quiz)\s+(?:me|which|what|whether|if|how|who|my|for|about)\b|\bcheck with me\b|\blet me (?:choose|pick|decide)\b|(?:물어|여쭤)\s?(?:봐|보고|보세요|봐요)|질문\s?(?:해|하고)/i
 
-// The parts of the person's message that tell the comet to ask them something.
-function askClauses(goal: string): string[] {
-  return goal.split(/[.!?\n。]+/).flatMap((sentence) => {
-    const english = sentence.match(/\b(?:ask|quiz)\w*\b(.*)/i)
-    if (english) return [english[1]!]
-    return /물어|질문|여쭤/.test(sentence) ? [sentence] : []
-  })
-}
-
-// Asked only because this one message said to: the answer is offered there, or the question repeats what it said to ask.
-function requestedAsk(goal: string, question: string, answer: string): boolean {
-  const said = words(answer), topic = [...words(question)].filter((w) => w.length >= 4 && !COMMON.has(w))
-  return askClauses(goal).some((clause) => {
-    const told = words(clause)
-    return (said.size > 0 && [...said].every((w) => told.has(w))) || topic.some((w) => told.has(w))
-  })
+function requestedAsk(goal: string): boolean {
+  return goal.split(/[.!?\n。]+/).some((sentence) => ASK_ME.test(sentence) && !ASK_LATER.test(sentence))
 }
 
 // An answer the person gave a comet's question, folded into their guide.
 export function learnFromAnswer(ctx: VaultContext, question: string, answer: string, goal = ''): void {
-  if (requestedAsk(goal, question, answer) || !question.trim() || !answer.trim() || question.length > 300 || answer.length > 1200) return
+  if (requestedAsk(goal) || !question.trim() || !answer.trim() || question.length > 300 || answer.length > 1200) return
   void saveGuide(ctx, [{ question, answer }], AbortSignal.timeout(GUIDE_TIMEOUT_MS * 2))
     .catch(() => flog('work-guide', 'The work guide could not be updated. Existing guidance was kept.'))
 }
