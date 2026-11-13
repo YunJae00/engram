@@ -203,6 +203,17 @@ describe('the quiet lane keeps the apps it has read', () => {
 })
 
 describe('a quiet press', () => {
+  it('asks before any button while a field holds text, whatever the button is named', async () => {
+    const view = { window: '7', pid: 70, title: 'ChatGPT', snapshot: 'b'.repeat(32), controls: [{ id: 'c1', runtimeId: 'field', type: 'Edit', name: 'Message', value: '안녕', can: { set: true, press: false, text: true }, enabled: true, offscreen: false, focused: true, secret: false }, { id: 'c8', runtimeId: 'up', type: 'Button', name: '↑', enabled: true, offscreen: false, focused: false, secret: false, can: { set: false, press: true, text: false } }], texts: [], skippedControls: 0, skippedTexts: 0, ms: 50, state: { foreground: false, idleMs: 9000, minimized: false } }
+    fake.quietSnapshot.mockReturnValue(view)
+    fake.quietScan.mockResolvedValue(view)
+    const decline = vi.fn(async () => false)
+    const out = await desktopAgentTools('bot-one').find((tool) => tool.name === 'app_press')!.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c8' }, Object.assign({ task: 'Open a chat' }, { approveAppAction: decline }))
+    expect(JSON.parse(out)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
+    expect(decline).toHaveBeenCalledOnce()
+    expect(fake.quietPress).not.toHaveBeenCalled()
+  })
+
   it('returns the app read again, and counts as committed only for a control that cannot be taken back', async () => {
     vi.useFakeTimers()
     try {

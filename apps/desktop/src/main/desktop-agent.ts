@@ -95,11 +95,15 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const field = previous?.controls.find(item => item.id === control)
       const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
       const sendsKey = activationKey && field?.can.set && !!field.value?.trim()
-      const consequential = sendsKey || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
+      // Text already in a field (typed by the person, by Engram, or before a restart) can go out through any button,
+      // whatever its name (an icon labelled ↑ is still Send), so a plain button press then asks too.
+      const draftButton = !options?.action && !options?.state && (!options?.key || activationKey) && /button/i.test(field?.type ?? '')
+        && !!previous?.controls.some(item => item.can.set && !!item.value?.trim())
+      const consequential = sendsKey || draftButton || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
       let confirmedResult
       if (consequential) {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
-        const approval = await prepareQuietConfirmation(lane, app, previous, control, !!sendsKey || /send|submit|post|publish|보내기|전송|제출|게시/i.test(name), context.signal)
+        const approval = await prepareQuietConfirmation(lane, app, previous, control, !!sendsKey || draftButton || /send|submit|post|publish|보내기|전송|제출|게시/i.test(name), context.signal)
         if (!approval) return JSON.stringify(confirmationFailure())
         if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope))
           return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })

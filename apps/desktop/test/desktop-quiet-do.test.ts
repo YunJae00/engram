@@ -65,6 +65,16 @@ describe('a short goal run by a decision model', () => {
     expect(irreversibleName('New chat')).toBe(false)
   })
 
+  it('leaves any button for the person while a field holds text, whatever the button is named', async () => {
+    fake.scan.mockReset().mockResolvedValue(screen([control('c6', '↑'), { ...composer, value: '안녕' }], ['draft']))
+    const stopped = await quietDo(request, vi.fn().mockImplementation(decided('press c6')))
+    expect(stopped.status).toBe('needs-person')
+    expect(fake.press).not.toHaveBeenCalled()
+    fake.scan.mockResolvedValue(screen([control('c6', '↑'), composer], ['empty']))
+    await quietDo(request, vi.fn().mockImplementationOnce(decided('press c6')).mockImplementationOnce(decided('done')))
+    expect(fake.press).toHaveBeenCalledOnce()
+  })
+
   it('stops when unsure, when the screen stops changing, and at the step limit', async () => {
     fake.scan.mockResolvedValue(screen([control('c1', 'Next'), composer], ['same']))
     expect((await quietDo(request, vi.fn().mockImplementation(decided('press c1', 0.2)))).status).toBe('unsure')
