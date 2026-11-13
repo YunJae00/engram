@@ -13,7 +13,7 @@ vi.mock('../src/main/desktop-control.js', () => ({ desktopObservation: fake.obse
 vi.mock('../src/main/desktop-sequence.js', () => ({ desktopSequence: fake.sequence }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => true } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: () => ({ verdict: 'bare', title: 'Fixture' }), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn(), quietControlName: vi.fn() }))
-import { desktopAgentTools } from '../src/main/desktop-agent.js'
+import { desktopAgentTools, forgetTypedUnsent } from '../src/main/desktop-agent.js'
 import { desktopInputArgs } from '../src/main/desktop-input-args.js'
 import { typeArgs, typedReport } from '../src/main/desktop-text-insert.js'
 
@@ -29,6 +29,7 @@ const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uD
 
 beforeEach(() => {
   vi.clearAllMocks()
+  forgetTypedUnsent('bot-one')
   fake.lookup.mockImplementation(() => fake.binding)
   fake.binding.host.request = vi.fn(async (_method: string, args: Record<string, unknown>) => ({ sent: true, strategy: 'selected-text', expected: args['text'] }))
   fake.act.mockImplementation(async (_lane: string, action: { kind: string }) => { await fake.binding.host.request(action.kind, desktopInputArgs(action as never, field(''), {})); return 'dispatched' })
@@ -128,6 +129,26 @@ describe('desktop text insertion', () => {
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.204, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(decline).toHaveBeenCalledTimes(3)
     expect(fake.act).not.toHaveBeenCalled()
+  })
+
+  it('asks before Space on a focused button and before any non-field click after typing', async () => {
+    const decline = vi.fn(async () => false)
+    const icon = { id: 'e3', runtimeId: 'b3', controlType: 'AXButton', name: '', bounds: { x: 60, y: 40, width: 20, height: 20 } }
+    fake.observe.mockImplementation(() => ({ ...field(''), focusedControl: 'b3', nodes: [...field('').nodes, icon] }))
+    expect(await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Space' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).not.toHaveBeenCalled()
+    // Before typing, an unnamed button click is an ordinary click.
+    await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)
+    expect(fake.act).toHaveBeenCalledOnce()
+    fake.act.mockClear()
+    // After typing, the same icon-only button may be Send: it asks, while clicking back into the field does not.
+    await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
+    fake.act.mockClear()
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).not.toHaveBeenCalled()
+    await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
+    expect(fake.act).toHaveBeenCalledOnce()
+    expect(decline).toHaveBeenCalledTimes(2)
   })
 
   it('reports the strategy and read-back of text typed in a sequence', async () => {

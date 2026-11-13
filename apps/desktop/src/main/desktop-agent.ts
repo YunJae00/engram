@@ -75,6 +75,9 @@ function appCatalog(): Promise<string> {
 }
 
 // Background observation must not acquire the foreground input lease.
+// Lanes whose typed text has not been sent yet this turn; the turn's end forgets them (ipc's finally).
+const typedUnsent = new Set<string>()
+export function forgetTypedUnsent(lane: string): void { typedUnsent.delete(lane) }
 export function desktopAgentTools(lane: string): AgentTool[] {
   if (!DesktopHost.available()) return []
   const quiet = quietDesktopTools({
@@ -154,22 +157,34 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }
   }
   const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => !!await context.approveAppAction?.(desktopBinding(lane)?.name ?? 'this app', 'Send', snapshot)
-  // Enter, or a click on a control named like Send/Submit/Delete, can send or commit: both ask the person first.
-  const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; element?: string } }): boolean => {
+  // Enter, Space on a focused button, or a click on a control named like Send/Submit/Delete can send or commit; once
+  // text has been typed and not yet sent, any click that is not on a text field (an icon-only Send has no name) asks too.
+  const FIELD = /Text(Area|Field)|ComboBox|SearchField|TextEdit|Edit\b/i
+  const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; controlType?: string; element?: string } }, afterTyping = typedUnsent.has(lane)): boolean => {
     if (sendsKey(action)) return true
-    if (action.kind !== 'click') return false
+    if (action.kind === 'key' && action.key !== 'Space') return false
+    if (action.kind !== 'click' && action.kind !== 'key') return false
     if (action.target && irreversibleName(action.target.name)) return true
     try {
       const view = desktopObservation(lane, action.snapshot)
+      if (action.kind === 'key') {
+        const focused = view.nodes.find(node => node.runtimeId && node.runtimeId === view.focusedControl)
+        return afterTyping || !focused || !FIELD.test(focused.controlType) && (/Button|Link|MenuItem/i.test(focused.controlType) || irreversibleName(focused.name ?? ''))
+      }
       const element = action.element ?? action.target?.element
-      if (element) return irreversibleName(view.nodes.find(node => node.id === element)?.name ?? '')
-      // A click by position asks when it lands on a Send-like control in the observation it was planned on.
-      const frame = view.captureBounds
-      if (!frame || action.x === undefined || action.y === undefined) return false
-      // Rounded exactly as desktopInputArgs dispatches it, with a pixel of slack at the edges.
-      const px = Math.round(frame.x + action.x * (frame.width - 1)), py = Math.round(frame.y + action.y * (frame.height - 1))
-      return view.nodes.some(node => node.bounds && irreversibleName(node.name ?? '') && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
-    } catch { return false }
+      let hit = element ? view.nodes.filter(node => node.id === element) : []
+      if (!element && !action.target) {
+        // A click by position: what it lands on in the observation it was planned on, rounded as desktopInputArgs dispatches it.
+        const frame = view.captureBounds
+        if (!frame || action.x === undefined || action.y === undefined) return afterTyping
+        const px = Math.round(frame.x + action.x * (frame.width - 1)), py = Math.round(frame.y + action.y * (frame.height - 1))
+        hit = view.nodes.filter(node => node.bounds && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
+      }
+      if (hit.some(node => irreversibleName(node.name ?? ''))) return true
+      if (!afterTyping) return false
+      const type = action.target?.controlType ?? hit[0]?.controlType
+      return !type || !FIELD.test(type)
+    } catch { return afterTyping }
   }
   const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })
   const blocked = <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> =>
@@ -188,13 +203,14 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
       if (action.kind === 'type') typeArgs(action.text)
-      if (sends(action) && !await askSend(context, action.snapshot)) return notSent
+      if (sends(action)) { if (!await askSend(context, action.snapshot)) return notSent; typedUnsent.delete(lane) }
       let receipt: TypeReceipt | undefined
       try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
       catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task, ...(typedUnverified(error) ? { delivered: true } : {}) })) }
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
+        if (action.kind === 'type') typedUnsent.add(lane)
         return JSON.stringify({ dispatched: true, observation, requiresVerification: true, ...(action.kind === 'type' ? { typed: typedReport(action.text, receipt, observation) } : {}) })
       } catch (error) {
         context.signal?.throwIfAborted()
@@ -203,16 +219,18 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }),
     sequence: (actions, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
-      const send = actions.findIndex(sends)
+      const typedBefore = (index: number) => actions.slice(0, index).some(one => one.kind === 'type')
+      const send = actions.findIndex((action, index) => sends(action, typedUnsent.has(lane) || typedBefore(index)))
       // Any send after any typing in the same batch would send unread text, wherever the first send sits.
-      if (actions.some((action, index) => sends(action) && actions.slice(0, index).some(one => one.kind === 'type')))
+      if (actions.some((action, index) => typedBefore(index) && sends(action, true)))
         return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
-      if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
+      if (send >= 0) { if (!await askSend(context, actions[0]!.snapshot)) return notSent; typedUnsent.delete(lane) }
       try {
         const typed = actions.filter(action => action.kind === 'type').map(action => typeArgs(action.text).text)
         const [raw, receipt] = await withTypeReceipt(typed.length ? desktopBinding(lane)?.host : undefined, typed.at(-1) ?? '', () => desktopSequence(lane, actions, context.signal))
         const result = JSON.parse(raw) as Record<string, unknown>
         // The last text typed is the one the final observation can read back; its strategy comes from the native receipt.
+        if (typed.length) typedUnsent.add(lane)
         if (typed.length && !result['error'] && result['observation']) result['typed'] = typedReport(typed.at(-1)!, receipt, result['observation'] as DesktopObservationDto)
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 || typedUnverified(result['error']) ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
