@@ -54,6 +54,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - Embedded browser — Windows-only (`apps/desktop/e2e/native-browser.spec.ts`).
 - System volume (`system_volume` desktop tool) — unit-tested only (`apps/desktop/test/desktop-volume.test.ts`), because tests must not change the real volume.
 - Desktop text insertion and the Enter send gate — unit only (`apps/desktop/test/desktop-text-insert.test.ts`); never typed into a real KakaoTalk, Claude or ChatGPT window.
+- Desktop settle rhythm (wait for the app to stop, one-page scroll steps, single click retry) — unit-tested only (`apps/desktop/test/desktop-settle.test.ts`), because tests must not drive the real screen.
 
 ## Brief shape
 

@@ -111,8 +111,16 @@ extension DesktopHost {
             if method == "click" {
                 try pair(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left), CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left))
             } else {
+                // Each delta unit moves about one visible page as a short glide; the caller settles between pages.
                 guard let delta = request["delta"] as? Int32, delta != 0, abs(delta) <= 10 else { throw DesktopFailure("Invalid scroll delta") }
-                try post(CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: delta * 3, wheel2: 0, wheel3: 0))
+                let page = max(40, (Double(reading.bounds.height) * 0.8).rounded()) * Double(abs(delta))
+                var moved = 0.0
+                for part in 1...6 {
+                    let reach = (page * Double(part) / 6).rounded()
+                    try post(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(Double(delta.signum()) * (reach - moved)), wheel2: 0, wheel3: 0))
+                    moved = reach
+                    if part < 6 { usleep(16_000) }
+                }
             }
         }
         try monitor.check(lease, window: window, intervention: intervention)

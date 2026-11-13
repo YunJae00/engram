@@ -2,6 +2,7 @@ import type { DesktopAction, DesktopSequenceAction } from 'core'
 import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js'
 import { actOnDesktop, desktopObservation, readControlledDesktop } from './desktop-control.js'
 import { guardedSequence } from './desktop-guarded-sequence.js'
+import { clickSettled, observationKey, settle, STILL_CHANGING } from './desktop-settle.js'
 
 const INTERACTIVE = /(?:^|\.)(Button|Edit|ComboBox|ListItem|CheckBox|RadioButton|TabItem|MenuItem|Hyperlink|Slider|Spinner)$/
 const identity = (node: DesktopNodeDto) => JSON.stringify([node.name, node.controlType, node.bounds])
@@ -12,10 +13,11 @@ function layout(view: DesktopObservationDto): string {
   return JSON.stringify([view.bounds, view.nodes.filter((node) => INTERACTIVE.test(node.controlType)).map(identity).sort()])
 }
 
-export async function desktopSequence(lane: string, steps: DesktopSequenceAction[], signal?: AbortSignal): Promise<string> {
+export async function desktopSequence(lane: string, steps: DesktopSequenceAction[], signal?: AbortSignal, mayRetry: (node: DesktopNodeDto) => boolean = () => false): Promise<string> {
   if (!steps.length || steps.length > 12) throw new Error('Use 1 to 12 sequence steps.')
   if (steps.every((step) => 'target' in step)) return guardedSequence(desktopObservation(lane, steps[0]!.snapshot), steps,
-    (focusedOnly) => readControlledDesktop(lane, signal, true, undefined, focusedOnly), (action) => actOnDesktop(lane, action, signal), signal)
+    (focusedOnly) => readControlledDesktop(lane, signal, true, undefined, focusedOnly), (action) => actOnDesktop(lane, action, signal), signal,
+    (deps) => clickSettled({ ...deps, mayRetry }))
   if (steps.some((step) => 'target' in step)) throw new Error('Do not mix named targets and element mode.')
   if (steps.some((step) => step.kind === 'replace')) throw new Error('Replacement batches require guarded targets and exact expected values.')
   const actions = steps as DesktopAction[]
@@ -37,8 +39,13 @@ export async function desktopSequence(lane: string, steps: DesktopSequenceAction
     if (!node?.name || !INTERACTIVE.test(node.controlType)) throw new Error('Sequence clicks need named interactive controls from the current observation.')
     return identity(node)
   })
+  const precheck = (view: DesktopObservationDto, index: number) => {
+    if (editing) verifyEditor(view, index > 0)
+    else if (layout(view) !== expected) throw new Error('The interface changed. Inspect the new state before continuing.')
+  }
   let completed = 0
   let dispatched = 0
+  let retried = 0
   let failedStep = 1
   let observation = original
   let observationMayBeStale = true
@@ -49,23 +56,32 @@ export async function desktopSequence(lane: string, steps: DesktopSequenceAction
       failedStep = index + 1
       signal?.throwIfAborted()
       if (performance.now() - start > 20000) throw new Error('Sequence time limit reached. Inspect the current state before continuing.')
-      if (editing) verifyEditor(observation, index > 0)
-      else if (layout(observation) !== expected) throw new Error('The interface changed. Inspect the new state before continuing.')
-      let action = { ...actions[index]!, snapshot: observation.snapshot }
+      precheck(observation, index)
+      const read = () => readControlledDesktop(lane, signal, true)
+      observationMayBeStale = true
       if (targets[index]) {
         const matches = observation.nodes.filter((node) => identity(node) === targets[index])
         if (matches.length !== 1) throw new Error('The next control is missing or ambiguous.')
-        action = { kind: 'click', snapshot: observation.snapshot, element: matches[0]!.id }
+        const result = await clickSettled({ views: [observation], element: matches[0]!.id, read, mayRetry, ...(signal ? { signal } : {}),
+          click: (view, element) => { precheck(view, index); return actOnDesktop(lane, { kind: 'click', snapshot: view.snapshot, element }, signal) } })
+        dispatched += result.clicks
+        observation = result.view
+        if (result.error) throw result.error
+        observationMayBeStale = false
+        if (result.message) throw new Error(result.message)
+        if (result.retried) retried++
+      } else {
+        await actOnDesktop(lane, { ...actions[index]!, snapshot: observation.snapshot }, signal)
+        dispatched++
+        const after = await settle(read, observationKey, signal ? { signal } : {})
+        observation = after.view
+        observationMayBeStale = false
+        if (!after.settled) throw new Error(STILL_CHANGING)
       }
-      observationMayBeStale = true
-      await actOnDesktop(lane, action, signal)
-      dispatched++
-      observation = await readControlledDesktop(lane, signal, true)
-      observationMayBeStale = false
       if (editing) verifyEditor(observation, true)
       completed++
     }
-    return JSON.stringify({ completed, elapsedMs: Math.round(performance.now() - start), observation, requiresVerification: true })
+    return JSON.stringify({ completed, ...(retried ? { retried } : {}), elapsedMs: Math.round(performance.now() - start), observation, requiresVerification: true })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ completed, dispatched, failedStep, error: error instanceof Error ? error.message : String(error), elapsedMs: Math.round(performance.now() - start), observation, observationMayBeStale })

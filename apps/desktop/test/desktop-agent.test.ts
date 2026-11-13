@@ -193,11 +193,13 @@ describe('the quiet lane keeps the apps it has read', () => {
     const context = { task: 'Inspect the fixture' }
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Fixture' }, context)
     await tools.find((tool) => tool.name === 'look_desktop')!.runRich!({ app: 'Fixture' }, context)
+    fake.read.mockResolvedValue({ ...observation(), focusedControl: 'changed' })
     await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', element: 'e0' }, context)
-    expect(fake.read).toHaveBeenCalledTimes(4)
-    expect(fake.act).toHaveBeenCalledOnce()
+    expect([fake.read.mock.calls.length, fake.act.mock.calls.length]).toEqual([5, 1])
     await tools.find((tool) => tool.name === 'read_desktop')!.run({ app: 'Notes' }, context)
-    expect(fake.read).toHaveBeenCalledTimes(5)
+    expect(fake.read).toHaveBeenCalledTimes(6)
+    await tools.find((tool) => tool.name === 'desktop_action')!.run({ kind: 'click', snapshot: 'fresh', x: 0.5, y: 0.5 }, context)
+    expect([fake.read.mock.calls.length, fake.act.mock.calls.length]).toEqual([8, 2])
   })
 })
 
@@ -244,7 +246,7 @@ it('returns an unsafe unverified receipt when a container press leaves the app u
   const result = JSON.parse(await press.run({ app: 'Fixture', snapshot: previous.snapshot, control: 'c3' }, { task: 'Open the entry' }))
   expect(result).toMatchObject({ delivery: 'delivered_unverified', retry: 'unsafe', appNow: expect.any(String), hint: expect.stringContaining('inner actionable cell or button') })
   expect(fake.quietPress).toHaveBeenCalledOnce()
-  expect(fake.quietScan).toHaveBeenCalledOnce()
+  expect(fake.quietScan).toHaveBeenCalledTimes(2)
 })
 
 it('allows screenshots without handover but refuses global input before dispatch', async () => {
@@ -256,7 +258,6 @@ it('allows screenshots without handover but refuses global input before dispatch
   expect(result.hint).toContain('declined')
   expect(fake.act).not.toHaveBeenCalled()
 })
-
 
 it('requires an explicit app when no window is bound instead of reading the human foreground', async () => {
   fake.lookup.mockReturnValue(undefined)

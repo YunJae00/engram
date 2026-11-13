@@ -13,13 +13,21 @@ beforeEach(() => {
   fake.act.mockResolvedValue('dispatched')
 })
 it('resolves fresh element IDs and observes every action within one call', async () => {
+  fake.read.mockResolvedValueOnce(view('fresh', 'e9')).mockResolvedValueOnce({ ...view('fresh', 'e9'), focusedControl: 'f1' })
+    .mockResolvedValueOnce({ ...view('fresh', 'e9'), focusedControl: 'f1' }).mockResolvedValue({ ...view('fresh', 'e9'), focusedControl: 'f2' })
   const result = JSON.parse(await desktopSequence('bot-test', [
     { kind: 'click', snapshot: 'first', element: 'e1' }, { kind: 'click', snapshot: 'first', element: 'e1' },
   ]))
   expect(result.completed).toBe(2)
   expect(result.observation.snapshot).toBe('fresh')
-  expect(fake.read).toHaveBeenCalledTimes(3)
+  expect(fake.read).toHaveBeenCalledTimes(5)
   expect(fake.act).toHaveBeenCalledWith('bot-test', { kind: 'click', snapshot: 'fresh', element: 'e9' }, undefined)
+  fake.act.mockClear()
+  fake.read.mockReset().mockResolvedValue(view('fresh', 'e9'))
+  const missed = JSON.parse(await desktopSequence('bot-test', [{ kind: 'click', snapshot: 'first', element: 'e1' }], undefined, () => true))
+  expect(fake.act).toHaveBeenCalledTimes(2)
+  expect(missed).toMatchObject({ dispatched: 2, completed: 0 })
+  expect(missed.error).toContain('no visible change')
 })
 it('stops before the next input if a dialog or layout appears', async () => {
   const changed = view('dialog')
@@ -68,7 +76,7 @@ it('edits an anchored field in a large partial view without additional model cal
   expect(result.error).toBeUndefined()
   expect(result.requiresVerification).toBe(true)
   expect(fake.act).toHaveBeenCalledTimes(3)
-  expect(fake.read).toHaveBeenCalledTimes(4)
+  expect(fake.read).toHaveBeenCalledTimes(7)
 })
 
 it('uses focused native reads only when every guarded target is the already-focused editor', async () => {
@@ -108,7 +116,8 @@ it('does not report successful editing when the final readback loses the target'
   fake.original.mockReturnValue(editorView())
   const changed = editorView('last')
   changed.focusedControl = 'another-editor'
-  fake.read.mockResolvedValueOnce(editorView()).mockResolvedValueOnce(editorView()).mockResolvedValueOnce(editorView()).mockResolvedValue(changed)
+  for (let read = 0; read < 5; read++) fake.read.mockResolvedValueOnce(editorView())
+  fake.read.mockResolvedValue(changed)
   const result = JSON.parse(await desktopSequence('bot-test', [...edits]))
   expect(result.dispatched).toBe(3)
   expect(result.completed).toBe(2)
