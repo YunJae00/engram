@@ -49,23 +49,6 @@ function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'b
 // A provider that offers a control but will not act on it hands the window to the hands tools.
 export function forgetQuietCoverage(lane?: string): void { if (lane) covered.delete(lane); else covered.clear() }
 
-// The frame around the app says which window is being worked in, without a
-// banner or a stop key: nothing is taken, so there is nothing to give back.
-// It fades a moment after the last call on that window.
-const FRAME_LINGER_MS = 2_500
-const frames = new Map<string, { binding: DesktopBinding; timer: ReturnType<typeof setTimeout> }>()
-function showWorkFrame(binding: DesktopBinding): void {
-  const held = frames.get(binding.lane)
-  if (held) clearTimeout(held.timer)
-  if (!held || held.binding !== binding) void binding.host.request('applicationFrame', scoped(binding)).catch(() => undefined)
-  const timer = setTimeout(() => {
-    frames.delete(binding.lane)
-    if (!binding.host.closed) void binding.host.request('applicationFrameHide', scoped(binding)).catch(() => undefined)
-  }, FRAME_LINGER_MS)
-  timer.unref?.()
-  frames.set(binding.lane, { binding, timer })
-}
-
 const pause = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
   signal?.throwIfAborted()
   const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, ms)
@@ -137,7 +120,6 @@ export function quietControlName(snapshot: string, control: string): string | un
 
 export async function quietScan(lane: string, app: string, find: string | undefined, signal?: AbortSignal, options: DesktopReadOptions = {}): Promise<QuietObservationDto> {
   const binding = await refreshHiddenApp(await windowFor(lane, app, signal))
-  showWorkFrame(binding)
   const result = await request<QuietObservationDto>(binding, 'quietScan', { ...options, ...(find ? { find } : {}) }, signal)
   signal?.throwIfAborted()
   // Window chrome does not establish access to the app's working area.
@@ -156,7 +138,6 @@ export async function quietScan(lane: string, app: string, find: string | undefi
 export async function quietSet(lane: string, app: string, snapshot: string, control: string, text: string, expected: string | undefined, signal?: AbortSignal): Promise<QuietSetResultDto> {
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
-  showWorkFrame(binding)
   const result = await request<QuietSetResultDto>(binding, 'quietSet', { snapshot, control, text, ...(expected !== undefined ? { expected } : {}) }, signal)
   signal?.throwIfAborted()
   return result
@@ -165,7 +146,6 @@ export async function quietSet(lane: string, app: string, snapshot: string, cont
 export async function quietPress(lane: string, app: string, snapshot: string, control: string, signal?: AbortSignal, options?: QuietPressOptions): Promise<QuietPressResultDto> {
   const binding = await windowFor(lane, app, signal)
   await awaitPersonAway(binding, signal)
-  showWorkFrame(binding)
   const result = await request<QuietPressResultDto>(binding, 'quietPress', { snapshot, control, ...options }, signal)
   signal?.throwIfAborted()
   return result
@@ -181,7 +161,7 @@ export const answeringControl = (observation: QuietObservationDto): string | und
 // and the app no longer offers to stop an answer: a finished one returns at once.
 export async function quietText(lane: string, app: string, snapshot: string | undefined, control: string | undefined, settleMs: number, signal?: AbortSignal): Promise<QuietReadResultDto & { settled: boolean; waitedMs: number; stillAnswering?: string }> {
   const binding = await windowFor(lane, app, signal)
-  const read = () => { showWorkFrame(binding); return request<QuietReadResultDto>(binding, 'quietRead', { ...(snapshot ? { snapshot } : {}), ...(control ? { control } : {}) }, signal) }
+  const read = () => request<QuietReadResultDto>(binding, 'quietRead', { ...(snapshot ? { snapshot } : {}), ...(control ? { control } : {}) }, signal)
   const started = Date.now()
   let last = await read()
   if (last.truncated) return { ...last, settled: false, waitedMs: 0 }

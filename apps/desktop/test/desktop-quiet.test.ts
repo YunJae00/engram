@@ -102,12 +102,28 @@ describe('quiet app access', () => {
     expect(request.mock.calls.map(([method]) => method)).not.toContain('bind')
   })
 
+  it('quiet actions never flash the work border', async () => {
+    const { request } = binding({ foreground: false, idleMs: 9000 })
+    await quietSet('bot-one', 'Claude', 'f'.repeat(32), 'c1', 'hello', undefined)
+    await vi.advanceTimersByTimeAsync(3_000)
+    await quietPress('bot-one', 'Claude', 'f'.repeat(32), 'c1')
+    await vi.advanceTimersByTimeAsync(3_000)
+    await quietScan('bot-one', 'Claude', undefined)
+    await vi.advanceTimersByTimeAsync(3_000)
+    await quietText('bot-one', 'Claude', 'f'.repeat(32), 'c1', 0)
+    await vi.advanceTimersByTimeAsync(3_000)
+    const methods = request.mock.calls.map(([method]) => method)
+    expect(methods).toEqual(expect.arrayContaining(['quietSet', 'quietPress', 'quietScan', 'quietRead']))
+    expect(methods).not.toContain('applicationFrame')
+    expect(methods).not.toContain('applicationFrameHide')
+  })
+
   it('sets a field at once when the person is elsewhere, and waits while they type in that app', async () => {
     const away = binding({ foreground: false, idleMs: 50 })
     await quietSet('bot-one', 'Claude', 'f'.repeat(32), 'c1', 'hello', undefined)
-    expect(away.request.mock.calls.map(([method]) => method)).toEqual(['quietState', 'applicationFrame', 'quietSet'])
+    expect(away.request.mock.calls.map(([method]) => method)).toEqual(['quietState', 'quietSet'])
     await vi.advanceTimersByTimeAsync(2_600)
-    expect(away.request.mock.calls.map(([method]) => method).at(-1)).toBe('applicationFrameHide')
+    expect(away.request.mock.calls.map(([method]) => method).at(-1)).toBe('quietSet')
 
     const busy = binding({ foreground: true, idleMs: 200 })
     const pending = quietSet('bot-one', 'Claude', 'f'.repeat(32), 'c1', 'hello', 'old')
