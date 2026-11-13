@@ -97,7 +97,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const sendsKey = activationKey && field?.can.set && !!field.value
       // Text already in a field (typed by the person, by Engram, or before a restart) can go out through any button,
       // whatever its name (an icon labelled ↑ is still Send), so a plain button press then asks too.
-      const draftButton = !options?.action && !options?.state && (!options?.key || activationKey) && /button/i.test(field?.type ?? '')
+      const draftButton = !options?.action && (!options?.key || activationKey) && /button/i.test(field?.type ?? '')
         && !!previous?.controls.some(item => item.can.set && !!item.value)
       const consequential = sendsKey || draftButton || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
       let confirmedResult

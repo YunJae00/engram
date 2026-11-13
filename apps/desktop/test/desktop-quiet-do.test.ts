@@ -71,6 +71,8 @@ describe('a short goal run by a decision model', () => {
     expect(stopped.status).toBe('needs-person')
     fake.scan.mockResolvedValue(screen([control('c6', '↑'), { ...composer, value: ' ' }], ['space only']))
     expect((await quietDo(request, vi.fn().mockImplementation(decided('press c6')))).status).toBe('needs-person')
+    fake.scan.mockResolvedValue(screen([control('c6', 'More', { state: { expanded: 'collapsed' } }), { ...composer, value: '안녕' }], ['menu']))
+    expect((await quietDo(request, vi.fn().mockImplementation(decided('expanded c6')))).status).toBe('needs-person')
     expect(fake.press).not.toHaveBeenCalled()
     fake.scan.mockResolvedValue(screen([control('c6', '↑'), composer], ['empty']))
     await quietDo(request, vi.fn().mockImplementationOnce(decided('press c6')).mockImplementationOnce(decided('done')))

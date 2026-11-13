@@ -208,6 +208,7 @@ describe('a quiet press', () => {
     fake.quietSnapshot.mockReturnValue(view); fake.quietScan.mockResolvedValue(view)
     const decline = vi.fn(async () => false), out = await desktopAgentTools('bot-one').find((tool) => tool.name === 'app_press')!.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c8' }, Object.assign({ task: 'Open a chat' }, { approveAppAction: decline }))
     expect(JSON.parse(out)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' }); expect(decline).toHaveBeenCalledOnce(); expect(fake.quietPress).not.toHaveBeenCalled()
+    expect(JSON.parse(await desktopAgentTools('bot-one').find((tool) => tool.name === 'app_press')!.run({ app: 'ChatGPT', snapshot: 'a'.repeat(32), control: 'c8', state: 'expanded' }, Object.assign({ task: 'Open a menu' }, { approveAppAction: decline })))).toMatchObject({ error: 'policy_denied' })
   })
 
   it('returns the app read again, and counts as committed only for a control that cannot be taken back', async () => {
