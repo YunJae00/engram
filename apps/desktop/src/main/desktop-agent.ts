@@ -7,7 +7,7 @@ import { retryOnPermission } from './desktop-permission-retry.js'
 import { desktopFailure } from './desktop-failure.js'
 import { desktopImage } from './desktop-image.js'
 import { bindDesktopForLane, catalogHost, desktopBinding, desktopWindows } from './desktop-access.js'
-import { accessLiveDocument, setDesktopHandoverReset, assertDesktopTurnNotStopped, actOnDesktop, desktopControlStatus, startDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
+import { accessLiveDocument, desktopObservation, setDesktopHandoverReset, assertDesktopTurnNotStopped, actOnDesktop, desktopControlStatus, startDesktopControl, openDesktopApp, readControlledDesktop, withDesktopActivity } from './desktop-control.js'
 import { DesktopHost } from './desktop-host.js'
 import { desktopSequence } from './desktop-sequence.js'
 import { quietControlName, quietSnapshot, quietPress, quietScan, quietSet, quietText, quietVerdict } from './desktop-quiet.js'
@@ -154,6 +154,13 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }
   }
   const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => !!await context.approveAppAction?.(desktopBinding(lane)?.name ?? 'this app', 'Send', snapshot)
+  // Enter, or a click on a control named like Send/Submit/Delete, can send or commit: both ask the person first.
+  const sends = (action: { kind: string; key?: string; element?: string; snapshot: string }): boolean => {
+    if (sendsKey(action)) return true
+    if (action.kind !== 'click' || !action.element) return false
+    try { const name = desktopObservation(lane, action.snapshot).nodes.find(node => node.id === action.element)?.name; return !!name && irreversibleName(name) }
+    catch { return false }
+  }
   const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })
   const blocked = <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> =>
     retryOnPermission(lane, error, context, again, wrap)
@@ -171,7 +178,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
       if (action.kind === 'type') typeArgs(action.text)
-      if (sendsKey(action) && !await askSend(context, action.snapshot)) return notSent
+      if (sends(action) && !await askSend(context, action.snapshot)) return notSent
       let receipt: TypeReceipt | undefined
       try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
       catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task, ...(typedUnverified(error) ? { delivered: true } : {}) })) }
@@ -186,9 +193,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }),
     sequence: (actions, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
-      const send = actions.findIndex(sendsKey)
-      // Any Enter after any typing in the same batch would send unread text, wherever the first Enter sits.
-      if (actions.some((action, index) => sendsKey(action) && actions.slice(0, index).some(one => one.kind === 'type')))
+      const send = actions.findIndex(sends)
+      // Any send after any typing in the same batch would send unread text, wherever the first send sits.
+      if (actions.some((action, index) => sends(action) && actions.slice(0, index).some(one => one.kind === 'type')))
         return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
       if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
       try {

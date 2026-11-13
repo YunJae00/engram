@@ -3,13 +3,13 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
-  lookup: vi.fn(), read: vi.fn(), act: vi.fn(), start: vi.fn(), sequence: vi.fn(),
+  lookup: vi.fn(), observe: vi.fn(), read: vi.fn(), act: vi.fn(), start: vi.fn(), sequence: vi.fn(),
 }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-permission.js', async () => { const { desktopFailure } = await import('../src/main/desktop-failure.js'); return { permissionFailure: async (error: unknown, _lane: string, options?: Parameters<typeof desktopFailure>[1]) => desktopFailure(error, options) } })
 vi.mock('electron', () => ({ nativeImage: {} }))
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: vi.fn(), desktopBinding: fake.lookup, desktopWindows: vi.fn() }))
-vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: vi.fn(), startDesktopControl: fake.start, openDesktopApp: vi.fn(), assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => ({ lane: 'bot-one', state: 'running' }), withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
+vi.mock('../src/main/desktop-control.js', () => ({ desktopObservation: fake.observe, setDesktopHandoverReset: vi.fn(), startDesktopControl: fake.start, openDesktopApp: vi.fn(), assertDesktopTurnNotStopped: vi.fn(), readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => ({ lane: 'bot-one', state: 'running' }), withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-sequence.js', () => ({ desktopSequence: fake.sequence }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => true } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: () => ({ verdict: 'bare', title: 'Fixture' }), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietSet: vi.fn(), quietPress: vi.fn(), quietText: vi.fn(), quietControlName: vi.fn() }))
@@ -33,6 +33,7 @@ beforeEach(() => {
   fake.binding.host.request = vi.fn(async (_method: string, args: Record<string, unknown>) => ({ sent: true, strategy: 'selected-text', expected: args['text'] }))
   fake.act.mockImplementation(async (_lane: string, action: { kind: string }) => { await fake.binding.host.request(action.kind, desktopInputArgs(action as never, field(''), {})); return 'dispatched' })
   fake.read.mockResolvedValue(field(HELLO))
+  fake.observe.mockImplementation(() => ({ ...field(''), nodes: [...field('').nodes, { id: 'e2', controlType: 'AXButton', name: 'Send message', bounds: { x: 0, y: 40, width: 20, height: 20 } }] }))
 })
 
 describe('desktop text insertion', () => {
@@ -104,6 +105,20 @@ describe('desktop text insertion', () => {
     expect(approve).not.toHaveBeenCalled()
     expect(fake.act).not.toHaveBeenCalled()
     expect(fake.sequence).not.toHaveBeenCalled()
+  })
+
+  it('asks before clicking a Send control', async () => {
+    const decline = vi.fn(async () => false)
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e2' }, decline)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
+    expect(decline).toHaveBeenCalledWith('Fixture', 'Send', 's')
+    expect(fake.act).not.toHaveBeenCalled()
+    const approve = vi.fn(async () => true)
+    expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'type', text: HELLO }, { kind: 'click', element: 'e2' }] }, approve)).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
+    expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e2' }] }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(approve).not.toHaveBeenCalled()
+    expect(fake.sequence).not.toHaveBeenCalled()
+    await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
+    expect(fake.act).toHaveBeenCalledOnce()
   })
 
   it('reports the strategy and read-back of text typed in a sequence', async () => {
