@@ -136,7 +136,7 @@ test.describe('avatar picker', () => {
   test('one avatar preview while the picker is open', async () => {
     const page = await launch('light')
     const large = (scope: Locator) => scope.evaluate(node => [...node.querySelectorAll('.bot-avatar')]
-      .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 48 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) })
+      .filter(el => { const r = el.getBoundingClientRect(); return r.width >= 64 && el.checkVisibility({ visibilityProperty: true, opacityProperty: true }) })
       .map(el => el.getAttribute('data-character')))
     const check = async (scope: Locator, picker: Locator, where: string) => {
       const before = await large(scope)
