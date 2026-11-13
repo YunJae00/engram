@@ -155,11 +155,20 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   }
   const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => !!await context.approveAppAction?.(desktopBinding(lane)?.name ?? 'this app', 'Send', snapshot)
   // Enter, or a click on a control named like Send/Submit/Delete, can send or commit: both ask the person first.
-  const sends = (action: { kind: string; key?: string; element?: string; snapshot: string }): boolean => {
+  const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; element?: string } }): boolean => {
     if (sendsKey(action)) return true
-    if (action.kind !== 'click' || !action.element) return false
-    try { const name = desktopObservation(lane, action.snapshot).nodes.find(node => node.id === action.element)?.name; return !!name && irreversibleName(name) }
-    catch { return false }
+    if (action.kind !== 'click') return false
+    if (action.target && irreversibleName(action.target.name)) return true
+    try {
+      const view = desktopObservation(lane, action.snapshot)
+      const element = action.element ?? action.target?.element
+      if (element) return irreversibleName(view.nodes.find(node => node.id === element)?.name ?? '')
+      // A click by position asks when it lands on a Send-like control in the observation it was planned on.
+      const frame = view.captureBounds
+      if (!frame || action.x === undefined || action.y === undefined) return false
+      const px = frame.x + action.x * (frame.width - 1), py = frame.y + action.y * (frame.height - 1)
+      return view.nodes.some(node => node.bounds && irreversibleName(node.name ?? '') && px >= node.bounds.x && px <= node.bounds.x + node.bounds.width && py >= node.bounds.y && py <= node.bounds.y + node.bounds.height)
+    } catch { return false }
   }
   const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })
   const blocked = <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> =>

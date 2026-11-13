@@ -119,6 +119,13 @@ describe('desktop text insertion', () => {
     expect(fake.sequence).not.toHaveBeenCalled()
     await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
     expect(fake.act).toHaveBeenCalledOnce()
+    // By position or by name, a click on Send asks too.
+    fake.act.mockClear(); decline.mockClear()
+    fake.observe.mockImplementation(() => ({ ...field(''), captureBounds: { x: 0, y: 0, width: 101, height: 101 }, nodes: [...field('').nodes, { id: 'e2', controlType: 'AXButton', name: 'Send message', bounds: { x: 0, y: 40, width: 20, height: 20 } }] }))
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.1, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', target: { name: 'Send message', controlType: 'AXButton' } }] }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(decline).toHaveBeenCalledTimes(2)
+    expect(fake.act).not.toHaveBeenCalled()
   })
 
   it('reports the strategy and read-back of text typed in a sequence', async () => {
