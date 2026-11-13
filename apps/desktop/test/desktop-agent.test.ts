@@ -13,7 +13,7 @@ vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensur
 vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture', truncated: fake.truncatedQuiet, searched: fake.searchedQuiet }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: fake.quietSet, quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
-import { desktopAgentTools, desktopContext } from '../src/main/desktop-agent.js'
+import { desktopAgentTools, desktopContext, forgetTypedUnsent } from '../src/main/desktop-agent.js'
 
 const observation = (snapshot = 'fresh'): DesktopObservationDto => ({
   snapshot, truncated: false, nodes: [], bounds: { x: -10, y: 20, width: 40, height: 40 },
@@ -24,6 +24,7 @@ function look(signal?: AbortSignal) {
   return desktopAgentTools('bot-one').find((item) => item.name === 'look_desktop')!.runRich!({}, { task: 'Inspect the fixture', ...(signal ? { signal } : {}) })
 }
 beforeEach(() => {
+  forgetTypedUnsent('bot-one')
   vi.clearAllMocks()
   fake.binding = { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn().mockResolvedValue(captured()) } }
   fake.lookup.mockImplementation(() => fake.binding)
