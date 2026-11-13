@@ -1,0 +1,40 @@
+{
+  "id": "qa133-live-card-fit",
+  "status": "done",
+  "headSha": "bc744b3b420916e547dd1cc81bd86d607da9319e",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/components/live-overlay.css",
+    "apps/desktop/src/renderer/src/components/preview-card.css",
+    "apps/desktop/src/renderer/src/components/PreviewCard.tsx",
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/lib/previewDrag.ts",
+    "apps/desktop/e2e/live-card-fit.spec.ts",
+    "scripts/verify-scenarios/ui-preview-aspect.mjs",
+    "orchestration/features/MAP.md"
+  ],
+  "testsAdded": [
+    "apps/desktop/e2e/live-card-fit.spec.ts: a live card never covers chat bubbles",
+    "apps/desktop/e2e/live-card-fit.spec.ts: each live card has its window aspect with no letterbox"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm --filter desktop build && cd apps/desktop && npx playwright test e2e/live-card-fit.spec.ts --reporter=line && grep markers (e2e-fit)", "exit": 0 },
+    { "cmd": "fails-on-base.sh qa133-live-card-overlap ... LIVE-CARD-OVERLAP && fails-on-base.sh qa133-live-card-aspect ... LIVE-CARD-ASPECT", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-live-overlay", "exit": 0 },
+    { "cmd": "node scripts/verify-cli.mjs ui-preview-aspect", "exit": 0 },
+    { "cmd": "cd apps/desktop && npx playwright test e2e/work-preview-layout.spec.ts e2e/computer-control.spec.ts --reporter=line", "exit": 1 },
+    { "cmd": "npx playwright test (tmp copy of work-preview-layout.spec.ts with resetBotsToV2(paths) added after initVault)", "exit": 0 },
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "pnpm run css-scan", "exit": 0 },
+    { "cmd": "allowed-diff.sh <8 allowed files>", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 1 },
+    { "cmd": "npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "regress: the two work-preview-layout tests fail at setup in this tree because they call createBot without resetBotsToV2 (the bot row / mini-chat never appears: 'waiting for getByTestId(bot-...)' and 'mini-chat-... not found'), the base fixture breakage the brief puts out of scope. A temporary copy with only resetBotsToV2(paths) added passed both tests on this branch; computer-control and the other 9 tests pass.",
+    "ENGRAM_CHECK_BASE=next npm run check:quick fails only packages/core/test/e2e-runners.test.ts 'ignores version-only manifests...', because the ENGRAM_CHECK_BASE env var leaks into that test's fixture; it passes without the var and plain npm run check:quick exits 0.",
+    "Split panes now overlay the card on the thread (no reserved band), so mission-preview-overlap.spec.ts ('a card in a 4-pane tile does not move the first bubble') is expected to change behavior; not run, not an allowed file.",
+    "Split panes keep a minimum 240px text lane (MINI_LANE) beside the docked deck so decision-card action buttons are not covered; narrow panes get a smaller card."
+  ]
+}
