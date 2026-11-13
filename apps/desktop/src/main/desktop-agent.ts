@@ -182,8 +182,11 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         hit = view.nodes.filter(node => node.bounds && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
       }
       if (hit.some(node => irreversibleName(node.name ?? ''))) return true
-      // A draft already in a field (typed by the person) can go out through an unnamed icon button too.
-      if (!afterTyping) return hit.some(node => /Button/i.test(node.controlType) && !(node.name ?? '').trim()) && view.nodes.some(node => FIELD.test(node.controlType) && !!node.value?.trim())
+      // A draft already in the focused field (or any field when focus is unknown), typed by the person or before a
+      // restart, can go out through any button, whatever its name (an icon labelled ↑ is still Send).
+      const focusedField = view.nodes.find(node => node.runtimeId && node.runtimeId === view.focusedControl && FIELD.test(node.controlType))
+      const draft = (focusedField ? [focusedField] : view.focusedControl ? [] : view.nodes.filter(node => FIELD.test(node.controlType))).some(node => !!node.value?.trim())
+      if (!afterTyping) return draft && hit.some(node => /Button/i.test(node.controlType))
       // Every control under the point counts: an icon button drawn over the field must not hide behind it.
       const types = action.target?.controlType ? [action.target.controlType] : hit.map(node => node.controlType)
       return !types.length || types.some(type => !FIELD.test(type))
