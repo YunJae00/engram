@@ -12,6 +12,7 @@ import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
 import { replacementTarget } from './desktop-guarded-sequence.js'
 import { recoverableDesktopFailure } from './desktop-recovery.js'
+import { alreadyOpenSignIn, launchHint, showForSignIn, type SignIn } from './desktop-launch-signin.js'
 const LEASE_TTL_MS = 60 * 60_000
 const HANDS_STILL_MS = 4_000
 const HANDS_AT_MOST_MS = 5 * 60_000
@@ -116,20 +117,20 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
   if (epoch !== cancellation) throw stoppedError(lane)
   try {
     const binding = await bindDesktopForLane(lane, { app })
-    signal?.throwIfAborted()
-    if (epoch !== cancellation) throw stoppedError(lane)
+    signal?.throwIfAborted(); if (epoch !== cancellation) throw stoppedError(lane)
     showWorkPreview(binding)
     const after = await desktopForeground()
-    signal?.throwIfAborted()
-    if (epoch !== cancellation) throw stoppedError(lane)
+    signal?.throwIfAborted(); if (epoch !== cancellation) throw stoppedError(lane)
     flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, before, after, restored: false, changed: false, alreadyOpen: true, hiddenMs: 0, cycles: 0, windowVerified: true }))
     return JSON.stringify({ alreadyOpen: true, opened: false, window: binding.window, pid: binding.pid, title: binding.name, windowVerified: true, foregroundChanged: false, foregroundRestored: false, hiddenMs: 0, cycles: 0, hint: 'The app was already open; it was not launched again. Read it with app_read.' })
   } catch (error) {
+    // Already open at a sign-in window: show it to the person rather than fail the call.
+    const waiting = await alreadyOpenSignIn(lane, app, error)
+    signal?.throwIfAborted(); if (epoch !== cancellation) throw stoppedError(lane)
+    if (waiting) return waiting
     if (!(error instanceof Error && error.message.startsWith('No open window matches '))) throw error
   }
   if (attachOnly) return ''
-  signal?.throwIfAborted()
-  if (epoch !== cancellation) throw stoppedError(lane)
   const host = new DesktopHost()
   let keepHiddenHost = false
   const pending = { lane, host }
@@ -146,6 +147,7 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     // Only a launch that is still in front needs the next read to restore; the guard already handled the rest, and a window the person raised stays theirs.
     if (result?.opened && result.foregroundChanged && !result.foregroundRestored) rememberOpenedForeground(lane, result)
     if (result?.opened && result.pid) rememberLaunchedApp(lane, result.pid)
+    let signIn: SignIn | undefined
     if (result?.opened && result.windowVerified && result.window) {
       try {
         const binding = await bindDesktopForLane(lane, { app: `window:${result.window}:0` })
@@ -156,14 +158,12 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
         signal?.throwIfAborted()
         if (epoch !== cancellation) throw stoppedError(lane)
         flog('desktop-launch-bind', String(error))
+        signIn = await showForSignIn(lane, result.pid, host, error)
+        signal?.throwIfAborted(); if (epoch !== cancellation) throw stoppedError(lane)
       }
     }
-    const readiness = result?.hiddenFallback === 'chromium-does-not-draw-hidden' ? 'This app stays open behind the current window (Chrome-family apps do not draw while hidden); the person sees it in the preview card. Read it with app_read.' : result?.hiddenFallback === 'no-draw-while-hidden' ? 'The app does not draw while hidden, so it stays open behind the current window; the person sees it in the preview card. Read it with app_read.' : result?.windowVerified ? 'The app stays hidden from the screen. Read it with app_read; the person watches the preview card.' : 'No app window was verified yet. A launch request alone does not prove the app is ready.'
-    const hint = result?.foregroundChanged ? result.foregroundRestored
-      ? `The app came to the front for ${result.hiddenMs ?? 0} ms and was hidden back; ${readiness}`
-      : 'The app took the screen and Engram could not return focus to the previous window. Do not call open_app again this turn; observe the app before proceeding.'
-      : `The app did not take the foreground. ${readiness}`
-    return JSON.stringify({ window: result?.window, pid: result?.pid, hidden: result?.hidden === true && !result?.hiddenFallback, hiddenFallback: result?.hiddenFallback, opened: result?.opened === true, alreadyOpen: result?.alreadyOpen === true, windowVerified: result?.windowVerified === true, hiddenMs: result?.hiddenMs ?? 0, cycles: result?.cycles ?? 0, foregroundChanged: result?.foregroundChanged === true, foregroundRestored: result?.foregroundRestored === true, title: result?.title ?? result?.name ?? app, hint })
+    const hint = launchHint(result, signIn)
+    return JSON.stringify({ window: result?.window, pid: result?.pid, hidden: !signIn?.shown && result?.hidden === true && !result?.hiddenFallback, ...(signIn ? { signInRequired: true, shownToPerson: signIn.shown } : {}), hiddenFallback: result?.hiddenFallback, opened: result?.opened === true, alreadyOpen: result?.alreadyOpen === true, windowVerified: result?.windowVerified === true, hiddenMs: result?.hiddenMs ?? 0, cycles: result?.cycles ?? 0, foregroundChanged: result?.foregroundChanged === true, foregroundRestored: result?.foregroundRestored === true, title: result?.title ?? result?.name ?? app, hint })
   } finally {
     signal?.removeEventListener('abort', abort)
     if (launching === pending) launching = undefined

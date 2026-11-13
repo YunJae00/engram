@@ -201,7 +201,7 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     // The open windows travel with the miss, so the next call can name one without a separate listing.
     const open = similarApps(windows.map(one => ({ ...one, name: one.title })), wanted ?? '').map(one => one.title).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
-    if (target.protected) throw new Error(`${target.barrier ?? 'This application surface requires manual control'}. Ask the person to complete sign-in or security steps in the app, then read it again.`)
+    if (target.protected) throw Object.assign(new Error(`${target.barrier ?? 'This application surface requires manual control'}. Ask the person to complete sign-in or security steps in the app, then read it again.`), { protectedPid: target.pid })
     const opened = openedForeground.get(lane)
     const restore = opened && target.pid === opened.pid ? opened : undefined
     if (restore || target.minimized) {

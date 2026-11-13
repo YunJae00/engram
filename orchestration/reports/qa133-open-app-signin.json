@@ -1,0 +1,17 @@
+{
+  "id": "qa133-open-app-signin",
+  "status": "done",
+  "headSha": "c2975ded26db6253acbf44daf8981abc6607c259",
+  "changedFiles": ["apps/desktop/src/main/desktop-control.ts", "apps/desktop/src/main/desktop-access.ts", "apps/desktop/src/main/desktop-launch-signin.ts", "apps/desktop/test/open-app-signin.test.ts"],
+  "testsAdded": ["apps/desktop/test/open-app-signin.test.ts: a sign-in window is shown to the person", "the result says the app waits for sign-in", "a sign-in window that cannot be raised says so", "stop during the sign-in unhide rejects the open", "a normal hidden launch stays hidden"],
+  "commandsRun": [
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test/open-app-signin.test.ts", "exit": 0 },
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test/desktop-launch.test.ts apps/desktop/test/desktop-permission.test.ts apps/desktop/test/desktop-quiet.test.ts apps/desktop/test/application-work.test.ts && git diff --quiet $B -- apps/desktop/test/desktop-launch.test.ts apps/desktop/native", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 1 },
+    { "cmd": "pnpm run check:quick", "exit": 0 },
+    { "cmd": "sh $K/tmp/plans/w16-checks/allowed-diff.sh <4 allowed files>", "exit": 0 }
+  ],
+  "openQuestions": ["With ENGRAM_CHECK_BASE=next set, packages/core/test/e2e-runners.test.ts 'ignores version-only manifests...' fails because the env var leaks into its git fixture; it passes without the var and is unrelated to this change. The criterion command (pnpm run check:quick) exits 0."]
+}
