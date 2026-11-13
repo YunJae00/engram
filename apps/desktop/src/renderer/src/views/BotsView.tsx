@@ -149,8 +149,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
 
   const stop = async () => {
     if (!selected) return
-    cometThreads.stop(selected.id, t('bubble.stopped'))
-    await api.chatAbort(cometChannel(selected.id)).catch(() => undefined)
+    const said = threadT(threadLang(messages))('bubble.stopped')
+    cometThreads.stop(selected.id, said)
+    await api.chatAbort(cometChannel(selected.id), said).catch(() => undefined)
   }
 
   return (

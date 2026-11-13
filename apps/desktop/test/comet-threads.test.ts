@@ -351,7 +351,7 @@ it('stops the delegated task immediately and ignores its late working notificati
   expect(store.thread('stop-task').stopped).toBe(false)
 })
 
-it('hides a persisted progress prefix when reloading the full final answer', () => {
+it('keeps a persisted progress prefix in place when a message came between it and the final answer', () => {
   const store = createCometThreads(BOT)
   store.load(BOT, [
     { role: 'assistant', text: 'A ', progress: true },
@@ -361,7 +361,7 @@ it('hides a persisted progress prefix when reloading the full final answer', () 
     { role: 'user', text: 'Next' },
     { role: 'assistant', text: 'Done.' },
   ])
-  expect(store.thread(BOT).messages.map(message => message.text)).toEqual(['Q', 'A B', 'Checking another page.', 'Next', 'Done.'])
+  expect(store.thread(BOT).messages.map(message => message.text)).toEqual(['A ', 'Q', 'B', 'Checking another page.', 'Next', 'Done.'])
 })
 
 it('keeps live steering progress separate from the final answer suffix', () => {

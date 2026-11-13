@@ -3,6 +3,7 @@ import { readCheckpoint } from './comet-checkpoint.js'
 import { taskQueued } from './task-notify.js'
 import { ipcMain } from 'electron'
 import {
+  appendBotTurn,
   continuationPrompt,
   createTask,
   findPlaybook,
@@ -38,6 +39,7 @@ export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: bool
 type Reason = Parameters<typeof continuationPrompt>[1]
 const AUTO_CONTINUE_MAX = 3
 const WORTH_KEEPING_STEPS = 3
+const ENDED = { en: 'The turn ended without an answer.', ko: '답을 마치지 못하고 끝났어요.' }
 const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const exactKey = (url: string, words: string) => `${url}\n${words}`
@@ -104,6 +106,8 @@ export function taskRunner(deps: {
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
+  // A turn that ended with no answer says so in the thread at its place, in the person's language.
+  const ended = async (task: DelegatedTask) => { try { const asked = [...await readBotTranscript(paths, task.botId)].reverse().find(one => one.role === 'user')?.text ?? ''; const text = ENDED[/[가-힣]/.test(asked) ? 'ko' : 'en']; await appendBotTurn(paths, task.botId, { role: 'assistant', text, at: new Date().toISOString() }); deps.broadcast({ type: 'chat:done', channel: channelOf(task), text }) } catch (error) { flog('tasks', error) } }
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
@@ -139,7 +143,7 @@ export function taskRunner(deps: {
       }
       delete t.verificationPending
       const pending = t.approvals.filter((a) => !a.answer)
-      if (!outcome) { t.state = 'failed'; logTask(t, 'The turn ended without an answer.') }
+      if (!outcome) { t.state = 'failed'; logTask(t, ENDED.en) }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
@@ -169,6 +173,7 @@ export function taskRunner(deps: {
         }
       } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
+    if (!outcome && after?.state === 'failed') await ended(after)
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     return after
   }

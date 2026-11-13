@@ -1,5 +1,6 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 import { doneText, liveTail } from './answerTail.js'
+import { shownTexts } from './transcriptOrder.js'
 
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
@@ -60,17 +61,6 @@ export const PAGE_SIZE = 100
 type PageRead = (id: string, before: number, limit: number) => Promise<ChatTurnDto[]>
 
 const identity = (turn: { role: string; at?: string; text: string }): string => `${turn.role}\n${turn.at ?? ''}\n${turn.text}`
-
-// A progress turn whose text a later full answer starts with is already said by that answer.
-function shown(list: ChatTurnDto[], index: number): boolean {
-  const turn = list[index]!
-  if (!turn.progress || turn.role !== 'assistant') return true
-  for (let at = index + 1; at < list.length; at++) {
-    const next = list[at]!
-    if (next.role === 'assistant' && !next.progress) return !next.text.startsWith(turn.text)
-  }
-  return true
-}
 
 const toMessage = (turn: ChatTurnDto): CometMessage => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })
 
@@ -193,9 +183,10 @@ export function createCometThreads(initialSelected: string | null = null) {
       else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
       const window: string[] = [], fromDisk: CometMessage[] = []
       let firstShown: string | undefined
+      const said = shownTexts(turns)
       for (let at = 0; at < turns.length; at++) {
         window.push(identity(turns[at]!))
-        if (shown(turns, at)) { fromDisk.push(toMessage(turns[at]!)); firstShown ??= window[at] }
+        if (said[at] !== null) { fromDisk.push({ ...toMessage(turns[at]!), text: said[at]! }); firstShown ??= window[at] }
       }
       // Raw overlap proves continuity; the first shown new turn marks where the kept messages end.
       const start = current.older > 0 && window.length ? alignAt(current.coverage, window) : -1
@@ -230,10 +221,11 @@ export function createCometThreads(initialSelected: string | null = null) {
       const had = new Set(current.messages.map(identity))
       const combined: ChatTurnDto[] = [...page, ...current.messages]
       const added: CometMessage[] = [], seen: string[] = []
+      const said = shownTexts(combined)
       for (let at = 0; at < page.length; at++) {
         const key = identity(page[at]!)
         if (at < page.length - overlap) seen.push(key)
-        if (!had.has(key) && shown(combined, at)) { had.add(key); added.push(toMessage(page[at]!)) }
+        if (at < page.length - overlap && !had.has(key) && said[at] !== null) { had.add(key); added.push({ ...toMessage(page[at]!), text: said[at]! }) }
       }
       if (added.length) beforeCommit?.()
       patch(id, { messages: [...added, ...current.messages], older: current.older + added.length, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })

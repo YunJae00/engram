@@ -65,7 +65,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   sweep(): Promise<SweepReportDto>
   subjectKnowledge(): Promise<SubjectKnowledgeDto>
   brainFabric(): Promise<BrainFabricDto>
-  chatAbort(channel?: string): Promise<void>
+  chatAbort(channel?: string, said?: string): Promise<void>
   chatActive(): Promise<string[]>
   studyList(botId: string): Promise<StudyDto[]>
   studyAnswer(id: string, answer: 'go' | 'later' | 'keep' | 'wrong'): Promise<{ ask?: string }>

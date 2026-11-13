@@ -48,7 +48,7 @@ describe('cometThreads earlier pages', () => {
 
   it('cursor counts disk turns and stops on a short page', async () => {
     const all = history(560)
-    all[557] = { ...all[557]!, text: 'part', progress: true }
+    all[558] = { ...all[558]!, role: 'assistant', text: 'part', progress: true }
     all[559] = { ...all[559]!, text: 'part and the rest' }
     const store = createCometThreads(BOT)
     store.load(BOT, newest(all, 400))

@@ -16,12 +16,18 @@ export interface AsideIpcDeps {
 }
 
 let stopListening: (() => void) | undefined
+let stopReply: ((channel: string, text: string) => void) | undefined
+// The reply a Stop showed, kept in the thread when the stopped turn said nothing yet.
+export function noteStopped(channel: unknown, text: unknown): void {
+  if (typeof channel === 'string' && channel.startsWith('bot-') && typeof text === 'string' && text.trim() && text.length <= 80) stopReply?.(channel, text.trim())
+}
 
 export function registerAsideIpc(deps: AsideIpcDeps): void {
   ipcMain.removeHandler('chat:queued')
   ipcMain.removeHandler('chat:say')
   stopListening?.()
   const progress = conversationProgress(deps.paths)
+  stopReply = (channel, text) => { if (deps.busy(channel)) void progress.stop(channel, text) }
   stopListening = tapBroadcast((event) => {
     progress.observe(event)
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])

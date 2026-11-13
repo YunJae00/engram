@@ -50,8 +50,9 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
     return false
   }
   const stop = () => {
-    cometThreads.stop(botId, t('bubble.stopped'))
-    void api.chatAbort(cometChannel(botId)).catch(() => undefined)
+    const said = threadT(threadLang(thread.messages))('bubble.stopped')
+    cometThreads.stop(botId, said)
+    void api.chatAbort(cometChannel(botId), said).catch(() => undefined)
   }
   const frames = usePreviewFrames(cometChannel(botId), previewTile)
   const status = thread.busy ? pendingStatus(threadT(threadLang(thread.messages)), thread.awaitingModel ? undefined : thread.workLines[thread.workLines.length - 1]) : ''

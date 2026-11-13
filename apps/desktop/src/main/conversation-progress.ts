@@ -1,4 +1,4 @@
-import { appendBotTurn, withoutSecrets, type VaultPaths } from 'core'
+import { appendBotTurn, readBotTranscript, withoutSecrets, type VaultPaths } from 'core'
 import type { EngramEvent } from '../shared/types.js'
 import { asides, turnGoals } from './turn-state.js'
 import { broadcast } from './engine-health.js'
@@ -28,6 +28,13 @@ export function conversationProgress(paths: VaultPaths) {
   }
   return {
     flush,
+    async stop(channel: string, text: string): Promise<void> {
+      if (pending.get(channel)?.trim()) return
+      const botId = channel.slice(4)
+      const last = (await readBotTranscript(paths, botId, 1).catch(() => []))[0]
+      if (last?.role !== 'user') return
+      await appendBotTurn(paths, botId, { role: 'assistant', text, work: progressWork(channel), at: new Date().toISOString() }).catch(error => flog('conversation-progress', error))
+    },
     observe(event: EngramEvent): void {
       if (!('channel' in event) || !event.channel?.startsWith('bot-')) return
       const channel = event.channel

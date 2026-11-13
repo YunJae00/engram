@@ -4,7 +4,7 @@ import { quickPrimary } from './quick-comet.js'
 import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
-import { registerAsideIpc } from './aside-ipc.js'
+import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterChecks, answering, handedOver, heard, offeredIn, relayed, steers, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -1074,8 +1074,8 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Stopping a running answer is the difference between waiting and being
   // stuck; the plumbing existed, nothing ever called it from the UI.
-  ipcMain.handle('chat:abort', async (_e, channel?: string) => {
-    abortAllChat(channel)
+  ipcMain.handle('chat:abort', async (_e, channel?: string, said?: unknown) => {
+    noteStopped(channel, said); abortAllChat(channel)
     if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
     else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
   })
