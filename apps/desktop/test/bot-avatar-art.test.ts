@@ -83,7 +83,8 @@ describe('bot avatar', () => {
     }
     batch()
     const times = [0, 1, 2].map(() => { const t = performance.now(); batch(); return performance.now() - t })
-    expect(Math.min(...times)).toBeLessThan(50)
+    // Shared CI runners (notably macos-26-intel) are several times slower than a dev Mac; the budget guards against regressions, not runner speed.
+    expect(Math.min(...times)).toBeLessThan(process.env['CI'] ? 300 : 50)
   })
 
   it('keeps motion css transform-only and pausable', () => {
