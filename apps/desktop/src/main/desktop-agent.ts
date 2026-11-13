@@ -18,6 +18,7 @@ import { flog } from './flog.js'
 import { permissionDenied } from './desktop-permission-state.js'
 export { forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-permission-state.js'
 import { brainConnection } from './brain-connections.js'
+import { sendsKey, typeArgs, typedReport, typedUnverified, withTypeReceipt, type TypeReceipt } from './desktop-text-insert.js'
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
   signal?.throwIfAborted()
@@ -152,6 +153,8 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       throw new Error(`Computer control stopped: ${current.reason ?? 'control is no longer active'}. Ask the person before requesting it again.`)
     }
   }
+  const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => !!await context.approveAppAction?.(desktopBinding(lane)?.name ?? 'this app', 'Send', snapshot)
+  const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })
   const blocked = <T>(error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> =>
     retryOnPermission(lane, error, context, again, wrap)
   const guardedQuiet = quiet.map(tool => ({ ...tool, async run(args, context) {
@@ -167,12 +170,15 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     look: (signal, app) => lookDesktop(lane, signal, app),
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
-      try { await actOnDesktop(lane, action, context.signal) }
-      catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
+      if (action.kind === 'type') typeArgs(action.text)
+      if (sendsKey(action) && !await askSend(context, action.snapshot)) return notSent
+      let receipt: TypeReceipt | undefined
+      try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
+      catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task, ...(typedUnverified(error) ? { delivered: true } : {}) })) }
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
-        return JSON.stringify({ dispatched: true, observation, requiresVerification: true })
+        return JSON.stringify({ dispatched: true, observation, requiresVerification: true, ...(action.kind === 'type' ? { typed: typedReport(action.text, receipt, observation) } : {}) })
       } catch (error) {
         context.signal?.throwIfAborted()
         return JSON.stringify({ dispatched: true, ...await permissionFailure(error, lane, { delivered: true, ask: context.task }), observationMayBeStale: true, requiresVerification: true })
@@ -180,10 +186,14 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     }),
     sequence: (actions, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
+      const send = actions.findIndex(sendsKey)
+      if (send >= 0 && actions.slice(0, send).some(action => action.kind === 'type'))
+        return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
+      if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
       try {
         const result = JSON.parse(await desktopSequence(lane, actions, context.signal)) as Record<string, unknown>
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
-        if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
+        if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 || typedUnverified(result['error']) ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
         return JSON.stringify(result)
       } catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task })) }
     }),

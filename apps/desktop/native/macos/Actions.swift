@@ -68,6 +68,7 @@ extension DesktopHost {
         }
         try check()
         defer { snapshots.removeValue(forKey: reading.id) }
+        var inserted: [String: Any] = [:]
         if method == "replace" {
             let node = try control(reading, id: text(request, "element", limit: 32))
             let expected = try text(request, "expected"), value = try text(request, "text")
@@ -78,18 +79,13 @@ extension DesktopHost {
         } else if method == "type" {
             let value = try text(request, "text")
             try literal(value)
+            let chunks = try typedChunks(request["chunks"], joining: value)
             let original = try focused(reading, editable: true)
-            for character in value {
-                guard CFEqual(try focused(reading, editable: true).element, original.element) else { throw DesktopFailure("Keyboard focus changed") }
-                let units = Array(String(character).utf16)
-                let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)
-                let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-                units.withUnsafeBufferPointer { buffer in
-                    down?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: buffer.baseAddress!)
-                    up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: buffer.baseAddress!)
-                }
-                try pair(down, up)
-            }
+            guard let before = attribute(original.element, kAXValueAttribute) as? String else { throw DesktopFailure("This field does not expose its text, so typing could not be verified. Nothing was typed") }
+            let range = selectedRange(original.element)
+            let ready = { try check(); guard CFEqual(try self.focused(reading, editable: true).element, original.element) else { throw DesktopFailure("Keyboard focus changed") } }
+            let strategy = try insertText(original.element, chunks, ready: ready, post: { down, up in try pair(down, up) })
+            inserted = try verifyInserted(original.element, value: value, before: before, range: range, strategy: strategy)
         } else if method == "key" {
             let key = try text(request, "key", limit: 32)
             if key == "Escape" { monitor.stop("Escape requested"); return ["sent": false] }
@@ -120,6 +116,6 @@ extension DesktopHost {
             }
         }
         try monitor.check(lease, window: window, intervention: intervention)
-        return ["sent": true, "window": String(window.id), "pid": window.pid, "requiresObservation": true, "controlActive": true]
+        return ["sent": true, "window": String(window.id), "pid": window.pid, "requiresObservation": true, "controlActive": true].merging(inserted) { current, _ in current }
     }
 }

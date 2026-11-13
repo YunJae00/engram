@@ -1,5 +1,6 @@
 import type { DesktopAction } from 'core'
 import type { DesktopObservationDto } from '../shared/desktop.js'
+import { typeArgs } from './desktop-text-insert.js'
 
 export function desktopInputArgs(action: DesktopAction, observation: DesktopObservationDto, scope: Record<string, unknown>): Record<string, unknown> {
   const args: Record<string, unknown> = { ...scope, snapshot: action.snapshot }
@@ -12,7 +13,7 @@ export function desktopInputArgs(action: DesktopAction, observation: DesktopObse
       args['y'] = Math.round(bounds.y + action.y * (bounds.height - 1))
     }
   } else if (action.kind === 'replace') Object.assign(args, { element: action.element, expected: action.expected, text: action.text })
-  else if (action.kind === 'type') args['text'] = action.text
+  else if (action.kind === 'type') Object.assign(args, typeArgs(action.text))
   else if (action.kind === 'scroll') args['delta'] = action.delta
   else args['key'] = action.key
   return args

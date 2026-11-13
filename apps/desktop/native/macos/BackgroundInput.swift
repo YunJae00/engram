@@ -88,15 +88,9 @@ extension DesktopHost {
             try backgroundPair(CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: true),
                                CGEvent(keyboardEventSource: nil, virtualKey: 51, keyDown: false), window: window, inputVersion: inputVersion)
         }
-        for character in value {
-            let units = Array(String(character).utf16)
-            let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)
-            let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-            units.withUnsafeBufferPointer { buffer in
-                down?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: buffer.baseAddress!)
-                up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: buffer.baseAddress!)
-            }
-            try backgroundPair(down, up, window: window, inputVersion: inputVersion)
+        if !value.isEmpty {
+            _ = try insertText(node.element, textChunks(value), ready: { try checkBackgroundInput(window, inputVersion: inputVersion) },
+                               post: { down, up in try backgroundPair(down, up, window: window, inputVersion: inputVersion) })
         }
         usleep(100_000)
         return true
