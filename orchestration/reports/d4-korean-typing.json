@@ -1,0 +1,38 @@
+{
+  "id": "d4-korean-typing",
+  "status": "done",
+  "headSha": "891a77d68de2767495cd0bc457a4117b515e6578",
+  "changedFiles": [
+    "apps/desktop/native/macos/Actions.swift",
+    "apps/desktop/native/macos/BackgroundInput.swift",
+    "apps/desktop/native/macos/TextInsert.swift",
+    "apps/desktop/src/main/desktop-agent.ts",
+    "apps/desktop/src/main/desktop-input-args.ts",
+    "apps/desktop/src/main/desktop-text-insert.ts",
+    "apps/desktop/test/desktop-text-insert.test.ts",
+    "orchestration/features/MAP.md"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/desktop-text-insert.test.ts: inserts Korean as one chunk",
+    "apps/desktop/test/desktop-text-insert.test.ts: chunks long text at 20 units",
+    "apps/desktop/test/desktop-text-insert.test.ts: reports what landed when the field differs",
+    "apps/desktop/test/desktop-text-insert.test.ts: never presses Enter while typing"
+  ],
+  "commandsRun": [
+    { "cmd": "F=apps/desktop/test/desktop-text-insert.test.ts && pnpm exec vitest run --project unit $F && grep -qF (4 titles)", "exit": 0 },
+    { "cmd": "cd apps/desktop && node scripts/build-desktop.mjs", "exit": 0 },
+    { "cmd": "! grep -nE 'for character in value' apps/desktop/native/macos/Actions.swift", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "pnpm run check:quick", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 1 },
+    { "cmd": "pnpm exec vitest run --project unit packages/core/test/e2e-runners.test.ts", "exit": 0 },
+    { "cmd": "sh $K/tmp/plans/w16-checks/allowed-diff.sh <8 allowed files>", "exit": 0 }
+  ],
+  "openQuestions": [
+    "ENGRAM_CHECK_BASE=next npm run check:quick fails only packages/core/test/e2e-runners.test.ts 'ignores version-only manifests': the env var leaks into that test's git fixture (it fails the same way alone with the env set, passes without). Unrelated to this item; pnpm run check:quick (the criterion) exits 0.",
+    "Real-IME behaviour of the keys fallback (one unicode event per <=20-unit chunk with virtualKey 0) is untested on a live Korean input source; the exact native read-back turns any split into a reported mismatch, not a success.",
+    "The native strategy reaches main by wrapping the bound host's request during the type call, because actOnDesktop (desktop-control.ts, not allowed) drops the receipt; returning the receipt from actOnDesktop would be cleaner.",
+    "A desktop_sequence that types and then presses Enter is now refused; the agent must type with desktop_action, check the read-back, then press Enter with desktop_action, which asks the person."
+  ]
+}
