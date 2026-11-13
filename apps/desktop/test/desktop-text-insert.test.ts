@@ -98,7 +98,21 @@ describe('desktop text insertion', () => {
     expect(typeThenSend).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
     expect(approve).not.toHaveBeenCalled()
     expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'key', key: 'Enter' }] }, decline)).toMatchObject({ error: 'policy_denied' })
+    // A later Enter is refused too: [click, Enter, type, Enter] would send the new text without a read-back or its own approval.
+    const enterTypeEnter = await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'key', key: 'Enter' }, { kind: 'type', text: HELLO }, { kind: 'key', key: 'Enter' }] }, approve)
+    expect(enterTypeEnter).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
+    expect(approve).not.toHaveBeenCalled()
     expect(fake.act).not.toHaveBeenCalled()
     expect(fake.sequence).not.toHaveBeenCalled()
+  })
+
+  it('reports the strategy and read-back of text typed in a sequence', async () => {
+    fake.sequence.mockImplementation(async () => { await fake.binding.host.request('type', { text: HELLO }); return JSON.stringify({ completed: 2, observation: field(HELLO), requiresVerification: true }) })
+    const done = await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'type', text: HELLO }] })
+    expect(done['typed']).toEqual({ strategy: 'selected-text', insert: 'one-piece', verified: true })
+    fake.read.mockResolvedValue(field(HELLO + 'ㅇ'))
+    fake.sequence.mockImplementation(async () => { await fake.binding.host.request('type', { text: HELLO }); return JSON.stringify({ completed: 2, observation: field(HELLO + 'ㅇ'), requiresVerification: true }) })
+    const off = await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'type', text: HELLO }] })
+    expect(off['typed']).toMatchObject({ verified: false, landed: HELLO + 'ㅇ' })
   })
 })

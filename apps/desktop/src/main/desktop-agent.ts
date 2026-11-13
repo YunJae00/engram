@@ -1,6 +1,6 @@
 import type { DesktopActionContext } from './desktop-opt-in.js'
 import { showWorkPreview } from './work-preview.js'
-import type { QuietObservationDto } from '../shared/desktop.js'
+import type { DesktopObservationDto, QuietObservationDto } from '../shared/desktop.js'
 import { desktopTools, liveDocumentTools, quietDesktopTools, type AgentTool, type ToolOutcome } from 'core'
 import { permissionFailure } from './desktop-permission.js'
 import { retryOnPermission } from './desktop-permission-retry.js'
@@ -187,11 +187,16 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     sequence: (actions, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
       const send = actions.findIndex(sendsKey)
-      if (send >= 0 && actions.slice(0, send).some(action => action.kind === 'type'))
+      // Any Enter after any typing in the same batch would send unread text, wherever the first Enter sits.
+      if (actions.some((action, index) => sendsKey(action) && actions.slice(0, index).some(one => one.kind === 'type')))
         return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
       if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
       try {
-        const result = JSON.parse(await desktopSequence(lane, actions, context.signal)) as Record<string, unknown>
+        const typed = actions.filter(action => action.kind === 'type').map(action => typeArgs(action.text).text)
+        const [raw, receipt] = await withTypeReceipt(typed.length ? desktopBinding(lane)?.host : undefined, typed.at(-1) ?? '', () => desktopSequence(lane, actions, context.signal))
+        const result = JSON.parse(raw) as Record<string, unknown>
+        // The last text typed is the one the final observation can read back; its strategy comes from the native receipt.
+        if (typed.length && !result['error'] && result['observation']) result['typed'] = typedReport(typed.at(-1)!, receipt, result['observation'] as DesktopObservationDto)
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 || typedUnverified(result['error']) ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
         return JSON.stringify(result)
