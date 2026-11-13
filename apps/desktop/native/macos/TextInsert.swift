@@ -18,7 +18,7 @@ func textChunks(_ value: String) throws -> [String] {
 }
 
 func typedChunks(_ raw: Any?, joining value: String) throws -> [String] {
-    guard let chunks = raw as? [String], (1...100).contains(chunks.count),
+    guard let chunks = raw as? [String], (1...2000).contains(chunks.count),
           chunks.allSatisfy({ (1...textChunkUnits).contains($0.utf16.count) }),
           chunks.joined().unicodeScalars.elementsEqual(value.unicodeScalars) else { throw DesktopFailure("Invalid text chunks") }
     return chunks

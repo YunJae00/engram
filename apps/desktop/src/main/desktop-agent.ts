@@ -166,8 +166,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       // A click by position asks when it lands on a Send-like control in the observation it was planned on.
       const frame = view.captureBounds
       if (!frame || action.x === undefined || action.y === undefined) return false
-      const px = frame.x + action.x * (frame.width - 1), py = frame.y + action.y * (frame.height - 1)
-      return view.nodes.some(node => node.bounds && irreversibleName(node.name ?? '') && px >= node.bounds.x && px <= node.bounds.x + node.bounds.width && py >= node.bounds.y && py <= node.bounds.y + node.bounds.height)
+      // Rounded exactly as desktopInputArgs dispatches it, with a pixel of slack at the edges.
+      const px = Math.round(frame.x + action.x * (frame.width - 1)), py = Math.round(frame.y + action.y * (frame.height - 1))
+      return view.nodes.some(node => node.bounds && irreversibleName(node.name ?? '') && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
     } catch { return false }
   }
   const notSent = JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'Pressing Enter may send. The person did not approve it; no key was sent.' })

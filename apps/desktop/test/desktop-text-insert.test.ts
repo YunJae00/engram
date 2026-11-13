@@ -124,7 +124,9 @@ describe('desktop text insertion', () => {
     fake.observe.mockImplementation(() => ({ ...field(''), captureBounds: { x: 0, y: 0, width: 101, height: 101 }, nodes: [...field('').nodes, { id: 'e2', controlType: 'AXButton', name: 'Send message', bounds: { x: 0, y: 40, width: 20, height: 20 } }] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.1, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', target: { name: 'Send message', controlType: 'AXButton' } }] }, decline)).toMatchObject({ error: 'policy_denied' })
-    expect(decline).toHaveBeenCalledTimes(2)
+    // The dispatched pixel is rounded: a point just outside the button's fractional edge still lands on it.
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.204, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(decline).toHaveBeenCalledTimes(3)
     expect(fake.act).not.toHaveBeenCalled()
   })
 
