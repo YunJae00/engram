@@ -1,4 +1,10 @@
-import { PRIVACY_PANE } from './security.js'
+// The three exact System Settings panes. Kept here, import-free, because plain-node
+// fixtures (scripts/test-desktop-*.mjs) load this file without a bundler; security.ts re-exports it.
+export const PRIVACY_PANE = {
+  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  screenRecording: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+  inputMonitoring: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
+} as const
 
 export interface DesktopFailureObservation {
   error: 'stale_snapshot' | 'element_not_found' | 'ambiguous' | 'occluded' | 'timeout' | 'action_failed' | 'policy_denied' | 'accessibility_denied' | 'screen_recording_denied' | 'input_monitoring_denied'

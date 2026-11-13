@@ -1,3 +1,6 @@
+import { PRIVACY_PANE } from './desktop-failure.js'
+export { PRIVACY_PANE }
+
 // Electron-free security policy helpers. Kept pure (no `electron` import) so the
 // navigation / window.open / openExternal rules are unit-testable without
 // booting a BrowserWindow — the wiring in index.ts/team.ts just calls these.
@@ -8,12 +11,8 @@
 // arbitrary string to the OS. These predicates are the choke points.
 
 // Hosts we are willing to hand to the OS browser via shell.openExternal. The
-// only external navigation the app performs is the one-click GitHub backup; the three exact Settings panes below also open.
-export const PRIVACY_PANE = {
-  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
-  screenRecording: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
-  inputMonitoring: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
-} as const
+// only external navigation the app performs is the one-click GitHub backup; the three exact Settings panes
+// (PRIVACY_PANE, defined import-free in desktop-failure.ts) also open.
 const EXTERNAL_HOST_ALLOWLIST = ['github.com'] as const
 
 /**
