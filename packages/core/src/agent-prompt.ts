@@ -380,6 +380,8 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const newBot = by('new_bot')
   if (newBot && (NEW_BOT.test(task) || NEW_BOT.test(earlier)) && !picked.includes(newBot)) picked.push(newBot)
   if (skill && !picked.includes(skill)) picked.push(skill)
+  const asked: [RegExp, string][] = [[/음량|볼륨|소리|음소거|volume|mute|sound|louder|quieter/i, 'system_volume'], [/권한|permission/i, 'permission_state']]
+  for (const tool of asked.filter(([test]) => test.test(task)).map(([, name]) => by(name))) if (tool && !picked.includes(tool)) picked.push(tool)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
   const evidence = /screenshot|reproduc|evidence|upload|attach|verify|스크린샷|재현|증거|첨부|업로드|검증/i.test(task)
   for (const name of evidence ? ['capture_evidence', 'verify', 'wait_for', 'upload_file'] : []) {

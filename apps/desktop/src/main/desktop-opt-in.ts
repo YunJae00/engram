@@ -1,4 +1,5 @@
 import type { AgentTool } from 'core'
+import { systemVolumeTool } from './desktop-volume.js'
 
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
@@ -44,8 +45,9 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
     run: async (args, context) => { await allow(context.signal); return tool.run(args, scoped(context)) },
     ...(tool.runRich ? { runRich: async (args, context) => { await allow(context.signal); return tool.runRich!(args, scoped(context)) } } : {}),
   }))
-  if (process.platform !== 'darwin' || !tools.some(tool => tool.name === 'list_apps')) return wrapped
-  return [...wrapped, {
+  const volume = systemVolumeTool()
+  if (process.platform !== 'darwin' || !tools.some(tool => tool.name === 'list_apps')) return [...wrapped, volume]
+  return [...wrapped, volume, {
     name: 'permission_state',
     description: PERMISSION_STATE_DESCRIPTION,
     argsSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -59,4 +61,4 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
 
 export const PERMISSION_STATE_DESCRIPTION = 'Reports which macOS privacy permissions Engram has right now (Accessibility, Screen Recording, Input Monitoring) and what each is needed for. Read-only: needs no app control approval, opens no app or window, and never asks for or changes a permission. Call it whenever the person asks which permissions are on, and answer from its result.'
 
-export const DESKTOP_CONSENT_CONTEXT = 'Desktop tools can operate installed apps, including chat apps, using their actual windows. If Control apps is off, the first tool requests explicit approval before accessing any app. Do not claim desktop tools are unavailable when they are offered. If the person requests a desktop app, use its launcher/window rather than its website. Never substitute the website without asking. Sign-in stays manual; do not read local account databases or automate login. Only report sessions that were actually observed. To answer which macOS permissions Engram has, call permission_state; it needs no app control approval.'
+export const DESKTOP_CONSENT_CONTEXT = 'Desktop tools can operate installed apps, including chat apps, using their actual windows. If Control apps is off, the first tool requests explicit approval before accessing any app. Do not claim desktop tools are unavailable when they are offered. If the person requests a desktop app, use its launcher/window rather than its website. Never substitute the website without asking. Sign-in stays manual; do not read local account databases or automate login. Only report sessions that were actually observed. To answer which macOS permissions Engram has, call permission_state; it needs no app control approval. To read or set the output volume or mute, call system_volume; it needs no app control approval. Report the volume it read back.'

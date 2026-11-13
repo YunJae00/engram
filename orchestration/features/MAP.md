@@ -51,6 +51,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - A comet's page panel (`preview-deck`) — needs a comet that has opened a page (`apps/desktop/e2e/browser-preview.spec.ts`, `live-view.spec.ts`).
 - Developers mode — `ENGRAM_DEVELOPER_FIXTURE` (`apps/desktop/e2e/developers.spec.ts`).
 - Embedded browser — Windows-only (`apps/desktop/e2e/native-browser.spec.ts`).
+- System volume (`system_volume` desktop tool) — unit-tested only (`apps/desktop/test/desktop-volume.test.ts`), because tests must not change the real volume.
 
 ## Brief shape
 
