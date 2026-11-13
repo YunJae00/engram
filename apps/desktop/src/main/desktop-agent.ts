@@ -182,7 +182,8 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         hit = view.nodes.filter(node => node.bounds && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
       }
       if (hit.some(node => irreversibleName(node.name ?? ''))) return true
-      if (!afterTyping) return false
+      // A draft already in a field (typed by the person) can go out through an unnamed icon button too.
+      if (!afterTyping) return hit.some(node => /Button/i.test(node.controlType) && !(node.name ?? '').trim()) && view.nodes.some(node => FIELD.test(node.controlType) && !!node.value?.trim())
       const type = action.target?.controlType ?? hit[0]?.controlType
       return !type || !FIELD.test(type)
     } catch { return afterTyping }
@@ -204,10 +205,13 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     act: (action, context) => withDesktopActivity(lane, async () => {
       await quietFirst(context)
       if (action.kind === 'type') { typeArgs(action.text); typedUnsent.add(lane) }
-      if (sends(action)) { if (!await askSend(context, action.snapshot)) return notSent; typedUnsent.delete(lane) }
+      const approvedSend = sends(action)
+      if (approvedSend && !await askSend(context, action.snapshot)) return notSent
       let receipt: TypeReceipt | undefined
       try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
       catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task, ...(typedUnverified(error) ? { delivered: true } : {}) })) }
+      // The draft counts as sent only once the approved send actually dispatched.
+      if (approvedSend) typedUnsent.delete(lane)
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const observation = await readControlledDesktop(lane, context.signal, true)
@@ -224,7 +228,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       // Any send after any typing in the same batch would send unread text, wherever the first send sits.
       if (actions.some((action, index) => typedBefore(index) && sends(action, true)))
         return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
-      if (send >= 0) { if (!await askSend(context, actions[0]!.snapshot)) return notSent; typedUnsent.delete(lane) }
+      if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
       try {
         const typed = actions.filter(action => action.kind === 'type').map(action => typeArgs(action.text).text)
         if (typed.length) typedUnsent.add(lane)
@@ -232,6 +236,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         const result = JSON.parse(raw) as Record<string, unknown>
         // The last text typed is the one the final observation can read back; its strategy comes from the native receipt.
         if (typed.length && !result['error'] && result['observation']) result['typed'] = typedReport(typed.at(-1)!, receipt, result['observation'] as DesktopObservationDto)
+        if (send >= 0 && !typed.length && !result['error']) typedUnsent.delete(lane)
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
         if (result['error']) return JSON.stringify({ ...result, ...desktopFailure(result['error']), ...(Number(result['dispatched']) > 0 || typedUnverified(result['error']) ? { delivery: 'delivery_uncertain', retry: 'unsafe' } : {}) })
         return JSON.stringify(result)

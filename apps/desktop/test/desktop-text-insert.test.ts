@@ -158,6 +158,21 @@ describe('desktop text insertion', () => {
     expect(fake.act).not.toHaveBeenCalled()
   })
 
+  it('asks before an icon button sends a draft the person typed, and keeps the draft when an approved send fails', async () => {
+    const decline = vi.fn().mockResolvedValue(false)
+    const icon = { id: 'e3', runtimeId: 'b3', controlType: 'AXButton', name: '', bounds: { x: 60, y: 40, width: 20, height: 20 } }
+    fake.observe.mockImplementation(() => ({ ...field(HELLO), nodes: [...field(HELLO).nodes, icon] }))
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).not.toHaveBeenCalled()
+    fake.observe.mockImplementation(() => ({ ...field(''), nodes: [...field('').nodes, icon] }))
+    await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
+    fake.act.mockClear()
+    fake.act.mockRejectedValueOnce(new Error('dispatch failed'))
+    await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Enter' }, vi.fn().mockResolvedValue(true))
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).toHaveBeenCalledOnce()
+  })
+
   it('reports the strategy and read-back of text typed in a sequence', async () => {
     fake.sequence.mockImplementation(async () => { await fake.binding.host.request('type', { text: HELLO }); return JSON.stringify({ completed: 2, observation: field(HELLO), requiresVerification: true }) })
     const done = await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'type', text: HELLO }] })
