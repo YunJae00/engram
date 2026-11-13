@@ -167,6 +167,12 @@ describe('desktop text insertion', () => {
     fake.observe.mockImplementation(() => ({ ...field(HELLO), nodes: [...field(HELLO).nodes, { ...icon, name: '↑' }] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).not.toHaveBeenCalled()
+    // The draft counts even when another field has focus, and a sequence target by name only still asks.
+    fake.observe.mockImplementation(() => ({ ...field(HELLO), focusedControl: 'f9', nodes: [...field(HELLO).nodes, { id: 'e9', runtimeId: 'f9', controlType: 'AXTextField', name: 'Search', value: '' }, { ...icon, name: '↑' }] }))
+    expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', target: { name: '↑', controlType: 'AXButton' } }] }, decline)).toMatchObject({ error: 'policy_denied' })
+    expect(fake.act).not.toHaveBeenCalled()
+    expect(fake.sequence).not.toHaveBeenCalled()
     fake.observe.mockImplementation(() => ({ ...field(''), nodes: [...field('').nodes, icon] }))
     await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
     fake.act.mockClear()
