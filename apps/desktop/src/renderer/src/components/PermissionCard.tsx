@@ -3,7 +3,6 @@ import { ShieldAlert } from 'lucide-react'
 import { api } from '../api.js'
 import type { PermissionCardDto } from '../../../shared/types.js'
 import { DecisionCard } from './DecisionCard.js'
-import './permission-card.css'
 
 export function PermissionCard({ lane }: { lane: string }) {
   const [card, setCard] = useState<PermissionCardDto | null>(null)
