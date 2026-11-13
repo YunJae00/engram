@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -14,6 +14,7 @@ const IDS = [
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const OUT = join(ROOT, 'tmp', `engram-char-assets-${process.pid}`)
 const plans = join(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim(), '..', 'tmp', 'plans', 'engram-chars', 'plan')
+const SHEET = join(plans, 'curated-16-sheet.png')
 
 const lum = (img: Img, i: number) => (img.data[i] * 299 + img.data[i + 1] * 587 + img.data[i + 2] * 114) / 1000
 const read = (file: string): Img => decodePng(readFileSync(file), file)
@@ -117,9 +118,10 @@ describe('engram character masters', () => {
     for (let i = 0; i < masks.length; i++) for (let j = i + 1; j < masks.length; j++) expect(iou(masks[i], masks[j]), `${IDS[i]} vs ${IDS[j]}`).toBeLessThan(0.93)
   })
 
-  it('matches the curated sheet silhouette for every ID, side by side', () => {
+  // The curated sheet lives in gitignored tmp/, so CI runners do not have it.
+  it.skipIf(!existsSync(SHEET))('matches the curated sheet silhouette for every ID, side by side', () => {
     // The sheet is a 4×4 grid of 300px cells; a body pixel is warmer than the warm-white paper or darker than it.
-    const sheet = read(join(plans, 'curated-16-sheet.png'))
+    const sheet = read(SHEET)
     const cells = IDS.map((_, k) => {
       const cx = (k % 4) * 300, cy = Math.floor(k / 4) * 300
       return fitted(300, 300, (x, y) => {
