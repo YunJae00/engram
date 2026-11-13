@@ -50,8 +50,8 @@ describe('avatar picker logic', () => {
     expect(html).not.toMatch(/type="file"|avatar-picker-random|photo/i)
     expect(picker({ value: { character: '06-triangle' }, picked: false })).not.toContain('aria-checked="true"')
     const css = readFileSync(join(__dirname, '../src/renderer/src/bot-avatar.css'), 'utf8')
-    expect(css).toContain('grid-template-columns: repeat(4, 40px)')
-    expect(css).toContain('.avatar-picker-cell[aria-checked="true"] { outline: 2px solid var(--ink, #1C1B19)')
+    expect(css).toContain('grid-template-columns: repeat(4, 56px)')
+    expect(css).toContain('.avatar-picker-cell[aria-checked="true"] { outline: 2px solid var(--ink, #1C1C1E)')
     expect(css).not.toMatch(/avatar-picker[^{]*\{[^}]*--focus-ring/)
   })
 

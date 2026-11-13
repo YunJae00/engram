@@ -95,15 +95,15 @@ test('16-character assignment and picker', async () => {
   for (const bot of made) await expect(rowAvatar(page, bot.id)).toHaveAttribute('data-character', (bot.avatar as { character: string }).character)
   expect((await list(page)).slice(-5).map(b => b.avatar)).toEqual(made.map(b => b.avatar))
 
-  // The sidebar row draws 24px from the @opt master, loaded, unclipped.
+  // The sidebar row draws 32px from the regular master, loaded, unclipped.
   const target = made[2]!
-  expect(await sharp(rowAvatar(page, target.id), 24)).toMatch(/@opt[-.][^/]*png$/)
+  expect(await sharp(rowAvatar(page, target.id), 32)).not.toContain('@opt')
 
-  // Picking in the 4x4 updates the sidebar and the 32px header immediately, with an ink ring.
+  // Picking in the 4x4 updates the sidebar and the 36px header immediately, with an ink ring.
   await page.getByTestId(`bot-${target.id}`).click()
   const header = page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar')
   await expect(header).toHaveAttribute('data-character', (target.avatar as { character: string }).character)
-  expect(await sharp(header, 32)).not.toContain('@opt')
+  expect(await sharp(header, 36)).not.toContain('@opt')
   await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
   const pane = page.getByTestId('bot-info-pane')
   await expect(pane).toBeVisible()
@@ -118,7 +118,7 @@ test('16-character assignment and picker', async () => {
   await expect(header).toHaveAttribute('data-character', choice)
   await expect.poll(async () => (await list(page)).find(b => b.id === target.id)?.avatar).toEqual({ character: choice })
   const ring = await picker.locator('[aria-checked="true"]').evaluate(node => { const s = getComputedStyle(node); return [s.outlineWidth, s.outlineStyle, s.outlineColor] })
-  expect(ring).toEqual(['2px', 'solid', 'rgb(28, 27, 25)'])
+  expect(ring).toEqual(['2px', 'solid', 'rgb(28, 28, 30)'])
 
   // An old photo bot has no photo, no upload and no restore entry in its settings.
   await page.keyboard.press('Escape')

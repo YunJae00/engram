@@ -36,10 +36,10 @@ const minContrast = (theme: Theme, fg: string, surfaces = SURFACES) =>
   Math.min(...surfaces.map(s => contrastRatio(rgba(fg), [rgba(hex(theme, s))])!))
 
 const CREAM_INK: Record<string, string> = {
-  '--bg-canvas': '#F6F3EE', '--bg-surface': '#FCFAF7', '--bg-surface-hover': '#F3EFEA', '--bg-user-bubble': '#EFEBE6',
-  '--ink': '#1C1B19', '--ink-secondary': '#6F6B66', '--ink-tertiary': '#9A958E', '--line': '#E4E0DB', '--line-strong': '#C8C2BA',
-  '--cta': '#1C1B19', '--cta-fg': '#F6F3EE', '--focus': '#1C1B19', '--focus-outer': 'rgba(28,27,25,0.20)',
-  '--danger': '#A63D2F', '--success': '#3F6B4F', '--shadow': '0 1px 2px rgba(28,27,25,0.06), 0 8px 24px rgba(28,27,25,0.06)',
+  '--bg-canvas': '#FFFFFF', '--bg-surface': '#FFFFFF', '--bg-surface-hover': '#F5F5F7', '--bg-user-bubble': '#F2F2F7',
+  '--ink': '#1C1C1E', '--ink-secondary': '#6E6E73', '--ink-tertiary': '#8E8E93', '--line': '#E5E5EA', '--line-strong': '#D2D2D7',
+  '--cta': '#1C1C1E', '--cta-fg': '#FFFFFF', '--focus': '#1C1C1E', '--focus-outer': 'rgba(28,28,30,0.20)',
+  '--danger': '#A63D2F', '--success': '#3F6B4F', '--shadow': '0 1px 2px rgba(28,28,30,0.06), 0 8px 24px rgba(28,28,30,0.06)',
 }
 const ALIASES: Record<string, string> = {
   '--canvas-bg': '--bg-canvas', '--sidebar-bg': '--bg-surface', '--panel-bg': '--bg-surface',
@@ -63,7 +63,7 @@ describe('design tokens', () => {
   it('light theme is the cream+ink table 1:1 with aliases mapped onto it', () => {
     for (const [name, value] of Object.entries(CREAM_INK)) expect(raw('light', name), name).toBe(value)
     for (const [name, target] of Object.entries(ALIASES)) expect(raw('light', name), name).toBe(`var(${target})`)
-    expect([hex('light', '--app-bg'), hex('light', '--rail-bg')]).toEqual([hex('light', '--bg-canvas'), hex('light', '--bg-surface')])
+    expect([hex('light', '--app-bg'), hex('light', '--rail-bg')]).toEqual([hex('light', '--bg-canvas'), hex('light', '--bg-surface-hover')])
     expect(raw('light', '--sidebar-tint')).toBe('none')
     expect(hex('light', '--cta')).not.toBe(hex('light', '--bg-user-bubble'))
     expect(THEMES.light).not.toMatch(/#2563eb|#3b82f6|#007aff/i)
@@ -74,7 +74,7 @@ describe('design tokens', () => {
 
   it('tokens have the plan values', () => {
     const plan: Record<Theme, Record<string, string>> = {
-      light: { '--rail-bg': '#fcfaf7', '--bubble-bg': '#efebe6', '--selected-soft': '#f3efea', '--fg': '#1c1b19', '--fg-dim': '#6f6b66', '--accent-blue': '#1c1b19', '--app-bg': '#f6f3ee' },
+      light: { '--rail-bg': '#f5f5f7', '--bubble-bg': '#f2f2f7', '--selected-soft': '#f5f5f7', '--fg': '#1c1c1e', '--fg-dim': '#6e6e73', '--accent-blue': '#1c1c1e', '--app-bg': '#ffffff' },
       dark: { '--rail-bg': '#171717', '--bubble-bg': '#2a2a2a', '--selected-soft': '#2f2f2f', '--fg': '#ececec', '--fg-dim': '#b0b0b0', '--accent-blue': '#4b8df8', '--app-bg': '#1c1c1c' },
     }
     for (const theme of ['light', 'dark'] as const) {

@@ -1,6 +1,6 @@
 :root {
-  --work-running: #1C1B19;
-  --work-waiting: #6F6B66;
+  --work-running: #1C1C1E;
+  --work-waiting: #6E6E73;
   --work-error: #A63D2F;
 }
 [data-theme='dark'] {

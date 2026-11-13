@@ -68,25 +68,25 @@
 
 [data-theme='light'] {
   color-scheme: light;
-  /* Cream + ink, 1:1 with the Designer token table; aliases below map onto it. */
-  --bg-canvas: #F6F3EE;
-  --bg-surface: #FCFAF7;
-  --bg-surface-hover: #F3EFEA;
-  --bg-user-bubble: #EFEBE6;
-  --ink: #1C1B19;
-  --ink-secondary: #6F6B66;
-  --ink-tertiary: #9A958E;
-  --line: #E4E0DB;
-  --line-strong: #C8C2BA;
-  --cta: #1C1B19;
-  --cta-fg: #F6F3EE;
-  --focus: #1C1B19;
-  --focus-outer: rgba(28,27,25,0.20);
+  /* Apple-like white + ink; aliases below map onto these tokens. */
+  --bg-canvas: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #F5F5F7;
+  --bg-user-bubble: #F2F2F7;
+  --ink: #1C1C1E;
+  --ink-secondary: #6E6E73;
+  --ink-tertiary: #8E8E93;
+  --line: #E5E5EA;
+  --line-strong: #D2D2D7;
+  --cta: #1C1C1E;
+  --cta-fg: #FFFFFF;
+  --focus: #1C1C1E;
+  --focus-outer: rgba(28,28,30,0.20);
   --danger: #A63D2F;
   --success: #3F6B4F;
-  --shadow: 0 1px 2px rgba(28,27,25,0.06), 0 8px 24px rgba(28,27,25,0.06);
-  --app-bg: #F6F3EE;
-  --rail-bg: #FCFAF7;
+  --shadow: 0 1px 2px rgba(28,28,30,0.06), 0 8px 24px rgba(28,28,30,0.06);
+  --app-bg: #FFFFFF;
+  --rail-bg: #F5F5F7;
   --canvas-bg: var(--bg-canvas); --editor-bg: var(--bg-surface);
   --sidebar-bg: var(--bg-surface); --activity-bg: var(--ink); --panel-bg: var(--bg-surface);
   --tab-inactive-bg: var(--bg-surface); --tab-border: var(--line); --fg: var(--ink);
@@ -102,7 +102,7 @@
   --teal: var(--ink-secondary); --ok: var(--success); --focus-ring: var(--focus);
   --widget-bg: var(--bg-surface); --widget-border: var(--line); --card-top: var(--bg-surface);
   --card-bot: var(--bg-surface); --chrome-top: var(--bg-canvas); --chrome-bot: var(--bg-canvas);
-  --canvas-dot: rgba(28,27,25,0.06); --scroll-thumb: var(--line-strong); --shadow-card-rest: var(--shadow);
+  --canvas-dot: rgba(28,28,30,0.06); --scroll-thumb: var(--line-strong); --shadow-card-rest: var(--shadow);
   --shadow-card: var(--shadow); --shadow-card-hover: var(--shadow); --shadow-float: var(--shadow);
   --shadow-sheet: var(--shadow); --assistant-bg: transparent;
 }
@@ -392,7 +392,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .sidebar-list { list-style: none; display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; }
 .sidebar-item { position: relative; display: flex; align-items: center; min-width: 0; min-height: 38px; border-radius: var(--radius-m); }
 .sidebar-item:hover { background: var(--hover-bg); }
-.sidebar-item.active { background: var(--selected-soft); color: var(--fg-strong); }
+.sidebar-item.active { background: var(--selected-soft); color: var(--fg-strong); } [data-theme='light'] .app-sidebar .sidebar-item:hover, [data-theme='light'] .app-sidebar .sidebar-nav-row:hover { background: #EEEEF2; } [data-theme='light'] .app-sidebar .sidebar-item.active, [data-theme='light'] .app-sidebar .sidebar-nav-row.active { background: #E8E8ED; }
 .sidebar-item-main {
   flex: 1; min-width: 0; max-width: 100%; height: 38px; padding: 0 36px 0 12px;
   display: flex; align-items: center; text-align: left; color: var(--fg-dim);

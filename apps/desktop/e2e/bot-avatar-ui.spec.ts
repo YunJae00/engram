@@ -54,23 +54,23 @@ test.describe.serial('bot avatar ui', () => {
     for (const dir of dirs) await rm(dir, { recursive: true, force: true })
   })
 
-  test('welcome shows the primary bot at 64px', async () => {
+  test('welcome shows the primary bot at 80px', async () => {
     await page.getByTestId('sidebar-create').click()
     await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
     const avatar = page.locator('[data-testid="comet-welcome"] .comet-welcome-mark .bot-avatar[data-size="64"][data-state="idle"]')
     await expect(avatar).toBeVisible()
-    await square(avatar, 64)
+    await square(avatar, 80)
     await expect(avatar.locator('.bot-avatar-primary')).toHaveCount(1)
     await expect(avatar.locator('img.bot-avatar-img')).toHaveCount(1)
     await expect(page.locator('.comet-welcome-mark [data-icon="comet-face"]')).toHaveCount(0)
   })
 
-  test('sidebar rows show 24px curated avatars with the activity dot', async () => {
+  test('sidebar rows show 32px curated avatars with the activity dot', async () => {
     await showEarlier()
     const avatar = row('vis-chat').locator('.sidebar-conversation-avatar > .bot-avatar[data-size="36"][data-state="idle"]')
     await expect(avatar).toBeVisible()
-    await square(avatar, 24)
-    expect(await avatar.locator('img').getAttribute('src')).toMatch(/@opt[-.][^/]*png$/)
+    await square(avatar, 32)
+    expect(await avatar.locator('img').getAttribute('src')).not.toContain('@opt')
     await expect(avatar.locator('img.bot-avatar-img')).toHaveCount(1)
     await expect(row('vis-chat').locator('.bot-avatar-primary')).toHaveCount(0)
     await emit('vis-chat', true)

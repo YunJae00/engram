@@ -46,7 +46,7 @@ test.afterEach(async () => {
 })
 
 test.describe('create bot dialog', () => {
-  test('dialog is 440 wide with radius 22 and a 64px preview in light and dark', async () => {
+  test('dialog is 440 wide with radius 22 and an 80px preview in light and dark', async () => {
     for (const theme of ['light', 'dark'] as const) {
       const page = await launch(theme)
       const dialog = await openDialog(page)
@@ -56,8 +56,8 @@ test.describe('create bot dialog', () => {
       })
       expect(Math.abs(metrics.width - 440)).toBeLessThanOrEqual(4)
       expect(metrics.radius).toBe('22px')
-      expect(Math.abs((metrics.avatar?.width ?? 0) - 64)).toBeLessThanOrEqual(1)
-      expect(Math.abs((metrics.avatar?.height ?? 0) - 64)).toBeLessThanOrEqual(1)
+      expect(Math.abs((metrics.avatar?.width ?? 0) - 80)).toBeLessThanOrEqual(1)
+      expect(Math.abs((metrics.avatar?.height ?? 0) - 80)).toBeLessThanOrEqual(1)
       expect(metrics.inShell).toBe(true)
       await closeTestApp(apps.pop())
     }

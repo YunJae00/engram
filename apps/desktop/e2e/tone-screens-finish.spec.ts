@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-const SHOTS = fileURLToPath(new URL('../../../tmp/visual/rd-tone-screens-finish/', import.meta.url))
-const INK = 'rgb(28, 27, 25)', USER_BUBBLE = 'rgb(239, 235, 230)', SURFACE = 'rgb(252, 250, 247)', CANVAS = 'rgb(246, 243, 238)', DANGER = 'rgb(166, 61, 47)'
+const SHOTS = fileURLToPath(new URL('../../../tmp/visual/rd-apple-white-larger-faces/', import.meta.url))
+const INK = 'rgb(28, 28, 30)', USER_BUBBLE = 'rgb(242, 242, 247)', SURFACE = 'rgb(255, 255, 255)', CANVAS = 'rgb(255, 255, 255)', DANGER = 'rgb(166, 61, 47)'
 const LAST = '로컬 데스크톱 에이전트는 이미 로그인된 환경을 그대로 쓸 수 있어요.'
 const DRAFT = '레이아웃을 바꿔도 남아 있어야 하는 초안'
 
@@ -45,6 +45,7 @@ test('cream+ink screen finish and empty state', async () => {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1360, 860))
     await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([1360, 860])
     const shot = async (name: string) => {
+      await page.evaluate(() => Promise.all(document.getAnimations().filter(one => one.effect?.getComputedTiming().endTime !== Infinity).map(one => one.finished.catch(() => undefined))).then(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))))
       const png = await app!.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))
       await writeFile(join(SHOTS, name), Buffer.from(png, 'base64'))
     }
@@ -95,7 +96,7 @@ test('cream+ink screen finish and empty state', async () => {
       return { background: getComputedStyle(card).backgroundColor, shadow: getComputedStyle(card).boxShadow, face: { image: face.backgroundImage, width: face.width, height: face.height }, card: rect(card), composer: rect(composer), last: rect(last) }
     })
     expect(live.background).toBe(SURFACE)
-    expect(live.shadow).toContain('rgba(28, 27, 25, 0.06)')
+    expect(live.shadow).toContain('rgba(28, 28, 30, 0.06)')
     expect(live.face.image).toContain('07-oval')
     expect(live.face).toMatchObject({ width: '20px', height: '20px' })
     const faceUrl = live.face.image.replace(/^url\("?|"?\)$/g, '')
@@ -132,9 +133,9 @@ test('cream+ink screen finish and empty state', async () => {
         return { texts: texts.map(one => one.textContent), color: texts[0] && getComputedStyle(texts[0]).color, faces: [...node.querySelectorAll('.bot-avatar')].filter(shown).length, faceSize: avatar.width, lines: texts[0] ? Math.round(texts[0].getBoundingClientRect().height / parseFloat(getComputedStyle(texts[0]).lineHeight)) : 0 }
       })
       expect(seen.texts, 'one short line and no suggestion chips').toEqual([line])
-      expect(seen).toMatchObject({ color: 'rgb(111, 107, 102)', faces: 1, lines: 1 })
-      expect(seen.faceSize).toBeGreaterThanOrEqual(64)
-      expect(seen.faceSize).toBeLessThanOrEqual(80)
+      expect(seen).toMatchObject({ color: 'rgb(110, 110, 115)', faces: 1, lines: 1 })
+      expect(seen.faceSize).toBeGreaterThanOrEqual(76)
+      expect(seen.faceSize).toBeLessThanOrEqual(84)
       await expect(empty.getByTestId('bot-empty-chip').first()).toBeHidden()
     }
     await emptyState(plain.id, '빈 대화')
@@ -149,7 +150,7 @@ test('cream+ink screen finish and empty state', async () => {
     expect(await pane.evaluate(node => getComputedStyle(node).animationTimingFunction)).toBe('ease')
     expect(await pane.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(SURFACE)
     const paneFace = (await pane.locator('.bot-avatar').first().boundingBox())!.width
-    expect(Math.abs(paneFace - 48), 'the info pane face is 48px').toBeLessThanOrEqual(1)
+    expect(Math.abs(paneFace - 64), 'the info pane face is 64px').toBeLessThanOrEqual(1)
     await shot('info-pane.png')
     await page.getByTestId('bots-title-pill').click()
     await expect(pane).toHaveCount(0)
@@ -197,6 +198,11 @@ test('cream+ink screen finish and empty state', async () => {
     expect(await create.evaluate(node => [getComputedStyle(node).backgroundColor, getComputedStyle(node.querySelector('#create-bot-title')!).color, getComputedStyle(node.querySelector('[data-testid="create-bot-submit"]')!).backgroundColor])).toEqual([SURFACE, INK, INK])
     await page.evaluate(() => Promise.all(document.getAnimations().filter(one => one.effect?.getComputedTiming().endTime !== Infinity).map(one => one.finished.catch(() => undefined))).then(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))))
     await shot('create-bot-dialog.png')
+    await page.getByTestId('create-bot-avatar-change').click()
+    await expect(create.locator('.avatar-picker-grid')).toBeVisible()
+    await shot('character-picker.png')
+    await page.getByTestId('create-bot-avatar-change').click()
+    await expect(create.getByTestId('avatar-picker')).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(create).toHaveCount(0)
     expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(before)
@@ -254,6 +260,7 @@ test('onboarding keeps the cream surface', async () => {
     await expect(page.getByTestId('onboard-step-1')).toBeVisible({ timeout: 60000 })
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
     const shot = async (name: string) => {
+      await page.evaluate(() => Promise.all(document.getAnimations().filter(one => one.effect?.getComputedTiming().endTime !== Infinity).map(one => one.finished.catch(() => undefined))).then(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))))
       const png = await app!.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))
       await writeFile(join(SHOTS, name), Buffer.from(png, 'base64'))
     }

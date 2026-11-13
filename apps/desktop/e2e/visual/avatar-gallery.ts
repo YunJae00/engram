@@ -73,7 +73,7 @@ export async function artGalleryHtml(theme: Theme): Promise<string> {
   const rows = SIZES.map(size => `<div class="art-row">${CHARACTERS.map(character => cell(character, size)).join('')}</div>`)
   const strip = CHARACTERS.slice(0, 6).map(character => `<div class="art-strip-row">${cell(character, 24)}<span>${character}</span></div>`)
   const sidebar = `<div class="art-strip"><div class="art-strip-hero">${cell('07-oval', 64, true)}<span>Primary</span></div>${strip.join('')}</div>`
-  const color = theme === 'dark' ? '#e6e6e6' : '#1c1b19'
+  const color = theme === 'dark' ? '#e6e6e6' : '#1c1c1e'
   const page = `body { margin: 0; padding: 12px; background: ${await railBg(theme)}; color: ${color}; font: 14px -apple-system, sans-serif; display: flex; gap: 24px; align-items: flex-start; }
 .art-rows { display: flex; flex-direction: column; gap: 12px; }
 .art-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

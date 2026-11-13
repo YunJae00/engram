@@ -7,7 +7,7 @@ import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const SHOTS = fileURLToPath(new URL('../../../tmp/visual/rd-tone-tokens-chrome/', import.meta.url))
-const CANVAS = 'rgb(246, 243, 238)', SURFACE = 'rgb(252, 250, 247)', BUBBLE = 'rgb(239, 235, 230)', INK = 'rgb(28, 27, 25)', CTA_FG = 'rgb(246, 243, 238)'
+const CANVAS = 'rgb(255, 255, 255)', SURFACE = 'rgb(255, 255, 255)', BUBBLE = 'rgb(242, 242, 247)', INK = 'rgb(28, 28, 30)', CTA_FG = 'rgb(255, 255, 255)'
 
 const isBlue = (color: string) => {
   const [r = 0, g = 0, b = 0] = (color.match(/\d+(\.\d+)?/g) ?? []).map(Number)
@@ -44,7 +44,7 @@ async function expectInkRing(page: Page, field: Locator): Promise<void> {
   expect(ring.width).toBe('2px')
   expect(ring.color).toBe(INK)
   // box-shadow transitions over 120ms on inputs, so wait for it to settle.
-  await expect.poll(() => field.evaluate(node => getComputedStyle(node).boxShadow)).toContain('rgba(28, 27, 25, 0.2)')
+  await expect.poll(() => field.evaluate(node => getComputedStyle(node).boxShadow)).toContain('rgba(28, 28, 30, 0.2)')
 }
 
 async function pixel(app: ElectronApplication, page: Page, x: number, y: number): Promise<string> {
@@ -88,9 +88,9 @@ test('cream+ink tokens and chrome on key screens', async () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 
     const root = await styleOf(page, 'html', ['--bg-canvas', '--bg-surface', '--bg-user-bubble', '--ink', '--cta', '--cta-fg', '--focus-outer'])
-    expect(root).toEqual({ '--bg-canvas': '#F6F3EE', '--bg-surface': '#FCFAF7', '--bg-user-bubble': '#EFEBE6', '--ink': '#1C1B19', '--cta': '#1C1B19', '--cta-fg': '#F6F3EE', '--focus-outer': 'rgba(28,27,25,0.20)' })
+    expect(root).toEqual({ '--bg-canvas': '#FFFFFF', '--bg-surface': '#FFFFFF', '--bg-user-bubble': '#F2F2F7', '--ink': '#1C1C1E', '--cta': '#1C1C1E', '--cta-fg': '#FFFFFF', '--focus-outer': 'rgba(28,28,30,0.20)' })
     expect((await styleOf(page, 'body', ['background-color']))['background-color']).toBe(CANVAS)
-    expect((await styleOf(page, '.app-sidebar', ['background-color']))['background-color']).toBe(SURFACE)
+    expect((await styleOf(page, '.app-sidebar', ['background-color']))['background-color']).toBe('rgb(245, 245, 247)')
 
     await openActivity(page, 'bots')
     await page.getByTestId(`bot-${bots[0]!.id}`).click()
@@ -162,7 +162,7 @@ test('cream+ink tokens and chrome on key screens', async () => {
       expect(empty, `${layout} has an empty chat area`).not.toBeNull()
       const seen = (await pixel(app, page, empty![0]!, empty![1]!)).match(/\d+/g)!.map(Number)
       // capturePage goes through the display colour profile, so allow a 2-level rounding drift.
-      expect(seen.map((value, index) => Math.abs(value - [246, 243, 238][index]!)).every(delta => delta <= 2), `${layout} empty pixel ${seen}`).toBe(true)
+      expect(seen.map((value, index) => Math.abs(value - [255, 255, 255][index]!)).every(delta => delta <= 2), `${layout} empty pixel ${seen}`).toBe(true)
     }
     await openActivity(page, 'bots')
 
