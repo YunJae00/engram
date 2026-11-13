@@ -1,15 +1,15 @@
 .bots-chat { position: relative; }
 .live-overlay-deck { touch-action: none; user-select: none; cursor: grab; }
-.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--live-fit-space, 30px) * var(--deck-depth, 0)); width: var(--live-fit-width, var(--pc-w)); max-width: none; margin: 0; }
+.bots-chat > .live-overlay-deck { position: absolute; z-index: 5; right: var(--panel-gutter); top: calc(12px + var(--live-fit-space, 30px) * var(--deck-depth, 0)); width: max-content; max-width: none; margin: 0; }
 .bots-chat > .preview-card-reopen { position: absolute; z-index: 5; right: var(--panel-gutter); top: 12px; margin: 0; }
 .live-overlay-deck[data-dragging] { cursor: grabbing; }
-.live-overlay-deck[data-suspended] { visibility: hidden; pointer-events: none; }
+.preview-deck[data-suspended] { visibility: hidden; pointer-events: none; }
 .live-overlay-deck img { -webkit-user-drag: none; }
-.bots-chat > .live-overlay-deck .preview-card-stage { min-height: 0; max-height: min(var(--pc-stage-max), var(--live-fit-stage, var(--pc-stage-max))); }
 .bots-chat > .live-overlay-deck .preview-card-actions { z-index: 1; }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="1"] { --deck-x: calc(-1 * var(--live-fit-space, 30px)); --deck-y: calc(-1 * var(--live-fit-space, 30px)); }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 30px)); --deck-y: calc(-2 * var(--live-fit-space, 30px)); }
 .bots-chat > .live-overlay-deck .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 30px)); --deck-y: calc(-3 * var(--live-fit-space, 30px)); }
 .bots-chat > .bots-thread { padding-right: max(var(--reading-gutter), var(--live-clear-right, 0px)); }
+.mini-chat > .mini-chat-thread { padding-right: max(14px, var(--live-clear-right, 0px)); }
 .bots-chat .preview-card, .mini-chat .preview-card { background: var(--bg-surface, var(--panel-bg)); box-shadow: var(--shadow, var(--shadow-card)); }
 .preview-card .preview-card-caption::before { content: ''; flex: none; width: 20px; height: 20px; background: url('../assets/engram-chars/07-oval@opt.png') center / contain no-repeat; }

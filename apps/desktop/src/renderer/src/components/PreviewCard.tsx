@@ -57,6 +57,7 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const [now, setNow] = useState(Date.now)
   const paints = useRef(new Map<string, number>())
   const stage = useRef<HTMLDivElement>(null)
+  const card = useRef<HTMLElement>(null)
   const [size, setSize] = useState<StageSize | null>(null)
   const record = useCallback((width: number, height: number) => setSize(previous => recordStageSize(previous, frame.id, width, height)), [frame.id])
   const onPaint = useCallback((image: string) => {
@@ -65,7 +66,7 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   }, [frame.id, frame.onPaint, onSnapshot, record])
   // Set on the element, not through state: the drag fitter measures in the same ResizeObserver pass, before React would re-render.
   useEffect(() => {
-    const node = stage.current
+    const node = card.current
     return node ? observeChatCap(node, cap => node.style.setProperty('--pc-stage-cap', `${cap}px`)) : undefined
   }, [])
   useEffect(() => {
@@ -86,8 +87,8 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
     if (onOpenWeb) onOpenWeb(); else if (compact) webPane.expand(lane, true); else webPane.open(lane)
     if (frame.phase === 'empty') requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="live-address"]')?.focus())
   }
-  return <aside className="preview-card" data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
-    <div ref={stage} className="preview-card-stage" data-phase={frame.phase} title={snapshot} style={{ '--pc-ratio': stageRatio(size, frame.id) } as CSSProperties}>
+  return <aside ref={card} className="preview-card" style={{ '--pc-ratio': stageRatio(size, frame.id) } as CSSProperties} data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
+    <div ref={stage} className="preview-card-stage" data-phase={frame.phase} title={snapshot}>
       <span id={description} className="sr-only">{words.description}</span>
       {hasImage ? <img src={frame.image} alt={title} onLoad={event => record(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} /> : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
       {!hasImage && <div className="preview-card-state"><Icon size={16} aria-hidden /><span>{message}</span></div>}

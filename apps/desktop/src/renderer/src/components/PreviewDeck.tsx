@@ -34,7 +34,7 @@ export function PreviewDeck({ frames: all, busy, state, lang, lane, compact, onO
   const [order, setOrder] = useState<string[]>([])
   const [selected, setSelected] = useState<string>()
   const surface = useRef<HTMLDivElement>(null)
-  usePreviewDrag(surface, overlay && active && !view.hidden && !view.collapsed && frames.length > 0, lane)
+  usePreviewDrag(surface, active && !view.hidden && !view.collapsed && frames.length > 0, lane, overlay)
   const images = useRef(new Map<string, string>())
   const ordered = previewOrder(order, frames, selected)
   const identity = ordered.join('\n')

@@ -5,12 +5,14 @@ type Bounds = { width: number; room: number; floor: number; depth: number }
 type Drag = { id: number; start: Point; last: Point; origin: Point; shown: Point; provisional?: Point; moved: boolean }
 
 const SPACING = 30
+const MINI_SPACING = 12
 const MIN_CARD = 44
 const DOCK_INSET = 12
 const TEXT_LANE = 120
+// A split pane's lane must still fit a decision card's two action buttons beside the docked deck.
+const MINI_LANE = 240
 const CLEAR_GAP = 12
 const CLEAR_VAR = '--live-clear-right'
-const FIT_VARS = ['--live-fit-width', '--live-fit-stage', '--live-fit-space']
 // Committed lane preferences for this renderer lifetime; a drag writes one only on release.
 const positions = new Map<string, Point>()
 
@@ -28,12 +30,13 @@ export function fitSpacing(width: number, floor: number, stack: number, spacing 
 
 const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y
 
-export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean, lane: string): void {
+export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean, lane: string, draggable: boolean): void {
   useLayoutEffect(() => {
     const deck = ref.current
-    const chat = deck?.parentElement
+    const chat = deck?.closest<HTMLElement>('.bots-chat, .mini-chat')
     if (!enabled || !deck || !chat) return
-    const thread = chat.querySelector<HTMLElement>(':scope > .bots-thread')
+    const thread = chat.querySelector<HTMLElement>(':scope > .bots-thread, :scope > .mini-chat-thread')
+    const step = draggable ? SPACING : MINI_SPACING
     let drag: Drag | undefined
     let live = true
     const style = (name: string, value: string) => { if (deck.style.getPropertyValue(name) !== value) deck.style.setProperty(name, value) }
@@ -42,7 +45,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     const stack = () => Math.min(3, Math.max(0, Number(deck.style.getPropertyValue('--deck-depth')) || 0))
     const spaced = () => stack() * (parseFloat(deck.style.getPropertyValue('--live-fit-space')) || 0)
     // The docked deck leaves chat text a readable lane on its left: the thread's own left padding plus TEXT_LANE and a gap.
-    const textLane = () => (thread ? parseFloat(getComputedStyle(thread).paddingLeft) || 0 : 0) + TEXT_LANE + CLEAR_GAP
+    const textLane = () => (thread ? parseFloat(getComputedStyle(thread).paddingLeft) || 0 : 0) + (draggable ? TEXT_LANE : MINI_LANE) + CLEAR_GAP
     const bounds = (docked = false): Bounds | undefined => {
       const width = chat.clientWidth, height = chat.clientHeight
       if (!width || !height) return undefined
@@ -73,13 +76,11 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       if (settle) layout()
     }
     const fit = (space: Bounds) => {
-      const spacing = fitSpacing(space.room, space.floor, stack())
+      const spacing = fitSpacing(space.room, space.floor, stack(), step)
       const depth = stack() * spacing
-      for (const name of FIT_VARS) style(name, '')
-      const natural = { width: deck.offsetWidth, height: deck.offsetHeight }
       style('--live-fit-space', `${spacing}px`)
-      style('--live-fit-width', `${Math.min(natural.width, space.room - depth)}px`)
-      style('--live-fit-stage', `${Math.min(natural.height, space.floor - depth)}px`)
+      style('--live-fit-width', `${Math.max(0, space.room - depth)}px`)
+      style('--live-fit-stage', `${Math.max(0, space.floor - depth)}px`)
       return { ...space, depth }
     }
     // The CSS anchor docks the deck at the chat's top inset over the thread; the fit keeps its bottom at or above the thread floor.
@@ -94,7 +95,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
     // An untouched deck stays docked at the top right; only a moved drag or a committed spot floats it over the chat.
     const layout = () => {
       if (!live) return
-      const requested = drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)
+      const requested = !draggable ? undefined : drag?.moved ? drag.provisional ?? drag.shown : positions.get(lane)
       if (!requested) { dock(); clear(); return }
       flag('data-floating', true)
       const space = bounds()
@@ -106,7 +107,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       if (drag?.moved) { drag.origin = next; drag.start = drag.last; drag.shown = next; drag.provisional = next }
     }
     const down = (event: PointerEvent) => {
-      if (drag || !event.isPrimary || event.button !== 0 || deck.hasAttribute('data-suspended')) return
+      if (!draggable || drag || !event.isPrimary || event.button !== 0 || deck.hasAttribute('data-suspended')) return
       if (event.target instanceof Element && event.target.closest('button, input, textarea, a')) return
       try { deck.setPointerCapture(event.pointerId) } catch { return }
       if (!deck.hasPointerCapture(event.pointerId)) return
@@ -170,5 +171,5 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       deck.removeEventListener('keydown', key)
       window.removeEventListener('blur', blur)
     }
-  }, [ref, enabled, lane])
+  }, [ref, enabled, lane, draggable])
 }

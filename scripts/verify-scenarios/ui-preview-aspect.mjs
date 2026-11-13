@@ -59,8 +59,13 @@ export async function run(page, { app, paths, expect, openActivity }) {
           const cropped = content.width > paintedBox.width + 1 || content.height > paintedBox.height + 1
             || paintedBox.width > stageBox.width + 1 || paintedBox.height > stageBox.height + 1
           const contentAspectOk = objectFit !== 'fill' || Math.abs(paintedBox.width / paintedBox.height / (frameWidth / frameHeight) - 1) <= 0.03
+          const cardBox = node.getBoundingClientRect()
+          const fit = name => parseFloat(globalThis.getComputedStyle(node).getPropertyValue(name)) || Infinity
           return {
             stage: { width: stageBox.width, height: stageBox.height },
+            card: { width: cardBox.width, height: cardBox.height },
+            fitWidth: fit('--live-fit-width'),
+            fitStage: fit('--live-fit-stage'),
             painted: { width: paintedBox.width, height: paintedBox.height },
             content,
             chatHeight: chat.getBoundingClientRect().height,
@@ -70,19 +75,21 @@ export async function run(page, { app, paths, expect, openActivity }) {
           }
         })
         const heightLimit = measured.chatHeight / 2
-        const naturalHeight = measured.stage.width * frame.height / frame.width
-        const expectedHeight = Math.max(96, Math.min(naturalHeight, heightLimit))
         const aspectOk = Math.abs(measured.stage.width / measured.stage.height / (frame.width / frame.height) - 1) <= 0.03
-        const heightOk = measured.stage.height >= 96 - 1 && measured.stage.height <= heightLimit + 1
-          && Math.abs(measured.stage.height - expectedHeight) <= Math.max(1, expectedHeight * 0.03)
+        const heightOk = measured.stage.height <= heightLimit + 1
+        const fills = Math.abs(measured.stage.height - Math.min(heightLimit, measured.fitStage)) <= 1
+          || Math.abs(measured.stage.width - Math.min(320, measured.fitWidth)) <= 1
+        const noBars = Math.abs(measured.card.width - measured.stage.width) <= 2 && Math.abs(measured.card.height - measured.stage.height) <= 2
         evidence.push({
           frame: frameSize.name,
           frameSize: { width: frame.width, height: frame.height },
           windowWidth,
           theme,
           ...measured,
-          aspectOk: naturalHeight > heightLimit || naturalHeight < 96 ? true : aspectOk,
+          aspectOk,
           heightOk,
+          fills,
+          noBars,
         })
       }
     }
@@ -94,7 +101,7 @@ export async function run(page, { app, paths, expect, openActivity }) {
     other.windowWidth === entry.windowWidth && other.theme === entry.theme,
   ).stage.height)
   return {
-    ok: evidence.length === 12 && evidence.every(entry => entry.aspectOk && entry.heightOk && entry.contentAspectOk && !entry.cropped) && portraitTaller,
+    ok: evidence.length === 12 && evidence.every(entry => entry.aspectOk && entry.heightOk && entry.fills && entry.noBars && entry.contentAspectOk && !entry.cropped) && portraitTaller,
     evidence,
   }
 }
