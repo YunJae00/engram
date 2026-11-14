@@ -1,0 +1,34 @@
+{
+  "id": "p4-away",
+  "status": "done",
+  "headSha": "796f86ea2c6de39aeb882ef1c0ea1d3342f4986b",
+  "changedFiles": [
+    "apps/desktop/src/main/task-notify.ts",
+    "apps/desktop/src/main/away-summary.ts",
+    "apps/desktop/src/main/ipc.ts",
+    "apps/desktop/src/main/index.ts",
+    "packages/core/src/notices.ts",
+    "apps/desktop/test/task-notify.test.ts",
+    "apps/desktop/test/away-summary.test.ts",
+    "apps/desktop/test/task-closing.test.ts",
+    "orchestration/features/MAP.md"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/away-summary.test.ts",
+    "apps/desktop/test/task-notify.test.ts: bot name titles, no task contents, team milestone cases (throttle, per task, restart, quiet conditions, overlap, voice failure, click, forget finished)"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test/task-notify.test.ts apps/desktop/test/away-summary.test.ts", "exit": 0 },
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test packages/core/test", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Updated existing assertions (intent kept): task-notify.test.ts failed title 'Task stopped' -> 'Engram: Stopped'; task-closing.test.ts noticeText titles -> 'Engram: 다 했어요' / 'Engram: Done' / 'Engram: 멈췄어요'.",
+    "The away item is kind 'system' with key 'away', not a new kind: NoticesDto.kind lives in shared/ipc-types-3.ts, which is not an allowed file.",
+    "Previous findings: a running or queued task updated during the absence now triggers the summary by itself; a scheduled run hides only its own task (matched by the run's time window on that bot, using the new NoticeItem.began written by runPrompt), not the whole bot.",
+    "A scheduled notice written before this change has no 'began', so a run that finished before the upgrade is not matched; a manual task that changes on the same bot inside a scheduled run's window is treated as that run's task.",
+    "Not covered: quit and relaunch during an absence loses the unfocused start time (memory only); a locked screen with Engram focused sends no blur; milestones only for members hired by the lead; not verified in the running app, unit tests only."
+  ]
+}
