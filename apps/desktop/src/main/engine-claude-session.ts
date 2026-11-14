@@ -6,7 +6,7 @@ import { dirname } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 import { claudeTokenUsage } from './claude-token-usage.js'
-import { idleBeyond, insideSlot } from './worker-pool.js'
+import { currentLease, idleBeyond, inTurnSlot, type Lease } from './worker-pool.js'
 
 // Reuse an idle runtime only while its account, model and tool scope match.
 
@@ -59,7 +59,7 @@ export function signatureOf(job: ToolSessionJob): string {
 }
 
 interface Turn {
-  startedAt: number
+  startedAt: number; lease?: Lease
   lastToolEnd: number
   firstTool: boolean
   resolve(result: ToolSessionResult): void
@@ -126,7 +126,7 @@ export class WarmSession {
           const started = performance.now()
           const gap = turn ? Math.round(started - turn.lastToolEnd) : 0
           const outcome = await (async () => {
-            try { return tool ? await insideSlot(() => tool.run(args as Record<string, unknown>)) : 'that tool is not available this turn' }
+            try { return tool ? await inTurnSlot(turn?.lease, () => tool.run(args as Record<string, unknown>)) : 'that tool is not available this turn' }
             finally {
               const ended = performance.now()
               if (turn) turn.lastToolEnd = ended
@@ -263,7 +263,7 @@ export class WarmSession {
     if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
     if (this.closed) return Promise.resolve({ answer: '', error: 'the session ended' })
     this.tools = new Map(job.tools.map((tool) => [tool.name, tool]))
-    this.native = job.native ? { ...job.native } : undefined
+    const lease = currentLease(), own = job.native; this.native = own ? { ...own, decide: (name, input, signal) => inTurnSlot(lease, () => own.decide(name, input, signal)) } : undefined
     this.turns++
     this.lastUsed = Date.now()
     // The conversation so far is given once, when the session opens; after
@@ -281,7 +281,7 @@ export class WarmSession {
       }
       const onAbort = (): void => cut('canceled')
       const now = performance.now()
-      const turn: Turn = { resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
+      const turn: Turn = { lease: currentLease(), resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       turn.onUsage = job.onUsage
       job.signal?.addEventListener('abort', onAbort, { once: true })

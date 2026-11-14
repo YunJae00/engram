@@ -4,7 +4,8 @@ const execFileSpy = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', async (load) => ({ ...(await load<typeof import('node:child_process')>()), execFile: execFileSpy }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { asBackground, whileWaitingForPerson, withLease, cpuBusyFromTimes, idleBeyond, insideSlot, nextTarget, parseMacSysctl, sampler, waitLine, withTurnPriority, workerBase, WorkerPool, type Sample } from '../src/main/worker-pool.js'
-import { SessionPool } from '../src/main/engine-claude-session.js'
+import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
+import type { EngineCwd, ToolSessionJob } from 'core'
 
 const GB = 2 ** 30
 const MB = 2 ** 20
@@ -354,6 +355,53 @@ describe('leases', () => {
     busy?.()
     expect(p.running).toBe(0)
     expect(other.settled).toBe(true)
+  })
+})
+
+describe('leases through a warm session', () => {
+  // A stand-in runtime whose tool pump lives as long as the session, like the real one.
+  const sdk: SessionSdk = {
+    createSdkMcpServer: (options) => options,
+    tool: (name, description, shape, handler) => ({ name, description, shape, handler }),
+    query: ({ prompt, options }) => {
+      const server = (options?.['mcpServers'] as Record<string, { tools: { handler(args: unknown): Promise<{ content: { text: string }[] }> }[] }>)['engram']!
+      async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
+        for await (const _message of prompt) {
+          const said = await server.tools[0]!.handler({})
+          yield { type: 'assistant', message: { content: [{ type: 'text', text: said.content[0]!.text }] } }
+          yield { type: 'result', subtype: 'success', result: said.content[0]!.text }
+        }
+      }
+      return Object.assign(run(), { interrupt: async () => undefined }) as never
+    },
+  }
+
+  it('each turn of a reused session lends its own slot to nested turns and approval waits, at target 1', async () => {
+    vi.useRealTimers()
+    const { p } = pool(1)
+    const sessions = new SessionPool()
+    const seen: string[] = []
+    const job = (name: string): ToolSessionJob => ({
+      workdir: '/tmp' as EngineCwd, system: 'rules', prompt: name, maxCalls: 4, sessionKey: 'chat',
+      tools: [{ name: 'helper', description: 'helper', argsSchema: { type: 'object', properties: {} }, run: async () => {
+        const nested = await p.lease()
+        seen.push(`${name} nested running=${p.running}`)
+        nested?.end()
+        await whileWaitingForPerson(async () => { seen.push(`${name} waiting running=${p.running}`) })
+        return 'ok'
+      } }],
+    })
+    const spec = { sdk, binary: 'claude', workdir: '/tmp', model: 'fixture' }
+    try {
+      for (const name of ['first', 'second']) {
+        const lease = await p.lease()
+        const result = await Promise.race([withLease(lease!, () => sessions.run(job(name), spec)), new Promise(resolve => setTimeout(() => resolve('stuck'), 2000))])
+        expect(result).not.toBe('stuck')
+        lease!.end()
+        expect(p.running).toBe(0)
+      }
+      expect(seen).toEqual(['first nested running=1', 'first waiting running=0', 'second nested running=1', 'second waiting running=0'])
+    } finally { sessions.closeAll(); vi.useFakeTimers() }
   })
 })
 
