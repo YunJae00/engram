@@ -194,7 +194,7 @@ import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, 
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
 import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
-import { withTurnPriority } from './worker-pool.js'
+import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 import { agentCourier } from './agent-courier.js'
@@ -2629,7 +2629,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (firstTitle) {
           // A short name about the subject follows once the brain has a
           // moment - unless the person renamed the comet themselves first.
-          void titleFor(engine, engineCwd(paths), request.message, cleaned)
+          void asBackground(() => titleFor(engine, engineCwd(paths), request.message, cleaned))
             .then(async (name) => {
               if (!name || name === firstTitle) return
               const now = (await loadBots(paths)).find((one) => one.id === bot.id)
@@ -2876,7 +2876,7 @@ export function registerIpc(ctx: VaultContext): void {
         // After the answer is out: what of this turn is worth keeping about
         // the person. It runs on its own, so the turn ends with the answer.
         if (!turn?.quiet && finished && filingEngine) {
-          void rememberTurn({
+          void asBackground(() => rememberTurn({
             engine: filingEngine,
             workdir: engineCwd(paths),
             paths,
@@ -2886,7 +2886,7 @@ export function registerIpc(ctx: VaultContext): void {
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
             places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
-          }).catch(error => flog('comet-memory', error))
+          })).catch(error => flog('comet-memory', error))
         }
       } catch (err) {
         if (signal.aborted) {

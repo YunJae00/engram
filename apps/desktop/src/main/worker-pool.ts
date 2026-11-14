@@ -64,6 +64,9 @@ export interface SamplerDeps {
   platform?: NodeJS.Platform
   os?: Pick<typeof os, 'freemem' | 'totalmem' | 'loadavg' | 'cpus'>
   sysctl?: () => Promise<string>
+  // A macOS reading younger than this is reused, so back-to-back acquires spawn no new sysctl.
+  cacheMs?: number
+  now?: () => number
 }
 
 const macSysctl = async (): Promise<string> => (await promisify(execFile)('/usr/sbin/sysctl', ['-n', 'kern.memorystatus_level', 'vm.swapusage'], { timeout: 1000 })).stdout
@@ -73,6 +76,9 @@ export function sampler(deps: SamplerDeps = {}): () => Promise<Sample> {
   const sysctl = deps.sysctl ?? macSysctl
   let prevSwap: number | undefined
   let prevCpus: os.CpuInfo[] | undefined
+  const now = deps.now ?? Date.now
+  const cacheMs = deps.cacheMs ?? 1000
+  let cached: { at: number; sample: Sample } | undefined
   return async () => {
     const platform = deps.platform ?? process.platform
     const freePct = (sys.freemem() / sys.totalmem()) * 100
@@ -84,16 +90,21 @@ export function sampler(deps: SamplerDeps = {}): () => Promise<Sample> {
       return { freePct, swapGrowthBytes: 0, cpuBusyPct }
     }
     if (platform !== 'darwin') return { freePct, swapGrowthBytes: 0, cpuBusyPct: loadPct() }
+    if (cached && now() - cached.at < cacheMs) return cached.sample
     const mac = await sysctl().then(parseMacSysctl, () => ({}) as ReturnType<typeof parseMacSysctl>)
     const swapGrowthBytes = mac.swapUsedBytes !== undefined && prevSwap !== undefined ? Math.max(0, mac.swapUsedBytes - prevSwap) : 0
     if (mac.swapUsedBytes !== undefined) prevSwap = mac.swapUsedBytes
-    return { freePct: mac.freePct ?? freePct, swapGrowthBytes, cpuBusyPct: loadPct() }
+    const sample = { freePct: mac.freePct ?? freePct, swapGrowthBytes, cpuBusyPct: loadPct() }
+    cached = { at: now(), sample }
+    return sample
   }
 }
 
 interface TurnScope { interactive: boolean; korean?: boolean; say?: (line: string) => void; inside?: boolean }
 const scope = new AsyncLocalStorage<TurnScope>()
 export function withTurnPriority<T>(value: Omit<TurnScope, 'inside'>, run: () => T): T { return scope.run(value, run) }
+// Work started from a person's turn that runs on its own (titles, memory) waits in the background line.
+export function asBackground<T>(run: () => T): T { return scope.run({ interactive: false }, run) }
 // A tool of a turn that holds a slot: nested turns and chores take none, or they would wait on their own parent.
 export function insideSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true }, run) }
 
@@ -110,6 +121,7 @@ export class WorkerPool {
   private readonly sample: () => Promise<Sample>
   private readonly intervalMs: number
   private readonly log: (line: string) => void
+  private readonly targetListeners: ((target: number) => void)[] = []
 
   constructor(opts: { base: number; sample: () => Promise<Sample>; intervalMs?: number; log?: (line: string) => void }) {
     this.base = opts.base
@@ -120,6 +132,9 @@ export class WorkerPool {
   }
 
   get queued(): number { return this.waiters.length }
+
+  // Called after every target change, so the idle warm-session cap follows the target at once.
+  onTarget(listener: (target: number) => void): void { this.targetListeners.push(listener) }
 
   acquire(signal?: AbortSignal): Promise<(() => void) | null> {
     if (signal?.aborted) return Promise.resolve(null)
@@ -156,7 +171,10 @@ export class WorkerPool {
         const next = nextTarget({ target: this.target, healthy: this.healthy }, this.base, s)
         this.target = next.target
         this.healthy = next.healthy
-        if (old !== next.target) this.log(`target ${old} -> ${next.target} (free ${Math.round(s.freePct)}%, swap +${Math.round(s.swapGrowthBytes / MB)} MB, cpu ${Math.round(s.cpuBusyPct)}%)`)
+        if (old !== next.target) {
+          this.log(`target ${old} -> ${next.target} (free ${Math.round(s.freePct)}%, swap +${Math.round(s.swapGrowthBytes / MB)} MB, cpu ${Math.round(s.cpuBusyPct)}%)`)
+          for (const listener of this.targetListeners) { try { listener(next.target) } catch (err) { this.log(`target listener failed: ${err instanceof Error ? err.message : String(err)}`) } }
+        }
       } catch (err) {
         this.log(`sample failed, target held at ${this.target}: ${err instanceof Error ? err.message : String(err)}`)
       } finally {

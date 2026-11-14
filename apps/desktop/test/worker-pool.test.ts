@@ -3,7 +3,7 @@ import type { CpuInfo } from 'node:os'
 const execFileSpy = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', async (load) => ({ ...(await load<typeof import('node:child_process')>()), execFile: execFileSpy }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { cpuBusyFromTimes, idleBeyond, insideSlot, nextTarget, parseMacSysctl, sampler, waitLine, withTurnPriority, workerBase, WorkerPool, type Sample } from '../src/main/worker-pool.js'
+import { asBackground, cpuBusyFromTimes, idleBeyond, insideSlot, nextTarget, parseMacSysctl, sampler, waitLine, withTurnPriority, workerBase, WorkerPool, type Sample } from '../src/main/worker-pool.js'
 import { SessionPool } from '../src/main/engine-claude-session.js'
 
 const GB = 2 ** 30
@@ -79,11 +79,27 @@ describe('sampler', () => {
     const outs = ['50\ntotal = 2048.00M  used = 100.00M  free = 1948.00M\n', '45\ntotal = 2048.00M  used = 200.00M  free = 1848.00M\n']
     const sysctl = vi.fn(async () => { const out = outs.shift(); if (!out) throw new Error('gone'); return out })
     const fakeOs = { freemem: () => 1 * GB, totalmem: () => 10 * GB, loadavg: () => [2, 2, 2], cpus: () => [cpu(0, 0), cpu(0, 0), cpu(0, 0), cpu(0, 0)] }
-    const read = sampler({ platform: 'darwin', os: fakeOs, sysctl })
+    const read = sampler({ platform: 'darwin', os: fakeOs, sysctl, cacheMs: 0 })
     expect(await read()).toEqual({ freePct: 50, swapGrowthBytes: 0, cpuBusyPct: 50 })
     expect(await read()).toEqual({ freePct: 45, swapGrowthBytes: 100 * MB, cpuBusyPct: 50 })
     expect(await read()).toEqual({ freePct: 10, swapGrowthBytes: 0, cpuBusyPct: 50 })
     expect(parseMacSysctl('x\nnothing')).toEqual({})
+  })
+  it('on macOS reuses a reading younger than the cache window, so back-to-back acquires spawn one sysctl', async () => {
+    let t = 0
+    const sysctl = vi.fn(async () => '50\ntotal = 2048.00M  used = 100.00M  free = 1948.00M\n')
+    const fakeOs = { freemem: () => 1 * GB, totalmem: () => 10 * GB, loadavg: () => [0, 0, 0], cpus: () => [cpu(0, 0)] }
+    const read = sampler({ platform: 'darwin', os: fakeOs, sysctl, now: () => t })
+    await read(); await read(); t = 999; await read()
+    expect(sysctl).toHaveBeenCalledTimes(1)
+    t = 1000; await read()
+    expect(sysctl).toHaveBeenCalledTimes(2)
+    const p = new WorkerPool({ base: 4, sample: read, log: vi.fn() })
+    t = 5000
+    const releases = await Promise.all([p.acquire(), p.acquire(), p.acquire()])
+    expect(sysctl).toHaveBeenCalledTimes(3)
+    for (const r of releases) r?.()
+    p.stop()
   })
   it('computes busy percent from cpu times', () => {
     expect(cpuBusyFromTimes([cpu(0, 0)], [cpu(50, 50)])).toBe(50)
@@ -115,6 +131,31 @@ describe('WorkerPool', () => {
     a.release?.()
     await vi.advanceTimersByTimeAsync(100)
     expect(order).toEqual(['B', 'C', 'D'])
+  })
+
+  it('a chore started from a person\'s turn waits behind queued background turns', async () => {
+    const { p } = pool(1)
+    const a = track(p.acquire())
+    await flush()
+    const order: string[] = []
+    const take = (name: string) => (r: (() => void) | null) => { order.push(name); setTimeout(() => r?.(), 10) }
+    void p.acquire().then(take('queued'))
+    await flush()
+    void withTurnPriority({ interactive: true }, () => asBackground(() => p.acquire())).then(take('title'))
+    await flush()
+    a.release?.()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(order).toEqual(['queued', 'title'])
+  })
+
+  it('tells listeners when the target changes, so the idle cap follows at once', async () => {
+    const { p } = pool(3, [lowFree])
+    const seen: number[] = []
+    p.onTarget(target => seen.push(target))
+    await p.sampleNow()
+    expect(seen).toEqual([2])
+    await p.sampleNow()
+    expect(seen).toEqual([2])
   })
 
   it('lets an interactive turn go ahead of background turns', async () => {
