@@ -111,3 +111,14 @@ describe('one engine, no knobs', () => {
     expect(html).toContain('data-testid="model-picker"')
   })
 })
+
+describe('usage limit in a conversation', () => {
+  it('never hands the turn to another engine and tells the person when it can resume', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const source = await readFile(resolve(__dirname, '../src/main/ipc.ts'), 'utf8')
+    expect(source).not.toMatch(/switch: \$\{brainName/)
+    expect(source).not.toMatch(/switchTo = /)
+    expect(source).not.toMatch(/chatEngine\(channel, ctx\.engines, request\.engineId\)/)
+    expect(source).toMatch(/usageLimitMessage\(/)
+  })
+})

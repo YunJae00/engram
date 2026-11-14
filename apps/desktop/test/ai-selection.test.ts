@@ -1,35 +1,28 @@
 import { expect, it, vi } from 'vitest'
 import type { Engine, EngineJobInput, ToolSessionJob } from 'core'
-import { aiSelection, chatEngine, isLimited, noteLimited, withModel } from '../src/main/ai-selection.js'
+import { aiSelection, chatEngine, isLimited, limitedAt, noteLimited, withModel } from '../src/main/ai-selection.js'
 import { loadSettings } from '../src/main/settings.js'
 import type { AppSettingsDto } from '../src/shared/types.js'
 
 vi.mock('../src/main/settings.js', () => ({ loadSettings: vi.fn(), updateSettings: vi.fn() }))
-const models = vi.hoisted(() => [] as string[])
 const status = vi.hoisted(() => ({ current: { installed: true, loggedIn: true } as { installed: boolean; loggedIn: boolean; conclusive?: boolean } }))
 vi.mock('core', async (original) => ({
   ...await original<typeof import('core')>(),
   createEngine: (id: string) => ({
     id, detect: async () => status.current,
-    async *run(job: EngineJobInput) { models.push(`${id}:${job.model}`); yield { type: 'result', text: 'ok' } },
+    async *run() { yield { type: 'result', text: 'ok' } },
   }),
 }))
 
-it('hands a conversation to the other signed-in brain while its own is at the usage limit', async () => {
-  vi.mocked(loadSettings).mockResolvedValue({ defaultEngine: 'claude', claudeModel: 'opus', codexModel: 'gpt', autoStart: false, teamSync: 'manual', aiSelections: {} })
-  const pick = async (explicit?: string) => {
-    const engine = (await chatEngine('bot-1', [], explicit))!
-    for await (const event of engine.run({} as EngineJobInput)) expect(event.type).toBe('result')
-    return engine.id
-  }
-  expect(await pick()).toBe('claude')
+it('keeps every conversation on Claude, even with a stored codex choice or while Claude is at its usage limit', async () => {
+  vi.mocked(loadSettings).mockResolvedValue({ defaultEngine: 'codex', claudeModel: 'opus', codexModel: 'gpt', autoStart: false, teamSync: 'manual', aiSelections: { 'bot-1': { engine: 'codex', model: 'gpt' } } })
+  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
   noteLimited('claude', 'bot-1', 60_000)
-  expect(await pick()).toBe('codex')
-  expect(await pick('claude')).toBe('claude')
-  expect((await chatEngine('bot-2', []))!.id).toBe('claude')
+  expect(isLimited('claude', 'bot-1')).toBe(true)
+  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
   noteLimited('codex', 'bot-1')
-  await expect(pick()).rejects.toThrow('Both AI providers')
-  expect(models).toEqual(['claude:opus', 'codex:gpt', 'claude:opus'])
+  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
+  expect(limitedAt('claude', 'bot-1')).toBeGreaterThan(Date.now())
   expect(isLimited('claude', 'bot-1', Date.now() + 61_000)).toBe(false)
 })
 

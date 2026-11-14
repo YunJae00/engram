@@ -29,40 +29,27 @@ export async function rememberSelections(scopes: string[]): Promise<void> {
   } }))
 }
 
-// A brain at its usage limit, until when. Meanwhile a conversation that did
-// not name its brain goes to the other signed-in one, and says so.
+// Claude at its usage limit, until when. There is no other engine to hand
+// the turn to: the person is told plainly when it can pick up again.
 const limitedUntil = new Map<string, number>()
 const LIMIT_WAIT_MS = 30 * 60_000
 export function noteLimited(id: string, scope: string, retryAfterMs?: number, now = Date.now()): void {
   limitedUntil.set(`${scope}:${id}`, now + (retryAfterMs && retryAfterMs > 0 ? retryAfterMs : LIMIT_WAIT_MS))
 }
+export const limitedAt = (id: string, scope: string): number | undefined => limitedUntil.get(`${scope}:${id}`)
 export const isLimited = (id: string, scope: string, now = Date.now()): boolean => (limitedUntil.get(`${scope}:${id}`) ?? 0) > now
 export const brainName = (id: string): string => id === 'claude' ? 'Claude' : id === 'codex' ? 'ChatGPT' : id
 
-export async function chatEngine(scope: string, engines: Engine[], explicit?: string): Promise<Engine | undefined> {
+// In-app work runs on Claude only: a stored 'codex' choice or a request that
+// names another engine still gets Claude, and a usage limit never switches.
+export async function chatEngine(scope: string, engines: Engine[]): Promise<Engine | undefined> {
   if (process.env['ENGRAM_ENGINE'] === 'none') return undefined
   if (process.env['ENGRAM_ENGINE'] === 'mock') return engines.find(engine => engine.id === 'mock')
-  const settings = await loadSettings()
-  const selection = aiSelection(settings, scope)
-  const id = explicit || selection.engine
-  if (id !== 'claude' && id !== 'codex') throw new Error('Invalid AI provider')
-  const signedIn = async (wanted: 'claude' | 'codex') => {
-    const engine = createEngine(wanted)
-    holdModelTaskEngine(wanted)
-    // A status check that timed out on a busy runtime is not a sign-out: the
-    // call goes ahead, and a real sign-out fails it with an auth error.
-    const status = await engine.detect()
-    if (!status.loggedIn && status.conclusive !== false) return undefined
-    return wanted === selection.engine
-      ? withModel(engine, selection.model, selection.effort)
-      : withModel(engine, (wanted === 'claude' ? settings.claudeModel : settings.codexModel) ?? '', wanted === 'claude' ? settings.claudeEffort : settings.codexEffort)
-  }
-  const other = id === 'claude' ? 'codex' : 'claude'
-  if (!explicit && isLimited(id, scope)) {
-    if (isLimited(other, scope)) throw new Error('Both AI providers reached their usage limits. Wait for a reset or select an available account.')
-    const alternate = await signedIn(other)
-    if (!alternate) throw new Error(`${brainName(id)} reached its usage limit and ${brainName(other)} is not connected.`)
-    return alternate
-  }
-  return signedIn(id)
+  const engine = createEngine('claude')
+  holdModelTaskEngine('claude')
+  // A status check that timed out on a busy runtime is not a sign-out: the
+  // call goes ahead, and a real sign-out fails it with an auth error.
+  const status = await engine.detect()
+  if (!status.loggedIn && status.conclusive !== false) return undefined
+  return engine
 }
