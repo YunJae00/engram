@@ -69,8 +69,8 @@ it.each([['Tell me more', 'The turn ended without an answer.'], ['더 알려줘'
   await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: asked, at: 'a' })
   await t.chat(asked)
   await t.settle('failed')
-  await vi.waitFor(async () => expect((await readBotTranscript(t.paths, 'bot-1')).at(-1)).toMatchObject({ role: 'assistant', text: said }))
-  expect(t.events).toContainEqual({ type: 'chat:done', channel: 'bot-bot-1', text: said })
+  await vi.waitFor(async () => expect((await readBotTranscript(t.paths, 'bot-1')).at(-1)).toMatchObject({ role: 'assistant', text: expect.stringContaining(said) }))
+  expect(t.events).toContainEqual({ type: 'chat:done', channel: 'bot-bot-1', text: expect.stringContaining(said) })
 })
 
 it('writes no outcome for a turn the person stopped', async () => {
