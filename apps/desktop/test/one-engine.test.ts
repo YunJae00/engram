@@ -120,6 +120,7 @@ describe('usage limit in a conversation', () => {
     expect(source).not.toMatch(/switchTo = /)
     expect(source).not.toMatch(/chatEngine\(channel, ctx\.engines, request\.engineId\)/)
     expect(source).toMatch(/usageLimitMessage\(/)
+    expect(source).toMatch(/message: quota \? usageLimitMessage\(/)
     expect(source).toMatch(/if \(turn\?\.verification && kind !== 'quota'\) throw err/)
     expect(source.indexOf("if (isLimited('claude', channel)) {")).toBeGreaterThan(source.indexOf('recordedRequests.add(request)'))
     expect(source).toMatch(/if \(kind === 'quota'\) \{/)

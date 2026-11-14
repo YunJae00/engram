@@ -2961,7 +2961,10 @@ export function registerIpc(ctx: VaultContext): void {
         if (!turn?.verification) broadcast({ type: 'chat:done', channel, text: '' })
         return
       }
-      broadcast({ type: 'chat:error', channel, message: err instanceof Error ? err.message : String(err) })
+      const said = err instanceof Error ? err.message : String(err)
+      const quota = (err instanceof EngineCallError ? err.kind : classifyEngineError(said)) === 'quota'
+      if (quota) noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
+      broadcast({ type: 'chat:error', channel, message: quota ? usageLimitMessage(threadKorean(request.message, savedHistory), limitedAt(engine.id, channel)) : said, ...(quota ? { kind: 'quota' as const, provider: 'Claude' } : {}) })
       // A failed call is the app's most recent evidence about the engine. Ask
       // the CLI what actually went wrong (auth vs quota vs a blip) and re-detect
       // — otherwise the top bar keeps claiming a live engine after every call
