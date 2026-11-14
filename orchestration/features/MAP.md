@@ -49,6 +49,7 @@ The memory graph (`brain-graph`) is part of Cosmos, proved by `cosmos` and `note
 These need more than the fresh three-note vault, so they stay in Playwright specs:
 
 - Pinned timeline dates (`happened_at` / `timeline: pinned`) — `apps/desktop/e2e/shell.spec.ts` ("list view: rows render chronologically"). `list-filter` checks order of the seed's distinct `happened_at` days (2026-03-15, 2026-02-15, 2026-01-15).
+- Coworker voice (first line restates the job and outcome, milestone-only progress, silent skip of non-fitting saved ways, no web research about Engram or agent products, source ladder ending in a partial answer, result-first answer) — unit only (`packages/core/test/agent-voice.test.ts`); the prompt text is asserted, no live model.
 - A comet's page panel (`preview-deck`) — needs a comet that has opened a page (`apps/desktop/e2e/browser-preview.spec.ts`, `live-view.spec.ts`).
 - Developers mode — `ENGRAM_DEVELOPER_FIXTURE` (`apps/desktop/e2e/developers.spec.ts`).
 - Embedded browser — Windows-only (`apps/desktop/e2e/native-browser.spec.ts`).
