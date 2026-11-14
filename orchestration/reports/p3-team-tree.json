@@ -1,0 +1,39 @@
+{
+  "id": "p3-team-tree",
+  "status": "done",
+  "headSha": "b996edd5316b732042aac98210a722489edb9676",
+  "changedFiles": [
+    "packages/core/src/delegated-tasks.ts",
+    "packages/core/src/team-hire-tools.ts",
+    "packages/core/src/agent-voice.ts",
+    "packages/core/src/agent-prompt.ts",
+    "packages/core/src/index.ts",
+    "apps/desktop/src/main/team-runner.ts",
+    "apps/desktop/src/main/task-runner.ts",
+    "apps/desktop/src/main/task-closing.ts",
+    "apps/desktop/src/main/ipc.ts",
+    "packages/core/test/team-hire-tools.test.ts",
+    "apps/desktop/test/team-runner.test.ts",
+    "orchestration/features/MAP.md"
+  ],
+  "testsAdded": [
+    "packages/core/test/team-hire-tools.test.ts",
+    "apps/desktop/test/team-runner.test.ts"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm exec vitest run --project unit packages/core/test/team-hire-tools.test.ts apps/desktop/test/team-runner.test.ts", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "No existing test needed an assertion update.",
+    "TaskTeam gained one optional field beyond the brief's shape, planTurn: the task turn in which the big plan was sent back to be shown. Only a reply in a later turn can approve the plan, which is what stops a yes from the original request (or a second hire_members call in the same turn) from approving it.",
+    "The big-plan gate is decided by the host, not only by the model's big flag: a coding job (word match on the goal, roles and briefs), more than three members in one call, or big:true. A long non-coding job with one to three members is gated only if the lead passes big:true. Members hiring helpers are not gated.",
+    "A member that reports while a helper it hired is unreviewed gets one reminder turn; if it still has not reviewed, it is marked failed and the helper is released without a review. A member that asks the person a question or hits the token budget with unreviewed helpers has them released without a review as well.",
+    "A team task is done only when a result check passed and every member is released; an unreviewed member turns an accepted check into one retry and then waiting. This also holds on the offered-alternative path.",
+    "A member's question reaches the person through the lead calling ask_person with the returned line; the host does not force that call.",
+    "The lead's own turn budget is fixed at turn start, so members can take the task past TASK_TOKEN_BUDGET by what the lead still spends in that turn.",
+    "typecheck was run before the two test files were written and not again after; lint and check:quick ran after and passed. Checked with a fake engine only; the ipc.ts wiring has no test of its own and no live Claude run was made."
+  ]
+}
