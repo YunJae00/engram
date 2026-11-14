@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { createBot, initVault, type VaultPaths } from 'core'
+import { initVault, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +21,6 @@ async function ask(message: string, step: { tool: string; args: Record<string, u
   await writeFile(join(mock, 'COMET-ANSWER.md'), '만들었어요.')
   await writeFile(join(mock, 'default.md'), '네.')
   paths = await initVault(root, { git: false })
-  await createBot(paths, { name: 'Maker' })
   app = await electron.launch({
     args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
     env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'e2e-general-userdata-')), ENGRAM_ENGINE: 'mock', ENGRAM_MOCK_DIR: mock, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_HIDDEN: '1' },
@@ -34,13 +33,15 @@ async function ask(message: string, step: { tool: string; args: Record<string, u
     shell.openPath = async (path: string) => { seen.opened.push(path); return '' }
     shell.showItemInFolder = (path: string) => { seen.revealed.push(path) }
   })
+  // The sidebar lists bots that have a conversation, so the ask goes to a bot made with the sidebar plus.
   await openActivity(page, 'bots')
-  await page.locator('.bots-row', { hasText: 'Maker' }).click()
+  await page.getByTestId('sidebar-create').click()
   const composer = page.getByTestId('bots-view').getByTestId('bots-input')
   await composer.fill(message)
   await composer.press('Enter')
   const name = String(step.args['name'])
-  const card = page.getByTestId('answer-file').filter({ hasText: name })
+  // The canned brain repeats its one step, so the runner may hand the same answer in twice; the first card is the one checked.
+  const card = page.getByTestId('answer-file').filter({ hasText: name }).first()
   await expect(card).toBeVisible({ timeout: 60_000 })
   await expect(card.getByTestId('answer-file-size')).toContainText(/\d+(\.\d)? (KB|MB)/)
   const tasks = join(paths.workspace, 'tasks')
@@ -56,7 +57,7 @@ const seen = (key: 'opened' | 'revealed') => app!.evaluate((_electron, name) => 
 test('a Korean ask for a PDF yields a real PDF as a file card', async () => {
   const data = await ask('서울 날씨 정리해서 PDF로 만들어줘', { tool: 'render_file', args: { name: '서울 날씨.pdf', html: '<h1>서울 날씨</h1><p>맑음, 최고 12도 최저 3도</p>' } })
   expect(data.subarray(0, 4).toString()).toBe('%PDF')
-  await page.getByTestId('answer-file').filter({ hasText: '서울 날씨.pdf' }).click()
+  await page.getByTestId('answer-file').filter({ hasText: '서울 날씨.pdf' }).first().click()
   await expect.poll(() => seen('opened')).toHaveLength(1)
 })
 
@@ -85,17 +86,17 @@ test('a Korean ask for a bar chart yields a painted PNG with a thumbnail', async
   }, data.toString('base64'))
   expect(image).toMatchObject({ width: 800, height: 500 })
   expect(image.colours).toBeGreaterThan(1)
-  await expect(page.getByTestId('answer-file-thumb')).toBeVisible()
+  await expect(page.getByTestId('answer-file-thumb').first()).toBeVisible()
 })
 
 test('a Korean ask for a script yields a file that opens as text and is never run', async () => {
   const content = 'import os\nfor name in os.listdir("."):\n    os.rename(name, name.lower())\n'
   const data = await ask('폴더 안 파일 이름 바꾸는 파이썬 스크립트 만들어줘', { tool: 'file_create_copy', args: { name: 'rename_files.py', content } })
   expect(data.toString('utf8')).toBe(content)
-  await page.getByTestId('answer-file').filter({ hasText: 'rename_files.py' }).click()
+  await page.getByTestId('answer-file').filter({ hasText: 'rename_files.py' }).first().click()
   await expect(page.getByTestId('artifact-sheet')).toContainText('os.rename')
   expect(await seen('opened')).toEqual([])
   await page.keyboard.press('Escape')
-  await page.getByTestId('answer-file-reveal').click()
+  await page.getByTestId('answer-file-reveal').first().click()
   await expect.poll(async () => (await seen('revealed')).at(-1) ?? '').toContain('rename_files.py')
 })
