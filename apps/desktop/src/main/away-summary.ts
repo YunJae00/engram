@@ -51,7 +51,8 @@ export function awayChanges(tasks: readonly DelegatedTask[], bots: readonly { id
   let newest: DelegatedTask | undefined
   for (const task of tasks) {
     const row = rows.get(task.botId)
-    if (!row) continue
+    // Work started after the return was seen live.
+    if (!row || Date.parse(task.createdAt) > to) continue
     const moved = movedAt(task) >= from && movedAt(task) <= to
     if (task.state === 'running' || task.state === 'queued') row.running++
     else if (!moved) continue
