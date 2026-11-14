@@ -1,0 +1,33 @@
+{
+  "id": "ux-live-card-organic",
+  "status": "done",
+  "headSha": "06dcd495d27c1f33f910c67b259f58ea8cab240f",
+  "changedFiles": [
+    "apps/desktop/src/renderer/src/lib/previewMotion.ts",
+    "apps/desktop/src/renderer/src/components/PreviewCard.tsx",
+    "apps/desktop/src/renderer/src/components/PreviewDeck.tsx",
+    "apps/desktop/src/renderer/src/components/FrameScreen.tsx",
+    "apps/desktop/src/renderer/src/components/preview-card.css",
+    "apps/desktop/test/preview-card-organic.test.ts",
+    "apps/desktop/e2e/live-card-organic.spec.ts",
+    "orchestration/features/MAP.md"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/preview-card-organic.test.ts",
+    "apps/desktop/e2e/live-card-organic.spec.ts"
+  ],
+  "commandsRun": [
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test/preview-card-organic.test.ts", "exit": 0 },
+    { "cmd": "cd apps/desktop && pnpm --filter desktop build >/dev/null && npx playwright test e2e/live-card-organic.spec.ts e2e/live-card-fit.spec.ts e2e/live-card-no-cover.spec.ts e2e/live-card-keeps-chat.spec.ts --reporter=line", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 },
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 0 }
+  ],
+  "openQuestions": [
+    "No existing test assertions were changed.",
+    "Root cause of the earlier all-cards-hidden style failure found here: a registered <number> --pc-ratio makes var(--pc-ratio, 16 / 10) invalid at computed-value time, so aspect-ratio fell to auto and the stage was 0px tall; the var() fallbacks were removed and a unit assertion pins that.",
+    "Deviation from the design: the card repaints when the remembered size differs from what that card instance rendered, not only when rememberPaint reports a change, because two cards of the same lane (bots view and mission pane) share the memory.",
+    "Not exercised by any test: the canvas (live stream / web) cross-fade and FrameScreen keep path under a source change, and the HOLD_MS timer. e2e/app-preview-stream.spec.ts and e2e/browser-preview.spec.ts were not run.",
+    "The docked deck's top shift when stack depth changes stays instant (animating it can push the card past the thread floor)."
+  ]
+}
