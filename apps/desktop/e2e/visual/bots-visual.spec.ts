@@ -258,15 +258,14 @@ test.describe('visual', () => {
         const page = await app.firstWindow()
         await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' }); await page.reload()
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-        await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }]) })
         await page.getByTestId('onboard-next').click()
         await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
           process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-          ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+          ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
           for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
         }, join(profile, 'mock'))
-        await page.getByTestId('onboard-choose-codex').check()
-        await page.getByTestId('onboard-model').click(); await page.getByRole('menuitemradio', { name: 'Quick model', exact: true }).click()
+        await expect(page.getByTestId('onboard-brain-claude')).toBeVisible()
+        await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
         await page.getByTestId('onboard-ai-next').click()
         await page.getByTestId('onboard-prefs-next').click()
         await expect(page.getByTestId('onboard-step-4')).toBeVisible()

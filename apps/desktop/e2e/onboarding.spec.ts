@@ -12,7 +12,6 @@ let app: ElectronApplication
 let page: Page
 let vaultRoot: string
 let mockDir: string
-async function chooseModel(label: string) { await page.getByTestId('onboard-model').click(); await page.getByRole('menuitemradio', { name: label, exact: true }).click() }
 async function screenshot(name: string) {
   const data = await app.evaluate(async ({ BrowserWindow }) => {
     const capture = () => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().includes('index.html'))!.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })
@@ -32,9 +31,6 @@ test.beforeEach(async () => {
   const env = { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ONBOARD_ROOT: vaultRoot, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0' }
   app = await electron.launch({ timeout: 90000, args: [MAIN_ENTRY, '--no-sandbox'], env })
   page = await app.firstWindow({ timeout: 90000 })
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
-  })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
@@ -64,13 +60,12 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await page.getByTestId('onboard-next').click()
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
-  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
-  await page.getByTestId('onboard-choose-codex').check()
-  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
-  await chooseModel('Quick model')
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
+  await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
+  await expect(page.getByTestId('onboard-ai-next')).toBeEnabled()
   await page.getByTestId('onboard-ai-next').click()
   for (const key of ['workMap', 'workFiles', 'workApps']) await expect(page.getByTestId(`onboard-source-${key}`)).not.toBeChecked()
   await expect(page.getByTestId('onboard-source-activity')).toBeChecked({ checked: await page.evaluate(() => window.engram.activityGet()) })
@@ -82,7 +77,7 @@ test('a fresh workspace requires verified AI before browsing', async () => {
   await page.getByTestId('onboard-prefs-next').click(); await page.getByTestId('onboard-finish').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.workMap, settings.workFiles, settings.workApps]))).toEqual([false, true, false])
-  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.codexModel, settings.aiSelections?.filing]))).toEqual(['codex', 'codex-quick', { engine: 'codex', model: 'codex-quick' }])
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing]))).toMatchObject(['claude', { engine: 'claude', model: '' }])
   await expect(page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"]')).toBeVisible()
   await app.evaluate(() => { process.env['ENGRAM_ENGINE'] = 'none' })
   const titled = await page.evaluate(async () => {
@@ -100,8 +95,7 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     const window = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('index.html'))!
     window.setMinimumSize(0, 0); window.setContentSize(600, 800)
     ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [
-      { id: 'claude', installed: true, loggedIn: false },
-      { id: 'codex', installed: true, loggedIn: true },
+      { id: 'claude', installed: true, loggedIn: true },
     ])
     window.webContents.send('engram:event', { type: 'engines:detected' })
   })
@@ -113,13 +107,10 @@ test('compact setup keeps consent readable in narrow light and dark windows', as
     await screenshot(`compact-workspace-${theme}.png`)
     await page.getByTestId('onboard-next').click()
     await expect(page.getByRole('heading', { name: 'Connect your AI', exact: true })).toBeVisible()
-    await expect(page.getByTestId('onboard-connect-claude')).toBeEnabled()
-    await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
+    await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
     await expect(page.getByText('Signed in', { exact: true })).toHaveCount(1)
-    await page.getByTestId('onboard-choose-codex').check()
-    await chooseModel('Quick model')
+    await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
     await expect(page.getByTestId('onboard-ai-next')).toBeInViewport()
-    await expect(page.getByTestId('onboard-model')).toBeInViewport()
     await expect(page.getByTestId('onboard-sources')).toHaveCount(0)
     await screenshot(`compact-connect-${theme}.png`)
     await page.getByTestId('onboard-ai-next').click()
@@ -154,17 +145,15 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await writeFile(join(mockDir, 'default.txt'), '')
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await page.getByTestId('onboard-next').click()
-  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
-  await page.getByTestId('onboard-choose-codex').check()
-  await chooseModel('Provider default')
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-prefs-next').click(); await page.getByTestId('onboard-finish').click()
   await expect(page.getByRole('alert')).toContainText('did not answer the connection check')
-  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Check failed')
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Check failed')
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
   await expect(access(vaultRoot)).rejects.toThrow()
   await writeFile(join(mockDir, 'default.txt'), 'OK')
@@ -173,29 +162,18 @@ test('signed-in metadata cannot finish setup when the AI request fails', async (
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
 })
 
-test('models must finish loading before selection and setup can continue', async () => {
+test('setup continues as soon as Claude is signed in, with no model step', async () => {
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
-    ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', () => new Promise(resolve => { (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels = () => resolve([{ value: 'sonnet', label: 'Sonnet', detail: 'Fixture' }]) }))
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   })
   const choose = page.getByRole('button', { name: 'Browse for workspace folder', exact: true }), next = page.getByTestId('onboard-next')
   expect(Math.abs((await choose.boundingBox())!.x - (await next.boundingBox())!.x)).toBeLessThan(2)
   await next.click()
-  await page.getByTestId('onboard-choose-claude').check()
-  await expect(page.getByTestId('onboard-model')).toBeDisabled()
-  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
-  await expect(page.getByTestId('onboard-model')).toContainText('Loading models')
-  await app.evaluate(() => (globalThis as typeof globalThis & { finishModels?: () => void }).finishModels!())
-  await expect(page.getByTestId('onboard-model')).toBeEnabled()
-  await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
-  await page.getByTestId('onboard-model').focus()
-  await page.getByTestId('onboard-model').press('ArrowDown')
-  await expect(page.getByRole('menu', { name: 'Choose a model' })).toBeVisible()
-  await page.getByRole('menuitemradio', { name: 'Provider default', exact: true }).press('ArrowDown')
-  await expect(page.getByRole('menuitemradio', { name: 'Sonnet', exact: true })).toBeFocused()
-  await page.getByRole('menuitemradio', { name: 'Sonnet', exact: true }).press('Enter')
-  await expect(page.getByTestId('onboard-model')).toHaveText('Sonnet')
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
+  await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
+  await expect(page.getByTestId('onboard-model')).toHaveCount(0)
+  await expect(page.getByTestId('onboard-connect-codex')).toHaveCount(0)
   await expect(page.getByTestId('onboard-ai-next')).toBeEnabled()
 })
 
@@ -229,7 +207,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await page.getByTestId('onboard-next').click()
   // Sign-in must finish before the live connection check.
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
-  await expect(page.getByTestId('onboard-connect-codex')).toBeEnabled()
+  await expect(page.getByTestId('onboard-connect-codex')).toHaveCount(0)
   await screenshot('02-connect-ai.png')
   await page.getByTestId('onboard-connect-claude').click()
   await expect(page.getByRole('alert')).toContainText('Sign-in did not finish')
@@ -238,22 +216,16 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByTestId('onboard-ai-next')).toBeDisabled()
   await screenshot('03-sign-in-waiting.png')
   await page.getByRole('button', { name: 'Cancel sign-in' }).click()
-  await expect(page.getByTestId('onboard-connect-codex')).toBeEnabled()
-  await page.getByTestId('onboard-connect-codex').click()
-  await expect(page.getByTestId('onboard-brain-codex')).toHaveText('Signed in')
-  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => settings.defaultEngine))).toBe('claude')
+  await expect(page.getByTestId('onboard-connect-claude')).toBeEnabled()
   await page.getByTestId('onboard-connect-claude').click()
   await expect(page.getByTestId('onboard-brain-claude')).toHaveText('Signed in')
-  // With two connected, the person says which answers first; nothing is guessed from the sign-in order.
-  await expect(page.getByTestId('onboard-choice')).toBeVisible()
-  await page.getByTestId('onboard-choose-codex').check()
-  await chooseModel('Provider default')
+  await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-prefs-next').click(); await page.getByTestId('onboard-finish').click()
   // lands in the shell on the new vault
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing?.engine]))).toEqual(['codex', 'codex'])
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing?.engine]))).toEqual(['claude', 'claude'])
   await access(join(vaultRoot, 'workspace', 'AGENTS.md'))
   await access(join(vaultRoot, 'private'))
 
@@ -282,11 +254,8 @@ test('first-run login states, filing retry and direct browser entry', async () =
   await expect(page.getByTestId('sweep-status')).toContainText('usage limit')
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
-  await page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker').click()
-  await expect(page.getByTestId('model-picker-menu')).toBeVisible()
-  await page.getByTestId('provider-pick-codex').click()
-  await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'codex', chat: 'codex' })
-  await page.getByTestId('model-pick-auto').click()
+  await expect(page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker')).toHaveCount(0)
+  expect(await page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'claude', chat: 'claude' })
   await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
   await app.evaluate(({ BrowserWindow }) => {
     const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))
@@ -359,7 +328,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
 type Fixture = { state: { id: string; installed: boolean; loggedIn: boolean; conclusive?: boolean }; calls: unknown[]; connects: number; held: ((loggedIn: boolean | null) => void)[]; hold: boolean; finish?: () => void }
 test('a CLI login finished outside the app shows on focus and on Connect', async () => {
   await app.evaluate(({ ipcMain }) => {
-    const { fx } = Object.assign(globalThis, { fx: { state: { id: 'codex', installed: true, loggedIn: false }, calls: [], connects: 0, held: [], hold: false } as Fixture })
+    const { fx } = Object.assign(globalThis, { fx: { state: { id: 'claude', installed: true, loggedIn: false }, calls: [], connects: 0, held: [], hold: false } as Fixture })
     for (const channel of ['engines:states', 'engines:connect']) ipcMain.removeHandler(channel)
     ipcMain.handle('engines:states', (_event, ids) => {
       fx.calls.push(ids)
@@ -369,31 +338,30 @@ test('a CLI login finished outside the app shows on focus and on Connect', async
   })
   const fx = <T,>(run: (fixture: Fixture) => T) => app.evaluate((_electron, source) => new Function('fx', `return (${source})(fx)`)((globalThis as typeof globalThis & { fx: Fixture }).fx), run.toString()) as Promise<T>
   const focus = () => page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  const codex = page.getByTestId('onboard-brain-codex')
-  await page.getByTestId('onboard-next').click(); await expect(page.getByTestId('onboard-connect-codex')).toBeVisible()
+  const claude = page.getByTestId('onboard-brain-claude')
+  await page.getByTestId('onboard-next').click(); await expect(page.getByTestId('onboard-connect-claude')).toBeVisible()
   await expect(page.getByTestId('onboard-step-2')).toContainText('Not connected')
   await fx(f => { f.state.loggedIn = true }); await focus()
-  await expect(codex).toHaveText('Signed in')
+  await expect(claude).toHaveText('Signed in')
   expect(await fx(f => [f.calls.at(-1), f.connects])).toEqual([[], 0])
-  await page.getByTestId('onboard-choose-codex').check(); await chooseModel('Quick model')
   await page.getByTestId('onboard-ai-next').click(); await focus()
-  await page.getByRole('button', { name: 'Back', exact: true }).click(); await expect(codex).toHaveText('Signed in')
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); await expect(claude).toHaveText('Signed in')
   await fx(f => { f.hold = true }); await focus(); await focus(); await focus()
   await expect.poll(() => fx(f => f.held.length)).toBe(3)
   await fx(f => { f.held[2]!(true); f.held[0]!(false); f.held[1]!(null) })
-  await expect(codex).toHaveText('Signed in'); await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(claude).toHaveText('Signed in'); await expect(page.getByRole('alert')).toHaveCount(0)
   await fx(f => { f.hold = false; f.state.conclusive = false }); await focus()
   await expect(page.getByRole('button', { name: 'Retry check', exact: true })).toBeVisible()
-  await fx(f => { f.state.conclusive = true }); await focus(); await expect(codex).toHaveText('Signed in')
-  await fx(f => { f.state.loggedIn = false }); await focus(); await expect(page.getByTestId('onboard-connect-codex')).toBeVisible()
-  await fx(f => { f.state.loggedIn = true }); await page.getByTestId('onboard-connect-codex').click()
-  await expect(codex).toHaveText('Signed in'); expect(await fx(f => f.connects)).toBe(0)
+  await fx(f => { f.state.conclusive = true }); await focus(); await expect(claude).toHaveText('Signed in')
+  await fx(f => { f.state.loggedIn = false }); await focus(); await expect(page.getByTestId('onboard-connect-claude')).toBeVisible()
+  await fx(f => { f.state.loggedIn = true }); await page.getByTestId('onboard-connect-claude').click()
+  await expect(claude).toHaveText('Signed in'); expect(await fx(f => f.connects)).toBe(0)
   await fx(f => { f.state.loggedIn = false }); await focus()
-  await page.getByTestId('onboard-connect-codex').click()
+  await page.getByTestId('onboard-connect-claude').click()
   await expect.poll(() => fx(f => f.connects)).toBe(1)
   const calls = await fx(f => f.calls.length); await focus()
   await expect(page.getByRole('status').filter({ hasText: 'Opening sign-in' })).toBeVisible()
   expect(await fx(f => f.calls.length)).toBe(calls)
   await fx(f => f.finish!())
-  await expect(codex).toHaveText('Signed in'); await expect.poll(() => fx(f => f.calls.length)).toBe(calls + 1)
+  await expect(claude).toHaveText('Signed in'); await expect.poll(() => fx(f => f.calls.length)).toBe(calls + 1)
 })

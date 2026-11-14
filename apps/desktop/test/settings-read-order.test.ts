@@ -11,7 +11,7 @@ it('reads selections only after preceding queued saves finish', async () => {
   fixture.root = await mkdtemp(resolve('tmp/settings-read-order-'))
   const first = updateSettings(value => ({ ...value, claudeModel: 'chosen' }))
   const second = updateSettings(value => ({ ...value, aiSelections: { filing: { engine: 'codex', model: 'catalog-model' } } }))
-  expect(await loadSettings()).toMatchObject({ claudeModel: 'chosen', aiSelections: { filing: { engine: 'codex', model: 'catalog-model' } } })
+  expect(await loadSettings()).toMatchObject({ claudeModel: 'chosen', aiSelections: { filing: { engine: 'claude', model: 'catalog-model' } } })
   await Promise.all([first, second])
 })
 

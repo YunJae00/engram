@@ -102,7 +102,7 @@ describe('text runtime desktop isolation boundary', () => {
     await collect(new CodexEngine().run({ prompt: 'Read', workdir: WORKDIR, model: '' }))
     expect(fixture.threadOptions.mock.lastCall?.[0]).not.toHaveProperty('model')
     await collect(new ClaudeEngine().run({ prompt: 'Read', workdir: WORKDIR, model: 'filing-model' }))
-    expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ model: 'filing-model' }) }))
+    expect(fixture.query).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ model: 'claude-opus-5-5' }) }))
     expect(fixture.settings).not.toHaveBeenCalled()
   })
   it('passes attached images using the native local_image SDK input', async () => {

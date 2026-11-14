@@ -43,11 +43,7 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const overflow: Overflow[] = []
 
-    await view.getByTestId('model-picker').click()
-    await expect(page.getByTestId('model-picker-menu')).toBeVisible()
-    overflow.push(...await overflowUnder(page))
-    await page.keyboard.press('Escape')
-    await expect(page.getByTestId('model-picker-menu')).toBeHidden()
+    await expect(view.getByTestId('model-picker')).toHaveCount(0)
 
     await view.getByTestId('bots-title-pill').click()
     const pane = page.getByTestId('bot-info-pane')

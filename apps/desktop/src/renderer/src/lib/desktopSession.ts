@@ -36,8 +36,8 @@ export async function refreshDesktop(): Promise<void> {
     const available = await api.desktopAvailable()
     if (request !== revision) return
     if (!available) { publish({ available: false, controlSupported: false, bindings: [], control: { state: 'idle' }, error: '' }); return }
-    const [bindings, control, settings, engines] = await Promise.all([api.desktopBindings(), api.desktopControlStatus(), api.settingsGet(), api.engines()])
-    const engine = engines.find((item) => item.id === settings.defaultEngine) ?? (engines.length === 1 && engines[0]?.id === 'mock' ? engines[0] : undefined)
+    const [bindings, control, engines] = await Promise.all([api.desktopBindings(), api.desktopControlStatus(), api.engines()])
+    const engine = engines.find((item) => item.id === 'claude') ?? (engines.length === 1 && engines[0]?.id === 'mock' ? engines[0] : undefined)
     const controlSupported = Boolean(engine?.installed && engine.loggedIn && engine.desktopToolIsolation === true)
     if (request === revision) publish({ available, controlSupported, bindings, control, error: '' })
   } catch (error) {

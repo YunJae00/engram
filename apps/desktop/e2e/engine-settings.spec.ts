@@ -10,7 +10,7 @@ test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
-type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; longModelLabel?: string; modelReplies?: Array<() => void> }
+type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; modelReplies?: Array<() => void> }
 type Global = typeof globalThis & { engineFixture: Fixture }
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
     const handle = (name: string, fn: (...args: unknown[]) => unknown) => { ipcMain.removeHandler(name); ipcMain.handle(name, (_event, ...args) => fn(...args)) }
     handle('engines:states', () => state.delayed ? new Promise(() => undefined) : ['claude', 'codex'].map((id) => ({ id, installed: true, loggedIn: state.signed[id] })))
     handle('engines:logins', () => state.login)
-    handle('models:list', (id) => [{ value: `${id}-fast`, label: state.longModelLabel ?? 'Quick', detail: 'For everyday work', efforts: ['low', 'medium', 'high'] }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks', efforts: ['low', 'medium', 'high', 'xhigh'] }])
+    handle('models:list', (id) => [{ value: `${id}-fast`, label: 'Quick', detail: 'For everyday work', efforts: ['low', 'medium', 'high'] }, { value: `${id}-deep`, label: 'Thorough', detail: 'For harder tasks', efforts: ['low', 'medium', 'high', 'xhigh'] }])
     handle('engines:connect', (value) => {
       const id = value as 'claude' | 'codex'
       tell({ id, phase: 'browser', canOpen: true })
@@ -84,24 +84,17 @@ test('both sign-in cards survive reopening settings and offer cancel and browser
     await page.getByTestId(`brain-${id}-connect`).click()
     await app.evaluate(() => (globalThis as Global).engineFixture.finish?.())
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Connected')
-    await page.getByRole('region', { name: 'New conversation model', exact: true }).getByTestId('model-picker').click()
-    await page.getByTestId(`provider-pick-${id}`).click()
-    await page.getByTestId(`model-pick-${id}-deep`).click()
-    await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
+    await expect(page.getByTestId('model-picker')).toHaveCount(0)
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('settings-view')).toHaveCount(0)
-    await expect.poll(() => page.evaluate(async (engine) => { const settings = await window.engram.settingsGet(); return engine === 'claude' ? settings.claudeModel : settings.codexModel }, id)).toBe(`${id}-deep`)
   }
   expect(await app.evaluate(() => (globalThis as Global).engineFixture.opened)).toBe(2)
 })
 
-test('ChatGPT models can be selected in the composer without changing the Claude choice', async () => {
-  const picker = page.getByTestId('model-picker')
-  await expect(picker).toBeEnabled()
-  await picker.click()
-  await page.getByTestId('model-pick-codex-fast').click()
-  await expect(picker).toHaveAttribute('title', /Quick/)
-  expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.claudeModel, settings.codexModel] })).toEqual(['claude-deep', 'codex-fast'])
+test('the composer offers no model picker and new conversations stay on Claude', async () => {
+  await expect(page.getByTestId('welcome-input')).toBeVisible()
+  await expect(page.getByTestId('model-picker')).toHaveCount(0)
+  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
   const png = await app.evaluate(async ({ BrowserWindow }) => {
@@ -157,30 +150,20 @@ test('the main banner and filing status recover alongside the connected settings
   await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
 })
 
-test('composer and filing settings select providers independently without a sidebar toggle', async () => {
-  const picker = page.getByTestId('model-picker')
-  await picker.click()
-  await expect(page.getByTestId('provider-pick-claude').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
-  await page.getByTestId('provider-pick-claude').click()
-  await expect(page.getByTestId('model-pick-claude-deep')).toHaveAttribute('aria-checked', 'true')
-  await page.getByTestId('model-pick-claude-fast').click()
-  await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
+test('composer and AI defaults show no provider picker while the filing test stays available', async () => {
+  await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.getByTestId('engine-status')).toHaveCount(0)
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
-  const filingPicker = page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker')
-  await filingPicker.click()
-  await expect(page.getByTestId('provider-pick-codex').locator('.model-picker-name')).toHaveAttribute('title', 'Connected')
-  await page.getByTestId('provider-pick-codex').click()
-  await expect(page.getByTestId('model-pick-auto')).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('region', { name: 'New conversation model', exact: true }).getByTestId('model-picker')).toHaveCount(0)
+  const filing = page.getByRole('region', { name: 'Filing model', exact: true })
+  await expect(filing.getByTestId('model-picker')).toHaveCount(0)
+  await expect(filing.getByTestId('ai-check-filing')).toBeEnabled()
   await page.keyboard.press('Escape')
-  await expect(filingPicker).toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(picker.locator('[data-provider="claude"]')).toHaveCount(1)
-  expect(await page.evaluate(async () => { const settings = await window.engram.settingsGet(); return [settings.defaultEngine, settings.claudeModel, settings.codexModel, settings.aiSelections?.filing?.engine] })).toEqual(['claude', 'claude-fast', 'codex-fast', 'codex'])
+  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
 })
 
-test('provider menu supports keyboard selection and stays within compact windows', async () => {
+test('no provider menu appears in wide or compact windows', async () => {
   const sidebar = page.getByTestId('app-sidebar')
   for (const size of [{ width: 1280, height: 880 }, { width: 620, height: 480 }]) {
     await page.setViewportSize(size)
@@ -188,19 +171,9 @@ test('provider menu supports keyboard selection and stays within compact windows
       await page.getByTestId('app-sidebar-close').click()
       await expect(sidebar).toBeHidden()
     }
-    const picker = page.getByTestId('model-picker')
-    await picker.focus()
-    await page.keyboard.press('ArrowDown')
-    const menu = page.getByTestId('model-picker-menu')
-    await expect(page.getByTestId('provider-pick-claude')).toBeFocused()
-    await page.keyboard.press('ArrowDown')
-    await expect(page.getByTestId('provider-pick-codex')).toBeFocused()
-    await page.keyboard.press('End')
-    await expect(menu.getByRole('menuitem', { name: 'AI settings', exact: true })).toBeFocused()
-    await expect.poll(() => menu.evaluate((node) => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight })).toBe(true)
-    await page.keyboard.press('Escape')
-    await expect(menu).toHaveCount(0)
-    await expect(picker).toBeFocused()
+    await expect(page.getByTestId('welcome-input')).toBeVisible()
+    await expect(page.getByTestId('model-picker')).toHaveCount(0)
+    await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
     if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
     await expect(sidebar).toBeVisible()
     await expect(page.getByTestId('engine-status')).toHaveCount(0)
@@ -209,26 +182,17 @@ test('provider menu supports keyboard selection and stays within compact windows
   if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
 })
 
-test('a disconnected provider opens AI settings without changing accounts or provider', async () => {
-  const before = await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)
+test('a disconnected Claude account shows in AI settings without changing accounts or engine', async () => {
   await app.evaluate(() => { (globalThis as Global).engineFixture.signed.claude = false })
-  await page.getByTestId('model-picker').click()
-  await expect(page.getByTestId('provider-pick-claude').locator('.model-picker-name')).toHaveAttribute('title', 'Connect in settings')
-  await page.getByTestId('provider-pick-claude').click()
-  await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-connect')).toBeEnabled()
-  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe(before)
+  expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
   expect(await app.evaluate(() => { const state = (globalThis as Global).engineFixture; return { signed: state.signed, login: state.login } })).toEqual({ signed: { claude: false, codex: true }, login: [{ id: 'codex', phase: 'connected', canOpen: false }] })
   await page.keyboard.press('Escape')
 })
 
-test('welcome and conversation footer controls align and keep long model names inside narrow composers', async () => {
-  const label = 'Quick model with an intentionally long catalog label for compact layouts'
-  await app.evaluate(({ BrowserWindow }, name) => {
-    ;(globalThis as Global).engineFixture.longModelLabel = name
-    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'models:changed' })
-  }, label)
-  await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), defaultEngine: 'codex', codexModel: 'codex-fast' }))
+test('welcome and conversation footer controls align inside narrow composers without a model picker', async () => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
   for (const surface of ['welcome', 'conversation']) {
@@ -246,7 +210,7 @@ test('welcome and conversation footer controls align and keep long model names i
       await expect(sidebar).toBeHidden()
       await expect(input).toBeVisible()
       const composer = page.locator('.chat-write').filter({ has: input })
-      await expect(composer.getByTestId('model-picker')).toHaveAttribute('title', new RegExp(label))
+      await expect(composer.getByTestId('model-picker')).toHaveCount(0)
       if (surface === 'conversation') {
         const memory = composer.getByTestId('bots-memory-toggle')
         await composer.getByRole('button', { name: 'Add to conversation', exact: true }).click()
@@ -264,11 +228,8 @@ test('welcome and conversation footer controls align and keep long model names i
         const tools = node.querySelector('.chat-write-tools')!
         const buttons = [...node.querySelectorAll('.chat-write-footer button')].map(button => button.getBoundingClientRect())
         const icons = [...node.querySelectorAll('.chat-write-footer button > svg')].map(icon => icon.getBoundingClientRect())
-        const picker = node.querySelector('.model-picker-btn')!.getBoundingClientRect()
-        const name = node.querySelector('.provider-usage-icon')!
-        const labelBox = name.getBoundingClientRect()
         const children = [...tools.children].filter(child => child.tagName !== 'INPUT').map(child => child.getBoundingClientRect())
-        const centers = [...icons, labelBox].map(box => box.top + box.height / 2)
+        const centers = icons.map(box => box.top + box.height / 2)
         return {
           height: node.getBoundingClientRect().height,
           inputCenter: node.querySelector('textarea')!.getBoundingClientRect().top + node.querySelector('textarea')!.getBoundingClientRect().height / 2,
@@ -278,10 +239,7 @@ test('welcome and conversation footer controls align and keep long model names i
           centerSpread: Math.max(...centers) - Math.min(...centers),
           gaps: children.slice(1).map((box, index) => box.left - children[index]!.right),
           contained: footer.left >= 0 && footer.right <= innerWidth && buttons.every(box => box.left >= footer.left && box.right <= footer.right),
-          labelContained: labelBox.width > 0 && labelBox.left >= picker.left && labelBox.right <= picker.right,
           toolsOverflow: tools.scrollWidth - tools.clientWidth,
-          ellipsis: getComputedStyle(name).textOverflow,
-          truncated: name.scrollWidth > name.clientWidth,
         }
       })
       const diagnostic = JSON.stringify({ surface, width, ...geometry })
@@ -293,7 +251,7 @@ test('welcome and conversation footer controls align and keep long model names i
       expect(geometry.centerSpread, diagnostic).toBeLessThanOrEqual(0.5)
       expect(geometry.gaps.slice(0, -1), diagnostic).toEqual(geometry.gaps.slice(0, -1).map(() => 4))
       if (geometry.gaps.length) expect(geometry.gaps.at(-1), diagnostic).toBeGreaterThanOrEqual(4)
-      expect(geometry.contained && geometry.labelContained, diagnostic).toBe(true)
+      expect(geometry.contained, diagnostic).toBe(true)
       expect(geometry.toolsOverflow, diagnostic).toBeLessThanOrEqual(1)
       if (surface === 'conversation' && width === 620) {
         const png = await app.evaluate(async ({ BrowserWindow }) => {
@@ -310,7 +268,7 @@ test('welcome and conversation footer controls align and keep long model names i
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 })
 
-test('conversation and filing selections persist without changing each other', async () => {
+test('stored conversation and filing selections read back on Claude without effort and the bot composer has no picker', async () => {
   await app.evaluate(() => { (globalThis as Global).engineFixture.signed = { claude: true, codex: true } })
   const ids = await page.evaluate(async () => {
     const a = await window.engram.botCreate({ name: 'Independent A' })
@@ -324,20 +282,14 @@ test('conversation and filing selections persist without changing each other', a
   })
   await openActivity(page, 'bots')
   await page.getByTestId('bot-' + ids[0]).click()
-  const picker = page.locator('.bots-write').getByTestId('model-picker')
-  await picker.click()
-  await page.getByTestId('model-pick-claude-deep').click()
-  await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
-  await picker.click()
-  await page.getByTestId('effort-pick-high').click()
-  await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
-  await expect(picker).toHaveAttribute('title', /High/)
+  await expect(page.getByTestId('bots-input')).toBeVisible()
+  await expect(page.locator('.bots-write').getByTestId('model-picker')).toHaveCount(0)
   await expect(page.getByTestId('effort-picker')).toHaveCount(0)
   await page.reload()
   const choices = await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))
-  expect(choices?.['bot-' + ids[0]]).toEqual({ engine: 'claude', model: 'claude-deep', effort: 'high' })
-  expect(choices?.['bot-' + ids[1]]).toEqual({ engine: 'codex', model: 'codex-deep' })
-  expect(choices?.filing).toEqual({ engine: 'codex', model: 'codex-fast', effort: 'low' })
+  expect(choices?.['bot-' + ids[0]]).toEqual({ engine: 'claude', model: 'claude-fast' })
+  expect(choices?.['bot-' + ids[1]]).toEqual({ engine: 'claude', model: 'codex-deep' })
+  expect(choices?.filing).toEqual({ engine: 'claude', model: 'codex-fast' })
   await page.evaluate(async () => {
     const settings = await window.engram.settingsGet()
     await window.engram.settingsSet({ ...settings, defaultEngine: 'claude', claudeModel: 'claude-fast' })
@@ -345,7 +297,7 @@ test('conversation and filing selections persist without changing each other', a
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => settings.aiSelections))).toEqual(choices)
 })
 
-test('a cached model menu remains usable after reload while the catalog request is stalled', async () => {
+test('the composer shows no model menu after reload while the catalog request is stalled', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('models:list')
     // Keep the reply alive: Electron rejects an unreachable pending reply during GC.
@@ -354,34 +306,23 @@ test('a cached model menu remains usable after reload while the catalog request 
   })
   await page.reload()
   await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
-  const picker = page.getByTestId('model-picker')
-  await picker.click()
-  await expect(page.getByTestId('model-pick-claude-deep')).toBeVisible({ timeout: 1000 })
-  await app.evaluate(() => {
-    process.getBuiltinModule('v8').setFlagsFromString('--expose_gc')
-    process.getBuiltinModule('vm').runInNewContext('gc')()
-  })
-  await expect(page.getByTestId('model-picker-menu').getByRole('status')).toHaveText('Updating models…')
-  await expect(page.getByTestId('model-picker-menu').locator('.computer-spinner')).toBeVisible()
-  await page.getByTestId('model-pick-claude-deep').click()
+  await expect(page.getByTestId('welcome-input')).toBeEditable()
+  await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)
-  await page.getByTestId('model-picker').click()
-  await expect(page.getByTestId('effort-pick-high')).toBeEnabled({ timeout: 1000 })
-  await page.keyboard.press('Escape')
 })
 
-test('Claude keeps its brand color while the usage ring is muted in both themes', async () => {
-  await page.getByTestId('welcome-input').click()
+test('Claude keeps its brand color on the sign-in card in both themes', async () => {
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-ai').click()
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
-    const icon = page.locator('.provider-usage-icon > .provider-icon[data-provider="claude"]').first()
+    const icon = page.locator('.engine-identity > .provider-icon[data-provider="claude"]')
     await expect(icon).toBeVisible()
     await expect(icon).toHaveCSS('color', 'rgb(197, 118, 85)')
-    const ring = page.locator('.provider-usage-icon .account-limit-ring circle').last()
-    await expect(ring).toHaveCSS('stroke', theme === 'light' ? 'rgb(116, 116, 116)' : 'rgb(144, 144, 144)')
-    await page.screenshot({ path: join(TMP, `updater-ring-${theme}.png`) })
+    await page.screenshot({ path: join(TMP, `claude-sign-in-${theme}.png`) })
   }
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+  await page.keyboard.press('Escape')
 })
 
 test('a newer update replaces stale restart actions in the banner and settings', async () => {

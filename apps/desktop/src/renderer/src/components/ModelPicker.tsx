@@ -67,7 +67,7 @@ export function useModelChoices(engine: Provider | null, pinnedProfile?: string)
 }
 
 export interface ModelSelection { engine: Provider; model: string; effort?: ReasoningEffort }
-export function ModelPicker({ variant = 'composer', scope, controlled, showAccounts = true }: { variant?: 'composer' | 'sidebar'; scope?: string; showAccounts?: boolean; controlled?: { value: ModelSelection; accountProfile?: string; disabled?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
+function SessionModelPicker({ variant = 'composer', scope, controlled, showAccounts = true }: { variant?: 'composer' | 'sidebar'; scope?: string; showAccounts?: boolean; controlled?: { value: ModelSelection; accountProfile?: string; disabled?: boolean; onChange(value: ModelSelection): Promise<void> } }) {
   const { engines, enginesDetected } = useShellState()
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
   const [states, setStates] = useState<EngineStatusDto[] | null>(null)
@@ -262,4 +262,9 @@ export function ModelPicker({ variant = 'composer', scope, controlled, showAccou
       {saveError && <div className="model-picker-note" role="alert">{saveError}</div>}
     </div>, document.body)}
   </div>
+}
+
+// Chat has one engine and no knobs; only a developer task session picks its model.
+export function ModelPicker(props: Parameters<typeof SessionModelPicker>[0]) {
+  return props.controlled ? <SessionModelPicker {...props} /> : null
 }

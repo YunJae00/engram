@@ -63,17 +63,17 @@ describe('selected connection desktop capability', () => {
   it('does not substitute another supported connection for the selected unsupported one', async () => {
     fake.settings.mockResolvedValue({ defaultEngine: 'codex' })
     fake.engines.mockResolvedValue([
-      { id: 'claude', installed: true, loggedIn: true, desktopToolIsolation: true },
-      { id: 'codex', installed: true, loggedIn: true, desktopToolIsolation: false },
+      { id: 'claude', installed: true, loggedIn: true, desktopToolIsolation: false },
+      { id: 'codex', installed: true, loggedIn: true, desktopToolIsolation: true },
     ])
     await refreshDesktop()
     expect(useDesktopSession().controlSupported).toBe(false)
   })
   it('clears stale capability when the connection or settings cannot be read', async () => {
     await refreshDesktop()
-    fake.settings.mockRejectedValueOnce(new Error('Settings unavailable'))
+    fake.engines.mockRejectedValueOnce(new Error('Connections unavailable'))
     await refreshDesktop()
-    expect(useDesktopSession()).toMatchObject({ controlSupported: false, error: 'Settings unavailable' })
+    expect(useDesktopSession()).toMatchObject({ controlSupported: false, error: 'Connections unavailable' })
   })
   it('does not enable a disconnected engine even when its implementation supports isolation', async () => {
     fake.engines.mockResolvedValue([{ id: 'claude', installed: true, loggedIn: false, desktopToolIsolation: true }])
@@ -81,14 +81,15 @@ describe('selected connection desktop capability', () => {
     expect(useDesktopSession().controlSupported).toBe(false)
   })
   it('does not let a stale selected-engine read restore capability after a switch', async () => {
-    let resolve!: (value: { defaultEngine: string }) => void
-    fake.settings.mockReturnValueOnce(new Promise<{ defaultEngine: string }>((done) => { resolve = done }))
+    type Rows = { id: string; installed: boolean; loggedIn: boolean; desktopToolIsolation: boolean }[]
+    let resolve!: (value: Rows) => void
+    fake.engines.mockReturnValueOnce(new Promise<Rows>((done) => { resolve = done }))
     const old = refreshDesktop()
-    await vi.waitFor(() => expect(fake.settings).toHaveBeenCalledOnce())
-    fake.settings.mockResolvedValue({ defaultEngine: 'codex' })
+    await vi.waitFor(() => expect(fake.engines).toHaveBeenCalledOnce())
+    fake.engines.mockResolvedValue([{ id: 'claude', installed: true, loggedIn: false, desktopToolIsolation: true }])
     await refreshDesktop()
     expect(useDesktopSession().controlSupported).toBe(false)
-    resolve({ defaultEngine: 'claude' })
+    resolve([{ id: 'claude', installed: true, loggedIn: true, desktopToolIsolation: true }])
     await old
     expect(useDesktopSession().controlSupported).toBe(false)
   })

@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
-import { renameWithRetry, REASONING_EFFORTS } from 'core'
+import { renameWithRetry } from 'core'
 import { join } from 'node:path'
 
 export interface AppSettings {
@@ -72,9 +72,8 @@ async function readSettings(): Promise<AppSettings> {
     const raw = JSON.parse(await readFile(settingsPath(), 'utf8')) as Partial<AppSettings> & { recordTasks?: unknown }
     delete raw.recordTasks
     const merged = { ...DEFAULT_SETTINGS, ...raw }
-    // An old file may name a brain this build does not carry; the one on
-    // this disk is the safe reading.
-    if (!['claude', 'codex'].includes(merged.defaultEngine as string)) merged.defaultEngine = 'claude'
+    // In-app work runs on Claude only; an old 'codex' choice reads as Claude.
+    merged.defaultEngine = 'claude'
     merged.computerUse = true
     merged.workMap = merged.workMap === true
     merged.workFiles = merged.workFiles === true
@@ -85,8 +84,10 @@ async function readSettings(): Promise<AppSettings> {
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
     if (!['system', 'ko', 'en'].includes(merged.uiLanguage)) merged.uiLanguage = 'system'
-    for (const selection of Object.values(merged.aiSelections)) if (selection.effort && !REASONING_EFFORTS.includes(selection.effort)) delete selection.effort
-    for (const key of ['claudeEffort', 'codexEffort'] as const) if (merged[key] && !REASONING_EFFORTS.includes(merged[key])) delete merged[key]
+    // Effort has no control left, so a stored one must not keep throttling chat.
+    for (const selection of Object.values(merged.aiSelections)) { selection.engine = 'claude'; delete selection.effort }
+    delete merged.claudeEffort
+    delete merged.codexEffort
     return merged
   } catch {
     return { ...DEFAULT_SETTINGS }

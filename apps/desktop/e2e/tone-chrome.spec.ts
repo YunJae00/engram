@@ -116,14 +116,10 @@ test('cream+ink tokens and chrome on key screens', async () => {
     const send = await styleOf(page, '.bots-write .chat-send-btn', ['background-color', 'color', 'border-radius'])
     expect(send).toEqual({ 'background-color': INK, color: CTA_FG, 'border-radius': '50%' })
     expect((await styleOf(page, '.bots-write .chat-send-btn svg', ['color']))['color']).toBe(CTA_FG)
+    await expect(write.locator('.model-picker-btn')).toHaveCount(0)
     for (const width of [1280, 900]) {
       await page.setViewportSize({ width, height: 800 })
-      const gap = await page.evaluate(() => {
-        const model = document.querySelector('.bots-write .model-picker-btn')!.getBoundingClientRect()
-        const send = document.querySelector('.bots-write .chat-send-btn')!.getBoundingClientRect()
-        return Math.abs(model.top - send.top) < model.height ? send.left - model.right : Infinity
-      })
-      expect(gap, `send/model gap at ${width}px`).toBeGreaterThanOrEqual(8)
+      await expect(write.locator('.chat-send-btn')).toBeInViewport()
     }
     await page.setViewportSize({ width: 1280, height: 800 })
 

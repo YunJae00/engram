@@ -47,12 +47,6 @@ test.beforeAll(async () => {
     },
   })
   page = await app.firstWindow()
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('models:list')
-    ipcMain.handle('models:list', () => Array.from({ length: 12 }, (_, index) => ({
-      value: `fixture-${index}`, label: `Model ${index + 1}`, detail: 'A long model description for checking menu boundaries and scrolling.',
-    })))
-  })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 test.afterAll(async () => {
@@ -130,33 +124,19 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   expect((await page.evaluate(() => window.engram.settingsGet())).computerUse).toBe(true)
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
 })
-test('welcome model choices stay inside the main surface at every window size', async () => {
+test('the welcome composer offers no model choice and stays inside the main surface at every window size', async () => {
   await page.reload()
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   for (const size of [{ width: 1280, height: 840 }, { width: 948, height: 620 }, { width: 620, height: 480 }]) {
     await page.setViewportSize(size)
     if (size.width <= 900 && await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
-    const picker = page.getByTestId('comet-welcome').getByTestId('model-picker')
-    await picker.click()
-    const menu = page.getByTestId('model-picker-menu')
-    await expect(menu).toBeVisible()
-    await expect.poll(() => menu.evaluate((node) => {
+    await expect(page.getByTestId('comet-welcome').getByTestId('model-picker')).toHaveCount(0)
+    await expect.poll(() => page.getByTestId('comet-welcome').evaluate((node) => {
       const rect = node.getBoundingClientRect()
       const host = document.querySelector('.bots-main')!.getBoundingClientRect()
-      return rect.left >= host.left && rect.right <= host.right && rect.top >= host.top && rect.bottom <= innerHeight
+      return rect.left >= host.left && rect.right <= host.right && rect.top >= host.top
     })).toBe(true)
     await screenshot(`ui-welcome-model-${size.width}.png`)
-    await expect(page.getByTestId('model-pick-fixture-11')).toHaveCount(1)
-    await page.getByTestId('model-pick-fixture-11').click()
-    await expect(picker).toHaveAttribute('aria-label', /Model 12/)
-    expect((await page.evaluate(() => window.engram.settingsGet())).claudeModel).toBe('fixture-11')
-    await picker.click()
-    await page.getByTestId('model-pick-auto').click()
-    await expect(picker).toHaveAttribute('aria-label', /Auto/)
-    expect((await page.evaluate(() => window.engram.settingsGet())).claudeModel).toBe('')
-    await picker.click()
-    await page.keyboard.press('Escape')
-    await expect(menu).toHaveCount(0)
   }
   await page.setViewportSize({ width: 1280, height: 840 })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
@@ -185,15 +165,7 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   expect(memoryBox!.y + memoryBox!.height).toBeLessThanOrEqual(composerBox!.y)
   await page.getByTestId('bots-input-add').click()
   await memory.click()
-  const picker = page.getByTestId('model-picker')
-  if (await picker.isEnabled()) {
-    await picker.click()
-    const menu = page.getByTestId('model-picker-menu')
-    await expect(menu).toBeVisible()
-    const [menuBox, sidebarBox] = await Promise.all([menu.boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
-    expect(menuBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
-    await page.keyboard.press('Escape')
-  }
+  await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.locator('.bots-write').getByRole('button', { name: 'Permissions' })).toHaveCount(0)
 })
 test('the selected comet is remembered across tabs', async () => {

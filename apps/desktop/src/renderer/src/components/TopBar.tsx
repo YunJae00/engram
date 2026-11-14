@@ -1,6 +1,6 @@
 import { Columns2, Globe, Grid2X2, PanelLeftOpen, PlugZap, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { AppSettingsDto, SyncStatusDto } from '../../../shared/types.js'
+import type { SyncStatusDto } from '../../../shared/types.js'
 import { t, type Translate } from '../i18n.js'
 import { api } from '../api.js'
 import { useShellState, useTopBarState } from '../state-slices.js'
@@ -19,21 +19,11 @@ function syncLabel(t: Translate, status: SyncStatusDto | null): string {
 }
 
 function ConnectBanner({ waiting }: { waiting: number }) {
-  const [filingProvider, setFilingProvider] = useState<string | null>(null)
-  useEffect(() => {
-    let alive = true, changed = false
-    const read = (settings: AppSettingsDto) => {
-      if (alive) setFilingProvider((settings.aiSelections?.filing?.engine ?? settings.defaultEngine) === 'codex' ? 'ChatGPT' : 'Claude')
-    }
-    void api.settingsGet().then(settings => { if (!changed) read(settings) }).catch(() => undefined)
-    const off = api.onEvent(event => { if (event.type === 'settings:changed') { changed = true; read(event.settings) } })
-    return () => { alive = false; off() }
-  }, [])
   return (
     <div className="connect-banner" data-testid="connect-banner">
       <PlugZap size={14} strokeWidth={1.8} aria-hidden />
       <span>
-        {filingProvider ? t('banner.filingNotReady', { provider: filingProvider }) : t('banner.noBrain')}
+        {t('banner.filingNotReady', { provider: 'Claude' })}
         {waiting > 0 && ` · ${t('banner.waiting', { n: waiting })}`}
       </span>
       <button className="connect-banner-btn" onClick={() => window.dispatchEvent(new Event('engram:open-brain-setup'))}>

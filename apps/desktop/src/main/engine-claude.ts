@@ -5,20 +5,17 @@ import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobI
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
-import { loadSettings } from './settings.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { VoiceSession } from './engine-claude-voice.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
-// The person's chosen model, read per call so a change in Settings or from
-// the composer takes hold on the very next turn. Empty means the app's own
-// spread: the mid-size model for the work, the small one for chores.
-async function chosenModel(hint?: string, override?: string): Promise<string> {
-  const picked = (override ?? (await loadSettings()).claudeModel).trim()
-  if (picked) return picked
-  return hint === 'fast' ? 'haiku' : 'sonnet'
+// One engine, no knobs: stored and per-conversation model choices are ignored.
+export function chosenModel(hint?: string): string {
+  const forced = process.env['ENGRAM_CLAUDE_MODEL']?.trim()
+  if (forced) return forced
+  return hint === 'fast' ? 'haiku' : 'claude-opus-5-5'
 }
 
 // Claude, through the vendor's separately installed agent runtime. The
@@ -143,7 +140,7 @@ export class ClaudeEngine implements CloudEngine {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
-    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: await chosenModel('fast') }
+    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast') }
     if (!voice || voice.closed || voice.spent || voice.key !== JSON.stringify([spec.binary, spec.model, spec.workdir])) { voice?.close(); voice = new VoiceSession(spec) }
     return voice
   }
@@ -222,10 +219,8 @@ export class ClaudeEngine implements CloudEngine {
           persistSession: false,
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
-          // A chore is a few small decisions in a row; the mid-size model
-          // makes each one in seconds where the largest takes a minute -
-          // unless the person picked a model, and then their pick answers.
-          model: await chosenModel(job.modelHint, job.model),
+          // Chores run on the small model.
+          model: chosenModel(job.modelHint),
           ...(job.effort ? { effort: job.effort } : {}),
         },
       })
@@ -269,7 +264,7 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) }).finally(() => metric.end())
+    return Promise.all([sdkModule(), chosenModel(), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) }).finally(() => metric.end())
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.
@@ -277,7 +272,7 @@ export class ClaudeEngine implements CloudEngine {
     if (job.signal?.aborted) return
     const binary = claudeBinary()
     if (!binary || !job.native) return
-    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(undefined, job.model), loadBrainConnections()])
+    const [sdk, model] = await Promise.all([sdkModule(), chosenModel(), loadBrainConnections()])
     if (job.signal?.aborted) return
     sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env }, job)
   }

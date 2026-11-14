@@ -44,14 +44,12 @@ async function toStep2() {
   await page.getByTestId('onboard-next').click()
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
 }
-async function pickModel() {
-  await page.getByTestId('onboard-choose-codex').check()
-  await page.getByTestId('onboard-model').click()
-  await page.getByRole('menuitemradio', { name: 'Quick model', exact: true }).click()
+async function claudeReady() {
+  await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
   await expect(page.getByTestId('onboard-ai-next')).toBeEnabled()
 }
 async function toStep3() {
-  await toStep2(); await pickModel()
+  await toStep2(); await claudeReady()
   await page.getByTestId('onboard-ai-next').click()
   await expect(page.getByTestId('onboard-step-3')).toBeVisible()
 }
@@ -78,9 +76,7 @@ test.beforeEach(async () => {
   page = await app.firstWindow({ timeout: 90000 })
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     const held = globalThis as { holdCheck?: boolean, releaseCheck?: (rows: unknown[]) => void, checks?: number }
-    const rows = [{ id: 'claude', installed: true, loggedIn: true }, { id: 'codex', installed: true, loggedIn: true }]
-    ipcMain.removeHandler('models:list')
-    ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
+    const rows = [{ id: 'claude', installed: true, loggedIn: true }]
     ipcMain.removeHandler('engines:states')
     ipcMain.handle('engines:states', (_event, ids?: string[]) => {
       if (!ids) return rows
@@ -107,7 +103,7 @@ test('captures each step at one size', async () => {
     const tops: number[] = []
     await expect(h1()).toBeVisible(); tops.push((await box(h1())).top); await screenshot(`${theme}-step-1`)
     await toStep2()
-    if (theme === 'light') await pickModel()
+    if (theme === 'light') await claudeReady()
     await page.waitForTimeout(300)
     await expect(h1()).toBeVisible(); tops.push((await box(h1())).top); await screenshot(`${theme}-step-2`)
     await page.getByTestId('onboard-ai-next').click()
@@ -134,7 +130,7 @@ test('title and controls hold still across steps', async () => {
   const titles: Box[] = [await box(h1())], primaries: Box[] = [await box(primary())], backs: Box[] = []
   const record = async () => { titles.push(await box(h1())); primaries.push(await box(primary())); backs.push(await box(back())) }
   await toStep2(); await record()
-  await pickModel(); await page.waitForTimeout(300); await record()
+  await claudeReady(); await page.waitForTimeout(300); await record()
   const content = await page.locator('.onboard-ai-content').evaluate(el => [el.scrollHeight, el.clientHeight])
   expect(content[0]!, 'step 2 fits without an inner scroll').toBeLessThanOrEqual(content[1]! + 1)
   await page.getByTestId('onboard-ai-next').click()
@@ -179,7 +175,7 @@ test('Back keeps its node and colour through a step change', async () => {
 test('double-click and keyboard do not skip steps or drop focus', async () => {
   await page.getByTestId('onboard-next').dblclick()
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
-  await pickModel()
+  await claudeReady()
   await page.getByTestId('onboard-ai-next').dblclick()
   await expect(page.getByTestId('onboard-step-3')).toBeVisible()
   await expect(page.getByTestId('onboard-prefs-next')).toHaveText('Continue')
@@ -206,7 +202,7 @@ test('narrow and short windows keep every control reachable', async () => {
     const tops: number[] = []
     for (const step of [1, 2, 3]) {
       if (step === 2) await toStep2()
-      if (step === 2 && await page.getByTestId('onboard-model').count() === 0) await pickModel()
+      if (step === 2) await claudeReady()
       if (step === 3) { await page.getByTestId('onboard-ai-next').click(); await expect(page.getByTestId('onboard-step-3')).toBeVisible() }
       await expect(h1()).toBeInViewport()
       await expect(primary()).toBeInViewport()
@@ -215,10 +211,8 @@ test('narrow and short windows keep every control reachable', async () => {
       expect(card[0]!).toBeLessThanOrEqual(card[1]!)
       tops.push((await box(h1())).top)
       if (step === 2 && width === 480) {
-        const content = await page.locator('.onboard-ai-content').evaluate(el => [el.scrollHeight, el.clientHeight])
-        expect(content[0]!).toBeGreaterThan(content[1]!)
-        await page.getByTestId('onboard-model').scrollIntoViewIfNeeded()
-        await expect(page.getByTestId('onboard-model')).toBeInViewport()
+        await page.getByTestId('onboard-brain-claude').scrollIntoViewIfNeeded()
+        await expect(page.getByTestId('onboard-brain-claude')).toBeInViewport()
       }
     }
     expect(Math.max(...tops) - Math.min(...tops), `${width}x${height}`).toBeLessThanOrEqual(1)

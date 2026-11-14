@@ -18,9 +18,6 @@ async function launch() {
   const env = { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ONBOARD_ROOT: vaultRoot, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0' }
   app = await electron.launch({ timeout: 90000, args: [MAIN_ENTRY, '--no-sandbox'], env })
   page = await app.firstWindow({ timeout: 90000 })
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('models:list'); ipcMain.handle('models:list', (_event, id: string) => [{ value: `${id}-quick`, label: 'Quick model', detail: 'Fixture' }])
-  })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 }
@@ -30,11 +27,11 @@ async function toStep3() {
   await page.getByTestId('onboard-next').click()
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
-    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'codex', installed: true, loggedIn: true }])
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
-  await page.getByTestId('onboard-choose-codex').check()
-  await page.getByTestId('onboard-model').click(); await page.getByRole('menuitemradio', { name: 'Quick model', exact: true }).click()
+  await expect(page.getByTestId('onboard-brain-claude')).toBeVisible()
+  await expect(page.getByTestId('onboard-choice')).toHaveCount(0)
   await page.getByTestId('onboard-ai-next').click()
   await expect(page.getByTestId('onboard-step-3')).toBeVisible()
 }
