@@ -95,6 +95,7 @@ export async function restartQuestion(paths: VaultPaths, task: DelegatedTask): P
 }
 
 // Every end the person did not ask for leaves one closing message in the thread; a raw error goes out only when this end is not the task's own.
+// The seat is reopened even for an empty turn: a provider error may already have settled the bubble, and carryOn keeps a still-open one as is.
 export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEvent) => void, end: { task?: DelegatedTask; reason: ClosingReason; channel?: string; trail?: readonly TurnStep[]; error?: unknown }): Promise<void> {
   const { task, reason, channel, trail, error } = end
   const raw = error === undefined ? undefined : error instanceof Error ? error.message : String(error)
@@ -105,5 +106,5 @@ export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEven
   const text = closingMessage({ goal: task.goal, work: task.work, trail, result: task.result, transcript, since: task.createdAt, detail: raw }, reason, closingLang(transcript, task.goal))
   try { await appendBotTurn(paths, task.botId, { role: 'assistant', text, at: new Date().toISOString() }) } catch (e) { flog('tasks', e) }
   if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: text })
-  else { if (reason !== 'empty') broadcast({ type: 'comet:continue', channel, botId: task.botId }); broadcast({ type: 'chat:done', channel, text }) }
+  else { broadcast({ type: 'comet:continue', channel, botId: task.botId }); broadcast({ type: 'chat:done', channel, text }) }
 }
