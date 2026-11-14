@@ -44,7 +44,7 @@ it('keeps the first unfocused time when it is reported again', async () => {
 })
 
 it('posts nothing when no task changed during the absence', async () => {
-  const { post, changed } = setup([task('a', 'running', -5), task('a', 'done', -1), task('b', 'waiting', -3, { question: 'Which?' }), task('b', 'stopped', 5), task('gone', 'done', 5)])
+  const { post, changed } = setup([task('a', 'running', -5), task('a', 'done', -1), task('b', 'waiting', -3, { question: 'Which?' }), task('b', 'stopped', -2), task('gone', 'done', 5)])
   await away()
   expect(post).not.toHaveBeenCalled()
   expect(changed).not.toHaveBeenCalled()
@@ -84,6 +84,36 @@ it('leaves out only the scheduled run that already has its own notice', async ()
   const mixed = setup([task('a', 'done', 4, { createdAt: iso(2) }), task('a', 'done', 8), task('a', 'waiting', 1, { question: 'Which?' })], [ended])
   await away()
   expect(mixed.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 끝남 1, 답 기다림 1' })
+})
+
+it('summarizes a task that stopped during the absence', async () => {
+  const { post } = setup([task('b', 'stopped', 5), task('a', 'done', -3)])
+  await away()
+  expect(post).toHaveBeenCalledOnce()
+  expect(post.mock.calls[0]![0]).toMatchObject({ botId: 'b', text: 'B: 멈춤 1' })
+  expect(awayText([{ botId: 'b', name: 'B', finished: 0, waiting: 0, running: 0, stopped: 2 }], 'en').text).toBe('B: 2 stopped')
+})
+
+it('does not count a change that happened after the person came back', async () => {
+  const { post } = setup([task('a', 'done', 10.5), task('b', 'waiting', 11, { question: 'Which?' })])
+  await away()
+  expect(post).not.toHaveBeenCalled()
+  const later = setup([task('a', 'done', 5), task('b', 'waiting', 11, { question: 'Which?' })])
+  await away()
+  expect(later.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 끝남 1' })
+})
+
+it('keeps a manual task on the same bot that changed during a scheduled run', async () => {
+  const ended = { kind: 'scheduled', botId: 'a', began: iso(2), at: iso(6) } as const
+  const sched = task('a', 'done', 6, { createdAt: iso(2) })
+  const manual = task('a', 'done', 4, { createdAt: iso(-30) })
+  const { post } = setup([sched, manual], [ended])
+  await away()
+  expect(post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 끝남 1' })
+  const beside = task('a', 'waiting', 5, { createdAt: iso(3), question: 'Which?' })
+  const both = setup([sched, beside], [ended])
+  await away()
+  expect(both.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 답 기다림 1' })
 })
 
 it('posts nothing and does not throw when the tasks cannot be read', async () => {

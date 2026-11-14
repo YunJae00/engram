@@ -152,12 +152,12 @@ it('tells a member report as a milestone once per ten minutes per task', async (
   expect(mocks.show).not.toHaveBeenCalled()
   await teamReported([team('ms-a', one)], say, vi.fn(), t0)
   expect(mocks.show).toHaveBeenCalledOnce()
-  expect(mocks.last).toEqual({ title: '리서치봇: 여기까지 했어요', body: '조사팀 끝 (1/4)' })
+  expect(mocks.last).toEqual({ title: '리서치봇: 여기까지 했어요', body: '팀원 끝 (1/4)' })
   await teamReported([team('ms-a', ['done', 'done', 'working', 'working'])], say, vi.fn(), t0 + 10 * MIN - 1000)
   expect(mocks.show).toHaveBeenCalledOnce()
   await teamReported([team('ms-a', ['done', 'done', 'released', 'working'])], say, vi.fn(), t0 + 10 * MIN)
   expect(mocks.show).toHaveBeenCalledTimes(2)
-  expect(mocks.last.body).toBe('팀 2 끝 (3/4)')
+  expect(mocks.last.body).toBe('팀원 끝 (3/4)')
   await teamReported([team('ms-a', ['done', 'done', 'released', 'working'])], say, vi.fn(), t0 + 30 * MIN)
   expect(mocks.show).toHaveBeenCalledTimes(2)
 })
@@ -170,8 +170,17 @@ it('words a milestone in English for an English task and throttles each task on 
   await teamReported([en('ms-b', one), en('ms-c', one)], say, vi.fn(), 0)
   expect(mocks.show).toHaveBeenCalledTimes(2)
   expect(mocks.last.title).toBe('Research: Progress so far')
-  expect(mocks.last.body).toMatch(/ finished \(1\/4\)$/)
+  expect(mocks.last.body).toBe('Team member finished (1/4)')
   expect(`${mocks.last.title} ${mocks.last.body}`.replace('조사팀', '')).not.toMatch(/[가-힣]/)
+})
+
+it('keeps the member assignment off the lock screen', async () => {
+  const { teamReported } = await import('../src/main/task-notify.js')
+  const secret = (states: string[]) => { const t = team('ms-secret', states); t.team!.members[0]!.role = 'Investigate SECRET acquisition'; return t }
+  await teamReported([secret(idle)], voice(), vi.fn(), 0)
+  await teamReported([secret(one)], voice(), vi.fn(), 0)
+  expect(mocks.show).toHaveBeenCalledOnce()
+  expect(`${mocks.last.title} ${mocks.last.body}`).not.toMatch(/SECRET|Investigate|시장 조사/)
 })
 
 it('stays quiet about members that had reported before this start, failed, or report to another member', async () => {
@@ -222,7 +231,7 @@ it('lets the next report through after the bot could not be read, and opens the 
   await expect(teamReported([team('ms-h', one)], vi.fn(async () => { throw new Error('unreadable') }), broadcast, 0)).rejects.toThrow('unreadable')
   await teamReported([team('ms-h', ['done', 'done', 'working', 'working'])], voice(), broadcast, MIN)
   expect(mocks.show).toHaveBeenCalledOnce()
-  expect(mocks.last.body).toBe('팀 1 끝 (2/4)')
+  expect(mocks.last.body).toBe('팀원 끝 (2/4)')
   mocks.click!()
   expect(surface).toHaveBeenCalledOnce()
   expect(broadcast).toHaveBeenCalledWith({ type: 'comet:open', botId: 'bot-ms-h' })

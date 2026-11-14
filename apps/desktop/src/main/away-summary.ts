@@ -8,7 +8,7 @@ import { closingLang, type ClosingLang } from './task-closing.js'
 
 export const AWAY_MS = 10 * 60_000
 type Said = readonly { role: string; text: string }[]
-export interface AwayRow { botId: string; name: string; finished: number; waiting: number; running: number }
+export interface AwayRow { botId: string; name: string; finished: number; waiting: number; running: number; stopped?: number }
 export interface AwayIo {
   tasks(): Promise<DelegatedTask[]>
   bots(): Promise<{ id: string; name: string }[]>
@@ -18,37 +18,45 @@ export interface AwayIo {
 }
 
 let since: number | undefined
-let report: ((from: number) => Promise<void>) | undefined
+let report: ((from: number, to: number) => Promise<void>) | undefined
 export function mainFocus(focused: boolean, now = Date.now()): void {
   if (!focused) { since ??= now; return }
   const from = since
   since = undefined
-  if (from !== undefined && now - from >= AWAY_MS && report) void report(from).catch(error => flog('away', error))
+  if (from !== undefined && now - from >= AWAY_MS && report) void report(from, now).catch(error => flog('away', error))
 }
 
 const movedAt = (task: DelegatedTask): number => Date.parse(task.state === 'done' || task.state === 'failed' ? task.finishedAt ?? task.updatedAt : task.updatedAt)
 
-// A scheduled run already has its own bell item; only the task that ran inside that run's time is left out.
-export function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[]): boolean {
-  const at = movedAt(task)
-  return notices.some(n => n.kind === 'scheduled' && n.botId === task.botId && at >= Date.parse(n.began ?? n.at) && (n.running === true || at <= Date.parse(n.at)))
+// A scheduled run already has its own bell item. Its task is the first one its bot started inside that run's
+// time; other work on the same bot, started before or alongside it, still belongs in the summary.
+export function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
+  return notices.some(n => {
+    if (n.kind !== 'scheduled' || n.botId !== task.botId) return false
+    const began = Date.parse(n.began ?? n.at), ended = n.running === true ? Infinity : Date.parse(n.at)
+    const inside = (one: DelegatedTask): boolean => { const at = Date.parse(one.createdAt); return one.botId === task.botId && at >= began && at <= ended }
+    const first = tasks.filter(inside).reduce<DelegatedTask | undefined>((a, b) => !a || Date.parse(b.createdAt) < Date.parse(a.createdAt) ? b : a, undefined)
+    return first?.id === task.id
+  })
 }
 
-export function awayChanges(tasks: readonly DelegatedTask[], bots: readonly { id: string; name: string }[], from: number): { rows: AwayRow[]; botId: string; newest: DelegatedTask } | undefined {
-  const rows = new Map(bots.map(bot => [bot.id, { botId: bot.id, name: bot.name, finished: 0, waiting: 0, running: 0 }]))
+// Only what moved between leaving and coming back counts; a change after the return was seen live.
+export function awayChanges(tasks: readonly DelegatedTask[], bots: readonly { id: string; name: string }[], from: number, to = Infinity): { rows: AwayRow[]; botId: string; newest: DelegatedTask } | undefined {
+  const rows = new Map<string, AwayRow>(bots.map(bot => [bot.id, { botId: bot.id, name: bot.name, finished: 0, waiting: 0, running: 0, stopped: 0 }]))
   let newest: DelegatedTask | undefined
   for (const task of tasks) {
     const row = rows.get(task.botId)
-    if (!row || task.state === 'stopped') continue
-    const moved = movedAt(task) >= from
+    if (!row) continue
+    const moved = movedAt(task) >= from && movedAt(task) <= to
     if (task.state === 'running' || task.state === 'queued') row.running++
     else if (!moved) continue
     else if (task.state === 'done') row.finished++
+    else if (task.state === 'stopped') row.stopped = (row.stopped ?? 0) + 1
     else row.waiting++
     if (moved && (!newest || movedAt(task) > movedAt(newest))) newest = task
   }
   if (!newest) return undefined
-  const shown = [...rows.values()].filter(row => row.finished + row.waiting + row.running > 0)
+  const shown = [...rows.values()].filter(row => row.finished + row.waiting + row.running + (row.stopped ?? 0) > 0)
   const botId = (shown.find(row => row.waiting) ?? shown.find(row => row.finished) ?? shown[0]!).botId
   return { rows: shown, botId, newest }
 }
@@ -58,8 +66,8 @@ export function awayText(rows: readonly AwayRow[], lang: ClosingLang): { title: 
   const ko = lang === 'ko'
   const line = (row: AwayRow): string => {
     const parts = ko
-      ? [row.finished && `끝남 ${row.finished}`, row.waiting && `답 기다림 ${row.waiting}`, row.running && `진행 중 ${row.running}`]
-      : [row.finished && `${row.finished} finished`, row.waiting && `${row.waiting} waiting for you`, row.running && `${row.running} still running`]
+      ? [row.finished && `끝남 ${row.finished}`, row.waiting && `답 기다림 ${row.waiting}`, row.running && `진행 중 ${row.running}`, row.stopped && `멈춤 ${row.stopped}`]
+      : [row.finished && `${row.finished} finished`, row.waiting && `${row.waiting} waiting for you`, row.running && `${row.running} still running`, row.stopped && `${row.stopped} stopped`]
     return `${row.name.replace(/\s+/g, ' ').trim().slice(0, 40)}: ${parts.filter(Boolean).join(', ')}`
   }
   const more = rows.length - MAX_BOTS
@@ -75,9 +83,9 @@ export const vaultIo = (paths: VaultPaths): AwayIo => ({
 })
 
 export function awayReady(io: AwayIo, changed: () => void): void {
-  report = async from => {
+  report = async (from, to) => {
     const [tasks, bots, notices] = await Promise.all([io.tasks(), io.bots(), io.notices()])
-    const found = awayChanges(tasks.filter(task => !scheduledRun(task, notices)), bots, from)
+    const found = awayChanges(tasks.filter(task => !scheduledRun(task, notices, tasks)), bots, from, to)
     if (!found) return
     const { title, text } = awayText(found.rows, closingLang(await io.said(found.newest.botId).catch(() => []), found.newest.goal))
     await io.post({ id: randomUUID(), kind: 'system', key: 'away', title, text, botId: found.botId, at: new Date().toISOString(), read: false })

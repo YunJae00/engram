@@ -109,10 +109,9 @@ export async function teamReported(tasks: readonly DelegatedTask[], voice: (botI
     milestoneAt.set(task.id, now)
     const v = await voice(task.botId).catch((error: unknown) => { milestoneAt.delete(task.id); throw error })
     if (v.level === 'off' || v.level === 'attention' || BrowserWindow.getFocusedWindow()) continue
-    const last = fresh.reduce((a, b) => (b.finishedAt ?? '') > (a.finishedAt ?? '') ? b : a)
-    const role = (last.role.split('\n')[0] ?? '').replace(/\s+/g, ' ').trim().slice(0, 30)
+    // A member's role can carry the assignment itself, so the lock screen gets only the count.
     const ko = closingLang(v.transcript, task.goal) === 'ko'
-    const note = new Notification({ title: `${label(v.name)}: ${WORDS[ko ? 'ko' : 'en'].paused[0]}`, body: `${role} ${ko ? '끝' : 'finished'} (${done.length}/${lead.length})` })
+    const note = new Notification({ title: `${label(v.name)}: ${WORDS[ko ? 'ko' : 'en'].paused[0]}`, body: `${ko ? '팀원 끝' : 'Team member finished'} (${done.length}/${lead.length})` })
     note.on('click', () => { surface(); broadcast({ type: 'comet:open', botId: task.botId }) })
     note.show()
   }
