@@ -33,7 +33,7 @@ export function pageTools(deps: PageToolDeps, courier: WebCourier): AgentTool[] 
     if (page.wall) {
       deps.wallMet?.(page.url)
       const question = /[가-힣]/.test(context.task ?? '') ? '열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줄래?' : 'Can you complete the sign-in or check in the open page and tell me when it is done?'
-      return `The page needs the person to sign in or pass a check. It stays open in this thread. Call ask_person with this question, in these words: ${question} Then stop and wait.`
+      return `The page needs the person to sign in or pass a check. It stays open in this thread. Call ask_person with this question: ${question} Then stop and wait.`
     }
     if (!page.text.trim() && !page.dialog && !page.controls?.length && !page.faults?.length && !page.downloads?.length)
       return `${what}: done, but the page shows nothing readable yet - call read_open_page in a moment, or look at it with look`

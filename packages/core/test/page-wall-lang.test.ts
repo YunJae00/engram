@@ -13,7 +13,7 @@ const handoff = async (task: string): Promise<string> => {
 
 it('a sign-in wall after a page move asks in Korean in a Korean task', async () => {
   const text = await handoff('보고서를 열어줘')
-  expect(/this question, in these words: (.*?) Then stop/.exec(text)?.[1]).toMatch(/[가-힣]/)
+  expect(/this question: (.*?) Then stop/.exec(text)?.[1]).toMatch(/[가-힣]/)
 })
 
 it('keeps the English question in an English task', async () => {
