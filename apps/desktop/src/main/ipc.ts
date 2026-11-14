@@ -2485,7 +2485,13 @@ export function registerIpc(ctx: VaultContext): void {
       recordedRequests.add(request)
     }
     // Claude at its usage limit: the reply above is kept; say when it can pick up again.
-    if (isLimited('claude', channel)) { const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel)); turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 }); broadcast({ type: 'chat:error', channel, message: said, kind: 'quota', provider: 'Claude' }); return }
+    if (isLimited('claude', channel)) {
+      const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel))
+      if (bot) await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
+      turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 })
+      broadcast({ type: 'chat:done', channel, text: said })
+      return
+    }
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     // What this conversation already saved, so a later day can reopen it.
