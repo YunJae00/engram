@@ -91,7 +91,7 @@ it('keeps document work independent when the person types in another app', async
   const work = applicationWork('one')
   await work.show('100', 'Excel')
   fake.request.mockImplementation(async (method: string) => method === 'inputState' ? { escaped: false, intervention: 'new user input' } : { ...target, foreground: false })
-  await vi.advanceTimersByTimeAsync(101)
+  await vi.advanceTimersByTimeAsync(1101)
   expect(fake.status.application?.visible).toBe(false)
   expect(fake.request).toHaveBeenCalledWith('applicationFrameHide', { window: '100', pid: 23 })
   expect(work.signal.aborted).toBe(false)

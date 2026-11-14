@@ -4,10 +4,11 @@ import { DesktopHost } from './desktop-host.js'
 import { hideControlOverlay, overlayStatus, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
 import type { DesktopControlStatusDto } from '../shared/desktop.js'
 import { cancelDesktopTurn } from './desktop-control.js'
+import { steadyVisible } from './overlay-steady.js'
 
 type Bounds = { x: number; y: number; width: number; height: number }
 type WindowInfo = { window: string; pid: number; minimized: boolean; foreground: boolean; bounds: Bounds; visualBounds?: Bounds }
-type Activity = { lane: string; controller: AbortController; host: DesktopHost; revision: number; timer?: ReturnType<typeof setTimeout>; target?: WindowInfo; name?: string; status?: DesktopControlStatusDto }
+type Activity = { lane: string; controller: AbortController; host: DesktopHost; revision: number; hiddenSince?: number | undefined; timer?: ReturnType<typeof setTimeout>; target?: WindowInfo; name?: string; status?: DesktopControlStatusDto }
 let active: Activity | undefined
 
 export function clearApplicationWork(lane?: string): void {
@@ -29,12 +30,14 @@ export function stopApplicationWork(reason = 'You stopped application work.'): b
   return true
 }
 
-function applicationStatus(held: Activity, target: WindowInfo): DesktopControlStatusDto {
+function applicationStatus(held: Activity, target: WindowInfo, steady: boolean): DesktopControlStatusDto {
   const visibleBounds = target.visualBounds ?? target.bounds
   if (!visibleBounds || !Object.values(visibleBounds).every(Number.isFinite) || visibleBounds.width <= 0 || visibleBounds.height <= 0) throw new Error('The application window has no valid bounds')
   const rect = Object.fromEntries(Object.entries(visibleBounds).map(([key, value]) => [key, Math.round(value)])) as Bounds
   const bounds = target.minimized && held.status?.application ? held.status.application.bounds : screen.screenToDipRect(null, rect)
-  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible: !target.minimized && target.foreground, nativeFrame: true } }
+  const raw = !target.minimized && target.foreground
+  const visible = steadyVisible(held, raw, steady && held.status?.application?.visible === true)
+  return { state: 'running', lane: held.lane, inputActive: false, application: { name: held.name ?? 'the application', bounds, visible, nativeFrame: true } }
 }
 
 async function track(held: Activity, revision: number): Promise<void> {
@@ -47,11 +50,11 @@ async function track(held: Activity, revision: number): Promise<void> {
     if (input.escaped) { stopApplicationWork(); return }
     const target = await held.host.request<WindowInfo>('inspectWindow', { window: held.target.window, pid: held.target.pid })
     if (active !== held || held.revision !== revision || held.controller.signal.aborted) return
-    const status = applicationStatus(held, target)
-    if (JSON.stringify(status) !== JSON.stringify(held.status)) {
-      if (held.status?.application?.visible !== status.application?.visible) await held.host.request(status.application?.visible ? 'applicationFrame' : 'applicationFrameHide', { window: target.window, pid: target.pid })
-      held.status = status; updateControlOverlay(status)
-    }
+    const status = applicationStatus(held, target, true)
+    const visible = status.application?.visible === true
+    // The native frame hides itself 150 ms after its last show once the window leaves the foreground; re-showing each poll keeps it through a short loss.
+    if (visible ? !target.minimized : held.status?.application?.visible) await held.host.request(visible ? 'applicationFrame' : 'applicationFrameHide', { window: target.window, pid: target.pid })
+    if (JSON.stringify(status) !== JSON.stringify(held.status)) { held.status = status; updateControlOverlay(status) }
     held.timer = setTimeout(() => void track(held, revision), 100)
   } catch {
     if (active === held && held.revision === revision) stopApplicationWork('The application window could no longer be verified.')
@@ -83,10 +86,11 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       const hadFrame = held.status?.application?.visible
       held.target = target
       held.name = name
-      held.status = applicationStatus(held, target)
+      held.status = applicationStatus(held, target, !entering)
       await prepareControlOverlay(held.status)
       combined.throwIfAborted()
-      if (held.status.application?.visible) await held.host.request('applicationFrame', { window: target.window, pid: target.pid })
+      // A frame already up for this window is kept by the poll; sending it again would re-order it on every call.
+      if (held.status.application?.visible) { if (entering || !hadFrame || !target.foreground) await held.host.request('applicationFrame', { window: target.window, pid: target.pid }) }
       else if (hadFrame) await held.host.request('applicationFrameHide', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
       const input = await held.host.request<{ escaped: boolean }>('inputState', {})

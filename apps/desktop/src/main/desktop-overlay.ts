@@ -296,6 +296,14 @@ export function showControlOverlay(next: DesktopControlStatusDto): void {
 
 // Native input starts only after the single stop window is visible.
 export async function prepareControlOverlay(next: DesktopControlStatusDto): Promise<string> {
+  const held = pill
+  if (shown && held && !held.isDestroyed() && ready.has(held) && held.isVisible() && status.state === 'running' && status.lane === next.lane && !status.application === !next.application) {
+    // Already up for this session: keep the windows and the displayed input state as they are.
+    const same: DesktopControlStatusDto = { ...next, state: 'running', ...(status.inputActive === undefined ? {} : { inputActive: status.inputActive }) }
+    if (JSON.stringify(same) === JSON.stringify(status)) placePill()
+    else updateControlOverlay(same)
+    return held.getNativeWindowHandle().readBigUInt64LE().toString()
+  }
   showControlOverlay({ ...next, state: 'running' })
   const expected = pill
   // A cold renderer can take over five seconds under endpoint protection.

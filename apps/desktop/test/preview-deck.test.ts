@@ -3,12 +3,16 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
 import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
-import { previewOrder, previewAppVisible, previewNeighbor } from '../src/renderer/src/components/PreviewDeck.js'
+import { previewOrder, previewAppVisible, previewNeighbor, previewSlot } from '../src/renderer/src/components/PreviewDeck.js'
 import type { PreviewFrame } from '../src/renderer/src/components/usePreviewFrames.js'
 vi.mock('../src/renderer/src/api.js', () => ({ api: {} }))
 vi.mock('../src/renderer/src/lib/webPane.js', () => ({ useWebPane: () => ({}), webPane: {} }))
 vi.mock('../src/renderer/src/lib/agentMirrorLive.js', () => ({ agentMirror: {} }))
 const frame = (id: string, at: number, source: 'web' | 'app' = 'app'): PreviewFrame => ({ id, at, source, title: id, phase: 'ready' })
+it('keeps one card slot for a lane\'s web frame across navigations', () => {
+  expect(previewSlot(frame('one:web:https://a.example', 1, 'web'), 'one')).toBe(previewSlot(frame('one:web:https://b.example', 2, 'web'), 'one'))
+  expect(previewSlot(frame('one:window:1', 1), 'one')).toBe('one:window:1')
+})
 it('starts with the newest frame and brings new frames forward', () => {
   expect(previewOrder([], [frame('old', 1), frame('new', 2)])).toEqual(['new', 'old'])
   expect(previewOrder(['old'], [frame('old', 1), frame('new', 2)])).toEqual(['new', 'old'])

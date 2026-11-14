@@ -6,7 +6,8 @@ import { DesktopControlLease, DESKTOP_TOOL_ISOLATION_MESSAGE, type DesktopAction
 import type { DesktopControlStatusDto, DesktopEngineId, DesktopObservationDto } from '../shared/desktop.js'
 import { bindDesktopForLane, desktopForeground, rememberOpenedForeground, rememberLaunchedApp, refreshHiddenApp, rememberHiddenApp, desktopBinding, desktopChanged, setDesktopReleaseHook, type DesktopBinding } from './desktop-access.js'
 import { showWorkPreview } from './work-preview.js'
-import { hideControlOverlay, overlayPointer, prepareControlOverlay, updateControlOverlay } from './desktop-overlay.js'
+import { overlayPointer, prepareControlOverlay } from './desktop-overlay.js'
+import { controlAnnouncer } from './overlay-steady.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { DesktopHost } from './desktop-host.js'
@@ -54,12 +55,7 @@ export function desktopControlStatus(): DesktopControlStatusDto {
     ...(state.state === 'paused' ? { resumable: paused?.resumable === true, ...(state.lane && stoppedTurns.has(state.lane) ? { reason: stoppedTurns.get(state.lane) } : {}) } : {}),
   }
 }
-function announce(): void {
-  const status = desktopControlStatus()
-  if (status.state === 'running') updateControlOverlay(status)
-  else hideControlOverlay()
-  broadcast({ type: 'desktop:control', control: status })
-}
+const { announce, announceIdle } = controlAnnouncer(desktopControlStatus, () => active?.bindingNative === true, control => broadcast({ type: 'desktop:control', control }))
 export function stopDesktopControl(reason = 'You stopped computer control.', resumable = false): void {
   if (!resumable) {
     cancellation++
@@ -225,7 +221,7 @@ export async function withDesktopActivity<T>(lane: string, run: () => Promise<T>
       if (held?.binding.lane === lane && held.native && held.working) {
         try {
           await held.binding.host.request('idle', { window: held.binding.window, pid: held.binding.pid, lease: held.native })
-          if (active === held) { held.working = false; announce() }
+          if (active === held) { held.working = false; announceIdle() }
         } catch { if (active === held) stopDesktopControl('Computer control could not release input safely.') }
       }
     }

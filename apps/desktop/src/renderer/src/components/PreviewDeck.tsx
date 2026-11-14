@@ -22,6 +22,9 @@ export function previewNeighbor(frames: PreviewFrame[], id: string, direction: n
 export function previewAppVisible(frame: PreviewFrame | undefined, view: { hidden: boolean; collapsed: boolean }): boolean {
   return frame?.source === 'app' && frame.phase !== 'activity' && !view.hidden && !view.collapsed
 }
+export function previewSlot(frame: Pick<PreviewFrame, 'id' | 'source'>, lane: string): string {
+  return frame.source === 'web' ? `${lane}:web` : frame.id
+}
 export function PreviewDeck({ frames: all, busy, state, lang, lane, compact, onOpenWeb, active = true, overlay = false }: {
   frames: PreviewFrame[]; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
   lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean; overlay?: boolean
@@ -65,7 +68,7 @@ export function PreviewDeck({ frames: all, busy, state, lang, lane, compact, onO
     {ordered.slice(0, 4).map((id, position) => {
       const item = frames.find(frame => frame.id === id)!
       const image = images.current.get(id) ?? item.image
-      return <div key={id} className="preview-deck-card" data-position={position} data-frame={id} style={{ '--deck-position': position, zIndex: 4 - position } as CSSProperties}>
+      return <div key={previewSlot(item, lane)} className="preview-deck-card" data-position={position} data-frame={id} style={{ '--deck-position': position, zIndex: 4 - position } as CSSProperties}>
         {position === 0 ? <PreviewCard frame={item} busy={busy} state={state} lang={lang} lane={lane} compact={compact} onOpenWeb={onOpenWeb} onCollapse={() => change({ ...view, collapsed: true })} onHide={() => change({ ...view, hidden: true })} onSnapshot={snapshot} />
           : <button type="button" className="preview-deck-back" aria-label={item.title || words.browser} onClick={() => { setSelected(id); setOrder([id, ...ordered.filter(other => other !== id)]); surface.current?.focus() }}>{image ? <img src={image} alt="" /> : null}<span className="preview-deck-title">{item.title || words.browser}</span></button>}
       </div>
