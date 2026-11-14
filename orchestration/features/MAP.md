@@ -59,6 +59,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - One engine (Claude, `claude-opus-5-5` for work, `sonnet` for background judgment, `haiku` for chores and the instant first line; no engine/model/effort picker in composers, Settings defaults or onboarding) — unit only (`apps/desktop/test/one-engine.test.ts`, `apps/desktop/test/model-tiers.test.ts`).
 - Instant first line (haiku, races the answer) and Claude command sandbox (macOS) — unit only (`apps/desktop/test/model-tiers.test.ts`); sandbox confinement itself is not exercised by any test.
 - Desktop settle rhythm (wait for the app to stop, one-page scroll steps, single click retry) — unit-tested only (`apps/desktop/test/desktop-settle.test.ts`), because tests must not drive the real screen.
+- Hidden team (hire, review, release, big-plan chips, verify gate) — unit only (`packages/core/test/team-hire-tools.test.ts`, `apps/desktop/test/team-runner.test.ts`), fake engine; no live Claude run.
 - Stop honesty (stop mark kept after a cut answer, retry chip, plain sidebar preview) — unit-tested (`apps/desktop/test/stop-honest.test.ts`, `apps/desktop/test/task-closing.test.ts`).
 
 ## Brief shape

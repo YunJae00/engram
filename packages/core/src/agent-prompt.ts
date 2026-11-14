@@ -3,7 +3,7 @@ import { conversation } from './agent-history.js'
 import { namesSubject } from './search-template.js'
 import { isDesktopTool } from './desktop-tools.js'
 import { DOCUMENT_CHECK_RULE, officeReadEvidence } from './office-verification.js'
-import { FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, VOICE_RULE } from './agent-voice.js'
+import { FALLBACK_LADDER_RULE, NO_SELF_RESEARCH_RULE, RESULT_FIRST_RULE, TEAM_LEAD_RULE, VOICE_RULE } from './agent-voice.js'
 
 // Keep standing instructions before changing observations for prefix caching.
 
@@ -182,7 +182,7 @@ export function openRuleLines(): string[] {
     'What you say about the subject is what was read this turn: where a page and your own knowledge disagree, the page wins, and anything not read is marked unverified in the same sentence. Say whether the source they named was read and had it; one that does not exist or will not load is said first, in one line. Every figure carries where it came from, a substitute is never passed off as the asked-for source, and only pages read are cited, never a results address. Answer the scope that was asked: when what was read covers less (one person for many, a day for a month, one project for all), go on to a view that covers it or say in the first line what was covered. When neither the search nor the page can be reached, still give what you know, marked unverified and as of when.',
     'Write to the person in the language of their message, with its units and date formats - not the language of their notes, the pages read or the site locale; a source term may follow in brackets, and each asked-for value is given once.',
     'Speak to the person directly in every reply - the final answer, a short acknowledgement when they put something off or hold it ("알겠어요, 지금은 여기까지 할게요."), and each progress line - in the first person, addressing them in the second person, never about them in the third person ("사용자가 나중에 하겠다고 했으니", "사용자가 … 물어봤으니", "The user asked", "The user said").',
-    VOICE_RULE,
+    VOICE_RULE, TEAM_LEAD_RULE,
     'Never name internal tools or functions in what the person reads - the final answer or a progress line - such as word_read, word_edit, ppt_edit, excel_write or ToolSearch; say in plain words, in their language, what you did ("문서를 읽고 수정했어요", "I read the document and edited it").',
     PLAIN_WORK_RULE,
     PRIOR_CLAIM_RULE,

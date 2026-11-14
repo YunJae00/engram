@@ -169,7 +169,7 @@ import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
-import { canLearnTurn, holdTaskResult } from './task-result-state.js'
+import { canLearnTurn, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { notifyTask, surfaceComet } from './task-notify.js'
 import { keepStopMark } from './task-closing.js'
@@ -1781,12 +1781,12 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
   // It resumes once the brains have had a moment to connect after start.
-  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }
+  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => broadcast({ type: 'tasks:changed' }) })
   const tasks = taskRunner({
     paths,
     send: (request, turn) => { takeOutcome(request.channel ?? ''); return sendChat(request, undefined, undefined, turn) },
     outcome: takeOutcome,
-    abort: (channel) => abortAllChat(channel),
+    abort: (channel) => { abortAllChat(channel); void team.stop(channel).catch(error => flog('team', error)) },
     broadcast,
     // Finished work that did something is written down for the librarian to
     // file and link, so it outlives the conversation that did it.
@@ -1798,7 +1798,7 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
-    notify: (task) => { void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(async level => notifyTask(task, broadcast, level, await readBotTranscript(paths, task.botId, 40).catch(() => []))).catch(error => flog('task-notify', error)) },
+    notify: (task) => { void team.settled(task).catch(error => flog('team', error)); void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(async level => notifyTask(task, broadcast, level, await readBotTranscript(paths, task.botId, 40).catch(() => []))).catch(error => flog('task-notify', error)) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,
     // A check gets a bounded share of time; past it the draft is the answer.
@@ -1858,7 +1858,7 @@ export function registerIpc(ctx: VaultContext): void {
   const warmInterval = setInterval(() => void warmSpares().catch(error => flog('spare', error)), 60_000).unref()
   app.once('before-quit', () => { warmAbort.abort(); clearTimeout(warmTimer); clearInterval(warmInterval) })
 
-  setTimeout(() => void tasks.resume().catch((error) => flog('tasks', error)), 15_000).unref()
+  setTimeout(() => void tasks.resume().then(() => team.resume()).catch((error) => flog('tasks', error)), 15_000).unref()
 
   ipcMain.handle('routines:wallDone', (_e, routineId: string, verdict: 'resolved' | 'skip') => {
     routineWallWaiters.get(String(routineId))?.(verdict === 'resolved' ? 'resolved' : 'skip')
@@ -2295,7 +2295,7 @@ export function registerIpc(ctx: VaultContext): void {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); endFirstLine(entry.channel)
-      afterTurn(entry.channel)
+      afterTurn(entry.channel); void team.turnEnded(entry.channel).catch(error => flog('team', error))
       takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
       releaseBrowser()
@@ -2341,7 +2341,7 @@ export function registerIpc(ctx: VaultContext): void {
     const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
-      ask: what => studying.has(channel) ? Promise.resolve('cancel') : tasks.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
+      ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
     }) : []
     return [...cometTools({
       paths,
@@ -2359,7 +2359,7 @@ export function registerIpc(ctx: VaultContext): void {
       // a new comet never inherits the page an old one left open.
       courier: agentBrowserAvailable()
         ? agentCourier({
-            askBeforePress: unlessStudying(channel, tasks.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
+            askBeforePress: unlessStudying(channel, team.askFor(channel, askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))) ?? askBeforePress(channel, approvals, (detail) => audit('approval', { detail }))),
             lane: channel,
             onLook: (url, covered) => audit('look', { url, detail: `${covered} secret field${covered === 1 ? '' : 's'} covered` }),
             onAside: (phase) => {
@@ -2421,7 +2421,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })] : []),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }),
     deskActivityTool,
     notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
@@ -2706,7 +2706,7 @@ export function registerIpc(ctx: VaultContext): void {
         takeTurnScripts(channel)
         const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = team.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
@@ -2727,7 +2727,7 @@ export function registerIpc(ctx: VaultContext): void {
             signal,
             tokenBudget: turn?.tokenBudget,
             onUsage: tokens => { tokensUsed += tokens },
-            waitingForPerson: () => tasks.waitingForPerson(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
+            waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
@@ -2737,7 +2737,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid) ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', firstSaid].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || team.note(channel)) ? { attachmentContext: [attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes

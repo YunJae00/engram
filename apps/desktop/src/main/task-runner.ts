@@ -16,7 +16,7 @@ import {
   recordPlaybook,
   routineCardExpired,
   TASK_MAX_TURNS,
-  TASK_TOKEN_BUDGET,
+  TASK_TOKEN_BUDGET, teamReviewIssue, teamUnverified,
   tasksToResume,
   updateTask,
   withoutReplies,
@@ -137,8 +137,8 @@ export function taskRunner(deps: {
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
-        t.verified = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !outcome.budgetExhausted && freshResultReadback(outcome.trail ?? [])
-        if (!t.verified) t.verificationIssue = outcome.check.issues.join('; ') || 'The result has no fresh readback.'
+        t.verified = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !outcome.budgetExhausted && freshResultReadback(outcome.trail ?? []) && !teamReviewIssue(t)
+        if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || 'The result has no fresh readback.'
         else delete t.verificationIssue
       }
       delete t.verificationPending
@@ -147,7 +147,7 @@ export function taskRunner(deps: {
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
-      else if (deps.offered?.(channelOf(t)) && !outcome.unfinished && !pending.length && (!outcome.check || t.verified)) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
+      else if (deps.offered?.(channelOf(t)) && !outcome.unfinished && !pending.length && (!outcome.check || t.verified) && !teamUnverified(t)) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
       else if (outcome.check && !t.verified && !outcome.unfinished) {
@@ -171,7 +171,7 @@ export function taskRunner(deps: {
           continuations.set(id, { count, reason })
           logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
         }
-      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
+      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t)) { verifyNext.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     if (after?.state === 'failed' && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')

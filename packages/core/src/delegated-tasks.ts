@@ -23,6 +23,23 @@ export interface TaskApproval {
   settled?: boolean
 }
 
+export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
+// One hidden worker hired for a part of the task; parentId null means the lead hired it.
+export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; deliverable?: string; state: MemberState; result?: string; files?: string[]; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
+// planTurn is the task turn in which the big plan was last sent back to be shown; only a later turn can approve it.
+export interface TaskTeam { members: TeamMember[]; hires: number; maxHires: number; maxDepth: number; big: boolean; approvedAt?: string; planTurn?: number }
+export const TEAM_MAX_HIRES = 8
+export const TEAM_MAX_DEPTH = 3
+export const MEMBER_RESULT_CHARS = 2000
+const MEMBER_STATES = ['hired', 'working', 'waiting', 'reviewing', 'done', 'failed', 'released']
+const count = (n: unknown): boolean => Number.isInteger(n) && (n as number) >= 0
+function validTeam(team: Partial<TaskTeam> | null): boolean {
+  return !!team && Array.isArray(team.members) && count(team.hires) && count(team.maxHires) && count(team.maxDepth) && typeof team.big === 'boolean' && team.members.every(m =>
+    typeof m?.id === 'string' && typeof m.role === 'string' && typeof m.brief === 'string' && typeof m.sessionKey === 'string' && (m.parentId === null || typeof m.parentId === 'string')
+    && Number.isInteger(m.depth) && m.depth >= 1 && m.depth <= TEAM_MAX_DEPTH && MEMBER_STATES.includes(m.state) && (m.result === undefined || typeof m.result === 'string' && m.result.length <= MEMBER_RESULT_CHARS)
+    && (m.files === undefined || Array.isArray(m.files) && m.files.every(f => typeof f === 'string')) && Number.isFinite(Date.parse(m.hiredAt)))
+}
+
 export interface DelegatedTask {
   id: string
   goal: string
@@ -48,6 +65,8 @@ export interface DelegatedTask {
   // The latest answer, and the lines of progress the person sees.
   result?: string
   log: { at: string; line: string }[]
+  // The hidden team hired for this task (team-hire-tools.ts).
+  team?: TaskTeam
 }
 
 // Turn count is a fallback for engines that do not report token usage.
@@ -62,7 +81,7 @@ const file = (paths: VaultPaths) => join(paths.cache, 'tasks.json')
 async function readTasks(paths: VaultPaths): Promise<DelegatedTask[]> {
   try {
     const raw = JSON.parse(await readFile(file(paths), 'utf8')) as { tasks?: unknown }
-    if (!Array.isArray(raw.tasks) || raw.tasks.some(t => typeof t?.id !== 'string' || typeof t?.goal !== 'string' || typeof t?.botId !== 'string' || !['queued', 'running', 'waiting', 'done', 'failed', 'stopped'].includes(t.state) || !Number.isInteger(t.turns) || t.turns < 0 || t.tokensUsed !== undefined && (!Number.isSafeInteger(t.tokensUsed) || t.tokensUsed < 0) || !Number.isFinite(Date.parse(t.createdAt)) || !Number.isFinite(Date.parse(t.updatedAt)) || !Array.isArray(t.approvals) || !Array.isArray(t.log))) throw new Error('Invalid saved tasks; the file was preserved.')
+    if (!Array.isArray(raw.tasks) || raw.tasks.some(t => typeof t?.id !== 'string' || typeof t?.goal !== 'string' || typeof t?.botId !== 'string' || !['queued', 'running', 'waiting', 'done', 'failed', 'stopped'].includes(t.state) || !Number.isInteger(t.turns) || t.turns < 0 || t.tokensUsed !== undefined && (!Number.isSafeInteger(t.tokensUsed) || t.tokensUsed < 0) || !Number.isFinite(Date.parse(t.createdAt)) || !Number.isFinite(Date.parse(t.updatedAt)) || !Array.isArray(t.approvals) || !Array.isArray(t.log) || t.team !== undefined && !validTeam(t.team))) throw new Error('Invalid saved tasks; the file was preserved.')
     return raw.tasks as DelegatedTask[]
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []

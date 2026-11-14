@@ -95,7 +95,7 @@ export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRul
 export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_CARD_TTL_MS, routineCardExpired, serializeReviewRules, type ReviewAction, type ReviewDecision, type ReviewRule, type ReviewRuleKind } from './review-rules.js'
 export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'
 export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools.js'
-export { teamTool } from './team-tools.js'
+export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,
@@ -145,7 +145,7 @@ export type { ReasoningEffort } from './engine/types.js'
 export { REASONING_EFFORTS } from './engine/types.js'
 export { gitEnv, bundledGitEnv } from './git.js'
 export { changeHunks, undoChangeHunk } from './change-review.js'
-export { cometRecord, createTask, continuationPrompt, listTasks, logTask, tasksToResume, updateTask, TASK_MAX_TURNS, TASK_TOKEN_BUDGET, type DelegatedTask, type TaskApproval, type TaskState } from './delegated-tasks.js'
+export { cometRecord, createTask, continuationPrompt, listTasks, logTask, tasksToResume, updateTask, TASK_MAX_TURNS, TASK_TOKEN_BUDGET, TEAM_MAX_HIRES, TEAM_MAX_DEPTH, MEMBER_RESULT_CHARS, type TaskTeam, type TeamMember, type MemberState, type DelegatedTask, type TaskApproval, type TaskState } from './delegated-tasks.js'
 export { PROFILE_NOTE_ID, PROFILE_TYPE, profileLines, syncPersonNote } from './person-note.js'
 export { findPlaybook, learnedPlaces, playbookContext, readPlaybooks, recordPlaybook, type MeaningScores, type Playbook } from './task-playbooks.js'
 export { GUIDE_SCHEMA, guideBody, guideForPrompt, guideNote, guidePrompt, WORK_GUIDE_NOTE_ID, WORK_GUIDE_TYPE, type GuideAnswer } from './work-guide.js'

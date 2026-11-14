@@ -1,11 +1,11 @@
-import { appendBotTurn, readBotTranscript, withoutSecrets, type DelegatedTask, type TurnStep, type VaultPaths } from 'core'
+import { appendBotTurn, readBotTranscript, withoutSecrets, type DelegatedTask, type TaskTeam, type TurnStep, type VaultPaths } from 'core'
 import type { EngramEvent } from '../shared/types.js'
 import { flog } from './flog.js'
 
 export type ClosingReason = 'budget' | 'turn-limit' | 'error' | 'empty' | 'restart'
 export type ClosingLang = 'en' | 'ko'
 type Turn = { role: string; text: string; at?: string; progress?: boolean }
-export interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string; log?: readonly { line: string }[] }
+export interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string; log?: readonly { line: string }[]; team?: TaskTeam }
 
 export const ENDED_LOG = 'The turn ended without an answer.'
 const ENDED_KO = '답을 마치지 못하고 끝났어요.'
@@ -17,6 +17,7 @@ export function closingLang(transcript: readonly Turn[], goal: string): ClosingL
   return isKorean(asked ?? goal) ? 'ko' : 'en'
 }
 
+const finishedMembers = (team: TaskTeam) => team.members.filter(m => m.state === 'done' || m.state === 'released' && !m.result?.startsWith('Failed:'))
 const cut = (text: string, max: number) => { const line = (text.split('\n')[0] ?? '').trim(); return line.length > max ? `${line.slice(0, max - 1)}…` : line }
 
 const WORDS = {
@@ -28,6 +29,7 @@ const WORDS = {
     more: (n: number) => ` 외 ${n}개`,
     milestone: (line: string) => `마지막 진행: ${line}`,
     approved: (words: string) => `“${words}” 승인`,
+    team: (done: number, total: number, missing: string) => `팀 ${total}명 중 ${done}명 완료${missing ? ` (남은 일: ${missing})` : ''}`,
     missing: {
       budget: (g: string) => `${g} 작업이 처리 한도에 닿아 끝나지 않았어요.`,
       'turn-limit': (g: string) => `${g} 작업이 진행 횟수 한도에 닿아 끝나지 않았어요.`,
@@ -51,6 +53,7 @@ const WORDS = {
     more: (n: number) => ` and ${n} more`,
     milestone: (line: string) => `Last step: ${line}`,
     approved: (words: string) => `approved “${words}”`,
+    team: (done: number, total: number, missing: string) => `${done} of ${total} team members finished${missing ? ` (not finished: ${missing})` : ''}`,
     missing: {
       budget: (g: string) => `${g} stopped at the task's processing limit before it was finished.`,
       'turn-limit': (g: string) => `${g} stopped at the task's turn limit before it was finished.`,
@@ -76,6 +79,7 @@ export function closingMessage(input: ClosingInput, reason: ClosingReason, lang:
   const parts = [
     ...(input.work ? [w.steps(input.work)] : []),
     ...(confirmed ? [w.confirmed(confirmed)] : []),
+    ...(input.team?.members.length ? [w.team(finishedMembers(input.team).length, input.team.members.length, input.team.members.filter(m => !finishedMembers(input.team!).includes(m)).map(m => m.role).slice(0, 4).join(', '))] : []),
     ...(names.length ? [w.files(names.slice(0, 3).join(', ') + (names.length > 3 ? w.more(names.length - 3) : ''))] : []),
   ]
   const progress = [...recent].reverse().find(turn => turn.progress && turn.text.trim())
@@ -95,7 +99,7 @@ export const isRestartQuestion = (question: string): boolean => question === LEG
 
 export async function restartQuestion(paths: VaultPaths, task: DelegatedTask): Promise<string> {
   const transcript = await readBotTranscript(paths, task.botId).catch(() => [])
-  return closingMessage({ goal: task.goal, work: task.work, result: task.result, transcript, since: task.createdAt, log: task.log }, 'restart', closingLang(transcript, task.goal))
+  return closingMessage({ goal: task.goal, work: task.work, result: task.result, transcript, since: task.createdAt, log: task.log, team: task.team }, 'restart', closingLang(transcript, task.goal))
 }
 
 // Every end the person did not ask for leaves one closing message in the thread; a raw error goes out only when this end is not the task's own.
@@ -114,7 +118,7 @@ export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEven
   }
   if (!own) { if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: raw }); return }
   const transcript = await readBotTranscript(paths, task.botId).catch(() => [])
-  const text = closingMessage({ goal: task.goal, work: task.work, trail, result: task.result, transcript, since: task.createdAt, detail: raw, log: task.log }, reason, closingLang(transcript, task.goal))
+  const text = closingMessage({ goal: task.goal, work: task.work, trail, result: task.result, transcript, since: task.createdAt, detail: raw, log: task.log, team: task.team }, reason, closingLang(transcript, task.goal))
   try { await appendBotTurn(paths, task.botId, { role: 'assistant', text, at: new Date().toISOString() }) } catch (e) { flog('tasks', e) }
   if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: text })
   else { broadcast({ type: 'comet:continue', channel, botId: task.botId }); broadcast({ type: 'chat:done', channel, text }) }
