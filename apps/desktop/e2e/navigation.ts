@@ -44,3 +44,16 @@ export async function closeTestApp(app: ElectronApplication | undefined): Promis
 export async function expandPreview(page: Page | Locator): Promise<void> {
   await expect(page.getByTestId('preview-card')).toBeVisible()
 }
+
+export async function openCreateBotDialog(page: Page): Promise<void> {
+  await page.evaluate(() => { window.dispatchEvent(new Event('engram:open-create-bot')) })
+}
+
+// Selection is not restored on load, so a reload is the way back to the welcome composer.
+export async function openWelcome(page: Page): Promise<void> {
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
+  if (!await page.getByTestId('bots-view').isVisible()) await openActivity(page, 'bots')
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+}

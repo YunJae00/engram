@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, expandPreview, openActivity } from './navigation.js'
+import { closeTestApp, expandPreview, openActivity, openWelcome } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -273,7 +273,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
   expect(Math.abs(retryBox!.y + retryBox!.height / 2 - settingsBox!.y - settingsBox!.height / 2)).toBeLessThan(2)
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
   await page.setViewportSize({ width: 1100, height: 825 })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await page.getByTestId('welcome-input-add').click()
   await page.getByTestId('welcome-web').click()
   await expandPreview(page)
@@ -307,7 +307,7 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await page.getByRole('tab', { name: '127.0.0.1', exact: true }).click()
     await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url))).toBe(url)
     const firstTabs = await page.evaluate(lane => window.engram.browserTabs(lane), lane)
-    await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+    await openWelcome(page)
     await page.getByTestId('welcome-input-add').click()
     await page.getByTestId('welcome-web').click()
     await expandPreview(page)

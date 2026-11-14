@@ -6,7 +6,7 @@ import { TOUR_DONE_KEY } from '../lib/tour.js'
 // resolves to exact i18n keys and stays compile-checked.
 const STEPS = [
   { anchor: null, key: 'welcome' },
-  { anchor: '[data-testid="bots-new"]', key: 'comets' },
+  { anchor: '[data-testid="sidebar-create"]', key: 'comets' },
   { anchor: '[data-testid="workspace-switcher"]', key: 'cosmos' },
   { anchor: '[data-testid="activity-settings"]', key: 'brain' },
 ] as const

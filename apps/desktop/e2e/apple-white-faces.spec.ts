@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault } from 'core'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, openCreateBotDialog } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const M = 'APPLE-WHITE'
@@ -81,8 +81,7 @@ test('apple white chrome and larger faces', async () => {
     await open(empty.id)
     await face('empty state', page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"] .bot-avatar'), 80)
 
-    await page.locator('.app-sidebar [data-testid="sidebar-create"]').click()
-    await page.getByTestId('bots-new').click()
+    await openCreateBotDialog(page)
     const dialog = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
     await expect(dialog, `${M} create-bot-dialog opens`).toBeVisible()
     await page.getByTestId('create-bot-name').fill('New')

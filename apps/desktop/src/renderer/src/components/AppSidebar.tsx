@@ -15,7 +15,8 @@ import { SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 import { SidebarPrimary } from './SidebarPrimary.js'
-import { groupSidebarBots, matchesSidebarSearch, sidebarSearchEmpty } from '../lib/sidebarBots.js'
+import { groupSidebarBots, isEmptyUntitled, matchesSidebarSearch, sidebarSearchEmpty } from '../lib/sidebarBots.js'
+import { SidebarSpaceMenu } from './SidebarSpaceMenu.js'
 import { CreateBotDialog } from './CreateBotDialog.js'
 
 interface Props {
@@ -42,6 +43,9 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [creating, setCreating] = useState({ chat: 0, routine: 0 })
   const [waiting, setWaiting] = useState<Set<string>>(new Set())
   const [creatingBot, setCreatingBot] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [spaceMenu, setSpaceMenu] = useState<{ x: number; y: number } | null>(null)
+  const plusBusy = useRef(false), plusBot = useRef<BotDto | null>(null)
   useEffect(() => { const open = () => setCreatingBot(true); window.addEventListener('engram:open-create-bot', open); return () => window.removeEventListener('engram:open-create-bot', open) }, [])
   const reloadGeneration = useRef(0)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
@@ -114,6 +118,22 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
   const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
+  const focusComposer = () => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
+  const newBot = async () => {
+    if (plusBusy.current) return
+    const id = cometThreads.getSnapshot().selectedId
+    // The list reloads on a debounce, so the bot this button just made may not be in it yet.
+    const open = bots.find(bot => bot.id === id) ?? (plusBot.current?.id === id ? plusBot.current : undefined)
+    setQuery(''); setCreateError('')
+    if (isEmptyUntitled(open, t('bots.untitled'), cometThreads.getSnapshot().threads[id ?? '']?.messages.length ?? 0)) { openBot(open.id); focusComposer(); return }
+    plusBusy.current = true
+    try {
+      const bot = await api.botCreate({ name: t('bots.untitled'), purpose: '' })
+      plusBot.current = bot
+      openBot(bot.id); focusComposer()
+    } catch { setCreateError(t('createBot.failed')) }
+    finally { plusBusy.current = false }
+  }
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
   const matchingRoutines = search ? routines.filter(routine => routine.name.toLocaleLowerCase().includes(search)) : routines
@@ -135,15 +155,18 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       event.stopPropagation()
       if (query) { event.preventDefault(); setQuery('') } else { flushSync(() => setSearchOpen(false)); searchToggle.current?.focus() }
     }} />{query && <button aria-label={t('sidebar.clearSearch')} onClick={() => { setQuery(''); searchInput.current?.focus() }}><X size={13} aria-hidden /></button>}</div>
-    <button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label={t('sidebar.create')} title={t('sidebar.create')} disabled={!vaultReady} {...{ popovertarget: createId }} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
-    <div id={createId} ref={createMenu} {...{ popover: "auto" }} className="sidebar-create-menu" aria-label={t('sidebar.create')}>
-      {!library && <button data-testid="bots-new" disabled={!vaultReady} onClick={() => { createMenu.current?.hidePopover(); setActivity('bots'); selectComet(null); setQuery(''); if (window.innerWidth <= 900) onToggle(); setCreatingBot(true) }}><Plus size={16} aria-hidden />{t('bots.new')}</button>}
-      <button aria-label={library ? t('sidebar.newRoutineFolder') : t('sidebar.newSection')} onClick={() => { createMenu.current?.hidePopover(); newFolder(library ? 'routine' : 'chat') }}><FolderPlus size={16} aria-hidden />{library ? t('sidebar.newFolder') : t('sidebar.newSection')}</button>
-    </div>
+    <button className={`sidebar-icon-button sidebar-create${library ? '' : ' bots-top-button'}`} data-testid="sidebar-create" aria-label={t('sidebar.create')} title={t('sidebar.create')} disabled={!vaultReady} {...library ? { popovertarget: createId } : {}} onClick={event => { if (!library) { void newBot(); return } const rect = event.currentTarget.getBoundingClientRect(); if (createMenu.current) Object.assign(createMenu.current.style, { left: `${Math.max(8, rect.right - 200)}px`, top: `${rect.bottom + 6}px` }) }}><Plus size={18} aria-hidden /></button></div>
+    {library && <div id={createId} ref={createMenu} {...{ popover: "auto" }} className="sidebar-create-menu" aria-label={t('sidebar.create')}>
+      <button aria-label={t('sidebar.newRoutineFolder')} onClick={() => { createMenu.current?.hidePopover(); newFolder('routine') }}><FolderPlus size={16} aria-hidden />{t('sidebar.newFolder')}</button>
+    </div>}
     {library && <button className="sidebar-new" onClick={() => navigate('bots')}><ArrowLeft size={17} aria-hidden /><span>{t('sidebar.conversations')}</span></button>}
-    <div className="sidebar-scroll">
+    <div className="sidebar-scroll" onContextMenu={library ? undefined : event => {
+      if ((event.target as Element).closest('[role="treeitem"], button, input, a')) return
+      event.preventDefault(); setSpaceMenu({ x: event.clientX, y: event.clientY })
+    }}>
+      {!library && <div className="sidebar-tree-head"><span>{t('sidebar.bots')}</span><button className="sidebar-icon-button" data-testid="sidebar-new-folder" aria-label={t('sidebar.newSection')} title={t('sidebar.newSection')} disabled={!vaultReady} onClick={() => newFolder('chat')}><FolderPlus size={15} aria-hidden /></button></div>}
       {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && (activity === 'bots' || activity === 'mission')} onOpen={openBot} />}
-      {layoutError && <p className="sidebar-empty" role="alert">{layoutError}</p>}
+      {(layoutError || createError) && <p className="sidebar-empty" role="alert">{layoutError || createError}</p>}
       <section className="sidebar-section sidebar-conversations" aria-label={library ? t('sidebar.savedRoutines') : t('sidebar.conversations')}>
         {library && <h2 className="sidebar-library-title">{t('sidebar.routines')}</h2>}
         {library ? collection('routine') : <div role="tree" aria-label={t('sidebar.bots')} className="sidebar-bots-tree">{collection('chat')}</div>}
@@ -155,6 +178,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       <SidebarStatus />
       <button data-testid="activity-settings" aria-label={t('sidebar.settings')} title={t('sidebar.settings')} onClick={onOpenSettings}><Settings size={16} aria-hidden /><span>{t('sidebar.settings')}</span></button>
     </footer>
+    {spaceMenu && <SidebarSpaceMenu at={spaceMenu} onClose={() => setSpaceMenu(null)} onNewFolder={() => newFolder('chat')} />}
     {creatingBot && <CreateBotDialog onClose={() => setCreatingBot(false)} onCreated={bot => openBot(bot.id)} />}
   </aside>
 }

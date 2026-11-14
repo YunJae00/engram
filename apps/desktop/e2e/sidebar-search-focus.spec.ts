@@ -21,7 +21,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await page.setViewportSize({ width: 1280, height: 840 })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
 })
 
 test.afterAll(async () => { await app?.close() })

@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault, type Bot } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -32,7 +32,7 @@ test.beforeAll(async () => {
   await page.setViewportSize({ width: 1280, height: 840 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
 })
 
 test.afterAll(async () => { await app?.close() })
@@ -46,8 +46,7 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   }, target.id)
   const before = await page.evaluate(() => window.engram.sidebarLayout())
   await openActivity(page, 'bots')
-  await page.getByTestId('sidebar-create').click()
-  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const targetRow = page.getByTestId(`bot-${target.id}`)
   const otherRow = page.getByTestId(`bot-${other.id}`)

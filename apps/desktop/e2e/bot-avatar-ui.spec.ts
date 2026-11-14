@@ -2,7 +2,7 @@ import { expect, test, _electron as electron, type ElectronApplication, type Loc
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp } from './navigation.js'
+import { closeTestApp, openWelcome } from './navigation.js'
 import { seedVisualVault } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
@@ -46,7 +46,7 @@ test.describe.serial('bot avatar ui', () => {
     if (!await page.evaluate(() => innerWidth === 1280 && innerHeight === 800)) await page.setViewportSize({ width: 1280, height: 800 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(page.getByTestId('shell')).toBeVisible()
-    await expect(page.getByTestId('bots-new')).toBeEnabled()
+    await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   })
 
   test.afterAll(async () => {
@@ -55,8 +55,7 @@ test.describe.serial('bot avatar ui', () => {
   })
 
   test('welcome shows the primary bot at 80px', async () => {
-    await page.getByTestId('sidebar-create').click()
-    await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+    await openWelcome(page)
     const avatar = page.locator('[data-testid="comet-welcome"] .comet-welcome-mark .bot-avatar[data-size="64"][data-state="idle"]')
     await expect(avatar).toBeVisible()
     await square(avatar, 80)

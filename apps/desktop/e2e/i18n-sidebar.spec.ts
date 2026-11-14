@@ -26,7 +26,7 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     if (!await page.evaluate(() => innerWidth === 1280 && innerHeight === 800)) await page.setViewportSize({ width: 1280, height: 800 })
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(page.getByTestId('shell')).toBeVisible()
-    await expect(page.getByTestId('bots-new')).toBeEnabled()
+    await expect(page.getByTestId('sidebar-create')).toBeEnabled()
     await expect(page.getByTestId('activity-settings')).toHaveAttribute('aria-label', lang === 'en' ? 'Settings' : '설정')
     const row = page.getByTestId(`bot-${chatId}`)
     const earlier = page.getByTestId('sidebar-earlier')

@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault } from 'core'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, openCreateBotDialog } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const SHOTS = fileURLToPath(new URL('../../../tmp/visual/rd-apple-white-larger-faces/', import.meta.url))
@@ -190,8 +190,7 @@ test('cream+ink screen finish and empty state', async () => {
     await openActivity(page, 'bots')
 
     const before = await page.evaluate(() => window.engram.botsList().then(list => list.length))
-    await page.locator('.app-sidebar [data-testid="sidebar-create"]').click()
-    await page.getByTestId('bots-new').click()
+    await openCreateBotDialog(page)
     const create = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
     await expect(create).toBeVisible()
     await page.getByTestId('create-bot-name').fill('새 봇')

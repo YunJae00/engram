@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 let app: ElectronApplication, page: Page
@@ -107,7 +107,7 @@ test('bookmark import selects a browser profile in a readable modal', async () =
     ipcMain.handle('bookmarks:import', (_event, id) => { if (id !== 'edge:Default') throw new Error('Wrong profile'); if (++attempts === 1) throw new Error('Profile is temporarily unavailable'); imported = true; return items })
   })
   await openActivity(page, 'bots')
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await page.getByTestId('welcome-input-add').click()
   await page.getByTestId('welcome-web').click()
   await page.getByRole('button', { name: 'Bookmarks', exact: true }).click()

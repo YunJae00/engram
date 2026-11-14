@@ -25,7 +25,7 @@ async function launch(theme: 'light' | 'dark'): Promise<{ app: ElectronApplicati
   if (!await page.evaluate(() => innerWidth === 1280 && innerHeight === 800)) await page.setViewportSize({ width: 1280, height: 800 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   return { app, page, vault }
 }
 

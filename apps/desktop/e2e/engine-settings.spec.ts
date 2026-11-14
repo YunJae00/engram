@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -194,7 +194,7 @@ test('a disconnected Claude account shows in AI settings without changing accoun
 
 test('welcome and conversation footer controls align inside narrow composers without a model picker', async () => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   for (const surface of ['welcome', 'conversation']) {
     if (surface === 'conversation') {
       await page.setViewportSize({ width: 1280, height: 880 })
@@ -305,7 +305,7 @@ test('the composer shows no model menu after reload while the catalog request is
     ipcMain.handle('models:list', () => new Promise<void>(resolve => { replies.push(resolve) }))
   })
   await page.reload()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('welcome-input')).toBeEditable()
   await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.getByTestId('model-picker-menu')).toHaveCount(0)

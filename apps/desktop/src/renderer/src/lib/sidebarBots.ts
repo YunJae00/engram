@@ -37,3 +37,7 @@ export function botMenuItems(bot: BotDto, place: { folder: string | null; pinned
   items.push({ label: t('sidebar.moveToNewSection'), run: { kind: 'new-section' } }, { label: t('sidebar.hide'), run: { kind: 'update', patch: { hidden: true } } }, primary, remove)
   return items
 }
+
+export function isEmptyUntitled(bot: BotDto | undefined, untitled: string, turns: number): bot is BotDto {
+  return !!bot && bot.name === untitled && !bot.lastMessage && turns === 0
+}

@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot, type Vaul
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -20,7 +20,7 @@ async function launch(): Promise<void> {
   const userData = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-userdata-'))
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow(); await page.setViewportSize({ width: 1280, height: 840 }); await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(page.getByTestId('shell')).toBeVisible(); await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('shell')).toBeVisible(); await expect(page.getByTestId('sidebar-create')).toBeEnabled()
 }
 
 test.beforeAll(async () => {
@@ -166,21 +166,22 @@ test('one create menu is keyboard accessible, dismissible, and compact in both t
     await page.setViewportSize({ width, height: 840 })
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await showSidebar()
-    const trigger = page.getByTestId('sidebar-create')
-    const menu = page.locator('.sidebar-create-menu')
-    await expect(page.getByTestId('bots-new')).toBeHidden()
+    const trigger = page.getByTestId('sidebar-new-folder')
+    const menu = page.locator('.sidebar-menu')
+    await expect(page.locator('.sidebar-create-menu')).toHaveCount(0); await expect(page.getByTestId('bots-new')).toHaveCount(0)
     await trigger.focus(); await page.keyboard.press('Enter')
-    await expect(menu).toBeVisible()
-    await expect(menu.getByTestId('bots-new')).toBeVisible()
-    await expect(menu.getByRole('button', { name: 'New section' })).toBeVisible()
-    await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
+    const name = page.getByTestId('sidebar-chat-folder-name')
+    await expect(name).toBeFocused()
     await capture(`minimal-create-${theme}.png`)
-    await page.keyboard.press('Escape')
-    await expect(menu).toBeHidden()
-    await expect(trigger).toBeFocused()
-    await trigger.click()
-    await page.getByTestId('sidebar-search-toggle').click();
-    await expect(menu).toBeHidden()
+    await page.keyboard.press('Escape'); await expect(name).toHaveCount(0)
+    const scroll = page.locator('.sidebar-scroll')
+    await scroll.evaluate(node => { node.scrollTop = node.scrollHeight })
+    const box = (await scroll.boundingBox())!
+    await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
+    await expect(menu.getByTestId('sidebar-space-new-folder')).toBeFocused()
+    await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
+    await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0)
+    await scroll.evaluate(node => { node.scrollTop = 0 })
   }
   await page.setViewportSize({ width: 1280, height: 940 })
   await page.evaluate(async () => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme: 'light' }))
@@ -198,8 +199,7 @@ test('Create stays visible while long conversations scroll', async () => {
   await expect(button).toBeInViewport()
   const after = await button.boundingBox()
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
-  await button.click()
-  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.comet-welcome-mark [data-icon="comet-face"]')).toBeVisible()
   await capture('restored-conversation-icons.png')
@@ -324,7 +324,7 @@ test('conversation menus replace dates on interaction and pin without losing fol
   await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
   const before = (await page.evaluate(() => window.engram.sidebarLayout())).chat
   await page.reload()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
   expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before)
   await options.click()
@@ -335,7 +335,7 @@ test('conversation menus replace dates on interaction and pin without losing fol
 
 test('welcome Web opens a new selected chat and transfers its draft without sending', async () => {
   await showSidebar()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const draft = 'Check the release checklist on the project website.'
   await page.getByTestId('welcome-input').fill(draft)

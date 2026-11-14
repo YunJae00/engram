@@ -107,10 +107,12 @@ test('a sidebar row menu takes the first Esc', async () => {
 
 test('the create popover takes the first Esc', async () => {
   await openByPointer()
-  await page.getByTestId('sidebar-create').click()
-  await expect(page.locator(':popover-open')).toHaveCount(1)
+  const scroll = page.locator('.sidebar-scroll')
+  const box = (await scroll.boundingBox())!
+  await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
+  await expect(page.getByTestId('sidebar-space-new-folder')).toBeFocused()
   await page.keyboard.press('Escape')
-  await expect(page.locator(':popover-open')).toHaveCount(0)
+  await expect(page.locator('.sidebar-menu')).toHaveCount(0)
   await expectOpen()
   await page.keyboard.press('Escape')
   await expectClosed()

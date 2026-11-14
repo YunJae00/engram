@@ -242,3 +242,4 @@
 .sidebar-bell-off { flex: none; width: 12px; height: 12px; color: var(--fg-faint); }
 .sidebar-bots-tree [role="treeitem"]:focus-visible { outline: none; }
 .sidebar-bots-tree li[role="treeitem"]:focus-visible, .sidebar-bots-tree [role="treeitem"]:focus-visible > .sidebar-folder-head { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.sidebar-tree-head { display: flex; align-items: center; justify-content: space-between; min-height: 30px; padding: 0 4px 0 12px; color: var(--fg-faint); font-size: var(--fs-micro); font-weight: 600; }

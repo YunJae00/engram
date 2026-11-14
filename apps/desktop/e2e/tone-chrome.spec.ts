@@ -3,7 +3,7 @@ import { appendBotTurn, initVault, type Bot } from 'core'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, openCreateBotDialog } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const SHOTS = fileURLToPath(new URL('../../../tmp/visual/rd-tone-tokens-chrome/', import.meta.url))
@@ -175,8 +175,7 @@ test('cream+ink tokens and chrome on key screens', async () => {
     await page.keyboard.press('Escape')
     await expect(page.locator('.settings-overlay')).toHaveCount(0)
 
-    await page.locator('.app-sidebar [data-testid="sidebar-create"]').click()
-    await page.getByTestId('bots-new').click()
+    await openCreateBotDialog(page)
     const dialog = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
     await expect(dialog).toBeVisible()
     const box = await styleOf(page, '[data-testid="create-bot-dialog"]', ['background-color'])

@@ -58,9 +58,9 @@ test('a quiet conversation stays in the list', async () => {
 })
 
 test('a new conversation runs as a task to the end', async () => {
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
-  await page.getByTestId('welcome-input').fill('Summarize the deploy procedure for the team')
-  await page.getByTestId('welcome-input-send').click()
+  await page.getByTestId('sidebar-create').click()
+  await page.getByTestId('bots-view').getByTestId('bots-input').fill('Summarize the deploy procedure for the team')
+  await page.getByTestId('bots-view').getByTestId('bots-input-send').click()
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept', { timeout: 30_000 })
   await expect.poll(async () => (await listTasks(paths)).map((task) => [task.goal, task.state]), { timeout: 30_000 }).toEqual([['Summarize the deploy procedure for the team', 'done']])
 })

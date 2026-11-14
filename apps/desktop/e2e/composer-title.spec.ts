@@ -2,7 +2,7 @@ import { expect, test, _electron as electron, type Page } from '@playwright/test
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, openWelcome } from './navigation.js'
 import { CHAT_ID, seedVisualVault } from './visual/seed.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -41,7 +41,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.setViewportSize({ width: 1280, height: 800 })
       await page.emulateMedia({ reducedMotion: 'reduce' })
       await expect(page.getByTestId('shell')).toBeVisible()
-      await expect(page.getByTestId('bots-new')).toBeEnabled()
+      await expect(page.getByTestId('sidebar-create')).toBeEnabled()
       await expect.poll(() => page.evaluate(() => document.documentElement.dataset['theme'])).toBe(theme)
       const row = page.getByTestId(`bot-${CHAT_ID}`)
       const earlier = page.getByTestId('sidebar-earlier')
@@ -107,8 +107,7 @@ for (const theme of ['light', 'dark'] as const) {
       const first = await box(page, `${VIEW} [data-testid="bots-thread"] .bubble-msg`)
       expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-title-pill"]`)).bottom)
 
-      await page.getByTestId('sidebar-create').click()
-      await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+      await openWelcome(page)
       await expect(page.getByTestId('welcome-input')).toBeVisible()
       await expect(page.locator('.comet-welcome .chat-write')).toHaveCSS('border-radius', '22px')
       const welcomeSend = await box(page, '.comet-welcome .chat-send-btn')

@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 import { createCard, createNote, initVault, parseNote, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -236,7 +236,7 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await page.getByTestId('app-sidebar-open').click()
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
 
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion')).toHaveCount(0)
   await page.reload()
@@ -280,7 +280,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
       return result
     }, kind)
-    await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: kind === 'chat' ? 'New section' : 'New routine folder' }).click()
+    if (kind === 'chat') await page.getByTestId('sidebar-new-folder').click(); else { await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: 'New routine folder' }).click() }
     const input = page.getByTestId(`sidebar-${kind}-folder-name`)
     await input.fill(`${kind} Work`)
     await input.press('Enter')

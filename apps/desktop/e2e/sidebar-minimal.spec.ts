@@ -55,8 +55,7 @@ test.describe.serial('minimal sidebar', () => {
       await expect(head.locator('small')).toHaveText(/^\d+$/)
     }
     await expect(heads.locator('span')).toHaveText(['Home', 'Money'])
-    await page.getByTestId('sidebar-create').click()
-    const newSection = page.locator('.sidebar-create-menu').getByRole('button', { name: 'New section' })
+    const newSection = page.getByTestId('sidebar-new-folder')
     await expect(newSection).toBeVisible()
     await expect(newSection.locator('svg')).toHaveCount(1)
     await newSection.click()

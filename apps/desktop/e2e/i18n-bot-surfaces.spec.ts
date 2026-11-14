@@ -2,7 +2,7 @@ import { expect, test, _electron as electron, type Page } from '@playwright/test
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp } from './navigation.js'
+import { closeTestApp, openCreateBotDialog } from './navigation.js'
 import { seedVisualVault } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
@@ -58,8 +58,7 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     await page.keyboard.press('Escape')
     await expect(pane).toBeHidden()
 
-    await page.locator('.app-sidebar [data-testid="sidebar-create"]').click()
-    await page.getByTestId('bots-new').first().click()
+    await openCreateBotDialog(page)
     const dialog = page.getByTestId('create-bot-dialog')
     await expect(dialog).toBeVisible()
     await dialog.getByTestId('create-bot-avatar-change').click()

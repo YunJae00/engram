@@ -3,6 +3,7 @@ import { initVault, type VaultPaths } from 'core'
 import { copyFile, mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openWelcome } from './navigation.js'
 
 // The product promise, end to end: "remember this" said to a comet → the
 // answer carries a ✓ Remembered receipt (never the <engram:capture> plumbing)
@@ -71,7 +72,7 @@ test('remember said to a comet → ✓ Remembered receipt, plumbing never shown'
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const composer = page.getByTestId('welcome-input')
   await composer.fill('Please keep this decision for me')

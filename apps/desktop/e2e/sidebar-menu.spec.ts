@@ -29,7 +29,7 @@ async function launch(theme: 'light' | 'dark', prepare?: Prepare): Promise<{ pag
   if (!await page.evaluate(() => innerWidth === 1280 && innerHeight === 800)) await page.setViewportSize({ width: 1280, height: 800 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   return { page, cache }
 }
 
@@ -47,24 +47,26 @@ test.describe('sidebar bot menu', () => {
   test('menu opens from the options button, right-click and Shift+F10', async () => {
     const { page } = await launch('light')
     const dialog = menu(page, 'Budget review'), button = more(page, 'Budget review')
+    // Inside the tree, closing the menu returns focus to its row.
+    const row = page.locator('.app-sidebar [role="tree"] [data-tree-item="item:vis-budget"]')
     await button.click()
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to Home', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
-    await expect(button).toBeFocused()
+    await expect(row).toBeFocused()
     await page.getByTestId('bot-vis-budget').click({ button: 'right' })
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
-    await expect(button).toBeFocused()
+    await expect(row).toBeFocused()
     await page.getByTestId('bot-vis-budget').focus()
     await page.keyboard.press('Shift+F10')
     await expect(dialog).toBeVisible()
     await expect(page.locator('[role="dialog"][aria-label^="Options for"]')).toHaveCount(1)
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
-    await expect(button).toBeFocused()
+    await expect(row).toBeFocused()
   })
 
   test('menu has 12px corners and 32px items in light and dark', async () => {

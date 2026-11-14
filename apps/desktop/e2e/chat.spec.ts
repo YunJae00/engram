@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { openActivity } from './navigation.js'
+import { openActivity, openWelcome } from './navigation.js'
 import { appendBotTurn, createBot, createNote, initVault, recordBotSites, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -58,8 +58,8 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
-  const composer = page.getByTestId('welcome-input')
+  await page.getByTestId('sidebar-create').click()
+  const composer = page.getByTestId('bots-view').getByTestId('bots-input')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
   await composer.press('Enter')
@@ -170,7 +170,7 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
 })
 test('the selected comet is remembered across tabs', async () => {
   const count = await page.locator('.bots-row').count()
-  await page.getByTestId('sidebar-create').click(); await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.bots-row')).toHaveCount(count)
   await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
@@ -204,7 +204,7 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await expect(page.locator('.bots-write textarea')).toHaveValue('unsent thought')
 })
 test('conversation keeps narration between compact activity groups and shows visited website icons', async () => {
-  await expect(page.getByTestId('bots-new')).toBeEnabled({ timeout: 60_000 })
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled({ timeout: 60_000 })
   const bot = await createBot(paths, { name: 'Research and review' })
   await recordBotSites(paths, bot.id, ['https://example.com/research'])
   await app.evaluate(({ ipcMain }) => {

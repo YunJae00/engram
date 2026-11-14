@@ -2,7 +2,7 @@ import { expect, test, _electron as electron, type ElectronApplication, type Loc
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp } from './navigation.js'
+import { closeTestApp, openCreateBotDialog } from './navigation.js'
 import { seedVisualVault, CHAT_ID } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
@@ -25,13 +25,12 @@ async function launch(theme: 'light' | 'dark'): Promise<Page> {
   if (!await page.evaluate(() => innerWidth === 1280 && innerHeight === 800)) await page.setViewportSize({ width: 1280, height: 800 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   return page
 }
 
 async function openPicker(page: Page): Promise<Locator> {
-  await page.locator('.app-sidebar [data-testid="sidebar-create"]').click()
-  await page.getByTestId('bots-new').click()
+  await openCreateBotDialog(page)
   const dialog = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
   await expect(dialog).toBeVisible()
   await dialog.getByTestId('create-bot-avatar-change').click()

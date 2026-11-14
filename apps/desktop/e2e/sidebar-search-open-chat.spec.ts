@@ -3,6 +3,7 @@ import { appendBotTurn, createBot, initVault, type Bot } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -28,7 +29,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await page.setViewportSize({ width: 1280, height: 840 })
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect(page.getByTestId('bots-new')).toBeEnabled()
+  await expect(page.getByTestId('sidebar-create')).toBeEnabled()
 })
 
 test.afterAll(async () => { await app?.close() })
@@ -92,8 +93,7 @@ test('a pinned open chat that does not match is hidden too', async () => {
 })
 
 test('a chat started during a non-matching search is not listed until the search is cleared', async () => {
-  await page.getByTestId('sidebar-create').click()
-  await page.getByTestId('bots-new').click(); await page.keyboard.press('Escape')
+  await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await page.getByTestId('sidebar-search-toggle').click(); await search().fill('qqqzzz')
   await expect(empty()).toBeVisible()
