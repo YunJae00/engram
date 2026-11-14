@@ -619,7 +619,6 @@ async function bootVault(root: string): Promise<VaultContext> {
     void revalidateEngines(ctx).then(() => {
       enginesDetected = true
       broadcast({ type: 'engines:detected' })
-      // The first-line voice is opened now, not when first needed: a runtime start takes longer than its budget.
       void chatEngine('bot-first-line', ctx.engines).then(live => warmFirstLine(live, engineCwd(ctx.paths))).catch(() => undefined)
     })
     // A brain switched in Settings becomes usable the moment it is chosen —

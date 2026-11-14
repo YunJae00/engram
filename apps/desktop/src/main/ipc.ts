@@ -224,15 +224,7 @@ import type {
   OpenLoopDto,
   SweepReportDto,
 } from '../shared/types.js'
-import {
-  broadcast,
-  engineDto,
-  markEngineOk,
-  noteEngineFailure,
-  noteRunOutcome,
-  revalidateEngines,
-  tapBroadcast,
-} from './engine-health.js'
+import { broadcast, engineDto, markEngineOk, noteEngineFailure, noteRunOutcome, revalidateEngines, tapBroadcast } from './engine-health.js'
 import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
 import { syncSessionContext } from './session-context.js'

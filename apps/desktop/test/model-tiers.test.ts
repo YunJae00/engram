@@ -176,7 +176,7 @@ describe('instant first line', () => {
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
     const skipped: Partial<FirstLineAsk>[] = [
-      { message: '안녕' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' }, { message: 'How are you?' }, { message: "what's up" }, { message: '잘 지냈어요?' }, { message: 'how are you doing today?' },
+      { message: '안녕' }, { message: 'ㅇㅇ' }, { message: '??' }, { message: '👍' }, { message: 'ok' }, { message: '네!' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' }, { message: 'How are you?' }, { message: "what's up" }, { message: '잘 지냈어요?' }, { message: 'how are you doing today?' },
       { studying: true }, { limited: true }, { followUp: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' },
     ]
     for (const patch of skipped) {
@@ -191,7 +191,7 @@ describe('instant first line', () => {
     expect(wantsFirstLine(ask())).toBeNull()
     expect(wantsFirstLine(ask({ message: 'Summarize the attached contract and list the risks', korean: false }))).toBeNull()
     // A short question can be a job; the small model answers NONE when one sentence settles it.
-    for (const message of ['Can you draft the Q3 report?', 'ok, draft the report', 'What is 2+2?', '고마워, 이제 계약서 요약해줘']) expect(wantsFirstLine(ask({ message, korean: false })), message).toBeNull()
+    for (const message of ['메일 써줘', '소설 써줘', 'help', 'Can you draft the Q3 report?', 'ok, draft the report', 'What is 2+2?', '고마워, 이제 계약서 요약해줘']) expect(wantsFirstLine(ask({ message, korean: false })), message).toBeNull()
   })
 
   it('stays silent for mock or missing engines, NONE answers and failures', async () => {

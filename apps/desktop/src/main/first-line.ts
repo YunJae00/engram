@@ -29,7 +29,8 @@ const log = (fields: Record<string, unknown>): void => flog('first-line', JSON.s
 // model answers NONE for one a single sentence settles.
 function plainReply(message: string): boolean {
   const text = message.trim(), size = [...text].length
-  if (size < CHAT_MIN) return true
+  // A few signs with no words ("ㅇㅇ", "??", "👍") are a reaction; a few words ("메일 써줘") can be a job.
+  if (size < CHAT_MIN && !/[\p{Script=Latin}\p{N}가-힣\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return true
   if (text.includes('\n') || size > PLAIN_MAX) return false
   const opening = SMALL_TALK.exec(text)
   return !!opening && SMALL_TAIL.test(text.slice(opening[0].length))
