@@ -43,7 +43,7 @@ describe('e2e schedules', () => {
     mkdirSync(join(root, 'tmp'), { recursive: true })
     const fixture = mkdtempSync(join(root, 'tmp/e2e-manifest-'))
     const git = (...args: string[]) => execFileSync('git', args, { cwd: fixture, encoding: 'utf8' }).trim()
-    const select = () => execFileSync(process.execPath, ['scripts/e2e-affected.mjs', '--list', 'package.json'], { cwd: fixture, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    const select = () => execFileSync(process.execPath, ['scripts/e2e-affected.mjs', '--list', 'package.json'], { cwd: fixture, env: { ...process.env, ENGRAM_CHECK_BASE: '' }, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
     try {
       mkdirSync(join(fixture, 'scripts'), { recursive: true })
       mkdirSync(join(fixture, 'apps/desktop/e2e'), { recursive: true })
