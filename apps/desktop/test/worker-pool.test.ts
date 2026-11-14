@@ -358,6 +358,61 @@ describe('leases', () => {
   })
 })
 
+describe('borrowed leases', () => {
+  it('a borrowed child waiting for the person lends the slot at target 1 and gets it back after the answer', async () => {
+    const { p } = pool(1)
+    const parent = await p.lease()
+    const child = await withLease(parent!, () => insideSlot(() => p.lease()))
+    expect(p.running).toBe(1)
+    let answer!: () => void
+    let resumed = false
+    const asked = withLease(child!, () => whileWaitingForPerson(() => new Promise<void>(resolve => { answer = resolve }))).then(() => { resumed = true })
+    await flush()
+    expect(p.running).toBe(0)
+    const chat = track(withTurnPriority({ interactive: true }, () => p.acquire()))
+    await flush()
+    expect(chat.settled).toBe(true)
+    answer(); await flush()
+    expect(resumed).toBe(false)
+    chat.release?.(); await flush()
+    await asked
+    expect(resumed).toBe(true)
+    expect(p.running).toBe(1)
+    child!.end(); parent!.end()
+    expect(p.running).toBe(0)
+  })
+
+  it('ending a parent while its borrowed child runs keeps the slot until the child ends', async () => {
+    const { p } = pool(1)
+    const parent = await p.lease()
+    const child = await withLease(parent!, () => insideSlot(() => p.lease()))
+    parent!.end()
+    expect(p.running).toBe(1)
+    const next = track(p.acquire())
+    await flush()
+    expect(next.settled).toBe(false)
+    child!.end(); await flush()
+    expect(next.settled).toBe(true)
+    next.release?.()
+    expect(p.running).toBe(0)
+  })
+
+  it('a grandchild waiting for the person also lends the slot', async () => {
+    const { p } = pool(1)
+    const parent = await p.lease()
+    const child = await withLease(parent!, () => insideSlot(() => p.lease()))
+    const grandchild = await withLease(child!, () => insideSlot(() => p.lease()))
+    let answer!: () => void
+    const asked = withLease(grandchild!, () => whileWaitingForPerson(() => new Promise<void>(resolve => { answer = resolve })))
+    await flush()
+    expect(p.running).toBe(0)
+    answer(); await asked
+    expect(p.running).toBe(1)
+    grandchild!.end(); child!.end(); parent!.end()
+    expect(p.running).toBe(0)
+  })
+})
+
 describe('leases through a warm session', () => {
   // A stand-in runtime whose tool pump lives as long as the session, like the real one.
   const sdk: SessionSdk = {

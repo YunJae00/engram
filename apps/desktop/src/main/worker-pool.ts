@@ -124,30 +124,32 @@ export async function whileWaitingForPerson<T>(run: () => Promise<T>): Promise<T
 // The same, around an asking function (approval cards): the slot goes to the next turn while the person decides.
 export const lendingSlot = <A extends unknown[], R>(ask: (...args: A) => Promise<R>) => (...args: A): Promise<R> => whileWaitingForPerson(() => ask(...args))
 
-// One turn's hold on the pool: a real slot, or a borrowed turn of its parent's slot.
+// One turn's hold on the pool. A root lease owns a real slot; a nested turn may borrow its parent's
+// (children run one at a time while the parent waits on them). The slot is held while anyone in the
+// tree is working and lent out while all of them wait for the person; it is never freed under a running child.
+const NO_SLOT = (): void => undefined
 export class Lease {
   private free: (() => void) | null
   private pauses = 0
   private ended = false
-  private resuming: Promise<void> | null = null
+  private readonly children = new Set<Lease>()
   private chain: Promise<void> = Promise.resolve()
-  constructor(private readonly pool: WorkerPool, free: () => void, readonly interactive: boolean, private readonly signal?: AbortSignal) { this.free = free }
-  get held(): boolean { return this.free !== null }
-  pause(): void {
-    if (this.pauses++ > 0 || !this.free) return
-    const free = this.free
-    this.free = null
-    free()
+  private regain: Promise<void> | null = null
+  constructor(private readonly pool: WorkerPool, free: (() => void) | null, readonly interactive: boolean, private readonly signal?: AbortSignal, private readonly parent?: Lease, private readonly unlock?: () => void) {
+    this.free = free
+    parent?.children.add(this)
   }
-  resume(): Promise<void> {
+  private get root(): Lease { return this.parent ? this.parent.root : this }
+  // Working: live, not waiting for the person, and not blocked on a nested turn of its own.
+  private working(): boolean { return !this.ended && this.pauses === 0 && this.children.size === 0 }
+  private needed(): boolean { return this.working() || [...this.children].some(child => child.needed()) }
+  // A nested turn may borrow this lease while it is live and its tree holds the slot.
+  get held(): boolean { return !this.ended && this.root.free !== null }
+  pause(): void { this.pauses++; this.root.settle() }
+  async resume(): Promise<void> {
     if (this.pauses > 0) this.pauses--
-    if (this.pauses > 0 || this.ended || this.free) return this.resuming ?? Promise.resolve()
-    this.resuming ??= (async () => {
-      const free = await scope.run({ interactive: this.interactive }, () => this.pool.acquire(this.signal))
-      if (this.ended || this.pauses > 0) free?.()
-      else this.free = free
-    })().finally(() => { this.resuming = null })
-    return this.resuming
+    this.root.settle()
+    if (this.pauses === 0 && !this.ended) await this.root.regain
   }
   // Nested turns of this lease's holder run one at a time in its slot while the holder waits on them.
   borrow(): Promise<() => void> {
@@ -158,10 +160,24 @@ export class Lease {
     return ready.then(() => { let done = false; return () => { if (!done) { done = true; unlock() } } })
   }
   end(): void {
+    if (this.ended) return
     this.ended = true
-    const free = this.free
-    this.free = null
-    free?.()
+    const root = this.root
+    this.parent?.children.delete(this)
+    this.unlock?.()
+    root.settle()
+  }
+  private settle(): void {
+    if (this.free === NO_SLOT) return
+    const need = this.needed()
+    if (!need && this.free) { const free = this.free; this.free = null; free(); return }
+    if (!need || this.free || this.regain || this.signal?.aborted) return
+    this.regain = (async () => {
+      const free = await scope.run({ interactive: this.interactive }, () => this.pool.acquire(this.signal))
+      this.regain = null
+      if (free && this.needed() && !this.free) this.free = free
+      else free?.()
+    })()
   }
 }
 
@@ -196,12 +212,7 @@ export class WorkerPool {
   acquire(signal?: AbortSignal): Promise<(() => void) | null> {
     if (signal?.aborted) return Promise.resolve(null)
     const store = scope.getStore()
-    if (store?.inside) {
-      const lease = store.lease
-      if (!lease) return Promise.resolve(() => undefined)
-      if (this.running < this.target && this.waiters.length === 0) { this.running++; return Promise.resolve(this.releaser()) }
-      if (lease.held) return lease.borrow().then(release => { if (!signal?.aborted) return release; release(); return null })
-    }
+    if (store?.inside) return this.lease(signal).then(lease => lease && (() => lease.end()))
     if (!this.ticker) {
       this.ticker = setInterval(() => void this.sampleNow(), this.intervalMs).unref()
       this.log(`base ${this.base}`)
@@ -276,9 +287,23 @@ export class WorkerPool {
 
   // A turn's hold, so it can lend its slot while waiting for the person or to its nested turns.
   async lease(signal?: AbortSignal): Promise<Lease | null> {
+    if (signal?.aborted) return null
     const store = scope.getStore()
-    const free = await this.acquire(signal)
-    return free ? new Lease(this, free, store?.interactive === true || store?.lease?.interactive === true, signal) : null
+    const interactive = store?.interactive === true || store?.lease?.interactive === true
+    const parent = store?.inside ? store.lease : undefined
+    // A tool outside any leased turn (no pool context) takes nothing, as before.
+    if (store?.inside && !parent) return new Lease(this, NO_SLOT, interactive, signal)
+    if (parent) {
+      if (this.running < this.target && this.waiters.length === 0) { this.running++; return new Lease(this, this.releaser(), interactive, signal) }
+      if (parent.held) {
+        const unlock = await parent.borrow()
+        if (signal?.aborted) { unlock(); return null }
+        if (parent.held) return new Lease(this, null, interactive, signal, parent, unlock)
+        unlock()
+      }
+    }
+    const free = await scope.run({ interactive }, () => this.acquire(signal))
+    return free ? new Lease(this, free, interactive, signal) : null
   }
 }
 
