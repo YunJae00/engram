@@ -92,7 +92,7 @@ import {
   declineStanding,
   renameBot,
   titleFromMessage,
-  UNTITLED_BOT_NAME,
+  isUntitledBotName,
   secretsIn,
   safeAddress,
   listRoutines,
@@ -2447,7 +2447,7 @@ export function registerIpc(ctx: VaultContext): void {
     const webOnly = savedRoutine?.task?.surface === 'web'
     const channel = request.channel ?? 'panel'
     const bot = request.botId ? (await loadBots(paths)).find((b) => b.id === request.botId) : undefined
-    const firstTitle = bot?.name === UNTITLED_BOT_NAME && secretsIn(request.message).length === 0 ? titleFromMessage(request.message) : null
+    const firstTitle = isUntitledBotName(bot?.name) && secretsIn(request.message).length === 0 ? titleFromMessage(request.message) : null
     if (bot && firstTitle) {
       await renameBot(paths, bot.id, firstTitle)
       broadcast({ type: 'bots:changed' })
