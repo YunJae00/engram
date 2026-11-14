@@ -56,7 +56,8 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - System volume (`system_volume` desktop tool) — unit-tested only (`apps/desktop/test/desktop-volume.test.ts`), because tests must not change the real volume.
 - Desktop text insertion and the Enter send gate — unit only (`apps/desktop/test/desktop-text-insert.test.ts`); never typed into a real KakaoTalk, Claude or ChatGPT window.
 - Desktop wrap-up verdict (open → type → read back, 했어/못 했어, never done while moving) — unit only (`apps/desktop/test/desktop-wrapup.test.ts`); never typed into a real ChatGPT, Claude or KakaoTalk window.
-- One engine (Claude, `claude-opus-5-5` for work, `haiku` for chores; no engine/model/effort picker in composers, Settings defaults or onboarding) — unit only (`apps/desktop/test/one-engine.test.ts`).
+- One engine (Claude, `claude-opus-5-5` for work, `sonnet` for background judgment, `haiku` for chores and the instant first line; no engine/model/effort picker in composers, Settings defaults or onboarding) — unit only (`apps/desktop/test/one-engine.test.ts`, `apps/desktop/test/model-tiers.test.ts`).
+- Instant first line (haiku, races the answer) and Claude command sandbox (macOS) — unit only (`apps/desktop/test/model-tiers.test.ts`); sandbox confinement itself is not exercised by any test.
 - Desktop settle rhythm (wait for the app to stop, one-page scroll steps, single click retry) — unit-tested only (`apps/desktop/test/desktop-settle.test.ts`), because tests must not drive the real screen.
 - Stop honesty (stop mark kept after a cut answer, retry chip, plain sidebar preview) — unit-tested (`apps/desktop/test/stop-honest.test.ts`, `apps/desktop/test/task-closing.test.ts`).
 

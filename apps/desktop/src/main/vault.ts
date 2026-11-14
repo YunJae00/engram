@@ -60,6 +60,9 @@ export async function saveVaultRoot(root: string): Promise<void> {
   await registerWorkspace({ name: 'Engram', root, kind: 'personal' })
 }
 
+// In-app background work runs on Claude whatever was stored.
+const filing = (settings: Parameters<typeof aiSelection>[0]) => ({ ...aiSelection(settings, 'filing'), engine: 'claude' as const })
+
 // Background work uses only the filing selection. Conversations resolve
 // their own selection separately; an unavailable provider never falls back.
 export async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
@@ -71,7 +74,7 @@ export async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Eng
     return [dir ? await MockEngine.fromDir(dir, Number.isFinite(gapMs) ? { gapMs } : {}) : new MockEngine({}, hang)]
   }
   if (engineFlag === 'none') return []
-  const selection = aiSelection(await loadSettings(), 'filing')
+  const selection = filing(await loadSettings())
   const chosen = selection.engine
   const engine = Object.assign(withModel(createEngine(chosen), selection.model, selection.effort), { authConfirmed: false })
   const known = keepSet(keep).has(chosen)
@@ -115,7 +118,7 @@ export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Pro
 }
 
 export async function synchronizeFilingProbe(ctx: VaultContext, states: EngineStatusDto[]): Promise<void> {
-  const selection = aiSelection(await loadSettings(), 'filing')
+  const selection = filing(await loadSettings())
   const status = states.find(state => state.id === selection.engine)
   const current = ctx.engines.find(engine => engine.id === selection.engine) as (Engine & { authConfirmed?: boolean }) | undefined
   if (status && status.conclusive !== false && (status.loggedIn && status.installed) !== (current?.authConfirmed === true)) await revalidateEngines(ctx, false, false)
@@ -129,7 +132,7 @@ export async function refreshEngines(ctx: VaultContext, selectionOnly = false): 
   const revision = (detectionRevision.get(ctx) ?? 0) + 1
   detectionRevision.set(ctx, revision)
   if (selectionOnly && (process.env['ENGRAM_ENGINE'] ?? 'auto') === 'auto') {
-    const selection = aiSelection(await loadSettings(), 'filing')
+    const selection = filing(await loadSettings())
     const next = withModel(createEngine(selection.engine), selection.model, selection.effort) as Engine & { authConfirmed?: boolean; accountProfile?: string }
     const previous = ctx.engines.find(engine => engine.id === selection.engine) as typeof next | undefined
     if (previous && previous.accountProfile === next.accountProfile) {

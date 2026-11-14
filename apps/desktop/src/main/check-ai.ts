@@ -12,7 +12,7 @@ let pending: Promise<void> | undefined
 export function checkAISelection(): Promise<void> {
   if (pending) return pending
   const request = (async () => {
-    const selection = aiSelection(await loadSettings(), 'filing')
+    const selection = { ...aiSelection(await loadSettings(), 'filing'), engine: 'claude' as const }
     const profile = activeAccountProfile(selection.engine)
     const engine = ['mock', 'none'].includes(process.env['ENGRAM_ENGINE'] ?? '')
       ? (await resolveEngines())[0]
@@ -21,7 +21,7 @@ export function checkAISelection(): Promise<void> {
     const folder = join(app.getPath('userData'), 'tmp', 'connection-check')
     await mkdir(folder, { recursive: true })
     await verifySetupConnection(engine, engineCwd({ workspace: folder, privateDir: '' }), undefined, async () => {
-      if (profile !== activeAccountProfile(selection.engine) || JSON.stringify(selection) !== JSON.stringify(aiSelection(await loadSettings(), 'filing'))) throw new Error('Your AI selection changed during the check. Try again.')
+      if (profile !== activeAccountProfile(selection.engine) || JSON.stringify(selection) !== JSON.stringify({ ...aiSelection(await loadSettings(), 'filing'), engine: 'claude' })) throw new Error('Your AI selection changed during the check. Try again.')
     })
   })().finally(() => { pending = undefined })
   pending = request

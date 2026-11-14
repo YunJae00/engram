@@ -4,7 +4,7 @@ import { dirname } from 'node:path'
 import { renameWithRetry, REASONING_EFFORTS } from 'core'
 import type { DevPreferences, DevRepo, DevRule, DevSession } from '../shared/developers.js'
 
-export const DEV_DEFAULTS: DevPreferences = { enabled: false, provider: 'codex', model: '', mode: 'review', isolate: true, loadProjectSettings: false }
+export const DEV_DEFAULTS: DevPreferences = { enabled: false, provider: 'claude', model: '', mode: 'review', isolate: true, loadProjectSettings: false }
 export function devPreferences(value: unknown, before = DEV_DEFAULTS): DevPreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid developer preferences.')
   const patch = value as Record<string, unknown>

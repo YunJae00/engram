@@ -21,6 +21,10 @@ const PLAN_ONLY = 'Plan mode: commands and file changes are off. Read what you n
 const allow: NativeDecision = { behavior: 'allow' }
 const DECLINED = 'The person declined a command in this turn, so no command runs until they write again. Do not try another command. Finish with what you have, or ask the person one short plain-language question with ask_person.'
 
+// Claude Code's own command sandbox needs nothing installed on macOS only; ENGRAM_CLAUDE_SANDBOX=0 is the dev switch back to cards.
+export const commandSandbox = (engineId: string): boolean =>
+  engineId === 'codex' || (engineId === 'claude' && process.platform === 'darwin' && process.env['ENGRAM_CLAUDE_SANDBOX'] !== '0')
+
 export interface NativePolicy {
   cwd: string
   roots: string[]
@@ -82,9 +86,12 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
     if (!command) return deny('Supply a command.')
     if (policy.mode === 'plan') return deny(PLAN_ONLY)
     if (policy.declined) return deny(DECLINED)
-    const unbounded = policy.mode === 'auto' && policy.sandboxed !== true
+    // A command that asks to leave the sandbox is never covered by the sandbox allowance or a one-time grant.
+    const escaping = input['dangerouslyDisableSandbox'] === true
+    const sandboxed = policy.sandboxed === true && !escaping
+    const unbounded = (policy.mode === 'auto' && !sandboxed) || escaping
     const each = policy.mode === 'each' || unbounded
-    if ((policy.mode === 'auto' && policy.sandboxed === true) || (!each && policy.commands.allowed)) return allow
+    if ((policy.mode === 'auto' && sandboxed) || (!each && policy.commands.allowed)) return allow
     const ask = policy.ask
     if (!ask) return deny('Commands are not available in this chat.')
     if (unbounded && command.length > 16_000) return deny('This command is too long to review. Use a smaller command.')
@@ -169,7 +176,7 @@ export function rememberWorkFolder(paths: VaultPaths, channel: string, folder: s
   return pending
 }
 
-export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools> {
+export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools & { sandbox?: Record<string, unknown> }> {
   const cwd = assignedFolder(options.paths, options.cwd ?? await workFolderFor(options.paths, options.channel))
   await mkdir(cwd, { recursive: true })
   if ((await lstat(cwd)).isSymbolicLink() || !within(await realpath(options.paths.workspace), await realpath(cwd))) throw new Error('A comet work folder cannot redirect outside this workspace.')
@@ -181,6 +188,11 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
   return {
     cwd,
     readRoots: roots,
+    ...(options.sandboxed ? { sandbox: {
+      enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true,
+      network: { allowedDomains: [], strictAllowlist: true },
+      filesystem: { denyRead: [options.paths.privateDir], denyWrite: roots.filter(root => root !== cwd && !within(root, cwd)) },
+    } } : {}),
     ...(options.mode ? { mode: options.mode } : {}),
     ready: () => (policy.mode === 'auto' && policy.sandboxed === true) || ((policy.mode ?? 'once') === 'once' && policy.commands.allowed),
     decide: (name, input, signal) => nativeDecision(policy, name, input, signal),

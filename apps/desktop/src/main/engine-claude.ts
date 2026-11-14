@@ -1,4 +1,5 @@
-import { modelCall } from './model-call-metrics.js'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { currentModelCallContext, modelCall } from './model-call-metrics.js'
 import { logSessionTools } from './session-diagnostics.js'
 import { askInTurn } from './voice-line.js'
 import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobInput, type ToolSessionJob, type ToolSessionResult } from 'core'
@@ -17,8 +18,22 @@ import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeCo
 export function chosenModel(hint?: string): string {
   const forced = process.env['ENGRAM_CLAUDE_MODEL']?.trim()
   if (forced) return forced
-  return hint === 'fast' ? 'haiku' : 'claude-opus-5-5'
+  return hint === 'fast' ? 'haiku' : hint === 'smart' ? 'sonnet' : 'claude-opus-5-5'
 }
+
+// Callers that share a call context name their own purpose for the tier log.
+export const tierPurpose = new AsyncLocalStorage<string>()
+// Background calls without a named purpose are the filing pipeline's.
+function runPurpose(): string {
+  const purpose = tierPurpose.getStore() ?? currentModelCallContext()?.purpose
+  return !purpose || purpose === 'memory-maintenance' ? 'librarian' : purpose === 'comet-title' ? 'title' : purpose
+}
+const tier = (purpose: string, model: string, hint = 'work'): string => { flog('model-tier', JSON.stringify({ purpose, hint, model })); return model }
+
+const UNSANDBOXED = 'Commands are not sandboxed: use only the files and network access needed for this request.'
+const SANDBOXED = 'Commands run in a sandbox with no network and writes only inside the task folder. A command that needs more may ask to run outside the sandbox; the person approves each one.'
+// Core's session rules describe unsandboxed commands; a sandboxed Claude session is told what is true.
+export const forSandbox = (job: ToolSessionJob): ToolSessionJob => job.native && 'sandbox' in job.native ? { ...job, system: job.system.replace(UNSANDBOXED, SANDBOXED) } : job
 
 // Claude, through the vendor's separately installed agent runtime. The
 // runtime keeps the person's sign-in and does the billing; here every job is
@@ -135,6 +150,7 @@ export class ClaudeEngine implements CloudEngine {
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
     const metric = modelCall('claude', prompt.length, 'low')
+    tier('first-line', chosenModel('fast'), 'fast')
     try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) }
     finally { metric.end() }
   }
@@ -224,7 +240,7 @@ export class ClaudeEngine implements CloudEngine {
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
           // Chores run on the small model.
-          model: chosenModel(job.modelHint),
+          model: tier(runPurpose(), chosenModel(job.modelHint), job.modelHint),
           ...(job.effort ? { effort: job.effort } : {}),
         },
       })
@@ -255,7 +271,7 @@ export class ClaudeEngine implements CloudEngine {
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
       lease.end()
-      sessions.trim(workerPool.target + 1)
+      trimWarm()
       metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
@@ -267,12 +283,13 @@ export class ClaudeEngine implements CloudEngine {
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
+    job = forSandbox(job)
     const lease = await workerPool.lease(job.signal)
     if (!lease) return { answer: '', error: 'canceled' }
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([sdkModule(), chosenModel(), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); sessions.trim(workerPool.target + 1); metric.end() })
+    return Promise.all([sdkModule(), tier('work', chosenModel()), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); trimWarm(); metric.end() })
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.
@@ -280,6 +297,7 @@ export class ClaudeEngine implements CloudEngine {
     if (job.signal?.aborted) return
     const binary = claudeBinary()
     if (!binary || !job.native) return
+    job = forSandbox(job)
     const [sdk, model] = await Promise.all([sdkModule(), chosenModel(), loadBrainConnections()])
     if (job.signal?.aborted) return
     sessions.warm({ sdk, binary, workdir: job.workdir, model, env: this.env }, job)
@@ -289,8 +307,10 @@ export class ClaudeEngine implements CloudEngine {
 }
 
 const sessions = new SessionPool()
-setInterval(() => { sessions.sweep(); sessions.trim(workerPool.target + 1) }, 60_000).unref()
-workerPool.onTarget(target => sessions.trim(target + 1))
+// The voice is one more warm runtime under the cap.
+export function trimWarm(): void { sessions.trim(workerPool.target + 1 - (voice && !voice.closed ? 1 : 0)) }
+setInterval(() => { sessions.sweep(); trimWarm() }, 60_000).unref()
+workerPool.onTarget(() => trimWarm())
 
 export function claimClaudeWorkFolder(channel: string, fallback: string): string {
   return sessions.claimWorkFolder(channel, fallback)

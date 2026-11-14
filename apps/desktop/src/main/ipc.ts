@@ -155,7 +155,7 @@ import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-tran
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore, reviewRuleInput } from './approvals.js'
-import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession } from './engine-claude.js'
+import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
 import { brainConnection, connectionModels, loadBrainConnections } from './brain-connections.js'
@@ -181,7 +181,8 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { cometNativeTools, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineSpoke } from './first-line.js'
+import { cometNativeTools, commandSandbox, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
@@ -1846,7 +1847,7 @@ export function registerIpc(ctx: VaultContext): void {
       const channel = `spare-${live.id}`
       const cwd = join(paths.cache, 'work', `spare-${randomUUID()}`)
       try {
-        const native = await cometNativeTools({ paths, channel, cwd, sandboxed: live.id === 'codex', mode: 'auto', onStep: () => undefined, audit: () => undefined })
+        const native = await cometNativeTools({ paths, channel, cwd, sandboxed: commandSandbox(live.id), mode: 'auto', onStep: () => undefined, audit: () => undefined })
         const tools = await cometToolSet({ channel, engine, settings, permission: 'auto', native, attachments: await readChatAttachments(paths, undefined, warmAbort.signal), earlierOutputs: [], turn: undefined, recovery: null, remembered: [], guided: false, webOnly: false, audit: () => undefined })
         const shape = sessionShape({ engine, tools }, { native })
         if (!warmAbort.signal.aborted) await live.warm({ workdir: engineCwd(paths), system: shape.system, prompt: '', tools: shape.tools.map(tool => ({ ...tool, run: async () => 'not this turn' })), maxCalls: 1, native, model, signal: warmAbort.signal, ...(effort ? { effort } : {}) })
@@ -2287,8 +2288,8 @@ export function registerIpc(ctx: VaultContext): void {
     answering.add(entry.channel)
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
-    // The voice opens with the turn, so words said while it works are answered at once.
-    if (entry.channel.startsWith('bot-')) void chatEngine(entry.channel, ctx.engines).then(live => live?.warmQuick?.(engineCwd(paths))).catch(() => undefined)
+    // The small model says the first line while the turn prepares; it races the answer and never holds it.
+    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, show: line => { broadcast({ type: 'chat:token', channel: entry.channel, text: line }); broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true }) } })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2299,7 +2300,7 @@ export function registerIpc(ctx: VaultContext): void {
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)
-      turnGoals.delete(entry.channel); workSoFar.delete(entry.channel)
+      turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); endFirstLine(entry.channel)
       afterTurn(entry.channel)
       takeAsides(entry.channel)
       flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'released', ms: Math.round(performance.now() - started), aborted: controller.signal.aborted }))
@@ -2710,7 +2711,7 @@ export function registerIpc(ctx: VaultContext): void {
         takeTurnScripts(channel)
         const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: engine.id === 'codex', mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = tasks.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
@@ -2718,6 +2719,7 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
         let firstToken = true
         let tokensUsed = 0
+        const firstSaid = firstLineNote(channel)
         const result = await runComet(
           {
             engine,
@@ -2740,7 +2742,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan') ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : ''].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid) ? { attachmentContext: [attachments.context, recovery, turn?.context, priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -2756,7 +2758,7 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
+            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
             onReset: drop => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}) }),
             onObservation: (tool: string, observation: string) => {
               observedProgress.push({ tool, args: {}, observation })
@@ -2772,9 +2774,7 @@ export function registerIpc(ctx: VaultContext): void {
           },
         )
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
-        if (signal.aborted) {
-          return
-        }
+        if (signal.aborted) return
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         if (native && !result.asked && !result.stopped) {
@@ -2876,7 +2876,7 @@ export function registerIpc(ctx: VaultContext): void {
         // After the answer is out: what of this turn is worth keeping about
         // the person. It runs on its own, so the turn ends with the answer.
         if (!turn?.quiet && finished && filingEngine) {
-          void asBackground(() => rememberTurn({
+          void asBackground(() => tierPurpose.run('memory', () => rememberTurn({
             engine: filingEngine,
             workdir: engineCwd(paths),
             paths,
@@ -2886,7 +2886,7 @@ export function registerIpc(ctx: VaultContext): void {
             answer: result.answer,
             ...(previousAnswer ? { previous: previousAnswer } : {}),
             places: [...new Set(visited.map(url => safeAddress(url)).filter((url): url is string => !!url))].slice(-6),
-          })).catch(error => flog('comet-memory', error))
+          }))).catch(error => flog('comet-memory', error))
         }
       } catch (err) {
         if (signal.aborted) {

@@ -55,7 +55,7 @@ function textOf(content: unknown): string {
 }
 
 export function signatureOf(job: ToolSessionJob): string {
-  return JSON.stringify([job.system, job.tools.map(({ name, description, argsSchema }) => ({ name, description, argsSchema })), job.effort, job.native && [job.native.cwd, job.native.mode, job.native.readRoots]])
+  return JSON.stringify([job.system, job.tools.map(({ name, description, argsSchema }) => ({ name, description, argsSchema })), job.effort, job.native && [job.native.cwd, job.native.mode, job.native.readRoots, 'sandbox' in job.native]])
 }
 
 interface Turn {
@@ -155,7 +155,7 @@ export class WarmSession {
         abortController: this.abort,
         systemPrompt: job.system,
         // The runtime's own tools stay off unless the host hands them over.
-        ...(job.native ? { additionalDirectories: job.native.readRoots, ...native } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
+        ...(job.native ? { additionalDirectories: job.native.readRoots, ...native, ...('sandbox' in job.native ? { sandbox: job.native.sandbox } : {}) } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
         mcpServers: { [TOOL_SERVER]: server },
         strictMcpConfig: true,
         allowedTools: allowedToolNames(job.tools),

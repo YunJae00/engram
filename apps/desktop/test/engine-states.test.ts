@@ -32,10 +32,10 @@ it('repairs a stale empty filing engine list and suppresses unchanged probe broa
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
   detect.mockResolvedValue({ installed: true, loggedIn: true })
   const ctx = { engines: [] } as unknown as VaultContext
-  await synchronizeFilingProbe(ctx, await engineStates(['codex']))
-  expect(ctx.engines.map(engine => engine.id)).toEqual(['codex'])
+  await synchronizeFilingProbe(ctx, await engineStates(['claude']))
+  expect(ctx.engines.map(engine => engine.id)).toEqual(['claude'])
   expect(send).toHaveBeenCalledOnce()
-  expect(send.mock.calls[0][1]).toMatchObject({ type: 'engines:changed', engines: [{ id: 'codex', installed: true, loggedIn: true }] })
+  expect(send.mock.calls[0][1]).toMatchObject({ type: 'engines:changed', engines: [{ id: 'claude', installed: true, loggedIn: true }] })
   await revalidateEngines(ctx, false, false)
   expect(send).toHaveBeenCalledOnce()
   detect.mockResolvedValue({ installed: true, loggedIn: false })
@@ -47,24 +47,24 @@ it('repairs a stale empty filing engine list and suppresses unchanged probe broa
 it('changing a model on the connected filing provider does not launch another auth probe', async () => {
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
   detect.mockResolvedValue({ installed: true, loggedIn: true })
-  const ctx = { engines: [{ id: 'codex' }] } as VaultContext
+  const ctx = { engines: [{ id: 'claude' }] } as VaultContext
   await refreshEngines(ctx, true)
   expect(ctx.engines).toHaveLength(1)
   expect(detect).not.toHaveBeenCalled()
   await refreshEngines(ctx)
-  expect(detect).toHaveBeenCalledExactlyOnceWith('codex')
+  expect(detect).toHaveBeenCalledExactlyOnceWith('claude')
 })
 
 it('does not trigger a picker probe cascade after a model-only save but still broadcasts detection', async () => {
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
   detect.mockResolvedValue({ installed: true, loggedIn: true })
-  const ctx = { engines: [{ id: 'codex' }] } as VaultContext
+  const ctx = { engines: [{ id: 'claude' }] } as VaultContext
   await revalidateEngines(ctx, true)
   expect(send).not.toHaveBeenCalled()
   expect(detect).not.toHaveBeenCalled()
   await revalidateEngines(ctx)
   expect(send).toHaveBeenCalledTimes(1)
-  expect(detect).toHaveBeenCalledExactlyOnceWith('codex')
+  expect(detect).toHaveBeenCalledExactlyOnceWith('claude')
 })
 
 it('starts initial filing after connection without holding up engine readiness', async () => {
@@ -107,7 +107,7 @@ it('never restores an old connected result after a newer signed-out refresh', as
 
 it('a model-only save does not upgrade unconfirmed auth into a connected verdict', async () => {
   vi.stubEnv('ENGRAM_ENGINE', 'auto')
-  const ctx = { engines: [{ id: 'codex', authConfirmed: false }] } as unknown as VaultContext
+  const ctx = { engines: [{ id: 'claude', authConfirmed: false }] } as unknown as VaultContext
   await refreshEngines(ctx, true)
   expect((ctx.engines[0] as { authConfirmed?: boolean }).authConfirmed).toBe(false)
   expect(detect).not.toHaveBeenCalled()
