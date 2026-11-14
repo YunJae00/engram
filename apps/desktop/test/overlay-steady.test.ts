@@ -194,12 +194,25 @@ describe('the native application frame', () => {
     app.foreground = false
     const lost = Date.now()
     await vi.advanceTimersByTimeAsync(200)
-    expect(frames.filter(frame => frame.at > lost).length).toBeGreaterThan(0)
+    const blip = frames.filter(frame => frame.at > lost)
+    expect(blip.length).toBeGreaterThan(0)
+    expect(blip[0]!.at - lost).toBeLessThan(150)
+    expect(Math.max(...blip.slice(1).map((frame, index) => frame.at - blip[index]!.at))).toBeLessThan(150)
     app.foreground = true
+    await vi.advanceTimersByTimeAsync(300)
+    const steady = frames.length
     await vi.advanceTimersByTimeAsync(2000)
     expect(hides()).toHaveLength(0)
     expect(hidden()).toHaveLength(0)
-    expect(Math.max(...frames.slice(1).map((frame, index) => frame.at - frames[index]!.at))).toBeLessThan(150)
+    expect(frames).toHaveLength(steady)
+  })
+  it('is not re-shown on every poll while the window keeps the foreground', async () => {
+    const held = work.applicationWork('one')
+    await settle(held.show('100', 'Word'))
+    const shows = frames.length
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(frames).toHaveLength(shows)
+    expect(overlay.overlayStatus().application?.visible).toBe(true)
   })
   it('hides only after the foreground stayed lost for a second, and returns at once', async () => {
     const held = work.applicationWork('one')
