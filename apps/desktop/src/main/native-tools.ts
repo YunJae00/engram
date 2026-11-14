@@ -170,7 +170,11 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
       const link = (JSON.parse(observation) as { markdownLink: string }).markdownLink, stale = linkedIds(result.answer, name)
       // The revised file replaces the earlier hand-in where the answer quoted it.
       result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
-    } catch (error) { flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`) }
+    } catch (error) {
+      flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`)
+      // The person was told about this file, so a failed hand-in is said, not dropped.
+      result.answer = `${result.answer}\n\n⚠ ${basename(path)} could not be attached, so it stays in the task folder.`
+    }
   }
   for (const name of oversized) result.answer = `${result.answer}\n\n⚠ ${name} is larger than 50 MB, so it stays in the task folder and is not attached.`
 }

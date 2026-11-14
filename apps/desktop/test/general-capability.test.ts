@@ -202,3 +202,13 @@ it('hands in a revised task file again and points the answer at the new copy', a
   await deliverOutputs(paths, cwd, huge, 0, 'ask')
   expect(huge.answer).toContain('report.py is larger than 50 MB')
 })
+
+it('says so when a named file cannot be attached instead of dropping it', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  await writeFile(join(cwd, 'sales.csv'), `a,b\n${'1,2\n'.repeat(2_200_000)}`)
+  const result = { answer: 'Saved sales.csv.', steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  expect(result.answer).toMatch(/engram-artifact:[^)]+sales\.csv\)|sales\.csv could not be attached/)
+  expect(result.answer).not.toBe('Saved sales.csv.')
+})
