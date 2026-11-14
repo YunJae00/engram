@@ -252,7 +252,7 @@ export const ko1 = {
   'bots.stepScroll': '페이지 스크롤 중 ({arg})',
   'bots.stepHover': '“{arg}” 위에 머무는 중',
   'bots.stepKey': '{arg} 키 누르는 중',
-  'bots.stepPressPoint': '보이는 지점을 누르는 중 ({arg})',
+  'bots.stepPressPoint': '화면에서 보이는 곳을 누르는 중 ({arg})',
   'bots.stepReveal': '“{arg}”이(가) 들어 있는 접힌 부분을 여는 중',
   'bots.stepLook': '페이지를 살펴보는 중',
   'bots.stepAside': '잠시 물러나요 — 지금은 페이지를 직접 쓰세요',

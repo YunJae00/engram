@@ -63,7 +63,8 @@ function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, leve
   const title = paused ? 'Task paused' : task.state === 'done' ? 'Task done'
     : task.state === 'failed' ? 'Task stopped'
       : task.question ? 'Your answer is needed' : 'Your approval is needed'
-  if (BrowserWindow.getFocusedWindow()) { broadcast({ type: 'task:notice', message: title }); return }
+  // A person looking at Engram sees the task in its conversation; an English toast adds nothing.
+  if (BrowserWindow.getFocusedWindow()) return
   if (level === 'off' || (level === 'attention' && task.state !== 'failed' && (task.state !== 'waiting' || paused))) return
   if (!Notification.isSupported()) return
   // Notifications can appear on the lock screen; keep task contents in the app.

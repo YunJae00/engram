@@ -40,13 +40,6 @@ it.each(['focused', 'hidden', 'unsupported'])('does not interrupt the user for %
   expect(mocks.show).not.toHaveBeenCalled()
 })
 
-it('uses an in-app notice when Engram is focused without exposing task contents', () => {
-  mocks.focused = true
-  const broadcast = vi.fn()
-  notifyTask({ state: 'done', goal: 'Private report', botId: 'bot-42' } as DelegatedTask, broadcast)
-  expect(broadcast).toHaveBeenCalledWith({ type: 'task:notice', message: 'Task done' })
-  expect(mocks.show).not.toHaveBeenCalled()
-})
 
 it('holds a done notice while a replay is queued and emits at most once per task', async () => {
   const { taskQueued } = await import('../src/main/task-notify.js')
@@ -75,13 +68,21 @@ it('holds completion while the renderer has queued work even after host pending 
 const at = (id: string, state: string, extra: object = {}) => ({ id, botId: `bot-${id}`, state, approvals: [], ...extra }) as unknown as DelegatedTask
 const open = { approvals: [{ answer: undefined }] }
 
+it('shows no in-app notice for a done task while Engram is focused', () => {
+  mocks.focused = true
+  const broadcast = vi.fn()
+  for (const task of [at('f-done', 'done'), at('f-paused', 'waiting'), at('f-q', 'waiting', { question: 'Which?' }), at('f-ap', 'waiting', open)]) notifyTask(task, broadcast)
+  expect(broadcast).not.toHaveBeenCalled()
+  expect(mocks.show).not.toHaveBeenCalled()
+})
+
 it('notify off suppresses OS notification', () => {
   for (const task of [at('off-done', 'done'), at('off-failed', 'failed'), at('off-q', 'waiting', { question: 'Which?' }), at('off-ap', 'waiting', open)]) notifyTask(task, vi.fn(), 'off')
   expect(mocks.show).not.toHaveBeenCalled()
   mocks.focused = true
   const broadcast = vi.fn()
   notifyTask(at('off-focused', 'failed'), broadcast, 'off')
-  expect(broadcast).toHaveBeenCalledWith({ type: 'task:notice', message: 'Task stopped' })
+  expect(broadcast).not.toHaveBeenCalled()
 })
 
 it('attention level shows only questions, approvals and failures', () => {

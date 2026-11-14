@@ -152,6 +152,8 @@ describe('an answer as a few short messages', () => {
   it('keeps reliable localized suggestions without splitting code or reply fences', () => {
     expect(suggestedReplies('찾았어요.')).toEqual(['좀 더 자세히 알려줘', '핵심만 요약해줘'])
     expect(suggestedReplies('Done.')).toHaveLength(2)
+    expect(suggestedReplies('Please sign in or complete the check in the open page, then tell me when it is done.', 'ko')).toEqual(['좀 더 자세히 알려줘', '핵심만 요약해줘'])
+    expect(suggestedReplies('Done.', 'en')).toEqual(['Tell me more', 'Summarize the key points'])
     expect(suggestedReplies('Done.\n```replies\nMore\nMore\n```')).toHaveLength(2)
     expect(answerBubbles('~~~js\na\n---\nb\n~~~')).toEqual(['~~~js\na\n---\nb\n~~~'])
     expect(answerBubbles('Done.\n---\nDetails.\n```replies\nMore\n---\n```')).toEqual(['Done.', 'Details.'])

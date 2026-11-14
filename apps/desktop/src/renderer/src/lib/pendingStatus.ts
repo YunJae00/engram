@@ -62,7 +62,12 @@ export function stepLabel(t: Translate, line: string): string {
   const work = ((t as { lang?: string }).lang === 'ko' && WORK_KO[match[1]!]) || WORK[match[1]!]
   if (work) return typeof work === 'function' ? work(match[2]!) : work
   const key = STEP_LABEL[match[1]!]
-  if (key) return t(key, { arg: match[2]! })
+  if (key) {
+    const arg = match[2]!.trim()
+    const text = t(key, { arg })
+    // a step with no string argument (press_point x,y) leaves "()" behind
+    return arg ? text : text.replace(/\s*\(\s*\)/g, '')
+  }
   if (SPOKEN.test(line)) return match[2]!.trim() || line
   return line
 }

@@ -26,7 +26,7 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'bots.stepScroll': '페이지 넘겨 보는 중 ({arg})',
   'bots.stepHover': '“{arg}” 위에 올려 보는 중',
   'bots.stepKey': '{arg} 키 누르는 중',
-  'bots.stepPressPoint': '화면의 그 지점 누르는 중 ({arg})',
+  'bots.stepPressPoint': '화면에서 보이는 곳을 누르는 중 ({arg})',
   'bots.stepReveal': '접힌 부분 펼쳐 보는 중',
   'bots.stepLook': '화면 보는 중',
   'bots.stepAside': '잠시 비켜 있을게요 — 지금은 직접 쓰세요',

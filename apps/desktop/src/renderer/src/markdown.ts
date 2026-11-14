@@ -81,9 +81,9 @@ function withoutReplies(text: string): string {
   return (text.slice(0, open) + (close < 0 ? '' : rest.slice(close + 1).join('\n'))).trimEnd()
 }
 
-export function suggestedReplies(text: string): string[] {
+export function suggestedReplies(text: string, lang?: 'ko' | 'en'): string[] {
   const supplied = [...new Set(answerReplies(text))]
-  const defaults = suggestedReplyDefaults(answerText(text))
+  const defaults = suggestedReplyDefaults(answerText(text), lang)
   return supplied.length >= 2 ? supplied : [...new Set([...supplied, ...defaults])].slice(0, 2)
 }
 

@@ -9,6 +9,10 @@ import { browserReadBatch } from './browser-read-batch.js'
 import { measuredCourier } from './harness-metrics.js'
 import { formatAsk } from './ask.js'
 
+const signInAsk = (task: string | undefined, search = false): string => formatAsk(/[가-힣]/.test(task ?? '')
+  ? search ? '열린 검색 페이지에서 로그인을 마치고 다 되면 알려줘.' : '열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.'
+  : search ? 'Please sign in on the open search page, then tell me when it is done.' : 'Please sign in or complete the check in the open page, then tell me when it is done.', [])
+
 const RESULTS_CAP = 8
 const RESULTS_PROSE_CAP = 300
 const RESULT_TITLE_CAP = 100
@@ -99,7 +103,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           }
           if (page.wall) {
             deps.wallMet?.(url)
-            return formatAsk('Please sign in or complete the check in the open page, then tell me when it is done.', [])
+            return signInAsk(context.task)
           }
           if (deps.learnSearch && deps.searchTemplate && !(await deps.searchTemplate()) && looksLikeSearchFor(url, context.task ?? '', page))
             await deps.learnSearch(deriveSearchTemplate(url)!).catch(() => undefined)
@@ -137,7 +141,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           const page = await courier.fetchPage(url, context.signal)
-          if (page.wall) return formatAsk('Please sign in on the open search page, then tell me when it is done.', [])
+          if (page.wall) return signInAsk(context.task, true)
           const links = rankLinks(await resolveResultLinks(page.links ?? [], page.url || url, courier.followRedirect?.bind(courier), context.signal), query, RESULTS_CAP, url)
           const found = [page.text, ...links.map((one) => `${one.text} ${one.url}`)].join(' ')
           if (!answersTheQuestion(found, query))
@@ -171,7 +175,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const page = await courier.readOpen(context.signal)
           if (page.wall) {
             deps.wallMet?.(page.url)
-            return formatAsk('Please sign in or complete the check in the open page, then tell me when it is done.', [])
+            return signInAsk(context.task)
           }
           if (!page.text.trim())
             return 'the open page shows nothing readable - it may draw itself with scripts, or hold nothing; read_open_page again in a moment, look at it with look, and say which is unknown rather than reporting an empty result'
