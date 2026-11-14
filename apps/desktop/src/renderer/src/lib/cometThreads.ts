@@ -318,12 +318,17 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (!current.busy) return
       patch(id, { workLines: [...current.workLines.slice(1 - WORK_LINES_KEPT), line] })
     },
-    stop(id: string, fallback: string): void {
+    stop(id: string, fallback: string, marker?: string): string {
+      const current = thread(id), at = streamingAt(current.messages)
+      const cut = !!marker && at >= 0 && !!current.messages[at]!.text.trim()
       settle(
         id,
-        thread(id).messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
-        { busy: false, taskWorking: false, awaitingModel: false, startedAt: null, stopped: true, stopCount: (thread(id).stopCount ?? 0) + 1, queued: [] },
+        cut
+          ? [...current.messages.slice(0, at), { ...current.messages[at]!, streaming: false, checking: undefined, progress: true, work: current.workLines }, { role: 'assistant' as const, text: marker!, work: [] }, ...current.messages.slice(at + 1)]
+          : current.messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
+        { busy: false, taskWorking: false, awaitingModel: false, startedAt: null, stopped: true, stopCount: (current.stopCount ?? 0) + 1, queued: [] },
       )
+      return cut ? marker! : fallback
     },
     handleEvent(event: EngramEvent): string | null {
       if (!('channel' in event) || !event.channel) return null

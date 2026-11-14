@@ -31,7 +31,7 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'bots.stepLook': '화면 보는 중',
   'bots.stepAside': '잠시 비켜 있을게요 — 지금은 직접 쓰세요',
   'bots.stepResume': '페이지를 다시 읽고 이어갈게요',
-  'bubble.stopped': '멈췄어요.',
+  'bubble.stopped': '중지했어요.',
   'card.needsOk': '진행하기 전에',
   'card.press': '“{words}” 눌러도 될까요?',
   'card.pressHint': '제출하기 전에 지금 페이지에서 한 번 더 확인해요.',
@@ -127,3 +127,4 @@ export const GROUP_KO: Record<string, string> = {
   'Browsing the web': '웹 살펴보기', 'Working with an app': '앱 다루기', 'Using the computer': '컴퓨터 사용', 'Checking your mail': '메일 확인', 'Checking your calendar': '일정 확인', 'Working with documents': '문서 작업',
   'Using your memory': '기억 찾아보기', 'Planning the work': '순서 정하기', 'Running commands': '명령 실행', 'Checking the result': '결과 확인', 'Working with files': '파일 작업',
 }
+export const KO_STOP = { starts: ['중지했어요.', '멈췄어요.', '여기까지 했어요: '], ended: '답을 마치지 못하고 끝났어요.', retry: '이어서 해줘' } as const

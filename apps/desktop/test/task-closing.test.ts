@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { appendBotTurn, createTask, listTasks, readBotTranscript, TASK_MAX_TURNS, TASK_TOKEN_BUDGET, updateTask } from 'core'
 import { done, setup } from './task-runner-fixture.js'
-import { closingMessage, ENDED_LOG, isRestartQuestion, type ClosingReason } from '../src/main/task-closing.js'
+import { closingMessage, ENDED_LOG, isRestartQuestion, keepStopMark, type ClosingReason } from '../src/main/task-closing.js'
+import { noticeText } from '../src/main/task-notify.js'
+import { conversationProgress } from '../src/main/conversation-progress.js'
 import { stoppedText } from '../src/renderer/src/lib/threadLang.js'
 
 const reasons: ClosingReason[] = ['budget', 'turn-limit', 'error', 'empty', 'restart']
@@ -121,10 +123,92 @@ describe('task runner end paths', () => {
 
 describe('stoppedText', () => {
   it('names the last milestone of the turn the person stopped', () => {
-    expect(stoppedText([{ role: 'user', text: '정리해줘' }])).toBe('멈췄어요.')
+    expect(stoppedText([{ role: 'user', text: '정리해줘' }])).toBe('중지했어요.')
     expect(stoppedText([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '두 항목 확인했어요\n더', progress: true }])).toBe('여기까지 했어요: 두 항목 확인했어요')
     expect(stoppedText([{ role: 'user', text: '정리해줘' }], '페이지 읽는 중')).toBe('여기까지 했어요: 페이지 읽는 중')
     expect(stoppedText([{ role: 'user', text: 'Tidy' }, { role: 'assistant', text: 'Read two items', progress: true }])).toBe('Stopped here. Done so far: Read two items')
     expect(stoppedText([{ role: 'assistant', text: 'Earlier', progress: true }, { role: 'user', text: 'Tidy' }])).toBe('Stopped.')
+  })
+})
+
+describe('p0-stop-honest leftovers', () => {
+  it('closes an empty successful answer with a next step in the thread language, once', async () => {
+    for (const [asked, next] of [['보고서 정리해줘', '다음:'], ['Tidy the report', 'Next:']] as const) {
+      const t = await setup(async () => done(''))
+      await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: asked, at: new Date().toISOString() })
+      await t.chat(asked)
+      await t.settle('failed')
+      const last = texts(t.events, 'chat:done').at(-1)!
+      expect(last).toContain(next)
+      expect(last).toContain(next === '다음:' ? '답을 마치지 못하고 끝났어요.' : ENDED_LOG)
+      expect((await readBotTranscript(t.paths, 'bot-1')).filter(turn => turn.text === last)).toHaveLength(1)
+    }
+  })
+
+  it('picks the notice language from the latest person message', () => {
+    expect(noticeText({ state: 'done', goal: 'Prepare the report', approvals: [] }, [{ role: 'user', text: '보고서 정리해줘' }])[0]).toBe('작업을 마쳤어요')
+    expect(noticeText({ state: 'done', goal: '보고서 정리', approvals: [] }, [{ role: 'user', text: '보고서' }, { role: 'user', text: 'Now in English' }])[0]).toBe('Task done')
+    expect(noticeText({ state: 'failed', goal: '보고서 정리', approvals: [] })[0]).toBe('작업이 멈췄어요')
+  })
+
+  it('wraps an error raised before the task exists in a thread-language closing', async () => {
+    const t = await setup(async () => done('never'))
+    const task = await createTask(t.paths, '다른 작업', 'bot-1')
+    await updateTask(t.paths, task.id, x => { x.state = 'running' })
+    await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '정리해줘', at: new Date().toISOString() })
+    await expect(t.chat('정리해줘')).rejects.toThrow('still working')
+    const errors = texts(t.events, 'chat:error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(hangul)
+    expect(errors[0]).toContain('다음:')
+  })
+
+  it('names approved steps from the task log when nothing else shows progress', () => {
+    const log = [{ line: 'Approved: "저장"' }, { line: 'Continuing unfinished work (1/3)' }]
+    const text = closingMessage({ goal: '정리', transcript: [], log }, 'error', 'ko')
+    expect(text).toContain('마지막 진행: “저장” 승인')
+    expect(text).not.toContain('Continuing')
+    expect(closingMessage({ goal: 'Tidy', transcript: [], log }, 'error', 'en')).toContain('Last step: approved “저장”')
+    expect(closingMessage({ goal: '정리', transcript: [{ role: 'assistant', text: '두 항목 확인', progress: true }], log }, 'error', 'ko')).toContain('마지막 진행: 두 항목 확인')
+  })
+})
+
+describe('keepStopMark', () => {
+  const quick = { run: 1_000, settle: 300 }
+  const run = async (turns: { role: 'user' | 'assistant'; text: string; progress?: boolean }[], running = () => false) => {
+    const t = await setup(async () => done('x'))
+    for (const turn of turns) await appendBotTurn(t.paths, 'bot-1', { ...turn, at: new Date().toISOString() })
+    const events: { type: string }[] = []
+    await keepStopMark(t.paths, event => events.push(event), 'bot-bot-1', '중지했어요.', running, quick)
+    return { turns: await readBotTranscript(t.paths, 'bot-1'), events }
+  }
+
+  it('stores the mark after a stored cut answer and flushes pending words first', async () => {
+    const { turns, events } = await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '정리했어요', progress: true }])
+    expect(turns.map(turn => turn.text)).toEqual(['정리해줘', '정리했어요', '중지했어요.'])
+    expect(events.map(e => e.type)).toEqual(['chat:token', 'bots:changed'])
+  })
+
+  it('stores nothing after a user turn or a finished answer', async () => {
+    expect((await run([{ role: 'user', text: '정리해줘' }])).turns).toHaveLength(1)
+    expect((await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '중지했어요.' }])).turns).toHaveLength(2)
+  })
+
+  it('waits for the stopped run to be released', async () => {
+    const until = Date.now() + 120
+    const { turns } = await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '정리했어요', progress: true }], () => Date.now() < until)
+    expect(turns.at(-1)!.text).toBe('중지했어요.')
+    expect(Date.now()).toBeGreaterThanOrEqual(until)
+  })
+
+  it('stores the cut words and the mark when the aborted run never sent chat:done', async () => {
+    const t = await setup(async () => done('x'))
+    await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '정리해줘', at: new Date().toISOString() })
+    const progress = conversationProgress(t.paths)
+    progress.observe({ type: 'chat:token', channel: 'bot-bot-1', text: '회의 안건을 정리했어요' })
+    await progress.stop('bot-bot-1', '중지했어요.')
+    await keepStopMark(t.paths, event => progress.observe(event), 'bot-bot-1', '중지했어요.', () => false, quick)
+    const turns = await readBotTranscript(t.paths, 'bot-1')
+    expect(turns.map(turn => [turn.text, !!turn.progress])).toEqual([['정리해줘', false], ['회의 안건을 정리했어요', true], ['중지했어요.', false]])
   })
 })

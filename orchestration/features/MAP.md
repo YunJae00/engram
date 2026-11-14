@@ -57,6 +57,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - Desktop text insertion and the Enter send gate — unit only (`apps/desktop/test/desktop-text-insert.test.ts`); never typed into a real KakaoTalk, Claude or ChatGPT window.
 - Desktop wrap-up verdict (open → type → read back, 했어/못 했어, never done while moving) — unit only (`apps/desktop/test/desktop-wrapup.test.ts`); never typed into a real ChatGPT, Claude or KakaoTalk window.
 - Desktop settle rhythm (wait for the app to stop, one-page scroll steps, single click retry) — unit-tested only (`apps/desktop/test/desktop-settle.test.ts`), because tests must not drive the real screen.
+- Stop honesty (stop mark kept after a cut answer, retry chip, plain sidebar preview) — unit-tested (`apps/desktop/test/stop-honest.test.ts`, `apps/desktop/test/task-closing.test.ts`).
 
 ## Brief shape
 

@@ -106,7 +106,7 @@ export function taskRunner(deps: {
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
   // Every end the person did not ask for leaves a closing message in the thread (task-closing.ts).
-  const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error })
+  const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown, goal = task?.goal) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error, goal })
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
@@ -170,10 +170,10 @@ export function taskRunner(deps: {
           continuations.set(id, { count, reason })
           logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
         }
-      } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
+      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
-    if (after?.state === 'failed' && (!outcome || outcome.budgetExhausted)) await close(after, outcome ? 'budget' : 'empty')
+    if (after?.state === 'failed' && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after
   }
 
@@ -268,7 +268,7 @@ export function taskRunner(deps: {
       } catch (error) {
         const cancelled = stopped.has(channel)
         const failed = task ? await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }) : undefined
-        if (!cancelled) await close(failed, 'error', channel, error)
+        if (!cancelled) await close(failed, 'error', channel, error, request.message)
         await finished(failed)
         if (cancelled) return
         throw error

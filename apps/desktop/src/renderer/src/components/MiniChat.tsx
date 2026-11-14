@@ -51,8 +51,8 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
   }
   const stop = () => {
     const step = thread.workLines[thread.workLines.length - 1]
-    const said = stoppedText(thread.messages, step ? pendingStatus(threadT(threadLang(thread.messages)), step) : undefined)
-    cometThreads.stop(botId, said)
+    const tt = threadT(threadLang(thread.messages))
+    const said = cometThreads.stop(botId, stoppedText(thread.messages, step ? pendingStatus(tt, step) : undefined), tt('bubble.stopped'))
     void api.chatAbort(cometChannel(botId), said).catch(() => undefined)
   }
   const frames = usePreviewFrames(cometChannel(botId), previewTile)

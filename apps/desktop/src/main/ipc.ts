@@ -172,6 +172,7 @@ import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from '
 import { canLearnTurn, holdTaskResult } from './task-result-state.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { notifyTask, surfaceComet } from './task-notify.js'
+import { keepStopMark } from './task-closing.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
@@ -1074,10 +1075,9 @@ export function registerIpc(ctx: VaultContext): void {
     umbrella: await loadUmbrellaTerms(paths),
   }))
 
-  // Stopping a running answer is the difference between waiting and being
-  // stuck; the plumbing existed, nothing ever called it from the UI.
+  // Stopping a running answer is the difference between waiting and being stuck.
   ipcMain.handle('chat:abort', async (_e, channel?: string, said?: unknown) => {
-    noteStopped(channel, said); abortAllChat(channel)
+    const stopping = [...chatAborts].find(entry => entry.channel === channel); noteStopped(channel, said); abortAllChat(channel); if (stopping) void keepStopMark(paths, broadcast, channel, said, () => chatAborts.has(stopping))
     if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
     else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
   })
@@ -1801,7 +1801,7 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
-    notify: (task) => { void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(level => notifyTask(task, broadcast, level)).catch(error => flog('task-notify', error)) },
+    notify: (task) => { void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(async level => notifyTask(task, broadcast, level, await readBotTranscript(paths, task.botId, 40).catch(() => []))).catch(error => flog('task-notify', error)) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,
     // A check gets a bounded share of time; past it the draft is the answer.

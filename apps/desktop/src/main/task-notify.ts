@@ -1,7 +1,7 @@
 import { BrowserWindow, Notification } from 'electron'
 import type { DelegatedTask } from 'core'
 import type { EngramEvent } from '../shared/types.js'
-import { isKorean } from './task-closing.js'
+import { closingLang } from './task-closing.js'
 
 // A task that stops for the person says so outside the window, but only when
 // they are not already looking at Engram. Clicking it opens that conversation.
@@ -48,25 +48,31 @@ function flushNotice(botId: string): void {
   notice.tell()
 }
 
-export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string): void {
+type Said = readonly { role: string; text: string }[]
+export function noticeText(task: Pick<DelegatedTask, 'state' | 'goal' | 'question' | 'approvals'>, transcript: Said = []): readonly [string, string] {
+  const paused = task.state === 'waiting' && !task.question && !task.approvals.some(approval => !approval.answer)
+  return WORDS[closingLang(transcript, task.goal)][paused ? 'paused' : task.state === 'done' ? 'done' : task.state === 'failed' ? 'failed' : task.question ? 'question' : 'approval']
+}
+
+export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string, transcript: Said = []): void {
   // A hidden run has nobody watching to tell.
   if (process.env['ENGRAM_HIDDEN'] === '1') return
   if (task.state === 'done' && (queued.has(task.botId) || clientQueues.has(task.botId))) {
     clearTimeout(held.get(task.botId)?.timer)
     const timer = setTimeout(() => flushNotice(task.botId), HOLD_MS)
-    held.set(task.botId, { tell: () => tell(task, broadcast, level), timer })
+    held.set(task.botId, { tell: () => tell(task, broadcast, level, transcript), timer })
     return
   }
-  tell(task, broadcast, level)
+  tell(task, broadcast, level, transcript)
 }
 
-function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string): void {
+function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level: string | undefined, transcript: Said): void {
   if (task.state === 'done' && task.id) {
     if (notified.has(task.id)) return
     notified.add(task.id)
   }
   const paused = task.state === 'waiting' && !task.question && !task.approvals.some(approval => !approval.answer)
-  const [title, body] = WORDS[isKorean(task.goal) ? 'ko' : 'en'][paused ? 'paused' : task.state === 'done' ? 'done' : task.state === 'failed' ? 'failed' : task.question ? 'question' : 'approval']
+  const [title, body] = noticeText(task, transcript)
   // A person looking at Engram sees the task in its conversation already.
   if (BrowserWindow.getFocusedWindow()) return
   if (level === 'off' || (level === 'attention' && task.state !== 'failed' && (task.state !== 'waiting' || paused))) return

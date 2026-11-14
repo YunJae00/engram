@@ -104,4 +104,11 @@ describe('a comet sounds like a coworker who commits to the job', () => {
   it('keeps a single third-person rule', () => {
     expect(openRuleLines().filter((line) => /third person/.test(line))).toHaveLength(1)
   })
+
+  it('drafts a self-contained ask straight from what was given, without announcing a notes search', () => {
+    expect(VOICE_RULE).toMatch(/When the ask is self-contained/)
+    expect(VOICE_RULE).toMatch(/do not search notes, memory, chats or past work first/)
+    expect(VOICE_RULE).toMatch(/never announce such a search/)
+    expect(VOICE_RULE).toContain('"지난번"')
+  })
 })

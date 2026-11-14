@@ -5,7 +5,7 @@ import { flog } from './flog.js'
 export type ClosingReason = 'budget' | 'turn-limit' | 'error' | 'empty' | 'restart'
 export type ClosingLang = 'en' | 'ko'
 type Turn = { role: string; text: string; at?: string; progress?: boolean }
-export interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string }
+export interface ClosingInput { goal: string; work?: number; trail?: readonly TurnStep[]; result?: string; transcript: readonly Turn[]; since?: string; detail?: string; log?: readonly { line: string }[] }
 
 export const ENDED_LOG = 'The turn ended without an answer.'
 const ENDED_KO = '답을 마치지 못하고 끝났어요.'
@@ -27,6 +27,7 @@ const WORDS = {
     files: (names: string) => `저장한 파일 ${names}`,
     more: (n: number) => ` 외 ${n}개`,
     milestone: (line: string) => `마지막 진행: ${line}`,
+    approved: (words: string) => `“${words}” 승인`,
     missing: {
       budget: (g: string) => `${g} 작업이 처리 한도에 닿아 끝나지 않았어요.`,
       'turn-limit': (g: string) => `${g} 작업이 진행 횟수 한도에 닿아 끝나지 않았어요.`,
@@ -49,6 +50,7 @@ const WORDS = {
     files: (names: string) => `saved ${names}`,
     more: (n: number) => ` and ${n} more`,
     milestone: (line: string) => `Last step: ${line}`,
+    approved: (words: string) => `approved “${words}”`,
     missing: {
       budget: (g: string) => `${g} stopped at the task's processing limit before it was finished.`,
       'turn-limit': (g: string) => `${g} stopped at the task's turn limit before it was finished.`,
@@ -77,11 +79,13 @@ export function closingMessage(input: ClosingInput, reason: ClosingReason, lang:
     ...(names.length ? [w.files(names.slice(0, 3).join(', ') + (names.length > 3 ? w.more(names.length - 3) : ''))] : []),
   ]
   const progress = [...recent].reverse().find(turn => turn.progress && turn.text.trim())
+  const approved = (input.log ?? []).flatMap(entry => /^Approved: "(.+)"$/.exec(entry.line)?.[1] ?? []).slice(-3).map(words => w.approved(cut(words, 40)))
+  const milestone = progress ? cut(progress.text, 100) : !names.length && approved.length ? approved.join(', ') : ''
   const goal = `“${cut(input.goal, 60)}”`
   const detail = input.detail ? cut(withoutSecrets(input.detail, input.goal), 160) : ''
   return [
     w.done(parts),
-    ...(progress ? [w.milestone(cut(progress.text, 100))] : []),
+    ...(milestone ? [w.milestone(milestone)] : []),
     w.missing[reason](goal, detail),
     w.next[reason],
   ].join('\n')
@@ -91,20 +95,46 @@ export const isRestartQuestion = (question: string): boolean => question === LEG
 
 export async function restartQuestion(paths: VaultPaths, task: DelegatedTask): Promise<string> {
   const transcript = await readBotTranscript(paths, task.botId).catch(() => [])
-  return closingMessage({ goal: task.goal, work: task.work, result: task.result, transcript, since: task.createdAt }, 'restart', closingLang(transcript, task.goal))
+  return closingMessage({ goal: task.goal, work: task.work, result: task.result, transcript, since: task.createdAt, log: task.log }, 'restart', closingLang(transcript, task.goal))
 }
 
 // Every end the person did not ask for leaves one closing message in the thread; a raw error goes out only when this end is not the task's own.
 // The seat is reopened even for an empty turn: a provider error may already have settled the bubble, and carryOn keeps a still-open one as is.
-export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEvent) => void, end: { task?: DelegatedTask; reason: ClosingReason; channel?: string; trail?: readonly TurnStep[]; error?: unknown }): Promise<void> {
-  const { task, reason, channel, trail, error } = end
+export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEvent) => void, end: { task?: DelegatedTask; reason: ClosingReason; channel?: string; trail?: readonly TurnStep[]; error?: unknown; goal?: string }): Promise<void> {
+  const { task, reason, channel, trail, error, goal = '' } = end
   const raw = error === undefined ? undefined : error instanceof Error ? error.message : String(error)
   if (!channel) return
   const own = task?.state === 'failed' && (raw === undefined || task.log.at(-1)?.line.startsWith('Failed:'))
-  if (!task || !own) { if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: raw }); return }
+  if (!task) {
+    if (raw === undefined) return
+    const transcript = channel.startsWith('bot-') ? await readBotTranscript(paths, channel.slice(4)).catch(() => []) : []
+    broadcast({ type: 'chat:error', channel, message: closingMessage({ goal, transcript, since: new Date().toISOString(), detail: raw }, reason, closingLang(transcript, goal)) })
+    return
+  }
+  if (!own) { if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: raw }); return }
   const transcript = await readBotTranscript(paths, task.botId).catch(() => [])
-  const text = closingMessage({ goal: task.goal, work: task.work, trail, result: task.result, transcript, since: task.createdAt, detail: raw }, reason, closingLang(transcript, task.goal))
+  const text = closingMessage({ goal: task.goal, work: task.work, trail, result: task.result, transcript, since: task.createdAt, detail: raw, log: task.log }, reason, closingLang(transcript, task.goal))
   try { await appendBotTurn(paths, task.botId, { role: 'assistant', text, at: new Date().toISOString() }) } catch (e) { flog('tasks', e) }
   if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: text })
   else { broadcast({ type: 'comet:continue', channel, botId: task.botId }); broadcast({ type: 'chat:done', channel, text }) }
+}
+
+// A Stop under words already written stores its mark after them, once the stopped run is released and its words are flushed.
+export async function keepStopMark(paths: VaultPaths, broadcast: (event: EngramEvent) => void, channel: unknown, text: unknown, running: () => boolean, waitMs = { run: 15_000, settle: 1_000 }): Promise<void> {
+  if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > 80) return
+  const pause = () => new Promise(resolve => setTimeout(resolve, 50))
+  try {
+    for (const until = Date.now() + waitMs.run; running(); await pause()) if (Date.now() > until) return
+    // An aborted run can end without chat:done; this flushes its pending words as the stored progress turn.
+    broadcast({ type: 'chat:token', channel, text: '', reset: true })
+    const botId = channel.slice(4)
+    for (const until = Date.now() + waitMs.settle; Date.now() <= until; await pause()) {
+      const last = (await readBotTranscript(paths, botId, 1))[0]
+      if (last?.role !== 'assistant') continue
+      if (!last.progress) return
+      await appendBotTurn(paths, botId, { role: 'assistant', text: text.trim(), at: new Date().toISOString() })
+      broadcast({ type: 'bots:changed' })
+      return
+    }
+  } catch (error) { flog('tasks', error) }
 }
