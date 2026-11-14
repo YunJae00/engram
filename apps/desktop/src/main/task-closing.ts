@@ -107,8 +107,9 @@ export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEven
   const own = task?.state === 'failed' && (raw === undefined || task.log.at(-1)?.line.startsWith('Failed:'))
   if (!task) {
     if (raw === undefined) return
+    // The request that just failed is the newest thing the person said; an older turn may be in another language.
     const transcript = channel.startsWith('bot-') ? await readBotTranscript(paths, channel.slice(4)).catch(() => []) : []
-    broadcast({ type: 'chat:error', channel, message: closingMessage({ goal, transcript, since: new Date().toISOString(), detail: raw }, reason, closingLang(transcript, goal)) })
+    broadcast({ type: 'chat:error', channel, message: closingMessage({ goal, transcript, since: new Date().toISOString(), detail: raw }, reason, closingLang(goal.trim() ? [] : transcript, goal)) })
     return
   }
   if (!own) { if (raw !== undefined) broadcast({ type: 'chat:error', channel, message: raw }); return }

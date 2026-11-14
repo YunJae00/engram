@@ -13,3 +13,7 @@ test('sidebar excerpts drop suggested replies, closed or cut off', () => {
   expect(sidebarPreview('3\n\n```replies\n4번도 해줘\n고마워\n```')).toBe('3')
   expect(sidebarPreview('Counting.\n\n```replies\nMore')).toBe('Counting.')
 })
+
+test('a link whose URL has parentheses becomes its text only', () => {
+  expect(sidebarPreview('See [the page](https://en.wikipedia.org/wiki/Foo_(bar)) now')).toBe('See the page now')
+})
