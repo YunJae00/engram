@@ -165,7 +165,9 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)
-      const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }) : JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
+      const raw = async () => JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
+      // Core reads text back under its own 8 MB limit; a larger file still goes in as made, up to the 50 MB cap.
+      const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }).catch(raw) : await raw()
       result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation })
       const link = (JSON.parse(observation) as { markdownLink: string }).markdownLink, stale = linkedIds(result.answer, name)
       // The revised file replaces the earlier hand-in where the answer quoted it.
