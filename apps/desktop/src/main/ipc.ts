@@ -194,6 +194,7 @@ import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, 
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
 import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
+import { withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 import { agentCourier } from './agent-courier.js'
@@ -2268,7 +2269,6 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Chat panel: streams engine tokens to the renderer. The
   // prompt carries only current-note context — never superseded text.
-
   // A comet message is a task: it goes on past one turn until the work is
   // done (task-runner.ts). Skill commands stay plain turns.
   ipcMain.handle('chat:send', async (_e, request: ChatRequestDto) => {
@@ -2295,7 +2295,7 @@ export function registerIpc(ctx: VaultContext): void {
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
       // A person's own turn holds its engine like a delegated task; nested task contexts keep their ids.
-      return await withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn))
+      return await withTurnPriority({ interactive: !request.scheduled && !savedRoutine && !turn?.quiet, korean: threadKorean(request.message, request.history ?? []), say: line => broadcast({ type: 'comet:step', channel: entry.channel, line }) }, () => withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn)))
     } finally {
       chatAborts.delete(entry)
       answering.delete(entry.channel)

@@ -5,6 +5,7 @@ import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobI
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
+import { insideSlot, workerPool } from './worker-pool.js'
 import { claudeRetryAfterMs } from './usage-limit.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
@@ -195,6 +196,8 @@ export class ClaudeEngine implements CloudEngine {
       return
     }
     const sdk = (await loadClaudeSdk()) as AgentSdk
+    const release = await workerPool.acquire(job.signal)
+    if (!release) return
     const abort = new AbortController()
     const budget = job.timeoutMs ?? ENGINE_BUDGETS.job
     const timer = setTimeout(() => abort.abort(), budget)
@@ -251,6 +254,8 @@ export class ClaudeEngine implements CloudEngine {
       const message = err instanceof Error ? err.message : String(err)
       yield { type: 'error', message, kind: cloudErrorKind(message) }
     } finally {
+      release()
+      sessions.trim(workerPool.target + 1)
       metric.end()
       clearTimeout(timer)
       job.signal?.removeEventListener('abort', onAbort)
@@ -262,10 +267,12 @@ export class ClaudeEngine implements CloudEngine {
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
+    const release = await workerPool.acquire(job.signal)
+    if (!release) return { answer: '', error: 'canceled' }
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([sdkModule(), chosenModel(), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env }) }).finally(() => metric.end())
+    return Promise.all([sdkModule(), chosenModel(), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return insideSlot(() => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { release(); sessions.trim(workerPool.target + 1); metric.end() })
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.
@@ -282,7 +289,7 @@ export class ClaudeEngine implements CloudEngine {
 }
 
 const sessions = new SessionPool()
-setInterval(() => sessions.sweep(), 60_000).unref()
+setInterval(() => { sessions.sweep(); sessions.trim(workerPool.target + 1) }, 60_000).unref()
 
 export function claimClaudeWorkFolder(channel: string, fallback: string): string {
   return sessions.claimWorkFolder(channel, fallback)

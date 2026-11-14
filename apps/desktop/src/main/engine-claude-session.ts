@@ -6,6 +6,7 @@ import { dirname } from 'node:path'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 import { claudeTokenUsage } from './claude-token-usage.js'
+import { idleBeyond, insideSlot } from './worker-pool.js'
 
 // Reuse an idle runtime only while its account, model and tool scope match.
 
@@ -125,7 +126,7 @@ export class WarmSession {
           const started = performance.now()
           const gap = turn ? Math.round(started - turn.lastToolEnd) : 0
           const outcome = await (async () => {
-            try { return tool ? await tool.run(args as Record<string, unknown>) : 'that tool is not available this turn' }
+            try { return tool ? await insideSlot(() => tool.run(args as Record<string, unknown>)) : 'that tool is not available this turn' }
             finally {
               const ended = performance.now()
               if (turn) turn.lastToolEnd = ended
@@ -371,6 +372,8 @@ export class SessionPool {
     this.sessions.delete(key)
   }
 
+  // Idle warm sessions, the spare included, beyond the cap close oldest first; busy ones stay.
+  trim(cap: number): void { for (const key of idleBeyond([...[...this.sessions].map(([key, s]) => ({ key, busy: s.busy, lastUsed: s.lastUsed })), ...(this.spare ? [{ key: '', busy: this.spare.session.busy, lastUsed: this.spare.session.lastUsed }] : [])], cap)) if (key) this.closeOne(key); else { this.spare?.session.close(); this.spare = null } }
   closeMatching(key: string): void {
     for (const stored of this.sessions.keys()) if (stored === key || stored.endsWith(`:${key}`)) this.closeOne(stored)
   }
