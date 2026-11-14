@@ -54,7 +54,7 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
     }) : undefined
     // The field just set, read again once the app settled: what the turn's outcome checks, not the earlier receipt.
     const now = field && reading.controls.filter(control => field.runtimeId ? control.runtimeId === field.runtimeId : control.name === field.name && control.type === field.type)
-    const valueNow = now?.length === 1 && !now[0]!.valueTruncated ? now[0]!.value ?? '' : undefined
+    const valueNow = now?.length === 1 ? now[0]!.value ?? '' : undefined
     observed?.()
     return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(field ? { valueNow: valueNow ?? null } : {}), ...(settled ? {} : { stillChanging: STILL_CHANGING }), ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
