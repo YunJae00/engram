@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ test('an offer to look for another way goes when the person writes on instead', 
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-study-card-'))
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const botId = (await createBot(paths, { name: 'Study fixture' })).id
   await mkdir(paths.cache, { recursive: true })
   await writeFile(join(paths.cache, 'studies.json'), JSON.stringify([{ id: 'study-1', botId, what: 'Where the approvals are kept', where: [], ask: 'Check my approvals', state: 'offered', at: new Date().toISOString() }]))

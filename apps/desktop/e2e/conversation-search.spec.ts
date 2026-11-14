@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, initVault, type Bot } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +18,7 @@ test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const root = await mkdtemp(join(TMP, 'e2e-conversation-search-'))
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   target = await createBot(paths, { name: 'Weekly sync notes' })
   for (const [role, text] of [['user', '회의코드 QX-7731 준비해 주세요'], ['assistant', 'QX-7731 agenda is drafted.'], ['user', 'Add the budget line.'], ['assistant', 'Updated the 견적서 summary.']] as const) await appendBotTurn(paths, target.id, { role, text, at: OLD })
   other = await createBot(paths, { name: 'Quarterly budget review' })

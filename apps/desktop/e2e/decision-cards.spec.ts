@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { initVault, createBot, appendBotTurn, createTask, updateTask, listTasks } from 'core'
+import { initVault, resetBotsToV2, createBot, appendBotTurn, createTask, updateTask, listTasks } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -8,6 +8,7 @@ test('split panes show localized approval and choice cards without overflow', as
   const root = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(root, { recursive: true })
   const paths = await initVault(await mkdtemp(join(root, 'decision-cards-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Approval fixture' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '내용 확인해줘', at: new Date().toISOString() })
   const task = await createTask(paths, 'Review content', bot.id)

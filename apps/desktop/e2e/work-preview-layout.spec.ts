@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type Locator } from '@playwright/test'
-import { appendBotTurn, createBot, createTask, initVault, updateTask } from 'core'
+import { appendBotTurn, createBot, createTask, initVault, resetBotsToV2, updateTask } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 test('app previews stack, promote back cards and stay inside full, split, minimized and expanded conversations', async () => {
   await mkdir(join(TMP, 'preview-captures-109'), { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-layout-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bots = await Promise.all(['Preview one', 'Preview two'].map(name => createBot(paths, { name })))
   for (const bot of bots) {
     await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'The local app read is ready for review.', at: new Date().toISOString() })
@@ -213,6 +214,7 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
 test('a finished web card at pane width keeps its label and snapshot age apart', async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-caption-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Caption bot' })
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Ready.', at: new Date().toISOString() })
   const app = await electron.launch({

@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, initVault, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type VaultPaths } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -14,6 +14,7 @@ test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-preview-vault-'))
   paths = await initVault(vault, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   lane = `bot-${(await createBot(paths, { name: 'Browser preview' })).id}`
   shots = await mkdtemp(join(tmp, 'browser-preview-shots-'))
   server = createServer((_req, response) => {

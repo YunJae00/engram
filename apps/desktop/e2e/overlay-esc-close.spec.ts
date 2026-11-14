@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +17,7 @@ test.beforeAll(async () => {
   project = await mkdtemp(join(tmp, 'e2e-overlay-esc-project-'))
   await writeFile(join(project, 'example.ts'), 'export const answer = 42\n')
   const paths = await initVault(vault, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   for (const name of ['Overlay chat', 'Second chat', 'Third chat', 'Fourth chat']) seats.push((await createBot(paths, { name })).id)
   botId = seats[0]!
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-overlay-esc-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1' } })

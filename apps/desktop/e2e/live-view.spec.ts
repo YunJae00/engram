@@ -1,7 +1,7 @@
 import { expect, test, chromium, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { checkMissionLiveView } from './live-view-mission-fixture.js'
 import { closeTestApp, expandPreview, openActivity } from './navigation.js'
-import { createBot, initVault } from 'core'
+import { createBot, initVault, resetBotsToV2 } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -31,6 +31,7 @@ test.beforeAll(async () => {
   userData = await mkdtemp(join(REPO_TMP, 'e2e-live-userdata-'))
   // The mirror lives in a comet thread, so there has to be one to open.
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   await createBot(paths, { name: 'Watching', purpose: '' })
 
   // A form that carries what was typed into its address, and a page whose

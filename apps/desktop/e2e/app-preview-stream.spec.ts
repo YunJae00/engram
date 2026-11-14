@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron } from '@playwright/test'
-import { appendBotTurn, createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +9,7 @@ const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 async function launchStreamFixture() {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'app-stream-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Stream fixture' })
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Ready.', at: new Date().toISOString() })
   const lane = `bot-${bot.id}`

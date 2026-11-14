@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, initVault, type Bot } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +17,7 @@ test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const root = await mkdtemp(join(TMP, 'e2e-sidebar-search-open-chat-'))
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   alpha = await createBot(paths, { name: 'Alpha garden plan' })
   for (const [role, text] of [['user', 'Order the tulip bulbs.'], ['assistant', 'Tulip order placed.']] as const) await appendBotTurn(paths, alpha.id, { role, text, at: STAMP })
   beta = await createBot(paths, { name: 'Beta budget review' })

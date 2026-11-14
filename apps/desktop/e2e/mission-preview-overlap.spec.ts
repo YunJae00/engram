@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { closeTestApp, openActivity } from './navigation.js'
-import { appendBotTurn, createBot, initVault, type Bot } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -25,6 +25,7 @@ const ANSWER = [
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'e2e-mission-overlap-vault-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const at = new Date().toISOString()
   bots = []
   for (const name of ['Halley', 'Second pane', 'Third pane', 'Fourth pane']) bots.push(await createBot(paths, { name, purpose: '' }))

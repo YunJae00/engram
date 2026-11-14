@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { appendBotTurn, createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,7 @@ test.beforeEach(async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-chip-click-'))
   const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   botId = (await createBot(paths, { name: 'Chip click fixture' })).id
   const at = new Date().toISOString()
   await appendBotTurn(paths, botId, { role: 'user', text: '다음 회의 리마인더 하나 만들어줘.', at })

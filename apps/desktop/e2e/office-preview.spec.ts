@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron } from '@playwright/test'
-import { appendBotTurn, createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,7 @@ import { closeTestApp, openActivity } from './navigation.js'
 test('Office activity events show a localized card without an image', async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = await initVault(await mkdtemp(join(tmp, 'office-preview-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Office preview' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '메일 확인해 줘', at: new Date().toISOString() })
   const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
@@ -43,6 +44,7 @@ test('Office activity events show a localized card without an image', async () =
 test('Office activity card can be closed without hover so it stops covering the thread', async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = await initVault(await mkdtemp(join(tmp, 'office-preview-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Office overlap' })
   for (let turn = 0; turn < 14; turn++) {
     await appendBotTurn(paths, bot.id, { role: 'user', text: `질문 ${turn}`, at: new Date().toISOString() })
@@ -93,6 +95,7 @@ test('Office activity card can be closed without hover so it stops covering the 
 test('Office activity cards for different apps keep their own look when the current app changes', async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = await initVault(await mkdtemp(join(tmp, 'office-preview-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Office mix' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '메일이랑 엑셀 확인해 줘', at: new Date().toISOString() })
   const app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
@@ -136,6 +139,7 @@ test('Office activity cards for different apps keep their own look when the curr
 for (const length of ['long', 'short'] as const) test(`Office activity card arriving and leaving leaves a ${length} thread exactly where it was`, async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = await initVault(await mkdtemp(join(tmp, 'office-preview-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: `Office ${length} shift` })
   for (let turn = 0; turn < (length === 'long' ? 14 : 1); turn++) {
     await appendBotTurn(paths, bot.id, { role: 'user', text: `질문 ${turn}`, at: new Date().toISOString() })

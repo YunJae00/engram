@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { appendBotTurn, createBot, initVault } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,7 @@ test('completed replies show suggestions, hide their markup and send only after 
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const paths = await initVault(await mkdtemp(join(tmp, 'reply-vault-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const at = new Date().toISOString()
   const supplied = await createBot(paths, { name: 'Suggested follow-ups' })
   const fallback = await createBot(paths, { name: 'Missing suggestions' })
@@ -57,6 +58,7 @@ test('an unanswered later turn or a partial progress tail shows no reply chips f
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const paths = await initVault(await mkdtemp(join(tmp, 'reply-vault-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const at = new Date().toISOString()
   const answered = '```replies\n이 중 2개만 골라줘\n다른 요일/시간대로 다시 뽑아줘\n```'
   const interrupted = await createBot(paths, { name: 'Interrupted turn' })

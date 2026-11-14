@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication } from '@playwright/test'
-import { createBot, initVault } from 'core'
+import { createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { createServer } from 'node:http'
@@ -13,6 +13,7 @@ test('background browser windows preserve native conversation focus and the draf
   await mkdir(tmp, { recursive: true })
   const run = await mkdtemp(join(tmp, 'browser-focus-'))
   const paths = await initVault(join(run, 'vault'), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const bot = await createBot(paths, { name: 'Background work' })
   const second = await createBot(paths, { name: 'Second conversation' })
   let popups = 0

@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { closeTestApp, openActivity } from './navigation.js'
-import { appendBotTurn, createBot, initVault, type Bot } from 'core'
+import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -19,6 +19,7 @@ let bots: Bot[]
 test.beforeEach(async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'e2e-mission-chip-vault-')), { git: false })
+  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
   const at = new Date().toISOString()
   bots = []
   for (const [index, name] of NAMES.entries()) {
