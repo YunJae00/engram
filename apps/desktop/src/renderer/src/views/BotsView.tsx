@@ -5,7 +5,7 @@ import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
 import { ThreadOffers } from '../components/ThreadOffers.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
-import { threadLang, threadT } from '../lib/threadLang.js'
+import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { useLoadEarlier } from '../lib/useLoadEarlier.js'
 import type { StringKey } from '../i18n.js'
@@ -150,7 +150,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
 
   const stop = async () => {
     if (!selected) return
-    const said = threadT(threadLang(messages))('bubble.stopped')
+    const said = stoppedText(messages, latestStep ? pendingStatus(threadT(threadLang(messages)), latestStep) : undefined)
     cometThreads.stop(selected.id, said)
     await api.chatAbort(cometChannel(selected.id), said).catch(() => undefined)
   }

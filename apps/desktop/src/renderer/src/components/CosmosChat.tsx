@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
+import { stoppedText } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
 import { ErrorAnswer, isProviderError } from './ErrorAnswer.js'
@@ -171,7 +172,7 @@ export const CosmosChat = memo(function CosmosChat() {
     await api.chatAbort(CHANNEL).catch(() => undefined)
     setBusy(false)
     setMessages((prev) =>
-      prev.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || t('bubble.stopped') } : m)),
+      prev.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || stoppedText(prev) } : m)),
     )
   }
 

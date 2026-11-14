@@ -1,6 +1,7 @@
 import { BrowserWindow, Notification } from 'electron'
 import type { DelegatedTask } from 'core'
 import type { EngramEvent } from '../shared/types.js'
+import { isKorean } from './task-closing.js'
 
 // A task that stops for the person says so outside the window, but only when
 // they are not already looking at Engram. Clicking it opens that conversation.
@@ -32,6 +33,11 @@ export function discardTaskNotice(botId: string): void {
   clearTimeout(held.get(botId)?.timer); held.delete(botId)
 }
 const HOLD_MS = 15 * 60_000
+// Notifications can appear on the lock screen; the words never carry task contents.
+const WORDS = {
+  en: { paused: ['Task paused', 'The unfinished result is ready. Click to continue with an instruction.'], done: ['Task done', 'The answer is ready. Click to see it.'], failed: ['Task stopped', 'Click to see what got done and what is left.'], question: ['Your answer is needed', 'There is a question for you. Click to answer.'], approval: ['Your approval is needed', 'A step is waiting for your OK. Click to review it.'] },
+  ko: { paused: ['작업을 잠시 멈췄어요', '중간 결과가 있어요. 눌러서 어떻게 이어갈지 알려 주세요.'], done: ['작업을 마쳤어요', '답이 준비됐어요. 눌러서 확인해 보세요.'], failed: ['작업이 멈췄어요', '눌러서 한 일과 남은 일을 확인해 보세요.'], question: ['답이 필요해요', '여쭤볼 게 있어요. 눌러서 답해 주세요.'], approval: ['확인이 필요해요', '진행 전에 확인할 단계가 있어요. 눌러서 살펴봐 주세요.'] },
+} as const
 
 function flushNotice(botId: string): void {
   if (queued.has(botId) || clientQueues.has(botId)) return
@@ -60,17 +66,11 @@ function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, leve
     notified.add(task.id)
   }
   const paused = task.state === 'waiting' && !task.question && !task.approvals.some(approval => !approval.answer)
-  const title = paused ? 'Task paused' : task.state === 'done' ? 'Task done'
-    : task.state === 'failed' ? 'Task stopped'
-      : task.question ? 'Your answer is needed' : 'Your approval is needed'
-  // A person looking at Engram sees the task in its conversation; an English toast adds nothing.
+  const [title, body] = WORDS[isKorean(task.goal) ? 'ko' : 'en'][paused ? 'paused' : task.state === 'done' ? 'done' : task.state === 'failed' ? 'failed' : task.question ? 'question' : 'approval']
+  // A person looking at Engram sees the task in its conversation already.
   if (BrowserWindow.getFocusedWindow()) return
   if (level === 'off' || (level === 'attention' && task.state !== 'failed' && (task.state !== 'waiting' || paused))) return
   if (!Notification.isSupported()) return
-  // Notifications can appear on the lock screen; keep task contents in the app.
-  const body = paused ? 'The unfinished result is ready. Click to continue with an instruction.' : task.state === 'done' ? 'The answer is ready. Click to see it.'
-    : task.state === 'failed' ? 'Click to see where it stopped.'
-      : task.question ? 'There is a question for you. Click to answer.' : 'A step is waiting for your OK. Click to review it.'
   const note = new Notification({ title, body })
   note.on('click', () => { surface(); broadcast({ type: 'comet:open', botId: task.botId }) })
   note.show()

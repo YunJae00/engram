@@ -3,7 +3,6 @@ import { readCheckpoint } from './comet-checkpoint.js'
 import { taskQueued } from './task-notify.js'
 import { ipcMain } from 'electron'
 import {
-  appendBotTurn,
   continuationPrompt,
   createTask,
   findPlaybook,
@@ -33,6 +32,7 @@ import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { freshResultReadback } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
+import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
 
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
@@ -40,8 +40,6 @@ export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: bool
 type Reason = Parameters<typeof continuationPrompt>[1]
 const AUTO_CONTINUE_MAX = 3
 const WORTH_KEEPING_STEPS = 3
-const ENDED = { en: 'The turn ended without an answer.', ko: '답을 마치지 못하고 끝났어요.' }
-const RESTARTED = 'The app restarted during this task. Check any external changes before asking me to continue.'
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
@@ -107,8 +105,8 @@ export function taskRunner(deps: {
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
-  // A turn that ended with no answer says so in the thread at its place, in the person's language.
-  const ended = async (task: DelegatedTask) => { try { const asked = [...await readBotTranscript(paths, task.botId)].reverse().find(one => one.role === 'user')?.text ?? ''; const text = ENDED[/[가-힣]/.test(asked) ? 'ko' : 'en']; await appendBotTurn(paths, task.botId, { role: 'assistant', text, at: new Date().toISOString() }); deps.broadcast({ type: 'chat:done', channel: channelOf(task), text }) } catch (error) { flog('tasks', error) } }
+  // Every end the person did not ask for leaves a closing message in the thread (task-closing.ts).
+  const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error })
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
@@ -119,7 +117,7 @@ export function taskRunner(deps: {
       t.state = 'running'; delete t.question; delete t.verified; delete t.verificationIssue; t.turns++
     })
     if (!started || started.state !== 'running' || stopped.has(channelOf(started))) {
-      if (started?.state === 'failed') deps.broadcast({ type: 'chat:done', channel: channelOf(started), text: started.log.at(-1)?.line ?? 'Task stopped.' })
+      if (started?.state === 'failed') await close(started, (started.tokensUsed ?? 0) >= TASK_TOKEN_BUDGET ? 'budget' : 'turn-limit')
       return started
     }
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
@@ -144,7 +142,7 @@ export function taskRunner(deps: {
       }
       delete t.verificationPending
       const pending = t.approvals.filter((a) => !a.answer)
-      if (!outcome) { t.state = 'failed'; logTask(t, ENDED.en) }
+      if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
@@ -174,8 +172,8 @@ export function taskRunner(deps: {
         }
       } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
-    if (!outcome && after?.state === 'failed') await ended(after)
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+    if (after?.state === 'failed' && (!outcome || outcome.budgetExhausted)) await close(after, outcome ? 'budget' : 'empty')
     return after
   }
 
@@ -228,9 +226,9 @@ export function taskRunner(deps: {
       }
     } catch (error) {
       const cancelled = !!channel && stopped.has(channel)
-      await finished(await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
-      if (cancelled) return
-      if (channel) deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
+      const after = await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } })
+      if (!cancelled) await close(after, 'error', channel, error)
+      await finished(after)
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
 
@@ -250,7 +248,7 @@ export function taskRunner(deps: {
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))
-        if (asked?.question && asked.question !== RESTARTED) deps.learn?.(asked.question, request.message, asked.goal)
+        if (asked?.question && !isRestartQuestion(asked.question)) deps.learn?.(asked.question, request.message, asked.goal)
         for (const t of active) if (t !== resumed) await edit(t.id, (x) => { approvalScopes.delete(t.id); alwaysFor.delete(t.id); routine.delete(t.id); held.delete(t.id); declined.delete(t.id); approved.delete(t.id); x.state = 'stopped'; logTask(x, 'Replaced by a new message') })
         task ??= resumed ?? await createTask(paths, request.message, botId)
         if (task !== resumed && request.scheduled === true) routine.add(task.id)
@@ -269,9 +267,10 @@ export function taskRunner(deps: {
         else await finished(after)
       } catch (error) {
         const cancelled = stopped.has(channel)
-        if (task) await finished(await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }))
+        const failed = task ? await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }) : undefined
+        if (!cancelled) await close(failed, 'error', channel, error)
+        await finished(failed)
         if (cancelled) return
-        deps.broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : String(error) })
         throw error
       } finally {
         try {
@@ -291,10 +290,10 @@ export function taskRunner(deps: {
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
-      for (const task of tasksToResume(tasks).filter(t => !channels.has(channelOf(t)))) await edit(task.id, t => {
-        t.state = 'waiting'; t.question = RESTARTED
-        logTask(t, t.question)
-      })
+      for (const task of tasksToResume(tasks).filter(t => !channels.has(channelOf(t)))) {
+        const question = await restartQuestion(paths, task)
+        await edit(task.id, t => { t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
+      }
     },
     waitingForPerson: (channel: string): boolean => (waiting.get(channel) ?? 0) > 0,
     askFor(channel: string, confirm: Ask, waitMs = Infinity): Ask | undefined {

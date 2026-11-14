@@ -32,7 +32,7 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
   }, [task, botId])
   if (!task || !['running', 'waiting', 'failed'].includes(task.state)) return null
   // A failure the thread already says needs no second card.
-  if (task.state === 'failed' && (failureShown || (questionShown !== undefined && task.log.at(-1)?.line === 'The turn ended without an answer.'))) return null
+  if (task.state === 'failed' && (failureShown || questionShown !== undefined)) return null
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
   if (task.state === 'running' && !pending.length) return null

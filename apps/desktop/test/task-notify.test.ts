@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { DelegatedTask } from 'core'
 
-const mocks = vi.hoisted(() => ({ supported: true, focused: false, show: vi.fn(), click: undefined as (() => void) | undefined }))
+const mocks = vi.hoisted(() => ({ supported: true, focused: false, show: vi.fn(), click: undefined as (() => void) | undefined, last: { title: '', body: '' } }))
 vi.mock('electron', () => ({
   BrowserWindow: { getFocusedWindow: () => mocks.focused ? {} : null },
   Notification: class {
+    constructor(options: { title: string; body: string }) { mocks.last = options }
     static isSupported() { return mocks.supported }
     on(_event: string, fn: () => void) { mocks.click = fn }
     show() { mocks.show() }
@@ -99,4 +100,14 @@ it('unknown or missing level behaves as all', () => {
     notifyTask(at(`lvl-${n}`, 'done'), vi.fn(), level)
     expect(mocks.show).toHaveBeenCalledTimes(n + 1)
   }
+})
+
+const kinds = [['done', {}], ['failed', {}], ['waiting', { question: 'Which?' }], ['waiting', open], ['waiting', {}]] as const
+it.each(kinds.map(([state, extra], n) => [n, state, extra] as const))('speaks the goal language in notification %i (%s)', (n, state, extra) => {
+  notifyTask(at(`ko-${n}`, state, { ...extra, goal: '보고서 정리' }), vi.fn())
+  expect(mocks.last.title).toMatch(/[가-힣]/)
+  expect(mocks.last.body).toMatch(/[가-힣]/)
+  notifyTask(at(`en-${n}`, state, { ...extra, goal: 'Tidy the report' }), vi.fn())
+  expect(`${mocks.last.title} ${mocks.last.body}`).not.toMatch(/[가-힣]/)
+  if (state === 'failed') expect(mocks.last.title).toBe('Task stopped')
 })

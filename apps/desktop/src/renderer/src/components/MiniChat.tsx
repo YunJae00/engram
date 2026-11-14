@@ -4,7 +4,7 @@ import { t } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread } from '../lib/cometThreadsLive.js'
 import { pendingStatus } from '../lib/pendingStatus.js'
-import { threadLang, threadT } from '../lib/threadLang.js'
+import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { CHIP_FAILED, resendFailedCometMessage, sendCometMessage, sendCometReply } from '../lib/attachments.js'
 import { useShellState } from '../state-slices.js'
@@ -50,7 +50,8 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
     return false
   }
   const stop = () => {
-    const said = threadT(threadLang(thread.messages))('bubble.stopped')
+    const step = thread.workLines[thread.workLines.length - 1]
+    const said = stoppedText(thread.messages, step ? pendingStatus(threadT(threadLang(thread.messages)), step) : undefined)
     cometThreads.stop(botId, said)
     void api.chatAbort(cometChannel(botId), said).catch(() => undefined)
   }
