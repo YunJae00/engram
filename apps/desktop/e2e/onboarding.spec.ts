@@ -315,6 +315,9 @@ test('first-run login states, filing retry and direct browser entry', async () =
     await expect(page.getByRole('tab')).toHaveCount(1)
     expect(await page.evaluate(lane => window.engram.browserTabs(lane), lane)).toEqual(firstTabs)
     await page.getByTestId(lane).click()
+    // openWelcome reloads, so the first conversation comes back with its preview card; reopen its browser to see the kept tabs.
+    await expandPreview(page)
+    await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
     await expect(page.getByRole('tab')).toHaveCount(2)
     await page.getByRole('button', { name: 'Close New tab', exact: true }).click()
     await expect(page.getByRole('tab')).toHaveCount(1)
