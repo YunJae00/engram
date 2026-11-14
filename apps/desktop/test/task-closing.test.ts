@@ -146,9 +146,9 @@ describe('p0-stop-honest leftovers', () => {
   })
 
   it('picks the notice language from the latest person message', () => {
-    expect(noticeText({ state: 'done', goal: 'Prepare the report', approvals: [] }, [{ role: 'user', text: '보고서 정리해줘' }])[0]).toBe('작업을 마쳤어요')
-    expect(noticeText({ state: 'done', goal: '보고서 정리', approvals: [] }, [{ role: 'user', text: '보고서' }, { role: 'user', text: 'Now in English' }])[0]).toBe('Task done')
-    expect(noticeText({ state: 'failed', goal: '보고서 정리', approvals: [] })[0]).toBe('작업이 멈췄어요')
+    expect(noticeText({ state: 'done', goal: 'Prepare the report', approvals: [] }, [{ role: 'user', text: '보고서 정리해줘' }])[0]).toBe('Engram: 다 했어요')
+    expect(noticeText({ state: 'done', goal: '보고서 정리', approvals: [] }, [{ role: 'user', text: '보고서' }, { role: 'user', text: 'Now in English' }])[0]).toBe('Engram: Done')
+    expect(noticeText({ state: 'failed', goal: '보고서 정리', approvals: [] })[0]).toBe('Engram: 멈췄어요')
   })
 
   it('wraps an error raised before the task exists in a thread-language closing', async () => {

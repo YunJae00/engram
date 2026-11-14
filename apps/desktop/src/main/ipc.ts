@@ -43,8 +43,7 @@ import {
   loadBots,
   recordBotSites,
   markBotTaskRun,
-  addNotice,
-  offerStudyTool,
+  addNotice, offerStudyTool,
   studyFindingsTool,
   studyGuard,
   noticeText,
@@ -170,7 +169,7 @@ import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { canLearnTurn, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
-import { notifyTask, surfaceComet } from './task-notify.js'
+import { taskNotices, surfaceComet } from './task-notify.js'
 import { keepStopMark } from './task-closing.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
@@ -1770,7 +1769,7 @@ export function registerIpc(ctx: VaultContext): void {
         .catch(error => flog('standing', error))
         .finally(async () => {
           const said = (await readBotTranscript(paths, bot.id).catch(() => [])).filter(turn => turn.role === 'assistant').at(-1)?.text ?? ''
-          await updateNotice(paths, item.id, { running: false, read: false, at: new Date().toISOString(), text: noticeText(said) || goal }).catch(error => flog('standing', error))
+          await updateNotice(paths, item.id, { running: false, read: false, began: item.at, at: new Date().toISOString(), text: noticeText(said) || goal }).catch(error => flog('standing', error))
           broadcast({ type: 'notices:changed' })
         })
       return { ok: true, botId: bot.id }
@@ -1780,7 +1779,8 @@ export function registerIpc(ctx: VaultContext): void {
 
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
   // It resumes once the brains have had a moment to connect after start.
-  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => broadcast({ type: 'tasks:changed' }) })
+  const told = taskNotices(paths, broadcast)
+  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => { broadcast({ type: 'tasks:changed' }); told.team() } })
   const tasks = taskRunner({
     paths,
     send: (request, turn) => { takeOutcome(request.channel ?? ''); return sendChat(request, undefined, undefined, turn) },
@@ -1797,7 +1797,7 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
-    notify: (task) => { void team.settled(task).catch(error => flog('team', error)); void loadBots(paths).then(bots => bots.find(bot => bot.id === task.botId)?.notify, () => undefined).then(async level => notifyTask(task, broadcast, level, await readBotTranscript(paths, task.botId, 40).catch(() => []))).catch(error => flog('task-notify', error)) },
+    notify: (task) => { void team.settled(task).catch(error => flog('team', error)); told.task(task) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,
     // A check gets a bounded share of time; past it the draft is the answer.

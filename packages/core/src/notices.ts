@@ -20,6 +20,8 @@ export interface NoticeItem {
   // The habit it raises.
   key?: string
   running?: boolean
+  // When a scheduled run started; `at` moves to its end.
+  began?: string
 }
 
 const KEEP = 60

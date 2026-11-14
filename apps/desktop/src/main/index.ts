@@ -50,6 +50,7 @@ import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
 import { setTaskSurface } from './task-notify.js'
 import { quickCometBounds } from './quick-comet.js'
 import { finishAppReset, registerAppReset } from './app-reset.js'
+import { mainFocus } from './away-summary.js'
 import { quickFileDialogOpen } from './quick-files.js'
 import { verifySetupConnection } from './setup-connection.js'
 import { aiSelection, chatEngine } from './ai-selection.js'
@@ -308,9 +309,8 @@ async function createMainWindow(hash?: string): Promise<void> {
   // macOS fullscreen hides the traffic lights — tell the renderer so the top
   // bar can drop the left padding it reserves for them (and restore on exit).
   mainWin.on('enter-full-screen', () => broadcast({ type: 'window:fullscreen', value: true }))
-  mainWin.on('focus', () => broadcast({ type: 'window:focus', value: true }))
-  mainWin.on('blur', () => broadcast({ type: 'window:focus', value: false }))
-  mainWin.webContents.on('did-finish-load', () => broadcast({ type: 'window:focus', value: mainWin?.isFocused() ?? false }))
+  mainWin.on('focus', () => { broadcast({ type: 'window:focus', value: true }); mainFocus(true) }).on('blur', () => { broadcast({ type: 'window:focus', value: false }); mainFocus(false) })
+  mainWin.webContents.on('did-finish-load', () => { const value = mainWin?.isFocused() ?? false; broadcast({ type: 'window:focus', value }); mainFocus(value) })
   mainWin.on('leave-full-screen', () => broadcast({ type: 'window:fullscreen', value: false }))
   mainWin.on('close', (event) => {
     stopDesktopControl('Engram was closed.')
