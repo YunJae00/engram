@@ -29,14 +29,19 @@ export function mainFocus(focused: boolean, now = Date.now()): void {
 const movedAt = (task: DelegatedTask): number => Date.parse(task.state === 'done' || task.state === 'failed' ? task.finishedAt ?? task.updatedAt : task.updatedAt)
 
 // A scheduled run already has its own bell item. Its task is the first one its bot started inside that run's
-// time; other work on the same bot, started before or alongside it, still belongs in the summary.
+// time, or, when the run picked up a waiting task instead, the one that kept moving through it (the conversation
+// is busy for the whole run). Other work on the same bot, started before or alongside it, still belongs in the summary.
 export function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
   return notices.some(n => {
     if (n.kind !== 'scheduled' || n.botId !== task.botId) return false
     const began = Date.parse(n.began ?? n.at), ended = n.running === true ? Infinity : Date.parse(n.at)
-    const inside = (one: DelegatedTask): boolean => { const at = Date.parse(one.createdAt); return one.botId === task.botId && at >= began && at <= ended }
-    const first = tasks.filter(inside).reduce<DelegatedTask | undefined>((a, b) => !a || Date.parse(b.createdAt) < Date.parse(a.createdAt) ? b : a, undefined)
-    return first?.id === task.id
+    const within = (at: number): boolean => at >= began && at <= ended
+    const mine = tasks.filter(one => one.botId === task.botId)
+    const pick = (list: DelegatedTask[], at: (one: DelegatedTask) => number, first: boolean): DelegatedTask | undefined =>
+      list.reduce<DelegatedTask | undefined>((a, b) => !a || (first ? at(b) < at(a) : at(b) > at(a)) ? b : a, undefined)
+    const started = pick(mine.filter(one => within(Date.parse(one.createdAt))), one => Date.parse(one.createdAt), true)
+    const resumed = started ? undefined : pick(mine.filter(one => one.state !== 'stopped' && Date.parse(one.createdAt) < began && within(movedAt(one))), movedAt, false)
+    return (started ?? resumed)?.id === task.id
   })
 }
 

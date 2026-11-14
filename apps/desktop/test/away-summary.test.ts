@@ -116,6 +116,17 @@ it('keeps a manual task on the same bot that changed during a scheduled run', as
   expect(both.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 답 기다림 1' })
 })
 
+it('leaves out a waiting task that a scheduled run picked up, but not the one it replaced', async () => {
+  const ended = { kind: 'scheduled', botId: 'a', began: iso(2), at: iso(6) } as const
+  const resumed = task('a', 'done', 6, { createdAt: iso(-60) })
+  const only = setup([resumed], [ended])
+  await away()
+  expect(only.post).not.toHaveBeenCalled()
+  const replaced = setup([resumed, task('a', 'stopped', 2, { createdAt: iso(-90) })], [ended])
+  await away()
+  expect(replaced.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 멈춤 1' })
+})
+
 it('posts nothing and does not throw when the tasks cannot be read', async () => {
   const { post, io } = setup([])
   io.tasks = async () => { throw new Error('unreadable') }
