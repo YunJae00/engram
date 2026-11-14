@@ -252,7 +252,7 @@ describe('permission modes', () => {
 })
 
 describe('outputs left in the task folder', () => {
-  it('hands in only deliverables built this turn and named in the answer, not scripts or ones already linked', async () => {
+  it('hands in only deliverables built this turn and named in the answer, scripts included, not ones already linked', async () => {
     const since = Date.now() - 1000
     await mkdir(join(cwd, 'out'), { recursive: true })
     for (const name of ['report(2026.10.11.).xlsx', 'parse.py', 'notes.md', 'linked.csv']) await writeFile(join(cwd, name), 'x')
@@ -261,7 +261,7 @@ describe('outputs left in the task folder', () => {
     await utimes(join(cwd, 'old.csv'), new Date(since - 60_000), new Date(since - 60_000))
     const answer = 'Built `C:\\work\\report(2026.10.11.).xlsx`, ran parse.py, wrote out/summary.md and old.csv. [linked.csv](engram-artifact:abc-linked.csv)'
     const found = (await mentionedOutputs(cwd, answer, since)).map(path => path.slice(cwd.length + 1).replace(/\\/g, '/')).sort()
-    expect(found).toEqual(['out/summary.md', 'report(2026.10.11.).xlsx'])
+    expect(found).toEqual(['out/summary.md', 'parse.py', 'report(2026.10.11.).xlsx'])
     expect(await mentionedOutputs(join(root, 'missing'), answer, since)).toEqual([])
   })
 })
@@ -280,12 +280,12 @@ describe('where a comet works', () => {
   })
   it('uses its own folder unless one was assigned to it, which it keeps across restarts', async () => {
     const paths = vaultPaths(join(root, 'one'))
-    expect(await workFolderFor(paths, 'bot-1')).toBe(join(paths.cache, 'work', 'bot-1'))
+    expect(await workFolderFor(paths, 'bot-1')).toBe(join(paths.workspace, 'tasks', 'bot-1'))
     await rememberWorkFolder(paths, 'bot-1', join(paths.cache, 'work', 'bot-1'))
     expect(existsSync(join(paths.cache, 'work', 'claims.json'))).toBe(false)
     await rememberWorkFolder(paths, 'bot-1', join(paths.cache, 'work', 'spare-x'))
     expect(await workFolderFor(paths, 'bot-1')).toBe(join(paths.cache, 'work', 'spare-x'))
-    expect(await workFolderFor(paths, 'bot-2')).toBe(join(paths.cache, 'work', 'bot-2'))
+    expect(await workFolderFor(paths, 'bot-2')).toBe(join(paths.workspace, 'tasks', 'bot-2'))
     const tools = await cometNativeTools({ paths, channel: 'bot-1', onStep: vi.fn(), audit: vi.fn() })
     expect(tools.cwd).toBe(join(paths.cache, 'work', 'spare-x'))
   })

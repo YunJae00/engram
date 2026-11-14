@@ -77,7 +77,6 @@ import {
   recordRecallReceipt,
   rejectCard,
   runComet,
-  priorOutputs,
   priorOutputLines,
   cometTools,
   deriveSearchTemplate,
@@ -142,7 +141,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, fileWorkTools, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -182,13 +181,13 @@ import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, withFirstLine } from './first-line.js'
-import { cometNativeTools, commandSandbox, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
+import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
-import { artifactDirectory, cometFileTools, newestRevisions, registerArtifactIpc } from './file-work.js'
+import { artifactDirectory, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskRoot } from './file-work.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -340,7 +339,7 @@ const WALL_HOLD_MS = 10 * 60_000
 // A provider failing on its side usually answers again within seconds to minutes.
 const OUTAGE_RESEND_MS = 15_000
 // Tools that change files or applications; plan mode leaves them off.
-const PLAN_BLOCKED = /^(new_bot|file_create|file_edit|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
+const PLAN_BLOCKED = /^(new_bot|file_create|file_edit|render_file|excel_write|word_write|desktop_action|desktop_sequence|keep_)/
 const wallHolds = new Map<string, () => void>()
 function releaseWallHold(channel: string): void {
   const release = wallHolds.get(channel)
@@ -1839,7 +1838,7 @@ export function registerIpc(ctx: VaultContext): void {
       const model = (live.id === 'claude' ? settings.claudeModel : settings.codexModel) ?? '', effort = live.id === 'claude' ? settings.claudeEffort : settings.codexEffort
       const engine = withModel(live, model, effort)
       const channel = `spare-${live.id}`
-      const cwd = join(paths.cache, 'work', `spare-${randomUUID()}`)
+      const cwd = join(taskRoot(paths), `spare-${randomUUID()}`)
       try {
         const native = await cometNativeTools({ paths, channel, cwd, sandboxed: commandSandbox(live.id), mode: 'auto', onStep: () => undefined, audit: () => undefined })
         const tools = await cometToolSet({ channel, engine, settings, permission: 'auto', native, attachments: await readChatAttachments(paths, undefined, warmAbort.signal), earlierOutputs: [], turn: undefined, recovery: null, remembered: [], guided: false, webOnly: false, audit: () => undefined })
@@ -2332,7 +2331,7 @@ export function registerIpc(ctx: VaultContext): void {
   // warmed ahead of one: what differs per turn rides in the closures.
   const cometToolSet = async (input: {
     channel: string; engine: Engine; settings: Awaited<ReturnType<typeof loadSettings>>; permission: PermissionMode; native: NativeTools | undefined
-    attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof priorOutputs>>; turn: TaskTurn | undefined
+    attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof linkedOutputs>>; turn: TaskTurn | undefined
     recovery: string | null | undefined; remembered: string[]; guided: boolean; webOnly: boolean; audit: (kind: AuditKind, rest: { tool?: string; url?: string; detail?: string }) => void
   }): Promise<AgentTool[]> => {
     const { channel, engine, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
@@ -2421,7 +2420,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }),
     deskActivityTool,
     notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
@@ -2436,11 +2435,11 @@ export function registerIpc(ctx: VaultContext): void {
     ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
     // Offered every turn so a check runs in the same session as the work it checks.
     resultCheckTool(turn?.verification ? {
-      outputs: await priorOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
+      outputs: await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
-    } : undefined), ...(!webOnly && !guided && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], native ? [native.cwd] : []) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
+    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)]) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2492,7 +2491,7 @@ export function registerIpc(ctx: VaultContext): void {
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     // What this conversation already saved, so a later day can reopen it.
     // A check turn's draft is held back from the thread; its outputs are this task's own.
-    const earlierOutputs = bot ? await priorOutputs(artifactDirectory(paths), [...savedHistory, ...(turn?.verification ? [{ role: 'assistant' as const, text: turn.verification.result }] : [])]) : []
+    const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory, ...(turn?.verification ? [{ role: 'assistant' as const, text: turn.verification.result }] : [])]) : []
     const rules: string[] = [
       ...(recovery ? [recovery] : []),
       // A bot is the librarian wearing a charter: same grounding, same
@@ -2772,19 +2771,10 @@ export function registerIpc(ctx: VaultContext): void {
         if (signal.aborted) return
         clearApplicationWork(channel)
         endDesktopTurn(channel)
-        if (native && !result.asked && !result.stopped) {
-          const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [native.cwd] }).find((tool) => tool.name === 'file_create_copy')!
-          for (const path of await mentionedOutputs(native.cwd, result.answer, nativeSince)) {
-            try {
-              const observation = await handIn.run({ name: path.split(/[\\/]/).at(-1)!, fromPath: path }, { task: request.message })
-              result.steps.push({ tool: 'file_create_copy', args: { name: path.split(/[\\/]/).at(-1)!, fromPath: path }, observation })
-              result.answer = `${result.answer}\n\n${(JSON.parse(observation) as { markdownLink: string }).markdownLink}`
-            } catch (error) { flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`) }
-          }
-        }
+        await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
         let check: TurnOutcome['check']
         if (result.steps.some(step => step.tool === 'report_result_check')) {
-          const outputs = latestResultOutputs(result.steps, await priorOutputs(artifactDirectory(paths), [
+          const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [
             { role: 'assistant', text: result.answer },
           ]))
           const report = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })

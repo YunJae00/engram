@@ -296,3 +296,4 @@ const api: EngramApi = {
 }
 
 contextBridge.exposeInMainWorld('engram', api)
+contextBridge.exposeInMainWorld('engramOutputs', { info: (id: string) => ipcRenderer.invoke('artifact:info', id) })

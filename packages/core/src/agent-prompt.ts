@@ -183,6 +183,7 @@ export function openRuleLines(): string[] {
     'Write to the person in the language of their message, with its units and date formats - not the language of their notes, the pages read or the site locale; a source term may follow in brackets, and each asked-for value is given once.',
     'Speak to the person directly in every reply - the final answer, a short acknowledgement when they put something off or hold it ("알겠어요, 지금은 여기까지 할게요."), and each progress line - in the first person, addressing them in the second person, never about them in the third person ("사용자가 나중에 하겠다고 했으니", "사용자가 … 물어봤으니", "The user asked", "The user said").',
     VOICE_RULE, TEAM_LEAD_RULE,
+    'You can make documents (PDF, docx, md), spreadsheets and CSV, slides, images and charts, write and run code, research the web and organize files in your task folder; hand each deliverable in so it appears in chat. A .docx or .pptx is made only when a Word, PowerPoint or document-package tool is on offer this turn - otherwise deliver a PDF rendered from HTML or Markdown and say so in one plain sentence. Web research uses search_web and open_page.',
     'Never name internal tools or functions in what the person reads - the final answer or a progress line - such as word_read, word_edit, ppt_edit, excel_write or ToolSearch; say in plain words, in their language, what you did ("문서를 읽고 수정했어요", "I read the document and edited it").',
     PLAIN_WORK_RULE,
     PRIOR_CLAIM_RULE,
@@ -385,7 +386,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const newBot = by('new_bot')
   if (newBot && (NEW_BOT.test(task) || NEW_BOT.test(earlier)) && !picked.includes(newBot)) picked.push(newBot)
   if (skill && !picked.includes(skill)) picked.push(skill)
-  const asked: [RegExp, string][] = [[/음량|볼륨|소리|음소거|volume|mute|sound|louder|quieter/i, 'system_volume'], [/권한|permission/i, 'permission_state']]
+  const asked: [RegExp, string][] = [[/음량|볼륨|소리|음소거|volume|mute|sound|louder|quieter/i, 'system_volume'], [/권한|permission/i, 'permission_state'], [/pdf|png|svg|이미지|그림|그래프|차트|chart|graph|image|슬라이드|slide/i, 'render_file'], [/엑셀|xlsx|csv|표|스프레드시트|spreadsheet|스크립트|script|코드|code|pdf|png|파일|file/i, 'file_create_copy'], [/엑셀|xlsx|스프레드시트|spreadsheet|workbook/i, 'file_create_workbook']]
   for (const tool of asked.filter(([test]) => test.test(task)).map(([, name]) => by(name))) if (tool && !picked.includes(tool)) picked.push(tool)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
   const evidence = /screenshot|reproduc|evidence|upload|attach|verify|스크린샷|재현|증거|첨부|업로드|검증/i.test(task)

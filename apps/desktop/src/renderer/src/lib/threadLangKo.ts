@@ -115,7 +115,7 @@ export const WORK_KO: Record<string, string | ((arg: string) => string)> = {
   Write: arg => `${name(arg)} 쓰는 중`, Edit: arg => `${name(arg)} 고치는 중`, MultiEdit: arg => `${name(arg)} 고치는 중`, NotebookEdit: arg => `${name(arg)} 고치는 중`,
   Bash: '명령 실행하는 중', PowerShell: '명령 실행하는 중', Shell: '명령 실행하는 중',
   file_read: arg => `${name(arg)} 읽는 중`, file_read_workbook: arg => `${name(arg)} 읽는 중`, file_read_package: arg => `${name(arg)} 읽는 중`,
-  file_create_copy: arg => `${name(arg)} 저장하는 중`, file_create_workbook: arg => `${name(arg)} 저장하는 중`, file_edit_package: arg => `${name(arg)} 고치는 중`,
+  render_file: 'PDF/이미지 만드는 중', file_create_copy: arg => `${name(arg)} 저장하는 중`, file_create_workbook: arg => `${name(arg)} 저장하는 중`, file_edit_package: arg => `${name(arg)} 고치는 중`,
   find_files: arg => `“${arg}” 파일 찾는 중`, open_skill: '배운 방법 읽는 중',
   look_in_parallel: '여러 가지를 한꺼번에 알아보는 중',
   outage: arg => `${arg} 쪽에서 응답이 없어 잠시 뒤 다시 보내요`,
@@ -128,3 +128,4 @@ export const GROUP_KO: Record<string, string> = {
   'Using your memory': '기억 찾아보기', 'Planning the work': '순서 정하기', 'Running commands': '명령 실행', 'Checking the result': '결과 확인', 'Working with files': '파일 작업',
 }
 export const KO_STOP = { starts: ['중지했어요.', '멈췄어요.', '여기까지 했어요: '], ended: '답을 마치지 못하고 끝났어요.', retry: '이어서 해줘' } as const
+export const FILE_CARD_KO = { open: '열기', reveal: 'Finder에서 보기', revealWin: '탐색기에서 보기' } as const

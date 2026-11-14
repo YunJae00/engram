@@ -41,7 +41,7 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   Write: arg => `Writing ${fileName(arg)}`, Edit: arg => `Editing ${fileName(arg)}`, MultiEdit: arg => `Editing ${fileName(arg)}`, NotebookEdit: arg => `Editing ${fileName(arg)}`,
   Bash: arg => `Running a command (${arg.slice(0, 60)})`, PowerShell: arg => `Running a command (${arg.slice(0, 60)})`, Shell: arg => `Running a command (${arg.slice(0, 60)})`,
   file_read: arg => `Reading ${fileName(arg)}`, file_read_workbook: arg => `Reading the workbook ${fileName(arg)}`, file_read_package: arg => `Reading the document ${fileName(arg)}`,
-  file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
+  render_file: 'Rendering a file', file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
   find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
   look_in_parallel: 'Looking into several things at once',
   outage: arg => `${arg} is not answering on its side; sending again shortly`,

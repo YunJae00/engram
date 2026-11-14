@@ -1,11 +1,13 @@
 import { app } from 'electron'
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, realpath, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type VaultPaths } from 'core'
+import { artifactHref, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
-import { artifactDirectory } from './file-work.js'
+import { artifactDirectory, ensureTaskFolder, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot } from './file-work.js'
+import { flog } from './flog.js'
+import { latestResultOutputs } from './result-check.js'
 import { noteScript } from './turn-scripts.js'
 
 const READS = new Set(['Read', 'Glob', 'Grep', 'LS', 'NotebookRead'])
@@ -70,7 +72,7 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
       if (WRITES.has(name) && policy.mode === 'plan') return deny(PLAN_ONLY)
       if (WRITES.has(name)) return within(cwd, path)
         ? { behavior: 'allow', updatedInput: { ...input, [key]: path } }
-        : deny(`Write and Edit work only inside the task folder ${policy.cwd}. Save deliverables with file_create_copy or file_create_workbook so they are linked and checked.`)
+        : deny(`Write and Edit work only inside the task folder ${policy.cwd}. Save deliverables with file_create_copy, file_create_workbook or render_file so they are linked and checked.`)
       const privateDir = await actualPath(policy.privateDir)
       const roots = await Promise.all(policy.roots.map(actualPath))
       const cache = policy.cacheDir ? await actualPath(policy.cacheDir) : undefined
@@ -118,27 +120,56 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
   return deny(`${name} is not available in this chat.`)
 }
 
-const DELIVERABLES = new Set(['.xlsx', '.docx', '.pptx', '.csv', '.tsv', '.md', '.txt', '.json'])
-
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
-export async function mentionedOutputs(cwd: string, answer: string, since: number): Promise<string[]> {
+export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = []): Promise<string[]> {
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
   for (const entry of entries) {
     const path = join(cwd, entry), name = basename(entry)
-    if (!DELIVERABLES.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
+    if (name.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
     if (answer.includes(`-${artifactHref(name)})`) || answer.includes(`-${encodeURIComponent(name)})`)) continue
-    const info = await stat(path).catch(() => null)
-    if (info?.isFile() && info.mtimeMs >= since) found.push(path)
+    // lstat: a link is never a deliverable.
+    const info = await lstat(path).catch(() => null)
+    // A file reached through a linked directory is outside the task folder.
+    if (!info?.isFile() || !within(await realpath(cwd), await realpath(path))) continue
+    if (info.mtimeMs >= since) (info.size > OUTPUT_BYTES ? oversized : found).push(info.size > OUTPUT_BYTES ? name : path)
   }
   return found
 }
 
+const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
+// Every output of the turn reaches the answer as a file link: the ones a tool
+// saved (even when the turn was cut short, since each was read back), and the
+// raw files the answer names when the turn finished.
+export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
+  if (result.asked) return
+  const linked = (name: string) => result.answer.includes(`-${artifactHref(name)})`) || result.answer.includes(`-${encodeURIComponent(name)})`)
+  for (const output of latestResultOutputs(result.steps, [])) {
+    if (!linked(output.name)) result.answer = `${result.answer}\n\n[${output.name}](engram-artifact:${artifactHref(basename(output.path))})`
+  }
+  if (result.stopped) return
+  const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
+  const oversized: string[] = []
+  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized)) {
+    try {
+      const name = basename(path)
+      const real = await taskFile(paths, cwd, path)
+      const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }) : JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
+      result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation })
+      result.answer = `${result.answer}\n\n${(JSON.parse(observation) as { markdownLink: string }).markdownLink}`
+    } catch (error) { flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`) }
+  }
+  for (const name of oversized) result.answer = `${result.answer}\n\n⚠ ${name} is larger than 50 MB, so it stays in the task folder and is not attached.`
+}
+
 const consent = new Map<string, { allowed: boolean }>()
 
-// Where a comet works. Its own folder under the vault's work directory, unless
-// one was assigned to it (a spare session's), which is remembered across restarts.
+// Where a comet works: tasks/<taskId> in the person's workspace, one folder per
+// conversation, unless one was assigned to it (a spare session's), which is
+// remembered across restarts. Folders from before tasks/ existed stay in use.
+const sanitized = (channel: string) => channel.replace(/[^A-Za-z0-9_-]+/g, '-')
+const legacyRoot = (paths: VaultPaths) => join(paths.cache, 'work')
 const claimsFile = (paths: VaultPaths) => join(paths.cache, 'work', 'claims.json')
 async function readClaims(paths: VaultPaths): Promise<Record<string, unknown>> {
   try {
@@ -150,13 +181,13 @@ async function readClaims(paths: VaultPaths): Promise<Record<string, unknown>> {
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error }
 }
 function assignedFolder(paths: VaultPaths, folder: unknown): string {
-  if (typeof folder !== 'string' || dirname(resolve(folder)) !== resolve(join(paths.cache, 'work')) || !/^[A-Za-z0-9_-]+$/.test(basename(folder))) throw new Error('A comet work folder must stay inside this workspace.')
+  if (typeof folder !== 'string' || ![taskRoot(paths), legacyRoot(paths)].some(root => dirname(resolve(folder)) === resolve(root)) || !/^[A-Za-z0-9_-]+$/.test(basename(folder))) throw new Error('A comet work folder must stay inside this workspace.')
   return resolve(folder)
 }
 export async function workFolderFor(paths: VaultPaths, channel: string): Promise<string> {
   const claims = await readClaims(paths)
-  const own = join(paths.cache, 'work', channel.replace(/[^A-Za-z0-9_-]+/g, '-'))
-  if (!Object.hasOwn(claims, channel)) return own
+  const own = join(taskRoot(paths), sanitized(channel)), legacy = join(legacyRoot(paths), sanitized(channel))
+  if (!Object.hasOwn(claims, channel)) return !(await lstat(own).catch(() => null)) && (await lstat(legacy).catch(() => null))?.isDirectory() ? legacy : own
   const folder = assignedFolder(paths, claims[channel])
   if (Object.entries(claims).some(([owner, value]) => owner !== channel && typeof value === 'string' && relative(folder, resolve(value)) === '')) throw new Error('This work folder is assigned to another comet.')
   return folder
@@ -166,7 +197,7 @@ export function rememberWorkFolder(paths: VaultPaths, channel: string, folder: s
   const pending = claimWrites.then(async () => {
     const target = assignedFolder(paths, folder), claims = await readClaims(paths)
     if (Object.entries(claims).some(([owner, value]) => owner !== channel && typeof value === 'string' && relative(target, resolve(value)) === '')) throw new Error('This work folder is assigned to another comet.')
-    if (claims[channel] === target || target === resolve(join(paths.cache, 'work', channel.replace(/[^A-Za-z0-9_-]+/g, '-')))) return
+    if (claims[channel] === target || [taskRoot(paths), legacyRoot(paths)].some(root => target === resolve(join(root, sanitized(channel))))) return
     claims[channel] = target
     await mkdir(join(paths.cache, 'work'), { recursive: true })
     await writeFile(`${claimsFile(paths)}.tmp`, JSON.stringify(claims))
@@ -176,11 +207,30 @@ export function rememberWorkFolder(paths: VaultPaths, channel: string, folder: s
   return pending
 }
 
-export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools & { sandbox?: Record<string, unknown> }> {
-  const cwd = assignedFolder(options.paths, options.cwd ?? await workFolderFor(options.paths, options.channel))
-  await mkdir(cwd, { recursive: true })
-  if ((await lstat(cwd)).isSymbolicLink() || !within(await realpath(options.paths.workspace), await realpath(cwd))) throw new Error('A comet work folder cannot redirect outside this workspace.')
-  const roots = [cwd, artifactDirectory(options.paths), ...(['documents', 'desktop', 'downloads'] as const).map((name) => app.getPath(name))]
+const spares = new Set<string>()
+// Empty spare folders an earlier run left behind; anything with files or an owner stays.
+async function pruneSpares(paths: VaultPaths): Promise<void> {
+  const claimed = new Set(Object.values(await readClaims(paths).catch(() => ({}))).flatMap(value => typeof value === 'string' ? [resolve(value)] : []))
+  for (const name of await readdir(taskRoot(paths)).catch(() => [] as string[])) {
+    const folder = resolve(taskRoot(paths), name)
+    if (name.startsWith('spare-') && !spares.has(folder) && !claimed.has(folder)) await rmdir(folder).catch(() => undefined)
+  }
+}
+
+export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; member?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools & { sandbox?: Record<string, unknown> }> {
+  const lead = assignedFolder(options.paths, options.cwd ?? await workFolderFor(options.paths, options.channel))
+  if (basename(lead).startsWith('spare-') && !spares.has(lead)) { await pruneSpares(options.paths); spares.add(lead) }
+  await ensureTaskFolder(options.paths, lead)
+  // A hired member works in a subfolder of the lead's task folder, so results can be combined.
+  let cwd = lead
+  if (options.member) {
+    for (const part of ['team', sanitized(options.member)]) {
+      cwd = join(cwd, part)
+      await mkdir(cwd, { recursive: true })
+      if ((await lstat(cwd)).isSymbolicLink() || !within(await realpath(lead), await realpath(cwd))) throw new Error('A member folder must stay inside its task folder.')
+    }
+  }
+  const roots = [cwd, ...(cwd === lead ? [] : [lead]), artifactDirectory(options.paths), ...(['documents', 'desktop', 'downloads'] as const).map((name) => app.getPath(name))]
   const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)
   if (!commands) consent.set(consentKey, commands = { allowed: false })

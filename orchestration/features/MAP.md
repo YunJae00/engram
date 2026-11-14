@@ -62,6 +62,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - Hidden team (hire, review, release, big-plan chips, verify gate) — unit only (`packages/core/test/team-hire-tools.test.ts`, `apps/desktop/test/team-runner.test.ts`), fake engine; no live Claude run.
 - Team tree UI (sidebar team line, collapsed thread summary, tree by who hired whom) — unit only (`apps/desktop/test/team-tree-ui.test.ts`), fake task list; no live Claude run.
 - Stop honesty (stop mark kept after a cut answer, retry chip, plain sidebar preview) — unit-tested (`apps/desktop/test/stop-honest.test.ts`, `apps/desktop/test/task-closing.test.ts`).
+- General capability (per-task folder `workspace/tasks/<taskId>` with member subfolders, wide output store with a 50 MB cap, `render_file` HTML/Markdown to PDF/PNG in a hidden offline window, file cards with size, thumbnail and Show in Finder) — `apps/desktop/src/main/native-tools.ts`, `file-work.ts`, `render-file.ts`, `renderer/src/components/AnswerFiles.tsx`; unit (`apps/desktop/test/general-capability.test.ts`, `render-file.test.ts`, mocked window) and e2e (`apps/desktop/e2e/general-capability.spec.ts`, mock engine calling the real tools).
 
 ## Brief shape
 
