@@ -176,7 +176,7 @@ describe('instant first line', () => {
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
     const skipped: Partial<FirstLineAsk>[] = [
-      { message: '안녕' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' },
+      { message: '안녕' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' }, { message: 'How are you?' }, { message: "what's up" }, { message: '잘 지냈어요?' }, { message: 'how are you doing today?' },
       { studying: true }, { limited: true }, { followUp: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' },
     ]
     for (const patch of skipped) {
@@ -233,6 +233,18 @@ describe('instant first line', () => {
     warmFirstLine({ id: 'claude', warmQuick: warm }, WORKDIR)
     expect(warm).toHaveBeenCalledOnce()
     expect(source('index.ts')).toContain('warmFirstLine(live, engineCwd(ctx.paths))')
+  })
+
+  it('replaces a voice whose answer never came, so the next line finds a fresh one', async () => {
+    const engine = new ClaudeEngine('profile-late')
+    const voiceOf = (): Promise<{ closed: boolean; ready: boolean; ask(): Promise<string> }> => (engine as unknown as { voiceFor(w: string): Promise<never> }).voiceFor(WORKDIR)
+    const stuck = await voiceOf()
+    stuck.ask = async () => { stuck.ready = false; throw new Error('The voice took too long.') }
+    await expect(engine.quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })).rejects.toThrow('too long')
+    expect(stuck.closed).toBe(true)
+    const fresh = await voiceOf()
+    expect(fresh).not.toBe(stuck)
+    expect(await engine.quick('say it', { workdir: WORKDIR, timeoutMs: 1000 })).toBe('fixture line')
   })
 
   it('keeps one voice per Claude account, so a switch never answers from the old one', async () => {

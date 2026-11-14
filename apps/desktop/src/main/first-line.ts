@@ -4,8 +4,8 @@ import { flog } from './flog.js'
 export const FIRST_LINE_BUDGET_MS = 1500
 const LINE_MAX = 140, ASK_MAX = 2000, CHAT_MIN = 8, PLAIN_MAX = 40
 // The whole message is small talk, give or take a friendly tail: "thanks!", "고마워요 잘 됐어요" - never "ok, draft the report".
-const SMALL_TALK = /^(hi|hello|hey|yo|thanks|thank you|thx|ty|ok|okay|sure|great|nice|cool|good (morning|afternoon|evening|night)|bye|안녕|고마워|고맙|감사|수고|네|넵|응|좋아|굿|ㅎㅇ|ㅋ|ㅎ)/i
-const SMALL_TAIL = /^([\s!.,~^?？ㅋㅎㅠㅜ]|❤️|🙏|😊|👍|요|용|해요|합니다|하세요|so much|a lot|for (your|the) help|again|잘 ?됐어요|잘 ?됐어|덕분이에요|덕분에|정말|진짜|많이|요!)*$/iu
+const SMALL_TALK = /^(how are you|how's it going|how is it going|what's up|whats up|how have you been|잘 ?지냈어|잘 ?지내|뭐 ?해|hi|hello|hey|yo|thanks|thank you|thx|ty|ok|okay|sure|great|nice|cool|good (morning|afternoon|evening|night)|bye|안녕|고마워|고맙|감사|수고|네|넵|응|좋아|굿|ㅎㅇ|ㅋ|ㅎ)/i
+const SMALL_TAIL = /^([\s!.,~^?？ㅋㅎㅠㅜ]|❤️|🙏|😊|👍|요|용|해요|합니다|하세요|so much|a lot|doing|today|there|for (your|the) help|again|잘 ?됐어요|잘 ?됐어|덕분이에요|덕분에|정말|진짜|많이|요!)*$/iu
 
 export interface FirstLineAsk {
   channel: string

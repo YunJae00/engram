@@ -152,6 +152,11 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('first-line', chosenModel('fast'), 'fast')
     try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) }
+    catch (error) {
+      // An answer given up on may never come; a voice left waiting for it would turn every later line away.
+      if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir).catch(() => undefined) }
+      throw error
+    }
     finally {
       metric.end()
       // A used-up voice is renewed now, so the next first line finds it warm.
