@@ -2717,7 +2717,7 @@ export function registerIpc(ctx: VaultContext): void {
         const firstSaid = firstLineNote(channel)
         const result = await runComet(
           {
-            engine,
+            engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
             tools: await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit }),

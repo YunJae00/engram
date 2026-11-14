@@ -2,20 +2,20 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createTask, listTasks, updateTask, type AgentTool, type DelegatedTask, type TaskTeam, type TeamMember, type VaultPaths } from 'core'
+import { createTask, listTasks, parseAsk, updateTask, type AgentTool, type DelegatedTask, type Engine, type TaskTeam, type TeamMember, type ToolSessionJob, type VaultPaths } from 'core'
 import { cards, done, readback, setup } from './task-runner-fixture.js'
 import { memberLane, teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { withLease, WorkerPool } from '../src/main/worker-pool.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
-type Turn = { tools: AgentTool[]; prompt: string; signal: AbortSignal; session: string; role: string }
+type Turn = { tools: AgentTool[]; prompt: string; signal: AbortSignal; session: string; role: string; usage(tokens: number): void }
 const reply = (answer: string) => ({ answer, steps: [], fellBack: false })
 const use = (tools: AgentTool[], name: string, args: Record<string, unknown> = {}) => tools.find(tool => tool.name === name)!.run(args, { task: '' })
 const member = (id: string, state: TeamMember['state'], more: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role: `role ${id}`, brief: 'part', state, sessionKey: `team-x-${id}`, hiredAt: new Date().toISOString(), ...more })
 const teamOf = (...members: TeamMember[]): TaskTeam => ({ members, hires: members.length, maxHires: 8, maxDepth: 3, big: false })
 const three = { members: [{ role: 'seoul', brief: 'Seoul weather' }, { role: 'jeju', brief: 'Jeju weather' }, { role: 'busan', brief: 'Busan weather' }] }
 
-async function world(base: number, script: (turn: Turn) => Promise<string>) {
+async function world(base: number, script: (turn: Turn) => Promise<string | { answer: string; asked: true }>) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const root = await mkdtemp(join(temporary, 'engram-team-')), paths = { cache: join(root, '.engram') } as unknown as VaultPaths
@@ -28,13 +28,14 @@ async function world(base: number, script: (turn: Turn) => Promise<string>) {
     const lease = await pool.lease(options.signal)
     if (!lease) throw new Error('aborted')
     peak.running = Math.max(peak.running, pool.running)
-    const turn = { tools: deps.tools, prompt, signal: options.signal!, session: options.session!, role: /"(.+?)"/.exec(options.persona ?? '')?.[1] ?? '' }
+    const turn = { tools: deps.tools, prompt, signal: options.signal!, session: options.session!, role: /"(.+?)"/.exec(options.persona ?? '')?.[1] ?? '', usage: (tokens: number) => options.onUsage?.(tokens) }
     seen.push(turn)
     try {
-      return reply(await withLease(lease, async () => {
+      const out = await withLease(lease, async () => {
         peak.top = Math.max(peak.top, ++peak.working)
         try { return await script(turn) } finally { peak.working-- }
-      }))
+      })
+      return typeof out === 'string' ? reply(out) : { ...reply(out.answer), asked: true }
     } finally { lease.end() }
   }
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: key => closed.push(key), endLane: lane => ended.push(lane), step: () => undefined, changed: () => undefined, run })
@@ -98,9 +99,40 @@ describe('team runner', () => {
     const out = JSON.parse(await w.lead('hire_members', { members: [three.members[0]] }))
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toContain('You reported without reviewing the helpers you hired: helper (m2)')
-    expect(out.members[0]).toMatchObject({ state: 'failed', result: 'Failed: it reported without reviewing helper.' })
+    expect(out.members[0]).toMatchObject({ state: 'failed', result: 'Failed: it reported without reviewing helper.\n\nNot reviewed by seoul (check before you accept): helper: helper result' })
     expect((await w.members())[1]).toMatchObject({ state: 'released' })
-    expect((await w.members())[1]!.review).toBeUndefined()
+    expect((await w.members())[1]!.review).toEqual({ ok: false, note: 'Not reviewed: seoul ended before reviewing it (Failed: it reported without reviewing helper.).' })
+  })
+
+  it('a member that asks the person keeps its helper; after the answer it reviews that helper, and the lead got the question by itself', async () => {
+    const prompts: string[] = []
+    const w = await world(1, async turn => {
+      if (turn.role === 'helper') return 'helper result'
+      prompts.push(turn.prompt)
+      if (prompts.length === 1) { await use(turn.tools, 'hire_members', { members: [{ role: 'helper', brief: 'sub part' }] }); return { answer: 'Which city first?', asked: true } }
+      return `${await use(turn.tools, 'review_member', { id: 'm2', ok: true, note: 'fine' })} seoul done`
+    })
+    expect(parseAsk(await w.lead('hire_members', { members: [three.members[0]] }))?.question).toBe('seoul: Which city first?')
+    expect((await w.members()).map(m => [m.id, m.state])).toEqual([['m1', 'waiting'], ['m2', 'done']])
+    expect(w.closed).not.toContain(`team-${w.id}-m2`)
+    const resumed = JSON.parse(await w.lead('review_member', { id: 'm1', ok: false, note: 'Busan' }))
+    expect(prompts[1]).toContain('The person answered your question:\nBusan')
+    expect(prompts[1]).toContain('- helper (m2) [done]: helper result')
+    expect(resumed).toMatchObject({ id: 'm1', state: 'done', result: '{"id":"m2","state":"released"} seoul done' })
+    expect((await w.members())[1]).toMatchObject({ state: 'released', review: { ok: true, note: 'fine' } })
+  })
+
+  it("members' tokens count against the lead's own turn budget and are saved once, with the lead's turn", async () => {
+    let leadSaw = 0
+    const w = await world(1, async turn => { turn.usage(30_000); return 'ok' })
+    const engine = w.team.leadEngine('bot-b1', { id: 'claude', runTools: async () => { await w.lead('hire_members', { members: [three.members[0]] }); return { text: 'done' } } } as unknown as Engine)
+    await engine.runTools!({ onUsage: (tokens: number) => { leadSaw += tokens } } as unknown as ToolSessionJob)
+    expect(leadSaw).toBe(30_000)
+    expect((await w.task()).tokensUsed ?? 0).toBe(0)
+    expect(w.team.leadEngine('bot-b1~team-m1', engine)).toBe(engine)
+    // With no lead session to charge, a member's tokens are saved on the task directly.
+    await w.lead('hire_members', { members: [three.members[1]] })
+    expect((await w.task()).tokensUsed).toBe(30_000)
   })
 
   it('a failing member does not take its siblings down', async () => {

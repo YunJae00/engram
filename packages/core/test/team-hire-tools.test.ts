@@ -2,9 +2,9 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { createTask, listTasks, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
+import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { failOnRestart, memberTask, teamHireTools, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { failOnRestart, memberTask, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -101,11 +101,31 @@ describe('team hire tools', () => {
   it('hands a member question up with the role named and passes the answer back', async () => {
     const { state, call } = world()
     state.asks.add('m1'); state.answer = () => '이 메일 보내도 될까?'
-    const out = JSON.parse(await call(null, 'hire_members', { members: [{ role: '조사팀', brief: 'mail' }] }))
-    expect(out.members[0].ask).toBe('조사팀: 이 메일 보내도 될까?')
+    // The question is raised in the lead's thread by the tool itself (an ask ends the lead's turn), not left to another call.
+    expect(parseAsk(await call(null, 'hire_members', { members: [{ role: '조사팀', brief: 'mail' }] }))?.question).toBe('조사팀: 이 메일 보내도 될까?')
+    expect(state.task.team!.members[0]!.state).toBe('waiting')
     state.answer = () => 'sent'
     expect(JSON.parse(await call(null, 'review_member', { id: 'm1', ok: false, note: '보내도 돼' })).state).toBe('done')
     expect(state.runs.at(-1)!.redo).toEqual({ note: '보내도 돼', answered: true })
+  })
+
+  it('asks every waiting member in one question; a member that asks again after the answer is asked again', async () => {
+    const { state, call } = world()
+    state.asks.add('m1'); state.asks.add('m2'); state.answer = id => `${id} question?`
+    expect(parseAsk(await call(null, 'hire_members', { members: [three[0], three[1]] }))?.question).toBe('서울 조사: m1 question?\n제주 조사: m2 question?')
+    state.asks.add('m1'); state.answer = () => 'one more?'
+    expect(parseAsk(await call(null, 'review_member', { id: 'm1', ok: false, note: 'answer' }))?.question).toBe('서울 조사: one more?')
+    expect(teamNote(state.task.team)).toContain('제주 조사 (m2) asked the person: m2 question?')
+    expect(teamNote(state.task.team)).toContain('review_member({id:"m2", ok:false, note:<the answer>})')
+  })
+
+  it('a member released without any review still counts as unreviewed; a resumed member sees its open helpers', () => {
+    const { state } = world()
+    const base = { parentId: null, depth: 1, brief: 'b', hiredAt: state.task.createdAt }
+    state.task.team = { members: [{ ...base, id: 'm1', role: 'r1', state: 'released', sessionKey: 'k1' }, { ...base, id: 'm2', role: 'r2', state: 'released', sessionKey: 'k2', review: { ok: true, note: '' } }], hires: 2, maxHires: 8, maxDepth: 3, big: false }
+    expect(teamReviewIssue(state.task)).toBe('Team members not reviewed yet: r1 (m1). Call review_member for each before reporting done.')
+    const helper = { ...base, id: 'm3', parentId: 'm1', depth: 2, role: 'helper', state: 'done' as const, sessionKey: 'k3', result: 'helper found it' }
+    expect(memberTask(state.task.team.members[0]!, 'goal', { note: 'yes', answered: true }, [helper])).toContain('- helper (m3) [done]: helper found it')
   })
 
   it('shows a big plan first: a coding job is gated without the big flag, and a yes from the same turn does not approve it', async () => {

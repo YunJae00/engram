@@ -1,6 +1,6 @@
 import {
-  failOnRestart, listTasks, MEMBER_BLOCKED, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
-  type AgentTool, type DelegatedTask, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type VaultPaths,
+  failOnRestart, listTasks, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, whileWaitingForPerson } from './worker-pool.js'
@@ -41,6 +41,11 @@ export function teamRunner(deps: {
   const screen = new Map<string, string>()
   const notes = new Map<string, string>()
   const roles = new Map<string, string>()
+  // Lead channels being stopped: a member that ends because of the stop leaves no late result; the stop releases it.
+  const halting = new Set<string>()
+  // The lead's running tool session per lead channel: member tokens count against the lead's turn budget, so lead plus team never pass it.
+  const leads = new Map<string, { job: ToolSessionJob; spent: number }>()
+  const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
   const find = async (taskId: string) => (await listTasks(paths)).find(t => t.id === taskId)
@@ -52,7 +57,7 @@ export function teamRunner(deps: {
     deps.changed()
     return task ? out : undefined
   }
-  const tokensLeft = async (taskId: string) => TASK_TOKEN_BUDGET - ((await find(taskId))?.tokensUsed ?? 0) - (inflight.get(taskId) ?? 0)
+  const tokensLeft = async (taskId: string) => { const task = await find(taskId); return TASK_TOKEN_BUDGET - (task?.tokensUsed ?? 0) - (task ? leads.get(channelOf(task))?.spent ?? 0 : 0) - (inflight.get(taskId) ?? 0) }
 
   async function release(taskId: string, ids: string[]): Promise<void> {
     if (!ids.length) return
@@ -76,20 +81,23 @@ export function teamRunner(deps: {
     const control = new AbortController(), stop = () => control.abort()
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
-    let used = 0, role = id, goal = ''
+    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined
+    // Tokens a lead session already counts are saved with the lead's turn, not again here.
+    const charged = leads.has(leadChannel)
     try {
-      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; if (m?.state === 'hired' && task.state === 'running') { m.state = 'working'; return structuredClone(m) } return undefined })
+      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; if (m?.state === 'hired' && task.state === 'running') { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
       if (!member) return
-      role = member.role; roles.set(key, role)
+      const { me, helpers } = member
+      role = me.role; roles.set(key, role)
       let outcome: MemberOutcome
       try {
         const native = await kit.nativeFor(lane)
-        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name)).map(tool => screenGuard(tool, taskId, member))
-        let prompt = memberTask(member, goal, redo)
+        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name)).map(tool => screenGuard(tool, taskId, me))
+        let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
-            signal: control.signal, persona: memberPersona(member), session: member.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
-            onUsage: tokens => { used += tokens; inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
+            signal: control.signal, persona: memberPersona(me), session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
+            onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => deps.step(leadChannel, line),
@@ -104,21 +112,33 @@ export function teamRunner(deps: {
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
       if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       await change(taskId, task => {
-        task.tokensUsed = (task.tokensUsed ?? 0) + used
+        if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released') settleMember(m, outcome, now())
+        if (m && m.state !== 'released' && !(control.signal.aborted && halting.has(leadChannel))) settleMember(m, outcome, now())
+        ended = m?.state
       })
     } catch (error) { flog('team', error) } finally {
       signal?.removeEventListener('abort', stop)
       live.delete(key)
-      const left = (inflight.get(taskId) ?? 0) - used
-      if (left > 0) inflight.set(taskId, left); else inflight.delete(taskId)
+      if (!charged) { const left = (inflight.get(taskId) ?? 0) - used; if (left > 0) inflight.set(taskId, left); else inflight.delete(taskId) }
       if (screen.get(taskId) === id) screen.delete(taskId)
-      // Helpers this member left behind do not outlive its turn.
-      await release(taskId, unreviewed((await find(taskId).catch(() => undefined))?.team, id).map(m => m.id)).catch(error => flog('team', error))
+      // A member waiting on the person keeps its helpers for review when it resumes; any other end passes them up unreviewed, said so.
+      if (ended !== 'waiting' && !halting.has(leadChannel)) await orphan(taskId, id, ended).catch(error => flog('team', error))
       deps.endLane(lane)
       deps.step(leadChannel, isKorean(goal) ? `${role} 끝` : `${role} finished`)
     }
+  }
+
+  async function orphan(taskId: string, id: string, ended: TeamMember['state'] | undefined): Promise<void> {
+    const keys = await change(taskId, task => {
+      const parent = task.team?.members.find(one => one.id === id), open = unreviewed(task.team, id)
+      if (!open.length) return []
+      const why = ended === 'failed' ? (parent?.result ?? 'it failed') : ended === 'done' ? 'it reached the token budget' : 'it was stopped'
+      for (const m of open) { m.state = 'released'; m.finishedAt ??= now(); m.review = { ok: false, note: `Not reviewed: ${parent?.role ?? id} ended before reviewing it (${why.slice(0, 200)}).` } }
+      if (parent && parent.state !== 'released') parent.result = `${parent.result ?? ''}\n\nNot reviewed by ${parent.role} (check before you accept): ${open.map(m => `${m.role}: ${(m.result ?? '(no result)').replace(/\s+/g, ' ')}`).join(' | ')}`.slice(0, MEMBER_RESULT_CHARS)
+      return open.map(m => m.sessionKey)
+    })
+    for (const key of keys ?? []) deps.closeSession(key)
   }
 
   async function runMembers(taskId: string, leadChannel: string, callerLane: string, self: string | null, ids: string[], signal: AbortSignal | undefined, kit: TurnKit, redo?: MemberRedo): Promise<void> {
@@ -143,6 +163,16 @@ export function teamRunner(deps: {
   }
 
   return {
+    // The lead's engine for one turn: its tool session is known here, so members' tokens are charged to it.
+    leadEngine(channel: string, engine: Engine): Engine {
+      if (laneMember(channel) || !/^bot-[^~]+$/.test(channel) || !engine.runTools) return engine
+      const runTools = async (job: ToolSessionJob) => {
+        const lead = { job, spent: 0 }
+        leads.set(channel, lead)
+        try { return await engine.runTools!({ ...job, onUsage: tokens => { lead.spent += tokens; job.onUsage?.(tokens) } }) } finally { if (leads.get(channel) === lead) leads.delete(channel) }
+      }
+      return new Proxy(engine, { get: (target, prop) => { if (prop === 'runTools') return runTools; const value = Reflect.get(target, prop, target) as unknown; return typeof value === 'function' ? value.bind(target) : value } })
+    },
     tools(channel: string, kit: TurnKit): AgentTool[] {
       const leadChannel = leadOf(channel), self = laneMember(channel)?.[2] ?? null
       if (!/^bot-[^~]+$/.test(leadChannel)) return []
@@ -173,12 +203,15 @@ export function teamRunner(deps: {
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
     async stop(channel: string): Promise<void> {
-      for (const one of live.values()) if (one.channel === channel) one.control.abort()
-      for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && t.team?.members.some(m => m.state !== 'released'))) {
-        for (const key of await change(task.id, t => t.team ? releaseAll(t.team, now()) : []) ?? []) deps.closeSession(key)
-        screen.delete(task.id)
-      }
-      notes.delete(channel)
+      halting.add(channel)
+      try {
+        for (const one of live.values()) if (one.channel === channel) one.control.abort()
+        for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && t.team?.members.some(m => m.state !== 'released'))) {
+          for (const key of await change(task.id, t => t.team ? releaseAll(t.team, now()) : []) ?? []) deps.closeSession(key)
+          screen.delete(task.id)
+        }
+        notes.delete(channel)
+      } finally { halting.delete(channel) }
     },
     settled: settle,
     // Members left by a task that ended, or lost when their lead's turn ended, do not stay open.

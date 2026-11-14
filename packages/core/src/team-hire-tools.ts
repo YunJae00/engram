@@ -1,4 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
+import { formatAsk } from './ask.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
@@ -15,7 +16,7 @@ export const MEMBER_BLOCKED = /^(new_bot|schedule|keep_in_mind|keep_how_to|offer
 export const SCREEN_TOOL = /^(app_|desktop_|open_app|look_desktop|read_desktop|list_windows|excel_|word_|ppt_|outlook_|compose_live_document|edit_live_document|read_live_document)/
 const TOKEN_REFUSAL = 'The task token budget is nearly used. Do not hire. Finish with what exists and close with what is done, what is missing and what comes next.'
 const PLAN_FIRST = `Big team plan: nothing was hired. Show the plan to the person once before hiring: call ask_person with the members and what each delivers, options ["${TEAM_PLAN_OK[0]}", "${TEAM_PLAN_FIX[0]}"] in their language, and end this turn there. Hire after they agree in their next message. Their OK covers the plan only: sends, posts, purchases and deletions are still asked one by one.`
-const REVIEW_NOTE = 'Review each member with review_member before you report. A member with "ask" needs the person: put exactly that line to them with ask_person, then pass the answer with review_member({id, ok:false, note:<answer>}).'
+const REVIEW_NOTE = 'Review each member with review_member before you report. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
 export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; error?: string }
 export interface MemberRedo { note: string; answered?: boolean }
@@ -50,7 +51,7 @@ export const unreviewed = (team: TaskTeam | undefined, parentId: string | null):
 export const teamUnverified = (task: DelegatedTask): boolean => (task.team?.members.length ?? 0) > 0 && task.verified !== true
 // Every member must have been reviewed (and so released) by its parent before the task is done.
 export function teamReviewIssue(task: DelegatedTask): string {
-  const open = (task.team?.members ?? []).filter(m => m.state !== 'released')
+  const open = (task.team?.members ?? []).filter(m => m.state !== 'released' || !m.review)
   return open.length ? `Team members not reviewed yet: ${open.map(m => `${m.role} (${m.id})`).join(', ')}. Call review_member for each before reporting done.` : ''
 }
 
@@ -80,11 +81,12 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}`
 
 // Complete on its own, so a session trimmed while idle loses nothing.
-export function memberTask(member: TeamMember, goal: string, redo?: MemberRedo): string {
+export function memberTask(member: TeamMember, goal: string, redo?: MemberRedo, helpers: readonly TeamMember[] = []): string {
   return [
     'Your part:', member.brief,
     ...(member.deliverable ? ['', 'Deliver:', member.deliverable] : []),
     ...(redo ? ['', 'Your previous result:', member.result ?? '(none)', '', redo.answered ? 'The person answered your question:' : 'Your lead reviewed this and asks for a redo:', redo.note] : []),
+    ...(helpers.length ? ['', 'Your helpers, not reviewed yet (a helper that asked gets the answer through review_member({id, ok:false, note:<the answer>}); review every helper before you report):', ...helpers.map(h => `- ${h.role} (${h.id}) [${h.state}]: ${(h.result ?? '').slice(0, 600)}`)] : []),
     '', 'The overall job (context only; do only your part):', goal.slice(0, 400),
   ].join('\n')
 }
@@ -104,9 +106,13 @@ export function teamTree(team: TaskTeam | undefined): string {
 
 export function teamNote(team: TaskTeam | undefined): string {
   if (!team?.members.length) return ''
-  return ['The hidden team on this task:', teamTree(team), ...(team.members.some(m => m.state === 'failed') ? ['Members marked failed were lost; re-hire them with hire_members or finish with what exists.'] : [])].join('\n')
+  const open = team.members.filter(m => m.parentId === null && ['done', 'failed', 'waiting'].includes(m.state))
+  return ['The hidden team on this task:', teamTree(team), ...(team.members.some(m => m.state === 'failed') ? ['Members marked failed were lost; re-hire them with hire_members or finish with what exists.'] : []),
+    ...open.map(m => m.state === 'waiting' ? `${m.role} (${m.id}) asked the person: ${m.result ?? ''}\nIf this message answers it, pass the answer with review_member({id:"${m.id}", ok:false, note:<the answer>}).` : `${m.role} (${m.id}) reported, not reviewed yet:\n${m.result ?? ''}`)].join('\n')
 }
 
+// Members that need the person are asked in the caller's thread at once, roles named; the caller's turn ends there.
+const askUp = (members: readonly TeamMember[]): string | undefined => { const asking = members.filter(m => m.state === 'waiting'); return asking.length ? formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), []) : undefined }
 const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: m.state, result: m.result ?? '', files: m.files ?? [], ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''
 
@@ -159,7 +165,8 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       if ('refuse' in out) return out.refuse
       await host.run(out.ids, context.signal)
       const team = (await host.load())?.team
-      return JSON.stringify({ members: (team?.members ?? []).filter(m => out.ids.includes(m.id)).map(view), hiresLeft: team ? team.maxHires - team.hires : 0, note: REVIEW_NOTE })
+      const hired = (team?.members ?? []).filter(m => out.ids.includes(m.id))
+      return askUp(hired) ?? JSON.stringify({ members: hired.map(view), hiresLeft: team ? team.maxHires - team.hires : 0, note: REVIEW_NOTE })
     },
   }
   const review: AgentTool = {
@@ -187,13 +194,14 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       if (plan.act === 'accept') { await host.release([id]); return JSON.stringify({ id, state: 'released' }) }
       if (plan.act === 'spent') { await host.release([id]); return spent }
       if ((await host.tokensLeft()) < TEAM_TOKEN_RESERVE) {
-        await host.change(task => { const m = task.team?.members.find(one => one.id === id); if (m && task.team) { m.state = 'failed'; task.team.hires-- } })
+        await host.change(task => { const m = task.team?.members.find(one => one.id === id); if (m && task.team) { m.state = 'failed'; m.review ??= { ok: false, note }; task.team.hires-- } })
         await host.release([id]); return spent
       }
       await host.run([id], context.signal, { note, answered: plan.act === 'answer' })
       const after = (await host.load())?.team?.members.find(m => m.id === id)
       if (!after) return 'No running task.'
-      if (plan.act === 'answer' || after.state === 'waiting') return JSON.stringify(view(after))
+      if (after.state === 'waiting') return askUp([after])!
+      if (plan.act === 'answer') return JSON.stringify(view(after))
       await host.release([id])
       return JSON.stringify({ ...view(after), state: 'released' })
     },
