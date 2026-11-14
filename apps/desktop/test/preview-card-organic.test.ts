@@ -36,6 +36,8 @@ it('animates a ratio change: the stage height follows width/ratio and transition
   expect(rule('.preview-card')).not.toContain('transition: --pc-ratio')
   expect(rule('.preview-card-stage')).toContain('height: calc(100cqi / var(--pc-ratio')
   expect(rule('.preview-card-stage')).toContain('transition: height')
+  // A shrinking chat cap applies at once, not at the end of the height transition.
+  expect(rule('.preview-card-stage')).toContain('max-height: min(var(--pc-stage-cap, 50vh), var(--live-fit-stage, 100vh))')
   expect(rule('.preview-card-stage')).not.toContain('aspect-ratio')
   expect(rule('.preview-card-stage')).not.toContain('animation')
   expect(rule('.preview-card')).toContain('container: preview / inline-size')
