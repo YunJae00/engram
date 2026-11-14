@@ -163,9 +163,15 @@ export class Lease {
     if (this.ended) return
     this.ended = true
     const root = this.root
-    this.parent?.children.delete(this)
-    this.unlock?.()
+    this.detach()
     root.settle()
+  }
+  // An ended lease stays in its parent's tree (and keeps its siblings waiting) until its own nested turns end.
+  private detach(): void {
+    if (!this.ended || this.children.size > 0 || !this.parent?.children.has(this)) return
+    this.parent.children.delete(this)
+    this.unlock?.()
+    this.parent.detach()
   }
   private settle(): void {
     if (this.free === NO_SLOT) return

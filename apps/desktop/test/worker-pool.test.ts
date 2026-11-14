@@ -397,6 +397,22 @@ describe('borrowed leases', () => {
     expect(p.running).toBe(0)
   })
 
+  it('a child ended before its own grandchild keeps the slot until the grandchild ends', async () => {
+    const { p } = pool(1)
+    const root = await p.lease()
+    const child = await withLease(root!, () => insideSlot(() => p.lease()))
+    const grandchild = await withLease(child!, () => insideSlot(() => p.lease()))
+    root!.end(); child!.end()
+    expect(p.running).toBe(1)
+    const next = track(p.acquire())
+    await flush()
+    expect(next.settled).toBe(false)
+    grandchild!.end(); await flush()
+    expect(next.settled).toBe(true)
+    next.release?.()
+    expect(p.running).toBe(0)
+  })
+
   it('a grandchild waiting for the person also lends the slot', async () => {
     const { p } = pool(1)
     const parent = await p.lease()
