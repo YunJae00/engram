@@ -75,6 +75,6 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
     })}
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
-    {onReply && settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${firstKey + settledIndex}-${settled.text}`} text={settled.text} hidden={busy || offerOpen} onPick={onReply} />}
+    {onReply && settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${firstKey + settledIndex}-${settled.text}`} text={settled.text} lang={lang} hidden={busy || offerOpen} onPick={onReply} />}
   </>
 }
