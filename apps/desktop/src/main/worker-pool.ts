@@ -100,13 +100,67 @@ export function sampler(deps: SamplerDeps = {}): () => Promise<Sample> {
   }
 }
 
-interface TurnScope { interactive: boolean; korean?: boolean; say?: (line: string) => void; inside?: boolean }
+interface TurnScope { interactive: boolean; korean?: boolean; say?: (line: string) => void; inside?: boolean; lease?: Lease }
 const scope = new AsyncLocalStorage<TurnScope>()
-export function withTurnPriority<T>(value: Omit<TurnScope, 'inside'>, run: () => T): T { return scope.run(value, run) }
+export function withTurnPriority<T>(value: Omit<TurnScope, 'inside' | 'lease'>, run: () => T): T { return scope.run(value, run) }
 // Work started from a person's turn that runs on its own (titles, memory) waits in the background line.
 export function asBackground<T>(run: () => T): T { return scope.run({ interactive: false }, run) }
-// A tool of a turn that holds a slot: nested turns and chores take none, or they would wait on their own parent.
-export function insideSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true }, run) }
+// A tool of a turn that holds a slot. Nested turns take a free slot or borrow the parent's (one at a time),
+// so they never wait on their own parent and never run past the target.
+export function insideSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true, lease: scope.getStore()?.lease }, run) }
+export function withLease<T>(lease: Lease, run: () => T): T { return scope.run({ interactive: false, inside: true, lease }, run) }
+// While a turn waits for the person (an approval card, a question), its slot goes to the next turn in line
+// and is taken back, in the turn's own priority, once the person has answered.
+export async function whileWaitingForPerson<T>(run: () => Promise<T>): Promise<T> {
+  const lease = scope.getStore()?.lease
+  if (!lease) return run()
+  lease.pause()
+  try { return await run() } finally { await lease.resume() }
+}
+
+// The same, around an asking function (approval cards): the slot goes to the next turn while the person decides.
+export const lendingSlot = <A extends unknown[], R>(ask: (...args: A) => Promise<R>) => (...args: A): Promise<R> => whileWaitingForPerson(() => ask(...args))
+
+// One turn's hold on the pool: a real slot, or a borrowed turn of its parent's slot.
+export class Lease {
+  private free: (() => void) | null
+  private pauses = 0
+  private ended = false
+  private resuming: Promise<void> | null = null
+  private chain: Promise<void> = Promise.resolve()
+  constructor(private readonly pool: WorkerPool, free: () => void, readonly interactive: boolean, private readonly signal?: AbortSignal) { this.free = free }
+  get held(): boolean { return this.free !== null }
+  pause(): void {
+    if (this.pauses++ > 0 || !this.free) return
+    const free = this.free
+    this.free = null
+    free()
+  }
+  resume(): Promise<void> {
+    if (this.pauses > 0) this.pauses--
+    if (this.pauses > 0 || this.ended || this.free) return this.resuming ?? Promise.resolve()
+    this.resuming ??= (async () => {
+      const free = await scope.run({ interactive: this.interactive }, () => this.pool.acquire(this.signal))
+      if (this.ended || this.pauses > 0) free?.()
+      else this.free = free
+    })().finally(() => { this.resuming = null })
+    return this.resuming
+  }
+  // Nested turns of this lease's holder run one at a time in its slot while the holder waits on them.
+  borrow(): Promise<() => void> {
+    let unlock!: () => void
+    const next = new Promise<void>(resolve => { unlock = resolve })
+    const ready = this.chain
+    this.chain = ready.then(() => next)
+    return ready.then(() => { let done = false; return () => { if (!done) { done = true; unlock() } } })
+  }
+  end(): void {
+    this.ended = true
+    const free = this.free
+    this.free = null
+    free?.()
+  }
+}
 
 interface Waiter { interactive: boolean; ready: boolean; grant(release: () => void): void; timer?: NodeJS.Timeout }
 
@@ -139,7 +193,12 @@ export class WorkerPool {
   acquire(signal?: AbortSignal): Promise<(() => void) | null> {
     if (signal?.aborted) return Promise.resolve(null)
     const store = scope.getStore()
-    if (store?.inside) return Promise.resolve(() => undefined)
+    if (store?.inside) {
+      const lease = store.lease
+      if (!lease) return Promise.resolve(() => undefined)
+      if (this.running < this.target && this.waiters.length === 0) { this.running++; return Promise.resolve(this.releaser()) }
+      if (lease.held) return lease.borrow().then(release => { if (!signal?.aborted) return release; release(); return null })
+    }
     if (!this.ticker) {
       this.ticker = setInterval(() => void this.sampleNow(), this.intervalMs).unref()
       this.log(`base ${this.base}`)
@@ -153,7 +212,7 @@ export class WorkerPool {
         resolve(null)
         this.pump()
       }
-      const waiter: Waiter = { interactive: store?.interactive === true, ready: false, grant: release => { signal?.removeEventListener('abort', onAbort); resolve(release) } }
+      const waiter: Waiter = { interactive: store?.interactive === true || store?.lease?.interactive === true, ready: false, grant: release => { signal?.removeEventListener('abort', onAbort); resolve(release) } }
       const say = store?.say
       if (waiter.interactive && say) waiter.timer = setTimeout(() => say(waitLine(store.korean === true)), 2000)
       this.waiters.push(waiter)
@@ -198,14 +257,25 @@ export class WorkerPool {
       this.waiters.splice(this.waiters.indexOf(next), 1)
       clearTimeout(next.timer)
       this.running++
-      let done = false
-      next.grant(() => {
-        if (done) return
-        done = true
-        this.running--
-        this.pump()
-      })
+      next.grant(this.releaser())
     }
+  }
+
+  private releaser(): () => void {
+    let done = false
+    return () => {
+      if (done) return
+      done = true
+      this.running--
+      this.pump()
+    }
+  }
+
+  // A turn's hold, so it can lend its slot while waiting for the person or to its nested turns.
+  async lease(signal?: AbortSignal): Promise<Lease | null> {
+    const store = scope.getStore()
+    const free = await this.acquire(signal)
+    return free ? new Lease(this, free, store?.interactive === true || store?.lease?.interactive === true, signal) : null
   }
 }
 

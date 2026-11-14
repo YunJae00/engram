@@ -3,7 +3,7 @@ import type { CpuInfo } from 'node:os'
 const execFileSpy = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', async (load) => ({ ...(await load<typeof import('node:child_process')>()), execFile: execFileSpy }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { asBackground, cpuBusyFromTimes, idleBeyond, insideSlot, nextTarget, parseMacSysctl, sampler, waitLine, withTurnPriority, workerBase, WorkerPool, type Sample } from '../src/main/worker-pool.js'
+import { asBackground, whileWaitingForPerson, withLease, cpuBusyFromTimes, idleBeyond, insideSlot, nextTarget, parseMacSysctl, sampler, waitLine, withTurnPriority, workerBase, WorkerPool, type Sample } from '../src/main/worker-pool.js'
 import { SessionPool } from '../src/main/engine-claude-session.js'
 
 const GB = 2 ** 30
@@ -272,6 +272,88 @@ describe('WorkerPool', () => {
     void withTurnPriority({ interactive: true, say }, () => p.acquire())
     await vi.advanceTimersByTimeAsync(3000)
     expect(say).not.toHaveBeenCalled()
+  })
+})
+
+describe('leases', () => {
+  it('nested turns at target 1 borrow the parent\'s slot one at a time and never wait on the parent', async () => {
+    const { p } = pool(1)
+    const parent = await p.lease()
+    let active = 0, peak = 0
+    const helper = () => withLease(parent!, () => insideSlot(async () => {
+      const lease = await p.lease()
+      active++; peak = Math.max(peak, active)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      active--; lease?.end()
+    }))
+    const done = Promise.all([helper(), helper(), helper()])
+    await vi.advanceTimersByTimeAsync(100)
+    await done
+    expect(peak).toBe(1)
+    expect(p.running).toBe(1)
+    parent!.end()
+    expect(p.running).toBe(0)
+  })
+
+  it('a nested turn takes a free slot when one is open, else borrows the parent\'s, never past the target', async () => {
+    const { p } = pool(2)
+    const parent = await p.lease()
+    const a = await withLease(parent!, () => insideSlot(() => p.lease()))
+    expect(p.running).toBe(2)
+    const b = await withLease(parent!, () => insideSlot(() => p.lease()))
+    expect(p.running).toBe(2)
+    let third = false
+    const c = withLease(parent!, () => insideSlot(() => p.lease())).then(l => { third = true; return l })
+    await flush()
+    expect(third).toBe(false)
+    b!.end(); await flush()
+    expect(third).toBe(true)
+    expect(p.running).toBe(2)
+    ;(await c)!.end(); a!.end(); parent!.end()
+    expect(p.running).toBe(0)
+  })
+
+  it('a turn waiting for the person lends its slot and takes it back after the answer', async () => {
+    const { p } = pool(1)
+    const parent = await p.lease()
+    let answer!: (v: string) => void
+    const asked = withLease(parent!, () => whileWaitingForPerson(() => new Promise<string>(resolve => { answer = resolve })))
+    await flush()
+    expect(p.running).toBe(0)
+    const chat = track(withTurnPriority({ interactive: true }, () => p.acquire()))
+    await flush()
+    expect(chat.settled).toBe(true)
+    answer('approve')
+    await flush()
+    let back = false
+    void asked.then(() => { back = true })
+    await flush()
+    expect(back).toBe(false)
+    chat.release?.()
+    await flush()
+    expect(back).toBe(true)
+    expect(await asked).toBe('approve')
+    expect(p.running).toBe(1)
+    parent!.end()
+    expect(p.running).toBe(0)
+  })
+
+  it('a turn stopped while waiting to take its slot back holds nothing', async () => {
+    const { p } = pool(1)
+    const abort = new AbortController()
+    const parent = await p.lease(abort.signal)
+    const other = track(Promise.resolve(null))
+    let answer!: () => void
+    const asked = withLease(parent!, () => whileWaitingForPerson(() => new Promise<void>(resolve => { answer = resolve })))
+    await flush()
+    const busy = await p.acquire()
+    answer(); await flush()
+    abort.abort(); await flush()
+    await asked
+    parent!.end()
+    busy?.()
+    expect(p.running).toBe(0)
+    expect(other.settled).toBe(true)
   })
 })
 

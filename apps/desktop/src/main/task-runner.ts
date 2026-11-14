@@ -1,4 +1,5 @@
 import { withModelCallContext } from './model-call-metrics.js'
+import { lendingSlot } from './worker-pool.js'
 import { readCheckpoint } from './comet-checkpoint.js'
 import { taskQueued } from './task-notify.js'
 import { ipcMain } from 'electron'
@@ -299,7 +300,7 @@ export function taskRunner(deps: {
     askFor(channel: string, confirm: Ask, waitMs = Infinity): Ask | undefined {
       const id = owners.get(channel)
       if (!id || !channels.has(channel)) return undefined
-      return async ({ words, url, scope }) => {
+      return lendingSlot(async ({ words, url, scope }) => {
         waiting.set(channel, (waiting.get(channel) ?? 0) + 1)
         try {
           const cardWords = url.startsWith('file:') ? words : words.slice(0, 120)
@@ -372,7 +373,7 @@ export function taskRunner(deps: {
           const left = (waiting.get(channel) ?? 1) - 1
           if (left) waiting.set(channel, left); else waiting.delete(channel)
         }
-      }
+      }) as Ask
     },
     register(): void {
       ipcMain.handle('tasks:list', () => listTasks(paths))
