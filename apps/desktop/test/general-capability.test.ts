@@ -197,4 +197,8 @@ it('hands in a revised task file again and points the answer at the new copy', a
   expect(revised.answer).not.toContain(draft.markdownLink)
   const id = /\(engram-artifact:([^)]+)\)/.exec(revised.answer)![1]!
   expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(id)), 'utf8')).toBe('print(2)\n')
+  await truncate(join(cwd, 'report.py'), OUTPUT_BYTES + 1)
+  const huge = { answer, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, huge, 0, 'ask')
+  expect(huge.answer).toContain('report.py is larger than 50 MB')
 })

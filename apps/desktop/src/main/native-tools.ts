@@ -141,7 +141,8 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
     const info = await lstat(path).catch(() => null)
     // A file reached through a linked directory is outside the task folder.
     if (!info?.isFile() || !within(await realpath(cwd), await realpath(path))) continue
-    if (linkedIds(answer, name).length && (info.size > OUTPUT_BYTES || await handedIn(artifacts, answer, name, path))) continue
+    // An oversized revision cannot match a saved output, so it still gets its size warning.
+    if (linkedIds(answer, name).length && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, name, path)) continue
     if (info.mtimeMs >= since) (info.size > OUTPUT_BYTES ? oversized : found).push(info.size > OUTPUT_BYTES ? name : path)
   }
   return found
