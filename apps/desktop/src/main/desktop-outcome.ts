@@ -31,18 +31,27 @@ function stepFailure(step: Result): { reason: Words; stillMoving?: true } | unde
   return undefined
 }
 
-function focusedValue(view: unknown): string | undefined {
+// The focused control counts only when it is a message field: a search or find box holding the text is not the composer.
+const FIELD = /Text(Area|Field)|ComboBox|TextEdit|Edit\b/i
+const SEARCH = /search|find|filter|검색|찾기/i
+function focusedField(view: unknown): { value?: string; composer: boolean } {
   const observation = view as DesktopObservationDto | undefined
   const field = observation?.nodes?.find(node => node.runtimeId && node.runtimeId === observation.focusedControl)
-  return typeof field?.value === 'string' && !field.valueTruncated ? field.value : undefined
+  if (!field) return { composer: false }
+  const composer = FIELD.test(field.controlType) && !/SearchField/i.test(field.controlType) && !SEARCH.test(field.name ?? '')
+  return { composer, ...(typeof field.value === 'string' && !field.valueTruncated ? { value: field.value } : {}) }
 }
 
 // The whole field must read exactly the requested text: a draft that was already there makes it differ.
 export function textCheck(tool: string, result: Result, text: string): Words | undefined {
   const wanted = text.normalize('NFC')
-  const value = tool === 'app_set' ? (typeof result['value'] === 'string' ? result['value'] : undefined) : focusedValue(result['observation'])
+  // app_set: the settled read-back (valueNow) wins over the receipt; null means the field was not found again.
+  const settled = result['valueNow']
+  const focused = tool === 'app_set' ? undefined : focusedField(result['observation'])
+  const value = tool === 'app_set' ? (typeof settled === 'string' ? settled : settled === null ? undefined : typeof result['value'] === 'string' ? result['value'] : undefined) : focused!.value
   const typed = result['typed'] as { verified?: boolean; landed?: string } | undefined
-  if (tool !== 'app_set' && !typed) return NOT_FOUND
+  if (tool !== 'app_set' && (!typed || (result['observation'] !== undefined && !focused!.composer))) return NOT_FOUND
+  if (tool === 'app_set' && settled === null && 'appNow' in result) return UNREAD
   if (tool === 'app_set' && result['landed'] === false) return UNREAD
   if (value !== undefined && value.normalize('NFC') !== wanted) return holds(value)
   if (typed?.landed !== undefined) return holds(typed.landed)

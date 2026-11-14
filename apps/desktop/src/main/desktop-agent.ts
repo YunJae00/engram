@@ -42,7 +42,7 @@ async function listWindows(signal?: AbortSignal): Promise<string> {
 }
 
 // After a press or a set, the app as it now is once it has settled: the brain acts on this instead of spending a call on app_read.
-async function readAgain(lane: string, app: string, receipt: string, observed?: () => void, signal?: AbortSignal, before?: QuietObservationDto): Promise<string> {
+async function readAgain(lane: string, app: string, receipt: string, observed?: () => void, signal?: AbortSignal, before?: QuietObservationDto, field?: { runtimeId?: string; name: string; type: string }): Promise<string> {
   const result = JSON.parse(receipt) as Record<string, unknown>
   try {
     const { view: reading, settled } = await settle(() => quietScan(lane, app, undefined, signal), quietKey, signal ? { signal } : {})
@@ -52,8 +52,11 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
       const matches = reading.controls.filter(control => button.runtimeId ? control.runtimeId === button.runtimeId : control.name === button.name)
       return { ...button, snapshot: matches.length === 1 ? reading.snapshot : result.snapshot, id: matches.length === 1 ? matches[0]!.id : button.id }
     }) : undefined
+    // The field just set, read again once the app settled: what the turn's outcome checks, not the earlier receipt.
+    const now = field && reading.controls.filter(control => field.runtimeId ? control.runtimeId === field.runtimeId : control.name === field.name && control.type === field.type)
+    const valueNow = now?.length === 1 && !now[0]!.valueTruncated ? now[0]!.value ?? '' : undefined
     observed?.()
-    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(settled ? {} : { stillChanging: STILL_CHANGING }), ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
+    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(field ? { valueNow: valueNow ?? null } : {}), ...(settled ? {} : { stillChanging: STILL_CHANGING }), ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ ...result, observationMayBeStale: true, ...await permissionFailure(error, lane, { delivered: true }) })
@@ -84,8 +87,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   const quiet = quietDesktopTools({
     scan: async (app, find, signal, options) => formatScan(await quietScan(lane, app, find, signal, options), find),
     set: async (app, snapshot, control, text, expected, context) => {
+      const target = quietSnapshot(snapshot)?.controls.find(item => item.id === control)
       const result = formatSet(await quietSet(lane, app, snapshot, control, text, expected, context.signal), text)
-      return readAgain(lane, app, result, context.onObservedAfterAction, context.signal)
+      return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, undefined, target && { ...(target.runtimeId ? { runtimeId: target.runtimeId } : {}), name: target.name, type: target.type })
     },
     press: async (app, snapshot, control, context, options) => {
       // Only a control named like send, submit, save or delete commits; opening a chat or a menu is navigation.
