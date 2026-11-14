@@ -255,7 +255,6 @@ it('returns an unsafe unverified receipt when a container press leaves the app u
   expect(fake.quietPress).toHaveBeenCalledOnce()
   expect(fake.quietScan).toHaveBeenCalledTimes(2)
 })
-
 it('allows screenshots without handover but refuses global input before dispatch', async () => {
   fake.handedOver = false
   expect((await look()).image).toBeDefined()
@@ -265,7 +264,6 @@ it('allows screenshots without handover but refuses global input before dispatch
   expect(result.hint).toContain('declined')
   expect(fake.act).not.toHaveBeenCalled()
 })
-
 it('requires an explicit app when no window is bound instead of reading the human foreground', async () => {
   fake.lookup.mockReturnValue(undefined)
   const read = desktopAgentTools('bot-one').find(tool => tool.name === 'read_desktop')!
@@ -274,7 +272,6 @@ it('requires an explicit app when no window is bound instead of reading the huma
   expect(fake.ensure).not.toHaveBeenCalled()
   expect(fake.read).not.toHaveBeenCalled()
 })
-
 it('preserves the Accessibility permission boundary in the model observation', async () => {
   fake.quietScan.mockRejectedValueOnce(new Error('Allow Engram in System Settings → Privacy & Security → Accessibility'))
   const tool = desktopAgentTools('bot-one').find(tool => tool.name === 'app_read')!
@@ -283,7 +280,6 @@ it('preserves the Accessibility permission boundary in the model observation', a
   expect(result.hint).toContain('System Settings → Privacy & Security → Accessibility')
   expect(result.hint).not.toContain('not found')
 })
-
 it('does not treat a requested read or a model press argument as approval to send', async () => {
   const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
   const committed = vi.fn()
@@ -293,7 +289,6 @@ it('does not treat a requested read or a model press argument as approval to sen
   expect(fake.quietPress).not.toHaveBeenCalled()
   expect(committed).not.toHaveBeenCalled()
 })
-
 it('returns a stale reference instead of requesting permission when a control disappeared', async () => {
   const approveAppAction = vi.fn(async () => true)
   const press = desktopAgentTools('bot-one').find(tool => tool.name === 'app_press')!
@@ -302,7 +297,6 @@ it('returns a stale reference instead of requesting permission when a control di
   expect(approveAppAction).not.toHaveBeenCalled()
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
-
 it('rejects a snapshot without the consequential target before requesting approval', async () => {
   const before = { window: '42', pid: 55, title: 'Fixture', controls: [], texts: [{ id: 't1', text: 'Recipient A' }] }
   fake.quietSnapshot.mockReturnValue(before)
@@ -331,7 +325,6 @@ it('explains blocked permission retries and the settings link on app_read', () =
   expect(description).toContain('retry:blocked')
   expect(description).toContain('settingsUrl')
 })
-
 
 it.each([true, false])('continues only after the foreground approval card is accepted (%s)', async approved => {
   fake.handedOver = false
@@ -362,7 +355,6 @@ it('does not start foreground control after cancellation during approval', async
   expect(fake.start).not.toHaveBeenCalled()
   expect(fake.act).not.toHaveBeenCalled()
 })
-
 
 it('reports revocation after a cached handover without claiming the person declined', async () => {
   fake.handedOver = false
