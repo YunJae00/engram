@@ -24,6 +24,9 @@ it('keeps every conversation on Claude, even with a stored codex choice or while
   expect((await chatEngine('bot-1', []))!.id).toBe('claude')
   expect(limitedAt('claude', 'bot-1')).toBeGreaterThan(Date.now())
   expect(isLimited('claude', 'bot-1', Date.now() + 61_000)).toBe(false)
+  noteLimited('claude', 'bot-9')
+  expect(isLimited('claude', 'bot-9')).toBe(true)
+  expect(limitedAt('claude', 'bot-9')).toBeUndefined()
 })
 
 it('goes ahead when the sign-in check could not tell, and stops only on a real sign-out', async () => {

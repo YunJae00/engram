@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { usageLimitMessage } from '../src/main/usage-limit.js'
+import { claudeRetryAfterMs, usageLimitMessage } from '../src/main/usage-limit.js'
 
 it('says in the thread language when Claude can pick the work up again', () => {
   const now = new Date(2026, 10, 14, 13, 0).getTime()
@@ -10,4 +10,13 @@ it('says in the thread language when Claude can pick the work up again', () => {
   expect(usageLimitMessage(true, undefined, now)).toContain('잠시 후에')
   expect(usageLimitMessage(false, now - 1, now)).toContain('in a while')
   expect(usageLimitMessage(false, undefined, now)).not.toMatch(/ChatGPT|Codex/)
+})
+
+it('reads the reset time from Claude\'s own limit text, and nothing when it gives none', () => {
+  const now = new Date(2026, 10, 14, 13, 0).getTime()
+  expect(claudeRetryAfterMs(`Claude AI usage limit reached|${Math.floor(now / 1000) + 7200}`, now)).toBe(7_200_000)
+  expect(claudeRetryAfterMs('5-hour limit reached ∙ resets 3pm', now)).toBe(7_200_000)
+  expect(claudeRetryAfterMs('limit reached, resets 9:30am', now)).toBe(20.5 * 3_600_000)
+  expect(claudeRetryAfterMs('rate limited, retry after 120', now)).toBe(120_000)
+  expect(claudeRetryAfterMs('usage limit reached', now)).toBeUndefined()
 })

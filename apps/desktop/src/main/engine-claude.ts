@@ -5,6 +5,7 @@ import { ENGINE_BUDGETS, type EngineDetection, type EngineEvent, type EngineJobI
 import { SessionPool, type SessionSdk } from './engine-claude-session.js'
 import { claudeBinary, cloudErrorKind, LOGIN_TIMEOUT_MS, runText, STATUS_TIMEOUT_MS, StatusCache, type CloudEngine, type CloudLoginOptions } from './engine-cloud.js'
 import { flog } from './flog.js'
+import { claudeRetryAfterMs } from './usage-limit.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
 import { spawnRuntime } from './process-client.js'
 import { VoiceSession } from './engine-claude-voice.js'
@@ -235,7 +236,7 @@ export class ClaudeEngine implements CloudEngine {
         if (result.is_error || result.subtype !== 'success') {
           const said = (result.errors?.length ? result.errors.join('; ') : result.result) || result.subtype
           const kind = result.api_error_status === 401 || result.api_error_status === 403 ? 'auth' : result.api_error_status === 429 ? 'quota' : cloudErrorKind(said)
-          yield { type: 'error', message: said, kind }
+          yield { type: 'error', message: said, kind, ...(kind === 'quota' ? { retryAfterMs: claudeRetryAfterMs(said) } : {}) }
           return
         }
         yield { type: 'result', text: result.structured_output !== undefined ? JSON.stringify(result.structured_output) : (result.result ?? '') }

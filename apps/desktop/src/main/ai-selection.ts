@@ -31,13 +31,18 @@ export async function rememberSelections(scopes: string[]): Promise<void> {
 
 // Claude at its usage limit, until when. There is no other engine to hand
 // the turn to: the person is told plainly when it can pick up again.
-const limitedUntil = new Map<string, number>()
+// Without a reset time from Claude the wait is a guess, so it is never shown as one.
+const limitedUntil = new Map<string, { until: number; known: boolean }>()
 const LIMIT_WAIT_MS = 30 * 60_000
 export function noteLimited(id: string, scope: string, retryAfterMs?: number, now = Date.now()): void {
-  limitedUntil.set(`${scope}:${id}`, now + (retryAfterMs && retryAfterMs > 0 ? retryAfterMs : LIMIT_WAIT_MS))
+  const known = !!retryAfterMs && retryAfterMs > 0
+  limitedUntil.set(`${scope}:${id}`, { until: now + (known ? retryAfterMs : LIMIT_WAIT_MS), known })
 }
-export const limitedAt = (id: string, scope: string): number | undefined => limitedUntil.get(`${scope}:${id}`)
-export const isLimited = (id: string, scope: string, now = Date.now()): boolean => (limitedUntil.get(`${scope}:${id}`) ?? 0) > now
+export const limitedAt = (id: string, scope: string): number | undefined => {
+  const held = limitedUntil.get(`${scope}:${id}`)
+  return held?.known ? held.until : undefined
+}
+export const isLimited = (id: string, scope: string, now = Date.now()): boolean => (limitedUntil.get(`${scope}:${id}`)?.until ?? 0) > now
 export const brainName = (id: string): string => id === 'claude' ? 'Claude' : id === 'codex' ? 'ChatGPT' : id
 
 // In-app work runs on Claude only: a stored 'codex' choice or a request that

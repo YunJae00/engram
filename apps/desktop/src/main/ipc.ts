@@ -192,7 +192,7 @@ import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
-import { usageLimitMessage } from './usage-limit.js'
+import { claudeRetryAfterMs, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
@@ -2463,7 +2463,7 @@ export function registerIpc(ctx: VaultContext): void {
     const settings = await loadSettings()
     const wanted = 'claude'
     // Claude at its usage limit: say when it can pick up again; nothing else takes the turn.
-    if (isLimited('claude', channel)) { broadcast({ type: 'chat:error', channel, message: usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel)), kind: 'quota', provider: 'Claude' }); return }
+    if (isLimited('claude', channel)) { const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel)); turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 }); broadcast({ type: 'chat:error', channel, message: said, kind: 'quota', provider: 'Claude' }); return }
     const engine = await chatEngine(channel, ctx.engines)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
@@ -2896,9 +2896,10 @@ export function registerIpc(ctx: VaultContext): void {
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
         // Claude at its usage limit: no handoff to another engine; the person is told when it can resume.
         const korean = /[가-힣]/.test(request.message)
-        if (kind === 'quota') noteLimited(engine.id, channel, err instanceof QuotaError ? err.retryAfterMs : undefined)
-        if (kind === 'quota' && toolStarted) {
-          const question = `${usageLimitMessage(korean, limitedAt(engine.id, channel))} ${korean ? '이미 일부 작업이 진행됐을 수 있어서, 다시 시작하면 남은 것만 이어서 할게요.' : 'Some steps may already have run, so when I resume I will continue only the unfinished part.'}`
+        if (kind === 'quota') noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
+        // The task waits, resumable, with the message as its question.
+        if (kind === 'quota') {
+          const question = `${usageLimitMessage(korean, limitedAt(engine.id, channel))}${!toolStarted ? '' : korean ? ' 이미 일부 작업이 진행됐을 수 있어서, 다시 시작하면 남은 것만 이어서 할게요.' : ' Some steps may already have run, so when I resume I will continue only the unfinished part.'}`
           turnOutcomes.set(channel, { answer: question, asked: true, unfinished: true, steps: 0 })
           await deliverAnswer(question)
           return
@@ -2910,7 +2911,7 @@ export function registerIpc(ctx: VaultContext): void {
           resendAfterOutage = true
           broadcast({ type: 'comet:step', channel, line: `outage: ${brainName(engine.id)}` })
         }
-        else broadcast({ type: 'chat:error', channel, message: kind === 'quota' ? usageLimitMessage(korean, limitedAt(engine.id, channel)) : said, kind, provider: brainName(engine.id) })
+        else broadcast({ type: 'chat:error', channel, message: said, kind, provider: brainName(engine.id) })
         void noteEngineFailure(engine, kind, ctx).then(() =>
           revalidateEngines(ctx),
         )
