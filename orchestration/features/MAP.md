@@ -60,6 +60,7 @@ These need more than the fresh three-note vault, so they stay in Playwright spec
 - Instant first line (haiku, races the answer) and Claude command sandbox (macOS) — unit only (`apps/desktop/test/model-tiers.test.ts`); sandbox confinement itself is not exercised by any test.
 - Desktop settle rhythm (wait for the app to stop, one-page scroll steps, single click retry) — unit-tested only (`apps/desktop/test/desktop-settle.test.ts`), because tests must not drive the real screen.
 - Hidden team (hire, review, release, big-plan chips, verify gate) — unit only (`packages/core/test/team-hire-tools.test.ts`, `apps/desktop/test/team-runner.test.ts`), fake engine; no live Claude run.
+- Team tree UI (sidebar team line, collapsed thread summary, tree by who hired whom) — unit only (`apps/desktop/test/team-tree-ui.test.ts`), fake task list; no live Claude run.
 - Stop honesty (stop mark kept after a cut answer, retry chip, plain sidebar preview) — unit-tested (`apps/desktop/test/stop-honest.test.ts`, `apps/desktop/test/task-closing.test.ts`).
 
 ## Brief shape

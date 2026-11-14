@@ -1,3 +1,4 @@
+@import './team-tree.css';
 /* Everything that waits on the person - a press to allow, a question, a
    sign-in, a post to look over, an offer, a choice - is one kind of card:
    a small mark, a line naming the kind, the thing itself, where, and the

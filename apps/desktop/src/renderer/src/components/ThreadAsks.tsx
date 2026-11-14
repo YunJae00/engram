@@ -5,16 +5,22 @@ import { PressGate } from './PressGate.js'
 import { RoutineProgress } from './RoutineProgress.js'
 import { SubmitGate } from './SubmitGate.js'
 import { TaskApprovals } from './TaskApprovals.js'
+import { TeamSummary } from './TeamSummary.js'
+import { useTeam } from '../lib/teamLive.js'
+import { useThreadT } from '../lib/useThreadT.js'
 
 // What the comet needs from the person right now - a press to allow, a post
 // to look over, a sign-in, an answer - said in the conversation itself, as
 // its next message, wherever the conversation is shown.
 export function ThreadAsks({ botId, questionShown, failureShown }: { botId: string; questionShown?: string; failureShown?: boolean }) {
   const channel = cometChannel(botId)
+  const team = useTeam(botId)
+  const lang = useThreadT(botId).lang
   return <>
     <RoutineProgress channel={channel} />
     <SubmitGate channel={channel} />
     <PressGate channel={channel} />
+    <TeamSummary key={team?.taskId ?? 'none'} team={team} lang={lang} />
     <TaskApprovals botId={botId} questionShown={questionShown} failureShown={failureShown} />
     <HabitAsk key={botId} botId={botId} />
     <StudyAsk key={`study-${botId}`} botId={botId} />

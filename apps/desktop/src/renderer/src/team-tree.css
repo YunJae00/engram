@@ -1,0 +1,31 @@
+.team-card { align-self: stretch; font-size: var(--fs-small); line-height: 1.4; }
+.bots-view .bots-chat > .team-card { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
+.team-summary { display: flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 4px; border: 0; border-radius: 6px; background: none; color: var(--fg-dim); font: inherit; cursor: pointer; }
+.team-summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.team-summary > svg { flex: none; transition: transform 180ms var(--ease-out); }
+.team-summary[aria-expanded='true'] > svg { transform: rotate(90deg); }
+.team-summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-tree, .team-tree ul { list-style: none; margin: 0; padding: 0; }
+.team-tree { padding: 2px 4px 2px 20px; }
+.team-tree ul { padding-left: 14px; }
+.team-tree ul ul ul { padding-left: 0; }
+.team-member-in { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; animation: team-member-in 180ms var(--ease-out); }
+.team-member-body { min-height: 0; overflow: hidden; padding: 2px 0; }
+.team-member-row { display: flex; align-items: baseline; gap: 8px; }
+.team-member-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-member-result { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-dim); font-size: var(--fs-micro); }
+.team-chip { flex: none; color: var(--fg-faint); font-size: var(--fs-micro); }
+.team-chip[data-chip='working'] { color: var(--work-running); }
+.team-chip[data-chip='reviewing'] { color: var(--work-waiting); }
+.team-chip[data-chip='failedChip'] { color: var(--work-error); }
+/* A color, not opacity, so helpers nested under a released member are not dimmed with it. */
+.team-member[data-dim='true'] > .team-member-in, .team-member[data-dim='true'] > .team-member-in .team-member-result { color: var(--fg-faint); }
+.sidebar-team-line { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; color: var(--fg-faint); font-size: var(--fs-micro); line-height: 1.3; animation: team-member-in 180ms var(--ease-out); }
+.sidebar-team-line > span { min-height: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-conversations .bots-row:has(.sidebar-team-line) { height: auto; min-height: 58px; }
+.sidebar-primary-button .sidebar-team-line { max-width: 100%; text-align: center; }
+@keyframes team-member-in { from { grid-template-rows: 0fr; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .team-member-in, .sidebar-team-line { animation: none; }
+  .team-summary > svg { transition: none; }
+}
