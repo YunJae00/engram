@@ -127,6 +127,13 @@ it('leaves out a waiting task that a scheduled run picked up, but not the one it
   expect(replaced.post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 멈춤 1' })
 })
 
+it('keeps the work of a busy conversation that turned a scheduled run away', async () => {
+  const turnedAway = { kind: 'scheduled', botId: 'a', at: iso(6) } as const
+  const { post } = setup([task('a', 'done', 6, { createdAt: iso(-60) })], [turnedAway])
+  await away()
+  expect(post.mock.calls[0]![0]).toMatchObject({ botId: 'a', text: 'A: 끝남 1' })
+})
+
 it('posts nothing and does not throw when the tasks cannot be read', async () => {
   const { post, io } = setup([])
   io.tasks = async () => { throw new Error('unreadable') }

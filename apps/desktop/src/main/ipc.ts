@@ -1765,11 +1765,11 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'bots:changed' })
       broadcast({ type: 'notices:changed' })
       broadcast({ type: 'comet:scheduled', botId: bot.id, message: goal })
-      void tasks.chat({ engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message: goal, history, scheduled: true })
-        .catch(error => flog('standing', error))
+      let ran = true; void tasks.chat({ engineId: '', botId: bot.id, channel: `bot-${bot.id}`, message: goal, history, scheduled: true })
+        .catch(error => { ran = false; flog('standing', error) }) // A run turned away (its conversation was busy) has no task of its own: no `began`, so the away summary keeps that work.
         .finally(async () => {
           const said = (await readBotTranscript(paths, bot.id).catch(() => [])).filter(turn => turn.role === 'assistant').at(-1)?.text ?? ''
-          await updateNotice(paths, item.id, { running: false, read: false, began: item.at, at: new Date().toISOString(), text: noticeText(said) || goal }).catch(error => flog('standing', error))
+          await updateNotice(paths, item.id, { running: false, read: false, ...(ran ? { began: item.at } : {}), at: new Date().toISOString(), text: noticeText(said) || goal }).catch(error => flog('standing', error))
           broadcast({ type: 'notices:changed' })
         })
       return { ok: true, botId: bot.id }

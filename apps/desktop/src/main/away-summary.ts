@@ -34,6 +34,8 @@ const movedAt = (task: DelegatedTask): number => Date.parse(task.state === 'done
 export function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
   return notices.some(n => {
     if (n.kind !== 'scheduled' || n.botId !== task.botId) return false
+    // A finished run without `began` never started a task (ipc.ts runPrompt), so it hides nothing.
+    if (n.running !== true && !n.began) return false
     const began = Date.parse(n.began ?? n.at), ended = n.running === true ? Infinity : Date.parse(n.at)
     const within = (at: number): boolean => at >= began && at <= ended
     const mine = tasks.filter(one => one.botId === task.botId)
