@@ -1,4 +1,4 @@
-import { installSkill, keepHowToTool, keepInMindTool, loadBots, readBotTranscript, readSkillsLedger, searchChatsTool, skillContentHash, skillSlug, syncPersonNote, withoutSecrets, type AgentTool, type VaultPaths } from 'core'
+import { installSkill, keepHowToTool, keepInMindTool, loadBots, readBotTranscript, readSkillsLedger, recordFacts, searchChatsTool, skillContentHash, skillSlug, syncPersonNote, withoutSecrets, type AgentTool, type VaultPaths } from 'core'
 import { broadcast } from './engine-health.js'
 
 // The comet's own keeping: facts go to the person note every conversation
@@ -9,8 +9,10 @@ export function learningTools(paths: VaultPaths, channel: string, said: () => st
   const botId = channel.startsWith('bot-') ? channel.slice('bot-'.length) : ''
   return [
     keepInMindTool({
-      keep: async (facts) => {
-        await syncPersonNote(paths, new Date(), facts.map(fact => withoutSecrets(fact, said())))
+      keep: async (facts, scope) => {
+        const clean = facts.map(fact => withoutSecrets(fact, said()))
+        if (scope === 'this bot' && botId) await recordFacts(paths, botId, clean)
+        else await syncPersonNote(paths, new Date(), clean)
         if (botId) broadcast({ type: 'comet:remembered', channel, botId, added: facts.length, touched: 0 })
       },
     }),

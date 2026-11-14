@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { MEMORY_LINES } from 'core/src/bot-memory'
+import { MEMORY_BUDGET } from 'core/src/bot-memory'
 import { loadBotMemory, mergeMemory, parseNote, PERSON_MEMORY, renderMemory, syncPersonNote, type BotFact, type Engine, type Note, type NoteStore, type VaultPaths } from 'core'
 vi.mock('core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('core')>()
@@ -100,11 +100,11 @@ const NOW = new Date('2026-11-10T00:00:00Z')
 const day = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString()
 const fact = (id: string, text: string, at: string, touchedAt = at): BotFact => ({ id, text, at, touchedAt })
 const layer = (...facts: BotFact[]) => ({ facts, turns: 1 })
-it('prompt merges shared then bot facts within 800 chars', () => {
+it('prompt merges shared then bot facts within each layer\'s budget', () => {
   const capped = renderMemory(mergeMemory(layer(...Array.from({ length: 5 }, (_, i) => fact(`s${i}`, `S${i} ${'x'.repeat(156)}`, day(i)))), layer()), NOW)
-  expect(capped.length).toBeLessThanOrEqual(800)
-  expect(capped.split('\n')).toHaveLength(4)
-  expect(capped.split('\n').length).toBeLessThanOrEqual(MEMORY_LINES)
+  expect(capped.length).toBeLessThanOrEqual(MEMORY_BUDGET.shared.chars)
+  expect(capped.split('\n')).toHaveLength(5)
+  expect(capped.split('\n').length).toBeLessThanOrEqual(MEMORY_BUDGET.shared.lines)
 
   const mixed = renderMemory(mergeMemory(
     layer(fact('s1', 'S1 shared', day(1)), fact('s2', 'S2 shared', day(2)), fact('dup', 'Same in both', day(9), day(9))),
@@ -117,18 +117,18 @@ it('prompt merges shared then bot facts within 800 chars', () => {
 
   const skipped = renderMemory(mergeMemory(layer(
     fact('mid', `MID ${'m'.repeat(146)}`, day(0)),
-    fact('long', `LONG ${'l'.repeat(695)}`, day(1)),
+    fact('long', `LONG ${'l'.repeat(MEMORY_BUDGET.shared.chars)}`, day(1)),
     fact('short', `SHORT ${'s'.repeat(34)}`, day(2)),
   ), layer()), NOW)
   expect(skipped).toContain('MID')
   expect(skipped).toContain('SHORT')
   expect(skipped).not.toContain('LONG')
-  expect(skipped.length).toBeLessThanOrEqual(800)
+  expect(skipped.length).toBeLessThanOrEqual(MEMORY_BUDGET.shared.chars)
 
   const crowded = renderMemory(mergeMemory(
     layer(fact('old', `OLD ${'o'.repeat(56)}`, day(200))),
     layer(...Array.from({ length: 12 }, (_, i) => fact(`b${i}`, `B${i} ${'b'.repeat(116)}`, day(0)))),
   ), NOW)
   expect(crowded.split('\n')[0]).toContain('OLD')
-  expect(crowded.length).toBeLessThanOrEqual(800)
+  expect(crowded.length).toBeLessThanOrEqual(MEMORY_BUDGET.shared.chars + 1 + MEMORY_BUDGET.own.chars)
 })

@@ -10,7 +10,6 @@ import {
   syncPersonNote,
   loadBotMemory,
   memorableTurn,
-  parseFactLines,
   REMEMBER_TOKENS,
   rememberPrompt,
   recordFacts,
@@ -20,7 +19,7 @@ import {
   type NoteStore,
   noteTitle,
 } from 'core'
-import { isIdentityFact } from 'core/src/bot-memory'
+import { scopeFacts } from 'core/src/bot-memory'
 import type { BotFactDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -114,9 +113,7 @@ export async function rememberTurn(deps: {
     flog('comet-memory', `remembering failed — ${errorText(err)}`)
     return
   }
-  const lines = parseFactLines(raw, known)
-  const shared = lines.filter(isIdentityFact)
-  const own = lines.filter((line) => !isIdentityFact(line))
+  const { shared, own } = scopeFacts(raw, known)
   const change = { added: 0, touched: 0 }
   const kept = await Promise.allSettled([
     own.length ? recordFacts(deps.paths, deps.botId, own) : null,

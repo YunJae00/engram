@@ -8,7 +8,7 @@ import {
   forgetFact,
   loadBotMemory,
   memorableTurn,
-  MEMORY_CHARS,
+  MEMORY_BUDGET,
   parseFactLines,
   recordFacts,
   rememberPrompt,
@@ -96,7 +96,7 @@ describe('ranking and rendering', () => {
     }))
     const file: BotMemoryFile = { facts, turns: 30 }
     const chosen = selectForPrompt(file, T2)
-    expect(chosen.reduce((n, f) => n + f.text.length, 0)).toBeLessThanOrEqual(MEMORY_CHARS)
+    expect(chosen.reduce((n, f) => n + f.text.length, 0)).toBeLessThanOrEqual(MEMORY_BUDGET.shared.chars)
     expect(chosen.every((f) => f.touchedAt !== T1.toISOString())).toBe(true)
     expect(chosen.map((f) => f.at)).toEqual([...chosen.map((f) => f.at)].sort())
     expect(renderMemory(file, T2)).toMatch(/^- \(2026-08-01\) fact number 1 /)

@@ -32,10 +32,8 @@ const MEMORY_DIR = 'bot-memory'
 // again fades out of the prompt in a few months and stays on disk.
 export const HALF_LIFE_DAYS = 30
 export const FACT_CHARS = 160
-// The block is capped by characters, not lines, so its share of the prompt
-// holds whatever the notes look like: this is roughly one observation.
-export const MEMORY_CHARS = 800
-export const MEMORY_LINES = 12
+// Each layer is capped by rendered characters and lines, the shared one first so the prompt head stays cache-stable.
+export const MEMORY_BUDGET = { shared: { chars: 1200, lines: 14 }, own: { chars: 600, lines: 8 } } as const
 export const DISK_CAP = 200
 const DAY_MS = 86_400_000
 
@@ -171,13 +169,26 @@ export async function forgetFactText(paths: VaultPaths, botId: string, text: str
 // each comet's own: what one comet learns about how they work, the next knows.
 export const PERSON_MEMORY = '_person'
 
-// The whole classifier: a fact naming one of these is about the person and
-// shared; anything else belongs to the comet that learned it.
-export const IDENTITY_PHRASES = ['my name', 'their name', "person's name", 'preferred name', 'time zone', 'timezone', 'pronouns'] as const
+// The fallback for a line the extractor did not mark: naming one of these makes it about the person and shared.
+export const IDENTITY_PHRASES = ['my name', 'their name', "person's name", 'preferred name', 'time zone', 'timezone', 'pronouns', '이름', '호칭', '시간대', '타임존'] as const
 
 export function isIdentityFact(text: string): boolean {
   const lower = text.toLowerCase()
   return IDENTITY_PHRASES.some((phrase) => lower.includes(phrase))
+}
+
+const SCOPE_MARK = /^\s*(?:[-*•]\s*)?(everyone|this bot)\s*:\s*/i
+
+// A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
+export function scopeFacts(raw: string, known: readonly string[]): { shared: string[]; own: string[] } {
+  const lines = raw.split('\n').map((line) => {
+    const mark = SCOPE_MARK.exec(line)
+    const text = mark ? line.slice(mark[0].length) : line
+    return { text, shared: mark ? mark[1]?.toLowerCase() === 'everyone' : isIdentityFact(text) }
+  })
+  const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
+  const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
+  return { shared, own }
 }
 
 // Shared and own facts as one list, each line once, the fresher clock kept.
@@ -202,21 +213,20 @@ export async function forgetBotMemory(paths: VaultPaths, botId: string): Promise
 const memoryLine = (f: BotFact) => `- (${f.at.slice(0, 10)}) ${f.text}`.replace(/\s+/g, ' ')
 
 // The facts that ride in the prompt: shared facts first, then the comet's
-// own, each the freshest that fit the rendered budget, and each layer in the
+// own, each layer the freshest that fit its own budget, and each layer in the
 // order its facts were first written.
 export function selectForPrompt(file: BotMemoryFile, now = new Date()): BotFact[] {
   const split = file.shared ?? file.facts.length
   const byScore = (facts: BotFact[]) => [...facts].sort((a, b) => factScore(b, now) - factScore(a, now))
-  let chars = -1
-  let count = 0
-  return [file.facts.slice(0, split), file.facts.slice(split)].flatMap((layer) => {
+  const layers = [[file.facts.slice(0, split), MEMORY_BUDGET.shared], [file.facts.slice(split), MEMORY_BUDGET.own]] as const
+  return layers.flatMap(([layer, budget]) => {
     const chosen: BotFact[] = []
+    let chars = -1
     for (const fact of byScore(layer)) {
       const next = chars + 1 + memoryLine(fact).length
-      if (count >= MEMORY_LINES || next > MEMORY_CHARS) continue
+      if (chosen.length >= budget.lines || next > budget.chars) continue
       chosen.push(fact)
       chars = next
-      count++
     }
     return chosen.sort((a, b) => a.at.localeCompare(b.at))
   })
@@ -229,14 +239,15 @@ export function renderMemory(file: BotMemoryFile, now = new Date()): string {
 // The one prompt of the feature. Short on purpose: the model that reads it
 // answers in a few hundred tokens and must not be asked to classify, diff
 // or copy - only to notice what is worth keeping.
-export const REMEMBER_TOKENS = 120
+export const REMEMBER_TOKENS = 160
 export function rememberPrompt(exchange: { user: string; answer: string; previous?: string; places?: readonly string[] }, known: readonly string[]): string {
   return [
     'JOB: COMET-REMEMBER',
     'You keep short notes about the person you assist. From the exchange below, write only what is worth remembering in later, unrelated conversations: who they are, how they like to be helped, ongoing work, decisions, dates.',
     'When the person corrects your previous answer or says how they want something done, keep the rule they gave, stated so it applies next time.',
     'Where their work lives is worth keeping: a page below that held what they asked for, as what it is for plus its address.',
-    'Rules: at most 3 lines, each a complete short sentence in their language, each beginning with "- ". Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',
+    'Begin each line with "- everyone: " for a fact about the person (who they are, how they like things done, tools, accounts, places, people they work with, standing decisions, ongoing projects with goal and status, e.g. "결정: …", "진행 중인 프로젝트: …") or "- this bot: " only for this assistant\'s own job (its site, its routine details).',
+    'Rules: at most 3 lines, each a complete short sentence in their language. Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',
     '',
     'Already kept:',
     ...(known.length ? known.map((k) => `- ${k}`) : ['(nothing yet)']),
