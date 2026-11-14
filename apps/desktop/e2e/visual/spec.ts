@@ -33,7 +33,7 @@ export const CHECKLIST: ChecklistRow[] = [
   { row: 15, target: '정보 창', assertion: '폭 320±2, 개요 아바타 96±1, 열고 닫을 때 대화 열 넘침 없음', states: ['info-overview'] },
   { row: 16, target: '대비', assertion: '본문·미리보기·시각 ≥4.5:1, 포커스 링 ≥3:1 (light/dark)', states: SIDE },
   { row: 17, target: '넘침', assertion: '보이는 요소 중 말줄임이 아닌데 `scrollWidth > clientWidth`인 것 0개', states: ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] },
-  { row: 18, target: '아바타', assertion: '갤러리의 모든 칸이 20/36/64/96 ±1. 외곽 대비 ≥3:1. 작업 중 애니메이션 속성은 `transform`만. 모션 줄이기 설정이면 `getAnimations()`가 0개', states: ['avatar-gallery'] },
+  { row: 18, target: '아바타', assertion: '갤러리의 모든 칸이 20/36/64/96 ±1. 구체 대비 리본 색 ≥3:1. 작업 중 애니메이션 속성은 `opacity`·`transform`만. 모션 줄이기 설정이면 `getAnimations()`가 0개', states: ['avatar-gallery'] },
 ]
 
 function luminance(c: Rgba): number {
@@ -353,13 +353,14 @@ async function measureGallery(page: Page): Promise<Check[]> {
     return [...document.querySelectorAll<HTMLElement>('.gallery-cell')].map(cell => ({
       size: Number(cell.dataset['size']), state: cell.dataset['state'], primary: cell.dataset['primary'] === 'true',
       avatar: box(cell.querySelector(':scope > .bot-avatar')), alert: box(cell.querySelector('.bot-avatar-alert')), badge: box(cell.querySelector('.bot-avatar-primary')),
-      stroke: cell.querySelector('svg [stroke]')?.getAttribute('stroke') ?? null,
+      ribbon: (ribbon => ribbon ? getComputedStyle(ribbon).fill : null)(cell.querySelector('.bot-orb-ribbon')),
+      sphere: (orb => orb ? getComputedStyle(orb).backgroundImage.match(/rgba?\([^()]*\)/g)?.at(-1) ?? null : null)(cell.querySelector('.bot-orb')),
     }))
   })
   const sized = g.filter(c => c.avatar && Math.abs(c.avatar.width - c.size) <= 1 && Math.abs(c.avatar.height - c.size) <= 1).length
-  const strokes = g.map(c => c.stroke)
-  const [bg, ...fgs] = strokes.every(Boolean) && g.length ? await rgbaOf(page, [await page.evaluate(() => getComputedStyle(document.body).backgroundColor), ...strokes as string[]]) : [null]
-  const ratios = bg && fgs.every(Boolean) ? fgs.map(fg => contrastRatio(fg!, [bg])) : []
+  const paints = g.flatMap(c => [c.ribbon, c.sphere])
+  const [bg, ...fgs] = paints.every(Boolean) && g.length ? await rgbaOf(page, [await page.evaluate(() => getComputedStyle(document.body).backgroundColor), ...paints as string[]]) : [null]
+  const ratios = bg && fgs.every(Boolean) ? g.map((_, i) => contrastRatio(fgs[2 * i]!, [fgs[2 * i + 1]!, bg])) : []
   const low = ratios.length && ratios.every(r => r !== null) ? Math.min(...ratios as number[]) : null
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
@@ -374,13 +375,13 @@ async function measureGallery(page: Page): Promise<Check[]> {
   const running = await page.evaluate(() => document.getAnimations().length)
   const within = (a: number, b: number) => Math.abs(a - b) <= 1
   const prim = g.filter(c => c.primary && c.size >= 36), att = g.filter(c => c.state === 'attention'), both = prim.filter(c => c.state === 'attention')
-  return [make('gallery cell sizes', CELL, `${sized}/${g.length}`, '107 cells, each .bot-avatar = data-size ±1', g.length === 107 && sized === 107),
-    atLeast('outline contrast', `${CELL} svg [stroke]`, low, 3, '≥3:1'),
-    equals('working animated properties', `${CELL}[data-state=working]`, props, 'transform'),
+  return [make('gallery cell sizes', CELL, `${sized}/${g.length}`, '113 cells, each .bot-avatar = data-size ±1', g.length === 113 && sized === 113),
+    atLeast('ribbon contrast on the sphere', `${CELL} .bot-orb-ribbon`, low, 3, '≥3:1'),
+    equals('working animated properties', `${CELL}[data-state=working]`, props, 'opacity,transform'),
     near('blur paused animations', `${CELL} .bot-avatar`, unpaused, 0, 0), near('reduced motion animations', 'document', running, 0, 0),
-    ratio('primary badge bottom-right', prim.filter(c => c.avatar && c.badge && within(c.badge.right, c.avatar.right) && within(c.badge.bottom, c.avatar.bottom)).length, prim.length, 9, '9/9 within 1px'),
-    ratio('attention badge top-right', att.filter(c => c.avatar && c.alert && within(c.alert.top, c.avatar.top) && within(c.alert.right, c.avatar.right)).length, att.length, 28, '28/28 within 1px'),
-    ratio('badges do not overlap', both.filter(c => c.alert && c.badge && (c.alert.bottom <= c.badge.top || c.badge.right <= c.alert.left || c.alert.right <= c.badge.left || c.badge.bottom <= c.alert.top)).length, both.length, 3, '3/3 apart')]
+    ratio('primary badge bottom-right', prim.filter(c => c.avatar && c.badge && within(c.badge.right, c.avatar.right) && within(c.badge.bottom, c.avatar.bottom)).length, prim.length, 12, '12/12 within 1px'),
+    ratio('attention badge top-right', att.filter(c => c.avatar && c.alert && within(c.alert.top, c.avatar.top) && within(c.alert.right, c.avatar.right)).length, att.length, 35, '35/35 within 1px'),
+    ratio('badges do not overlap', both.filter(c => c.alert && c.badge && (c.alert.bottom <= c.badge.top || c.badge.right <= c.alert.left || c.alert.right <= c.badge.left || c.badge.bottom <= c.alert.top)).length, both.length, 4, '4/4 apart')]
 }
 
 const r1 = (x: number) => Math.round(x * 10) / 10

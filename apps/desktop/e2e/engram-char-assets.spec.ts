@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication } from '@playwright/test'
-import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeTestApp } from './navigation.js'
@@ -9,11 +9,8 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const TMP = join(ROOT, 'tmp')
 const SHOTS = join(TMP, 'visual', 'rd-character-release-assets-r2a')
 const DESKTOP = fileURLToPath(new URL('../', import.meta.url))
-const IDS = [
-  '01-bean-tilt', '02-cloud', '03-cashew', '04-lobe', '05-squircle', '06-triangle', '07-oval', '08-knob',
-  '09-pill', '10-comma', '11-peanut', '12-crescent', '13-donut', '14-drop', '15-hourglass', '16-diamond',
-]
-const SHEET = join(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim(), '..', 'tmp', 'plans', 'engram-chars', 'plan', 'curated-16-sheet.png')
+const CATALOG = join(DESKTOP, 'build', 'Engram.xcassets', 'AppIcon.appiconset')
+const OLD_FACE = /bean-tilt|cashew|squircle|08-knob|hourglass|16-diamond|@opt/
 
 let app: ElectronApplication | undefined
 const dirs: string[] = []
@@ -24,11 +21,15 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('16 curated characters and 08-knob app icon', async () => {
+test('no character masters ship and the app icon is the earthrise', async () => {
   await mkdir(SHOTS, { recursive: true })
-  const vault = await mkdtemp(join(TMP, 'e2e-chars-')), profile = await mkdtemp(join(TMP, 'e2e-chars-profile-')), sizes = await mkdtemp(join(TMP, 'e2e-chars-sizes-'))
-  dirs.push(vault, profile, sizes)
-  execFileSync(process.execPath, [join(DESKTOP, 'scripts', 'gen-engram-char-sizes.mjs'), join(sizes, 'out')])
+  const vault = await mkdtemp(join(TMP, 'e2e-chars-')), profile = await mkdtemp(join(TMP, 'e2e-chars-profile-'))
+  dirs.push(vault, profile)
+  expect(existsSync(join(DESKTOP, 'src/renderer/src/assets/engram-chars'))).toBe(false)
+  const shipped = await readdir(join(DESKTOP, 'out', 'renderer'), { recursive: true })
+  expect(shipped.length).toBeGreaterThan(0)
+  expect(shipped.filter(file => OLD_FACE.test(file))).toEqual([])
+
   app = await electron.launch({ args: [join(DESKTOP, 'out', 'main', 'index.js'), '--no-sandbox'], env: {
     ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: profile,
     ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1',
@@ -37,10 +38,9 @@ test('16 curated characters and 08-knob app icon', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
 
   const b64 = async (file: string) => (await readFile(file)).toString('base64')
-  const masters = await Promise.all(IDS.map(id => b64(join(DESKTOP, 'src/renderer/src/assets/engram-chars', `${id}@opt.png`))))
-  const small = await Promise.all(IDS.map(id => b64(join(sizes, 'out', 'avatar', id, '24@opt.png'))))
-  const result = await page.evaluate(async ({ masters, small, sheet, icon }) => {
-    const bitmap = (data: string) => createImageBitmap(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], { type: 'image/png' }))
+  const files = ['icon_16x16.png', 'icon_16x16@2x.png', 'icon_32x32@2x.png', 'icon_128x128.png', 'icon_256x256.png']
+  const result = await page.evaluate(async ({ icon, catalog }) => {
+    const bitmap = (data: string) => createImageBitmap(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' })
     const pixels = (img: ImageBitmap) => {
       const c = new OffscreenCanvas(img.width, img.height), ctx = c.getContext('2d')!
       ctx.drawImage(img, 0, 0)
@@ -48,51 +48,50 @@ test('16 curated characters and 08-knob app icon', async () => {
     }
     const at = (d: Uint8ClampedArray, i: number) => d[i] ?? 0
     const lum = (d: Uint8ClampedArray, i: number) => at(d, i) * 0.299 + at(d, i + 1) * 0.587 + at(d, i + 2) * 0.114
-    const faces = []
-    for (const data of small) {
-      const img = await bitmap(data), d = pixels(img)
-      let dark = 0, light = 0
-      for (let i = 0; i < d.length; i += 4) if (at(d, i + 3) > 200) { if (lum(d, i) < 120) dark++; else if (lum(d, i) > 225) light++ }
-      faces.push({ size: img.width, corner: at(d, 3), dark, light })
+    const measure = (img: ImageBitmap) => {
+      const d = pixels(img), W = img.width
+      let violet = 0, low = 255, high = 0, top = 0, row = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (at(d, i + 3) !== 255) continue
+        const v = lum(d, i)
+        low = Math.min(low, v)
+        if (v > high) { high = v; row = Math.floor(i / 4 / W) }
+        if (i / 4 < (W * W) / 4) top = Math.max(top, v)
+        if (at(d, i + 2) >= 60 && at(d, i + 2) - at(d, i + 1) >= 20 && at(d, i) >= at(d, i + 1)) violet++
+      }
+      const side = (Math.floor(W / 2) * W + 1) * 4
+      return { W, corner: at(d, 3), sideAlpha: at(d, side + 3), sideLum: lum(d, side), violet, range: high - low, top, row: row / W }
     }
-    // Side by side: the curated sheet cell on the left, the optical master on the right, for every ID.
-    const sheetImg = await bitmap(sheet)
     const board = document.createElement('canvas')
-    board.width = 8 * 160; board.height = 4 * 160
-    board.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#F6F3EE'
+    board.width = (catalog.length + 1) * 160; board.height = 160
+    board.style.cssText = 'position:fixed;left:0;top:0;z-index:2147483647;background:#F6F3EE'
     document.body.append(board)
     const ctx = board.getContext('2d')!
+    ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#F6F3EE'; ctx.fillRect(0, 0, board.width, board.height)
-    const alphas = []
-    for (let k = 0; k < 16; k++) {
-      const x = (k % 4) * 320, y = Math.floor(k / 4) * 160
-      ctx.drawImage(sheetImg, (k % 4) * 300, Math.floor(k / 4) * 300, 300, 300, x, y, 160, 160)
-      const m = await bitmap(masters[k] ?? '')
-      ctx.drawImage(m, x + 160, y, 160, 160)
-      const d = pixels(m)
-      alphas.push([at(d, 3), at(d, (470 * 1024 + 512) * 4 + 3)])
+    const iconImg = await bitmap(icon)
+    ctx.drawImage(iconImg, 8, 8, 144, 144)
+    const sets = []
+    for (const [k, data] of catalog.entries()) {
+      const img = await bitmap(data)
+      ctx.drawImage(img, (k + 1) * 160 + 8, 8, 144, 144)
+      sets.push(measure(img))
     }
-    const iconImg = await bitmap(icon), id = pixels(iconImg), W = iconImg.width
-    const cols: number[] = []
-    for (let x = 0; x < W; x++) for (let y = 0; y < W; y++) {
-      const i = (y * W + x) * 4
-      if (at(id, i + 3) === 255 && (Math.abs(at(id, i) - 0xf6) >= 4 || Math.abs(at(id, i + 2) - 0xee) >= 4)) { cols.push(x); break }
-    }
-    const p = (Math.floor(W / 2) * W + 1) * 4
-    return { faces, alphas, plate: [at(id, p), at(id, p + 1), at(id, p + 2)], margins: [(cols[0] ?? 0) / W, (W - 1 - (cols.at(-1) ?? W)) / W] }
-  }, { masters, small, sheet: await b64(SHEET), icon: await b64(join(DESKTOP, 'build', 'icon.png')) })
+    return { icon: measure(iconImg), sets }
+  }, { icon: await b64(join(DESKTOP, 'build', 'icon.png')), catalog: await Promise.all(files.map(file => b64(join(CATALOG, file)))) })
 
-  for (const [k, face] of result.faces.entries()) {
-    expect(face.size, IDS[k]).toBe(24)
-    expect(face.corner, `${IDS[k]} transparent at 24px`).toBe(0)
-    expect(face.dark, `${IDS[k]} eyes and smile at 24px`).toBeGreaterThanOrEqual(4)
-    expect(face.light, `${IDS[k]} cream body at 24px`).toBeGreaterThan(face.dark)
-  }
-  for (const [k, [corner, body]] of result.alphas.entries()) expect([corner, body], IDS[k]).toEqual([0, 255])
-  expect(result.plate).toEqual([0xf6, 0xf3, 0xee])
-  for (const margin of result.margins) {
-    expect(margin).toBeGreaterThanOrEqual(0.12)
-    expect(margin).toBeLessThanOrEqual(0.14)
+  expect(result.icon.W).toBe(512)
+  expect(result.icon.corner).toBe(0)
+  expect(result.icon.sideAlpha).toBe(255)
+  expect(result.icon.sideLum).toBeLessThan(24)
+  expect(result.icon.violet).toBeGreaterThanOrEqual(512 * 512 * 0.004)
+  expect(result.icon.top, 'no highlight in the top quarter').toBeLessThan(40)
+  for (const [k, set] of result.sets.entries()) {
+    expect(set.corner, `${files[k]} transparent margin`).toBe(0)
+    expect(set.range, `${files[k]} is not a flat tile`).toBeGreaterThanOrEqual(70)
+    expect(set.violet, `${files[k]} violet arc`).toBeGreaterThanOrEqual(3)
+    expect(set.row, `${files[k]} arc row`).toBeGreaterThanOrEqual(0.4)
+    expect(set.row, `${files[k]} arc row`).toBeLessThanOrEqual(0.75)
   }
   await page.locator('canvas').last().screenshot({ path: join(SHOTS, 'side-by-side.png') })
 })

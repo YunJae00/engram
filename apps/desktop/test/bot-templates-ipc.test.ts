@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { appendBotTurn, BUILTIN_TEMPLATES, createBot, initVault, loadBots, recordFacts, type Bot, type VaultPaths } from 'core'
 import { updateBot } from 'core/src/bots'
-import { assignCharacter, CHARACTERS } from 'core/src/bot-character'
+import { assignCharacter, ORBS } from 'core/src/bot-character'
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList, templateSecrets } from '../src/main/bot-templates-ipc.js'
 
 const KEYS = ['id', 'name', 'purpose', 'label', 'avatar', 'skills']
@@ -46,7 +46,7 @@ it('createFromTemplate returns bot with template fields and its assigned charact
   expect(bot.id).toMatch(/^bot-/)
   expect(bot).toMatchObject({ name: '리서치', label: '자료 조사', templateId: 'research', purpose: BUILTIN_TEMPLATES[1]!.purpose })
   const assigned = assignCharacter(bot.id, undefined)
-  expect(CHARACTERS).toContain(assigned)
+  expect(ORBS).toContain(assigned)
   expect(bot.avatar).toEqual({ character: assigned })
   expect((await loadBots(paths)).find(b => b.id === bot.id)).toEqual(bot)
   expect(s.calls).toEqual([bot])
@@ -152,7 +152,7 @@ it('import fails closed and always makes a new id', async () => {
   expect(copy.id).not.toBe(r.id)
   expect(copy).toMatchObject({ templateId: 'research', label: '자료 조사' })
   const picked = assignCharacter(copy.id, r)
-  expect(CHARACTERS).toContain(picked)
+  expect(ORBS).toContain(picked)
   expect(copy.avatar).toEqual({ character: picked })
   expect(s.calls).toEqual([copy])
 

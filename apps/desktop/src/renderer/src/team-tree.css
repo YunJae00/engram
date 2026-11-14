@@ -12,6 +12,7 @@
 .team-member-in { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; animation: team-member-in 180ms var(--ease-out); }
 .team-member-body { min-height: 0; overflow: hidden; padding: 2px 0; }
 .team-member-row { display: flex; align-items: baseline; gap: 8px; }
+.team-member-orb { flex: none; align-self: center; width: 16px; height: 16px; }
 .team-member-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .team-member-result { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-dim); font-size: var(--fs-micro); }
 .team-chip { flex: none; color: var(--fg-faint); font-size: var(--fs-micro); }

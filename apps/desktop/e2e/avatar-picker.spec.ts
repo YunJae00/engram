@@ -48,24 +48,24 @@ test.afterEach(async () => {
 })
 
 test.describe('avatar picker', () => {
-  test('picker geometry: 80 preview, a 4x4 grid of 56px cells, and a 2px ink ring, never blue', async () => {
+  test('picker geometry: 80 preview, a 4x2 grid of 56px cells, and a 2px ink ring, never blue', async () => {
     const page = await launch('light')
     const picker = await openPicker(page)
     await expect(picker.locator('[aria-checked="true"]')).toHaveCount(0)
-    await picker.getByRole('radio', { name: '05-squircle', exact: true }).click()
+    await picker.getByRole('radio', { name: 'orb-amber', exact: true }).click()
     const m = await picker.evaluate(node => {
       const box = (el: Element) => { const r = el.getBoundingClientRect(); return { width: r.width, height: r.height, left: Math.round(r.left), top: Math.round(r.top) } }
       return { preview: box(node.closest('dialog')!.querySelector('[data-testid="create-bot-preview"] .bot-avatar')!), cells: [...node.querySelectorAll('.avatar-picker-cell')].map(box) }
     })
     expect(Math.abs(m.preview.width - 80)).toBeLessThanOrEqual(1)
-    expect(m.cells.length).toBe(16)
+    expect(m.cells.length).toBe(8)
     for (const cell of m.cells) { expect(Math.abs(cell.width - 56)).toBeLessThanOrEqual(1); expect(Math.abs(cell.height - 56)).toBeLessThanOrEqual(1) }
     expect(new Set(m.cells.map(c => c.left)).size).toBe(4)
-    expect(new Set(m.cells.map(c => c.top)).size).toBe(4)
+    expect(new Set(m.cells.map(c => c.top)).size).toBe(2)
     const checked = picker.locator('[aria-checked="true"]')
     await expect(checked).toHaveCount(1)
     expect(await ringOf(checked)).toEqual({ width: '2px', style: 'solid', color: 'rgb(28, 28, 30)' })
-    await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', '05-squircle')
+    await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', 'orb-amber')
   })
 
   test('info pane: the avatar opens the picker, a pick is saved as a character, Default saves the id face', async () => {
@@ -78,12 +78,12 @@ test.describe('avatar picker', () => {
     const picker = page.locator('#bot-info-avatar-picker [data-testid="avatar-picker"]')
     await expect(picker).toBeVisible()
     expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
-    await picker.getByRole('radio', { name: '12-crescent', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: '12-crescent' })
-    await picker.getByRole('radio', { name: '03-cashew', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: '03-cashew' })
+    await picker.getByRole('radio', { name: 'orb-lilac', exact: true }).click()
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-lilac' })
+    await picker.getByRole('radio', { name: 'orb-teal', exact: true }).click()
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-teal' })
     await picker.getByTestId('avatar-picker-default').click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: expect.stringMatching(/^\d\d-[a-z-]+$/) })
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: expect.stringMatching(/^orb-[a-z]+$/) })
     await expect.poll(() => page.evaluate(id => window.engram.botAvatarImage(id), CHAT_ID)).toBeNull()
   })
 
@@ -92,7 +92,7 @@ test.describe('avatar picker', () => {
     const picker = await openPicker(page)
     const grid = picker.getByRole('radiogroup')
     const radios = grid.getByRole('radio')
-    await expect(radios).toHaveCount(16)
+    await expect(radios).toHaveCount(8)
     await grid.locator('[tabindex="0"]').focus()
     await page.keyboard.press('Home')
     const focusedIndex = () => grid.evaluate(node => [...node.querySelectorAll('[role="radio"]')].indexOf(document.activeElement as Element))
@@ -104,8 +104,8 @@ test.describe('avatar picker', () => {
     await expect.poll(focusedIndex).toBe(5)
     await expect.poll(checkedIndex).toBe(5)
     await page.keyboard.press('End')
-    await expect.poll(checkedIndex).toBe(15)
-    expect((await ringOf(radios.nth(15))).color).toBe('rgb(28, 28, 30)')
+    await expect.poll(checkedIndex).toBe(7)
+    expect((await ringOf(radios.nth(7))).color).toBe('rgb(28, 28, 30)')
     await page.keyboard.press('Tab')
     expect(await grid.evaluate(node => node.contains(document.activeElement))).toBe(false)
   })

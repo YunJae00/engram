@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { initVault } from 'core'
-import { characterIndex, CHARACTERS, defaultCharacter, resolveCharacter } from '../../../packages/core/src/bot-character.js'
+import { characterIndex, ORBS, defaultCharacter, resolveCharacter } from '../../../packages/core/src/bot-character.js'
 import { closeTestApp } from './navigation.js'
 import { seedVisualVault, CHAT_ID } from './visual/seed.js'
 
@@ -43,22 +43,21 @@ const list = (page: Page) => page.evaluate(() => window.engram.botsList())
 
 async function sharp(avatar: Locator, px: number) {
   const m = await avatar.evaluate(node => {
-    const img = node.querySelector('img')!
-    const a = node.getBoundingClientRect(), b = img.getBoundingClientRect()
+    const orb = node.querySelector('.bot-orb')!
+    const a = node.getBoundingClientRect(), b = orb.getBoundingClientRect()
     let clipped = false
     for (let el = node.parentElement; el && el !== document.body; el = el.parentElement) {
       const r = el.getBoundingClientRect(), s = getComputedStyle(el)
       if (s.overflow !== 'visible' && (b.left < r.left - 0.5 || b.right > r.right + 0.5 || b.top < r.top - 0.5 || b.bottom > r.bottom + 0.5)) clipped = true
     }
-    return { box: [a.width, a.height], img: [b.width, b.height], src: img.currentSrc, complete: img.complete, natural: img.naturalWidth, clipped, fit: getComputedStyle(img).objectFit }
+    return { box: [a.width, a.height], orb: [b.width, b.height], ribbons: orb.querySelectorAll('svg.bot-orb-ribbon path').length, images: node.querySelectorAll('img').length, clipped, motion: orb.getAttribute('data-motion') }
   })
   expect(m.box).toEqual([px, px])
-  expect(m.img).toEqual([px, px])
-  expect(m.complete).toBe(true)
-  expect(m.natural).toBeGreaterThanOrEqual(px * 2)
+  expect(m.orb).toEqual([px, px])
+  expect(m.ribbons).toBe(3)
+  expect(m.images).toBe(0)
   expect(m.clipped).toBe(false)
-  expect(m.fit).toBe('contain')
-  return m.src
+  return m.motion
 }
 
 test.afterEach(async () => {
@@ -66,13 +65,13 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('16-character assignment and picker', async () => {
+test('8-orb assignment and picker', async () => {
   const page = await launch()
 
-  // Old drawn and photo avatars show one of the 16, hashed from the real id, with no photo and no restore entry.
+  // Old drawn and photo avatars show one of the 8 orbs, hashed from the real id, with no photo and no restore entry.
   for (const id of [CHAT_ID, 'vis-budget', PHOTO_ID]) {
     await expect(rowAvatar(page, id)).toHaveAttribute('data-character', defaultCharacter(id))
-    expect(await rowAvatar(page, id).locator('img').getAttribute('src')).not.toMatch(/bot-avatars|blob:|data:/)
+    await expect(rowAvatar(page, id).locator('img')).toHaveCount(0)
   }
 
   // Five new chats in a row: each face is the core rule applied to the real id, never repeating the one before.
@@ -95,24 +94,24 @@ test('16-character assignment and picker', async () => {
   for (const bot of made) await expect(rowAvatar(page, bot.id)).toHaveAttribute('data-character', (bot.avatar as { character: string }).character)
   expect((await list(page)).slice(-5).map(b => b.avatar)).toEqual(made.map(b => b.avatar))
 
-  // The sidebar row draws 32px from the regular master, loaded, unclipped.
+  // The sidebar row draws a 32px orb, unclipped, large enough to animate.
   const target = made[2]!
-  expect(await sharp(rowAvatar(page, target.id), 32)).not.toContain('@opt')
+  expect(await sharp(rowAvatar(page, target.id), 32)).not.toBe('static')
 
-  // Picking in the 4x4 updates the sidebar and the 36px header immediately, with an ink ring.
+  // Picking in the 4x2 updates the sidebar and the 36px header immediately, with an ink ring.
   await page.getByTestId(`bot-${target.id}`).click()
   const header = page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar')
   await expect(header).toHaveAttribute('data-character', (target.avatar as { character: string }).character)
-  expect(await sharp(header, 36)).not.toContain('@opt')
+  expect(await sharp(header, 36)).not.toBe('static')
   await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
   const pane = page.getByTestId('bot-info-pane')
   await expect(pane).toBeVisible()
   await expect(pane.getByRole('tab')).toHaveCount(0)
   await page.getByTestId('bot-info-avatar').click()
   const picker = pane.getByTestId('avatar-picker')
-  await expect(picker.getByRole('radio')).toHaveCount(16)
-  for (const id of CHARACTERS) await expect(picker.getByRole('radio', { name: id, exact: true })).toHaveCount(1)
-  const choice = CHARACTERS.find(id => id !== (target.avatar as { character: string }).character)!
+  await expect(picker.getByRole('radio')).toHaveCount(8)
+  for (const id of ORBS) await expect(picker.getByRole('radio', { name: id, exact: true })).toHaveCount(1)
+  const choice = ORBS.find(id => id !== (target.avatar as { character: string }).character)!
   await picker.getByRole('radio', { name: choice, exact: true }).click()
   await expect(rowAvatar(page, target.id)).toHaveAttribute('data-character', choice)
   await expect(header).toHaveAttribute('data-character', choice)

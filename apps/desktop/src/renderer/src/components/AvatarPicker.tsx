@@ -1,10 +1,10 @@
 import type { KeyboardEvent } from 'react'
 import { t } from '../i18n.js'
 import { pickerOptions, stepGrid } from '../lib/avatarPicker.js'
-import { avatarCharacter, type CharacterId } from '../lib/botAvatar.js'
+import { avatarCharacter, type OrbId } from '../lib/botAvatar.js'
 import { BotAvatar } from './BotAvatar.js'
 
-type Props = { id: string; value: unknown; picked?: boolean; theme: 'light' | 'dark'; onPick(next: CharacterId): void; onDefault(): void }
+type Props = { id: string; value: unknown; picked?: boolean; theme: 'light' | 'dark'; onPick(next: OrbId): void; onDefault(): void }
 
 // picked=false shows the face without marking it chosen, as in a dialog before the person picks.
 export function AvatarPicker({ id, value, picked = true, theme, onPick, onDefault }: Props) {

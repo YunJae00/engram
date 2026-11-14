@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { avatarCharacter, characterSrc, FALLBACK_CHARACTER } from '../lib/botAvatar.js'
+import { avatarCharacter, OPT_MAX_PX } from '../lib/botAvatar.js'
+import { BotOrb } from './BotOrb.js'
 import type { CometActivity } from '../lib/cometActivity.js'
 
 export type BotAvatarProps = {
@@ -14,20 +15,19 @@ export type BotAvatarProps = {
 const useMeasure = typeof document === 'undefined' ? useEffect : useLayoutEffect
 
 export function BotAvatar({ id, override, primary, size, state }: BotAvatarProps) {
-  const character = avatarCharacter(id, override)
-  const [failed, setFailed] = useState<string | null>(null)
+  const orb = avatarCharacter(id, override)
   const [shown, setShown] = useState<number>(size)
   const box = useRef<HTMLSpanElement>(null)
-  // CSS can scope a caller's size (sidebar 24, header 32); the file follows the size actually drawn.
+  // CSS can scope a caller's size (sidebar 24, header 32); motion follows the size actually drawn.
   useMeasure(() => {
     const width = box.current?.getBoundingClientRect().width
     if (width) setShown(Math.round(width))
   })
-  const face = failed === character ? FALLBACK_CHARACTER : character
+  const motion = shown < OPT_MAX_PX ? 'static' : state === 'working' ? 'working' : 'idle'
   return (
-    <span ref={box} className="bot-avatar" data-size={size} data-state={state} data-character={face} aria-hidden="true">
+    <span ref={box} className="bot-avatar" data-size={size} data-state={state} data-character={orb} aria-hidden="true">
       <span className="bot-avatar-art">
-        <img className="bot-avatar-img" alt="" draggable={false} src={characterSrc(face, shown)} onError={() => { if (face !== FALLBACK_CHARACTER) setFailed(character) }} />
+        <BotOrb orb={orb} motion={motion} />
       </span>
       {state === 'attention' && <span className="bot-avatar-alert" />}
       {primary === true && size >= 36 && <span className="bot-avatar-primary" />}

@@ -94,7 +94,7 @@ test('apple white chrome and larger faces', async () => {
       const cells = [...node.querySelectorAll('.avatar-picker-cell')]
       return { dialog: rect(node), cells: cells.map(rect), faces: cells.map(cell => rect(cell.querySelector('.bot-avatar')!).width), overflow: node.scrollWidth - node.clientWidth }
     })
-    expect(grid.cells.length, `${M} avatar-picker-cell count`).toBe(16)
+    expect(grid.cells.length, `${M} avatar-picker-cell count`).toBe(8)
     expect(new Set(grid.cells.map(cell => Math.round(cell.left))).size, `${M} picker has 4 columns`).toBe(4)
     for (const cell of grid.cells) {
       expect(Math.abs(cell.width - 56) <= 1 && Math.abs(cell.height - 56) <= 1, `${M} avatar-picker-cell ${cell.width}x${cell.height} should be 56`).toBe(true)

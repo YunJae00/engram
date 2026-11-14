@@ -1,3 +1,5 @@
+import { defaultCharacter } from '../lib/botAvatar.js'
+import { BotOrb } from './BotOrb.js'
 import { teamT, type TeamLang } from '../i18n-team.js'
 import { memberChip, memberResult, teamForest, type TeamMemberView, type TeamNode } from '../lib/teamView.js'
 
@@ -8,7 +10,7 @@ function Member({ node, lang }: { node: TeamNode; lang: TeamLang }) {
   return <li className="team-member" data-member-id={member.id} data-state={member.state} data-dim={member.state === 'released' || undefined}>
     <div className="team-member-in">
       <div className="team-member-body">
-        <div className="team-member-row"><span className="team-member-role">{member.role}</span><span className="team-chip" data-chip={chip}>{teamT(lang, chip)}</span></div>
+        <div className="team-member-row"><span className="team-member-orb" aria-hidden="true"><BotOrb orb={defaultCharacter(member.id)} motion="static" /></span><span className="team-member-role">{member.role}</span><span className="team-chip" data-chip={chip}>{teamT(lang, chip)}</span></div>
         {result && <div className="team-member-result" title={result}>{result}</div>}
       </div>
     </div>

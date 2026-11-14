@@ -1,15 +1,5 @@
 import { deflateSync, inflateSync } from 'node:zlib'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-export const CHAR_IDS = [
-  '01-bean-tilt', '02-cloud', '03-cashew', '04-lobe', '05-squircle', '06-triangle', '07-oval', '08-knob',
-  '09-pill', '10-comma', '11-peanut', '12-crescent', '13-donut', '14-drop', '15-hourglass', '16-diamond',
-]
-export const SIZES = [1024, 512, 256, 128, 64, 48, 40, 32, 24, 20, 16]
-export const OPT_MAX = 24
-export const MASTER_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'renderer', 'src', 'assets', 'engram-chars')
 const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 // Decodes an 8-bit, non-interlaced RGB or RGBA PNG into RGBA { width, height, data }.
@@ -115,69 +105,4 @@ export function resample(img, px) {
     }
   }
   return { width: px, height: px, data: out }
-}
-
-// The regular face without its ground shadow: the optical master has the same silhouette and no shadow.
-export function withoutShadow(regular, opt) {
-  const data = Buffer.from(regular.data)
-  for (let i = 3; i < data.length; i += 4) data[i] = Math.min(data[i], opt.data[i])
-  return { ...regular, data }
-}
-
-const decodedBpp = (buf) => (buf[25] === 6 ? 4 : 3)
-
-export function loadMaster(id, dir = MASTER_DIR) {
-  const read = (file) => {
-    const img = decodePng(readFileSync(join(dir, file)), file)
-    if (img.width !== 1024 || img.height !== 1024) throw new Error(`${file}: master must be 1024x1024`)
-    if (decodedBpp(readFileSync(join(dir, file))) !== 4) throw new Error(`${file}: master must be RGBA`)
-    return img
-  }
-  const regular = read(`${id}.png`)
-  const opt = read(`${id}@opt.png`)
-  return { regular, opt, flat: withoutShadow(regular, opt) }
-}
-
-// Every file the generator writes, relative to the output directory.
-export function expectedFiles() {
-  return CHAR_IDS.flatMap((id) => [
-    ...SIZES.map((s) => `avatar/${id}/${s}.png`),
-    ...SIZES.filter((s) => s <= OPT_MAX).map((s) => `avatar/${id}/${s}@opt.png`),
-  ])
-}
-
-// Writes avatar/{id}/{size}.png (and {size}@opt.png up to 24px) under outDir, replacing a prior set only once complete.
-export function generate(outDir, masterDir = MASTER_DIR) {
-  const target = resolve(outDir)
-  const staging = `${target}.part-${process.pid}-${Date.now()}`
-  rmSync(staging, { recursive: true, force: true })
-  try {
-    for (const id of CHAR_IDS) {
-      const { regular, opt, flat } = loadMaster(id, masterDir)
-      const dir = join(staging, 'avatar', id)
-      mkdirSync(dir, { recursive: true })
-      for (const size of SIZES) {
-        // Ground shadow only from 32px up; the small sizes keep the silhouette alone.
-        const src = size > OPT_MAX ? regular : flat
-        writeFileSync(join(dir, `${size}.png`), encodePng(size, resample(src, size).data))
-        if (size <= OPT_MAX) writeFileSync(join(dir, `${size}@opt.png`), encodePng(size, resample(opt, size).data))
-      }
-    }
-    rmSync(target, { recursive: true, force: true })
-    mkdirSync(dirname(target), { recursive: true })
-    renameSync(staging, target)
-  } catch (error) {
-    rmSync(staging, { recursive: true, force: true })
-    throw error
-  }
-  return expectedFiles().map((file) => join(target, file))
-}
-
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const out = process.argv[2]
-  if (!out) {
-    console.error('usage: gen-engram-char-sizes.mjs <outDir>')
-    process.exit(2)
-  }
-  console.log(`engram chars: ${generate(out).length} files in ${resolve(out)}`)
 }

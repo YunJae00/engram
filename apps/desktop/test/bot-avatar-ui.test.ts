@@ -11,20 +11,20 @@ const read = (path: string) => readFileSync(join(SRC, path), 'utf8')
 const render = (props: Partial<BotAvatarProps>) => renderToStaticMarkup(createElement(BotAvatar, { id: 'bot-x', size: 36, state: 'idle', theme: 'light', ...props }))
 
 describe('bot avatar ui', () => {
-  it('state from row status; one curated image with badges', () => {
+  it('state from row status; one orb with badges', () => {
     expect(avatarState('ready')).toBe('idle')
     expect(avatarState('running')).toBe('working')
     expect(avatarState('waiting')).toBe('attention')
     expect(avatarState('error')).toBe('attention')
     const alert = render({ state: 'attention', override: { image: 'a.png' } })
-    expect(alert).toMatch(/<img class="bot-avatar-img" alt=""/)
+    expect(alert.match(/class="bot-orb"/g)).toHaveLength(1)
     expect(alert).toContain(`data-character="${defaultCharacter('bot-x')}"`)
     expect(alert).toContain('class="bot-avatar-alert"')
     expect(alert).not.toContain('a.png')
     for (const size of [20, 24, 32, 36, 48, 64, 96] as const) {
       const html = render({ primary: true, size })
-      expect(html).not.toContain('<svg')
-      expect(html).not.toContain('08-knob@opt')
+      expect(html).not.toContain('<img')
+      expect(html).toContain(`data-motion="${size < 24 ? 'static' : 'idle'}"`)
       expect(html.includes('bot-avatar-primary')).toBe(size >= 36)
     }
     const row = read('renderer/src/components/SidebarConversation.tsx')

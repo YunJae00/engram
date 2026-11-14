@@ -18,6 +18,7 @@ vi.mock('electron', () => ({
 }))
 import { createTray } from '../src/main/tray.js'
 import { decodePng } from '../scripts/gen-engram-char-sizes.mjs'
+import { rasterize } from '../scripts/svg-raster.mjs'
 
 function png(buffer: Buffer) {
   expect(buffer.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
@@ -98,35 +99,76 @@ function icoEntry(size: number): Img {
   throw new Error(`icon.ico has no ${size}px entry`)
 }
 
-// A knob pixel: opaque and visibly off the #F6F3EE plate (the body is #F3EEE9 with darker shaded edges).
-const onKnob = (img: Img, x: number, y: number) => {
-  const i = (y * img.width + x) * 4
-  return img.data[i + 3] === 255 && (Math.abs(img.data[i] - 0xf6) >= 4 || Math.abs(img.data[i + 2] - 0xee) >= 4)
-}
+const lum = (img: Img, i: number) => (img.data[i] * 299 + img.data[i + 1] * 587 + img.data[i + 2] * 114) / 1000
+const violet = (img: Img, i: number) => img.data[i + 3] === 255 && img.data[i + 2] >= 60 && img.data[i + 2] - img.data[i + 1] >= 20 && img.data[i] >= img.data[i + 1]
+const at = (img: Img, x: number, y: number) => (y * img.width + x) * 4
 
-it('puts 08-knob on a flat cream rounded square with 12-14% side margins', () => {
+it('draws the violet earthrise on a black rounded square', () => {
   const icons: Img[] = [decodePng(readFileSync(new URL('../build/icon.png', import.meta.url)), 'icon.png'), ...[256, 128, 64, 48, 32, 24, 16].map(icoEntry)]
   for (const img of icons) {
     const W = img.width
-    const plate = img.data.subarray((Math.floor(W / 2) * W + 1) * 4, (Math.floor(W / 2) * W + 1) * 4 + 4)
-    expect([...plate], `${W}px plate`).toEqual([0xf6, 0xf3, 0xee, 255])
+    for (const [x, y] of [[1, W >> 1], [W >> 1, W - 2]]) {
+      expect(img.data[at(img, x, y) + 3], `${W}px opaque at ${x},${y}`).toBe(255)
+      expect(lum(img, at(img, x, y)), `${W}px black at ${x},${y}`).toBeLessThan(24)
+    }
     expect(img.data[3], `${W}px rounded corner`).toBe(0)
-    const columns = Array.from({ length: W }, (_, x) => x).filter(x => Array.from({ length: W }, (_, y) => y).some(y => onKnob(img, x, y)))
-    expect(columns[0] / W, `${W}px left margin`).toBeGreaterThanOrEqual(0.12)
-    expect(columns[0] / W, `${W}px left margin`).toBeLessThanOrEqual(0.14)
-    expect((W - 1 - columns.at(-1)!) / W, `${W}px right margin`).toBeGreaterThanOrEqual(0.12)
-    expect((W - 1 - columns.at(-1)!) / W, `${W}px right margin`).toBeLessThanOrEqual(0.14)
+    let count = 0, highlight = 0
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      if (y < W / 4) highlight = Math.max(highlight, lum(img, at(img, x, y)))
+      if (!violet(img, at(img, x, y))) continue
+      count++
+      expect(y, `${W}px violet row`).toBeGreaterThanOrEqual(Math.floor(0.35 * W))
+      expect(y, `${W}px violet row`).toBeLessThanOrEqual(Math.ceil(0.8 * W))
+    }
+    expect(count, `${W}px violet arc`).toBeGreaterThanOrEqual(Math.max(3, W * W * 0.004))
+    expect(highlight, `${W}px has no highlight in the top quarter`).toBeLessThan(40)
   }
   const mac = decodePng(readFileSync(new URL('../build/icon-mac.png', import.meta.url)), 'icon-mac.png')
-  expect([...mac.data.subarray((512 * 1024 + 110) * 4, (512 * 1024 + 110) * 4 + 4)]).toEqual([0xf6, 0xf3, 0xee, 255])
+  expect(mac.data[at(mac, 110, 512) + 3]).toBe(255)
+  expect(lum(mac, at(mac, 110, 512))).toBeLessThan(24)
+  expect(mac.data[at(mac, 50, 512) + 3]).toBe(0)
 })
 
-it('keeps the knob bump readable at 32px', () => {
+it('keeps the arc visible at 16px and 16@2x', () => {
   const set = new URL('../build/Engram.xcassets/AppIcon.appiconset/', import.meta.url)
-  for (const img of [icoEntry(32), decodePng(readFileSync(new URL('icon_16x16@2x.png', set)), '16@2x'), decodePng(readFileSync(new URL('icon_32x32.png', set)), '32')]) {
-    const top = (x: number) => Array.from({ length: 32 }, (_, y) => y).find(y => onKnob(img, x, y)) ?? 32
-    const crown = Math.min(top(15), top(16))
-    expect(top(9) - crown, 'bump rises above the left shoulder').toBeGreaterThanOrEqual(3)
-    expect(top(22) - crown, 'bump rises above the right shoulder').toBeGreaterThanOrEqual(3)
+  for (const img of [decodePng(readFileSync(new URL('icon_16x16.png', set)), '16'), decodePng(readFileSync(new URL('icon_16x16@2x.png', set)), '16@2x'), icoEntry(16), icoEntry(32)]) {
+    const W = img.width
+    let low = 255, high = 0, count = 0
+    const rows = new Array<number>(W).fill(0)
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const i = at(img, x, y)
+      if (img.data[i + 3] !== 255) continue
+      const v = lum(img, i)
+      low = Math.min(low, v); high = Math.max(high, v); rows[y] = Math.max(rows[y]!, v)
+      if (violet(img, i)) count++
+    }
+    expect(high - low, `${W}px is not a flat tile`).toBeGreaterThanOrEqual(70)
+    expect(count, `${W}px violet`).toBeGreaterThanOrEqual(W === 16 ? 3 : 8)
+    const columns = new Set<number>()
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (img.data[at(img, x, y) + 3] === 255 && lum(img, at(img, x, y)) >= high / 2) columns.add(x)
+    expect(columns.size, `${W}px arc width`).toBeGreaterThanOrEqual(W / 4)
+    const brightest = rows.indexOf(Math.max(...rows))
+    expect(brightest / W, `${W}px arc row`).toBeGreaterThanOrEqual(0.4)
+    expect(brightest / W, `${W}px arc row`).toBeLessThanOrEqual(0.75)
   }
+})
+
+it('rasterizes the supported SVG subset and refuses the rest', () => {
+  const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">${inner}</svg>`
+  const body = '<rect id="body" width="8" height="8" rx="0" fill="#000000"/>'
+  const grad = '<defs><radialGradient id="g" cx="4" cy="4" r="4" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></radialGradient></defs>'
+  const img = rasterize(svg(`${grad}${body}<circle cx="4" cy="4" r="3" fill="url(#g)"/>`), 8, 1) as Img
+  expect([img.width, img.height, img.data.length]).toEqual([8, 8, 256])
+  const t = Math.sqrt(0.5) / 4
+  expect([...img.data.subarray(at(img, 4, 4), at(img, 4, 4) + 4)]).toEqual([Math.round(255 * (1 - t)), 0, Math.round(255 * t), 255])
+  expect([...img.data.subarray(0, 4)]).toEqual([0, 0, 0, 255])
+  const round = rasterize(svg('<rect id="body" width="8" height="8" rx="4" fill="#102030"/>'), 8, 1) as Img
+  expect([...round.data.subarray(0, 4)]).toEqual([0, 0, 0, 0])
+  expect([...round.data.subarray(at(round, 4, 4), at(round, 4, 4) + 4)]).toEqual([0x10, 0x20, 0x30, 255])
+  expect(() => rasterize(svg(`${body}<path d="M0 0"/>`))).toThrow('unsupported <path>')
+  expect(() => rasterize(svg(`${body}<circle cx="4" cy="4" r="2" fill="#ffffff" filter="url(#f)"/>`))).toThrow('unsupported attribute filter on circle')
+  expect(() => rasterize(svg('<circle cx="4" cy="4" r="2" fill="#ffffff"/>'))).toThrow('<rect id="body">')
+  expect(() => rasterize(svg(`${body}<circle cx="4" cy="4" r="2" fill="url(#missing)"/>`))).toThrow('unknown gradient missing')
+  expect(() => rasterize(svg(`${body}<circle cx="4" cy="x" r="2" fill="#ffffff"/>`))).toThrow('bad cy')
+  expect(() => rasterize('<svg viewBox="0 0 8 4"><rect id="body" width="8" height="4" fill="#000000"/></svg>')).toThrow('viewBox')
 })

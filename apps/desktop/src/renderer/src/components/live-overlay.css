@@ -12,4 +12,4 @@
 .bots-chat > .bots-thread { padding-right: max(var(--reading-gutter), var(--live-clear-right, 0px)); }
 .mini-chat > .mini-chat-thread { padding-right: max(14px, var(--live-clear-right, 0px)); }
 .bots-chat .preview-card, .mini-chat .preview-card { background: var(--bg-surface, var(--panel-bg)); box-shadow: var(--shadow, var(--shadow-card)); }
-.preview-card .preview-card-caption::before { content: ''; flex: none; width: 20px; height: 20px; background: url('../assets/engram-chars/07-oval@opt.png') center / contain no-repeat; }
+.preview-card .preview-card-caption::before { content: ''; flex: none; width: 20px; height: 20px; border-radius: 50%; background: radial-gradient(circle, #FFFFFF 0%, #8B7CF6 24%, rgba(139, 124, 246, 0.28) 48%, #0B0B10 74%); box-shadow: inset 0 0 0 1px rgba(139, 124, 246, 0.36); }

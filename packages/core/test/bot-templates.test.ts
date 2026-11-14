@@ -89,7 +89,7 @@ describe('bot templates', () => {
     expect(stored.map(b => b.id)).toEqual([first.id, second.id])
     expect(stored[0]).toMatchObject({ label: '자료 조사', templateId: 'research' })
     expect(stored[0]!.avatar).toEqual(first.avatar)
-    expect(stored[0]!.avatar).toEqual({ character: expect.stringMatching(/^\d\d-/) })
+    expect(stored[0]!.avatar).toEqual({ character: expect.stringMatching(/^orb-/) })
   })
 
   it('import creates new id even when time and random repeat', async () => {

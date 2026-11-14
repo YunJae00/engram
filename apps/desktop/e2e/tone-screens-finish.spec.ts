@@ -93,14 +93,14 @@ test('cream+ink screen finish and empty state', async () => {
       const face = getComputedStyle(card.querySelector('.preview-card-caption')!, '::before')
       const composer = document.querySelector('[data-testid="bots-input"]')!.closest('.chat-write')!
       const last = [...document.querySelectorAll('.bots-thread .bubble-msg')].at(-1)!
-      return { background: getComputedStyle(card).backgroundColor, shadow: getComputedStyle(card).boxShadow, face: { image: face.backgroundImage, width: face.width, height: face.height }, card: rect(card), composer: rect(composer), last: rect(last) }
+      return { background: getComputedStyle(card).backgroundColor, shadow: getComputedStyle(card).boxShadow, face: { image: face.backgroundImage, radius: face.borderTopLeftRadius, width: face.width, height: face.height }, card: rect(card), composer: rect(composer), last: rect(last) }
     })
     expect(live.background).toBe(SURFACE)
     expect(live.shadow).toContain('rgba(28, 28, 30, 0.06)')
-    expect(live.face.image).toContain('07-oval')
+    expect(live.face.image).toContain('radial-gradient')
     expect(live.face).toMatchObject({ width: '20px', height: '20px' })
-    const faceUrl = live.face.image.replace(/^url\("?|"?\)$/g, '')
-    expect(await page.evaluate(url => fetch(url).then(response => response.ok && response.headers.get('content-type')?.includes('png')), faceUrl), 'the live-card face asset loads').toBe(true)
+    expect(live.face.image, 'the live-card face needs no image file').not.toContain('url(')
+    expect(live.face.radius, 'the live-card face is a round orb').toBe('50%')
     expect(overlaps(live.card, live.composer), 'live card leaves the composer clear').toBe(false)
     expect(overlaps(live.card, live.last), 'live card leaves the last message clear').toBe(false)
     const deckMotion = await page.evaluate(() => {

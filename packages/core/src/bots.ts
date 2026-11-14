@@ -233,7 +233,7 @@ export async function createBot(
   // The charter is optional: most comets are a conversation, not a role.
   const purpose = (input.purpose ?? '').trim().slice(0, 2000)
   if (!name) throw new Error('a bot needs a name')
-  if (input.character !== undefined && !isCharacterId(input.character)) throw new Error('avatar must be one of the 16 characters')
+  if (input.character !== undefined && !isCharacterId(input.character)) throw new Error('avatar must be one of the 8 orbs')
   const bot: Bot = { id: '', name, purpose, createdAt: now.toISOString(), updatedAt: new Date().toISOString() }
   // The id and face are chosen in the same queue turn that appends, so concurrent creates see each other.
   await mutateBots(paths, (bots) => {

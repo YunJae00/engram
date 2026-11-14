@@ -84,20 +84,20 @@ test.describe('create bot dialog', () => {
     await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user')).toHaveCount(0)
   })
 
-  test('an explicit pick in the 16-face picker is the stored face; no photo upload', async () => {
+  test('an explicit pick in the 8-orb picker is the stored face; no photo upload', async () => {
     const page = await launch('light')
     const dialog = await openDialog(page)
     await dialog.getByTestId('create-bot-avatar-change').click()
     const picker = dialog.getByTestId('avatar-picker')
-    await expect(picker.getByRole('radio')).toHaveCount(16)
+    await expect(picker.getByRole('radio')).toHaveCount(8)
     await expect(dialog.locator('input[type="file"]')).toHaveCount(0)
-    await picker.getByRole('radio', { name: '10-comma', exact: true }).click()
-    await expect(dialog.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', '10-comma')
+    await picker.getByRole('radio', { name: 'orb-blue', exact: true }).click()
+    await expect(dialog.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', 'orb-blue')
     const ids = new Set((await bots(page)).map(one => one.id))
     await dialog.getByTestId('create-bot-name').fill('Picked Bot')
     await dialog.getByTestId('create-bot-submit').click()
     await expect(dialog).toBeHidden()
-    await expect.poll(async () => (await bots(page)).find(one => !ids.has(one.id))?.avatar).toEqual({ character: '10-comma' })
+    await expect.poll(async () => (await bots(page)).find(one => !ids.has(one.id))?.avatar).toEqual({ character: 'orb-blue' })
   })
 
   test('first paint shows avatar and name only', async () => {
