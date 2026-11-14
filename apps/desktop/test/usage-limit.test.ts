@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { claudeRetryAfterMs, usageLimitMessage } from '../src/main/usage-limit.js'
+import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from '../src/main/usage-limit.js'
 
 it('says in the thread language when Claude can pick the work up again', () => {
   const now = new Date(2026, 10, 14, 13, 0).getTime()
@@ -19,4 +19,11 @@ it('reads the reset time from Claude\'s own limit text, and nothing when it give
   expect(claudeRetryAfterMs('limit reached, resets 9:30am', now)).toBe(20.5 * 3_600_000)
   expect(claudeRetryAfterMs('rate limited, retry after 120', now)).toBe(120_000)
   expect(claudeRetryAfterMs('usage limit reached', now)).toBeUndefined()
+})
+
+it('keeps the thread language when the latest reply has no letters', () => {
+  expect(threadKorean('2', [{ text: '보고서 만들어 줘' }])).toBe(true)
+  expect(threadKorean('2', [{ text: 'make the report' }])).toBe(false)
+  expect(threadKorean('ok', [{ text: '보고서 만들어 줘' }])).toBe(false)
+  expect(threadKorean('응', [])).toBe(true)
 })

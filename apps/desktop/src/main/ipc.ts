@@ -192,7 +192,7 @@ import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
 import { aiSelection, brainName, chatEngine, isLimited, limitedAt, noteLimited, rememberSelections, withModel } from './ai-selection.js'
-import { claudeRetryAfterMs, usageLimitMessage } from './usage-limit.js'
+import { claudeRetryAfterMs, threadKorean, usageLimitMessage } from './usage-limit.js'
 import { withModelCallContext } from './model-call-metrics.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
@@ -2486,7 +2486,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     // Claude at its usage limit: the reply above is kept; say when it can pick up again.
     if (isLimited('claude', channel)) {
-      const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel))
+      const said = usageLimitMessage(threadKorean(request.message, savedHistory), limitedAt('claude', channel))
       if (bot) await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
       turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 })
       broadcast({ type: 'chat:done', channel, text: said })
@@ -2897,11 +2897,11 @@ export function registerIpc(ctx: VaultContext): void {
         // Post-answer learning may use a different provider. Its failure must
         // neither replay completed work nor mark this conversation's AI limited.
         if (answerDelivered) { flog('chat-after-answer', err); return }
-        if (turn?.verification) throw err
         const said = err instanceof Error ? err.message : String(err)
         const kind = err instanceof EngineCallError ? err.kind : classifyEngineError(said)
+        if (turn?.verification && kind !== 'quota') throw err
         // Claude at its usage limit: no handoff to another engine; the person is told when it can resume.
-        const korean = /[가-힣]/.test(request.message)
+        const korean = threadKorean(request.message, savedHistory)
         if (kind === 'quota') noteLimited(engine.id, channel, (err instanceof QuotaError ? err.retryAfterMs : undefined) ?? claudeRetryAfterMs(said))
         // The task waits, resumable, with the message as its question.
         if (kind === 'quota') {

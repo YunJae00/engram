@@ -29,3 +29,10 @@ export function usageLimitMessage(korean: boolean, until?: number, now = Date.no
   const clock = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: at.getMinutes() ? '2-digit' : undefined })
   return `AI usage limit reached. I can pick this up again around ${clock}.`
 }
+
+// The thread's language: the latest message when it has letters, else the recent thread.
+export function threadKorean(message: string, history: { text: string }[]): boolean {
+  if (/[가-힣]/.test(message)) return true
+  if (/[A-Za-z]/.test(message)) return false
+  return history.slice(-6).some(turn => /[가-힣]/.test(turn.text))
+}
