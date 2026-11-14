@@ -120,19 +120,28 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
   return deny(`${name} is not available in this chat.`)
 }
 
+const linkedIds = (answer: string, name: string) => [...answer.matchAll(/\(engram-artifact:([^)\s]+)\)/g)].map(match => match[1]!).filter(href => href.endsWith(`-${artifactHref(name)}`) || href.endsWith(`-${encodeURIComponent(name)}`))
+// A name the answer already links counts only when the task file changed since that hand-in.
+async function handedIn(artifacts: string | undefined, answer: string, name: string, path: string): Promise<boolean> {
+  if (!artifacts) return true
+  const data = await readFile(path).catch(() => null)
+  for (const id of linkedIds(answer, name)) if (data && (await readFile(join(artifacts, decodeURIComponent(id))).catch(() => null))?.equals(data)) return true
+  return false
+}
+
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
-export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = []): Promise<string[]> {
+export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string): Promise<string[]> {
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
   for (const entry of entries) {
     const path = join(cwd, entry), name = basename(entry)
     if (name.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
-    if (answer.includes(`-${artifactHref(name)})`) || answer.includes(`-${encodeURIComponent(name)})`)) continue
     // lstat: a link is never a deliverable.
     const info = await lstat(path).catch(() => null)
     // A file reached through a linked directory is outside the task folder.
     if (!info?.isFile() || !within(await realpath(cwd), await realpath(path))) continue
+    if (linkedIds(answer, name).length && (info.size > OUTPUT_BYTES || await handedIn(artifacts, answer, name, path))) continue
     if (info.mtimeMs >= since) (info.size > OUTPUT_BYTES ? oversized : found).push(info.size > OUTPUT_BYTES ? name : path)
   }
   return found
@@ -151,13 +160,15 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
-  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized)) {
+  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)
       const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }) : JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
       result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation })
-      result.answer = `${result.answer}\n\n${(JSON.parse(observation) as { markdownLink: string }).markdownLink}`
+      const link = (JSON.parse(observation) as { markdownLink: string }).markdownLink, stale = linkedIds(result.answer, name)
+      // The revised file replaces the earlier hand-in where the answer quoted it.
+      result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
     } catch (error) { flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`) }
   }
   for (const name of oversized) result.answer = `${result.answer}\n\n⚠ ${name} is larger than 50 MB, so it stays in the task folder and is not attached.`

@@ -121,10 +121,13 @@ export function renderTool(options: {
       } else {
         const body = args[given[0]!] as string
         if (Buffer.byteLength(body) > INLINE_BYTES) throw new Error('Inline text is limited to 2 MB; write a file and pass source.')
-        const working = join(folder, `${name.slice(0, -4)}${given[0] === 'html' ? '.html' : '.md'}`)
-        if ((await lstat(working).catch(() => null))?.isSymbolicLink()) throw new Error('The file must be inside the task folder.')
-        await writeFile(working, body)
-        file = working
+        // An existing file of that name is kept; the source gets a numbered twin.
+        file = ''
+        for (let count = 1; !file && count < 100; count += 1) {
+          const working = join(folder, `${name.slice(0, -4)}${count === 1 ? '' : ` (${count})`}${given[0] === 'html' ? '.html' : '.md'}`)
+          await writeFile(working, body, { flag: 'wx' }).then(() => { file = working }, (error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error })
+        }
+        if (!file) throw new Error('Too many files in the task folder share this name.')
       }
       const data = await renderToBuffer(folder, file, kind, size, context.signal)
       if (data.length > OUTPUT_BYTES) throw new Error('Generated output exceeds 50 MB.')

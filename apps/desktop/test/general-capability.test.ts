@@ -175,3 +175,26 @@ it('counts a rendered file as a result output that needs no text reread', () => 
   expect(checkResult([render, report], outputs, []).issues.join(' ')).not.toMatch(/report\.pdf/)
   expect(checkResult([render, report, render], outputs, []).issues.join(' ')).toContain('The result changed after report_result_check')
 })
+
+it.skipIf(process.platform === 'win32')('writes nothing through a tasks folder that links outside the workspace', async () => {
+  await symlink(join(root, 'outside'), join(paths.workspace, 'tasks'))
+  await expect(cometNativeTools({ paths, channel: 'bot-z', ...quiet })).rejects.toThrow('cannot redirect outside')
+  expect(await readdir(join(root, 'outside'))).toEqual([])
+})
+
+it('hands in a revised task file again and points the answer at the new copy', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const draft = JSON.parse(await copy.run({ name: 'report.py', content: 'print(1)\n' }, context))
+  const answer = `Here it is: ${draft.markdownLink}`
+  const same = { answer, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, same, 0, 'ask')
+  expect(same.answer).toBe(answer)
+  await writeFile(join(cwd, 'report.py'), 'print(2)\n')
+  const revised = { answer, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, revised, 0, 'ask')
+  expect(revised.steps).toHaveLength(1)
+  expect(revised.answer).not.toContain(draft.markdownLink)
+  const id = /\(engram-artifact:([^)]+)\)/.exec(revised.answer)![1]!
+  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(id)), 'utf8')).toBe('print(2)\n')
+})

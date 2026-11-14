@@ -33,10 +33,12 @@ export function outputName(value: unknown): string {
 
 export async function ensureTaskFolder(paths: VaultPaths, folder: string): Promise<string> {
   await mkdir(taskRoot(paths), { recursive: true })
+  const escape = new Error('A comet work folder cannot redirect outside this workspace.')
+  if ((await lstat(taskRoot(paths))).isSymbolicLink() || !within(await realpath(paths.workspace), await realpath(taskRoot(paths)))) throw escape
   // The vault is committed and synced; task files are not notes.
   await writeFile(join(taskRoot(paths), '.gitignore'), '*\n', { flag: 'wx' }).catch((error) => { if (!exists(error)) throw error })
   await mkdir(folder, { recursive: true })
-  if ((await lstat(folder)).isSymbolicLink() || !within(await realpath(paths.workspace), await realpath(folder))) throw new Error('A comet work folder cannot redirect outside this workspace.')
+  if ((await lstat(folder)).isSymbolicLink() || !within(await realpath(paths.workspace), await realpath(folder))) throw escape
   return realpath(folder)
 }
 

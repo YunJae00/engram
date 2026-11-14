@@ -114,7 +114,7 @@ describe('final output coverage', () => {
     const media = ['screen.png', 'recording.mp4', 'session.webm'].map(name => ({ name, path: `C:/artifacts/${name}` }))
     expect(checkResult([read()], [...outputs, ...media], [source]).accepted).toBe(true)
     expect(latestResultOutputs([read()], media)).toEqual(media)
-    expect(checkResult([read()], [...outputs, { name: 'unsupported.zip', path: 'C:/artifacts/unsupported.zip' }], [source]).accepted).toBe(false)
+    expect(checkResult([read()], [...outputs, { name: 'unsupported.exe', path: 'C:/artifacts/unsupported.exe' }], [source]).accepted).toBe(false)
   })
 
   it.each([
