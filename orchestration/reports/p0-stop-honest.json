@@ -1,0 +1,43 @@
+{
+  "id": "p0-stop-honest",
+  "status": "done",
+  "headSha": "ccadd6a06571543cccd5defc3b3b0c09bec09428",
+  "changedFiles": [
+    "apps/desktop/src/main/ipc.ts",
+    "apps/desktop/src/main/task-closing.ts",
+    "apps/desktop/src/main/task-notify.ts",
+    "apps/desktop/src/main/task-runner.ts",
+    "apps/desktop/src/renderer/src/components/MiniChat.tsx",
+    "apps/desktop/src/renderer/src/components/ReplyChips.tsx",
+    "apps/desktop/src/renderer/src/lib/cometThreads.ts",
+    "apps/desktop/src/renderer/src/lib/sidebarPreview.ts",
+    "apps/desktop/src/renderer/src/lib/stopMark.ts",
+    "apps/desktop/src/renderer/src/lib/threadLangKo.ts",
+    "apps/desktop/src/renderer/src/views/BotsView.tsx",
+    "apps/desktop/test/stop-honest.test.ts",
+    "apps/desktop/test/task-closing.test.ts",
+    "orchestration/features/MAP.md",
+    "packages/core/src/agent-voice.ts",
+    "packages/core/test/agent-voice.test.ts",
+    "packages/core/test/e2e-runners.test.ts"
+  ],
+  "testsAdded": [
+    "apps/desktop/test/stop-honest.test.ts",
+    "apps/desktop/test/task-closing.test.ts > p0-stop-honest leftovers (empty answer closing, notice language, pre-task error closing, approved milestones)",
+    "apps/desktop/test/task-closing.test.ts > keepStopMark (mark after cut answer, nothing after user/finished turn, waits for release, aborted run without chat:done still stores cut words and mark)",
+    "packages/core/test/agent-voice.test.ts > drafts a self-contained ask straight from what was given, without announcing a notes search"
+  ],
+  "commandsRun": [
+    { "cmd": "ENGRAM_CHECK_BASE=next npm run check:quick", "exit": 0 },
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test/stop-honest.test.ts packages/core/test/agent-voice.test.ts apps/desktop/test/task-closing.test.ts", "exit": 0 },
+    { "cmd": "pnpm exec vitest run --project unit apps/desktop/test packages/core/test", "exit": 0 },
+    { "cmd": "pnpm run typecheck", "exit": 0 },
+    { "cmd": "pnpm run lint", "exit": 0 }
+  ],
+  "openQuestions": [
+    "Persistence fix for the previous findings: after the stopped run is released, keepStopMark broadcasts a chat:token reset so conversation-progress flushes pending words even on abort paths that return without chat:done (pump path and native runtime), then stores the marker after the progress turn.",
+    "Updated existing assertions: task-closing.test.ts stoppedText now expects '중지했어요.' (Korean bubble.stopped changed from '멈췄어요.'). e2e-runners.test.ts fixture subprocess now clears ENGRAM_CHECK_BASE; it failed under check:quick because the inherited base 'next' does not exist in the fixture repo.",
+    "VOICE_RULE example uses '…있는지 찾아볼게요.' instead of '확인해볼게요.' because an existing agent-voice test pins exactly one '확인해볼게요' per prompt.",
+    "Korean retry/stop words live in threadLangKo.ts (KO_STOP) because interface-language.test.ts forbids Korean literals elsewhere in the renderer."
+  ]
+}
