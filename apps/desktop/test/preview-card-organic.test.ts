@@ -30,15 +30,17 @@ it('forgets the oldest frames past the limit', () => {
   expect(recallPaint('cap', 'id59')).toBeDefined()
 })
 
-it('animates a ratio change: one interpolated number drives the card width and the stage height', () => {
-  expect(css).toMatch(/@property --pc-ratio \{ syntax: '<number>'; inherits: true; initial-value: 1\.6; \}/)
-  expect(rule('.preview-card')).toContain('transition: --pc-ratio')
-  expect(rule('.preview-card-stage')).toContain('aspect-ratio: var(--pc-ratio')
+it('animates a ratio change: the stage height follows width/ratio and transitions instead of jumping', () => {
+  // Animating a registered custom property every frame crashed the renderer; the stage height is transitioned instead.
+  expect(css).not.toMatch(/@property --pc-ratio/)
+  expect(rule('.preview-card')).not.toContain('transition: --pc-ratio')
+  expect(rule('.preview-card-stage')).toContain('height: calc(100cqi / var(--pc-ratio')
+  expect(rule('.preview-card-stage')).toContain('transition: height')
+  expect(rule('.preview-card-stage')).not.toContain('aspect-ratio')
   expect(rule('.preview-card-stage')).not.toContain('animation')
-  // A registered <number> rejects a non-number var() fallback and the whole declaration with it.
-  expect(css).not.toMatch(/var\(--pc-ratio,/)
+  expect(rule('.preview-card')).toContain('container: preview / inline-size')
   expect(rule('.preview-deck .preview-card')).toContain('* var(--pc-ratio')
-  expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[^\n]*\.preview-card, \.preview-card-stage canvas \{ transition: none; \}/)
+  expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[^\n]*\.preview-card-stage, \.preview-card-stage canvas \{ transition: none; \}/)
 })
 
 it('holds the last picture under a front that has not painted, and none for a frame with no picture', () => {
