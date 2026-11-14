@@ -56,7 +56,7 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
     const now = field && reading.controls.filter(control => field.runtimeId ? control.runtimeId === field.runtimeId : control.name === field.name && control.type === field.type)
     const valueNow = now?.length === 1 ? now[0]!.value ?? '' : undefined
     observed?.()
-    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(field ? { valueNow: valueNow ?? null } : {}), ...(settled ? {} : { stillChanging: STILL_CHANGING }), ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
+    return JSON.stringify({ ...result, ...(nearby ? { nearby } : {}), appNow, ...(field ? { valueNow: valueNow ?? null, setField: { name: field.name, type: field.type } } : {}), ...(settled ? {} : { stillChanging: STILL_CHANGING }), ...(unchangedContainer ? desktopFailure('No observed effect', { delivered: true, container: true }) : {}) })
   } catch (error) {
     signal?.throwIfAborted()
     return JSON.stringify({ ...result, observationMayBeStale: true, ...await permissionFailure(error, lane, { delivered: true }) })

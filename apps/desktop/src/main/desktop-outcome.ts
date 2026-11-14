@@ -46,12 +46,16 @@ function focusedField(view: unknown): { value?: string; composer: boolean } {
 export function textCheck(tool: string, result: Result, text: string): Words | undefined {
   const wanted = text.normalize('NFC')
   // app_set: the settled read-back (valueNow) wins over the receipt; null means the field was not found again.
-  const settled = result['valueNow']
+  // A scan shows at most a prefix of a long field (600 characters on Windows): a matching prefix defers to the receipt.
+  const receipt = typeof result['value'] === 'string' ? result['value'] : undefined
+  const settled = typeof result['valueNow'] === 'string' && result['valueNow'].length >= 600 && result['valueNow'].length < wanted.length && wanted.startsWith(result['valueNow'].normalize('NFC')) ? receipt ?? null : result['valueNow']
+  const setField = result['setField'] as { name?: string; type?: string } | undefined
   const focused = tool === 'app_set' ? undefined : focusedField(result['observation'])
   const value = tool === 'app_set' ? (typeof settled === 'string' ? settled : settled === null ? undefined : typeof result['value'] === 'string' ? result['value'] : undefined) : focused!.value
   const typed = result['typed'] as { verified?: boolean; landed?: string } | undefined
   if (tool !== 'app_set' && (!typed || (result['observation'] !== undefined && !focused!.composer))) return NOT_FOUND
   if (tool === 'app_set' && settled === null && 'appNow' in result) return UNREAD
+  if (tool === 'app_set' && setField && (/SearchField/i.test(setField.type ?? '') || SEARCH.test(setField.name ?? ''))) return NOT_FOUND
   if (tool === 'app_set' && result['landed'] === false) return UNREAD
   if (value !== undefined && value.normalize('NFC') !== wanted) return holds(value)
   if (typed?.landed !== undefined) return holds(typed.landed)
