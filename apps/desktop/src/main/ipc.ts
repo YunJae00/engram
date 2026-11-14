@@ -181,7 +181,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineSpoke } from './first-line.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, withFirstLine } from './first-line.js'
 import { cometNativeTools, commandSandbox, mentionedOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -231,6 +231,7 @@ import {
   noteEngineFailure,
   noteRunOutcome,
   revalidateEngines,
+  tapBroadcast,
 } from './engine-health.js'
 import { ROOM_FOR_EMBEDDER } from './memory-plan.js'
 import { semanticQuery, semanticQueryIfLive } from './semantic.js'
@@ -1012,6 +1013,7 @@ let onEnginesChanged: (() => Promise<void>) | null = null
 let onFilingProbe: ((states: EngineStatusDto[]) => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
+  tapBroadcast(firstLineSaw)
   setDesktopEngineResolver(async (lane) => {
     const current = await loadSettings()
     if (current.computerUse !== true) throw new Error('Enable computer use in Settings before using an app.')
@@ -2289,7 +2291,7 @@ export function registerIpc(ctx: VaultContext): void {
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, show: line => { broadcast({ type: 'chat:token', channel: entry.channel, text: line }); broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true }) } })
+    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2485,6 +2487,7 @@ export function registerIpc(ctx: VaultContext): void {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
     }
+    firstLineReady(channel)
     // Claude at its usage limit: the reply above is kept; say when it can pick up again.
     if (isLimited('claude', channel)) {
       const said = usageLimitMessage(threadKorean(request.message, savedHistory), limitedAt('claude', channel))
@@ -2595,7 +2598,7 @@ export function registerIpc(ctx: VaultContext): void {
       rawText: string,
       offer?: Extract<EngramEvent, { type: 'chat:done' }>['offer'],
     ): Promise<void> => {
-      const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))
+      const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, withFirstLine(channel, rawText)))
       // The receipt must never claim more than the disk holds — a failed
       // inbox write is exactly when "remember this" must say it did not land.
       let saved = 0

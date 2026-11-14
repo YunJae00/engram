@@ -152,14 +152,20 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('first-line', chosenModel('fast'), 'fast')
     try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) }
-    finally { metric.end() }
+    finally {
+      metric.end()
+      // A used-up voice is renewed now, so the next first line finds it warm.
+      if (voice?.spent) void this.voiceFor(options.workdir).catch(() => undefined)
+    }
   }
   private async voiceFor(workdir: string): Promise<VoiceSession | undefined> {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
     const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast') }
-    if (!voice || voice.closed || voice.spent || voice.key !== JSON.stringify([spec.binary, spec.model, spec.workdir])) { voice?.close(); voice = new VoiceSession(spec) }
+    // One account's voice never answers for another: the profile is part of what it is.
+    const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
+    if (!voice || voice.closed || voice.spent || voiceKey !== key) { voice?.close(); voice = new VoiceSession(spec); voiceKey = key }
     return voice
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
@@ -325,6 +331,7 @@ export function closeClaudeSessions(): void {
   voice?.close()
 }
 let voice: VoiceSession | undefined
+let voiceKey = ''
 
 async function sdkModule(): Promise<SessionSdk> {
   return (await loadClaudeSdk()) as SessionSdk

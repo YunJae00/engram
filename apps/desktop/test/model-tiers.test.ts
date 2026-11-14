@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineNote, firstLineSpoke, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -100,7 +100,7 @@ describe('instant first line', () => {
 
   it('shows the line as soon as it arrives while the answer is silent, and tells the main turn', async () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
-    expect(firstLineNote('bot-1')).toContain('may already be on screen')
+    firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(300)
     expect(show).toHaveBeenCalledExactlyOnceWith('보고서를 표로 정리해드릴게요.')
     expect(firstLineNote('bot-1')).toContain('보고서를 표로 정리해드릴게요.')
@@ -115,6 +115,47 @@ describe('instant first line', () => {
     expect(ipc).toMatch(/attachmentContext: \[[^\n]*firstSaid\]/)
     expect(ipc).toContain('onToken: (text) => { firstLineSpoke(channel);')
     expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
+  })
+
+  it('holds a line that comes before the request is saved, and shows it right after', async () => {
+    const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 100)))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(show).not.toHaveBeenCalled()
+    firstLineReady('bot-1')
+    expect(show).toHaveBeenCalledExactlyOnceWith('보고서를 표로 정리해드릴게요.')
+    expect(firstLineNote('bot-1')).toContain('보고서를 표로 정리해드릴게요.')
+  })
+
+  it('never shows a line that arrives after the main prompt was built, so the prompt is exact', async () => {
+    const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
+    firstLineReady('bot-1')
+    expect(firstLineNote('bot-1')).toBe('')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(show).not.toHaveBeenCalled()
+    expect(firstLineNote('bot-1')).toBe('')
+  })
+
+  it('keeps the shown line as the start of the answer until a reset finalizes it', async () => {
+    begin(voice(later('보고서를 정리해드릴게요.', 10)))
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(firstLineCarried('bot-1')).toBe('보고서를 정리해드릴게요.')
+    expect(withFirstLine('bot-1', '| 분기 | 매출 |')).toBe('보고서를 정리해드릴게요.\n\n| 분기 | 매출 |')
+    expect(withFirstLine('bot-1', '보고서를 정리해드릴게요.\n\n표')).toBe('보고서를 정리해드릴게요.\n\n표')
+    firstLineSaw({ type: 'chat:token', channel: 'bot-2', text: '', reset: true })
+    expect(firstLineCarried('bot-1')).toBe('보고서를 정리해드릴게요.')
+    firstLineSaw({ type: 'chat:token', channel: 'bot-1', text: '', reset: true })
+    expect(firstLineCarried('bot-1')).toBeUndefined()
+    expect(withFirstLine('bot-1', '표')).toBe('표')
+  })
+
+  it('wires the line into the answer stream after the saved request, with no reset of its own', () => {
+    const ipc = source('ipc.ts')
+    expect(ipc).toContain("show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\\n\\n` }) })")
+    expect(ipc.indexOf('recordedRequests.add(request)')).toBeLessThan(ipc.indexOf('firstLineReady(channel)'))
+    expect(ipc.indexOf('firstLineReady(channel)')).toBeLessThan(ipc.indexOf('const firstSaid = firstLineNote(channel)'))
+    expect(ipc).toContain('extractChatCaptures(finishProgress(channel, withFirstLine(channel, rawText)))')
+    expect(ipc).toContain('tapBroadcast(firstLineSaw)')
   })
 
   it('drops a line that misses the budget', async () => {
@@ -135,7 +176,7 @@ describe('instant first line', () => {
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
     const skipped: Partial<FirstLineAsk>[] = [
-      { message: '안녕' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: 'What is 2+2?' }, { message: '고마워요 잘 됐어요' },
+      { message: '안녕' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' },
       { studying: true }, { limited: true }, { followUp: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' },
     ]
     for (const patch of skipped) {
@@ -149,6 +190,8 @@ describe('instant first line', () => {
     }
     expect(wantsFirstLine(ask())).toBeNull()
     expect(wantsFirstLine(ask({ message: 'Summarize the attached contract and list the risks', korean: false }))).toBeNull()
+    // A short question can be a job; the small model answers NONE when one sentence settles it.
+    for (const message of ['Can you draft the Q3 report?', 'ok, draft the report', 'What is 2+2?', '고마워, 이제 계약서 요약해줘']) expect(wantsFirstLine(ask({ message, korean: false })), message).toBeNull()
   })
 
   it('stays silent for mock or missing engines, NONE answers and failures', async () => {
@@ -178,6 +221,30 @@ describe('instant first line', () => {
   it('opens no voice where the first line is skipped', () => {
     expect(source('ipc.ts')).not.toContain('warmQuick')
     expect(source('index.ts')).not.toContain('warmQuick')
+  })
+
+  it('opens the voice ahead for the channels that say first lines, and only for Claude', async () => {
+    const warm = vi.fn(async () => undefined)
+    warmFirstLine({ id: 'claude', warmQuick: warm }, WORKDIR)
+    expect(warm).toHaveBeenCalledExactlyOnceWith(WORKDIR)
+    warmFirstLine({ id: 'mock', warmQuick: warm } as never, WORKDIR)
+    warmFirstLine(undefined, WORKDIR)
+    vi.stubEnv('ENGRAM_ENGINE', 'mock')
+    warmFirstLine({ id: 'claude', warmQuick: warm }, WORKDIR)
+    expect(warm).toHaveBeenCalledOnce()
+    expect(source('index.ts')).toContain('warmFirstLine(live, engineCwd(ctx.paths))')
+  })
+
+  it('keeps one voice per Claude account, so a switch never answers from the old one', async () => {
+    const opened: unknown[] = []
+    const a = new ClaudeEngine('profile-a'), b = new ClaudeEngine('profile-b')
+    await a.warmQuick(WORKDIR)
+    opened.push(await (a as unknown as { voiceFor(w: string): Promise<unknown> }).voiceFor(WORKDIR))
+    opened.push(await (a as unknown as { voiceFor(w: string): Promise<unknown> }).voiceFor(WORKDIR))
+    const other = await (b as unknown as { voiceFor(w: string): Promise<unknown> }).voiceFor(WORKDIR)
+    expect(opened[0]).toBe(opened[1])
+    expect(other).not.toBe(opened[0])
+    expect((opened[0] as { closed: boolean }).closed).toBe(true)
   })
 })
 
