@@ -2462,8 +2462,6 @@ export function registerIpc(ctx: VaultContext): void {
     // signed in is said so, never quietly swapped for the one on this disk.
     const settings = await loadSettings()
     const wanted = 'claude'
-    // Claude at its usage limit: say when it can pick up again; nothing else takes the turn.
-    if (isLimited('claude', channel)) { const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel)); turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 }); broadcast({ type: 'chat:error', channel, message: said, kind: 'quota', provider: 'Claude' }); return }
     const engine = await chatEngine(channel, ctx.engines)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
@@ -2486,6 +2484,8 @@ export function registerIpc(ctx: VaultContext): void {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
     }
+    // Claude at its usage limit: the reply above is kept; say when it can pick up again.
+    if (isLimited('claude', channel)) { const said = usageLimitMessage(/[가-힣]/.test(request.message), limitedAt('claude', channel)); turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 }); broadcast({ type: 'chat:error', channel, message: said, kind: 'quota', provider: 'Claude' }); return }
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
     // What this conversation already saved, so a later day can reopen it.
