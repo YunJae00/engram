@@ -10,16 +10,19 @@ import { agentMirror } from '../lib/agentMirrorLive.js'
 
 export type FrameSource = (paint: (data: string) => void) => () => void
 
-export function FrameScreen({ className, lane, source, onSize, onPaint, title }: { className?: string; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void; onPaint?(image: string): void; title?: string }) {
+export function FrameScreen({ className, lane, source, onSize, onPaint, title, keep }: { className?: string; keep?: boolean; lane?: string; source?: FrameSource; onSize?(width: number, height: number): void; onPaint?(image: string): void; title?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const surface = canvas.current
     if (!surface) return
     const context = surface.getContext('2d', { alpha: false })
     if (!context) return
-    delete surface.dataset['painted']
-    delete surface.dataset['format']
-    context.clearRect(0, 0, surface.width, surface.height)
+    // A kept canvas shows its last picture until the new source paints.
+    if (!keep) {
+      delete surface.dataset['painted']
+      delete surface.dataset['format']
+      context.clearRect(0, 0, surface.width, surface.height)
+    }
     let alive = true
     let busy = false
     let waiting: string | null = null
@@ -72,6 +75,6 @@ export function FrameScreen({ className, lane, source, onSize, onPaint, title }:
       alive = false
       off()
     }
-  }, [lane, source, onSize, onPaint])
+  }, [lane, source, onSize, onPaint, keep])
   return <canvas ref={canvas} className={className} role={title ? 'img' : undefined} aria-label={title} />
 }

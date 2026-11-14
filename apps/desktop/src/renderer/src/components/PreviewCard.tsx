@@ -1,24 +1,14 @@
 import { api } from '../api.js'
-import { type CSSProperties, useCallback, useEffect, useId, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useId, useReducer, useRef, useState } from 'react'
 import { AppWindow, Calendar, ChevronUp, FileSpreadsheet, FileText, Globe, Mail, LoaderCircle, PanelRight, Presentation, X } from 'lucide-react'
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
 import { GROUP_KO } from '../lib/threadLangKo.js'
 import { useWebPane, webPane } from '../lib/webPane.js'
+import { FALLBACK_RATIO, HOLD_MS, heldLayers, recallPaint, rememberPaint, shownRatio } from '../lib/previewMotion.js'
 import { FrameScreen } from './FrameScreen.js'
 import type { PreviewFrame } from './usePreviewFrames.js'
 
-export const FALLBACK_RATIO = 16 / 10
-export type StageSize = { id: string; width: number; height: number }
-
-export function recordStageSize(previous: StageSize | null, id: string, width: number, height: number): StageSize | null {
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return previous
-  if (previous && previous.id === id && previous.width === width && previous.height === height) return previous
-  return { id, width, height }
-}
-
-export function stageRatio(size: StageSize | null, id: string): number {
-  return size && size.id === id ? size.width / size.height : FALLBACK_RATIO
-}
+export { FALLBACK_RATIO, recordStageSize, stageRatio, type StageSize } from '../lib/previewMotion.js'
 
 export function paintedSize(stage: ParentNode | null): [number, number] {
   const canvas = stage?.querySelector('canvas')
@@ -46,10 +36,10 @@ export function previewIcon(frame: Pick<PreviewFrame, 'phase' | 'title' | 'activ
   return frame.title === 'Excel' ? FileSpreadsheet : frame.title === 'PowerPoint' ? Presentation : FileText
 }
 
-export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb, onCollapse, onHide, onSnapshot }: {
+export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb, onCollapse, onHide }: {
   frame: PreviewFrame; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
   lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void
-  onCollapse(): void; onHide(): void; onSnapshot?(id: string, image: string): void
+  onCollapse(): void; onHide(): void
 }) {
   const words = threadWords(lang).workPreview
   const { attention } = useWebPane(lane)
@@ -58,12 +48,31 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const paints = useRef(new Map<string, number>())
   const stage = useRef<HTMLDivElement>(null)
   const card = useRef<HTMLElement>(null)
-  const [size, setSize] = useState<StageSize | null>(null)
-  const record = useCallback((width: number, height: number) => setSize(previous => recordStageSize(previous, frame.id, width, height)), [frame.id])
+  const [, repaint] = useReducer((count: number) => count + 1, 0)
+  const size = recallPaint(lane, frame.id)?.size
+  const shown = useRef(size)
+  // Compared with what this card rendered, not with the memory: another card of the same lane may have recorded the size first.
+  const record = useCallback((width: number, height: number, image?: string) => {
+    rememberPaint(lane, frame.id, width, height, image)
+    if (recallPaint(lane, frame.id)?.size !== shown.current) repaint()
+  }, [lane, frame.id])
   const onPaint = useCallback((image: string) => {
-    record(...paintedSize(stage.current))
-    paints.current.set(frame.id, Date.now()); onSnapshot?.(frame.id, image); frame.onPaint?.()
-  }, [frame.id, frame.onPaint, onSnapshot, record])
+    record(...paintedSize(stage.current), image)
+    paints.current.set(frame.id, Date.now()); frame.onPaint?.()
+  }, [frame.id, frame.onPaint, record])
+  const lastRatio = useRef(FALLBACK_RATIO)
+  const ratio = shownRatio(size, frame.id, lastRatio.current)
+  useEffect(() => { lastRatio.current = ratio; shown.current = size })
+  const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
+  const front = hasImage ? 'img' : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? 'canvas' : 'none'
+  const kind = `${frame.id}\n${front}`
+  const [held, setHeld] = useState(() => ({ kind, id: frame.id, own: recallPaint(lane, frame.id)?.image, previous: undefined as string | undefined }))
+  if (held.kind !== kind) setHeld({ kind, id: frame.id, own: recallPaint(lane, frame.id)?.image, previous: held.id === frame.id ? undefined : recallPaint(lane, held.id)?.image })
+  // Another app's picture never outlives a front that fails to paint.
+  useEffect(() => {
+    const timer = setTimeout(() => setHeld(one => one.previous ? { ...one, previous: undefined } : one), HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [held.kind])
   // Set on the element, not through state: the drag fitter measures in the same ResizeObserver pass, before React would re-render.
   useEffect(() => {
     const node = card.current
@@ -77,7 +86,6 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
   const title = frame.title || words.browser
   const status = state === 'waiting' || attention ? 'waiting' : busy ? 'working' : state
   const age = Math.max(0, Math.floor((now - (paints.current.get(frame.id) ?? frame.at)) / 1000))
-  const hasImage = frame.image && (frame.phase === 'ready' || frame.phase === 'delayed')
   const snapshot = `${words.lastSnapshot} · ${words.snapshotAge(age)}`
   const activity = frame.activity && (lang === 'ko' ? GROUP_KO[frame.activity] ?? frame.activity : frame.activity)
   const message = frame.connecting ? words.firstFrame : frame.phase === 'activity' ? words.officeActivity : frame.phase === 'empty' ? words.noSite : frame.phase === 'no-snapshot' ? words.noSnapshot
@@ -87,10 +95,11 @@ export function PreviewCard({ frame, busy, state, lang, lane, compact, onOpenWeb
     if (onOpenWeb) onOpenWeb(); else if (compact) webPane.expand(lane, true); else webPane.open(lane)
     if (frame.phase === 'empty') requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-testid="live-address"]')?.focus())
   }
-  return <aside ref={card} className="preview-card" style={{ '--pc-ratio': stageRatio(size, frame.id) } as CSSProperties} data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
+  return <aside ref={card} className="preview-card" style={{ '--pc-ratio': ratio } as CSSProperties} data-testid="preview-card" data-source={frame.source} data-lane={lane} aria-label={words.title} aria-describedby={description}>
     <div ref={stage} className="preview-card-stage" data-phase={frame.phase} title={snapshot}>
       <span id={description} className="sr-only">{words.description}</span>
-      {hasImage ? <img src={frame.image} alt={title} onLoad={event => record(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} /> : (frame.stream || frame.source === 'web') && frame.phase !== 'empty' ? <FrameScreen key={frame.id} lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
+      {heldLayers(frame.phase, front, held.own, held.previous).map(layer => <div key={`${layer.key}:${held.kind}`} className="preview-card-held" data-layer={layer.key} style={{ backgroundImage: `url("${layer.image}")` }} aria-hidden />)}
+      {front === 'img' ? <img key={frame.id} src={frame.image} alt={title} onLoad={event => record(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight, frame.image)} /> : front === 'canvas' ? <FrameScreen key={frame.id} keep lane={lane} source={frame.stream} title={title} onPaint={onPaint} /> : null}
       {!hasImage && <div className="preview-card-state"><Icon size={16} aria-hidden /><span>{message}</span></div>}
       <div className="preview-card-actions">
         {!!frame.hiddenByEngram && <button type="button" aria-label={words.showApp} title={words.showApp} onClick={() => { void api.desktopShowApp(lane).catch(() => {}) }}><AppWindow size={14} aria-hidden /></button>}
