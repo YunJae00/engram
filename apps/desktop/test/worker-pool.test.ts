@@ -366,7 +366,8 @@ describe('leases through a warm session', () => {
     query: ({ prompt, options }) => {
       const server = (options?.['mcpServers'] as Record<string, { tools: { handler(args: unknown): Promise<{ content: { text: string }[] }> }[] }>)['engram']!
       async function* run(): AsyncGenerator<{ type: string; [key: string]: unknown }> {
-        for await (const _message of prompt) {
+        for await (const message of prompt) {
+          void message
           const said = await server.tools[0]!.handler({})
           yield { type: 'assistant', message: { content: [{ type: 'text', text: said.content[0]!.text }] } }
           yield { type: 'result', subtype: 'success', result: said.content[0]!.text }
