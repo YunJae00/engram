@@ -163,9 +163,18 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
-  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
+  // Outputs are known by name, so two files with one name in different folders get distinct ones (report.md, report-2.md), shallowest path first.
+  const depth = (path: string) => path.split(/[\\/]/).length, taken = new Set<string>()
+  const distinct = (name: string) => {
+    let free = name
+    for (let count = 2; taken.has(free.toLowerCase()); count++) free = `${basename(name, extname(name))}-${count}${extname(name)}`
+    taken.add(free.toLowerCase())
+    return free
+  }
+  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))
+  for (const path of named.sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : 1))) {
     try {
-      const name = basename(path)
+      const name = distinct(basename(path))
       const real = await taskFile(paths, cwd, path)
       const raw = async () => JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
       // Core reads text back under its own 8 MB limit; a larger file still goes in as made, up to the 50 MB cap.

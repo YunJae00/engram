@@ -271,6 +271,23 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
 })
 
+it('two named files with the same name in different folders are both handed in, linked and checked', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  for (const folder of ['one', 'two']) {
+    await mkdir(join(cwd, folder), { recursive: true })
+    await writeFile(join(cwd, folder, 'report.md'), `# ${folder}\n`)
+  }
+  const result = { answer: 'Wrote one/report.md and two/report.md.', steps: [passed('Reports written')] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  const links = [...result.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# one\n', '# two\n'])
+  const { outputs, check } = await judged(result)
+  expect(outputs).toEqual(['report-2.md', 'report.md'])
+  expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
+  expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
+})
+
 it('a check turn hands in a requested script it first wrote next to a linked workbook, and it enters the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(cwd, { recursive: true })
