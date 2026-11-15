@@ -23,6 +23,7 @@ import {
   withoutSecrets,
   type DelegatedTask,
   type MeaningScores,
+  successfulTurnSteps,
   type ReviewRule,
   type TurnStep,
   type VaultPaths,
@@ -32,7 +33,7 @@ import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { READ_CARD } from './read-card.js'
-import { freshResultReadback } from './task-result-state.js'
+import { freshResultReadback, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
 
@@ -176,7 +177,9 @@ export function taskRunner(deps: {
         }
       } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t)) { verifyNext.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
-    if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+    // One finished task, one report: a re-check that passed and changed nothing leaves the report already in the thread as the last word.
+    const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
+    if (after && outcome?.held && after.result && !repeats) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after
