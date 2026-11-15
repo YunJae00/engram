@@ -30,3 +30,9 @@ it('stays valid JSON when a labelled secret ends in a character JSON escapes', (
   expect(checkpoint).not.toContain('ab12')
   expect(JSON.parse(checkpoint)).toMatchObject({ request: 'use the token •••••• for the deploy', remaining: 'Retry ••••••', lastResponse: 'token •••••• worked' })
 })
+
+it('keeps its own field names when a labelled secret equals one of them', () => {
+  const checkpoint = JSON.parse(resumeCheckpoint('my token: committedActions', { answer: 'ok', steps: [{ tool: 'press', args: { target: 'Send' }, observation: 'sent', committed: true }], fellBack: false, incomplete: 'check' })!)
+  expect(checkpoint.committedActions).toEqual([{ tool: 'press', args: { target: 'Send' } }])
+  expect(checkpoint.request).toBe('my token: ••••••')
+})

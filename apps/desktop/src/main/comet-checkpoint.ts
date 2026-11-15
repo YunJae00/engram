@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { renameWithRetry, withoutSecretsIn, type VaultPaths } from 'core'
+import { renameWithRetry, withoutSecrets, withoutSecretsIn, type VaultPaths } from 'core'
 import { flog } from './flog.js'
 
 interface Checkpoint { context?: string; pending: string[] }

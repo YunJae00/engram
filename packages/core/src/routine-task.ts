@@ -33,7 +33,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   }
   const checks = [...new Set(successful.flatMap(step => {
     if (['verify', 'wait_for'].includes(step.tool)) {
-      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [JSON.stringify(withoutSecretsIn({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }, source)).slice(0, 500)] } catch { /* No verified criteria to retain. */ }
+      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [JSON.stringify(withoutSecretsIn({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }, source, ['id', 'url', 'ready', 'present', 'absent'])).slice(0, 500)] } catch { /* No verified criteria to retain. */ }
     }
     return step.tool === 'task_plan' && Array.isArray(step.args['phases']) ? step.args['phases'].filter((value): value is string => typeof value === 'string').map(value => withoutSecrets(value, source).slice(0, 500)) : []
   }))].slice(0, 8)

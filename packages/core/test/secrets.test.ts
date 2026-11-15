@@ -55,6 +55,9 @@ describe('structured redaction (QA 0.8.142 B9)', () => {
     expect(text).not.toContain('ab12')
     expect(JSON.parse(text)).toEqual({ '••••••': 'safe' })
   })
+  it('never renames the caller\'s own field names', () => {
+    expect(withoutSecretsIn({ pending: ['pending'], other: { pending: 1 } }, 'token: pending', ['pending'])).toEqual({ pending: ['••••••'], other: { pending: 1 } })
+  })
   it('returns the same value when nothing was labelled', () => {
     const value = { a: 'plain' }
     expect(withoutSecretsIn(value, 'nothing here')).toBe(value)
