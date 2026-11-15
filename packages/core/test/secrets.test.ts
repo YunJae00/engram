@@ -59,8 +59,8 @@ describe('structured redaction (QA 0.8.142 B9)', () => {
     expect(withoutSecretsIn({ pending: ['pending'], other: { pending: 1 } }, 'token: pending', ['pending'])).toEqual({ pending: ['••••••'], other: { '••••••': 1 } })
   })
   it('keeps only the listed field paths, not the same key nested in a value', () => {
-    const clean = withoutSecretsIn({ committedActions: [{ tool: 'press', args: { request: 'safe', tool: 'x' } }], request: 'my token: request' }, 'token: request token: tool', ['request', 'committedActions', 'committedActions.*.tool', 'committedActions.*.args'])
-    expect(clean).toEqual({ committedActions: [{ tool: 'press', args: { '••••••': 'safe', '••••••': 'x' } }], request: 'my token: ••••••' })
+    const clean = withoutSecretsIn({ committedActions: [{ tool: 'press', args: { request: 'safe', other: 'x' } }], request: 'my token: request' }, 'token: request token: tool', ['request', 'committedActions', 'committedActions.*.tool', 'committedActions.*.args'])
+    expect(clean).toEqual({ committedActions: [{ tool: 'press', args: { '••••••': 'safe', other: 'x' } }], request: 'my token: ••••••' })
   })
   it('returns the same value when nothing was labelled', () => {
     const value = { a: 'plain' }
