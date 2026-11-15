@@ -98,6 +98,10 @@ it('checks a result only when something was saved, committed or changed, not aft
 it.each([
   ['diff .check/a .check/b', true], ['cat notes.md | wc -l', true], ['cd leads && ls -la; grep -c 규정 a.md', true],
   ['cat > report.md <<EOF\nx\nEOF', false], ['echo done >> report.md', false], ['python3 build.py', false], ['sed -i s/a/b/ report.md', false],
+  // qa143 p2 r9: a reader told to run another program is no reader (ripgrep's preprocessor, hostname and decompressor flags).
+  ['rg -n 규정 leads', true], ['rg -i pre-release notes.md', true], ['grep -z x a.md', true],
+  ['rg --pre /bin/sh x .', false], ["rg '--pre=/bin/sh' x .", false], ['rg --pre-glob *.md --pre ./p x', false], ['cat a.md | rg --pre ./p x', false],
+  ['rg --hostname-bin ./h x', false], ['rg --search-zip x .', false], ['rg -iz x .', false],
   ['cat a.md | tee report.md', false], ['cp a.md report.md', false], ['echo $(rm report.md)', false], ['ls; mv a.md b.md', false], ['FOO=1 ls', false], [undefined, false],
 ])('reads command %j as only reading: %s', (command, reads) => {
   expect(commandOnlyReads(command)).toBe(reads)

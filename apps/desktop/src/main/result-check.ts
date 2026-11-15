@@ -86,8 +86,12 @@ function receipt(step: TurnStep): Receipt | undefined {
 // shortcut: reads the command text against a short list, so an unlisted reader (awk, jq, find) costs one readback; upgrade when command steps report the files they changed.
 const SHELL = /^(Bash|PowerShell|Shell)$/
 const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|cd|echo|printf|test|true|cut|nl|basename|dirname|shasum|sha256sum|md5|md5sum)$/
+// A listed reader that is told to run another program is no reader: ripgrep's --pre and --hostname-bin run the executable they name, and
+// -z/--search-zip runs whatever decompressor the PATH holds (qa143 p2 r9). Quotes are dropped first, so a quoted flag is still seen.
+const RUNS_PROGRAM = /(^|\s)(--pre|--hostname-bin|--search-zip|-[A-Za-z]*z)/
+const plainReader = (part: string): boolean => READERS.test(part.split(/\s+/)[0]!) && !(/^rg(\s|$)/.test(part) && RUNS_PROGRAM.test(part.replace(/['"]/g, '')))
 export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
-  && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(part => READERS.test(part.split(/\s+/)[0]!))
+  && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(plainReader)
 export const commandChanged = (step: TurnStep): boolean => SHELL.test(step.tool) && !commandOnlyReads(step.args['command'])
 // A step that may have written a file with no receipt of its own: a native file write, or a command that is not plainly a reader.
 // The one rule for the post-check scan, readback freshness and what leaves something to read back (qa143 p2 r9 B14).
