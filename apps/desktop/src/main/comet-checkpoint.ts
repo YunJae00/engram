@@ -41,7 +41,10 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
     const next = change(await read(file))
     await mkdir(join(paths.cache, 'checkpoints'), { recursive: true })
     const scratch = `${file}.${process.pid}.tmp`
-    await writeFile(scratch, JSON.stringify(withoutSecretsIn(next, [next.context ?? '', ...next.pending].join('\n'))))
+    // Only the stored texts are cleaned; the checkpoint's own field names stay as they are.
+    const source = [next.context ?? '', ...next.pending].join('\n')
+    const clean: Checkpoint = { ...(next.context !== undefined ? { context: withoutSecretsIn(next.context, source) } : {}), pending: withoutSecretsIn(next.pending, source) }
+    await writeFile(scratch, JSON.stringify(clean))
     await renameWithRetry(scratch, file)
   })
   const settled = work.catch(() => undefined)

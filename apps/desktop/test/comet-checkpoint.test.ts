@@ -52,3 +52,12 @@ it('recovers from an already corrupted checkpoint instead of failing every turn'
     expect(await readCheckpoint(paths, 'bricked')).toEqual({ pending: ['이어서 해줘'] })
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+it('keeps its own field names when a labelled secret equals one of them', async () => {
+  const cache = await mkdtemp(join(tmpdir(), 'engram-checkpoint-'))
+  const paths = { cache } as VaultPaths
+  try {
+    await changeCheckpoint(paths, 'names', state => ({ ...state, context: 'resume here', pending: [...state.pending, 'my token: pending'] }))
+    expect(await readCheckpoint(paths, 'names')).toEqual({ context: 'resume here', pending: ['my token: ••••••'] })
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})

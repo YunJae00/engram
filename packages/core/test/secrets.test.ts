@@ -41,14 +41,19 @@ describe('secrets the person marked themselves', () => {
 
 describe('structured redaction (QA 0.8.142 B9)', () => {
   it('cleans every string value and keeps the serialized form valid', () => {
-    const source = 'the token ab12\\ and password: pending'
-    const value = { pending: ['token ab12\\ now'], context: 'saw ab12\\ "x"', nested: { list: [1, true, null, 'pending work'] } }
+    const source = 'the token ab12\\ and password: worky'
+    const value = { pending: ['token ab12\\ now'], context: 'saw ab12\\ "x"', nested: { list: [1, true, null, 'worky work'] } }
     const clean = withoutSecretsIn(value, source)
     const text = JSON.stringify(clean)
     expect(() => JSON.parse(text)).not.toThrow()
     expect(text).not.toContain('ab12')
     expect(Object.keys(clean)).toEqual(['pending', 'context', 'nested'])
     expect(clean).toEqual({ pending: ['token •••••• now'], context: 'saw •••••• "x"', nested: { list: [1, true, null, '•••••• work'] } })
+  })
+  it('cleans object keys too', () => {
+    const text = JSON.stringify(withoutSecretsIn({ 'ab12\\': 'safe' }, 'the token ab12\\ '))
+    expect(text).not.toContain('ab12')
+    expect(JSON.parse(text)).toEqual({ '••••••': 'safe' })
   })
   it('returns the same value when nothing was labelled', () => {
     const value = { a: 'plain' }
