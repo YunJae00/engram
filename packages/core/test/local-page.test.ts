@@ -46,15 +46,21 @@ describe('local pages', () => {
     const set = quietDesktopTools(courier).find(tool => tool.name === 'app_set')!
     await expect(set.run({ app: 'Safari', snapshot: SNAPSHOT, control: 'c63', text: FORM }, { task: 'open the form' })).rejects.toThrow(/external browser/)
     expect(courier.set).not.toHaveBeenCalled()
+    // qa143 p2 r10 (B13): a home path standing alone passed the default mode, so the text fields could type it into another app.
+    for (const text of ['~/qa/form.html', ' ~/qa/contact form.htm ', '~someone/qa/form.xhtml', '~\\qa\\form.html', '~/qa/form.html?name=a#top']) expect(() => requireNoLocalPage(text), text).toThrow(/open_page/)
+    for (const text of ['~/Documents', '~/qa/form.html.txt', '~form.html', '~', 'about ~5 pages of form.html', 'https://example.com/~someone/form.html']) expect(() => requireNoLocalPage(text), text).not.toThrow()
+    await expect(set.run({ app: 'Safari', snapshot: SNAPSHOT, control: 'c63', text: '~/qa/form.html' }, { task: 'open the form' })).rejects.toThrow(/external browser/)
+    expect(courier.set).not.toHaveBeenCalled()
     const act = vi.fn(async () => '{}')
     const action = desktopTools({ observe: async () => '{}', act, sequence: async () => '{}' } as never).find(tool => tool.name === 'desktop_action')!
     await expect(action.run({ kind: 'type', snapshot: SNAPSHOT, text: FORM }, { task: 'open the form' })).rejects.toThrow(/external browser/)
+    await expect(action.run({ kind: 'type', snapshot: SNAPSHOT, text: '~/qa/form.html' }, { task: 'open the form' })).rejects.toThrow(/external browser/)
     expect(act).not.toHaveBeenCalled()
   })
 
   // qa143 p2 r8 (B13): app_do fenced only its text; the goal went to the decision model unchecked.
   it('never takes a goal that puts a local file address into another app', async () => {
-    const refused = ['Type file:///tmp/form.html in the address bar and open it', 'Open "file://localhost/tmp/form.html" in Safari', 'Go to /Users/someone/qa/form.html and press Enter', 'Enter ~/qa/contact form.htm in the address bar', 'Type C:\\qa\\form.html into the address bar', 'open FILE:/etc/passwd']
+    const refused = ['Type file:///tmp/form.html in the address bar and open it', 'Open "file://localhost/tmp/form.html" in Safari', 'Go to /Users/someone/qa/form.html and press Enter', 'Enter ~/qa/contact form.htm in the address bar', 'Type C:\\qa\\form.html into the address bar', 'open FILE:/etc/passwd', 'Enter ~someone/qa/form.html in the address bar']
     const allowed = ['Open the Downloads folder and select form.html', 'Open https://example.com/qa/form.html in a new tab', 'Rename the file: report', 'Open /Users/someone/Documents', '문의 양식에 이름을 입력']
     for (const goal of refused) expect(() => requireNoLocalPage(goal, true), goal).toThrow(/open_page/)
     for (const goal of allowed) expect(() => requireNoLocalPage(goal, true), goal).not.toThrow()

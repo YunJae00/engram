@@ -43,8 +43,9 @@ export function localPageUrl(text: string): string | null {
 // panel): local pages are opened by open_page in the in-app browser only, where a form's own submit asks the person.
 // anywhere: a goal a decision model acts on names the address inside a sentence ("Type file:///tmp/form.html in the address bar"), so it is
 // refused wherever it stands: any file: address, or an absolute or home path together with an .html name. Web addresses are not local paths.
+// A home path (~/qa/form.html, ~user/qa/form.html) standing alone is the same file as its absolute path: the app that takes the text expands it.
 export function requireNoLocalPage(text: string, anywhere = false): void {
   const rest = anywhere ? text.replace(/\b(?!file:)[a-z][a-z0-9+.-]*:\/\/\S+/gi, ' ') : ''
-  const named = anywhere && (/(?<![a-z0-9])file:\S/i.test(text) || /\.x?html?(?![a-z0-9])/i.test(rest) && /(?:^|[\s"'`(<=])(?:~|[a-z]:)?[\\/]/i.test(rest))
-  if (/^\s*file:/i.test(text) || localPageUrl(text) || named) throw new Error('A local file is not opened in another app or an external browser. Open it with open_page (file:///… or its absolute path): it opens in the built-in browser, where the form can be filled and its submit asks the person. If open_page cannot open it, say so and stop; do not try another app.')
+  const named = anywhere && (/(?<![a-z0-9])file:\S/i.test(text) || /\.x?html?(?![a-z0-9])/i.test(rest) && /(?:^|[\s"'`(<=])(?:~[^\s\\/]*|[a-z]:)?[\\/]/i.test(rest))
+  if (/^\s*file:/i.test(text) || localPageUrl(text) || localPageUrl(text.trim().replace(/^~[^\s\\/]*[\\/]/, '/')) || named) throw new Error('A local file is not opened in another app or an external browser. Open it with open_page (file:///… or its absolute path): it opens in the built-in browser, where the form can be filled and its submit asks the person. If open_page cannot open it, say so and stop; do not try another app.')
 }
