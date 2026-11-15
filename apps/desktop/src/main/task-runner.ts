@@ -41,6 +41,23 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 // The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
+const CORRECTION_WORDS = /아니라|아닌|아니고|정정|수정|잘못|틀렸|틀린|바로잡|\bnot\b|n['’]t\b|\binstead\b|\bcorrect(?:ed|ion|ing)|\bactually\b|\bwrong|\bmistake/i
+const LINK_TARGETS = /\]\(([^\s)]+)\)|\bhttps?:\/\/[^\s)\]]+/g
+const facts = (text: string) => {
+  const links = [...text.matchAll(LINK_TARGETS)].map(match => (match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1'))
+  // Link targets are compared on their own; a saved copy's id must not read as new numbers.
+  const prose = text.replace(LINK_TARGETS, ' ')
+  return { links, prose, numbers: [...(prose.match(/\d+(?:[.,]\d+)*%?/g) ?? [])] as string[] }
+}
+/** True only when a re-check answer states nothing the delivered report lacks: no correction wording, and every number, link target and
+ *  quoted or backticked value of it is already in the report. The host's own reading beside the model's reportUnchanged; unsure means post. */
+export function recheckAddsNothing(answer: string, report: string): boolean {
+  if (CORRECTION_WORDS.test(answer)) return false
+  const said = facts(answer), had = facts(report)
+  const quoted = [...said.prose.matchAll(/`([^`\n]+)`|"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|「([^」\n]+)」|(?<![\p{L}\p{N}])'([^'\n]+)'(?![\p{L}\p{N}])/gu)].map(match => match.slice(1).find(Boolean)!.trim())
+  return said.numbers.every(one => had.numbers.includes(one)) && said.links.every(one => had.links.includes(one)) && quoted.every(one => had.prose.includes(one))
+}
+
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
 export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
@@ -185,10 +202,11 @@ export function taskRunner(deps: {
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
     // It is also posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown.
+    // That word alone is not trusted: the host also reads the answer, and posts it when it corrects or adds anything (recheckAddsNothing).
     const reported = verdicts.get(id)
     verdicts.set(id, outcome?.check?.report)
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
-      && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result)
+      && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     if (after && outcome?.held && after.result && !repeats) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
