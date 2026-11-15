@@ -53,20 +53,13 @@ const tokens = (text: string) => [...text.normalize('NFKC').matchAll(TOKEN)].map
   if (match[8] !== undefined) return `N ${match[8].replace('−', '-')}`
   return `W ${match[0].toLowerCase()}`
 })
-// The whole confirmation vocabulary: words that only say "I looked again and it stands". Whole plain words only, so a number, link or
-// quoted value is never one, and neither is a status or negation word (passed, failed, 통과, 실패, not, 아니…): those are always compared.
-const CONFIRMING = /^W (?:confirm|confirmed|checked|again|unchanged|verified|same|still|holds|report|rows|match|changes|the|is|as|above|all|다시|확인(?:함|했어|했어요|했음|했습니다)?|그대로(?:야|예요|임|입니다)?|(?:변경|이상|보고|내용)(?:은|는|이|가|도)?|맞아|맞아요|맞습니다)$/
-// "no" / 없음 is dropped only beside the word it confirms ("no changes", "변경 없음"); "no errors" is a statement and is compared.
-const NONE = /^W (?:no|없음|없어|없어요|없습니다)$/
-const NOTHING_OF = /^W (?:changes|(?:변경|이상)(?:은|는|이|가|도)?)$/
-const stated = (text: string): string[] => tokens(text).filter((one, at, all) => !CONFIRMING.test(one) && !(NONE.test(one) && [all[at - 1], all[at + 1]].some(near => near !== undefined && NOTHING_OF.test(near))))
-/** True only when a re-check answer states nothing the delivered report lacks: no correction wording, and, the confirmation vocabulary
- *  aside, every token of it (word, number, link target, quoted value) stands in the report between the same neighbouring tokens. So a new
- *  or swapped value, a changed unit and a changed status word ("passed" -> "failed") are all seen. The host's own reading beside the
- *  model's reportUnchanged; unsure means post. */
+/** True only when a re-check answer merely restates the delivered report (or repeats it): no correction wording, and every token of it
+ *  (word, number, link target, quoted value) stands in the report between the same neighbouring tokens. No word is ignored, so any other
+ *  text, a short "Confirmed, unchanged." included, is posted: a word that confirms in one report corrects another ("Rows match." after
+ *  "Rows differ."). The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   if (CORRECTION_WORDS.test(answer)) return false
-  const said = stated(answer), had = `\n${stated(report).join('\n')}\n`
+  const said = tokens(answer), had = `\n${tokens(report).join('\n')}\n`
   return said.every((_, at) => had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).join('\n')}\n`))
 }
 

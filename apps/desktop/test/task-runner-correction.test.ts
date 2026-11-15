@@ -12,15 +12,33 @@ it('preserves the engine answer and reported limitations through one verificatio
 })
 
 // qa142: every finished task was reported twice (the answer, then the re-check repeating it).
-it('reports once when the re-check passes without changing anything', async () => {
+// p2b-r6: only a repeat or restatement of the report is silent; a confirmation in words of its own is posted, once.
+const unchanged = (report: string, answer: string) => setup(async (_request, turn) => turn === 1
+  ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
+  : { ...done(answer, 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
+it('reports once when the re-check passes and repeats the report', async () => {
   const report = 'Saved. [Report](engram-artifact:report.md)'
-  const t = await setup(async (_request, turn) => turn === 1
-    ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
-    : { ...done(`Checked again; all rows match. [Report](engram-artifact:report.md)`, 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
+  const t = await unchanged(report, report)
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
   expect(t.delivered).toEqual([])
+})
+it('posts once a re-check that confirms in words the report lacks', async () => {
+  const confirmed = 'Checked again; all rows match. [Report](engram-artifact:report.md)'
+  const t = await unchanged('Saved. [Report](engram-artifact:report.md)', confirmed)
+  await t.chat('Save the report')
+  expect(t.sent).toHaveLength(2)
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
+  expect(t.delivered).toEqual([confirmed])
+})
+it.each([
+  ['Rows match.', 'Rows differ.'],
+  ['No changes.', 'Changes were made.'],
+])('posts through the runner "%s" after "%s" though the re-check calls the report unchanged', async (answer, report) => {
+  const t = await unchanged(`${report} [Report](engram-artifact:report.md)`, `${answer} [Report](engram-artifact:report.md)`)
+  await t.chat('Save the report')
+  expect(t.delivered).toEqual([`${answer} [Report](engram-artifact:report.md)`])
 })
 it('still reports what a re-check changed', async () => {
   const fixed = 'Fixed one row. [Report](engram-artifact:report.md)'
@@ -51,10 +69,14 @@ it('posts a re-check that hands over a different file than the report did', asyn
   await t.chat('Save the report')
   expect(t.delivered).toEqual([other])
 })
-it('stays silent when the confirming re-check links the same file under its saved-copy id', async () => {
-  const t = await setup(async (_request, turn) => turn === 1
-    ? { ...done('Saved. [Report](engram-artifact:report.md)', 1), check: { accepted: false, issues: ['Row count not read back'] } }
-    : { ...done('All rows match. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
+it('posts a confirming re-check in its own words that links the same file under its saved-copy id', async () => {
+  const confirmed = 'All rows match. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)'
+  const t = await unchanged('Saved. [Report](engram-artifact:report.md)', confirmed)
+  await t.chat('Save the report')
+  expect(t.delivered).toEqual([confirmed])
+})
+it('stays silent when the re-check repeats the report with the file under its saved-copy id', async () => {
+  const t = await unchanged('Saved. [Report](engram-artifact:report.md)', 'Saved. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)')
   await t.chat('Save the report')
   expect(t.delivered).toEqual([])
 })
@@ -79,8 +101,16 @@ it('posts a passing re-check that does not say the report is unchanged', async (
   await t.chat('Save the report')
   expect(t.delivered).toEqual([again])
 })
-it('stays silent when a confirm-only re-check affirms the report is unchanged', async () => {
-  const t = await recheck('Checked again; the total is 12. [Report](engram-artifact:report.md)', true)
+it('posts once a confirm-only re-check that affirms the report is unchanged in words of its own', async () => {
+  const confirmed = 'Checked again; the total is 12. [Report](engram-artifact:report.md)'
+  const t = await recheck(confirmed, true)
+  await t.chat('Save the report')
+  expect(t.sent).toHaveLength(2)
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
+  expect(t.delivered).toEqual([confirmed])
+})
+it('stays silent when a re-check restates the report and affirms it is unchanged', async () => {
+  const t = await recheck('The total is 12. [Report](engram-artifact:report.md)', true)
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
@@ -100,8 +130,9 @@ it.each([
 })
 it('reads whether a re-check answer adds anything to the delivered report', () => {
   const report = 'Saved; the total is 12 for `sales.csv`. [Report](engram-artifact:report.md)'
-  expect(recheckAddsNothing('Checked again; the total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(true)
-  expect(recheckAddsNothing('Checked again; all rows match.', report)).toBe(true)
+  expect(recheckAddsNothing('The total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(true)
+  expect(recheckAddsNothing('Checked again; the total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(false)
+  expect(recheckAddsNothing('Checked again; all rows match.', report)).toBe(false)
   expect(recheckAddsNothing('The total is 14, not 12.', report)).toBe(false)
   expect(recheckAddsNothing('합계는 12가 아니라 14야', report)).toBe(false)
   expect(recheckAddsNothing('The total is 120.', report)).toBe(false)
@@ -122,9 +153,19 @@ it('posts a re-check that swaps values or changes a unit the delivered report al
 })
 it('stays silent when a re-check restates the values in the same context', () => {
   expect(recheckAddsNothing('A: 12; B: 14.', 'A: 12; B: 14.')).toBe(true)
-  expect(recheckAddsNothing('Checked again. A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(true)
-  expect(recheckAddsNothing('checked again — **a**: １２; b: *14*.', 'Saved. A: 12; B: 14.')).toBe(true)
-  expect(recheckAddsNothing('다시 확인함. 합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(true)
+  expect(recheckAddsNothing('A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(true)
+  expect(recheckAddsNothing('합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(true)
+})
+// qa142 p2b-r6: no word is ignored, so a restatement is silent whatever its whitespace or emphasis, and a confirming preamble is posted.
+it('stays silent when a re-check restates the report with extra whitespace or emphasis', () => {
+  const report = 'Saved. A: 12; B: 14.\nStatus: passed. [Report](engram-artifact:report.md)'
+  expect(recheckAddsNothing(report, report)).toBe(true)
+  expect(recheckAddsNothing('  **Saved.**\n\n- **a**:   １２;\n- b: *14*.\n\n__Status__:   passed.   [Report](engram-artifact:report.md)\n', report)).toBe(true)
+})
+it('posts a re-check that puts a confirmation before the restated values', () => {
+  expect(recheckAddsNothing('Checked again. A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(false)
+  expect(recheckAddsNothing('checked again — **a**: １２; b: *14*.', 'Saved. A: 12; B: 14.')).toBe(false)
+  expect(recheckAddsNothing('다시 확인함. 합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(false)
 })
 it('posts through the runner a swap the re-check calls unchanged', async () => {
   const swapped = 'A: 14; B: 12. [Report](engram-artifact:report.md)'
@@ -135,7 +176,7 @@ it('posts through the runner a swap the re-check calls unchanged', async () => {
   expect(t.delivered).toEqual([swapped])
 })
 
-// qa142 p2b-r5: a correction can carry no value at all; every word outside the short confirmation vocabulary is compared in its place.
+// qa142 p2b-r5: a correction can carry no value at all; every word is compared in its place.
 it('posts a re-check that changes a status word the delivered report has', () => {
   expect(recheckAddsNothing('Status: failed.', 'Status: passed.')).toBe(false)
   expect(recheckAddsNothing('테스트 실패', '테스트 통과')).toBe(false)
@@ -143,15 +184,20 @@ it('posts a re-check that changes a status word the delivered report has', () =>
   expect(recheckAddsNothing('No errors found.', 'Errors found.')).toBe(false)
   expect(recheckAddsNothing('오류 없음', '오류 있음')).toBe(false)
   expect(recheckAddsNothing('변경 있음', '저장함. 테스트 통과')).toBe(false)
+  // p2b-r6: a word that confirms one report corrects another, so none is taken as a confirmation.
+  expect(recheckAddsNothing('Rows match.', 'Rows differ.')).toBe(false)
+  expect(recheckAddsNothing('No changes.', 'Changes were made.')).toBe(false)
 })
-it('stays silent on a value-free confirmation or a restated status', () => {
+it('stays silent on a restated status and posts a value-free confirmation', () => {
   const report = 'Saved. Status: passed. 테스트 통과'
   expect(recheckAddsNothing('Status: passed.', report)).toBe(true)
-  expect(recheckAddsNothing('다시 확인함. 테스트 통과', report)).toBe(true)
-  expect(recheckAddsNothing('확인했어, 보고 내용 그대로야', report)).toBe(true)
-  expect(recheckAddsNothing('Confirmed, the report is unchanged.', report)).toBe(true)
-  expect(recheckAddsNothing('Verified again: no changes. 변경 없음, 이상 없음.', report)).toBe(true)
+  expect(recheckAddsNothing('테스트 통과', report)).toBe(true)
   expect(recheckAddsNothing(report, report)).toBe(true)
+  expect(recheckAddsNothing('다시 확인함. 테스트 통과', report)).toBe(false)
+  expect(recheckAddsNothing('확인했어, 보고 내용 그대로야', report)).toBe(false)
+  expect(recheckAddsNothing('Confirmed, unchanged.', report)).toBe(false)
+  expect(recheckAddsNothing('Confirmed, the report is unchanged.', report)).toBe(false)
+  expect(recheckAddsNothing('Verified again: no changes. 변경 없음, 이상 없음.', report)).toBe(false)
 })
 it('posts through the runner a status change the re-check calls unchanged', async () => {
   const failed = 'Status: failed. [Report](engram-artifact:report.md)'
