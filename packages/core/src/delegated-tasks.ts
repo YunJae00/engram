@@ -65,6 +65,8 @@ export interface DelegatedTask {
   // The latest answer, and the lines of progress the person sees.
   result?: string
   log: { at: string; line: string }[]
+  // A finished report held back while its automatic re-check runs: not yet in the thread. Kept here so a quit or crash during the re-check cannot lose it.
+  unshown?: string
   // The hidden team hired for this task (team-hire-tools.ts).
   team?: TaskTeam
 }

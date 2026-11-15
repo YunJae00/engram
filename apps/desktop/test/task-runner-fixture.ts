@@ -14,10 +14,11 @@ import { holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome | undefined>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
-export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean) {
+// at: the vault of an earlier setup, for a runner made again over the same tasks (an app restart).
+export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean, at?: VaultPaths) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
-  const root = await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private'), inbox: join(root, 'inbox') } as unknown as VaultPaths
+  const root = at?.root ?? await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private'), inbox: join(root, 'inbox') } as unknown as VaultPaths
   await mkdir(paths.inbox, { recursive: true })
   const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], evidences: TurnEvidence[] = []
   let last: TurnOutcome | undefined

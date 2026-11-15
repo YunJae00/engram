@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { listTasks } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
@@ -301,6 +301,40 @@ it('still posts the waiting report when its re-check ends without an answer', as
   await t.chat('Save the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed' })
   expect(t.delivered).toEqual([report])
+})
+
+// qa143 p2 r4 #3 (S19d): the waiting report lived only in the runner's memory, with the thread's draft already dropped, so a quit or crash
+// during its re-check lost it. It is saved on the task, and the runner made after the restart posts it, once, before asking how to go on.
+it('posts a report whose re-check the app never finished, from the task, after a restart', async () => {
+  const report = 'Saved 12 rows. [Report](engram-artifact:report.md)'
+  const first = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : new Promise<never>(() => {}), false)
+  void first.chat('Save the report').catch(() => undefined)
+  await vi.waitFor(() => expect(first.sent).toHaveLength(2))
+  expect(first.delivered).toEqual([])
+  expect((await listTasks(first.paths))[0]).toMatchObject({ state: 'running', unshown: report })
+  // The app quits here: the next runner knows only what is on disk.
+  const next = await setup(async () => undefined, false, undefined, undefined, first.paths)
+  await next.runner.resume()
+  expect(next.delivered).toEqual([report])
+  const task = (await listTasks(next.paths))[0]!
+  expect(task).toMatchObject({ state: 'waiting', question: expect.any(String) })
+  expect(task.unshown).toBeUndefined()
+  await next.runner.resume()
+  expect(next.delivered).toEqual([report])
+})
+
+// Whatever the re-check then does, nothing stays saved as unshown once the thread has the report or the answer that replaced it.
+it.each([
+  ['confirms it', { ...done('Saved 12 rows. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'file_read', args: {}, observation: '{}' }] }, 'done'],
+  ['leaves its check unresolved', { ...done('I could not verify it.', 1), check: { accepted: false, issues: ['Row count not read back'] } }, 'waiting'],
+])('keeps no unshown report on the task once its re-check %s', async (_why, recheck, state) => {
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done('Saved 12 rows. [Report](engram-artifact:report.md)', 1), check: { accepted: false, issues: ['Row count not read back'] } } : recheck, false)
+  await t.chat('Save the report')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task.state).toBe(state)
+  expect(task.unshown).toBeUndefined()
+  await t.runner.resume()
+  expect(t.delivered).toHaveLength(state === 'done' ? 1 : 2)
 })
 
 // qa143 p2 r2 #4: a re-check that did not confirm the waiting report replaced it, so "I could not verify it" was all the thread kept.

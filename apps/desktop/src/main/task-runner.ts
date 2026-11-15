@@ -124,6 +124,7 @@ export function taskRunner(deps: {
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
   // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when the
   // re-check ends the task done on its own answer, and posted before any other re-check answer or ending (flush), so it is never lost.
+  // The transcript does not have it yet, so it is also saved on the task (task.unshown): a quit or crash during the re-check leaves it for resume to post.
   const unshown = new Map<string, string>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
@@ -145,9 +146,11 @@ export function taskRunner(deps: {
   const flush = async (task: DelegatedTask | undefined): Promise<void> => {
     const draft = task && unshown.get(task.id)
     if (!task || draft === undefined) return
-    unshown.delete(task.id)
     await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), trails.get(task.id) ?? [])
+    await shown(task.id)
   }
+  // Cleared only once something stands in the thread for it: a crash in between posts it twice rather than never.
+  const shown = async (id: string): Promise<void> => { unshown.delete(id); await edit(id, t => { delete t.unshown }) }
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
@@ -249,14 +252,14 @@ export function taskRunner(deps: {
       // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
       if (repeats || kept) await flush(after)
       // Held for the re-check that starts now: that turn's answer is the one posted.
-      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id)) unshown.set(id, after.result)
+      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id)) { const report = after.result; unshown.set(id, report); await edit(id, t => { t.unshown = report }) }
       else {
         // The re-check's answer stands in for the waiting report only when it is that report checked again: the task ended done on it, or lacks only its
         // readback turn. Any other re-check answer ("I could not verify it") is a note on the report, posted after it; an exact restatement is posted once.
-        const draft = unshown.get(id)
-        if (draft !== undefined && (after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft))) unshown.delete(id)
-        else await flush(after)
+        const draft = unshown.get(id), replaced = draft !== undefined && (after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft))
+        if (!replaced) await flush(after)
         await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+        if (replaced) await shown(id)
       }
     } else if (after && after.state !== 'running') await flush(after)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
@@ -382,6 +385,8 @@ export function taskRunner(deps: {
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
+      // A report whose re-check an earlier run of the app never finished: this runner holds no draft of it, so it is posted from the task before the restart question.
+      for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), []); await shown(task.id) }
       for (const task of tasksToResume(tasks).filter(t => !channels.has(channelOf(t)))) {
         const question = await restartQuestion(paths, task)
         await edit(task.id, t => { t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
