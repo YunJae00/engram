@@ -46,3 +46,28 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   await heroToggle.click()
   await expect(page.locator('.sidebar-primary').getByTestId('sidebar-team-lead'), 'SIDEBAR-TEAM primary leads').toHaveText([/Launch lead.+/])
 })
+
+// qa143 S19 (c): after a limit-stop, and after the "continue" that followed, the bot's team tree and in-chat team card were gone.
+test('a bot keeps its last team in the sidebar and the chat after the task stopped at a limit', async () => {
+  await mkdir(tmp, { recursive: true })
+  const root = await mkdtemp(join(tmp, 'e2e-sidebar-team-ended-'))
+  const paths = await initVault(root, { git: false })
+  await resetBotsToV2(paths)
+  const botId = (await createBot(paths, { name: 'Launch fixture' })).id
+  const task = await createTask(paths, '신제품 출시 준비', botId)
+  const lead = (id: string, role: string) => ({ id, parentId: null, depth: 1, role, brief: role, state: 'released' as const, result: '끝냈어요', sessionKey: `s-${id}`, hiredAt: new Date().toISOString() })
+  await updateTask(paths, task.id, t => { t.state = 'failed'; t.team = { members: [lead('m1', '시장조사 팀장'), lead('m2', '마케팅 팀장')], hires: 2, maxHires: 8, maxDepth: 3, big: false } })
+  const next = await createTask(paths, '이어서 해줘', botId)
+  await updateTask(paths, next.id, t => { t.state = 'done'; t.result = '끝' })
+  app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-sidebar-team-ended-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'mock', ENGRAM_HIDDEN: '1' } })
+  const page = await app.firstWindow()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  const row = page.locator('li.sidebar-item', { has: page.getByTestId(`bot-${botId}`) })
+  const toggle = row.getByTestId('sidebar-team-toggle')
+  await expect(toggle, 'ENDED-TEAM stays under the bot row').toBeVisible()
+  await toggle.click()
+  await expect(row.getByTestId('sidebar-team-lead'), 'ENDED-TEAM leads and how they finished').toHaveText([/시장조사 팀장.+/, /마케팅 팀장.+/])
+  await expect(row.getByTestId('sidebar-team-lead').first()).toHaveAttribute('data-state', 'released')
+  await page.getByTestId(`bot-${botId}`).click()
+  await expect(page.getByTestId('team-card'), 'ENDED-TEAM card stays in the chat').toBeVisible()
+})

@@ -137,11 +137,17 @@ describe('team card and sidebar line', () => {
     expect(html).not.toMatch(/<li|<ul|<button/)
   })
 
-  it('keeps a team only for the bot\'s latest task while it is live', () => {
+  // qa143 S19 (c): after a limit-stop the bot's team tree and team card vanished; only another bot's still-waiting team stayed in the sidebar.
+  it('keeps the team of the bot\'s latest team task, while it is live and after it ended', () => {
     const members = [member('m1', null, 'working')]
-    for (const state of ['queued', 'running', 'waiting']) expect(activeTeams([task('b', state, members)]).get('b')?.members).toHaveLength(1)
-    for (const state of ['done', 'failed', 'stopped']) expect(activeTeams([task('b', state, members)]).size).toBe(0)
-    expect(activeTeams([task('b', 'done', members, 'old'), task('b', 'running', undefined, 'new')]).size).toBe(0)
+    for (const state of ['queued', 'running', 'waiting']) expect(activeTeams([task('b', state, members)]).get('b')?.members).toEqual(members)
+    // An ended task has nobody working: its leads stay, shown as released, with what they finished.
+    const ended = [member('m1', null, 'working'), member('m2', null, 'released', { result: '끝' }), member('m3', null, 'failed')]
+    for (const state of ['done', 'failed', 'stopped']) expect(activeTeams([task('b', state, ended)]).get('b')?.members.map(one => one.state)).toEqual(['released', 'released', 'failed'])
+    expect(teamSummaryText(activeTeams([task('b', 'failed', [member('m1', null, 'released'), member('m2', null, 'released')])]).get('b')!.members, 'ko')).toBe(teamSummaryText([member('m1', null, 'released'), member('m2', null, 'released')], 'ko'))
+    // A later task without a team (a continue after the stop) keeps the last team on view; a later team replaces it.
+    expect(activeTeams([task('b', 'failed', members, 'old'), task('b', 'running', undefined, 'new')]).get('b')).toMatchObject({ taskId: 'old', members: [{ id: 'm1', state: 'released' }] })
+    expect(activeTeams([task('b', 'done', members, 'old'), task('b', 'running', [member('m7', null, 'working')], 'new')]).get('b')).toMatchObject({ taskId: 'new', members: [{ id: 'm7', state: 'working' }] })
     const two = activeTeams([task('a', 'running', members), task('b', 'running', [member('m9', null, 'done')])])
     expect([two.get('a')?.members[0]?.id, two.get('b')?.members[0]?.id]).toEqual(['m1', 'm9'])
     expect(two.get('a')?.taskId).toBe('t-a')
@@ -228,13 +234,13 @@ describe('team store', () => {
     expect(heard).toHaveBeenCalledTimes(2)
   })
 
-  it('drops the team when the task ends', async () => {
+  it('keeps the team, as it finished, when the task ends', async () => {
     const heard = vi.fn()
     store.subscribe(heard)
     await answer(0, running())
     fake.handler({ type: 'tasks:changed' })
     await answer(1, [task('b', 'done', [member('m1', null, 'done')]), running()[1]])
-    expect(store.get('b')).toBeUndefined()
+    expect(store.get('b')?.members).toMatchObject([{ id: 'm1', state: 'done' }])
     expect(store.get('c')).toBeDefined()
     expect(heard).toHaveBeenCalledTimes(2)
   })

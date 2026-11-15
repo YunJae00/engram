@@ -22,14 +22,16 @@ function memberView(raw: unknown): TeamMemberView | null {
 }
 
 // tasks:list passes each task's team through untyped, so every field is checked here.
+// A bot shows the team of its latest task that hired one, also after that task ended (done, stopped, or stopped at a limit) and after a
+// later task without a team (a "continue"): the leads and how they finished stay on view until another team replaces them.
+// Once the task is over nobody is working: a member it left mid-work shows as released.
 export function activeTeams(tasks: unknown): Map<string, TeamView> {
-  const latest = new Map<string, Loose>()
-  for (const task of Array.isArray(tasks) ? tasks : []) if (isObject(task) && typeof task.botId === 'string') latest.set(task.botId, task)
   const teams = new Map<string, TeamView>()
-  for (const [botId, task] of latest) {
-    if (!LIVE_TASK.includes(String(task.state)) || !isObject(task.team) || !Array.isArray(task.team.members)) continue
-    const members = task.team.members.map(memberView).filter(member => member !== null)
-    if (members.length) teams.set(botId, { taskId: String(task.id), members })
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (!isObject(task) || typeof task.botId !== 'string' || !isObject(task.team) || !Array.isArray(task.team.members)) continue
+    const live = LIVE_TASK.includes(String(task.state))
+    const members = task.team.members.map(memberView).filter(member => member !== null).map(member => live || !ACTIVE.includes(member.state) ? member : { ...member, state: 'released' as const })
+    if (members.length) teams.set(task.botId, { taskId: String(task.id), members })
   }
   return teams
 }
