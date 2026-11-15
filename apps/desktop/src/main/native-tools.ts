@@ -159,6 +159,14 @@ async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInName
   }
 }
 
+// The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
+function freeName(base: string, held: (name: string) => boolean): string {
+  for (let count = 1; ; count++) {
+    const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
+    if (!held(free.toLowerCase())) return free
+  }
+}
+
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
 // names (source path in the task folder -> hand-in name) is filled in for every file found or already handed in.
@@ -180,10 +188,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
     let name = names[key]
     // An unrecorded top-level file holding the very bytes linked under its name is that output's task-folder twin: nothing new to hand in.
     if (!name && key === base && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, base, path)) continue
-    for (let count = 1; !name; count++) {
-      const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
-      if (!taken.has(free.toLowerCase()) && !linked.has(free.toLowerCase())) name = free
-    }
+    name ??= freeName(base, free => taken.has(free) || linked.has(free))
     taken.add((names[key] = name).toLowerCase())
     // An oversized revision cannot match a saved output, so it still gets its size warning.
     if (linkedIds(answer, name).length && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, name, path)) continue
@@ -198,16 +203,30 @@ const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 // raw files the answer names when the turn finished.
 export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
   if (result.asked) return
-  const linked = (name: string) => result.answer.includes(`-${artifactHref(name)})`) || result.answer.includes(`-${encodeURIComponent(name)})`)
+  const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
   for (const output of latestResultOutputs(result.steps, [])) {
-    if (!linked(output.name)) result.answer = `${result.answer}\n\n[${output.name}](engram-artifact:${artifactHref(basename(output.path))})`
+    // A receipt is linked when the answer carries its own artifact, not merely a file of its name.
+    const id = basename(output.path), others = linkedIds(result.answer, output.name)
+    if (others.includes(artifactHref(id)) || others.includes(encodeURIComponent(id))) continue
+    let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
+    if (others.length) {
+      // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.
+      try {
+        const step = result.steps[output.after!]!, held = new Set([...Object.values(names).map(name => name.toLowerCase()), ...linkNames(result.answer)])
+        const name = freeName(output.name, free => held.has(free))
+        const saved = await saveOutput(artifactDirectory(paths), name, await readFile(output.path))
+        step.args = { ...step.args, name }
+        step.observation = JSON.stringify({ ...JSON.parse(step.observation) as object, ...saved })
+        link = saved.markdownLink
+      } catch (error) { flog('native-tools', `could not rename ${output.name}: ${error instanceof Error ? error.message : String(error)}`) }
+    }
+    result.answer = `${result.answer}\n\n${link}`
   }
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
   // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
-  const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
   await recordOwnCopies(cwd, result.steps, names)
   const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))

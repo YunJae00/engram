@@ -412,6 +412,32 @@ it('a link the answer already carries is not replaced by a same-name file from a
   expect((await judged(result)).outputs).toEqual(['report-2.md', 'report-3.md', 'report.md'])
 })
 
+// qa142 p2a-r7 #2: a receipt is linked by its own artifact, not by a file name the answer already links.
+it('a new copy under a name the answer still links from an older artifact gets its own link, and both are checked', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(join(cwd, 'a'), { recursive: true })
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const older = JSON.parse(await copy.run({ name: 'report.md', content: '# older report\n' }, context)) as { markdownLink: string }
+  // This turn copies a source from before the turn (ignored by mtime) under the same name; the answer keeps only the older link.
+  const args = { name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }
+  const result = { answer: `Saved the report.\n\n${older.markdownLink}`, steps: [{ tool: 'file_create_copy', args, observation: await copy.run(args, context) }, passed('Report saved')] as TurnStep[] }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  expect(result.answer).toContain(older.markdownLink)
+  const links = [...result.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# older report\n', '# from a/x\n'])
+  expect(result.steps[0]).toMatchObject({ tool: 'file_create_copy', args: { name: 'report-2.md', fromPath: join(cwd, 'a', 'x.md') } })
+  const { outputs, check } = await judged(result)
+  expect(outputs).toEqual(['report-2.md', 'report.md'])
+  expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
+  expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
+  // Its own artifact linked: nothing is added, also when another file of that name is linked beside it.
+  const own = { answer: result.answer, steps: [...result.steps] }
+  await deliverOutputs(paths, cwd, own, Date.now() + 60_000, 'ask')
+  expect(own.answer).toBe(result.answer)
+})
+
 // qa142 p2a-r6 #1: a linked name is claimed only by the source its file_create_copy receipt names; with no record it is never replaced.
 it('a new top-level file never takes over a link the comet made from another source: it gets its own name and link, and both are checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
