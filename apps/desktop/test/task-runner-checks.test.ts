@@ -236,13 +236,16 @@ it.each([
 // qa143 S19 (b): the report existed and its check had passed every requirement; the automatic re-check then ran out of the task's
 // token budget, and the task ended failed with "작업이 처리 한도에 닿아 끝나지 않았어요" and the budget text as its result.
 const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: false, steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
+// qa143 p2 r2 #1: only the host's own verdict lets the report stand: the re-check read the files back and its check was accepted before the budget ran out.
+const hostAccepted = { accepted: true, verified: true, issues: [], report: unreadReport }
 it('finishes with the checked report when only its re-check ran out of budget', async () => {
-  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check: unreadCheck, trail: [fileRead] } : budgetStop, false)
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check: unreadCheck, trail: [fileRead] } : { ...budgetStop, check: hostAccepted, trail: [fileRead] }, false)
   await t.chat('Merge the leads')
   const task = (await listTasks(t.paths))[0]!
   expect(t.sent).toHaveLength(2)
   expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
-  expect(task).toMatchObject({ state: 'done', result: report, turns: 2 })
+  expect(task).toMatchObject({ state: 'done', result: report, turns: 2, verified: true })
+  expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')
   // The report, which waited for that re-check, is posted once; the budget text is not, and there is no limit-stop closing.
   expect(t.delivered).toEqual([report])
@@ -252,14 +255,20 @@ it('finishes with the checked report when only its re-check ran out of budget', 
 it.each([
   ['its check left a requirement unresolved', { ...unreadCheck, report: { ...unreadReport, checks: [{ requirement: 'Leads merged', status: 'unknown' as const, basis: 'Not compared.' }] } }],
   ['it had no check of its own', undefined],
-])('still stops at the budget when the report was not checked: %s', async (_why, check) => {
+  // qa143 p2 r2 #1: the model's pass labels alone do not finish a report the host rejected for an unread final file.
+  ['the host rejected it for a missing readback and the re-check reported nothing', unreadCheck],
+  ['the re-check\'s accepted check read nothing back', unreadCheck, { ...budgetStop, check: hostAccepted, trail: [] }],
+  ['the re-check still left the readback open', unreadCheck, { ...budgetStop, check: unreadCheck, trail: [fileRead] }],
+  ['the re-check left a requirement unresolved', unreadCheck, { ...budgetStop, check: { accepted: true, verified: false, issues: ['Leads merged: unknown'] }, trail: [fileRead] }],
+] as const)('still stops at the budget when the report was not checked: %s', async (_why, check, stop = budgetStop) => {
   const t = await setup(async (_request, turn, extra) => {
     if (turn === 1 && !check) { await hireLeads(t.paths); return { ...done(report, 1), tokensUsed: 240_000 } }
-    return turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check, trail: [fileRead] } : extra?.verification ? budgetStop : done(report, 1)
+    return turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check, trail: [fileRead] } : extra?.verification ? stop : done(report, 1)
   }, false)
   await t.chat('Merge the leads')
   const task = (await listTasks(t.paths))[0]!
   expect(task).toMatchObject({ state: 'failed', result: budgetStop.answer })
+  expect(task.verified).not.toBe(true)
   expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
 })
 

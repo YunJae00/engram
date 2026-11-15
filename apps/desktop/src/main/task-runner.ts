@@ -172,8 +172,8 @@ export function taskRunner(deps: {
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
     const reported = verdicts.get(id)
-    // The report a verification turn re-checks, when that report's own check passed every requirement and its grounding: only then can it stand without this turn.
-    const recheckOf = extra?.verification?.result.trim() && reported && [...reported.checks, reported.grounding].every(one => one.status === 'pass') ? extra.verification.result : ''
+    // Set when a verification turn ran out of budget after the host had accepted its check of the report it re-checks: only then can that report stand.
+    let recheckOf = ''
     const after = await edit(id, (t) => {
       if (t.state !== 'running') return
       if (stopped.has(channelOf(t))) { t.state = 'stopped'; logTask(t, 'Stopped by you'); return }
@@ -181,18 +181,23 @@ export function taskRunner(deps: {
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
-        t.verified = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !outcome.budgetExhausted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(outcome.answer, trail)) && !teamReviewIssue(t)
+        // The host's own verdict on this turn's check. The budget text of a re-check that ran out is not the result: the report it re-checked is.
+        const checked = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !teamReviewIssue(t)
+        const rechecked = outcome.budgetExhausted && !outcome.errored ? extra?.verification?.result ?? '' : ''
+        if (rechecked.trim() && checked && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(rechecked, trail))) recheckOf = rechecked
+        t.verified = !!recheckOf || checked && !outcome.budgetExhausted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(outcome.answer, trail))
         if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || 'The result has no fresh readback.'
         else delete t.verificationIssue
         // The readback-only follow-up may only read: one that changed a result is not accepted, whatever it then read. No second follow-up is given, so the task ends waiting.
-        if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
+        if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { recheckOf = ''; t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
       }
       delete t.verificationPending
       const pending = t.approvals.filter((a) => !a.answer)
       if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
-      // A re-check that ran out of budget leaves the report it was re-checking as the result: that report is in the thread and its own check passed every
-      // requirement, so the task is finished with it rather than failed at the limit (qa143 S19: a 9-page report ended "처리 한도에 닿아 끝나지 않았어요").
+      // A re-check that ran out of budget after the host accepted its check, readback included, leaves the report it was re-checking as the result: the task
+      // is finished with it rather than failed at the limit (qa143 S19: a 9-page report ended "처리 한도에 닿아 끝나지 않았어요"). The model's own pass
+      // labels are not enough: a report whose readback or requirement is still open stops failed at the limit.
       else if (outcome.budgetExhausted && recheckOf) { t.result = recheckOf; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the re-check stopped at the task token budget.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
