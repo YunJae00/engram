@@ -69,6 +69,8 @@ export interface BotTurn {
   evidence?: TurnEvidence
   // Said by a kept schedule at its time, not typed then.
   scheduled?: boolean
+  // Said while an earlier turn was still working; its own reply comes after that turn's answer.
+  aside?: boolean
 }
 
 export interface BotSuggestion {

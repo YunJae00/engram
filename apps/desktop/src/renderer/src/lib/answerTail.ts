@@ -16,11 +16,6 @@ function after(prefix: string, shown: string, raw: string): string {
   return (base === undefined ? withoutReplies(raw) : shown.slice(base.length)).trimStart()
 }
 
-// Text streamed under a message sent mid-answer: what follows the frozen prefix, without suggested replies.
-export function liveTail(prefix: string, raw: string): string {
-  return after(prefix, held(withoutReplies(prefix + raw)), raw)
-}
-
 // Final text under that message, keeping the full answer's closed replies block for the chips; null when nothing visible is left.
 export function doneText(full: string, prefix: string | undefined, streamed: string): string | null {
   if (!prefix || !full.startsWith(prefix)) return full || streamed

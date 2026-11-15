@@ -1,6 +1,5 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
-import { doneText, liveTail } from './answerTail.js'
-import { shownTexts } from './transcriptOrder.js'
+import { askOrder, shownTexts } from './transcriptOrder.js'
 
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
@@ -37,7 +36,6 @@ export interface CometThread {
   attachments: ChatAttachmentDto[]
   adopted: boolean
   stopped: boolean
-  streamPrefix?: string; streamTail?: string
   stopCount?: number
   startedAt: number | null
   doneSeen: number
@@ -92,6 +90,14 @@ function streamingAt(list: CometMessage[]): number {
   return -1
 }
 
+// A new answer starts under the oldest message still waiting for one, not under later ones.
+function seated(list: CometMessage[]): CometMessage[] {
+  let at = list.length
+  while (at > 0 && list[at - 1]!.role === 'user') at--
+  if (at < list.length) at++
+  return [...list.slice(0, at), { role: 'assistant', text: '', streaming: true }, ...list.slice(at)]
+}
+
 function pendingTail(list: CometMessage[]): CometMessage[] {
   const at = streamingAt(list)
   if (at < 0) return []
@@ -131,7 +137,7 @@ export function createCometThreads(initialSelected: string | null = null) {
     }
   }
   const settle = (id: string, messages: CometMessage[], extra: Partial<CometThread> = {}) =>
-    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, streamPrefix: '', streamTail: '', ...extra })
+    patch(id, { busy: !!thread(id).taskWorking, adopted: false, workLines: [], keptWork: thread(id).workLines, startedAt: thread(id).taskWorking ? thread(id).startedAt : null, messages: withWork(messages, thread(id).workLines), doneSeen: thread(id).doneSeen + 1, ...extra })
   const fail = (id: string, text: string, kind?: string, provider?: string) => {
     const kept = thread(id).messages.filter((m) => !(m.role === 'assistant' && m.streaming))
     const earlier = kept.at(-1)?.error ? kept.at(-1)! : undefined
@@ -181,15 +187,22 @@ export function createCometThreads(initialSelected: string | null = null) {
       const last = turns.at(-1)
       const asked: string[] = []
       for (let at = turns.length - 2; at >= 0 && turns[at]!.role === 'user'; at--) asked.push(turns[at]!.text)
+      let shown = askOrder(turns)
       if (tail[0]?.role === 'user' && last?.role === 'assistant' && asked.includes(tail[0].text) && turns.length >= current.messages.length) tail.length = 0
-      else if (tail[0]?.role === 'user' && last?.role === 'user' && tail[0].text === last.text) tail.shift()
-      const window: string[] = [], fromDisk: CometMessage[] = []
-      let firstShown: string | undefined
-      const said = shownTexts(turns)
-      for (let at = 0; at < turns.length; at++) {
-        window.push(identity(turns[at]!))
-        if (said[at] !== null) { fromDisk.push({ ...toMessage(turns[at]!), text: said[at]! }); firstShown ??= window[at] }
+      else {
+        // The running turn's question and what was said during it are already on disk: the live tail shows them once.
+        let cut = shown.length
+        for (let at = tail.length - 1; at >= 0 && cut > 0; at--) {
+          if (tail[at]!.role !== 'user') continue
+          if (shown[cut - 1]!.role !== 'user' || shown[cut - 1]!.text !== tail[at]!.text) break
+          tail[at] = toMessage(shown[--cut]!)
+        }
+        shown = shown.slice(0, cut)
       }
+      const window = turns.map(identity), fromDisk: CometMessage[] = []
+      let firstShown: string | undefined
+      const said = shownTexts(shown)
+      for (let at = 0; at < shown.length; at++) if (said[at] !== null) { fromDisk.push({ ...toMessage(shown[at]!), text: said[at]! }); firstShown ??= identity(shown[at]!) }
       // Raw overlap proves continuity; the first shown new turn marks where the kept messages end.
       const start = current.older > 0 && window.length ? alignAt(current.coverage, window) : -1
       const keep = start >= 0 && firstShown !== undefined ? current.messages.findIndex((message, at) => at >= current.older && identity(message) === firstShown) : -1
@@ -265,13 +278,12 @@ export function createCometThreads(initialSelected: string | null = null) {
         awaitingModel: false,
         adopted: false,
         stopped: false,
-        streamPrefix: '', streamTail: '',
         startedAt: Date.now(),
         workLines: [],
         keptWork: [],
         offer: null,
         ...(scheduled ? {} : { draft: '', attachments: [], restored: false }),
-        messages: [...current.messages, ...(alreadyShown ? [] : [{ role: 'user' as const, text: message, ...(attachments.length ? { attachments } : {}), ...(scheduled ? { scheduled: true } : {}) }]), { role: 'assistant', text: '', streaming: true }],
+        messages: alreadyShown ? seated(current.messages) : [...current.messages, { role: 'user' as const, text: message, ...(attachments.length ? { attachments } : {}), ...(scheduled ? { scheduled: true } : {}) }, { role: 'assistant', text: '', streaming: true }],
       })
       return history
     },
@@ -288,7 +300,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         adopted: true,
         stopped: false,
         startedAt: Date.now(),
-        messages: [...current.messages, { role: 'assistant', text: '', streaming: true }],
+        messages: seated(current.messages),
       })
     },
     noteDone(id: string): void {
@@ -304,16 +316,10 @@ export function createCometThreads(initialSelected: string | null = null) {
     },
     noteUser(id: string, text: string, attachments: string[] = []): void {
       const current = thread(id)
-      const at = streamingAt(current.messages)
-      const messages = [...current.messages]
-      const partial = at >= 0 ? messages[at]!.text : ''
-      if (at >= 0) {
-        if (partial) messages[at] = { ...messages[at]!, streaming: false, progress: true, work: current.workLines }
-        else messages.splice(at, 1)
-      }
-      messages.push({ role: 'user', text, ...(attachments.length ? { attachments } : {}) })
-      if (current.busy) messages.push({ role: 'assistant', text: '', streaming: true })
-      patch(id, { messages, streamPrefix: (current.streamPrefix ?? '') + (current.streamPrefix ? current.streamTail ?? '' : partial), streamTail: '', ...(partial ? { workLines: [] } : {}) })
+      // The running answer keeps streaming in its own bubble; these words wait below it for their own reply.
+      const messages: CometMessage[] = [...current.messages, { role: 'user', text, ...(attachments.length ? { attachments } : {}) }]
+      if (current.busy && streamingAt(messages) < 0) messages.push({ role: 'assistant', text: '', streaming: true })
+      patch(id, { messages })
     },
     noteWork(id: string, line: string): void {
       const current = thread(id)
@@ -327,6 +333,8 @@ export function createCometThreads(initialSelected: string | null = null) {
         id,
         cut
           ? [...current.messages.slice(0, at), { ...current.messages[at]!, streaming: false, checking: undefined, progress: true, work: current.workLines }, { role: 'assistant' as const, text: marker!, work: [] }, ...current.messages.slice(at + 1)]
+          // A stop said before any answer text is answered where it was said, at the foot.
+          : at >= 0 && !current.messages[at]!.text ? [...current.messages.slice(0, at), ...current.messages.slice(at + 1), { ...current.messages[at]!, streaming: false, text: fallback }]
           : current.messages.map((m) => (m.role === 'assistant' && m.streaming ? { ...m, streaming: false, text: m.text || fallback } : m)),
         { busy: false, taskWorking: false, awaitingModel: false, startedAt: null, stopped: true, stopCount: (current.stopCount ?? 0) + 1, queued: [] },
       )
@@ -343,8 +351,8 @@ export function createCometThreads(initialSelected: string | null = null) {
           taskWorking: event.working, busy: event.working,
           startedAt: event.working ? current.startedAt ?? Date.now() : null,
           doneSeen: current.doneSeen + 1,
-          ...(event.working && !current.busy ? { adopted: true, messages: [...current.messages, { role: 'assistant' as const, text: '', streaming: true }] } : {}),
-          ...(!event.working ? { streamPrefix: '', streamTail: '', workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
+          ...(event.working && !current.busy ? { adopted: true, messages: seated(current.messages) } : {}),
+          ...(!event.working ? { workLines: [], keptWork: current.workLines.length ? current.workLines : current.keptWork, messages: withWork(current.messages.filter(m => !m.streaming || (m.text && !m.checking)).map(m => ({ ...m, streaming: false })), current.workLines) } : {}),
         })
         return id
       }
@@ -373,19 +381,18 @@ export function createCometThreads(initialSelected: string | null = null) {
           }
           if (next[at]!.text.trim()) {
             next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }
-            next.push({ role: 'assistant', text: '', streaming: true })
+            next.splice(at + 1, 0, { role: 'assistant', text: '', streaming: true })
           }
-          patch(id, { messages: next, streamPrefix: '', workLines: next.length > current.messages.length ? [] : current.workLines }, true)
+          patch(id, { messages: next, workLines: next.length > current.messages.length ? [] : current.workLines }, true)
           return id
         }
-        const raw = current.streamPrefix && !next[at]!.checking ? (current.streamTail ?? '') + event.text : null
-        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: raw === null ? next[at]!.text + event.text : liveTail(current.streamPrefix ?? '', raw) }
-        patch(id, { messages: next, ...(raw === null ? {} : { streamTail: raw }) }, true)
+        next[at] = next[at]!.checking ? { ...next[at]!, text: event.text, checking: undefined } : { ...next[at]!, text: next[at]!.text + event.text }
+        patch(id, { messages: next }, true)
         return id
       }
       if (event.type === 'chat:done') {
-        const at = streamingAt(current.messages), next = [...current.messages], text = at < 0 ? null : doneText(event.text, current.streamPrefix, next[at]!.text)
-        if (at >= 0) next.splice(at, 1, ...(text === null ? [] : [{ ...next[at]!, text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }]))
+        const at = streamingAt(current.messages), next = [...current.messages]
+        if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
         settle(id, next, { offer: event.offer ?? null })
         return id
       }

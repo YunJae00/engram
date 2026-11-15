@@ -49,8 +49,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const hold = deps.followUp?.(channel)
     const said = text.trim()
     const botId = channel.slice('bot-'.length)
-    await progress.flush(channel)
-    await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString() })
+    // The running answer is not cut at these words: it is saved whole, and the mark lets the thread show them after it.
+    await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
     await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])

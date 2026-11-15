@@ -13,7 +13,7 @@ it('keeps progress and steering in chronological order through completion, reloa
   store.noteUser('one', 'Include the dates')
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'All four items and their dates are confirmed.' })
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'All four items and their dates are confirmed.' })
-  const expected = ['Read all four items', 'Two items are confirmed; checking the remaining two.', 'Include the dates', 'All four items and their dates are confirmed.']
+  const expected = ['Read all four items', 'Two items are confirmed; checking the remaining two.', 'All four items and their dates are confirmed.', 'Include the dates']
   expect(store.thread('one').messages.map(m => m.text)).toEqual(expected)
   const disk = store.thread('one').messages
   store.load('one', disk)
@@ -30,7 +30,7 @@ it('does not repeat a partial streamed answer when steering arrives before its f
   store.noteUser('one', 'Only show titles')
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'The titles are A and B.' })
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Checked two. The titles are A and B.' })
-  expect(store.thread('one').messages.map(m => m.text)).toEqual(['Read the items', 'Checked two. ', 'Only show titles', 'The titles are A and B.'])
+  expect(store.thread('one').messages.map(m => m.text)).toEqual(['Read the items', 'Checked two. The titles are A and B.', 'Only show titles'])
 })
 
 it('shows a progress turn followed directly by its full answer as one bubble after reload', () => {

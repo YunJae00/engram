@@ -47,7 +47,7 @@ it('shows words sent mid-reply at once in the running work and answers them ther
   expect(store.thread('one').draft).toBe('')
   expect(chatSay).toHaveBeenCalledWith('bot-one', 'Only Seoul please')
   expect(store.thread('one').workLines).toEqual(['said: I will look at Seoul only.'])
-  expect(store.thread('one').messages.map(m => m.role)).toEqual(['user', 'user', 'assistant'])
+  expect(store.thread('one').messages.map(m => m.role)).toEqual(['user', 'assistant', 'user'])
   expect(store.thread('one').queued).toEqual([])
 })
 

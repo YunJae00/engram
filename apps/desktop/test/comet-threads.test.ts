@@ -371,7 +371,7 @@ it('keeps live steering progress separate from the final answer suffix', () => {
   store.noteUser(BOT, 'Q')
   store.handleEvent({ type: 'chat:token', channel, text: 'B' })
   store.handleEvent({ type: 'chat:done', channel, text: 'A B' })
-  expect(store.thread(BOT).messages.map(message => message.text)).toEqual(['Start', 'A ', 'Q', 'B'])
+  expect(store.thread(BOT).messages.map(message => message.text)).toEqual(['Start', 'A B', 'Q'])
 })
 it('shows no suggestion tail under messages sent while the replies block streamed', () => {
   for (const cut of ['Counted.\n\n```replies\nMore', 'Counted.\n\n``']) {
@@ -380,11 +380,11 @@ it('shows no suggestion tail under messages sent while the replies block streame
     store.handleEvent({ type: 'chat:token', channel, text: cut })
     store.noteUser(BOT, 'Q')
     store.handleEvent({ type: 'chat:token', channel, text: full.slice(cut.length, -4) })
-    expect(store.thread(BOT).messages.at(-1)).toMatchObject({ streaming: true, text: '' })
+    expect(store.thread(BOT).messages.map(m => [m.role, !!m.streaming])).toEqual([['user', false], ['assistant', true], ['user', false]])
     store.noteUser(BOT, 'R')
     store.handleEvent({ type: 'chat:done', channel, text: full })
-    expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Count', cut, 'Q', 'R'])
-    expect(store.thread(BOT)).toMatchObject({ streamPrefix: '', streamTail: '' })
+    expect(store.thread(BOT).messages.map(m => answerText(m.text))).toEqual(['Count', 'Counted.', 'Q', 'R'])
+    expect(store.thread(BOT).messages.some(m => m.streaming)).toBe(false)
   }
 })
 it('keeps the full answer suggestions as chips under a mid-stream tail', () => {
@@ -393,8 +393,46 @@ it('keeps the full answer suggestions as chips under a mid-stream tail', () => {
   store.handleEvent({ type: 'chat:token', channel, text: 'A ' })
   store.noteUser(BOT, 'Q')
   store.handleEvent({ type: 'chat:token', channel, text: 'B\n\n```replies\nX' })
-  expect(store.thread(BOT).messages.at(-1)?.text).toBe('B')
+  expect(answerText(store.thread(BOT).messages[1]!.text)).toBe('A B')
   store.handleEvent({ type: 'chat:done', channel, text: 'A B\n\n```replies\nX\nY\n```' })
-  const last = store.thread(BOT).messages.at(-1)!.text
-  expect([answerText(last), suggestedReplies(last)]).toEqual(['B', ['X', 'Y']])
+  const last = store.thread(BOT).messages[1]!.text
+  expect([answerText(last), suggestedReplies(last)]).toEqual(['A B', ['X', 'Y']])
+})
+
+// qa142 B7/B8: an answer stays whole in its own bubble under its own question.
+it('keeps each reply under its own question when three messages are sent back to back', () => {
+  const store = createCometThreads(BOT)
+  store.begin(BOT, 'Q1')
+  store.handleEvent({ type: 'chat:token', channel, text: '2' })
+  store.noteUser(BOT, 'Q2')
+  store.handleEvent({ type: 'chat:token', channel, text: '예요.' })
+  store.noteUser(BOT, 'Q3')
+  store.handleEvent({ type: 'chat:done', channel, text: '2예요.' })
+  expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Q1', '2예요.', 'Q2', 'Q3'])
+  // The follow-up's own turn starts under the oldest message still waiting.
+  store.handleEvent({ type: 'comet:working', channel, working: true })
+  store.handleEvent({ type: 'chat:token', channel, text: '4예요.' })
+  expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Q1', '2예요.', 'Q2', '4예요.', 'Q3'])
+})
+it('does not cut a streaming table at a follow-up, live or after a reload', () => {
+  const table = '| n | item |\n|---|---|\n| 4 | 물티슈 |\n| 5 | 쓰레기봉투 |'
+  const store = createCometThreads(BOT)
+  store.begin(BOT, 'List')
+  store.handleEvent({ type: 'chat:token', channel, text: table.slice(0, 30) })
+  store.noteUser(BOT, 'If it rains?')
+  store.handleEvent({ type: 'chat:token', channel, text: table.slice(30) })
+  expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?'])
+  // Switching away and back mid-answer reads disk: the words said are there once, after the running answer.
+  store.load(BOT, [{ role: 'user', text: 'List', at: '2026-11-15T00:00:00Z' }, { role: 'user', text: 'If it rains?', aside: true }])
+  expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?'])
+  const saved = createCometThreads(BOT)
+  saved.load(BOT, [
+    { role: 'user', text: 'List' },
+    { role: 'user', text: 'If it rains?', aside: true },
+    { role: 'user', text: 'And snow?', aside: true },
+    { role: 'assistant', text: table },
+    { role: 'assistant', text: 'Rain list.' },
+    { role: 'assistant', text: 'Snow list.' },
+  ])
+  expect(saved.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?', 'Rain list.', 'And snow?', 'Snow list.'])
 })

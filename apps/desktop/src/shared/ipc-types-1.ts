@@ -222,6 +222,7 @@ export interface ChatTurnDto {
   attachments?: string[]
   evidence?: import('core').TurnEvidence
   scheduled?: boolean
+  aside?: boolean
 }
 
 export interface DelegatedTaskDto {

@@ -25,3 +25,16 @@ export function shownTexts(list: ChatTurnDto[]): (string | null)[] {
   }
   return out
 }
+
+// Words said while a turn worked are saved where they were said. Each is shown after the answer of
+// the turn running then, so every reply sits under its own question.
+export function askOrder<T extends ChatTurnDto>(list: T[]): T[] {
+  const out: T[] = [], held: T[] = []
+  for (const turn of list) {
+    if (turn.role === 'user' && turn.aside) { held.push(turn); continue }
+    if (turn.role === 'user') out.push(...held.splice(0))
+    out.push(turn)
+    if (isAnswer(turn) && held.length) out.push(held.shift()!)
+  }
+  return [...out, ...held]
+}

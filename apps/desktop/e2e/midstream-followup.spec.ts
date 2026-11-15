@@ -41,4 +41,6 @@ test('a message sent mid-answer gets its own reply', async () => {
   const firstBubbles = order.filter(bubble => !bubble.user && bubble.text.includes(`Answer for ${first}`))
   expect(firstBubbles.length, `MIDSTREAM-FOLLOWUP first answer shown: ${JSON.stringify(order)}`).toBeGreaterThan(0)
   for (const bubble of firstBubbles) expect(bubble.text, 'MIDSTREAM-FOLLOWUP not glued').not.toContain(secondAnswer)
+  // qa142 B7/B8: the first answer stays whole in one bubble above the follow-up.
+  expect(order.map(bubble => bubble.user), `MIDSTREAM-FOLLOWUP each reply under its question: ${JSON.stringify(order)}`).toEqual([true, false, true, false])
 })
