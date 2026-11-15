@@ -45,6 +45,8 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
       if (typeof send !== 'boolean' || (send && !text)) return 'app_do takes send only as true or false, and send needs the text to send.'
       if (!app || !goal?.trim() || text === null || text === '' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text and maxSteps from 1 to 12.'
       requirePublicText(goal, context)
+      // The goal is acted on like text: the loop may not be steered to a local page in another app either (qa143 B13).
+      requireNoLocalPage(goal, true)
       if (text) { requirePublicText(text, context); requireNoLocalPage(text) }
       const result = await run(app, goal.trim(), text, send, steps, context)
       if ((JSON.parse(result) as { committed?: boolean }).committed) context.onCommitted?.()
