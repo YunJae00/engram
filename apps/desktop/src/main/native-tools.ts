@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
+import { artifactHref, CHECK_SCRATCH, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory, ensureTaskFolder, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot } from './file-work.js'
 import { flog } from './flog.js'
@@ -136,6 +136,8 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   const found: string[] = []
   for (const entry of entries) {
     const path = join(cwd, entry), name = basename(entry)
+    // A check's scratch folder holds its own tools, never a result.
+    if (entry.split(/[\\/]/)[0] === CHECK_SCRATCH) continue
     if (name.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
     // lstat: a link is never a deliverable.
     const info = await lstat(path).catch(() => null)
@@ -152,7 +154,7 @@ const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 // Every output of the turn reaches the answer as a file link: the ones a tool
 // saved (even when the turn was cut short, since each was read back), and the
 // raw files the answer names when the turn finished.
-export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string, checkTurn = false): Promise<void> {
+export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
   if (result.asked) return
   const linked = (name: string) => result.answer.includes(`-${artifactHref(name)})`) || result.answer.includes(`-${encodeURIComponent(name)})`)
   for (const output of latestResultOutputs(result.steps, [])) {
@@ -161,15 +163,8 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
-  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))
-  // A check turn's own helper script is its tool, not a result. It is one only when every sign agrees: the answer does not link it,
-  // neither the request nor the earlier report (both verbatim in the check turn's message) names it, a command of this turn ran it,
-  // and the task has another result it was run against. Any other script is handed in and checked like every file.
-  const ran = (name: string) => result.steps.some(step => ['Bash', 'PowerShell', 'Shell'].includes(step.tool) && typeof step.args['command'] === 'string' && step.args['command'].includes(name))
-  const helper = (path: string) => checkTurn && /\.(py|js|ts|sh|ps1)$/i.test(path) && !linkedIds(result.answer, basename(path)).length && !task.includes(basename(path)) && ran(basename(path))
-  const hasResult = /\(engram-artifact:/.test(result.answer + task) || named.some(path => !helper(path))
-  for (const path of named) {
-    if (hasResult && helper(path)) continue
+  // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
+  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)

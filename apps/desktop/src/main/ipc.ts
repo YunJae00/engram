@@ -2771,7 +2771,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (signal.aborted) return
         clearApplicationWork(channel)
         endDesktopTurn(channel)
-        await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message, !!turn?.verification)
+        await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
         let check: TurnOutcome['check']
         if (result.steps.some(step => step.tool === 'report_result_check')) {
           const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [
