@@ -200,10 +200,11 @@ test('the app sidebar switches between chats and saved routines, renames them, a
     return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: row.top - tools.bottom, heights: Math.abs(search.height - add.height) }
   })
   // Since the bot sidebar (rd-sidebar-bots, b8646f58) rows sit 8px from each sidebar edge, bleeding 4px past the toolbar on both sides.
-  expect(Math.abs(alignment.rowLeft - 8)).toBeLessThan(1)
-  expect(Math.abs(alignment.rowRight - 8)).toBeLessThan(1)
-  expect(Math.abs(alignment.left - 4)).toBeLessThan(1)
-  expect(Math.abs(alignment.right - 4)).toBeLessThan(1)
+  // The brief's tolerance is 8±2 (the sidebar's right edge carries a fractional scrollbar/border inset).
+  expect(Math.abs(alignment.rowLeft - 8)).toBeLessThanOrEqual(2)
+  expect(Math.abs(alignment.rowRight - 8)).toBeLessThanOrEqual(2)
+  expect(Math.abs(alignment.left - 4)).toBeLessThanOrEqual(2)
+  expect(Math.abs(alignment.right - 4)).toBeLessThanOrEqual(2)
   expect(alignment.above).toBeCloseTo(12, 1)
   expect(alignment.below).toBeCloseTo(12, 1)
   expect(alignment.heights).toBeLessThan(1)

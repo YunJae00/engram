@@ -315,15 +315,13 @@ test('conversation menus replace dates on interaction and pin without losing fol
   const options = page.getByTestId(`sidebar-chat-menu-${id}`)
   await options.click()
   const menu = page.locator('.sidebar-organize-menu')
-  // Since 1367c699 the row menu also moves, hides, sets primary (botMenuItems); it still opens with Rename, Pin and ends with Delete.
-  const labels = await menu.getByRole('button').allInnerTexts()
-  expect(labels.length).toBeGreaterThanOrEqual(3)
-  expect(labels.slice(0, 2).map(label => label.trim())).toEqual(['Rename', 'Pin'])
-  expect(labels.at(-1)!.trim()).toBe('Delete')
+  // Since 1367c699 the row menu also moves to each other section, hides and sets primary (botMenuItems).
+  await expect(menu.getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to Release decisions', 'Move to Unrelated work', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
   for (const label of ['Rename', 'Pin', 'Delete']) await expect(menu.getByRole('button', { name: label, exact: true }).locator('svg')).toBeVisible()
   const optionsBox = await options.boundingBox()
   const rowBox = await row.boundingBox()
-  await expect(row.locator('time')).toHaveCSS('opacity', '0')
+  // The time shows only as a tooltip since the bot sidebar (rd-sidebar-bots, b8646f58), so no date is drawn in the row.
+  await expect(row.locator('time')).toHaveCount(0)
   expect(optionsBox!.x + optionsBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
   const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
   expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)

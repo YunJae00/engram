@@ -42,6 +42,10 @@ const row = (bot: Bot | string) => page.getByTestId(`bot-${typeof bot === 'strin
 const clear = () => page.getByRole('button', { name: 'Clear search', exact: true }).click()
 async function typeQuery(query: string): Promise<void> {
   await page.getByTestId('sidebar-search-toggle').click();
+  // The field opens with a 160ms width transition (606ca42a); synthetic insertText of Hangul into the still zero-width input
+  // can leave the caret at 0 and reverse the text, so type once the field has finished opening, as a person would.
+  await expect(search()).toBeFocused()
+  await page.locator('.sidebar-search').evaluate(async (node) => { await Promise.all(node.getAnimations({ subtree: true }).map((animation) => animation.finished)) })
   await page.keyboard.press('ControlOrMeta+A')
   await page.keyboard.press('Backspace')
   await page.keyboard.type(query)
