@@ -192,3 +192,41 @@ it.each([
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', turns: 2, verified: false })
   expect(t.sent.every(one => !one.extra?.verification?.readback)).toBe(true)
 })
+
+// qa143 B14: two leads' text was merged, compared item by item and checked with every requirement passing, yet the turn ended
+// "작업이 멈췄어요 / 일부를 확인하지 못했어요": the check turn had no readback step, and a report of words alone has nothing to read back.
+const hireLeads = async (paths: Parameters<typeof listTasks>[0]) => {
+  const { updateTask } = await import('core')
+  const task = (await listTasks(paths))[0]!
+  await updateTask(paths, task.id, saved => { saved.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '규정 팀장', brief: '', deliverable: '', state: 'released', sessionKey: 'team-m1', hiredAt: new Date().toISOString(), result: '규정 5개', review: { ok: true, note: '' } }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
+}
+const compared = [{ tool: 'Bash', args: { command: 'diff .check/a .check/b' }, observation: 'MATCH' }, { tool: 'report_result_check', args: {}, observation: '{"validation":{"accepted":true,"verified":true,"issues":[]}}' }]
+const passed = { accepted: true, verified: true, issues: [] }
+
+it('ends a self-checked team report of words alone as done', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); return done('규정 5개와 체크리스트 10개예요.', 1) }
+    return { ...done('규정 5개와 체크리스트 10개예요.', 2), check: passed, trail: compared }
+  }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = (await listTasks(t.paths))[0]!
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[1]?.extra?.verification).toBeTruthy()
+  expect(task).toMatchObject({ state: 'done', verified: true, turns: 2 })
+  expect(task.verificationIssue).toBeUndefined()
+  expect(task.log.at(-1)!.line).toBe('Done')
+})
+
+it.each([
+  ['hands over a file', '[보고서](engram-artifact:report.md)', [] as typeof compared],
+  ['changed a file earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Write', args: { file_path: '/task/report.md' }, observation: 'Native action completed.' }]],
+])('still leaves a team report that %s unverified when its check turn read nothing back', async (_why, answer, earlier) => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); return { ...done(answer, 1), trail: earlier } }
+    return { ...done(answer, 2), check: passed, trail: compared }
+  }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'waiting', verified: false, verificationIssue: 'The result has no fresh readback.' })
+  expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
+})

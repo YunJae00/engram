@@ -30,6 +30,11 @@ export function freshResultReadback(steps: TurnStep[]): boolean {
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
 
+// Whether a result leaves nothing to read back: no step of the task changed or opened anything and the answer hands over no file.
+// A report made only of words (a team's merged text, compared against what the leads wrote) is checked by its result check alone.
+export const nothingToReadBack = (answer: string, steps: TurnStep[]): boolean =>
+  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool)))
+
 export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
   // Held tasks are learned only after the runner confirms their final state.
   if (held || result.asked || result.stopped || result.pending || result.incomplete) return false
