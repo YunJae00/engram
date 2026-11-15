@@ -196,10 +196,14 @@ test('the app sidebar switches between chats and saved routines, renames them, a
     const row = node.querySelector('.sidebar-conversations .sidebar-item')!.getBoundingClientRect()
     const search = node.querySelector('.sidebar-search')!.getBoundingClientRect()
     const add = node.querySelector('[data-testid="sidebar-create"]')!.getBoundingClientRect()
-    return { left: Math.abs(tools.left - row.left), right: Math.abs(tools.right - row.right), above: tools.top - head.bottom, below: row.top - tools.bottom, heights: Math.abs(search.height - add.height) }
+    const side = node.getBoundingClientRect()
+    return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: row.top - tools.bottom, heights: Math.abs(search.height - add.height) }
   })
-  expect(alignment.left).toBeLessThan(1)
-  expect(alignment.right).toBeLessThan(1)
+  // Since the bot sidebar (rd-sidebar-bots, b8646f58) rows sit 8px from each sidebar edge, bleeding 4px past the toolbar on both sides.
+  expect(Math.abs(alignment.rowLeft - 8)).toBeLessThan(1)
+  expect(Math.abs(alignment.rowRight - 8)).toBeLessThan(1)
+  expect(Math.abs(alignment.left - 4)).toBeLessThan(1)
+  expect(Math.abs(alignment.right - 4)).toBeLessThan(1)
   expect(alignment.above).toBeCloseTo(12, 1)
   expect(alignment.below).toBeCloseTo(12, 1)
   expect(alignment.heights).toBeLessThan(1)
