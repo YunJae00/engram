@@ -73,13 +73,14 @@ export const ChatComposer = memo(
     const named = namedIn(value, apps)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
-    // A draft put back after a failed send arrives selected, and the next click selects it once more,
-    // so what is typed next replaces it instead of joining it.
-    const putBackArmed = useRef(false)
+    // A draft put back after a failed send arrives focused and selected, so what is typed next replaces it;
+    // a click then places the caret as usual, so a small correction keeps the draft.
     useLayoutEffect(() => {
-      putBackArmed.current = putBack
-      if (putBack && document.activeElement === inputRef.current) inputRef.current?.select()
-    }, [putBack])
+      const input = inputRef.current
+      if (!putBack || !input || (document.activeElement !== input && document.activeElement !== document.body)) return
+      input.focus(); input.select()
+      // value: the put-back text can reach the box a render after the mark; typing clears the mark in the same render.
+    }, [putBack, value])
     useLayoutEffect(() => {
       const caret = mentionCaret.current
       if (caret === null || !inputRef.current) return
@@ -196,7 +197,6 @@ export const ChatComposer = memo(
           value={value}
           onChange={(event) => { onChange(event.target.value); lookForMention(event.target.value, event.target.selectionStart) }}
           onKeyDown={onKeyDown}
-          onClick={() => { if (putBackArmed.current) { putBackArmed.current = false; inputRef.current?.select() } }}
           onBlur={() => setMention(null)}
           onPaste={event => {
             const files = Array.from(event.clipboardData.files)
