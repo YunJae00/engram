@@ -17,3 +17,10 @@ it('Korean literals only in i18n-ko*.ts and threadLangKo.ts, and dates are forma
     expect(text, file).not.toMatch(/(?:toLocale(?:Date|Time)?String|Intl\.DateTimeFormat)\(\s*(?:\)|undefined|\[\])/)
   }
 })
+
+it('says a paused task with unconfirmed checks in the language of the conversation', async () => {
+  const { displayTaskAnswer } = await import('../src/renderer/src/lib/threadLang.js')
+  const line = 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.'
+  expect(displayTaskAnswer(line, 'ko')).toBe('결과는 나왔지만 일부를 확인하지 못했어요. 어떻게 이어갈지 알려주세요.')
+  expect(displayTaskAnswer(line, 'en')).not.toContain('unresolved checks')
+})

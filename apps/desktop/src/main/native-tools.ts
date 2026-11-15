@@ -152,7 +152,7 @@ const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 // Every output of the turn reaches the answer as a file link: the ones a tool
 // saved (even when the turn was cut short, since each was read back), and the
 // raw files the answer names when the turn finished.
-export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string): Promise<void> {
+export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string, revisionsOnly = false): Promise<void> {
   if (result.asked) return
   const linked = (name: string) => result.answer.includes(`-${artifactHref(name)})`) || result.answer.includes(`-${encodeURIComponent(name)})`)
   for (const output of latestResultOutputs(result.steps, [])) {
@@ -162,6 +162,8 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
   for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
+    // A check turn's own scripts are its tools, not results; only a revised hand-in is delivered.
+    if (revisionsOnly && !linkedIds(result.answer, basename(path)).length) continue
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)

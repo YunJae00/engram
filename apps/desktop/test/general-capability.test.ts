@@ -203,6 +203,25 @@ it('hands in a revised task file again and points the answer at the new copy', a
   expect(huge.answer).toContain('report.py is larger than 50 MB')
 })
 
+it('a check turn does not hand in the script it wrote to check, only a revised hand-in', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  await writeFile(join(cwd, 'report.md'), '# v1\n')
+  const first = { answer: 'Saved report.md.', steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, first, 0, 'ask')
+  const link = /\[report\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
+  await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
+  const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, checked, 0, 'ask', true)
+  expect(checked.answer).not.toContain('check_merge.py]')
+  expect(checked.steps).toHaveLength(0)
+  await writeFile(join(cwd, 'report.md'), '# v2\n')
+  const revised = { answer: `Corrected report.md with check_merge.py.\n\n${link}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, revised, 0, 'ask', true)
+  expect(revised.steps.map(step => step.args.name)).toEqual(['report.md'])
+  expect(revised.answer).not.toContain(link)
+})
+
 it('attaches a named file core will not read back, and says so when nothing can be attached', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(cwd, { recursive: true })
