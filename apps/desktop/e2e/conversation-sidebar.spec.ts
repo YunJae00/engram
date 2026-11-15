@@ -124,7 +124,10 @@ test('conversation rows show persisted previews, timestamps and avatars after re
   await expect(first.locator('.sidebar-conversation-preview')).toHaveText('Tomorrow’s checkpoint is ready.')
   await expect(first.locator('.sidebar-conversation-content')).toHaveAttribute('title', new Date(STAMP).toLocaleString('en-US'))
   await expect(first.locator('time')).toHaveCount(0)
-  await expect(first.locator('.bot-avatar svg')).toBeVisible()
+  // The orb avatar draws its twisting ribbons as three svg layers.
+  await expect(first.locator('.bot-avatar .bot-orb')).toBeVisible()
+  await expect(first.locator('.bot-avatar svg.bot-orb-ribbon')).toHaveCount(3)
+  await expect(first.locator('.bot-avatar svg.bot-orb-ribbon').first()).toBeVisible()
   await expect(page.getByTestId(`bot-${bots[1]!.id}`).locator('.sidebar-conversation-preview')).toHaveText('You: Please verify the handoff checklist.')
   const saved = await page.evaluate(id => window.engram.botsList().then(list => list.find(bot => bot.id === id)), bots[0]!.id)
   expect(saved?.lastMessage).toMatchObject({ role: 'assistant', text: '**Tomorrow’s checkpoint is ready.**', at: STAMP })
@@ -201,9 +204,10 @@ test('Create stays visible while long conversations scroll', async () => {
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
-  await expect(page.locator('.comet-welcome-mark [data-icon="comet-face"]')).toBeVisible()
+  // With a primary bot (v2 list) the welcome mark is that bot's own avatar (BotAvatar app-wide); the comet face is only the no-primary fallback.
+  await expect(page.locator('.comet-welcome-mark .bot-avatar .bot-orb')).toBeVisible()
   await capture('restored-conversation-icons.png')
-  expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(bots.length)
+  expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(bots.length + 1)
 })
 
 test('search finds long titles and previews inside collapsed folders without changing organization', async () => {

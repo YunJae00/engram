@@ -82,7 +82,8 @@ test('native picker attaches a file to a new chat without importing it into Cosm
   await expect(page.locator('.bots-view .bubble-msg.user').last().locator('.chat-user-text')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
   await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
-  const first = (await page.evaluate(() => window.engram.botsList()))[0]!
+  // The primary Engram bot always leads the list; the welcome send starts its own conversation after it.
+  const first = (await page.evaluate(() => window.engram.botsList())).find(bot => !bot.primary)!
   const turns = await page.evaluate(id => window.engram.botTranscript(id), first.id)
   expect(turns.filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Attached: request.txt'])
   expect(await readdir(paths.inbox)).toEqual([])
@@ -93,7 +94,8 @@ test('native picker attaches a file to a new chat without importing it into Cosm
 })
 
 test('keeps pending attachments in their chat, removes them, and accepts drop and paste', async () => {
-  const first = (await page.evaluate(() => window.engram.botsList()))[0]!
+  // The primary Engram bot always leads the list; the welcome send starts its own conversation after it.
+  const first = (await page.evaluate(() => window.engram.botsList())).find(bot => !bot.primary)!
   const second = await page.evaluate(() => window.engram.botCreate({ name: 'Separate attachment chat', purpose: '' }))
   await page.getByTestId('bots-input-files').setInputFiles(input)
   await expect(page.getByLabel('Attached files')).toContainText('request.txt')

@@ -245,7 +245,8 @@ test('welcome and conversation footer controls align inside narrow composers wit
       const diagnostic = JSON.stringify({ surface, width, ...geometry })
       expect(geometry.height, diagnostic).toBeLessThanOrEqual(54)
       expect(Math.abs(geometry.inputCenter - geometry.footerCenter), diagnostic).toBeLessThanOrEqual(1)
-      expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => 32))
+      // The conversation pill composer's send button is 30px (composer-title); the other composers keep 32px.
+      expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => surface === 'conversation' ? 30 : 32))
       expect(geometry.iconButtons, diagnostic).toEqual(geometry.iconButtons.map(() => 32))
       expect(geometry.icons, diagnostic).toEqual(geometry.icons.map(() => [16, 16]))
       expect(geometry.centerSpread, diagnostic).toBeLessThanOrEqual(0.5)

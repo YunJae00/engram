@@ -170,6 +170,9 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   const sidebar = page.getByTestId('app-sidebar')
+  // Search sits behind its toolbar toggle since the sidebar search toggle change.
+  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeHidden()
+  await page.getByTestId('sidebar-search-toggle').click()
   await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
   await expect(sidebar.locator('.sidebar-nav')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)

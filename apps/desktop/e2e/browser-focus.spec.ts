@@ -48,7 +48,12 @@ test('background browser windows preserve native conversation focus and the draf
       state.focusLosses = 0
       BrowserWindow.getAllWindows()[0]!.on('blur', () => state.focusLosses++)
     })
-    await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: true }), `bot-${bot.id}`)
+    // Automatic browser work announces its browser tool step, which is what floats the small live preview (webPane.handleEvent).
+    await app.evaluate(({ BrowserWindow }, lane) => {
+      const send = (event: unknown) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', event)
+      send({ type: 'comet:working', channel: lane, working: true })
+      send({ type: 'comet:step', channel: lane, line: 'open_page: Background browser check' })
+    }, `bot-${bot.id}`)
     await page.evaluate(() => {
       const events: string[] = []
       ;(window as unknown as { focusTargets: string[] }).focusTargets = events

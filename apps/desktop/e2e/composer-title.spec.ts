@@ -13,14 +13,17 @@ const VIEW = '[data-testid="bots-view"]'
 const BOX = `${VIEW} .bots-write .chat-write`
 
 const rgb = (value: string) => (value.match(/\d+(\.\d+)?/g) ?? []).slice(0, 3).map(Number)
-const accentBlue = (page: Page) => page.evaluate(() => {
+const resolvedColor = (page: Page, value: string) => page.evaluate((value) => {
   const probe = document.createElement('span')
-  probe.style.color = 'var(--accent-blue)'
+  probe.style.color = value
   document.body.append(probe)
   const color = getComputedStyle(probe).color
   probe.remove()
   return color
-})
+}, value)
+const accentBlue = (page: Page) => resolvedColor(page, 'var(--accent-blue)')
+// The send button wears the theme's call-to-action colour (ink in light since Wave A), falling back to the accent blue.
+const sendColor = (page: Page) => resolvedColor(page, 'var(--cta, var(--accent-blue))')
 const css = (page: Page, selector: string, prop: string) => page.locator(selector).first().evaluate((node, p) => getComputedStyle(node).getPropertyValue(p), prop)
 const box = (page: Page, selector: string) => page.locator(selector).first().evaluate(node => node.getBoundingClientRect().toJSON() as DOMRect)
 
@@ -56,14 +59,17 @@ for (const theme of ['light', 'dark'] as const) {
 
       await input.fill('')
       await expect(send).toBeDisabled()
-      expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'opacity')).toBe('1')
+      // Light dims the ink button while it cannot send; dark swaps to a soft grey at full opacity.
+      expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'opacity')).toBe(theme === 'light' ? '0.4' : '1')
       const grey = rgb(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'background-color'))
       expect(Math.max(...grey) - Math.min(...grey)).toBeLessThanOrEqual(16)
-      expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'background-color')).not.toBe(blue)
+      // Dark greys the idle button out; light keeps the ink colour (which is also its accent) and dims it instead (opacity above).
+      if (theme === 'dark') expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'background-color')).not.toBe(blue)
 
       await input.fill('hi')
       await expect(send).toBeEnabled()
-      await expect(send).toHaveCSS('background-color', blue)
+      await expect(send).toHaveCSS('background-color', await sendColor(page))
+      await expect(send).toHaveCSS('opacity', '1')
       await expect(send).toHaveCSS('color', 'rgb(255, 255, 255)')
       expect(Math.abs((await box(page, `${VIEW} .bots-write .chat-send-btn`)).width - 30)).toBeLessThanOrEqual(1)
 

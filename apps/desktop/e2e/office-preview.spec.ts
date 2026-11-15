@@ -118,21 +118,22 @@ test('Office activity cards for different apps keep their own look when the curr
     await send([{ type: 'comet:working', channel: lane, working: true }, { type: 'desktop:preview', frames: frames(false) }])
     const deck = page.getByTestId('preview-deck')
     const front = deck.locator('[data-position="0"] [data-testid="preview-card"]')
+    // A card promoted from the back plays a short exit at its old position (organic live cards), so the back card is the one not leaving.
     await expect(front.locator('.preview-card-caption')).toHaveText('Excel · 문서 작업')
     await expect(front.locator('.preview-card-state svg.lucide-file-spreadsheet')).toHaveCount(1)
-    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
-    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Outlook')
+    await expect(deck.locator('[data-position="1"]:not([data-leaving])')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
+    await expect(deck.locator('[data-position="1"]:not([data-leaving]) .preview-deck-title')).toHaveText('Outlook')
     await send([{ type: 'desktop:preview', frames: frames(true) }])
-    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
-    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Outlook')
+    await expect(deck.locator('[data-position="1"]:not([data-leaving])')).toHaveAttribute('data-frame', `office:${lane}:Outlook`)
+    await expect(deck.locator('[data-position="1"]:not([data-leaving]) .preview-deck-title')).toHaveText('Outlook')
     await expect(front.locator('.preview-card-state svg.lucide-file-spreadsheet')).toHaveCount(1)
     await expect(front.locator('.preview-card-caption')).toHaveText(/^Excel/)
     await expect(front.locator('.preview-card-caption')).not.toContainText('Outlook')
-    await deck.locator('[data-position="1"] .preview-deck-back').press('Enter')
+    await deck.locator('[data-position="1"]:not([data-leaving]) .preview-deck-back').press('Enter')
     await expect(front.locator('.preview-card-caption')).toHaveText('Outlook · 일정 확인')
     await expect(front.locator('.preview-card-state svg.lucide-calendar')).toHaveCount(1)
-    await expect(deck.locator('[data-position="1"]')).toHaveAttribute('data-frame', `office:${lane}:Excel`)
-    await expect(deck.locator('[data-position="1"] .preview-deck-title')).toHaveText('Excel')
+    await expect(deck.locator('[data-position="1"]:not([data-leaving])')).toHaveAttribute('data-frame', `office:${lane}:Excel`)
+    await expect(deck.locator('[data-position="1"]:not([data-leaving]) .preview-deck-title')).toHaveText('Excel')
   } finally { await closeTestApp(app) }
 })
 
@@ -187,8 +188,16 @@ for (const length of ['long', 'short'] as const) test(`Office activity card arri
     await expect(card.locator('.preview-card-state')).toHaveText('창 없이 Office에서 읽는 중')
     await settle()
     expect(near(await geometry(), before), `mounted ${await geometry()} vs ${before}`).toBe(true)
-    const covers = await page.evaluate(() => document.querySelector('[data-testid="preview-card"]')!.getBoundingClientRect().bottom - document.querySelector('[data-testid="bots-thread"]')!.getBoundingClientRect().top)
-    expect(covers).toBeLessThanOrEqual(1)
+    // The card docks over the thread's top-right corner without a reserved band (live-card-keeps-chat), so it must cover no
+    // bubble in view instead of ending above the thread (live-card-no-cover).
+    const covers = await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="preview-card"]')!.getBoundingClientRect()
+      const view = document.querySelector('[data-testid="bots-thread"]')!.getBoundingClientRect()
+      return [...document.querySelectorAll('[data-testid="bots-thread"] .bubble-msg')].map(node => node.getBoundingClientRect())
+        .filter(box => box.bottom > view.top && box.top < view.bottom)
+        .map(box => Math.max(0, Math.min(box.right, card.right) - Math.max(box.left, card.left)) * Math.max(0, Math.min(box.bottom, card.bottom) - Math.max(box.top, card.top)))
+    })
+    expect(Math.max(0, ...covers)).toBeLessThanOrEqual(1)
     await expect(probe).toBeInViewport()
     await app.evaluate(({ BrowserWindow }, lane) => {
       const send = (event: unknown) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', event)

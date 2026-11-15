@@ -341,7 +341,8 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 .app-sidebar-head .workspace-switcher, .app-sidebar-head button { -webkit-app-region: no-drag; }
 :root[data-platform='darwin']:not([data-fullscreen]) .app-sidebar-head { padding-left: 84px; }
 .app-sidebar-head .workspace-switcher { min-width: 0; flex: 1; }
-.app-sidebar-head .workspace-trigger { max-width: 206px; margin: 0; padding-left: 7px; }
+/* The name gives way (ellipsis) instead of spilling over the mode toggle when the head is crowded. */
+.app-sidebar-head .workspace-trigger { max-width: min(206px, 100%); min-width: 0; margin: 0; padding-left: 7px; }
 .app-sidebar-head .workspace-name { max-width: 156px; }
 .sidebar-icon-button, .sidebar-section-open, .sidebar-more {
   display: inline-flex; align-items: center; justify-content: center; flex: none;

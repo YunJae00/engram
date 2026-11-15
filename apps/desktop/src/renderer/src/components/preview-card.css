@@ -48,7 +48,8 @@
 .mini-chat-preview .preview-deck-card[data-position="2"] { --deck-x: calc(-2 * var(--live-fit-space, 12px)); --deck-y: calc(-2 * var(--live-fit-space, 12px)); }
 .mini-chat-preview .preview-deck-card[data-position="3"] { --deck-x: calc(-3 * var(--live-fit-space, 12px)); --deck-y: calc(-3 * var(--live-fit-space, 12px)); }
 .mini-chat-preview > .preview-card-reopen { position: absolute; top: 8px; right: var(--panel-gutter); margin: 0; }
-.mission-grid-2 .mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
+/* Cards dock over the thread (live-card-fit), so an empty slot takes no room: the chat would jump when a card arrives. */
+.mini-chat-preview:not(:has(> .preview-deck, > .preview-card-reopen)) { display: none; }
 /* Two tall panes keep a slim card slot so the conversation fills the pane. */
 @container tile (min-height: 560px) { .mission-grid-2 .mini-chat-preview { flex-basis: min(12%, 96px); } }
 .preview-deck-card { position: relative; transform-origin: top center; transform: translate(var(--deck-x, 0px), var(--deck-y, 0px)) rotate(var(--deck-rotate, 0deg)) scale(1); filter: brightness(calc(1 - .04 * var(--deck-position))); transition: transform 180ms ease, filter 180ms ease, opacity 180ms ease; }

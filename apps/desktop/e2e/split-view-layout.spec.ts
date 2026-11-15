@@ -100,7 +100,9 @@ function geometry(index: number): Promise<Geometry> {
       dark,
       card: deck ? {
         inside: deck.left >= outer.left - 0.5 && deck.right <= outer.right + 0.5 && deck.top >= outer.top - 0.5 && deck.bottom <= outer.bottom + 0.5,
-        overlaps: hits(deck, thread) || hits(deck, write),
+        // Split-view cards dock over the thread's top corner since live-card-fit, so they must clear every bubble and the composer.
+        overlaps: [...tile.querySelectorAll('.mini-chat-thread .bubble-msg')].map((node) => node.getBoundingClientRect())
+          .filter((box) => box.bottom > thread.top && box.top < thread.bottom).some((box) => hits(deck, box)) || hits(deck, write),
       } : null,
     }
   })

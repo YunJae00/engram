@@ -125,11 +125,15 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       const metrics = () => preview.evaluate(element => {
         const style = getComputedStyle(element), stage = element.querySelector('.preview-card-stage')!
         return { width: element.getBoundingClientRect().width, headers: element.querySelectorAll('.preview-card-bar').length,
-          radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor, aspect: getComputedStyle(stage).aspectRatio }
+          radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor,
+          // The stage height follows width / ratio (and animates) since the organic live card, so its shape is read from its box.
+          aspect: `${Math.round(stage.getBoundingClientRect().width * 100) / 100} / ${Math.round(stage.getBoundingClientRect().height * 100) / 100}` }
       })
+      const settled = () => expect.poll(async () => { const a = JSON.stringify(await metrics()); await page.waitForTimeout(300); return a === JSON.stringify(await metrics()) }).toBe(true)
       await promote('Owned app 1')
       await expect(full.getByTestId('preview-deck').locator('[data-position="0"]')).toHaveAttribute('data-frame', frames[0]!.id)
       await expect.poll(async () => (await metrics()).width).toBe(320)
+      await settled()
       const appStyle = await metrics()
       await promote('example.test')
       await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '')

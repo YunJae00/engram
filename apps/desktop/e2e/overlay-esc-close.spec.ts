@@ -101,7 +101,8 @@ test('a sidebar row menu takes the first Esc', async () => {
   await page.keyboard.press('Escape')
   await expect(page.locator('.sidebar-menu')).toHaveCount(0)
   await expectOpen()
-  await expect(trigger).toBeFocused()
+  // The bot list is a keyboard tree since the sidebar tree change: closing a row menu returns focus to that row's tree item.
+  await expect(trigger.locator('xpath=ancestor::*[@role="treeitem"][1]')).toBeFocused()
   await page.keyboard.press('Escape')
   await expectClosed()
 })

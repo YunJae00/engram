@@ -255,7 +255,9 @@ test('a budget stop stays stopped with preserved progress and no completion clai
   await page.reload()
   await page.getByTestId(`bot-${bot.id}`).click()
   await expect(page.locator('.bots-view')).toContainText('This task reached its processing limit and stopped.')
-  await expect(page.locator('.bots-view')).toContainText('Task stopped')
+  // The thread already says the task stopped, so no second 'Task stopped' card repeats it.
+  await expect(page.locator('.bots-view').getByText('This task reached its processing limit and stopped.')).toHaveCount(1)
+  await expect(page.locator('.bots-view .decision-card')).toHaveCount(0)
   await expect(page.locator('.bots-view')).toContainText('Movie B: Not verified')
   await expect(page.locator('.bots-view')).not.toContainText('tokens available')
   await expect(page.locator('.bots-view')).not.toContainText('Done ·')

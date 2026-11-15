@@ -140,13 +140,17 @@ test('settings autosave shows progress, preserves the saved choice on failure an
 test('native window activation fades only the sidebar tint, without recoloring controls', async () => {
   const sidebar = page.getByTestId('app-sidebar')
   const tintOpacity = () => sidebar.evaluate((node) => getComputedStyle(node, '::before').opacity)
+  const accents: string[] = []
   for (const active of [true, false, true]) {
     await app.evaluate(({ BrowserWindow }, value) => { BrowserWindow.getAllWindows()[0]!.emit(value ? 'focus' : 'blur') }, active)
     await expect(page.locator('html')).toHaveAttribute('data-window-focused', String(active))
     await expect.poll(tintOpacity).toBe(active ? '1' : '0')
     const accent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
-    expect(['#242424', '#eeeeee']).toContain(accent)
+    // The accent is the theme's call-to-action colour (light ink #1C1C1E since the apple-white theme) and never follows focus.
+    expect(['#1C1C1E', '#eeeeee']).toContain(accent)
+    accents.push(accent)
   }
+  expect(new Set(accents).size).toBe(1)
 })
 
 test('compact navigation and settings retain clear actions, safety guidance and narrow layouts', async () => {

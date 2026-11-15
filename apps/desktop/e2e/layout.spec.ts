@@ -174,7 +174,10 @@ test('settings header, rows and footer share an inset without nested modal paddi
     await page.setViewportSize({ width, height: 720 })
     await navigate('settings')
     await page.getByTestId('settings-nav-ai').click()
-    await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toBeVisible()
+    // In-app work runs on Claude only with no model picker (one engine), so the empty 'New conversation model' row is hidden
+    // and the filing row leads the defaults.
+    await expect(page.getByRole('region', { name: 'Filing model', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toBeHidden()
     const box = page.locator('.brief-box.settings-box')
     await expect(box).toHaveCSS('padding', '0px')
     await expect(box).toHaveCSS('gap', '0px')
@@ -183,8 +186,8 @@ test('settings header, rows and footer share an inset without nested modal paddi
       const scroll = node.querySelector('.settings-scroll')!
       const foot = node.querySelector('.dialog-actions')!
       const inset = (element: Element) => element.getBoundingClientRect().left + parseFloat(getComputedStyle(element).paddingLeft)
-      const model = node.querySelector('[aria-label="New conversation model"]')!.getBoundingClientRect()
-      const select = node.querySelector('[aria-label="Filing model"]')!.getBoundingClientRect()
+      const model = node.querySelector('[aria-label="Filing model"]')!.getBoundingClientRect()
+      const select = node.querySelector('[aria-label="Decision model connection"] .settings-card')!.getBoundingClientRect()
       const valueColumns = [...node.querySelectorAll('.settings-panel:not([hidden]) .settings-fact-value')].map((value) => value.getBoundingClientRect().left)
       return {
         contentAligned: Math.abs(inset(scroll) - node.querySelector('.settings-panel:not([hidden]) h2')!.getBoundingClientRect().left) <= 1,
@@ -312,9 +315,12 @@ test('the last answer stays above the composer and its soft scroll edge as the d
 test('tool activity follows smoothly, readers keep their place, and sending returns to the newest turn', async () => {
   await navigate('bots')
   const thread = page.locator('.bots-thread'), input = page.getByTestId('bots-input')
-  const id = await page.evaluate(async () => (await window.engram.botsList())[0]!.id)
   await input.fill('Continue with a new task')
   await input.press('Enter')
+  // The open conversation's lane, not botsList()[0] (the primary bot, which is not always the one open here).
+  const open = page.locator('.bots-row.active, .sidebar-primary-button.active')
+  await expect(open).toHaveCount(1)
+  const id = (await open.getAttribute('data-testid'))!.replace(/^bot-/, '')
   await expect.poll(() => thread.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThanOrEqual(2)
   await thread.evaluate(node => {
     const work = document.createElement('ol')

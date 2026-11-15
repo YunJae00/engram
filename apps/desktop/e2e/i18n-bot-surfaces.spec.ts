@@ -48,13 +48,13 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     await view.getByTestId('bots-title-pill').click()
     const pane = page.getByTestId('bot-info-pane')
     await expect(pane).toBeVisible()
-    const tabs = pane.getByRole('tab')
-    await expect(tabs).toHaveCount(5)
-    for (let i = 0; i < 5; i++) {
-      await tabs.nth(i).click()
-      overflow.push(...await overflowUnder(page))
-    }
+    // The details pane is one simple panel with no tab row, so its whole content is measured at once.
+    await expect(pane.getByRole('tab')).toHaveCount(0)
+    await expect(pane.getByRole('tablist')).toHaveCount(0)
+    overflow.push(...await overflowUnder(page))
     const paneWidth = (await pane.boundingBox())?.width ?? 0
+    // Esc closes the pane from inside it; with no tab row to click, put focus in the pane first as the tab clicks used to.
+    await pane.locator('button, input, textarea, [tabindex]:not([tabindex="-1"])').first().focus()
     await page.keyboard.press('Escape')
     await expect(pane).toBeHidden()
 

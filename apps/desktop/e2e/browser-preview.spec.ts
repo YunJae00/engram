@@ -172,7 +172,18 @@ test('preview stays within a narrow window, stays above the thread and supports 
   const thread = (await page.getByTestId('bots-thread').boundingBox())!
   expect(bounds.x).toBeGreaterThanOrEqual(main.x)
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(main.x + main.width + 1)
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(thread.y + 1)
+  // The card docks over the thread's top corner with no reserved band (live-card-keeps-chat), so "above the thread" means
+  // it stays in the thread's top band and covers no message bubble (live-card-no-cover).
+  expect(bounds.y).toBeGreaterThanOrEqual(main.y)
+  expect(bounds.y).toBeLessThanOrEqual(thread.y + thread.height / 2)
+  const covered = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="preview-card"]')!.getBoundingClientRect()
+    const view = document.querySelector('[data-testid="bots-thread"]')!.getBoundingClientRect()
+    return [...document.querySelectorAll('[data-testid="bots-thread"] .bubble-msg')].map(node => node.getBoundingClientRect())
+      .filter(box => box.bottom > view.top && box.top < view.bottom)
+      .map(box => Math.max(0, Math.min(box.right, card.right) - Math.max(box.left, card.left)) * Math.max(0, Math.min(box.bottom, card.bottom) - Math.max(box.top, card.top)))
+  })
+  expect(Math.max(0, ...covered)).toBeLessThanOrEqual(1)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(preview).toHaveCSS('animation-name', 'none')
   await page.screenshot({ path: join(shots, 'preview-narrow.png') })
@@ -224,10 +235,14 @@ test('status notices leave full and split conversation composers unobscured', as
         const input = (await composer.boundingBox())!
         return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
       }).toBe(true)
-      for (const banner of await page.locator('.connect-banner').all()) {
-        const box = (await banner.boundingBox())!
-        expect((await page.locator('.toast').boundingBox())!.y).toBeGreaterThanOrEqual(box.y + box.height)
-      }
+      // Since the toast redesign the notice is a transient floating card pinned 16px from the top-right corner (above the
+      // banner row, pointer-transparent), not anchored below the banner; it must stay fully inside the window.
+      for (const banner of await page.locator('.connect-banner').all()) await expect(banner).toBeVisible()
+      const toast = (await page.locator('.toast').boundingBox())!
+      expect(Math.round(toast.y)).toBe(16)
+      expect(toast.x).toBeGreaterThanOrEqual(0)
+      expect(toast.x + toast.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth) + 1)
+      await expect(page.locator('.toast')).toHaveCSS('pointer-events', 'none')
       await page.screenshot({ path: join(shots, `notice-${layout}-${width}.png`) })
     }
   }

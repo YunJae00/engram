@@ -52,7 +52,9 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   const targetRow = page.getByTestId(`bot-${target.id}`)
   const otherRow = page.getByTestId(`bot-${other.id}`)
   await expect(otherRow).toBeVisible()
-  await expect(targetRow).toHaveCount(0)
+  // With no 24h filter (bot sidebar redesign) the old conversation is listed, but its collapsed folder keeps it out of sight.
+  await expect(targetRow).toBeHidden()
+  await expect(page.getByTestId(`sidebar-folder-${before.chat.folders.find(one => one.name === 'Archive')!.id}`).locator('.sidebar-folder-head .sidebar-item-main')).toHaveAttribute('aria-expanded', 'false')
   const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
   for (const query of ['QX-7731', 'qx-7731']) {
     await page.getByTestId('sidebar-search-toggle').click(); await input.fill(query)
@@ -69,7 +71,7 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Clear search', exact: true }).click()
   await expect(otherRow).toBeVisible()
-  await expect(targetRow).toHaveCount(0)
-  await expect(page.getByTestId('sidebar-earlier')).toBeVisible()
+  await expect(targetRow).toBeHidden()
+  await expect(page.getByTestId('sidebar-earlier')).toHaveCount(0)
   expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
 })

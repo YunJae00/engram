@@ -6,7 +6,8 @@ import { expandPreview, openActivity } from './navigation.js'
 export async function checkMissionLiveView(app: ElectronApplication, page: Page, siteUrl: string, browserPort: number, output: string): Promise<void> {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
   const bots = await page.evaluate(async () => {
-    const first = (await window.engram.botsList())[0]!
+    // The watched conversation, not the primary Engram bot that a v2 list always starts with.
+    const first = (await window.engram.botsList()).find((bot) => bot.name === 'Watching')!
     const second = await window.engram.botCreate({ name: 'Parallel watch', purpose: '' })
     const third = await window.engram.botCreate({ name: 'Third watch', purpose: '' })
     const fourth = await window.engram.botCreate({ name: 'Fourth watch', purpose: '' })

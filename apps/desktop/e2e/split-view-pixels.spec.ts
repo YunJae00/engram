@@ -88,7 +88,7 @@ async function capture(): Promise<Capture> {
 }
 
 type Box = { left: number; top: number; right: number; bottom: number }
-type Probe = { thread: Box; bubbles: Box[]; bubbleBg: number[]; width: number }
+type Probe = { thread: Box; bubbles: (Box & { bg: number[] })[]; bubbleBg: number[]; width: number }
 
 function probe(index: number): Promise<Probe> {
   return page.getByTestId(`mission-tile-${index}`).evaluate((tile) => {
@@ -100,7 +100,16 @@ function probe(index: number): Promise<Probe> {
     tile.append(sample)
     const bubbleBg = getComputedStyle(sample).backgroundColor.match(/\d+/g)!.slice(0, 3).map(Number)
     sample.remove()
-    const bubbles = [...tile.querySelectorAll('.mini-chat-thread .bubble-msg')].map(rect)
+    // Light answers have no bubble of their own since Wave A (--assistant-bg: transparent), so each bubble is judged against
+    // the colour actually painted under it: its own background, or the first opaque ancestor's.
+    const painted = (node: Element | null): number[] => {
+      for (let at = node; at; at = at.parentElement) {
+        const rgba = getComputedStyle(at).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 0]
+        if ((rgba[3] ?? 1) > 0.9) return rgba.slice(0, 3)
+      }
+      return [255, 255, 255]
+    }
+    const bubbles = [...tile.querySelectorAll('.mini-chat-thread .bubble-msg')].map((node) => ({ ...rect(node), bg: painted(node) }))
       .filter((box) => box.left >= thread.left && box.right <= thread.right && box.top >= thread.top && box.bottom <= thread.bottom)
     return { thread, bubbles, bubbleBg, width: innerWidth }
   })
@@ -130,10 +139,10 @@ function judge(shot: Capture, spot: Probe, label: string): void {
   expect(spot.bubbles.length, `SPLIT-PIXELS ${label} no bubble fully inside thread box`).toBeGreaterThan(0)
   spot.bubbles.forEach((bubble, k) => {
     const edge = px(Math.round((bubble.left + 6) * scale), Math.round((bubble.top + bubble.bottom) / 2 * scale))
-    expect(diff(edge, spot.bubbleBg), `SPLIT-PIXELS ${label} bubble ${k} edge ${edge} vs --bubble-bg ${spot.bubbleBg}`).toBeLessThanOrEqual(8)
+    expect(diff(edge, bubble.bg), `SPLIT-PIXELS ${label} bubble ${k} edge ${edge} vs its background ${bubble.bg} (--bubble-bg ${spot.bubbleBg})`).toBeLessThanOrEqual(8)
     const inside = span(bubble)
     let ink = 0
-    for (let y = inside.y0; y < inside.y1; y++) for (let x = inside.x0; x < inside.x1; x++) if (diff(px(x, y), spot.bubbleBg) > 60) ink++
+    for (let y = inside.y0; y < inside.y1; y++) for (let x = inside.x0; x < inside.x1; x++) if (diff(px(x, y), bubble.bg) > 60) ink++
     expect(ink, `SPLIT-PIXELS ${label} bubble ${k} ink=${ink}`).toBeGreaterThanOrEqual(20)
   })
 }
