@@ -2,10 +2,12 @@
 .bot-orb {
   --orb: #8B7CF6; position: relative; display: block; width: 100%; height: 100%;
   border-radius: 50%; overflow: hidden; isolation: isolate; container-type: size;
+  /* Percent-based layers (cq units on the container itself would resolve against the viewport): thin rim, inner rim glow, center wash, dark glass body. */
   background:
-    radial-gradient(circle, color-mix(in srgb, var(--orb) 20%, transparent) 0%, transparent 64%),
-    radial-gradient(circle, rgba(14, 14, 20, 0.92) 0%, rgba(5, 5, 8, 0.96) 100%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orb) 36%, transparent), inset 0 0 12cqw color-mix(in srgb, var(--orb) 22%, transparent);
+    radial-gradient(circle closest-side, transparent 94%, color-mix(in srgb, var(--orb) 52%, transparent) 98.5%, color-mix(in srgb, var(--orb) 30%, transparent) 100%),
+    radial-gradient(circle closest-side, transparent 42%, color-mix(in srgb, var(--orb) 12%, transparent) 76%, color-mix(in srgb, var(--orb) 32%, transparent) 97%),
+    radial-gradient(circle at 52% 53%, color-mix(in srgb, var(--orb) 20%, transparent) 0%, transparent 48%),
+    radial-gradient(circle, rgba(13, 12, 18, 0.95) 0%, rgba(8, 8, 12, 0.96) 100%);
 }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
@@ -17,32 +19,48 @@
 .bot-orb[data-orb='orb-silver'] { --orb: #B8BCC8; }
 
 .bot-orb-ribbons, .bot-orb-ribbon, .bot-orb-core { position: absolute; inset: 0; width: 100%; height: 100%; }
-.bot-orb-ribbon { fill: var(--orb); opacity: 0.62; filter: blur(2cqw); transform: rotate(var(--a)) scaleY(var(--w, 1)); }
-.bot-orb-ribbon:nth-child(1) { --a: -28deg; }
-.bot-orb-ribbon:nth-child(2) { --a: 38deg; --w: 1.25; }
-.bot-orb-ribbon:nth-child(3) { --a: 104deg; --w: 0.8; opacity: 0.4; }
+.bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 52% 53%; }
+.bot-orb-ribbon {
+  overflow: visible; fill: color-mix(in srgb, var(--orb) 84%, #FFFFFF); fill-opacity: 0.34;
+  stroke: color-mix(in srgb, var(--orb) 62%, #FFFFFF); stroke-opacity: 0.6; stroke-width: clamp(0.5px, 1cqw, 1.6px); filter: blur(0.25cqw);
+  stroke-linejoin: round; vector-effect: non-scaling-stroke;
+  -webkit-mask-image: radial-gradient(circle at 52% 53%, #000 24%, rgba(0, 0, 0, 0.42) 80%);
+  mask-image: radial-gradient(circle at 52% 53%, #000 24%, rgba(0, 0, 0, 0.42) 80%);
+}
+.bot-orb-ribbon path { vector-effect: non-scaling-stroke; }
+.bot-orb-ribbon:nth-child(2) { fill-opacity: 0.32; }
+.bot-orb-ribbon:nth-child(3) { fill-opacity: 0.1; stroke-opacity: 0.3; -webkit-mask-image: none; mask-image: none; }
 .bot-orb-core {
-  inset: 32%; width: 36%; height: 36%; border-radius: 50%; opacity: 0.9;
-  background: radial-gradient(circle, #FFFFFF 0%, color-mix(in srgb, var(--orb) 55%, #FFFFFF) 22%, color-mix(in srgb, var(--orb) 60%, transparent) 46%, transparent 70%);
+  inset: auto; left: 32%; top: 33%; width: 40%; height: 40%; border-radius: 50%; opacity: 0.92;
+  background: radial-gradient(circle, #FFFFFF 0%, #FFFFFF 7%, color-mix(in srgb, var(--orb) 40%, #FFFFFF) 15%, color-mix(in srgb, var(--orb) 55%, transparent) 30%, color-mix(in srgb, var(--orb) 18%, transparent) 50%, transparent 70%);
+}
+@container (max-width: 40px) {
+  .bot-orb-ribbon { fill-opacity: 0.34; stroke-opacity: 0.9; }
+  .bot-orb-ribbon:nth-child(3) { fill-opacity: 0.1; stroke-opacity: 0.4; }
+  .bot-orb-core { left: 26%; top: 27%; width: 52%; height: 52%; }
 }
 .bot-orb[data-motion='working'] .bot-orb-core { opacity: 1; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon { opacity: 0.78; }
+.bot-orb[data-motion='working'] .bot-orb-ribbon { stroke-opacity: 0.9; }
 
+/* Idle: the twist sways and folds a little, the core breathes. Working: the twist turns, folds deeper, the core pulses. */
 .bot-orb[data-motion='idle'] .bot-orb-ribbons { animation: bot-orb-sway 12s ease-in-out infinite; will-change: transform; }
+.bot-orb[data-motion='idle'] .bot-orb-ribbon { --m: 0.5; animation: bot-orb-morph 11s ease-in-out infinite; will-change: transform; }
 .bot-orb[data-motion='idle'] .bot-orb-core { animation: bot-orb-breathe 10s ease-in-out infinite; will-change: transform, opacity; }
 .bot-orb[data-motion='working'] .bot-orb-ribbons { animation: bot-orb-turn 9s ease-in-out infinite; will-change: transform; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon { animation: bot-orb-morph 8s ease-in-out infinite; will-change: transform; }
+.bot-orb[data-motion='working'] .bot-orb-ribbon { --m: 1; animation: bot-orb-morph 8s ease-in-out infinite; will-change: transform; }
+.bot-orb[data-motion='idle'] .bot-orb-ribbon:nth-child(2),
 .bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(2) { animation-delay: -2.7s; }
+.bot-orb[data-motion='idle'] .bot-orb-ribbon:nth-child(3),
 .bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(3) { animation-delay: -5.3s; }
 .bot-orb[data-motion='working'] .bot-orb-core { animation: bot-orb-pulse 8s ease-in-out infinite; will-change: transform, opacity; }
 
 @keyframes bot-orb-sway {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
 }
 @keyframes bot-orb-breathe {
-  0%, 100% { transform: scale(0.96); opacity: 0.82; }
-  50% { transform: scale(1.04); opacity: 0.95; }
+  0%, 100% { transform: scale(0.94); opacity: 0.84; }
+  50% { transform: scale(1.06); opacity: 1; }
 }
 @keyframes bot-orb-turn {
   0% { transform: rotate(0deg); }
@@ -50,12 +68,13 @@
   100% { transform: rotate(360deg); }
 }
 @keyframes bot-orb-morph {
-  0%, 100% { transform: rotate(var(--a)) scaleY(var(--w, 1)); }
-  50% { transform: rotate(calc(var(--a) + 16deg)) scaleY(calc(var(--w, 1) * 1.35)); }
+  0%, 100% { transform: rotate(0deg) scale(1, 1); }
+  33% { transform: rotate(calc(var(--m, 1) * 9deg)) scale(calc(1 + var(--m, 1) * 0.06), calc(1 - var(--m, 1) * 0.1)); }
+  66% { transform: rotate(calc(var(--m, 1) * -6deg)) scale(calc(1 - var(--m, 1) * 0.04), calc(1 + var(--m, 1) * 0.08)); }
 }
 @keyframes bot-orb-pulse {
-  0%, 100% { transform: scale(0.92); opacity: 0.88; }
-  50% { transform: scale(1.2); opacity: 1; }
+  0%, 100% { transform: scale(0.9); opacity: 0.9; }
+  50% { transform: scale(1.18); opacity: 1; }
 }
 
 :root:not([data-window-focused='true']) .bot-orb,
