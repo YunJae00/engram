@@ -53,7 +53,7 @@ test('a thread started during a non-matching search keeps the query and appears 
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
   // The primary Engram bot always leads the list; the welcome send starts the newest other conversation.
   const created = await page.evaluate(() => window.engram.botsList().then(list => list.filter(bot => !bot.primary).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]!.id))
-  // Since 394e8cb5 a query found nowhere lists no conversation, even the open one: the typed query stays and the new thread is filtered out.
+  // A query found nowhere lists no conversation, even the open one (sidebar-search-open-chat, matchesSidebarSearch): the typed query stays and the new thread is filtered out until the search is cleared.
   await expect(search()).toHaveValue('nothing matches this')
   await expect(page.getByTestId(`bot-${created}`)).toHaveCount(0)
   await expect(page.getByText('No matches found', { exact: true })).toBeVisible()

@@ -223,6 +223,9 @@ test('status notices leave full and split conversation composers unobscured', as
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
       if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
       console.info('NOTICE_VIEWPORT', { layout, requestedWidth: width, ...await page.evaluate(() => ({ actualWidth: innerWidth, actualHeight: innerHeight })) })
+      // A toast under a still pointer pauses until the pointer moves (AppNotices hover pause); the layout click can leave the
+      // pointer where the previous toast sits, so move it to a neutral corner before waiting for the toast to leave.
+      await page.mouse.move(1, await page.evaluate(() => innerHeight - 2))
       await expect(page.locator('.toast')).toHaveCount(0)
       await app.evaluate(({ BrowserWindow }, context) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
         type: 'task:notice', message: `The current task is paused. Your work has been kept; continue when ready. (${context})`,

@@ -97,11 +97,14 @@ test('a finished web preview card in a 4-pane tile leaves the answer and its rep
   const pane = page.getByTestId(`mini-chat-${bots[0]!.id}`)
   await expect(pane.getByTestId('reply-chip-0')).toBeVisible()
   await expect(pane.getByTestId('preview-card')).toHaveCount(0)
-  const firstTop = () => pane.locator('.bubble-msg').first().evaluate((node) => node.getBoundingClientRect().top)
   const thread = pane.locator('.mini-chat-thread')
+  // Since 025bc0e9 the card docks over the thread's top corner and bubbles in its band flow beside it, so the transcript may
+  // re-wrap and scroll; "not moving the chat" means the thread box keeps its place and stays pinned to the latest answer.
+  const threadBox = () => thread.evaluate((node) => { const { top, bottom, left, right } = node.getBoundingClientRect(); return { top, bottom, left, right } })
+  const pinned = () => thread.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop <= 1)
   // Stick-to-bottom settles after the transcript paints, so measure from the pinned position.
-  await expect.poll(() => thread.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop <= 1)).toBe(true)
-  const before = await firstTop()
+  await expect.poll(pinned).toBe(true)
+  const before = await threadBox()
   const lane = `bot-${bots[0]!.id}`
 
   await page.evaluate(({ url, lane }) => window.engram.agentGo(url, lane), { url: siteUrl, lane })
@@ -110,7 +113,9 @@ test('a finished web preview card in a 4-pane tile leaves the answer and its rep
   await expect(card).toHaveAttribute('data-source', 'web')
   await expect(card.locator('canvas[data-painted]')).toHaveCount(1, { timeout: 20_000 })
   await pane.getByTestId('preview-deck').evaluate(async (node) => { await Promise.all(node.getAnimations({ subtree: true }).map((animation) => animation.finished)) })
-  expect(Math.abs(await firstTop() - before)).toBeLessThanOrEqual(1)
+  const after = await threadBox()
+  for (const side of ['top', 'bottom', 'left', 'right'] as const) expect(Math.abs(after[side] - before[side]), side).toBeLessThanOrEqual(1)
+  await expect.poll(pinned).toBe(true)
   await expectAnswerClear(pane)
 
   const size = { width: 320, height: 200 }
