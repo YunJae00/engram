@@ -48,6 +48,7 @@ import { closeOfficeHost, primeOffice } from './office-host.js'
 import { stopDesktopControl } from './desktop-control.js'
 import { developersRunning, registerDevIpc, stopDevelopers } from './dev-ipc.js'
 import { setTaskSurface } from './task-notify.js'
+import { setDialogSurface } from './dialog-owner.js'
 import { quickCometBounds } from './quick-comet.js'
 import { finishAppReset, registerAppReset } from './app-reset.js'
 import { mainFocus } from './away-summary.js'
@@ -80,6 +81,11 @@ function surfaceMain(): void {
   mainWin.focus()
 }
 setTaskSurface(surfaceMain)
+setDialogSurface(() => {
+  if (!mainWin || mainWin.isDestroyed()) return undefined
+  if (!isHidden) surfaceMain()
+  return mainWin
+})
 
 // Must run before anything resolves engines or spawns a pty — see the module
 // comment (macOS Dock launches get a PATH without claude/whisper/brew).

@@ -36,7 +36,7 @@ test('external browser tools capture masked screenshots and upload only approved
     await expect(shell.getByTestId('shell')).toBeVisible()
     await expect.poll(() => shell.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 60000 }).toBe(true)
     // Only this owned test process and localhost destination are approved.
-    await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (options: { buttons: string[] }) => ({ response: options.buttons.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (first: { buttons?: string[] }, second?: { buttons: string[] }) => ({ response: (second ?? first).buttons!.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
     await shell.evaluate(() => window.engram.mcpEnable(true))
     const endpoint = JSON.parse(await readFile(join(data, 'external-connection.json'), 'utf8'))
     socket = connect(endpoint.pipe)
@@ -101,7 +101,7 @@ test('external browser tools capture masked screenshots and upload only approved
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async () => ({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox })
     await expect(call('upload_file', upload)).rejects.toThrow('declined')
     expect(uploaded.length).toBe(0)
-    await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (options: { buttons: string[] }) => ({ response: options.buttons.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (first: { buttons?: string[] }, second?: { buttons: string[] }) => ({ response: (second ?? first).buttons!.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
     expect(JSON.parse(await call('upload_file', upload)).upload.status).toBe('confirmed')
     expect(createHash('sha256').update(uploaded).digest('hex')).toBe(after.sha256)
     await expect(call('upload_file', upload)).rejects.toThrow('duplicate')

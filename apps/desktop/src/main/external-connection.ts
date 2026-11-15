@@ -4,7 +4,7 @@ import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { app, dialog } from 'electron'
-import { visibleDialogOwner } from './dialog-owner.js'
+import { askOwner } from './dialog-owner.js'
 import { fromJSONSchema } from 'zod'
 import { addRoutine, appendBotTurn, callMemoryTool, cometTools, createBot, listRoutines, MEMORY_MCP_TOOLS, officeArithmeticFault, officeWriteUnverified, routineTask, routineTaskPrompt, type AgentLoopStep, type AgentTool } from 'core'
 import { agentCourier } from './agent-courier.js'
@@ -58,7 +58,7 @@ async function approve(name: string, args: Record<string, unknown>, signal: Abor
   signal.throwIfAborted()
   const detail = JSON.stringify(args, null, 2)
   if (detail.length > 16000) throw new Error('Request is too large to review. Split it into smaller operations.')
-  const owner = visibleDialogOwner()
+  const owner = askOwner()
   if (!owner) throw new Error('The person could not be asked because Engram is not on screen. Stop and explain what remains undone.')
   const answer = await dialog.showMessageBox(owner, { type: 'question', title: 'External AI request', message: name === KEEP.name ? 'Was this task completed correctly? Save it as a routine?' : `Allow ${name}?`, detail: `An external client requests this operation. Returned data will be sent to that client and may reach its AI provider. Only this operation is approved.\n\n${detail}`, buttons: ['Deny', name === KEEP.name ? 'Confirm and save' : 'Allow once'], defaultId: 0, cancelId: 0, signal })
   signal.throwIfAborted()

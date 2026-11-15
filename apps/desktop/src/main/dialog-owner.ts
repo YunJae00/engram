@@ -9,3 +9,15 @@ export function visibleDialogOwner(): BrowserWindow | undefined {
   if (focused && !focused.isDestroyed() && focused.isVisible()) return focused
   return BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.isVisible())
 }
+
+// When Engram is in the background its main window is brought forward and the
+// question is a sheet on it (hidden test runs keep it unshown). The host sets
+// how; without one, nothing is asked.
+let surface: () => BrowserWindow | undefined = () => undefined
+export function setDialogSurface(next: typeof surface): void { surface = next }
+export function askOwner(): BrowserWindow | undefined {
+  const visible = visibleDialogOwner()
+  if (visible) return visible
+  const window = surface()
+  return window && !window.isDestroyed() ? window : undefined
+}

@@ -21,6 +21,7 @@ vi.mock('../src/main/work-evidence.js', () => ({ workEvidenceTools: () => [] }))
 vi.mock('../src/main/settings.js', () => ({ loadSettings: async () => fake.settings }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: () => {} }))
 import { externalInfoPath, externalOwns, externalStatus, setExternalContext, setExternalEnabled } from '../src/main/external-connection.js'
+import { setDialogSurface } from '../src/main/dialog-owner.js'
 
 const clients: Socket[] = []
 afterEach(async () => { clients.forEach(socket => socket.destroy()); clients.length = 0; await setExternalEnabled(false) })
@@ -58,6 +59,13 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   const asked = fake.approve.mock.calls.length
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('not on screen')
   expect(fake.approve.mock.calls.length).toBe(asked)
+  // In the background, the host brings Engram's window forward and asks on it.
+  const background = { isDestroyed: () => false, isVisible: () => false }
+  setDialogSurface(() => background as never)
+  fake.approve.mockResolvedValueOnce({ response: 0 })
+  expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('declined')
+  expect(fake.approve.mock.calls.at(-1)![0]).toBe(background)
+  setDialogSurface(() => undefined)
   shown.visible = true
   fake.approve.mockResolvedValue({ response: 1 })
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toBeUndefined()
