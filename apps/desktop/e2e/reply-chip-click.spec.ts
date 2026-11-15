@@ -45,9 +45,13 @@ async function resolveFirst() { await app.evaluate(() => (globalThis as Fixture)
 async function done(text: string) { await broadcast({ type: 'chat:done', channel: `bot-${botId}`, text }) }
 const userBubbles = () => page.locator('.bubble-msg.user')
 // Settled turns use `content-visibility: auto`: until a rendering update marks them on-screen they lay out at their 80px
-// placeholder, so the chips under them sit ~70px lower than where they land. Measure the chips only once every turn rendered.
+// placeholder, so the chips under them sit ~70px lower than where they land. Measure the chips only once every turn's
+// contents rendered (the turn itself always reports visible; only what is inside it is skipped).
 async function turnsRendered() {
-  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.bots-thread .bubble-turn')].every(turn => turn.checkVisibility({ contentVisibilityAuto: true }))), { message: 'thread turns rendered' }).toBe(true)
+  await expect.poll(() => page.evaluate(() => {
+    const inner = [...document.querySelectorAll<HTMLElement>('.bots-thread .bubble-turn > *')]
+    return inner.length > 0 && inner.every(el => el.checkVisibility({ contentVisibilityAuto: true }))
+  }), { message: 'thread turns rendered' }).toBe(true)
 }
 
 test('a defer chip is the element under the pointer and sends its label once', async () => {
