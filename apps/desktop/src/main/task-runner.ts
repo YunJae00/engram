@@ -42,20 +42,24 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
 const CORRECTION_WORDS = /아니라|아닌|아니고|정정|수정|잘못|틀렸|틀린|바로잡|\bnot\b|n['’]t\b|\binstead\b|\bcorrect(?:ed|ion|ing)|\bactually\b|\bwrong|\bmistake/i
-const LINK_TARGETS = /\]\(([^\s)]+)\)|\bhttps?:\/\/[^\s)\]]+/g
-const facts = (text: string) => {
-  const links = [...text.matchAll(LINK_TARGETS)].map(match => (match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1'))
-  // Link targets are compared on their own; a saved copy's id must not read as new numbers.
-  const prose = text.replace(LINK_TARGETS, ' ')
-  return { links, prose, numbers: [...(prose.match(/\d+(?:[.,]\d+)*%?/g) ?? [])] as string[] }
-}
+// One pass over an answer: link target | bare link | quoted or backticked value (six forms) | number | word | currency or percent sign.
+const TOKEN = /\]\(([^\s)]+)\)|\bhttps?:\/\/[^\s)\]]+|`([^`\n]+)`|"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|「([^」\n]+)」|(?<![\p{L}\p{N}])'([^'\n]+)'(?![\p{L}\p{N}])|((?<![\p{L}\p{N}])[-+−]?\d+(?:[.,]\d+)*%?)|[\p{L}\p{M}][\p{L}\p{M}\p{N}]*|[\p{Sc}%]/gu
+// The text as a sequence of tokens, values marked. NFKC folds full-width forms; punctuation and markdown emphasis are simply not tokens.
+const tokens = (text: string) => [...text.normalize('NFKC').matchAll(TOKEN)].map((match) => {
+  const quoted = match.slice(2, 8).find(one => one !== undefined)
+  // A saved copy's id must not make the same file read as a new link.
+  if (match[1] !== undefined || /^https?:/i.test(match[0])) return { value: true, text: `L ${(match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1')}` }
+  if (quoted !== undefined) return { value: true, text: `Q ${quoted.trim().replace(/\s+/g, ' ').toLowerCase()}` }
+  if (match[8] !== undefined) return { value: true, text: `N ${match[8].replace('−', '-')}` }
+  return { value: false, text: `W ${match[0].toLowerCase()}` }
+})
 /** True only when a re-check answer states nothing the delivered report lacks: no correction wording, and every number, link target and
- *  quoted or backticked value of it is already in the report. The host's own reading beside the model's reportUnchanged; unsure means post. */
+ *  quoted or backticked value of it stands in the report between the same neighbouring tokens (so a swapped value or a changed unit is
+ *  seen, not just a new value). The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   if (CORRECTION_WORDS.test(answer)) return false
-  const said = facts(answer), had = facts(report)
-  const quoted = [...said.prose.matchAll(/`([^`\n]+)`|"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|「([^」\n]+)」|(?<![\p{L}\p{N}])'([^'\n]+)'(?![\p{L}\p{N}])/gu)].map(match => match.slice(1).find(Boolean)!.trim())
-  return said.numbers.every(one => had.numbers.includes(one)) && said.links.every(one => had.links.includes(one)) && quoted.every(one => had.prose.includes(one))
+  const said = tokens(answer), had = `\n${tokens(report).map(one => one.text).join('\n')}\n`
+  return said.every((one, at) => !one.value || had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).map(each => each.text).join('\n')}\n`))
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }

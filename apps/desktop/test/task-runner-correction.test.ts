@@ -111,3 +111,26 @@ it('reads whether a re-check answer adds anything to the delivered report', () =
   expect(recheckAddsNothing('The total is 12. See https://example.com/a', report)).toBe(false)
   expect(recheckAddsNothing('I corrected the wording; the total is 12.', report)).toBe(false)
 })
+// qa142 p2b-r4: values are compared where they stand, not as a bag; a swap or a unit change of values the report already has is posted.
+it('posts a re-check that swaps values or changes a unit the delivered report already has', () => {
+  expect(recheckAddsNothing('A: 14; B: 12.', 'A: 12; B: 14.')).toBe(false)
+  expect(recheckAddsNothing('Total: 12 kg.', 'Total: 12 lb.')).toBe(false)
+  expect(recheckAddsNothing('Total: $12.', 'Total: €12.')).toBe(false)
+  expect(recheckAddsNothing('Total: -12.', 'Total: 12.')).toBe(false)
+  expect(recheckAddsNothing('`a.csv` has 14 rows, `b.csv` has 12.', '`a.csv` has 12 rows, `b.csv` has 14.')).toBe(false)
+  expect(recheckAddsNothing('합계 14건, 오류 12건', '합계 12건, 오류 14건')).toBe(false)
+})
+it('stays silent when a re-check restates the values in the same context', () => {
+  expect(recheckAddsNothing('A: 12; B: 14.', 'A: 12; B: 14.')).toBe(true)
+  expect(recheckAddsNothing('Checked again. A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(true)
+  expect(recheckAddsNothing('checked again — **a**: １２; b: *14*.', 'Saved. A: 12; B: 14.')).toBe(true)
+  expect(recheckAddsNothing('다시 확인함. 합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(true)
+})
+it('posts through the runner a swap the re-check calls unchanged', async () => {
+  const swapped = 'A: 14; B: 12. [Report](engram-artifact:report.md)'
+  const t = await setup(async (_request, turn) => turn === 1
+    ? { ...done('A: 12; B: 14. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: ['Row count not read back'], report: passed } }
+    : { ...done(swapped, 1), check: { accepted: true, issues: [], report: passed, reportUnchanged: true }, trail: readback })
+  await t.chat('Save the report')
+  expect(t.delivered).toEqual([swapped])
+})
