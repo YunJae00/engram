@@ -398,3 +398,35 @@ it('remaps nearby controls to the fresh post-set snapshot by runtime identity', 
   const result = JSON.parse(await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c3', text: 'Draft' }, { task: 'Draft' }))
   expect(result.nearby).toEqual([expect.objectContaining({ id: 'c7', snapshot: 'b'.repeat(32), appeared: true })])
 })
+
+// qa142 p2b-r1 #4: the quiet app_do send and the foreground send said only `Allow "Send" in "window:…"?`, so the card had no app name and no text.
+describe('send card on the app_do and foreground paths', () => {
+  const load = async (nodes: unknown[] = []) => {
+    const control = { ...await import('../src/main/desktop-control.js') }
+    vi.resetModules()
+    vi.doMock('../src/main/brain-connections.js', () => ({ brainConnection: () => ({}) }))
+    vi.doMock('../src/main/desktop-quiet-do.js', async original => ({ ...await original<typeof import('../src/main/desktop-quiet-do.js')>(), formatDo: () => '{}', quietDo: async (request: { approveSend?: (snapshot: string, scope?: string) => Promise<boolean> }) => { await request.approveSend?.('snap', 'scope'); return {} } }))
+    vi.doMock('../src/main/desktop-control.js', () => ({ ...control, desktopObservation: () => ({ ...observation(), nodes }) }))
+    return (await import('../src/main/desktop-agent.js')).desktopAgentTools('bot-one')
+  }
+  const run = async (name: string, args: Record<string, unknown>, nodes?: unknown[]) => {
+    const approveAppAction = vi.fn(async () => false)
+    await (await load(nodes)).find(tool => tool.name === name)!.run(args, Object.assign({ task: 'Send' }, { approveAppAction }))
+    return approveAppAction
+  }
+  const draft = (value: string, password = false) => ({ id: 'e1', name: 'Message', controlType: 'TextArea', value, ...(password ? { password } : {}) })
+  it('names the app and the text app_do is about to send', async () => {
+    const asked = await run('app_do', { app: 'window:42:0', goal: 'Send the note', text: '내일 3시에 봬요', send: true })
+    expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: '내일 3시에 봬요' })
+  })
+  it('shows no text from app_do while a secret field holds a value', async () => {
+    fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c1', type: 'Edit', name: 'Password', value: '••••', secret: true, can: { set: true } }], texts: [] })
+    const asked = await run('app_do', { app: 'window:42:0', goal: 'Sign in', text: 'hunter2-secret', send: true })
+    expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: undefined })
+  })
+  it('names the app and the draft on a foreground Enter, and never a password field', async () => {
+    const enter = { kind: 'key', snapshot: 'fresh', key: 'Enter' }
+    expect(await run('desktop_action', enter, [draft('회의 자료 보냅니다')])).toHaveBeenCalledWith('Fixture', 'Send', 'fresh', undefined, { app: 'Fixture', sending: '회의 자료 보냅니다' })
+    expect(await run('desktop_action', enter, [draft('회의 자료 보냅니다'), draft('hunter2', true)])).toHaveBeenCalledWith('Fixture', 'Send', 'fresh', undefined, { app: 'Fixture', sending: undefined })
+  })
+})

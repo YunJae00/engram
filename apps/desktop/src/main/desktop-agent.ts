@@ -22,6 +22,13 @@ import { brainConnection } from './brain-connections.js'
 import { outcomeChain } from './desktop-outcome.js'
 import { sendsKey, typeArgs, typedReport, typedUnverified, withTypeReceipt, type TypeReceipt } from './desktop-text-insert.js'
 
+// What a send card may show as going out: the text given to type, else the draft in a field. Nothing when
+// any secret field holds a value, since the text cannot be tied to one field here.
+export function shownDraft(fields: { value?: string | null | undefined; secret: boolean }[] | undefined, typed?: string): string | undefined {
+  if (fields?.some(field => field.secret && !!field.value)) return undefined
+  return typed?.trim() || fields?.find(field => !!field.value)?.value || undefined
+}
+
 const mayRetryClick = (node: DesktopNodeDto) => !irreversibleName(node.name) && !/CheckBox|RadioButton|Switch|Toggle/i.test(node.controlType)
 
 async function lookDesktop(lane: string, signal?: AbortSignal, app?: string): Promise<ToolOutcome> {
@@ -124,7 +131,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
-    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
+    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope, { app: desktopBinding(lane)?.name, sending: shownDraft(quietSnapshot(snapshot)?.controls.map(item => ({ value: item.can.set ? item.value : undefined, secret: item.secret })), text) }) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   let handover: Promise<void> | undefined
   const chain = outcomeChain()
@@ -168,10 +175,15 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       throw new Error(`Computer control stopped: ${current.reason ?? 'control is no longer active'}. Ask the person before requesting it again.`)
     }
   }
-  const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => !!await context.approveAppAction?.(desktopBinding(lane)?.name ?? 'this app', 'Send', snapshot)
+  const FIELD = /Text(Area|Field)|ComboBox|SearchField|TextEdit|Edit\b/i
+  const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => {
+    const name = desktopBinding(lane)?.name
+    let fields: Parameters<typeof shownDraft>[0]
+    try { fields = desktopObservation(lane, snapshot).nodes.map(node => ({ value: FIELD.test(node.controlType) ? node.value : undefined, secret: !!(node.password || node.isPassword) })) } catch { /* An unknown snapshot shows no text; the card still asks. */ }
+    return !!await context.approveAppAction?.(name ?? 'this app', 'Send', snapshot, undefined, { app: name, sending: shownDraft(fields) })
+  }
   // Enter, Space on a focused button, or a click on a control named like Send/Submit/Delete can send or commit; once
   // text has been typed and not yet sent, any click that is not on a text field (an icon-only Send has no name) asks too.
-  const FIELD = /Text(Area|Field)|ComboBox|SearchField|TextEdit|Edit\b/i
   const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; controlType?: string; element?: string } }, afterTyping = typedUnsent.has(lane)): boolean => {
     if (sendsKey(action)) return true
     if (action.kind === 'key' && action.key !== 'Space') return false
