@@ -92,7 +92,8 @@ export interface FileWorkOptions {
   // through approveRead - so a look does not hand over what a file holds.
   findFiles?(query: string, signal?: AbortSignal): Promise<FileSearchResult>
   // Folders where a script may have built a deliverable, handed in by path.
-  handInRoots?: string[]
+  // A function lets the host validate them (links, workspace) at each hand-in.
+  handInRoots?: string[] | (() => Promise<string[]>)
 }
 
 function nameOf(value: unknown, document = false, media = false): string {
@@ -233,7 +234,8 @@ export function fileWorkTools(options: FileWorkOptions): AgentTool[] {
   const handIn = async (requested: unknown, name: string, signal?: AbortSignal) => {
     options.assertActive?.()
     signal?.throwIfAborted()
-    const roots = await Promise.all((options.handInRoots ?? []).map((root) => realpath(root)))
+    const listed = typeof options.handInRoots === 'function' ? await options.handInRoots() : options.handInRoots ?? []
+    const roots = await Promise.all(listed.map((root) => realpath(root)))
     if (typeof requested !== 'string' || !isAbsolute(requested) || !roots.length) throw new Error('fromPath must be an absolute path inside the task folder.')
     const path = await realpath(requested)
     if (!roots.some((root) => inside(root, path))) throw new Error('fromPath must point inside the task folder; other files are read with file_read and copied by content.')

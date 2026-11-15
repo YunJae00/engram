@@ -194,26 +194,31 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     active()
     return JSON.stringify(await save(name, data))
   }
+  // This task's folders, each checked to be a real folder (not a link) inside
+  // the workspace's task folders; core hands in from these alone (codex p1 r3).
+  const ownRoots = async (): Promise<string[]> => {
+    const realTaskRoot = await realpath(taskRoot(paths)).catch(() => '')
+    const own = await Promise.all(handInRoots.map(root => ensureTaskFolder(paths, root).then(real => realTaskRoot && within(realTaskRoot, real) ? real : '', () => '')))
+    return own.filter(Boolean)
+  }
   const assertReadable = async (path: string) => {
     if (within(await realpath(paths.privateDir), path)) throw new Error('Private vault files are not available to the agent.')
   }
   return [...fileWorkTools({
     directory: artifactDirectory(paths),
-    handInRoots,
+    handInRoots: ownRoots,
     assertActive: active,
     assertReadable,
     findFiles: (query, signal) => findLocalFiles(USER_FOLDERS.map((dir) => app.getPath(dir)), paths.privateDir, query, signal),
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
-      const realTaskRoot = await realpath(taskRoot(paths)).catch(() => '')
       await assertReadable(path)
       if (approved.has(path) && await realpath(path) === path) return true
       const real = await realpath(path)
       // This task's folder: files the comet built itself, which its own file
       // tools also read without asking. Its handed-in outputs are in `approved`.
       // A folder that is a link or leads out of the workspace's task folders is not trusted.
-      const own = await Promise.all(handInRoots.map(root => ensureTaskFolder(paths, root).then(real => within(realTaskRoot, real) ? real : '', () => '')))
-      if (own.some(root => root && within(root, real))) return true
+      if ((await ownRoots()).some(root => within(root, real))) return true
       // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
       if (roots.some(root => root && within(root, real))) return true

@@ -185,3 +185,20 @@ it.skipIf(process.platform === 'win32')('does not trust a task folder that is a 
   expect(String(result)).not.toContain('other chat')
   expect(ask).toHaveBeenCalledOnce()
 })
+
+// codex p1 r3: the hand-in path (file_create_copy fromPath) used the raw task
+// folder, so a linked folder let the comet copy another chat's file unasked.
+it.skipIf(process.platform === 'win32')('does not hand in another chat\'s file through a linked task folder', async () => {
+  const other = join(root, 'workspace', 'tasks', 'other')
+  await mkdir(other, { recursive: true })
+  await writeFile(join(other, 'notes.txt'), 'other chat')
+  const linked = join(root, 'workspace', 'tasks', 'lane')
+  await symlink(other, linked)
+  const ask = vi.fn().mockResolvedValue('approve')
+  const tool = hostFileTools(vaultPaths(root), 'lane', [], [linked], { ask }).find(t => t.name === 'file_create_copy')!
+  const result = await tool.run({ name: 'stolen.txt', fromPath: join(linked, 'notes.txt') }, { task: 'Copy notes.' }).catch((error: Error) => error.message)
+  expect(String(result)).not.toContain('other chat')
+  expect(String(result)).toMatch(/task folder/)
+  await expect(readdir(join(root, 'workspace', 'outputs')).catch(() => [])).resolves.not.toContain('stolen.txt')
+  expect(ask).not.toHaveBeenCalled()
+})
