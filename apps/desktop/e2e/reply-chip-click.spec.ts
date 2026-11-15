@@ -86,6 +86,7 @@ test('a chip clicked while the previous chat:send is unresolved shows at once an
 test('a chip and a typed message queued behind an unresolved send each show once, in order', async () => {
   await page.getByTestId('reply-chip-0').click()
   await done('Done.\n\n```replies\nA\nB\n```')
+  await expect(page.getByTestId('reply-chip-0')).toHaveText('A')
   await page.getByTestId('reply-chip-0').click()
   const input = page.getByTestId('bots-input')
   await input.fill('typed next'); await input.press('Enter')
@@ -99,7 +100,11 @@ test('a chip and a typed message queued behind an unresolved send each show once
 })
 
 test('a press held across a background busy blip still clicks the same chip', async () => {
+  // Broadcasts land in the renderer asynchronously: wait for each half of the blip, so a late one cannot move or hide
+  // the chip after it is measured or stand in for the busy state of the held press below.
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: true })
+  await expect(page.getByTestId('bots-typing')).toBeVisible()
+  await expect(page.getByTestId('reply-chips')).toBeHidden()
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: false })
   await expect(page.getByTestId('bots-typing')).toBeHidden()
   await expect(page.getByTestId('reply-chip-0')).toBeVisible()
