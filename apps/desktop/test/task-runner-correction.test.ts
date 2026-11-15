@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { listTasks } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { recheckAddsNothing } from '../src/main/task-runner.js'
+import { dropHeldDraft } from '../src/main/task-result-state.js'
 
 it('preserves the engine answer and reported limitations through one verification retry', async () => {
   const answer = 'Updated the report. The external source is unavailable.'
@@ -321,6 +322,42 @@ it('posts a report whose re-check the app never finished, from the task, after a
   expect(task.unshown).toBeUndefined()
   await next.runner.resume()
   expect(next.delivered).toEqual([report])
+})
+
+// qa143 p2 r5 (S19d): the host dropped the held answer's visible draft before the runner saved it on the task, so a quit between the two left
+// the report neither on screen, in the thread, nor on disk. It is saved first: a quit right at the drop still leaves it for resume to post.
+it('posts a held report after a restart when the app quit right as its draft was dropped', async () => {
+  const report = 'Saved 12 rows. [Report](engram-artifact:report.md)'
+  const first = await setup(async () => ({ ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }), false)
+  // The app quits here: the turn never returns to the runner, so nothing after the drop runs.
+  first.hooks.afterDrop = () => new Promise<never>(() => {})
+  void first.chat('Save the report').catch(() => undefined)
+  await vi.waitFor(() => expect(first.events).toContainEqual(expect.objectContaining({ type: 'chat:token', drop: true })))
+  expect(first.sent).toHaveLength(1)
+  expect(first.delivered).toEqual([])
+  expect((await listTasks(first.paths))[0]).toMatchObject({ state: 'running', unshown: report })
+  const next = await setup(async () => undefined, false, undefined, undefined, first.paths)
+  await next.runner.resume()
+  expect(next.delivered).toEqual([report])
+  expect((await listTasks(next.paths))[0]!.unshown).toBeUndefined()
+})
+it('saves a held answer before its draft leaves the screen, and drops a draft nobody saves', async () => {
+  const order: string[] = []
+  await dropHeldDraft({ saveHeld: async (answer) => { await new Promise(resolve => setTimeout(resolve, 5)); order.push(`saved ${answer}`) } }, 'report', () => order.push('dropped'))
+  await dropHeldDraft(undefined, 're-check', () => order.push('dropped'))
+  expect(order).toEqual(['saved report', 'dropped', 'dropped'])
+})
+// A held answer that is not re-checked after all (the task waits on a card) is posted once and nothing stays saved.
+it('posts once a held answer whose task then waits, and keeps none of it saved', async () => {
+  const report = 'Merged both leads.'
+  const t = await setup(async (request, _turn, _extra, runner) => {
+    await runner.askFor(request.channel!, async () => 'approve', 0)!({ words: 'Send', url: 'https://example.test/draft' })
+    return { ...done(report, 1), trail: [{ tool: 'hire_members', args: {}, observation: 'Hired two leads.' }] }
+  }, false)
+  void t.chat('Merge the leads').catch(() => undefined)
+  await vi.waitFor(async () => expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting' }))
+  await vi.waitFor(() => expect(t.delivered).toEqual([report]))
+  expect((await listTasks(t.paths))[0]!.unshown).toBeUndefined()
 })
 
 // Whatever the re-check then does, nothing stays saved as unshown once the thread has the report or the answer that replaced it.

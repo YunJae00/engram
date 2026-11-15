@@ -10,7 +10,7 @@ const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => unknow
 vi.mock('electron', () => ({ ipcMain: { handle: (name: string, fn: (...args: unknown[]) => unknown) => handlers.set(name, fn) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: () => {} }))
 import { taskRunner, type TaskTurn, type TurnOutcome } from '../src/main/task-runner.js'
-import { holdTaskResult } from '../src/main/task-result-state.js'
+import { dropHeldDraft, holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome | undefined>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
@@ -22,6 +22,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
   await mkdir(paths.inbox, { recursive: true })
   const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], evidences: TurnEvidence[] = []
   let last: TurnOutcome | undefined
+  const hooks: { afterDrop?: () => Promise<void> } = {}
   const aborted: { resolve?: () => void } = {}
   const runner: ReturnType<typeof taskRunner> = taskRunner({
     paths,
@@ -33,6 +34,8 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
       if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
       // The host keeps checked work and the check itself out of the thread; the runner delivers once.
       last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra, last.check)
+      // As ipc.ts does: the held answer is saved before its draft is dropped. hooks.afterDrop stands in for whatever the app does next (or a quit there).
+      if (last.held) { await dropHeldDraft(extra, last.answer, () => events.push({ type: 'chat:token', channel: request.channel ?? '', text: '', reset: true, drop: true })); await hooks.afterDrop?.() }
     },
     outcome: () => { const o = last; last = undefined; return o },
     abort: () => { aborted.resolve?.() },
@@ -54,7 +57,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, sent, events, remembered, notified, learned, delivered, evidences, aborted, call, chat, settle }
+  return { paths, runner, hooks, sent, events, remembered, notified, learned, delivered, evidences, aborted, call, chat, settle }
 }
 
 // A press that commits something, as an approved Save or Submit does; a plain navigation press carries no `committed`.

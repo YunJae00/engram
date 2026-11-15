@@ -53,7 +53,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -125,6 +125,7 @@ export function taskRunner(deps: {
   // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when the
   // re-check ends the task done on its own answer, and posted before any other re-check answer or ending (flush), so it is never lost.
   // The transcript does not have it yet, so it is also saved on the task (task.unshown): a quit or crash during the re-check leaves it for resume to post.
+  // It is saved (saveHeld) before the host drops the answer's visible draft, so no moment has the report neither on screen nor on disk (qa143 p2 r5 S19d).
   const unshown = new Map<string, string>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
@@ -169,7 +170,12 @@ export function taskRunner(deps: {
     refusedThisTurn.delete(id)
     // The answers this runner re-checks before calling the task done (see the branches below): a team's report, and a result whose own check is not clean, once.
     const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members'))
-    await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    // A re-check's own answer has no visible draft and is not saved: the report it re-checks is. An earlier report still waiting is posted, never overwritten.
+    const saveHeld: TaskTurn['saveHeld'] = extra?.verification ? undefined : async (answer) => {
+      if (unshown.get(id) !== answer) await flush(started)
+      unshown.set(id, answer); await edit(id, t => { t.unshown = answer })
+    }
+    await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, ...(saveHeld ? { saveHeld } : {}), tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
     const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
@@ -251,12 +257,13 @@ export function taskRunner(deps: {
     if (after && outcome?.held && after.result) {
       // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
       if (repeats || kept) await flush(after)
-      // Held for the re-check that starts now: that turn's answer is the one posted.
-      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id)) { const report = after.result; unshown.set(id, report); await edit(id, t => { t.unshown = report }) }
+      // Held for the re-check that starts now: that turn's answer is the one posted. The report stays saved (saveHeld) until then.
+      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id) && unshown.get(id) === after.result) { /* waits */ }
       else {
         // The re-check's answer stands in for the waiting report only when it is that report checked again: the task ended done on it, or lacks only its
         // readback turn. Any other re-check answer ("I could not verify it") is a note on the report, posted after it; an exact restatement is posted once.
-        const draft = unshown.get(id), replaced = draft !== undefined && (after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft))
+        // A turn that is no re-check saved its own answer as the draft: posting that answer is posting the draft.
+        const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
         if (!replaced) await flush(after)
         await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
         if (replaced) await shown(id)

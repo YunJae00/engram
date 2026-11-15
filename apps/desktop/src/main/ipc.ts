@@ -167,7 +167,7 @@ import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
 import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
-import { canLearnTurn, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
+import { canLearnTurn, dropHeldDraft, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { taskNotices, surfaceComet } from './task-notify.js'
 import { isKorean, keepStopMark } from './task-closing.js'
@@ -2833,7 +2833,7 @@ export function registerIpc(ctx: VaultContext): void {
         signal.throwIfAborted()
         turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
         if (held) {
-          broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true })
+          await dropHeldDraft(turn, result.answer, () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }))
         } else {
           await deliverAnswer(
             `${result.answer}${note}`,

@@ -12,6 +12,13 @@ export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' 
   return !result.stopped && !result.incomplete && turn?.holdIf?.(result.answer, result.steps, check) === true
 }
 
+// A held answer leaves the screen only once the runner has saved it: dropped first, a quit or crash before the save left the report neither in
+// the thread nor on the task, and resume had nothing to post (qa143 p2 r5 S19d).
+export async function dropHeldDraft(turn: { saveHeld?: (answer: string) => Promise<void> } | undefined, answer: string, drop: () => void): Promise<void> {
+  await turn?.saveHeld?.(answer)
+  drop()
+}
+
 export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
 // Whether a turn changed a result: any successful RESULT_CHANGES step, a rendered file, a native file write, or a command that may have written
 // a file (commandChanged, the one rule freshness and the post-check list use; a failed command may still have written, so it counts too).
