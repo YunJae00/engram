@@ -2902,7 +2902,11 @@ export function registerIpc(ctx: VaultContext): void {
           resendAfterOutage = true
           broadcast({ type: 'comet:step', channel, line: `outage: ${brainName(engine.id)}` })
         }
-        else broadcast({ type: 'chat:error', channel, message: said, kind, provider: brainName(engine.id) })
+        else {
+          broadcast({ type: 'chat:error', channel, message: said, kind, provider: brainName(engine.id) })
+          // An outage can pass, so its task still closes offering to continue; any other error says only itself.
+          if (kind !== 'outage') turnOutcomes.set(channel, { answer: '', asked: false, unfinished: true, steps: 0, errored: said })
+        }
         void noteEngineFailure(engine, kind, ctx).then(() =>
           revalidateEngines(ctx),
         )

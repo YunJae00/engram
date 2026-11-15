@@ -24,3 +24,15 @@ it('says a paused task with unconfirmed checks in the language of the conversati
   expect(displayTaskAnswer(line, 'ko')).toBe('결과는 나왔지만 일부를 확인하지 못했어요. 어떻게 이어갈지 알려주세요.')
   expect(displayTaskAnswer(line, 'en')).not.toContain('unresolved checks')
 })
+
+it('shows the error card in the language of the conversation', async () => {
+  const { createElement } = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { ErrorAnswer } = await import('../src/renderer/src/components/ErrorAnswer.js')
+  const ko = renderToStaticMarkup(createElement(ErrorAnswer, { text: 'API Error: 400 does not support this model', lang: 'ko' }))
+  expect(ko).toContain('요청을 끝내지 못했어요')
+  expect(ko).toContain('오류 내용')
+  expect(ko).toContain('오류 복사')
+  for (const english of ['Could not complete this request', 'Error details', 'Copy error']) expect(ko).not.toContain(english)
+  expect(renderToStaticMarkup(createElement(ErrorAnswer, { text: 'Boom', lang: 'en' }))).toContain('Could not complete this request')
+})

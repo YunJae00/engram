@@ -37,7 +37,7 @@ import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
 
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean }
+export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
 export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 const AUTO_CONTINUE_MAX = 3
@@ -146,6 +146,7 @@ export function taskRunner(deps: {
       delete t.verificationPending
       const pending = t.approvals.filter((a) => !a.answer)
       if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
+      else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
@@ -176,7 +177,8 @@ export function taskRunner(deps: {
       } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t)) { verifyNext.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     if (after && outcome?.held && after.result) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
-    if (after?.state === 'failed' && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
+    // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
+    if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after
   }
 

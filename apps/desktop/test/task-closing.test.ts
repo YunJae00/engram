@@ -145,6 +145,15 @@ describe('p0-stop-honest leftovers', () => {
     }
   })
 
+  it('a provider error the thread already shows ends the task without a "say continue" closing', async () => {
+    const t = await setup(async () => ({ answer: '', asked: false, unfinished: true, steps: 0, errored: 'API Error: 400 does not support this model' }))
+    await t.chat('회의록 정리해줘')
+    const task = await t.settle('failed')
+    expect(task.log.at(-1)!.line).toBe('Failed: API Error: 400 does not support this model')
+    expect(texts(t.events, 'chat:done')).toEqual([])
+    expect(await readBotTranscript(t.paths, 'bot-1')).toEqual([])
+  })
+
   it('picks the notice language from the latest person message', () => {
     expect(noticeText({ state: 'done', goal: 'Prepare the report', approvals: [] }, [{ role: 'user', text: '보고서 정리해줘' }])[0]).toBe('Engram: 다 했어요')
     expect(noticeText({ state: 'done', goal: '보고서 정리', approvals: [] }, [{ role: 'user', text: '보고서' }, { role: 'user', text: 'Now in English' }])[0]).toBe('Engram: Done')

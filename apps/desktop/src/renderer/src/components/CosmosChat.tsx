@@ -3,7 +3,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatTurnDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { stoppedText } from '../lib/threadLang.js'
+import { stoppedText, threadLang } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
 import { ErrorAnswer, isProviderError } from './ErrorAnswer.js'
@@ -215,7 +215,7 @@ export const CosmosChat = memo(function CosmosChat() {
         {messages.map((m, i) => {
           const failed = m.error || (m.role === 'assistant' && isProviderError(m.text))
           return <div key={i} className={`bubble-msg ${m.role}${failed ? ' error' : ''}`}>
-            {failed ? <ErrorAnswer text={m.text} /> : m.role === 'assistant' ? (
+            {failed ? <ErrorAnswer text={m.text} lang={threadLang(messages)} /> : m.role === 'assistant' ? (
               m.streaming && !m.text ? (
                 <Thinking label={status || t('bubble.thinking')} />
               ) : (

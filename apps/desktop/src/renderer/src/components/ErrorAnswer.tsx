@@ -17,8 +17,9 @@ const providerOf = (text: string, provider?: string): string =>
 export function ErrorAnswer({ text, kind, provider, lang = 'en', onRetry }: { text: string; kind?: string; provider?: string; lang?: 'en' | 'ko'; onRetry?: () => void }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const t = threadT(lang)
   if (kind === 'outage' || (!kind && OUTAGE_WORDS.test(text))) {
-    const t = threadT(lang), name = providerOf(text, provider) || 'AI'
+    const name = providerOf(text, provider) || 'AI'
     return <div className="answer-error outage" role="status" data-testid="answer-outage">
       <div className="answer-error-heading"><CloudOff size={18} aria-hidden /><strong>{t('outage.title', { name })}</strong></div>
       <p>{t('outage.body', { name })}</p>
@@ -35,12 +36,12 @@ export function ErrorAnswer({ text, kind, provider, lang = 'en', onRetry }: { te
   } catch { /* Plain-text errors already carry their explanation. */ }
   brief = brief.replace(/^\[(codex|claude)\]\s*/i, '').trim()
   return <div className="answer-error" role="alert">
-    <div className="answer-error-heading"><AlertCircle size={18} aria-hidden /><strong>Could not complete this request</strong></div>
-    <p>{schemaError ? 'The AI rejected the request format. This is an app error, not a usage limit.' : brief.length > 260 ? `${brief.slice(0, 257)}…` : brief || 'The request stopped. Check the error details before trying again.'}</p>
-    <details><summary>Error details</summary><pre>{text}</pre></details>
+    <div className="answer-error-heading"><AlertCircle size={18} aria-hidden /><strong>{t('error.title')}</strong></div>
+    <p>{schemaError ? t('error.schema') : brief.length > 260 ? `${brief.slice(0, 257)}…` : brief || t('error.stopped')}</p>
+    <details><summary>{t('error.details')}</summary><pre>{text}</pre></details>
     <button className="answer-error-copy" onClick={() => {
       void window.engram.copyText(text).then(() => { setCopied(true); setCopyError(false) }).catch(() => setCopyError(true))
-    }}>{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}{copied ? 'Copied' : 'Copy error'}</button>
-    {copyError && <p>Could not copy. Select the error text and copy it manually.</p>}
+    }}>{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}{copied ? t('error.copied') : t('error.copy')}</button>
+    {copyError && <p>{t('error.copyFailed')}</p>}
   </div>
 }
