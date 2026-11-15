@@ -1,4 +1,5 @@
-/* A dark translucent sphere: tinted rim, inner wash, three ribbons, a blooming core. No highlight. */
+/* The approved orb: a dark glass sphere with a thin tinted rim and inner wash, a ghost bubble, a wide S-twist of translucent ribbons and a white-hot core. No highlight.
+   Idle: the twist sways and folds a little, the core breathes. Working: the twist turns and folds deeper, the core pulses. */
 .bot-orb {
   --orb: #8B7CF6; position: relative; display: block; width: 100%; height: 100%;
   border-radius: 50%; overflow: hidden; isolation: isolate; container-type: size;
@@ -42,7 +43,6 @@
 .bot-orb[data-motion='working'] .bot-orb-core { opacity: 1; }
 .bot-orb[data-motion='working'] .bot-orb-ribbon { stroke-opacity: 0.9; }
 
-/* Idle: the twist sways and folds a little, the core breathes. Working: the twist turns, folds deeper, the core pulses. */
 .bot-orb[data-motion='idle'] .bot-orb-ribbons { animation: bot-orb-sway 12s ease-in-out infinite; will-change: transform; }
 .bot-orb[data-motion='idle'] .bot-orb-ribbon { --m: 0.5; animation: bot-orb-morph 11s ease-in-out infinite; will-change: transform; }
 .bot-orb[data-motion='idle'] .bot-orb-core { animation: bot-orb-breathe 10s ease-in-out infinite; will-change: transform, opacity; }
