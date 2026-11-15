@@ -73,3 +73,15 @@ it('keeps a nested resume record valid JSON when a later message labels a secret
     expect(JSON.parse(stored.context!)).toEqual({ request: 'use ••••••', remaining: 'check', committedActions: [] })
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+it('cleans a value labelled inside the stored resume record even though it is escaped there', async () => {
+  const cache = await mkdtemp(join(tmpdir(), 'engram-checkpoint-'))
+  const paths = { cache } as VaultPaths
+  try {
+    const context = JSON.stringify({ request: 'deploy', remaining: 'the token ab12\\ still needs a retry' })
+    await changeCheckpoint(paths, 'escaped', state => ({ ...state, context, pending: [] }))
+    const stored = await readCheckpoint(paths, 'escaped')
+    expect(stored.context).not.toContain('ab12')
+    expect(JSON.parse(stored.context!).remaining).toBe('the token •••••• still needs a retry')
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})

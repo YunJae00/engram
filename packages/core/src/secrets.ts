@@ -53,6 +53,16 @@ export function withoutSecretsIn<T>(value: T, source: string, fields: readonly s
   return clean(value, '') as T
 }
 
+// Every string in structured data (values and keys), decoded: what a
+// structured record labels as secret is read from here, never from its
+// serialized spelling, where escapes would hide the value.
+export function textsIn(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(textsIn)
+  if (value && typeof value === 'object') return Object.entries(value).flatMap(([key, entry]) => [key, ...textsIn(entry)])
+  return []
+}
+
 export function carriesSecret(text: string, source: string): boolean {
   return secretsIn(source).some((secret) => text.includes(secret))
 }

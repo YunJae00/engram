@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { RESUME_FIELDS, renameWithRetry, withoutSecrets, withoutSecretsIn, type VaultPaths } from 'core'
+import { RESUME_FIELDS, renameWithRetry, textsIn, withoutSecrets, withoutSecretsIn, type VaultPaths } from 'core'
 import { flog } from './flog.js'
 
 interface Checkpoint { context?: string; pending: string[] }
@@ -40,7 +40,8 @@ async function read(file: string): Promise<Checkpoint> {
 function cleanContext(context: string, source: string): string {
   let parsed: unknown
   try { parsed = JSON.parse(context) } catch { return withoutSecretsIn(context, source) }
-  return parsed !== null && typeof parsed === 'object' ? JSON.stringify(withoutSecretsIn(parsed, source, RESUME_FIELDS)) : withoutSecretsIn(context, source)
+  // Its decoded texts join the source: a value labelled inside it is spelled with escapes in the serialized text.
+  return parsed !== null && typeof parsed === 'object' ? JSON.stringify(withoutSecretsIn(parsed, [source, ...textsIn(parsed)].join('\n'), RESUME_FIELDS)) : withoutSecretsIn(context, source)
 }
 
 export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: Checkpoint) => Checkpoint): Promise<void> {

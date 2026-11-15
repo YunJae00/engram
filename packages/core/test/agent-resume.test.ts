@@ -42,3 +42,9 @@ it('cleans a labelled secret used as a key inside committed action arguments', (
   expect(checkpoint).not.toMatch(/"request":"safe"/)
   expect(JSON.parse(checkpoint).committedActions).toEqual([{ tool: 'press', args: { '••••••': 'safe' } }])
 })
+
+it('keeps a secret labelled only in what remains out of the record, also when it ends in a backslash', () => {
+  const checkpoint = resumeCheckpoint('deploy', { answer: '', steps: [], fellBack: false, incomplete: 'the token ab12\\ still needs a retry' })!
+  expect(checkpoint).not.toContain('ab12')
+  expect(JSON.parse(checkpoint).remaining).toBe('the token •••••• still needs a retry')
+})
