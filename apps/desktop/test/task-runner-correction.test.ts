@@ -134,3 +134,30 @@ it('posts through the runner a swap the re-check calls unchanged', async () => {
   await t.chat('Save the report')
   expect(t.delivered).toEqual([swapped])
 })
+
+// qa142 p2b-r5: a correction can carry no value at all; every word outside the short confirmation vocabulary is compared in its place.
+it('posts a re-check that changes a status word the delivered report has', () => {
+  expect(recheckAddsNothing('Status: failed.', 'Status: passed.')).toBe(false)
+  expect(recheckAddsNothing('테스트 실패', '테스트 통과')).toBe(false)
+  expect(recheckAddsNothing('Checked again. Build: passed; tests: failed.', 'Build: failed; tests: passed.')).toBe(false)
+  expect(recheckAddsNothing('No errors found.', 'Errors found.')).toBe(false)
+  expect(recheckAddsNothing('오류 없음', '오류 있음')).toBe(false)
+  expect(recheckAddsNothing('변경 있음', '저장함. 테스트 통과')).toBe(false)
+})
+it('stays silent on a value-free confirmation or a restated status', () => {
+  const report = 'Saved. Status: passed. 테스트 통과'
+  expect(recheckAddsNothing('Status: passed.', report)).toBe(true)
+  expect(recheckAddsNothing('다시 확인함. 테스트 통과', report)).toBe(true)
+  expect(recheckAddsNothing('확인했어, 보고 내용 그대로야', report)).toBe(true)
+  expect(recheckAddsNothing('Confirmed, the report is unchanged.', report)).toBe(true)
+  expect(recheckAddsNothing('Verified again: no changes. 변경 없음, 이상 없음.', report)).toBe(true)
+  expect(recheckAddsNothing(report, report)).toBe(true)
+})
+it('posts through the runner a status change the re-check calls unchanged', async () => {
+  const failed = 'Status: failed. [Report](engram-artifact:report.md)'
+  const t = await setup(async (_request, turn) => turn === 1
+    ? { ...done('Status: passed. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: ['Row count not read back'], report: passed } }
+    : { ...done(failed, 1), check: { accepted: true, issues: [], report: passed, reportUnchanged: true }, trail: readback })
+  await t.chat('Save the report')
+  expect(t.delivered).toEqual([failed])
+})

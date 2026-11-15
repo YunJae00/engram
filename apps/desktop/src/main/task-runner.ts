@@ -44,22 +44,30 @@ const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(
 const CORRECTION_WORDS = /아니라|아닌|아니고|정정|수정|잘못|틀렸|틀린|바로잡|\bnot\b|n['’]t\b|\binstead\b|\bcorrect(?:ed|ion|ing)|\bactually\b|\bwrong|\bmistake/i
 // One pass over an answer: link target | bare link | quoted or backticked value (six forms) | number | word | currency or percent sign.
 const TOKEN = /\]\(([^\s)]+)\)|\bhttps?:\/\/[^\s)\]]+|`([^`\n]+)`|"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|「([^」\n]+)」|(?<![\p{L}\p{N}])'([^'\n]+)'(?![\p{L}\p{N}])|((?<![\p{L}\p{N}])[-+−]?\d+(?:[.,]\d+)*%?)|[\p{L}\p{M}][\p{L}\p{M}\p{N}]*|[\p{Sc}%]/gu
-// The text as a sequence of tokens, values marked. NFKC folds full-width forms; punctuation and markdown emphasis are simply not tokens.
+// The text as a sequence of tokens. NFKC folds full-width forms; punctuation and markdown emphasis are simply not tokens.
 const tokens = (text: string) => [...text.normalize('NFKC').matchAll(TOKEN)].map((match) => {
   const quoted = match.slice(2, 8).find(one => one !== undefined)
   // A saved copy's id must not make the same file read as a new link.
-  if (match[1] !== undefined || /^https?:/i.test(match[0])) return { value: true, text: `L ${(match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1')}` }
-  if (quoted !== undefined) return { value: true, text: `Q ${quoted.trim().replace(/\s+/g, ' ').toLowerCase()}` }
-  if (match[8] !== undefined) return { value: true, text: `N ${match[8].replace('−', '-')}` }
-  return { value: false, text: `W ${match[0].toLowerCase()}` }
+  if (match[1] !== undefined || /^https?:/i.test(match[0])) return `L ${(match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1')}`
+  if (quoted !== undefined) return `Q ${quoted.trim().replace(/\s+/g, ' ').toLowerCase()}`
+  if (match[8] !== undefined) return `N ${match[8].replace('−', '-')}`
+  return `W ${match[0].toLowerCase()}`
 })
-/** True only when a re-check answer states nothing the delivered report lacks: no correction wording, and every number, link target and
- *  quoted or backticked value of it stands in the report between the same neighbouring tokens (so a swapped value or a changed unit is
- *  seen, not just a new value). The host's own reading beside the model's reportUnchanged; unsure means post. */
+// The whole confirmation vocabulary: words that only say "I looked again and it stands". Whole plain words only, so a number, link or
+// quoted value is never one, and neither is a status or negation word (passed, failed, 통과, 실패, not, 아니…): those are always compared.
+const CONFIRMING = /^W (?:confirm|confirmed|checked|again|unchanged|verified|same|still|holds|report|rows|match|changes|the|is|as|above|all|다시|확인(?:함|했어|했어요|했음|했습니다)?|그대로(?:야|예요|임|입니다)?|(?:변경|이상|보고|내용)(?:은|는|이|가|도)?|맞아|맞아요|맞습니다)$/
+// "no" / 없음 is dropped only beside the word it confirms ("no changes", "변경 없음"); "no errors" is a statement and is compared.
+const NONE = /^W (?:no|없음|없어|없어요|없습니다)$/
+const NOTHING_OF = /^W (?:changes|(?:변경|이상)(?:은|는|이|가|도)?)$/
+const stated = (text: string): string[] => tokens(text).filter((one, at, all) => !CONFIRMING.test(one) && !(NONE.test(one) && [all[at - 1], all[at + 1]].some(near => near !== undefined && NOTHING_OF.test(near))))
+/** True only when a re-check answer states nothing the delivered report lacks: no correction wording, and, the confirmation vocabulary
+ *  aside, every token of it (word, number, link target, quoted value) stands in the report between the same neighbouring tokens. So a new
+ *  or swapped value, a changed unit and a changed status word ("passed" -> "failed") are all seen. The host's own reading beside the
+ *  model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   if (CORRECTION_WORDS.test(answer)) return false
-  const said = tokens(answer), had = `\n${tokens(report).map(one => one.text).join('\n')}\n`
-  return said.every((one, at) => !one.value || had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).map(each => each.text).join('\n')}\n`))
+  const said = stated(answer), had = `\n${stated(report).join('\n')}\n`
+  return said.every((_, at) => had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).join('\n')}\n`))
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
