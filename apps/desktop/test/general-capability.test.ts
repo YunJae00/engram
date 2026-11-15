@@ -442,6 +442,43 @@ it('a new copy under a name the answer still links from an older artifact gets i
   expect(own.answer).toBe(result.answer)
 })
 
+// qa142 p2a-r8 B: every receipt of the turn is linked, not only the last one per name.
+it('two sources copied under one name in one turn, neither linked, each get their own name and link, and both are checked', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(join(cwd, 'a'), { recursive: true }); await mkdir(join(cwd, 'b'), { recursive: true })
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n'); await writeFile(join(cwd, 'b', 'y.md'), '# from b/y\n')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
+  // The second source is copied twice: its first copy is a revision that the last one replaces.
+  const result = { answer: 'Saved both reports.', steps: [await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), passed('Reports saved')] }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x\n', '# from b/y\n'])
+  expect(result.steps.map(step => step.args['name'])).toEqual(['report.md', 'report-2.md', 'report-2.md', undefined])
+  const { outputs, check } = await judged(result)
+  expect(outputs).toEqual(['report-2.md', 'report.md'])
+  expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
+  expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
+  // Each name is checked at the artifact its link carries: report.md is still the first source's, not the second source's earlier copy.
+  for (const match of links) expect(check.issues.join(' ')).toContain(`Reread every final part of ${match[1]} (${join(artifactDirectory(paths), decodeURIComponent(match[2]!))})`)
+  // Run again over the same steps: each receipt's own artifact is linked, so nothing is added.
+  const again = { answer: result.answer, steps: [...result.steps] }
+  await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
+  expect(again.answer).toBe(result.answer)
+})
+// Content written twice under one name is one file revised: only the last revision is linked.
+it('a content copy revised in the same turn is linked once, at its last revision', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
+  const result = { answer: 'Saved.', steps: [await made({ name: 'notes.md', content: '# draft\n' }), await made({ name: 'notes.md', content: '# final\n' })] }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['notes.md'])
+  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('# final\n')
+})
+
 // qa142 p2a-r6 #1: a linked name is claimed only by the source its file_create_copy receipt names; with no record it is never replaced.
 it('a new top-level file never takes over a link the comet made from another source: it gets its own name and link, and both are checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
