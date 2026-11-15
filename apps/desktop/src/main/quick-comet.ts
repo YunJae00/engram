@@ -17,6 +17,6 @@ export async function quickPrimary(paths: VaultPaths, busy: (channel: string) =>
   const bot = primaries[0]!
   const channel = `bot-${bot.id}`
   if (busy(channel)) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
-  const history = (await readBotTranscript(paths, bot.id)).filter(turn => !turn.progress).map(turn => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments }))
+  const history = (await readBotTranscript(paths, bot.id)).filter(turn => !turn.progress && !turn.error).map(turn => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments }))
   return { bot, channel, history }
 }

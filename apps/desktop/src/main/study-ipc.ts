@@ -49,7 +49,7 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
       broadcast({ type: 'study:changed', botId: study.botId })
       studying.add(channel)
       broadcast({ type: 'comet:continue', channel, botId: study.botId })
-      const history = (await readBotTranscript(deps.paths, study.botId)).map(turn => ({ role: turn.role, text: turn.text }))
+      const history = (await readBotTranscript(deps.paths, study.botId)).filter(turn => !turn.error).map(turn => ({ role: turn.role, text: turn.text }))
       void deps.sendQuiet({ engineId: '', botId: study.botId, channel, message: studyMessage(study), history })
         .then(() => 'declined' as const, (error: unknown) => { flog('study', error); return 'offered' as const })
         .then(async (after) => {

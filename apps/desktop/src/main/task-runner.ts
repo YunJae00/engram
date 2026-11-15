@@ -236,7 +236,7 @@ export function taskRunner(deps: {
         acquire(channel)
         owners.set(channel, id)
         if (why === 'approved' && task.approvals.some(a => a.answer && !a.settled)) note = await takeDecisions(task)
-        const history = (await readBotTranscript(paths, task.botId)).map((one) => ({ role: one.role, text: one.text }))
+        const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' ? { verification: { result: task.result ?? '' } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''

@@ -1760,7 +1760,7 @@ export function registerIpc(ctx: VaultContext): void {
     runPrompt: async (name, goal, into) => {
       const kept = into ? (await loadBots(paths)).find(one => one.id === into) : undefined
       const bot = kept ?? await createBot(paths, { name: name.slice(0, 60) })
-      const history = kept ? (await readBotTranscript(paths, kept.id)).filter(turn => !turn.progress).map(turn => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) : []
+      const history = kept ? (await readBotTranscript(paths, kept.id)).filter(turn => !turn.progress && !turn.error).map(turn => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })) : []
       const item = await addNotice(paths, { kind: 'scheduled', title: name, text: goal, botId: bot.id, running: true })
       broadcast({ type: 'bots:changed' })
       broadcast({ type: 'notices:changed' })

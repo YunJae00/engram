@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ipcMain } from 'electron'
-import { loadBotMemory, mergeMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, recordFacts, renderMemory, syncPersonNote, type Engine, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, loadBotMemory, mergeMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, recordFacts, renderMemory, syncPersonNote, type Engine, type VaultPaths } from 'core'
 vi.mock('core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('core')>()
   return { ...actual, syncPersonNote: vi.fn(actual.syncPersonNote) }
@@ -76,4 +76,16 @@ it('forgetting a shared fact removes it from both layers and the profile note', 
   expect(await texts(paths, PERSON_MEMORY)).toEqual([])
   expect(await texts(paths, 'atlas')).toEqual([])
   expect(await noteLines(paths)).not.toContain(KOREAN[0])
+})
+
+// qa142 p2b-r1 #3: a saved error card is never handed to a model as something the bot said.
+it('search_chats leaves a saved error turn out of what earlier conversations said', async () => {
+  const paths = await tempPaths()
+  const bot = await createBot(paths, { name: 'Minutes' })
+  await appendBotTurn(paths, bot.id, { role: 'user', text: '회의록 quarterly 정리해줘', at: '2026-11-15T01:00:00Z' })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Invalid model quarterly', at: '2026-11-15T01:00:05Z', error: true, errorKind: 'unknown', provider: 'Claude' })
+  const search = learningTools(paths, 'bot-atlas', () => '').find((tool) => tool.name === 'search_chats')!
+  const found = await search.run({ query: 'quarterly' }, { task: '' })
+  expect(found).toContain('회의록 quarterly 정리해줘')
+  expect(found).not.toContain('Invalid model')
 })

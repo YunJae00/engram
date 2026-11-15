@@ -28,7 +28,8 @@ export function learningTools(paths: VaultPaths, channel: string, said: () => st
     searchChatsTool({
       chats: async () => Promise.all((await loadBots(paths)).map(async bot => ({
         name: bot.name,
-        turns: (await readBotTranscript(paths, bot.id).catch(() => [])).map(turn => ({ role: turn.role, text: turn.text, at: turn.at })),
+        // A saved error card is the app's failure, not something the bot said.
+        turns: (await readBotTranscript(paths, bot.id).catch(() => [])).filter(turn => !turn.error).map(turn => ({ role: turn.role, text: turn.text, at: turn.at })),
       }))),
     }),
   ]
