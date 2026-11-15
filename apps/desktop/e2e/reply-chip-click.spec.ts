@@ -33,6 +33,7 @@ test.beforeEach(async () => {
   })
   await page.getByTestId(`bot-${botId}`).click()
   await expect(page.getByTestId('reply-chip-0')).toHaveText(DEFER)
+  await turnsRendered()
 })
 test.afterEach(async () => { await app?.close() })
 
@@ -43,6 +44,11 @@ async function broadcast(event: Record<string, unknown>) {
 async function resolveFirst() { await app.evaluate(() => (globalThis as Fixture).pending.shift()!.resolve()) }
 async function done(text: string) { await broadcast({ type: 'chat:done', channel: `bot-${botId}`, text }) }
 const userBubbles = () => page.locator('.bubble-msg.user')
+// Settled turns use `content-visibility: auto`: until a rendering update marks them on-screen they lay out at their 80px
+// placeholder, so the chips under them sit ~70px lower than where they land. Measure the chips only once every turn rendered.
+async function turnsRendered() {
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.bots-thread .bubble-turn')].every(turn => turn.checkVisibility({ contentVisibilityAuto: true }))), { message: 'thread turns rendered' }).toBe(true)
+}
 
 test('a defer chip is the element under the pointer and sends its label once', async () => {
   const chip = page.getByTestId('reply-chip-0')
@@ -91,6 +97,9 @@ test('a chip and a typed message queued behind an unresolved send each show once
 test('a press held across a background busy blip still clicks the same chip', async () => {
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: true })
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: false })
+  await expect(page.getByTestId('bots-typing')).toBeHidden()
+  await expect(page.getByTestId('reply-chip-0')).toBeVisible()
+  await turnsRendered()
   const box = (await page.getByTestId('reply-chip-0').boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
