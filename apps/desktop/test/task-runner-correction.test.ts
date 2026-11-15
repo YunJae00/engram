@@ -14,6 +14,7 @@ it('preserves the engine answer and reported limitations through one verificatio
 // qa142: every finished task was reported twice (the answer, then the re-check repeating it).
 // p2b-r7: only the report again is silent; any other answer is posted, once.
 // p2b-r8: whitespace aside only. Emphasis markers and a saved copy's id are part of the text.
+// p2b-r9: the same text only; line endings and whitespace around the whole text aside. Line wrapping is part of the text.
 const unchanged = (report: string, answer: string) => setup(async (_request, turn) => turn === 1
   ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
   : { ...done(answer, 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
@@ -119,12 +120,13 @@ it('posts once a re-check that restates only part of the report and affirms it i
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
   expect(t.delivered).toEqual([part])
 })
-it('stays silent when a re-check repeats the report, rewrapped, and affirms it is unchanged', async () => {
-  const t = await recheck('Saved; the total\nis 12.\n\n[Report](engram-artifact:report.md)\n', true)
+it('posts once a re-check that repeats the report, rewrapped, though it affirms it is unchanged', async () => {
+  const rewrapped = 'Saved; the total\nis 12.\n\n[Report](engram-artifact:report.md)\n'
+  const t = await recheck(rewrapped, true)
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered).toEqual([])
+  expect(t.delivered).toEqual([rewrapped])
 })
 it('posts once a re-check that repeats the report, rewrapped and emphasised, though it affirms it is unchanged', async () => {
   const emphasised = '**Saved;** the total\nis ~~12~~.\n\n[Report](engram-artifact:report.md)'
@@ -177,11 +179,18 @@ it('stays silent on the same values repeated and posts a restatement of part of 
 })
 // qa142 p2b-r7: the report again is silent whatever its line wrapping; case, punctuation and wording are kept.
 // p2b-r8: so are emphasis markers and a saved copy's id.
-it('stays silent when a re-check repeats the report with other line wrapping and posts one with other emphasis', () => {
+// p2b-r9: line wrapping and full-width forms are kept too; only CRLF/CR and whitespace around the whole text are set aside.
+it('stays silent only when a re-check repeats the report verbatim and posts one with other line wrapping, width or emphasis', () => {
   const report = 'Saved. A: 12; B: 14.\nStatus: passed. [Report](engram-artifact:report.md)'
   expect(recheckAddsNothing(report, report)).toBe(true)
   expect(recheckAddsNothing('  **Saved.**\n\n**A**:   １２;\nB: *14*.\n\n__Status__:   `passed`.   ~~[Report](engram-artifact:report.md)~~\n', report)).toBe(false)
-  expect(recheckAddsNothing('  Saved.\n\nA:   １２;\nB: 14.\n\nStatus:\tpassed.\r\n[Report](engram-artifact:report.md)\n', report)).toBe(true)
+  expect(recheckAddsNothing('  Saved.\n\nA:   １２;\nB: 14.\n\nStatus:\tpassed.\r\n[Report](engram-artifact:report.md)\n', report)).toBe(false)
+  expect(recheckAddsNothing('Saved. A: １２; B: 14.\nStatus: passed. [Report](engram-artifact:report.md)', report)).toBe(false)
+  expect(recheckAddsNothing('Saved. A: 12; B: 14. Status: passed. [Report](engram-artifact:report.md)', report)).toBe(false)
+  expect(recheckAddsNothing('Saved. A: 12;  B: 14.\nStatus: passed. [Report](engram-artifact:report.md)', report)).toBe(false)
+  expect(recheckAddsNothing(`\n  ${report.replace('\n', '\r\n')}\r\n`, report)).toBe(true)
+  expect(recheckAddsNothing(report.replace('\n', '\r'), report)).toBe(true)
+  expect(recheckAddsNothing(`${report}\n`, report)).toBe(true)
   expect(recheckAddsNothing('  **Saved.**\n\n- **a**:   １２;\n- b: *14*.\n\n__Status__:   passed.   [Report](engram-artifact:report.md)\n', report)).toBe(false)
   expect(recheckAddsNothing('saved. a: 12; b: 14. status: passed. [Report](engram-artifact:report.md)', report)).toBe(false)
   expect(recheckAddsNothing('Saved report_final.md and 2 * 3.', 'Saved reportfinal.md and 2 3.')).toBe(false)
@@ -198,7 +207,18 @@ it('posts a re-check that links another saved copy of the same file name', () =>
   expect(recheckAddsNothing(copy('9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff'), first)).toBe(false)
   expect(recheckAddsNothing('Saved. [Report](engram-artifact:report.md)', first)).toBe(false)
   expect(recheckAddsNothing(first, first)).toBe(true)
-  expect(recheckAddsNothing(`Saved.\n[Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)\n`, first)).toBe(true)
+  expect(recheckAddsNothing(`Saved.\n[Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)\n`, first)).toBe(false)
+  expect(recheckAddsNothing(`${first}\n`, first)).toBe(true)
+})
+// qa142 p2b-r9: folding characters or whitespace can change what a report says.
+it('posts a re-check whose text differs from the report only by a compatibility form or a line break', () => {
+  expect(recheckAddsNothing('The table has 106 rows.', 'The table has 10⁶ rows.')).toBe(false)
+  expect(recheckAddsNothing('The table has 10⁶ rows.', 'The table has 106 rows.')).toBe(false)
+  const twoLines = 'Run:\n```sh\ncd build\nrm -rf *\n```'
+  expect(recheckAddsNothing('Run:\n```sh\ncd build rm -rf *\n```', twoLines)).toBe(false)
+  expect(recheckAddsNothing(twoLines, 'Run:\n```sh\ncd build rm -rf *\n```')).toBe(false)
+  expect(recheckAddsNothing(twoLines, twoLines)).toBe(true)
+  expect(recheckAddsNothing(twoLines.replace(/\n/g, '\r\n') + '\r\n', twoLines)).toBe(true)
 })
 it('posts a re-check whose punctuation or dropped qualifier changes what the report said', () => {
   expect(recheckAddsNothing('No changes were made.', 'No, changes were made.')).toBe(false)

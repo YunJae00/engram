@@ -41,11 +41,11 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 // The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
-const plain = (text: string) => text.normalize('NFKC').replace(/\s+/g, ' ').trim()
-/** True only when a re-check answer is the delivered report again: the same text once full-width forms and whitespace runs (line breaks
- *  included) are set aside. Everything else is kept, so anything else is posted, once: a changed comma ("No changes were made." after
- *  "No, changes were made.") or a dropped qualifier can reverse a report, ~~strikethrough~~ withdraws a claim, and a saved copy's id
- *  tells two versions of report.md apart.
+const plain = (text: string) => text.replace(/\r\n?/g, '\n').trim()
+/** True only when a re-check answer is the delivered report again, character for character: only the line-ending style (CRLF/CR) and
+ *  whitespace around the whole text are set aside. Nothing inside is folded, so anything else is posted, once: 10⁶ is not 106, two
+ *  commands on two lines are not one command, a changed comma can reverse a report, ~~strikethrough~~ withdraws a claim, and a saved
+ *  copy's id tells two versions of report.md apart.
  *  The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   return plain(answer) === plain(report)
