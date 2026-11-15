@@ -399,6 +399,17 @@ it('remaps nearby controls to the fresh post-set snapshot by runtime identity', 
   expect(result.nearby).toEqual([expect.objectContaining({ id: 'c7', snapshot: 'b'.repeat(32), appeared: true })])
 })
 
+// qa142 p2b-r2 #2: any secret field in the window keeps the draft off the card, also one the quiet path cannot set or read.
+it('shows no draft on the app_press send card when the window has a secret field', async () => {
+  fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c3', type: 'Edit', name: 'Message', value: 'Draft', can: { set: true } }, { id: 'c5', type: 'Edit', name: 'Password', secret: true, can: { set: false } }], texts: [] })
+  const approveAppAction = vi.fn(async () => false)
+  const tool = desktopAgentTools('bot-one').find(item => item.name === 'app_press')!
+  const result = await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control: 'c3', key: 'Enter' }, Object.assign({ task: 'Send' }, { approveAppAction }))
+  expect(JSON.parse(result).delivery).toBe('not_delivered')
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32), expect.any(String), { app: 'Fixture', sending: undefined })
+  expect(fake.quietPress).not.toHaveBeenCalled()
+})
+
 // qa142 p2b-r1 #4: the quiet app_do send and the foreground send said only `Allow "Send" in "window:…"?`, so the card had no app name and no text.
 describe('send card on the app_do and foreground paths', () => {
   const load = async (nodes: unknown[] = []) => {
@@ -416,11 +427,27 @@ describe('send card on the app_do and foreground paths', () => {
   }
   const draft = (value: string, password = false) => ({ id: 'e1', name: 'Message', controlType: 'TextArea', value, ...(password ? { password } : {}) })
   it('names the app and the text app_do is about to send', async () => {
+    fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c1', type: 'Edit', name: 'Message', value: '', can: { set: true } }], texts: [] })
     const asked = await run('app_do', { app: 'window:42:0', goal: 'Send the note', text: '내일 3시에 봬요', send: true })
     expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: '내일 3시에 봬요' })
   })
   it('shows no text from app_do while a secret field holds a value', async () => {
     fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c1', type: 'Edit', name: 'Password', value: '••••', secret: true, can: { set: true } }], texts: [] })
+    const asked = await run('app_do', { app: 'window:42:0', goal: 'Sign in', text: 'hunter2-secret', send: true })
+    expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: undefined })
+  })
+  // qa142 p2b-r2 #2: a secret control the quiet path cannot set had its value dropped, so it passed the secrecy check.
+  it.each([
+    ['populated but not settable', { value: '••••', can: { set: false } }],
+    ['unreadable', { can: { set: false } }],
+    ['empty', { value: '', can: { set: true } }],
+  ])('shows no text from app_do when the window has a secret field (%s)', async (_case, secret) => {
+    fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c1', type: 'Edit', name: 'Message', value: '', can: { set: true } }, { id: 'c2', type: 'Edit', name: 'Password', secret: true, ...secret }], texts: [] })
+    const asked = await run('app_do', { app: 'window:42:0', goal: 'Sign in', text: 'hunter2-secret', send: true })
+    expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: undefined })
+  })
+  it('shows no text from app_do when the window it sends in cannot be read', async () => {
+    fake.quietSnapshot.mockReturnValue(undefined)
     const asked = await run('app_do', { app: 'window:42:0', goal: 'Sign in', text: 'hunter2-secret', send: true })
     expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: undefined })
   })

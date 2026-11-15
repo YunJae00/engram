@@ -22,11 +22,12 @@ import { brainConnection } from './brain-connections.js'
 import { outcomeChain } from './desktop-outcome.js'
 import { sendsKey, typeArgs, typedReport, typedUnverified, withTypeReceipt, type TypeReceipt } from './desktop-text-insert.js'
 
-// What a send card may show as going out: the text given to type, else the draft in a field. Nothing when
-// any secret field holds a value, since the text cannot be tied to one field here.
+// What a send card may show as going out: the text given to type, else the draft in a field. Nothing when the
+// window has any secret field (populated, unreadable or empty: its value cannot be trusted here, and the text cannot
+// be tied to one field), or when the window could not be read at all.
 export function shownDraft(fields: { value?: string | null | undefined; secret: boolean }[] | undefined, typed?: string): string | undefined {
-  if (fields?.some(field => field.secret && !!field.value)) return undefined
-  return typed?.trim() || fields?.find(field => !!field.value)?.value || undefined
+  if (!fields || fields.some(field => field.secret)) return undefined
+  return typed?.trim() || fields.find(field => !!field.value)?.value || undefined
 }
 
 const mayRetryClick = (node: DesktopNodeDto) => !irreversibleName(node.name) && !/CheckBox|RadioButton|Switch|Toggle/i.test(node.controlType)
@@ -117,7 +118,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
         const approval = await prepareQuietConfirmation(lane, app, previous, control, !!sendsKey || draftButton || /send|submit|post|publish|보내기|전송|제출|게시/i.test(name), context.signal)
         if (!approval) return JSON.stringify(confirmationFailure())
-        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope, { app: desktopBinding(lane)?.name, sending: [sendsKey ? field : previous.controls.find(item => item.can.set && !!item.value)].find(item => item && !item.secret)?.value ?? undefined }))
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope, { app: desktopBinding(lane)?.name, sending: shownDraft(previous.controls.map(item => ({ value: item === (sendsKey ? field : previous.controls.find(one => one.can.set && !!one.value)) ? item.value : undefined, secret: !!item.secret }))) }))
           return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action was not approved. No input was sent. Do not try it another way (no foreground control, no other key, button or app): tell the person it was not done and end the turn, or keep to reading.' })
         try { confirmedResult = await pressQuietConfirmed(lane, app, approval, context.signal, options) }
         catch (error) {
@@ -131,7 +132,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
     // With a decision model connected, a short goal runs as one call.
-    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope, { app: desktopBinding(lane)?.name, sending: shownDraft(quietSnapshot(snapshot)?.controls.map(item => ({ value: item.can.set ? item.value : undefined, secret: item.secret })), text) }) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
+    ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope, { app: desktopBinding(lane)?.name, sending: shownDraft(quietSnapshot(snapshot)?.controls.map(item => ({ value: item.can.set ? item.value : undefined, secret: !!item.secret })), text) }) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   let handover: Promise<void> | undefined
   const chain = outcomeChain()
