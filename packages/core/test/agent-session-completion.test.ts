@@ -277,6 +277,30 @@ it.each(['word_write', 'ppt_build'])('keeps another %s input under a linked name
   expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(b)}`)).not.toContain(link(copy))
 })
 
+// qa143 p2 r4 #2 (S19a): a budget stop or an unfinished turn links nothing, and what outputLinks attaches then the host cannot take back.
+// The same source copied again under one name is a revision there too (the last one counts); two sources under one name are two files.
+it('attaches only the last copy of one source when the answer links nothing, and still both of two sources', () => {
+  const copy = (id: number, args: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ tool: 'file_create_copy', args: { name: 'report.md', ...args }, observation: JSON.stringify({ markdownLink: `[report.md](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.md)`, ...extra }) })
+  const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
+  const links = (steps: unknown[], answer = 'Stopped at the budget.') => outputLinks(steps as Parameters<typeof outputLinks>[0], answer, '/task').split('\n\n').slice(1)
+  // One task file copied after each fix, by a relative and an absolute path: one file, the last copy.
+  const r1 = copy(1, { fromPath: 'report.md' }), r2 = copy(2, { fromPath: './report.md' }), r3 = copy(3, { fromPath: '/task/report.md' })
+  expect(links([r1, r2, r3])).toEqual([link(r3)])
+  // Another task file under that name is another file: both are handed over.
+  const other = copy(4, { fromPath: 'drafts/report.md' })
+  expect(links([r1, other, r3])).toEqual([link(r3), link(other)])
+  // Content written again under one name is a revision, as is a copy of its task-folder twin.
+  const c1 = copy(5, { content: 'v1' }, { taskPath: '/task/report.md' }), c2 = copy(6, { content: 'v2' }, { taskPath: '/task/report.md' })
+  expect(links([c1, c2])).toEqual([link(c2)])
+  expect(links([c1, r3])).toEqual([link(r3)])
+  // Other file tools: the same input again is a revision, another input is another file.
+  const book = (id: number, rows: number[]) => ({ tool: 'file_create_workbook', args: { name: 'sales.xlsx', rows }, observation: JSON.stringify({ markdownLink: `[sales.xlsx](engram-artifact:11111111-2222-3333-4444-00000000001${id}-sales.xlsx)` }) })
+  const b1 = book(1, [1]), b2 = book(2, [1]), b3 = book(3, [2])
+  expect(links([b1, b3, b2])).toEqual([link(b2), link(b3)])
+  // A linked name still leaves its other file receipts to the host.
+  expect(links([r1, other, r3], `Done: ${link(r3)}`)).toEqual([])
+})
+
 // qa143 S19 (d): the wrap-up was checked (report_result_check) after a PDF's file_read found no text; the turn was still called unverified,
 // continued automatically and restated.
 it('leaves a failed file read to the result check reported after it', () => {

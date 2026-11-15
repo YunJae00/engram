@@ -1,27 +1,42 @@
+import { resolve } from 'node:path'
 import { parseReadBatch } from './browser-read-batch.js'
 import type { AgentLoopStep } from './agent-loop.js'
 
-export function outputLinks(steps: AgentLoopStep[], answer: string): string {
+// cwd: the task folder a relative fromPath is read against.
+export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): string {
   const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
   const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
-  // What a composed document or deck was made from: its tool and its own input. Nothing later hands these over (the host's native delivery
-  // knows only file receipts), so a second input under a linked name is still attached here. Other kinds are settled by name; the host decides their sources.
-  const outputs: { link: string; id: string; name: string; source: string }[] = []
+  const COMPOSED = ['word_write', 'ppt_build']
+  // What a receipt was made from, by the rule the host's native delivery uses (deliverOutputs): a copy's fromPath; content (and a content copy's
+  // task-folder twin), one source; any other tool and the file it names, else its own input. The same source made again under one name is a
+  // revision, where the last one counts, whether or not the answer links anything: a budget stop or an unfinished turn links nothing, and what
+  // is attached here the host cannot take back (qa143 S19a: every copy of one report.md was attached). A receipt naming no source is its own.
+  const twins = new Set(steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [path] : [] } catch { return [] } }))
+  const sourceOf = (step: AgentLoopStep, link: string): string => {
+    if (step.tool === 'file_create_copy') {
+      const from = typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : undefined
+      return from && !twins.has(from) ? `path\0${from}` : from || typeof step.args['content'] === 'string' ? 'content' : link
+    }
+    const input = COMPOSED.includes(step.tool) ? undefined : [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined
+    return `${step.tool}\0${input ? resolve(cwd, input) : JSON.stringify(step.args)}`
+  }
+  const outputs: { link: string; id: string; name: string; source: string; composed: boolean }[] = []
   for (const step of steps) {
-    if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', 'word_write', 'ppt_build'].includes(step.tool)) continue
+    if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', ...COMPOSED].includes(step.tool)) continue
     try {
       const result = JSON.parse(step.observation) as { markdownLink?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
-      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: ['word_write', 'ppt_build'].includes(step.tool) ? `${step.tool}\0${JSON.stringify(step.args)}` : '' })
+      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: sourceOf(step, result.markdownLink as string), composed: COMPOSED.includes(step.tool) })
     } catch { /* Failed writes have no output receipt. */ }
   }
-  // The answer's link sets aside the other versions of the input it quotes (the same input built again is a revision, where the last one counts),
-  // not another input's file of that name: two different inputs under one name are two files (qa143 S19a).
+  // The answer's link sets aside the other versions of the input it quotes, not another input's file of that name: two different inputs under
+  // one name are two files (qa143 S19a). Nothing later hands over a composed document or deck, so another input of a linked name is attached
+  // here; a file receipt under a linked name is left to the host, which names a second source apart (report-2.md).
   const chosen = outputs.filter(output => selected.has(output.id))
   const links = new Map<string, string>()
   for (const output of outputs) {
-    if (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.source || one.source === output.source))) continue
-    links.set(output.source ? `${output.name}\0${output.source}` : output.link, output.link)
+    if (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.composed || one.source === output.source))) continue
+    links.set(`${output.name}\0${output.source}`, output.link)
   }
   return links.size ? `${answer}\n\n${[...new Set(links.values())].join('\n\n')}` : answer
 }
