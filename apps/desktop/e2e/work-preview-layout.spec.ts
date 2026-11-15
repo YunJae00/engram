@@ -59,9 +59,21 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
         const input = element.querySelector('textarea')!.getBoundingClientRect()
         if (input.top < parent.top || input.bottom > parent.bottom) return false
         const controls = [...element.querySelectorAll('textarea, .decision-card button, .bubble-msg')]
+        // Measure what is actually painted: a narrow docked lane can clip a long one-line link inside its card (the
+        // ellipsized .decision-card-sub), and the clipped-away part cannot be covered.
+        const visible = (control: Element) => {
+          let { left, top, right, bottom } = control.getBoundingClientRect()
+          for (let node = control.parentElement; node && node !== element; node = node.parentElement) {
+            if (getComputedStyle(node).overflowX === 'visible' && getComputedStyle(node).overflowY === 'visible') continue
+            const clip = node.getBoundingClientRect()
+            left = Math.max(left, clip.left); right = Math.min(right, clip.right); top = Math.max(top, clip.top); bottom = Math.min(bottom, clip.bottom)
+          }
+          return { left, top, right: Math.max(left, right), bottom: Math.max(top, bottom) }
+        }
         return preview.left >= parent.left && preview.right <= parent.right && preview.top >= parent.top && preview.bottom <= parent.bottom
           && preview.bottom <= Math.min(thread.bottom, input.top) + 1 && controls.every(control => {
-            const box = control.getBoundingClientRect()
+            const box = visible(control)
+            if (box.right <= box.left) return true
             const inThread = !!control.closest('.conversation-thread')
             const top = inThread ? Math.max(box.top, thread.top) : box.top
             const bottom = inThread ? Math.min(box.bottom, thread.bottom) : box.bottom
