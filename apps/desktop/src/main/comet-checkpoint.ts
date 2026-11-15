@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { renameWithRetry, withoutSecrets, withoutSecretsIn, type VaultPaths } from 'core'
+import { RESUME_FIELDS, renameWithRetry, withoutSecrets, withoutSecretsIn, type VaultPaths } from 'core'
 import { flog } from './flog.js'
 
 interface Checkpoint { context?: string; pending: string[] }
@@ -35,6 +35,14 @@ async function read(file: string): Promise<Checkpoint> {
     return { pending: [] }
   }
 }
+// The resume context is itself a serialized record (resumeCheckpoint): it is
+// cleaned as data and serialized again, so it stays valid JSON too.
+function cleanContext(context: string, source: string): string {
+  let parsed: unknown
+  try { parsed = JSON.parse(context) } catch { return withoutSecretsIn(context, source) }
+  return parsed !== null && typeof parsed === 'object' ? JSON.stringify(withoutSecretsIn(parsed, source, RESUME_FIELDS)) : withoutSecretsIn(context, source)
+}
+
 export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: Checkpoint) => Checkpoint): Promise<void> {
   const file = fileOf(paths, id)
   const work = (writes.get(file) ?? Promise.resolve()).then(async () => {
@@ -43,7 +51,7 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
     const scratch = `${file}.${process.pid}.tmp`
     // Only the stored texts are cleaned; the checkpoint's own field names stay as they are.
     const source = [next.context ?? '', ...next.pending].join('\n')
-    const clean: Checkpoint = { ...(next.context !== undefined ? { context: withoutSecretsIn(next.context, source) } : {}), pending: withoutSecretsIn(next.pending, source) }
+    const clean: Checkpoint = { ...(next.context !== undefined ? { context: cleanContext(next.context, source) } : {}), pending: withoutSecretsIn(next.pending, source) }
     await writeFile(scratch, JSON.stringify(clean))
     await renameWithRetry(scratch, file)
   })

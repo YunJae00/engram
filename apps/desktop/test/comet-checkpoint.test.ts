@@ -61,3 +61,15 @@ it('keeps its own field names when a labelled secret equals one of them', async 
     expect(await readCheckpoint(paths, 'names')).toEqual({ context: 'resume here', pending: ['my token: ••••••'] })
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+it('keeps a nested resume record valid JSON when a later message labels a secret it carries unlabelled', async () => {
+  const cache = await mkdtemp(join(tmpdir(), 'engram-checkpoint-'))
+  const paths = { cache } as VaultPaths
+  try {
+    const context = JSON.stringify({ request: 'use ab12\\', remaining: 'check', committedActions: [] })
+    await changeCheckpoint(paths, 'nested', state => ({ ...state, context, pending: ['the token ab12\\'] }))
+    const stored = await readCheckpoint(paths, 'nested')
+    expect(stored.context).not.toContain('ab12')
+    expect(JSON.parse(stored.context!)).toEqual({ request: 'use ••••••', remaining: 'check', committedActions: [] })
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})

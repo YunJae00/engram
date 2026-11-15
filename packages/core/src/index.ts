@@ -86,7 +86,7 @@ export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRout
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
 export { runComet, runToolSession, PLAN_RULE } from './agent-session.js'
 export { sessionShape } from './agent-session-shape.js'
-export { resumeCheckpoint } from './agent-resume.js'
+export { RESUME_FIELDS, resumeCheckpoint } from './agent-resume.js'
 export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type SidebarChange, type SidebarKind } from './sidebar-layout.js'
 export { recordBotSites } from './bots.js'
 export { isUntitledBotName, UNTITLED_BOT_NAMES } from './untitled-bot.js'
