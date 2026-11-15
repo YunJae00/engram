@@ -212,15 +212,42 @@ it('a check turn does not hand in the script it wrote to check, only a revised h
   await deliverOutputs(paths, cwd, first, 0, 'ask')
   const link = /\[report\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
-  const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [] as TurnStep[] }
+  const ranHelper: TurnStep = { tool: 'Bash', args: { command: 'python3 check_merge.py' }, observation: '0 mismatches' }
+  const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [ranHelper] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask', true)
   expect(checked.answer).not.toContain('check_merge.py]')
-  expect(checked.steps).toHaveLength(0)
+  expect(checked.steps).toEqual([ranHelper])
   await writeFile(join(cwd, 'report.md'), '# v2\n')
-  const revised = { answer: `Corrected report.md with check_merge.py.\n\n${link}`, steps: [] as TurnStep[] }
+  const revised = { answer: `Corrected report.md with check_merge.py.\n\n${link}`, steps: [ranHelper] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask', true)
-  expect(revised.steps.map(step => step.args.name)).toEqual(['report.md'])
+  expect(revised.steps.slice(1).map(step => step.args.name)).toEqual(['report.md'])
   expect(revised.answer).not.toContain(link)
+})
+
+it('a check turn hands in a script that is the requested result and it enters the result check, while its own helper does not', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  const finding = { status: 'pass', basis: 'Ran it.' }
+  const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Script merges the sheets' }], grounding: finding } }) }
+  const ran = (name: string): TurnStep => ({ tool: 'Bash', args: { command: `python3 ${name}` }, observation: 'ok' })
+  // Named in the earlier report the check turn was given: revised and run by the check turn, with a helper beside it.
+  await writeFile(join(cwd, 'merge.py'), 'print("merged")\n')
+  await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
+  const verify = 'Check the result.\nWrote merge.py, which merges the sheets.\n\nThe delegated task, verbatim:\nWrite me a Python script that merges these sheets.'
+  const revised = { answer: 'Fixed merge.py and compared with check_merge.py: 0 mismatches.', steps: [ran('merge.py'), ran('check_merge.py'), report] }
+  await deliverOutputs(paths, cwd, revised, 0, verify, true)
+  expect(revised.answer).toMatch(/\[merge\.py\]\(engram-artifact:/)
+  expect(revised.answer).not.toContain('check_merge.py]')
+  expect(latestResultOutputs(revised.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: revised.answer }])).map(output => output.name)).toEqual(['merge.py'])
+  // Named nowhere before, but the only result the task has: a script the turn ran is still handed in.
+  const only = { answer: 'Wrote merge.py and ran it.', steps: [ran('merge.py'), report] }
+  await deliverOutputs(paths, cwd, only, 0, 'Write me a Python script that merges these sheets.', true)
+  expect(only.answer).toMatch(/\[merge\.py\]\(engram-artifact:/)
+  // Never run by the turn: nothing marks it as the turn's own tool.
+  await writeFile(join(cwd, 'extra.py'), 'print(1)\n')
+  const unrun = { answer: `${only.answer}\n\nAlso wrote extra.py.`, steps: [report] }
+  await deliverOutputs(paths, cwd, unrun, 0, 'ask', true)
+  expect(unrun.answer).toMatch(/\[extra\.py\]\(engram-artifact:/)
 })
 
 it('a check turn still hands in a new deliverable it names, and the result check asks for its readback', async () => {
@@ -230,7 +257,7 @@ it('a check turn still hands in a new deliverable it names, and the result check
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
   const finding = { status: 'pass', basis: 'Compared.' }
   const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Summary written' }], grounding: finding } }) }
-  const result = { answer: 'Wrote summary.md, checked with check_merge.py.', steps: [report] }
+  const result = { answer: 'Wrote summary.md, checked with check_merge.py.', steps: [{ tool: 'Bash', args: { command: 'python3 check_merge.py' }, observation: '0' }, report] }
   await deliverOutputs(paths, cwd, result, 0, 'ask', true)
   expect(result.answer).toMatch(/\[summary\.md\]\(engram-artifact:/)
   expect(result.answer).not.toContain('check_merge.py]')

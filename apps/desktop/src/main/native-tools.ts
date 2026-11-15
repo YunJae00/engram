@@ -161,9 +161,15 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
-  for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
-    // A check turn's own scripts are its tools, not results; any other file it names is still handed in and checked.
-    if (checkTurn && /\.(py|js|ts|sh|ps1)$/i.test(path) && !linkedIds(result.answer, basename(path)).length) continue
+  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))
+  // A check turn's own helper script is its tool, not a result. It is one only when every sign agrees: the answer does not link it,
+  // neither the request nor the earlier report (both verbatim in the check turn's message) names it, a command of this turn ran it,
+  // and the task has another result it was run against. Any other script is handed in and checked like every file.
+  const ran = (name: string) => result.steps.some(step => ['Bash', 'PowerShell', 'Shell'].includes(step.tool) && typeof step.args['command'] === 'string' && step.args['command'].includes(name))
+  const helper = (path: string) => checkTurn && /\.(py|js|ts|sh|ps1)$/i.test(path) && !linkedIds(result.answer, basename(path)).length && !task.includes(basename(path)) && ran(basename(path))
+  const hasResult = /\(engram-artifact:/.test(result.answer + task) || named.some(path => !helper(path))
+  for (const path of named) {
+    if (hasResult && helper(path)) continue
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)
