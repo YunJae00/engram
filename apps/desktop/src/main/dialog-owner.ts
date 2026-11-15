@@ -15,6 +15,8 @@ export function visibleDialogOwner(): BrowserWindow | undefined {
 // how; without one, nothing is asked.
 let surface: () => BrowserWindow | undefined = () => undefined
 export function setDialogSurface(next: typeof surface): void { surface = next }
+// Hidden development runs (e2e) stub the dialog and may name the window to ask on.
+if (process.defaultApp && process.env['ENGRAM_HIDDEN'] === '1') Object.assign(globalThis, { __engramDialogSurface: setDialogSurface })
 export function askOwner(): BrowserWindow | undefined {
   const visible = visibleDialogOwner()
   if (visible) return visible

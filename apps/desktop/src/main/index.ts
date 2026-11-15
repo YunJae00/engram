@@ -81,10 +81,11 @@ function surfaceMain(): void {
   mainWin.focus()
 }
 setTaskSurface(surfaceMain)
+// A window that is never shown (hidden runs) is no place to ask: nothing is asked.
 setDialogSurface(() => {
-  if (!mainWin || mainWin.isDestroyed()) return undefined
-  if (!isHidden) surfaceMain()
-  return mainWin
+  if (!mainWin || mainWin.isDestroyed() || process.env['ENGRAM_HIDDEN'] === '1') return undefined
+  surfaceMain()
+  return mainWin.isVisible() ? mainWin : undefined
 })
 
 // Must run before anything resolves engines or spawns a pty — see the module

@@ -37,6 +37,8 @@ test('external browser tools capture masked screenshots and upload only approved
     await expect.poll(() => shell.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 60000 }).toBe(true)
     // Only this owned test process and localhost destination are approved.
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (first: { buttons?: string[] }, second?: { buttons: string[] }) => ({ response: (second ?? first).buttons!.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
+    // The hidden window stands in for the one a person would see the question on.
+    await app.evaluate(({ BrowserWindow }) => { (globalThis as unknown as { __engramDialogSurface: (next: () => unknown) => void }).__engramDialogSurface(() => BrowserWindow.getAllWindows()[0]) })
     await shell.evaluate(() => window.engram.mcpEnable(true))
     const endpoint = JSON.parse(await readFile(join(data, 'external-connection.json'), 'utf8'))
     socket = connect(endpoint.pipe)
