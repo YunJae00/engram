@@ -3,6 +3,7 @@ import { uiLanguage } from '../i18n.js'
 import { teamT, type TeamLang } from '../i18n-team.js'
 import { sidebarPreview } from './sidebarPreview.js'
 import { threadLang } from './threadLang.js'
+import { KO_CARRY_ON } from './threadLangKo.js'
 
 export type TeamMemberView = Pick<TeamMember, 'id' | 'parentId' | 'role' | 'state' | 'result'>
 export interface TeamView { taskId: string; members: TeamMemberView[] }
@@ -21,17 +22,24 @@ function memberView(raw: unknown): TeamMemberView | null {
   return { id: raw.id, parentId: typeof raw.parentId === 'string' ? raw.parentId : null, role: raw.role, state: raw.state as MemberState, result: typeof raw.result === 'string' ? raw.result : undefined }
 }
 
+// A message that only says to carry on: that task picks up the work of the task before it, team included.
+// shortcut: reads the message against a short list of carry-on words, since a task keeps no link to the one it continues; upgrade when a task records what it continues.
+const CARRY_ON = /^(?:please\s+)?(?:continue|go on|keep going|carry on|resume|proceed)(?:\s+please)?$/i
+const carriesOn = (goal: unknown): boolean => { const words = typeof goal === 'string' ? goal.trim().replace(/[\s.!~…"'“”]+$/u, '') : ''; return CARRY_ON.test(words) || KO_CARRY_ON.test(words) }
+
 // tasks:list passes each task's team through untyped, so every field is checked here.
-// A bot shows the team of its latest task that hired one, also after that task ended (done, stopped, or stopped at a limit) and after a
-// later task without a team (a "continue"): the leads and how they finished stay on view until another team replaces them.
+// A bot shows the team of its latest task that hired one, also after that task ended (done, stopped, or stopped at a limit) and through a
+// plain "continue" that followed it: the leads and how they finished stay on view. Any other later task is work of its own: one that
+// hires a team shows that team, and one without a team shows none (qa143 S19c: an unrelated task showed the old released team).
 // Once the task is over nobody is working: a member it left mid-work shows as released.
 export function activeTeams(tasks: unknown): Map<string, TeamView> {
   const teams = new Map<string, TeamView>()
   for (const task of Array.isArray(tasks) ? tasks : []) {
-    if (!isObject(task) || typeof task.botId !== 'string' || !isObject(task.team) || !Array.isArray(task.team.members)) continue
+    if (!isObject(task) || typeof task.botId !== 'string') continue
     const live = LIVE_TASK.includes(String(task.state))
-    const members = task.team.members.map(memberView).filter(member => member !== null).map(member => live || !ACTIVE.includes(member.state) ? member : { ...member, state: 'released' as const })
+    const members = (isObject(task.team) && Array.isArray(task.team.members) ? task.team.members : []).map(memberView).filter(member => member !== null).map(member => live || !ACTIVE.includes(member.state) ? member : { ...member, state: 'released' as const })
     if (members.length) teams.set(task.botId, { taskId: String(task.id), members })
+    else if (!carriesOn(task.goal)) teams.delete(task.botId)
   }
   return teams
 }

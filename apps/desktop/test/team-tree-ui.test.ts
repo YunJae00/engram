@@ -21,7 +21,7 @@ import { teamT } from '../src/renderer/src/i18n-team.js'
 import { activeTeams, lineLang, memberChip, memberResult, teamForest, teamSummaryText, type TeamMemberView, type TeamNode } from '../src/renderer/src/lib/teamView.js'
 
 const member = (id: string, parentId: string | null, state: MemberState, extra: Partial<TeamMemberView> = {}): TeamMemberView => ({ id, parentId, role: `역할 ${id.slice(1)}`, state, result: undefined, ...extra })
-const task = (botId: string, state: string, members?: unknown, id = `t-${botId}`) => ({ id, botId, state, ...(members ? { team: { members } } : {}) })
+const task = (botId: string, state: string, members?: unknown, id = `t-${botId}`, goal = '팀장 뽑아서 보고서 만들어줘') => ({ id, botId, state, goal, ...(members ? { team: { members } } : {}) })
 const tree = (members: TeamMemberView[], lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(TeamTree, { members, lang }))
 const summary = (members: TeamMemberView[] | undefined, lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(TeamSummary, { team: members && { taskId: 't', members }, lang }))
 const line = (members: TeamMemberView[] | undefined, lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(SidebarTeamLine, { team: members && { taskId: 't', members }, lang }))
@@ -145,8 +145,18 @@ describe('team card and sidebar line', () => {
     const ended = [member('m1', null, 'working'), member('m2', null, 'released', { result: '끝' }), member('m3', null, 'failed')]
     for (const state of ['done', 'failed', 'stopped']) expect(activeTeams([task('b', state, ended)]).get('b')?.members.map(one => one.state)).toEqual(['released', 'released', 'failed'])
     expect(teamSummaryText(activeTeams([task('b', 'failed', [member('m1', null, 'released'), member('m2', null, 'released')])]).get('b')!.members, 'ko')).toBe(teamSummaryText([member('m1', null, 'released'), member('m2', null, 'released')], 'ko'))
-    // A later task without a team (a continue after the stop) keeps the last team on view; a later team replaces it.
-    expect(activeTeams([task('b', 'failed', members, 'old'), task('b', 'running', undefined, 'new')]).get('b')).toMatchObject({ taskId: 'old', members: [{ id: 'm1', state: 'released' }] })
+    // A plain continue after the stop keeps that team on view, while it runs and after it ended; a later team replaces it.
+    for (const goal of ['계속', '계속해줘.', '이어서 해 주세요', 'continue', 'Please continue!', 'Go on']) for (const state of ['running', 'done', 'failed']) {
+      expect(activeTeams([task('b', 'failed', members, 'old'), task('b', state, undefined, 'new', goal)]).get('b')).toMatchObject({ taskId: 'old', members: [{ id: 'm1', state: 'released' }] })
+    }
+    expect(activeTeams([task('b', 'failed', members, 'old'), task('b', 'failed', undefined, 'c1', '계속'), task('b', 'running', undefined, 'c2', 'continue')]).get('b')?.taskId).toBe('old')
+    // qa143 p2 r3 #4: a later task of its own that hired no team does not show the ended team, in any state, nor does a continue after it.
+    for (const goal of ['내일 날씨 알려줘', 'continue with the sales report for Q3 instead', '계속 미뤄둔 메일 정리해줘']) for (const state of ['running', 'waiting', 'done', 'failed']) {
+      expect(activeTeams([task('b', 'failed', members, 'old'), task('b', state, undefined, 'new', goal)]).has('b')).toBe(false)
+      expect(activeTeams([task('b', 'done', members, 'old'), task('b', state, undefined, 'new', goal), task('b', 'running', undefined, 'c', '계속')]).has('b')).toBe(false)
+    }
+    // Another bot's unrelated task does not touch this bot's team.
+    expect(activeTeams([task('b', 'failed', members, 'old'), task('c', 'running', undefined, 'other', '내일 날씨 알려줘')]).get('b')?.taskId).toBe('old')
     expect(activeTeams([task('b', 'done', members, 'old'), task('b', 'running', [member('m7', null, 'working')], 'new')]).get('b')).toMatchObject({ taskId: 'new', members: [{ id: 'm7', state: 'working' }] })
     const two = activeTeams([task('a', 'running', members), task('b', 'running', [member('m9', null, 'done')])])
     expect([two.get('a')?.members[0]?.id, two.get('b')?.members[0]?.id]).toEqual(['m1', 'm9'])
