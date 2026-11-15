@@ -118,6 +118,22 @@ it('holds the readback-only turn to the model\'s own requirement checks, not to 
   expect(t.sent[2]!.request.message).not.toContain('- Unresolved verification')
 })
 
+// qa142 p2a-r7 #1: the readback-only turn is held to every requirement any report of the task stated, not only the preceding report's.
+it.each([[['Leads merged'], false], [['Leads merged', ' no  duplicates '], true]] as const)('holds the readback-only turn to a requirement the retry dropped: restating %j verifies %s', async (restated, verified) => {
+  const checks = (names: readonly string[]) => names.map(requirement => ({ requirement, status: 'pass' as const, basis: 'Compared.' }))
+  const t = await setup(async (_request, turn, extra) => {
+    // First report: both. Retry: only the first, still lacking the readback. Readback turn: the host's check, which takes the handed list as required.
+    if (turn < 3) return { ...done(report, 1), check: { ...unreadCheck, report: { ...unreadReport, checks: checks(turn === 1 ? ['Leads merged', 'No duplicates'] : ['Leads merged']) } }, trail: [fileRead] }
+    const same = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
+    const missing = (extra?.verification?.requirements ?? []).filter(required => !restated.some(one => same(one) === same(required)))
+    return { ...done(report, 1), check: { accepted: !missing.length, verified: !missing.length, issues: missing.map(one => `left out: ${one}`), report: { ...unreadReport, checks: checks(restated) }, reportUnchanged: true }, trail: [fileRead] }
+  }, false)
+  await t.chat('Merge the leads')
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true, requirements: ['Leads merged', 'No duplicates'] })
+  expect(t.sent[2]!.request.message).toContain('- Leads merged\n- No duplicates')
+  expect((await listTasks(t.paths))[0]).toMatchObject(verified ? { state: 'done', verified: true, turns: 3 } : { state: 'waiting', verified: false, turns: 3 })
+})
+
 it('ends waiting when the readback-only turn still lacks the readback, and never gives a second one', async () => {
   const t = await setup(async () => ({ ...done(report, 1), check: unreadCheck, trail: [fileRead] }), false)
   await t.chat('Merge the leads')

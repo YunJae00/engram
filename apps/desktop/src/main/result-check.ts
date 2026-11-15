@@ -51,6 +51,11 @@ const properties = {
   refs: { type: 'array', maxItems: 40, items: { ...text, maxLength: 4096 } },
 }
 
+/** One requirement in any spacing or case. */
+export const sameRequirement = (requirement: string): string => requirement.trim().replace(/\s+/g, ' ').toLowerCase()
+/** The requirement name of the entries the host adds to a report for its own defects. */
+export const HOST_CHECK = 'Unresolved verification'
+
 export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; required?: string[] }): AgentTool {
   return {
     name: TOOL,
@@ -168,7 +173,7 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
 
 // The host decides from what it observed this turn; the model's report adds
 // only its own verdicts, and a fail or unknown there stays unresolved.
-// required: the requirement checks of the preceding report, which a readback-only follow-up must restate, each one passing; a new report cannot drop one.
+// required: every requirement check the task's earlier reports stated, which a readback-only follow-up must restate, each one passing; a new report cannot drop one.
 export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string, required: string[] = []): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
   // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
@@ -186,9 +191,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       for (const item of [...checked.checks, { ...checked.grounding, requirement: 'Source grounding' }]) {
         if (item.status !== 'pass') unresolved.push(`${item.requirement}: ${item.status} — ${item.basis}`)
       }
-      const same = (requirement: string) => requirement.trim().replace(/\s+/g, ' ').toLowerCase()
       for (const requirement of required) {
-        if (!checked.checks.some(item => same(item.requirement) === same(requirement))) issues.push(`The report leaves out a requirement check of the preceding report: "${requirement}". Call report_result_check again with every one of them, worded the same.`)
+        if (!checked.checks.some(item => sameRequirement(item.requirement) === sameRequirement(requirement))) issues.push(`The report leaves out a requirement check of an earlier report: "${requirement}". Call report_result_check again with every one of them, worded the same.`)
       }
     } catch (error) {
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)
@@ -295,7 +299,7 @@ export function checkReport(steps: TurnStep[], options: { generatedDirectory?: s
   }
   return {
     checks: [...checked.checks.map(({ requirement, status, basis }) => ({ requirement, status, basis })),
-      ...(object(value.validation) && Array.isArray(value.validation.defects) ? value.validation.defects.filter((issue): issue is string => typeof issue === 'string').map(basis => ({ requirement: 'Unresolved verification', status: 'unknown' as const, basis })) : [])],
+      ...(object(value.validation) && Array.isArray(value.validation.defects) ? value.validation.defects.filter((issue): issue is string => typeof issue === 'string').map(basis => ({ requirement: HOST_CHECK, status: 'unknown' as const, basis })) : [])],
     grounding: { status: checked.grounding.status, basis: checked.grounding.basis },
     sources: [...sources],
     ...(checked.reportUnchanged === true ? { reportUnchanged: true as const } : {}),

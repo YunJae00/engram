@@ -32,6 +32,7 @@ import type { ChatRequestDto, EngramEvent } from '../shared/types.js'
 import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
+import { HOST_CHECK, sameRequirement } from './result-check.js'
 import { READ_CARD } from './read-card.js'
 import { freshResultReadback, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
@@ -64,7 +65,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean; /** In that follow-up: the preceding report's requirement checks, each of which the new report must restate as passed. */ requirements?: string[] }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean; /** In that follow-up: every requirement check the task's reports have stated, each of which the new report must restate as passed. */ requirements?: string[] }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[], requirements: string[]): string => [
@@ -133,6 +134,8 @@ export function taskRunner(deps: {
   const readbackAttempts = new Set<string>()
   // The model's own verdicts in the last turn's result check, to tell a confirming re-check from a correcting one.
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
+  // Every requirement check any report of the task has stated (first report, retries, check turns), by its first wording: a later report cannot shorten the list.
+  const stated = new Map<string, Map<string, string>>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
   const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
@@ -226,6 +229,10 @@ export function taskRunner(deps: {
     // That word alone is not trusted: the host also reads the answer, and posts it when it corrects or adds anything (recheckAddsNothing).
     const reported = verdicts.get(id)
     verdicts.set(id, outcome?.check?.report)
+    for (const one of outcome?.check?.report?.checks ?? []) {
+      const all = stated.get(id) ?? new Map<string, string>()
+      if (one.requirement !== HOST_CHECK && !all.has(sameRequirement(one.requirement))) stated.set(id, all.set(sameRequirement(one.requirement), one.requirement))
+    }
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     if (after && outcome?.held && after.result && !repeats) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
@@ -246,7 +253,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); stated.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -279,8 +286,8 @@ export function taskRunner(deps: {
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
         readbackNext.delete(id)
-        // The readback turn was granted because every check of the model's own passed; the host's own unresolved entries are not 'pass'.
-        const requirements = unread ? (verdicts.get(id)?.checks ?? []).filter(one => one.status === 'pass').map(one => one.requirement) : []
+        // Held to every requirement any report of this task stated, not only the preceding one's: a retry that dropped one cannot shorten the list.
+        const requirements = unread ? [...stated.get(id)?.values() ?? []] : []
         const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread, requirements) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', ...(unread ? { readback: true, requirements } : {}) } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''

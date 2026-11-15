@@ -259,7 +259,7 @@ it('a check turn whose checks passed stays verified when its comparison script i
   // Both files read, one requirement dropped: not verified.
   const dropped = await held(passed('Leads merged'), ['Leads merged', 'No duplicate leads'])
   expect(dropped).toMatchObject({ accepted: false, verified: false })
-  expect(dropped.issues.join(' ')).toContain('leaves out a requirement check of the preceding report: "No duplicate leads"')
+  expect(dropped.issues.join(' ')).toContain('leaves out a requirement check of an earlier report: "No duplicate leads"')
   // Restated but no longer passing: unresolved, not verified.
   const failing: TurnStep = { ...both, observation: both.observation.replace('"status":"pass","basis":"Compared.","requirement":"No duplicate leads"', '"status":"unknown","basis":"Not compared.","requirement":"No duplicate leads"') }
   expect(await held(failing, ['Leads merged', 'No duplicate leads'])).toMatchObject({ verified: false, issues: ['No duplicate leads: unknown — Not compared.'] })
