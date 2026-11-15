@@ -144,9 +144,11 @@ const SAVED_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
 const linkNames = (answer: string) => [...answer.matchAll(/\(engram-artifact:([^)\s]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(SAVED_ID, '').toLowerCase()] } catch { return [] } })
 // The comet's own copies go on record under the source their receipt names: fromPath, else the task-folder twin made from content.
 // Only that source may later replace the link; a name another source already holds is left alone.
-async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInNames): Promise<void> {
+// The copy the answer itself links claims its name first: an earlier copy of another source under that name is a version it replaced.
+async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInNames, answer = ''): Promise<void> {
   const roots = [cwd, await realpath(cwd).catch(() => cwd)]
-  for (const step of steps) {
+  const quoted = (step: TurnStep) => { try { const id = basename((JSON.parse(step.observation) as { path: string }).path); return answer.includes(`(engram-artifact:${artifactHref(id)})`) || answer.includes(`(engram-artifact:${encodeURIComponent(id)})`) } catch { return false } }
+  for (const step of [...steps.filter(quoted), ...steps.filter(step => !quoted(step))]) {
     if (step.tool !== 'file_create_copy' || step.seeded) continue
     let made: Record<string, unknown>
     try { made = JSON.parse(step.observation) as Record<string, unknown> } catch { continue }
@@ -170,7 +172,9 @@ function freeName(base: string, held: (name: string) => boolean): string {
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
 // names (source path in the task folder -> hand-in name) is filled in for every file found or already handed in.
-export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string, names: HandInNames = {}): Promise<string[]> {
+// made: the hashes of this turn's own receipts. A task file holding the bytes of one of them under a name the answer links is that receipt's
+// task-folder twin (a render's own copy, current or superseded), not another output.
+export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string, names: HandInNames = {}, made = new Set<string>()): Promise<string[]> {
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
   const depth = (path: string) => path.split(/[\\/]/).length
@@ -188,6 +192,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
     let name = names[key]
     // An unrecorded top-level file holding the very bytes linked under its name is that output's task-folder twin: nothing new to hand in.
     if (!name && key === base && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, base, path)) continue
+    if (!name && made.size && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && made.has(createHash('sha256').update(await readFile(path)).digest('hex'))) continue
     name ??= freeName(base, free => taken.has(free) || linked.has(free))
     taken.add((names[key] = name).toLowerCase())
     // An oversized revision cannot match a saved output, so it still gets its size warning.
@@ -210,13 +215,22 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // A receipt with no fromPath has no source it could be a revision of, whatever tool made it: it is its own source, known by its artifact, so two made under one name are two files.
   // Only content copies (and copies of their task-folder twins) share a source, CONTENT, where the last revision per name counts.
   const CONTENT = '\0content'
-  const ownArtifact = (step: TurnStep) => { try { const path = (JSON.parse(step.observation) as { path?: unknown } | null)?.path; return typeof path === 'string' ? path : '' } catch { return '' } }
-  const sourceOf = (step: TurnStep) => { const copy = step.tool === 'file_create_copy', from = copy && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : copy && typeof step.args['content'] === 'string' ? CONTENT : ownArtifact(step); return twins.has(from) ? CONTENT : from }
+  // The artifact a creation receipt made; nothing for any other step (a read's observation names a path too).
+  const ownArtifact = (step: TurnStep) => latestResultOutputs([step], [])[0]?.path ?? ''
+  // What a receipt with no fromPath was made from: its tool and the file it names (a render's source, an edited package), or nothing for inline input.
+  // The same tool on the same input under the same name is one file made again (a report re-rendered after a fix): a revision, where the last one counts.
+  // Two different inputs under one name are two files. qa143 S19: three renders of one report were handed over as report, report-2 and report-3.
+  const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : ''}` : '' }
+  const sourceOf = (step: TurnStep) => { const copy = step.tool === 'file_create_copy', from = copy && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : copy && typeof step.args['content'] === 'string' ? CONTENT : madeFrom(step); return twins.has(from) ? CONTENT : from }
   const receipts = new Map([...new Set(result.steps.map(sourceOf))].flatMap(source => latestResultOutputs(result.steps.map(step => sourceOf(step) === source ? step : { ...step, seeded: true }), [])).map(output => [output.path, output]))
+  // The artifacts this turn made that the answer itself already links, by name: where the comet quoted its final file, its other files of that
+  // name in this turn are the versions it replaced, and are not handed over beside it.
+  const madeHere = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)); return id ? [artifactHref(id), encodeURIComponent(id)] : [] })), quoted = result.answer
   for (const output of [...receipts.values()].sort((a, b) => a.after! - b.after!)) {
     // A receipt is linked when the answer carries its own artifact, not merely a file of its name.
     const id = basename(output.path), others = linkedIds(result.answer, output.name)
     if (others.includes(artifactHref(id)) || others.includes(encodeURIComponent(id))) continue
+    if (linkedIds(quoted, output.name).some(href => madeHere.has(href))) continue
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.
@@ -237,8 +251,9 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const oversized: string[] = []
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
   // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
-  await recordOwnCopies(cwd, result.steps, names)
-  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names)
+  await recordOwnCopies(cwd, result.steps, names, result.answer)
+  const hashes = new Set(result.steps.flatMap(step => latestResultOutputs([step], []).flatMap(output => output.hash ? [output.hash] : [])))
+  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names, hashes)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
   for (const path of named) {
     try {

@@ -468,9 +468,10 @@ it('two sources copied under one name in one turn, neither linked, each get thei
   expect(again.answer).toBe(result.answer)
 })
 // qa142 p2a-r9 #1: a creation receipt with no fromPath is its own source, not one shared empty source where only the last per name survives.
+// qa143 S19: that source is what it was made from (here two source files); one input rendered again is a revision (see the S19 test below).
 it('two files rendered under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
-  const rendered = async (text: string): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', html: `<p>${text}</p>` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
+  const rendered = async (text: string): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', source: `${text}.md` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
   const result = { answer: 'Rendered both reports.', steps: [await rendered('first'), await rendered('second'), passed('Reports rendered')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
   const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
@@ -512,6 +513,33 @@ it('two packages edited under one name in one turn each get their own name and l
   const twice = { answer: 'Edited.', steps: [await edited('same'), await edited('same')] }
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
   expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+})
+// qa143 S19 (a): a report rendered three times while it was being fixed, and its markdown copied twice, was handed over as report.pdf plus
+// report-2/-3/-4.pdf and report-2.md: every render was its own deliverable, and the first render's copy in the task folder one more.
+it('a report re-rendered and re-copied in one turn is handed over once per name, at the version the answer quotes', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const rendered = async (text: string): Promise<TurnStep> => {
+    const saved = await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`))
+    return { tool: 'render_file', args: { name: 'report.pdf', markdown: `# ${text}` }, observation: JSON.stringify({ ...saved, completeReadback: true }) }
+  }
+  const copied = async (text: string, fromPath: string): Promise<TurnStep> => { await writeFile(join(cwd, fromPath), text); const args = { name: 'report.md', fromPath: join(cwd, fromPath) }; return { tool: 'file_create_copy', args, observation: await copy.run(args, context) } }
+  await mkdir(join(cwd, 'draft'), { recursive: true })
+  const steps = [await rendered('v1'), await copied('# v1\n', join('draft', 'report.md')), await rendered('v2'), await rendered('v3'), await copied('# v3\n', 'report.md')]
+  // The first render left its own copy in the task folder, as render_file does; the later ones were cleaned up.
+  await writeFile(join(cwd, 'report.pdf'), '%PDF-v1')
+  const link = (step: TurnStep) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
+  const result = { answer: `Done: report.pdf and report.md.\n\n${link(steps[3]!)}\n\n${link(steps[4]!)}`, steps: [...steps, passed('Report made')] }
+  const quoted = result.answer
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  expect(result.answer).toBe(quoted)
+  expect(result.steps).toHaveLength(steps.length + 1)
+  // With no link in the answer, each name still gets exactly one: its last version.
+  const bare = { answer: 'Done.', steps: [await rendered('w1'), await rendered('w2'), passed('Report made')] }
+  await deliverOutputs(paths, cwd, bare, Date.now() + 60_000, 'ask')
+  const links = [...bare.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.pdf'])
+  expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('%PDF-w2')
 })
 // Content written twice under one name is one file revised: only the last revision is linked.
 it('a content copy revised in the same turn is linked once, at its last revision', async () => {
