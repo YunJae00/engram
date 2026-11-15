@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, type ElectronApplication } from '@playwright/test'
+import { expect, test, _electron as electron, type ElectronApplication, type Locator } from '@playwright/test'
 import { appendBotTurn, createBot, initVault, resetBotsToV2 } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -8,6 +8,12 @@ const ORD = ['첫 번째', '두 번째', '세 번째', '네 번째', '다섯 번
   '열한 번째', '열두 번째', '열세 번째', '열네 번째', '열다섯 번째', '열여섯 번째', '열일곱 번째', '열여덟 번째', '열아홉 번째', '스무 번째',
   '스물한 번째', '스물두 번째', '스물세 번째', '스물네 번째', '스물다섯 번째', '스물여섯 번째', '스물일곱 번째', '스물여덟 번째', '스물아홉 번째', '서른 번째']
 const ITEMS = ORD.map((word, i) => `${i + 1} – ${word} 줄`).join('\n')
+
+// Settled thread turns use `content-visibility: auto`, so a turn mounted this frame is skipped (empty innerText, no client
+// rects) until the next rendering update marks it on-screen. Wait for that before measuring rendered lines.
+async function rendered(locator: Locator) {
+  await expect.poll(() => locator.evaluate(el => el.checkVisibility({ contentVisibilityAuto: true })), { message: 'turn rendered' }).toBe(true)
+}
 
 let app: ElectronApplication | undefined
 test.afterEach(async () => { await app?.close(); app = undefined })
@@ -33,6 +39,7 @@ test('a line per item answer keeps one line per item', async () => {
   const page = await open([{ role: 'user', text: '1부터 30까지 한 줄씩 세어줘' }, { role: 'assistant', text: ITEMS }])
   const body = page.locator('.bubble-msg.assistant .bubble-msg-body').filter({ hasText: '서른 번째 줄' })
   await expect(body).toHaveCount(1)
+  await rendered(body)
   const lines = (await body.innerText()).trim().split('\n')
   expect(lines.length, `LIST-NEWLINES lines=${lines.length} ${JSON.stringify(lines.slice(0, 3))}`).toBe(30)
   const numbered = lines.filter(line => /^\d+ – /.test(line)).length
@@ -58,6 +65,7 @@ test('a two line user message keeps two lines', async () => {
   const page = await open([{ role: 'user', text: '첫 줄 한글\n둘째 줄 끝' }, { role: 'assistant', text: '네.' }])
   const user = page.locator('.bubble-msg.user .chat-user-text').filter({ hasText: '둘째 줄 끝' })
   await expect(user).toHaveCount(1)
+  await rendered(user)
   expect((await user.innerText()).split('\n')).toEqual(['첫 줄 한글', '둘째 줄 끝'])
   const [first, second] = await user.evaluate(el => {
     const node = el.firstChild as Text
