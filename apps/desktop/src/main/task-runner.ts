@@ -182,9 +182,11 @@ export function taskRunner(deps: {
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
         // The host's own verdict on this turn's check. The budget text of a re-check that ran out is not the result: the report it re-checked is.
-        const checked = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !teamReviewIssue(t)
+        const accepted = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !teamReviewIssue(t)
+        const checked = accepted && !outcome.unfinished
+        // A budget stop is always unfinished (the core marks it incomplete), so the re-check at the budget is judged on the host's verdict alone.
         const rechecked = outcome.budgetExhausted && !outcome.errored ? extra?.verification?.result ?? '' : ''
-        if (rechecked.trim() && checked && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(rechecked, trail))) recheckOf = rechecked
+        if (rechecked.trim() && accepted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(rechecked, trail))) recheckOf = rechecked
         t.verified = !!recheckOf || checked && !outcome.budgetExhausted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(outcome.answer, trail))
         if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || 'The result has no fresh readback.'
         else delete t.verificationIssue

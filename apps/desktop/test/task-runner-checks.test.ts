@@ -238,7 +238,8 @@ it.each([
 
 // qa143 S19 (b): the report existed and its check had passed every requirement; the automatic re-check then ran out of the task's
 // token budget, and the task ended failed with "작업이 처리 한도에 닿아 끝나지 않았어요" and the budget text as its result.
-const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: false, steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
+// qa143 p2 r3 #1: the production shape. The core returns every budget stop as incomplete, which ipc reports as unfinished with the budget note as its reason.
+const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: true, unfinishedReason: 'The task token budget (56,032 new tokens available for this turn) was reached.', steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
 // qa143 p2 r2 #1: only the host's own verdict lets the report stand: the re-check read the files back and its check was accepted before the budget ran out.
 const hostAccepted = { accepted: true, verified: true, issues: [], report: unreadReport }
 it('finishes with the checked report when only its re-check ran out of budget', async () => {
