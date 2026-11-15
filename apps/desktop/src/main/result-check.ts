@@ -5,7 +5,8 @@ import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
 type Report = { checks: (Finding & { requirement: string })[]; grounding: Finding; reportUnchanged?: boolean }
-type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[]; source?: string }
+// kept: a file of the report a re-check answers for, known by its path: nothing else under its name replaces it (checkedOutputs).
+type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[]; source?: string; kept?: true }
 type Receipt = Record<string, unknown>
 type Read = { step: TurnStep; position: number; value?: Receipt }
 
@@ -165,15 +166,18 @@ function fullOutputRead(step: TurnStep, output: Output): boolean {
   return value.completeReadback === true && step.args.range === undefined
 }
 
-export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; path: string }[]): Output[] {
-  const latest = new Map<string, Output>(outputs.map(output => [output.name, output]))
+export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[]): Output[] {
+  const latest = new Map<string, Output>(outputs.map(output => [output.kept ? output.path : output.name, output]))
   for (const [position, step] of steps.entries()) {
     if (step.seeded || !CREATES.test(step.tool)) continue
     const value = receipt(step)
     if (!value || value.error || value.ok === false || typeof value.path !== 'string' || typeof value.sha256 !== 'string' || !HASH.test(value.sha256) || typeof step.args.name !== 'string') continue
     const sheets = Array.isArray(value.sheets) ? value.sheets.flatMap(sheet => object(sheet) && typeof sheet.sheet === 'string' ? [sheet.sheet] : []) : undefined
     const source = handedInFrom(step)
-    latest.set(step.args.name, { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}), ...(source ? { source } : {}) })
+    const made: Output = { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}), ...(source ? { source } : {}) }
+    // A kept file made again byte for byte is still that file, to be read after this write; any other file under its name is a second file beside it.
+    if (latest.get(value.path)?.kept) latest.set(value.path, { ...made, kept: true })
+    else latest.set(step.args.name, made)
   }
   return [...latest.values()]
 }
@@ -181,7 +185,7 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
 // The host decides from what it observed this turn; the model's report adds
 // only its own verdicts, and a fail or unknown there stays unresolved.
 // A readback-only follow-up is judged the same way: which requirements its report restates is not this function's concern (the task runner keeps the check turn's report).
-export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
+export function checkResult(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
   // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
   const readbacks: { name: string; path: string }[] = []

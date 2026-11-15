@@ -320,7 +320,7 @@ it('a re-check that links no file still answers for the files of the report it r
   const tools = cometFileTools(paths, 'bot-x', [report.path, notes.path], [cwd])
   const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path }, context) })
   const earlier = `Merged the leads. ${report.markdownLink}`, budgetNote = 'The task token budget was reached. Work so far is preserved.'
-  const recheck = async (steps: TurnStep[], answer = budgetNote) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, earlier)), [])
+  const recheck = async (steps: TurnStep[], answer = budgetNote) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, earlier, answer.startsWith(budgetNote))), [])
   // The other file was read, fresh, and every check passed: the report's own file is still unread, so the host does not accept the check.
   const unrelated = [await reopen(notes.path), passed('Leads merged')]
   expect(freshResultReadback(unrelated)).toBe(true)
@@ -333,6 +333,27 @@ it('a re-check that links no file still answers for the files of the report it r
   // A turn that re-checks nothing answers for its own links only, as before.
   expect(await checkedOutputs(artifactDirectory(paths), budgetNote)).toEqual([])
   expect(await checkedOutputs(artifactDirectory(paths), earlier)).toEqual([{ name: 'report.md', path: report.path }])
+  // qa143 p2 r6 (S19b): the re-check makes its own report.md, reads only that one in full and passes. The report that will stand links the
+  // earlier report.md, which nobody read: it stays an unchecked output beside the new one, with or without the host's link to the new one.
+  const made = async (content: string): Promise<{ step: TurnStep; path: string; link: string }> => { const observation = await tools.find(tool => tool.name === 'file_create_copy')!.run({ name: 'report.md', content }, context), saved = JSON.parse(observation) as { path: string; markdownLink: string }; return { step: { tool: 'file_create_copy', args: { name: 'report.md', content }, observation }, path: saved.path, link: saved.markdownLink } }
+  const newer = await made('# another report\n')
+  expect(newer.path).not.toBe(report.path)
+  const sameName = [newer.step, await reopen(newer.path), passed('Leads merged')]
+  expect(freshResultReadback(sameName)).toBe(true)
+  for (const answer of [budgetNote, `${budgetNote}\n\n${newer.link}`]) {
+    expect(await recheck(sameName, answer)).toMatchObject({ accepted: false, verified: false, issues: [expect.stringContaining(`Reread every final part of report.md (${report.path})`)] })
+    expect(latestResultOutputs(sameName, await checkedOutputs(artifactDirectory(paths), answer, earlier, true)).map(output => output.path)).toEqual([report.path, newer.path])
+  }
+  // A later copy under the name does not push the report's own file out either, also after the report's bytes were made again.
+  const again = await made('# report\n'), third = await made('# third\n')
+  expect(again.path).toBe(report.path)
+  expect((await recheck([again.step, third.step, await reopen(third.path), passed('Leads merged')])).issues.join(' ')).toContain(`Reread every final part of report.md (${report.path})`)
+  // Made again and not read since: the earlier read does not count.
+  expect(await recheck([await reopen(report.path), again.step, passed('Leads merged')])).toMatchObject({ accepted: false })
+  // Both read back, the report's own included: accepted.
+  expect(await recheck([newer.step, await reopen(newer.path), await reopen(report.path), passed('Leads merged')], `${budgetNote}\n\n${newer.link}`)).toEqual({ accepted: true, verified: true, issues: [] })
+  // A re-check whose own answer stands (no budget stop) and links its corrected report.md answers for that one, as before.
+  expect(await checkedOutputs(artifactDirectory(paths), `Corrected. ${newer.link}`, earlier)).toEqual([{ name: 'report.md', path: newer.path }])
 })
 
 it('scratch in the check folder the answer does not name stays out, and a file there the answer names is handed in and checked', async () => {

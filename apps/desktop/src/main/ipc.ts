@@ -2778,7 +2778,7 @@ export function registerIpc(ctx: VaultContext): void {
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
         let check: TurnOutcome['check']
         if (result.steps.some(step => step.tool === 'report_result_check')) {
-          const outputs = latestResultOutputs(result.steps, await checkedOutputs(artifactDirectory(paths), result.answer, turn?.verification?.result))
+          const outputs = latestResultOutputs(result.steps, await checkedOutputs(artifactDirectory(paths), result.answer, turn?.verification?.result, !!result.budgetExhausted))
           const found = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
           check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.
