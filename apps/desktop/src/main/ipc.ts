@@ -1792,7 +1792,11 @@ export function registerIpc(ctx: VaultContext): void {
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
     reviewRules: () => approvals.reviewRules(),
     deliver: async (channel, text, since, trail, evidence) => {
-      const cleaned = await newestRevisions(artifactDirectory(paths), extractChatCaptures(finishProgress(channel, text)).text, since, latestResultOutputs(trail, []).map(output => output.path))
+      const { text: body, captures } = extractChatCaptures(finishProgress(channel, text))
+      // A held answer's "remember this" notes are saved like a posted answer's.
+      for (const item of captures) await writeCapture(paths.inbox, item).catch(error => flog('chat-capture-write', error))
+      if (captures.length) runPipelineSoon(ctx, 'librarian: chat capture')
+      const cleaned = await newestRevisions(artifactDirectory(paths), body, since, latestResultOutputs(trail, []).map(output => output.path))
       await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
@@ -2815,7 +2819,7 @@ export function registerIpc(ctx: VaultContext): void {
         const note = call?.tool === 'run_procedure' && !routine
           ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
           : ''
-        const held = holdTaskResult(result, turn)
+        const held = holdTaskResult(result, turn, check)
         const finished = canLearnTurn(result, held, check)
         if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
         if (savedRoutine?.task) {

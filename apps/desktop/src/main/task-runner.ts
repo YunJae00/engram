@@ -52,7 +52,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -121,6 +121,9 @@ export function taskRunner(deps: {
   const readbackAttempts = new Set<string>()
   // The model's own verdicts in the last turn's result check, to tell a confirming re-check from a correcting one.
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
+  // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when it
+  // answers anew, and never lost when the task ends any other way (flush).
+  const unshown = new Map<string, string>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
   const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
@@ -138,6 +141,13 @@ export function taskRunner(deps: {
   // Every end the person did not ask for leaves a closing message in the thread (task-closing.ts).
   const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown, goal = task?.goal) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error, goal })
 
+  const flush = async (task: DelegatedTask | undefined): Promise<void> => {
+    const draft = task && unshown.get(task.id)
+    if (!task || draft === undefined) return
+    unshown.delete(task.id)
+    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), trails.get(task.id) ?? [])
+  }
+
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
     const started = await edit(id, (t) => {
       if (stopped.has(channelOf(t)) || !['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; return }
@@ -153,7 +163,9 @@ export function taskRunner(deps: {
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const earlier = trails.get(id) ?? []
     refusedThisTurn.delete(id)
-    await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    // The answers this runner re-checks before calling the task done (see the branches below): a team's report, and a result whose own check is not clean, once.
+    const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members'))
+    await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
     const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
@@ -225,7 +237,13 @@ export function taskRunner(deps: {
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     const kept = !!outcome?.budgetExhausted && !!recheckOf && after?.state === 'done'
-    if (after && outcome?.held && after.result && !repeats && !kept) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+    if (after && outcome?.held && after.result) {
+      // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
+      if (repeats || kept) await flush(after)
+      // Held for the re-check that starts now: that turn's answer is the one posted.
+      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id)) unshown.set(id, after.result)
+      else { unshown.delete(id); await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail) }
+    } else if (after && after.state !== 'running') await flush(after)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after
@@ -243,6 +261,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
+    await flush(task)
     if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
@@ -283,6 +302,7 @@ export function taskRunner(deps: {
     } catch (error) {
       const cancelled = !!channel && stopped.has(channel)
       const after = await edit(id, (t) => { if (t.state === 'running') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } })
+      await flush(after)
       if (!cancelled) await close(after, 'error', channel, error)
       await finished(after)
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
@@ -324,6 +344,7 @@ export function taskRunner(deps: {
       } catch (error) {
         const cancelled = stopped.has(channel)
         const failed = task ? await edit(task.id, t => { if (t.state === 'running' || t.state === 'queued') { t.state = cancelled ? 'stopped' : 'failed'; logTask(t, cancelled ? 'Stopped by you' : `Failed: ${error instanceof Error ? error.message : String(error)}`) } }) : undefined
+        await flush(failed)
         if (!cancelled) await close(failed, 'error', channel, error, request.message)
         await finished(failed)
         if (cancelled) return

@@ -215,6 +215,8 @@ it('ends a self-checked team report of words alone as done', async () => {
   expect(task).toMatchObject({ state: 'done', verified: true, turns: 2 })
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done')
+  // qa143 S31/S32: the merged report was posted, then posted again by its check. It is posted once.
+  expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
 })
 
 it.each([
@@ -242,8 +244,8 @@ it('finishes with the checked report when only its re-check ran out of budget', 
   expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
   expect(task).toMatchObject({ state: 'done', result: report, turns: 2 })
   expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')
-  // Neither the budget text nor a second copy of the report is posted, and no limit-stop closing.
-  expect(t.delivered).toEqual([])
+  // The report, which waited for that re-check, is posted once; the budget text is not, and there is no limit-stop closing.
+  expect(t.delivered).toEqual([report])
   expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
 })
 

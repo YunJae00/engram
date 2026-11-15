@@ -1,8 +1,14 @@
 import { handedInFrom } from './result-check.js'
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
-export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' | 'asked' | 'pending' | 'stopped' | 'incomplete'>, turn?: { verification?: unknown; holdIf?: (answer: string, steps: TurnStep[]) => boolean }): boolean {
-  return !result.asked && !result.pending && !!turn?.verification
+// Whether a turn's answer is kept out of the thread for the task runner to post: a re-check always, and an answer the runner is about to
+// re-check itself (holdIf: a team's merged report, or a result whose check left something open). The re-check is told the person has not seen
+// that result, and answers in full: posted before it, the wrap-up appeared twice (qa143 S19 d, S31, S32). The runner posts one of them, once.
+// A question, a pending step, a stopped or an unfinished answer is never held here.
+export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' | 'asked' | 'pending' | 'stopped' | 'incomplete'>, turn?: { verification?: unknown; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean }, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
+  if (result.asked || result.pending) return false
+  if (turn?.verification) return true
+  return !result.stopped && !result.incomplete && turn?.holdIf?.(result.answer, result.steps, check) === true
 }
 
 export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/

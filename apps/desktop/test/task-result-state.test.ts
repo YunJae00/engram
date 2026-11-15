@@ -23,6 +23,20 @@ const report = async (): Promise<TurnStep> => {
   return { tool: 'report_result_check', args, observation: await resultCheckTool().run(args, { task: 'Finish the task' }) }
 }
 
+// qa143 S19 d: an answer the runner re-checks at once waits for that re-check; anything the person must see now does not.
+it('holds a finished answer only when the runner says its own re-check follows', () => {
+  const draft = { answer: 'Report', steps: [read] }
+  const open = { accepted: false, issues: ['Row count not read back'] }
+  const holdIf = vi.fn((_answer: string, _steps: TurnStep[], check?: { accepted: boolean }) => !!check && !check.accepted)
+  expect(holdTaskResult(draft, { holdIf }, open)).toBe(true)
+  expect(holdIf).toHaveBeenLastCalledWith('Report', [read], open)
+  expect(holdTaskResult(draft, { holdIf }, { accepted: true, issues: [] })).toBe(false)
+  expect(holdTaskResult({ ...draft, incomplete: 'Not confirmed.' }, { holdIf }, open)).toBe(false)
+  expect(holdTaskResult({ ...draft, stopped: 'calls' }, { holdIf }, open)).toBe(false)
+  expect(holdTaskResult({ ...draft, asked: true }, { holdIf }, open)).toBe(false)
+  expect(holdTaskResult(draft, { verification: { result: 'Report' } })).toBe(true)
+})
+
 it('does not learn a held draft before its verification turn', () => {
   expect(canLearnTurn(result([read]), true)).toBe(false)
   expect(canLearnTurn(result([]), false)).toBe(true)

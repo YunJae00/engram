@@ -252,3 +252,16 @@ it('attaches word_write and ppt_build outputs the answer did not link, without r
   expect(linked.split(doc.markdownLink).length - 1).toBe(1)
   expect(linked).toContain(deck.markdownLink)
 })
+
+// qa143 S19 (d): the wrap-up was checked (report_result_check) after a PDF's file_read found no text; the turn was still called unverified,
+// continued automatically and restated.
+it('leaves a failed file read to the result check reported after it', () => {
+  const read = { tool: 'file_read', args: {}, observation: 'that did not work: No readable text could be extracted from this document.' }
+  const check = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [], grounding: { status: 'pass', basis: 'x' } }, validation: { accepted: true } }) }
+  expect(finalDesktopFailure([read, check])).toBeUndefined()
+  // With no check after it, or a check that did not go through, or a failed change, the turn is still unverified.
+  expect(finalDesktopFailure([read])).toContain('has not been verified')
+  expect(finalDesktopFailure([check, read])).toContain('has not been verified')
+  expect(finalDesktopFailure([read, { ...check, observation: 'that did not work: invalid report' }])).toContain('has not been verified')
+  expect(finalDesktopFailure([{ tool: 'file_create_copy', args: {}, observation: 'that did not work: disk full' }, check])).toContain('has not been verified')
+})

@@ -31,7 +31,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
       if (!last) return
       if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
       // The host keeps checked work and the check itself out of the thread; the runner delivers once.
-      last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra)
+      last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra, last.check)
     },
     outcome: () => { const o = last; last = undefined; return o },
     abort: () => { aborted.resolve?.() },

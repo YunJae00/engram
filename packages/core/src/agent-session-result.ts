@@ -19,6 +19,11 @@ export function outputLinks(steps: AgentLoopStep[], answer: string): string {
   return links.size ? `${answer}\n\n${[...links].join('\n\n')}` : answer
 }
 
+const reportedCheck = (step: AgentLoopStep): boolean => {
+  if (step.tool !== 'report_result_check') return false
+  try { const receipt = JSON.parse(step.observation) as { error?: unknown; resultCheck?: unknown }; return !receipt.error && !!receipt.resultCheck } catch { return false }
+}
+
 export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined {
   const browser = steps.filter(step => ['read_pages', 'read_open_page', 'open_page', 'verify'].includes(step.tool)).at(-1)
   if (browser?.tool === 'read_pages') {
@@ -29,6 +34,10 @@ export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined 
   const step = steps.filter((one) => one.tool.startsWith('file_') || ['app_read', 'app_text', 'app_set', 'app_press', 'app_do', 'desktop_action', 'desktop_sequence', 'read_desktop', 'look_desktop', 'read_live_document', 'edit_live_document', 'compose_live_document'].includes(one.tool)).at(-1)
   if (!step) return undefined
   const incomplete = 'The last computer or file result failed or may be stale and has not been verified.'
+  // A read that failed changed nothing, and a result check reported after it is judged by the host readback by readback (which final bytes were
+  // read, which were not): that verdict stands instead of this one. qa143 S19: an unreadable PDF's file_read turned a checked wrap-up into
+  // "Not verified as complete", continued it automatically and had it restated.
+  if (step.tool.startsWith('file_read') && steps.slice(steps.lastIndexOf(step) + 1).some(reportedCheck)) return undefined
   if (step.observation.startsWith('that did not work:')) return incomplete
   try {
     const error = JSON.parse(step.observation)?.error

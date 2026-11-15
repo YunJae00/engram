@@ -24,7 +24,8 @@ it('reports once when the re-check passes and repeats the report', async () => {
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  expect(t.delivered).toEqual([])
+  // qa143 S19 d: the report waited for its re-check instead of being posted before it, so the runner posts it, once.
+  expect(t.delivered).toEqual([report])
 })
 it('posts once a re-check that confirms in words the report lacks', async () => {
   const confirmed = 'Checked again; all rows match. [Report](engram-artifact:report.md)'
@@ -280,4 +281,24 @@ it('posts through the runner a status change the re-check calls unchanged', asyn
     : { ...done(failed, 1), check: { accepted: true, issues: [], report: passed, reportUnchanged: true }, trail: readback })
   await t.chat('Save the report')
   expect(t.delivered).toEqual([failed])
+})
+
+// qa143 S19 (d), S31, S32: the answer was posted, then its re-check (told the person had not seen it) answered in full again, a word or two apart.
+// The answer now waits for the re-check the runner starts at once, and only one of the two is posted.
+it('posts only the re-check\'s answer when it rewords a report that was waiting for it', async () => {
+  const draft = '보고서 최종본, 검수까지 끝났어요.\n\n[Report](engram-artifact:report.md)', final = '보고서 최종본, 검수까지 마쳐서 그대로 드려요.\n\n[Report](engram-artifact:report.md)'
+  const t = await unchanged(draft, final)
+  await t.chat('이어서 해줘')
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[0]?.extra?.verification).toBeUndefined()
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, result: final })
+  expect(t.delivered).toEqual([final])
+})
+
+it('still posts the waiting report when its re-check ends without an answer', async () => {
+  const report = 'Saved. [Report](engram-artifact:report.md)'
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : undefined)
+  await t.chat('Save the report')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed' })
+  expect(t.delivered).toEqual([report])
 })
