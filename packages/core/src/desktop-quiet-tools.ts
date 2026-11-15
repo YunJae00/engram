@@ -1,6 +1,6 @@
 import { desktopReadOptions, DESKTOP_READ_PROPERTIES, DESKTOP_READ_GUIDANCE, type DesktopReadOptions } from './desktop-read-options.js'
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
-import { exactKeys, plainRecord, printable, requirePublicText } from './tool-args.js'
+import { exactKeys, plainRecord, printable, requireNoLocalPage, requirePublicText } from './tool-args.js'
 
 // Provider actions avoid capture and injected input; foreground tools remain
 // a fallback for controls without a usable provider action.
@@ -45,7 +45,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
       if (typeof send !== 'boolean' || (send && !text)) return 'app_do takes send only as true or false, and send needs the text to send.'
       if (!app || !goal?.trim() || text === null || text === '' || typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1 || steps > 12) return 'app_do needs app, a goal up to 600 characters, optional printable text and maxSteps from 1 to 12.'
       requirePublicText(goal, context)
-      if (text) requirePublicText(text, context)
+      if (text) { requirePublicText(text, context); requireNoLocalPage(text) }
       const result = await run(app, goal.trim(), text, send, steps, context)
       if ((JSON.parse(result) as { committed?: boolean }).committed) context.onCommitted?.()
       return result
@@ -81,6 +81,7 @@ export function quietDesktopTools(courier: QuietCourier): AgentTool[] {
         const expected = 'expected' in args ? textOf(args['expected'], 2000) : undefined
         if (!app || !snapshot || !control || !text || expected === null) return 'app_set needs the snapshot and a control ID from app_read, and printable text up to 2000 characters.'
         requirePublicText(text, context)
+        requireNoLocalPage(text)
         if (expected) requirePublicText(expected, context)
         return courier.set(app, snapshot, control, text, expected, context)
       },

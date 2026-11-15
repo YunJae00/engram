@@ -2,7 +2,7 @@ import { appNameMatch, similarApps } from './app-names.js'
 import { desktopReadOptions, DESKTOP_READ_PROPERTIES, DESKTOP_READ_GUIDANCE, type DesktopReadOptions } from './desktop-read-options.js'
 import type { AgentTool, AgentToolContext, ToolOutcome } from './agent-loop.js'
 import { QUIET_TOOLS, quietStepSummary } from './desktop-quiet-tools.js'
-import { exactKeys, plainRecord, printable, requirePublicText } from './tool-args.js'
+import { exactKeys, plainRecord, printable, requireNoLocalPage, requirePublicText } from './tool-args.js'
 
 export type DesktopAction =
   | { kind: 'click'; snapshot: string; element: string }
@@ -74,6 +74,7 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
       const text = args['text']
       if (!exactKeys(args, ['kind', 'snapshot', 'text']) || typeof text !== 'string' || !text || text.length > 2000 || !printable(text)) break
       requirePublicText(text, context)
+      requireNoLocalPage(text)
       return { kind: 'type', snapshot, text }
     }
     case 'replace': {
@@ -83,6 +84,7 @@ function actionOf(args: Record<string, unknown>, context: AgentToolContext): Des
         || typeof text !== 'string' || !text || text.length > 2000 || !printable(text)) break
       requirePublicText(expected, context)
       requirePublicText(text, context)
+      requireNoLocalPage(text)
       return { kind: 'replace', snapshot, element, expected, text }
     }
     case 'scroll': {

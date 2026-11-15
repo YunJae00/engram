@@ -8,6 +8,7 @@ import { pageTools } from './comet-page-tools.js'
 import { browserReadBatch } from './browser-read-batch.js'
 import { measuredCourier } from './harness-metrics.js'
 import { formatAsk } from './ask.js'
+import { localPageUrl } from './tool-args.js'
 
 const signInAsk = (task: string | undefined, search = false): string => formatAsk(/[가-힣]/.test(task ?? '')
   ? search ? '열린 검색 페이지에서 로그인을 마치고 다 되면 알려줘.' : '열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.'
@@ -77,12 +78,25 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
       {
         name: 'open_page',
         description:
-          'open any web address and read it; a long page comes in parts, "part" picks one and "find" jumps to the part holding a word — args: {"url": "https://...", "part": 1, "find": "..."}',
+          'open any web address, or a local .html file (file:///… or its absolute path), in the built-in browser and read it; a long page comes in parts, "part" picks one and "find" jumps to the part holding a word — args: {"url": "https://...", "part": 1, "find": "..."}',
         argsSchema: { type: 'object', properties: { url: { type: 'string' }, part: { type: 'integer' }, find: { type: 'string' } }, required: ['url'] },
         async run(args, context) {
-          const url = str(args, 'url')
+          const asked = str(args, 'url')
+          // A local HTML file opens here, in the in-app browser, so nothing sends the work to a system browser.
+          const local = localPageUrl(asked)
+          const url = local ?? asked
           const host = hostOf(url)
-          if (!/^https?:\/\//i.test(url) || !host) return 'open_page needs a full web address, starting with https://'
+          if (!local && (!/^https?:\/\//i.test(url) || !host)) return 'open_page needs a full web address, starting with https://, or a local .html file as file:///… or its absolute path. Other local files are not opened in a browser, here or in another app.'
+          if (local) {
+            try {
+              const page = await courier.fetchPage(local, context.signal)
+              if (page.text.trim() || page.controls?.length) context.onObservedAfterAction?.()
+              return pageReport(page, partOf(args), findOf(args))
+            } catch (err) {
+              if (context.signal?.aborted) throw err
+              return `${local} could not be opened in the built-in browser (${err instanceof Error ? err.message.slice(0, 160) : String(err)}). Check the path; do not open it in another app or an external browser.`
+            }
+          }
           const shape = deps.searchTemplate ? await deps.searchTemplate() : null
           if (shape && isResultsPage(url, shape))
             return `${url} is a results page — use search_web for it, or open one of the result addresses`
