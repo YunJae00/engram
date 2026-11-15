@@ -302,3 +302,27 @@ it('still posts the waiting report when its re-check ends without an answer', as
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed' })
   expect(t.delivered).toEqual([report])
 })
+
+// qa143 p2 r2 #4: a re-check that did not confirm the waiting report replaced it, so "I could not verify it" was all the thread kept.
+it.each([
+  ['reports no result check', (note: string) => done(note, 2), 'The verification turn ended without a result check.'],
+  ['leaves its check unresolved', (note: string) => ({ ...done(note, 2), check: { accepted: false, issues: ['Row count not read back'] } }), 'Row count not read back'],
+  ['stops unfinished', (note: string) => ({ ...done(note, 2), unfinished: true, unfinishedReason: 'sign-in' }), undefined],
+])('posts the waiting report and then the note of a re-check that %s', async (_why, recheck, issue) => {
+  const report = 'Saved 12 rows. [Report](engram-artifact:report.md)', note = 'I could not verify it.'
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : recheck(note), false)
+  await t.chat('Save the report')
+  expect(t.sent).toHaveLength(2)
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'waiting' })
+  if (issue) expect(task).toMatchObject({ verified: false, verificationIssue: issue })
+  expect(t.delivered).toEqual([report, note])
+})
+
+it('posts once a waiting report its unconfirming re-check restates character for character', async () => {
+  const report = 'Saved 12 rows. [Report](engram-artifact:report.md)'
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : done(`${report}\r\n`, 2), false)
+  await t.chat('Save the report')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', verified: false })
+  expect(t.delivered).toEqual([`${report}\r\n`])
+})

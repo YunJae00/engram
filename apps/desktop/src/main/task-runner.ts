@@ -121,8 +121,8 @@ export function taskRunner(deps: {
   const readbackAttempts = new Set<string>()
   // The model's own verdicts in the last turn's result check, to tell a confirming re-check from a correcting one.
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
-  // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when it
-  // answers anew, and never lost when the task ends any other way (flush).
+  // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when the
+  // re-check ends the task done on its own answer, and posted before any other re-check answer or ending (flush), so it is never lost.
   const unshown = new Map<string, string>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
@@ -247,7 +247,14 @@ export function taskRunner(deps: {
       if (repeats || kept) await flush(after)
       // Held for the re-check that starts now: that turn's answer is the one posted.
       else if (!extra?.verification && after.state === 'running' && verifyNext.has(id)) unshown.set(id, after.result)
-      else { unshown.delete(id); await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail) }
+      else {
+        // The re-check's answer stands in for the waiting report only when it is that report checked again: the task ended done on it, or lacks only its
+        // readback turn. Any other re-check answer ("I could not verify it") is a note on the report, posted after it; an exact restatement is posted once.
+        const draft = unshown.get(id)
+        if (draft !== undefined && (after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft))) unshown.delete(id)
+        else await flush(after)
+        await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+      }
     } else if (after && after.state !== 'running') await flush(after)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
