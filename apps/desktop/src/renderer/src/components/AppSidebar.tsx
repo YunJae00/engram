@@ -11,7 +11,7 @@ import { useShellState } from '../state-slices.js'
 import { SidebarStatus } from './SidebarStatus.js'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
 import { SidebarCollection } from './SidebarCollection.js'
-import { SidebarConversation } from './SidebarConversation.js'
+import { SidebarBotTeam, SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 import { SidebarPrimary } from './SidebarPrimary.js'
@@ -116,7 +116,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} />, bot })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} />, below: <SidebarBotTeam bot={bot} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const focusComposer = () => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
   const newBot = async () => {

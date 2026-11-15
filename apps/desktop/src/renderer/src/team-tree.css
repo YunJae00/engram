@@ -24,6 +24,10 @@
 .sidebar-team-line { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; color: var(--fg-faint); font-size: var(--fs-micro); line-height: 1.3; animation: team-member-in 180ms var(--ease-out); }
 .sidebar-team-line > span { min-height: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-conversations .bots-row:has(.sidebar-team-line) { height: auto; min-height: 58px; }
+.sidebar-item:has(> .sidebar-team) { flex-wrap: wrap; }
+.sidebar-team { flex: 0 0 100%; min-width: 0; box-sizing: border-box; padding: 0 8px 4px 48px; font-size: var(--fs-micro); line-height: 1.3; }
+.sidebar-team .team-tree { padding: 2px 4px 2px 16px; }
+.sidebar-team .team-member-row { padding: 1px 0; }
 .sidebar-primary-button .sidebar-team-line { max-width: 100%; text-align: center; }
 @keyframes team-member-in { from { grid-template-rows: 0fr; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {

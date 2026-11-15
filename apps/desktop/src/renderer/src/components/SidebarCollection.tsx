@@ -7,7 +7,7 @@ import { SidebarDisclosure } from './SidebarDisclosure.js'
 import { DeleteConversationDialog } from './DeleteConversationDialog.js'
 import { t } from '../i18n.js'
 
-interface Item { id: string; name: string; active?: boolean; recency?: number; leading?: ReactNode; content?: ReactNode; bot?: BotDto }
+interface Item { id: string; name: string; active?: boolean; recency?: number; leading?: ReactNode; content?: ReactNode; below?: ReactNode; bot?: BotDto }
 interface Props {
   kind: SidebarKind; items: Item[]; layout: SidebarLayout[SidebarKind]; newFolder: number
   onChange(change: SidebarChange['change']): Promise<void>
@@ -202,6 +202,7 @@ export function SidebarCollection({ kind, items, layout, newFolder, onChange, on
     }} onContextMenu={item.bot ? event => { event.preventDefault(); openMenu(event.currentTarget, { type: 'item', id: item.id }) } : undefined}>
     {editing?.id === item.id && editing.type === 'item' ? input() : <button className={`sidebar-item-main${kind === 'chat' ? ' bots-row' : ' sidebar-routine-row'}${item.active ? ' active' : ''}`} title={item.name} data-testid={kind === 'chat' ? `bot-${item.id}` : `sidebar-routine-run-${item.id}`} tabIndex={tree ? -1 : undefined} onClick={() => onOpen(item.id)}>{item.content ?? <>{item.leading}<span>{item.name}</span></>}</button>}
     {controls({ type: 'item', id: item.id }, item.name, item.pinned, item)}
+    {item.below}
   </li>)}</ul>
   }
   const folders = layout.folders.map(one => <div className={`sidebar-folder${over === one.id ? ' sidebar-drop-target' : ''}`} key={one.id} data-testid={`sidebar-folder-${one.id}`} {...tree ? { role: 'treeitem', 'aria-expanded': !one.collapsed, 'aria-label': one.name, 'data-tree-item': `folder:${one.id}`, onContextMenu: (event: MouseEvent<HTMLDivElement>) => { const target = event.target as Element; if (target.closest('[role="treeitem"]') !== event.currentTarget || target.closest('input')) return; event.preventDefault(); openMenu(event.currentTarget, { type: 'folder', id: one.id }) } } : {}}>

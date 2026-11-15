@@ -15,7 +15,7 @@ vi.mock('../src/renderer/src/api.js', () => ({
     onEvent: (handler: (event: { type: string }) => void) => { fake.handler = handler; return () => undefined },
   },
 }))
-import { SidebarTeamLine, TeamSummary } from '../src/renderer/src/components/TeamSummary.js'
+import { SidebarTeam, SidebarTeamLine, TeamSummary } from '../src/renderer/src/components/TeamSummary.js'
 import { TeamTree } from '../src/renderer/src/components/TeamTree.js'
 import { teamT } from '../src/renderer/src/i18n-team.js'
 import { activeTeams, lineLang, memberChip, memberResult, teamForest, teamSummaryText, type TeamMemberView, type TeamNode } from '../src/renderer/src/lib/teamView.js'
@@ -246,4 +246,20 @@ describe('team store', () => {
     store.subscribe(vi.fn())
     expect(fake.calls).toHaveLength(2)
   })
+})
+
+// qa142: the sidebar row of a team bot only had a subtitle; the spec wants its leads under it.
+describe('sidebar team disclosure', () => {
+  const render = (members: TeamMemberView[] | undefined) => renderToStaticMarkup(createElement(SidebarTeam, { team: members && { taskId: 't', members }, lang: 'ko' }))
+  it('is a collapsed button over the lead rows, each with a name and status, helpers left out', () => {
+    const html = render([member('m1', null, 'working'), member('m2', 'm1', 'working'), member('m3', null, 'done')])
+    expect(html).toMatch(/<button type="button"[^>]*aria-expanded="false"[^>]*aria-controls="/)
+    expect(html).toContain('팀 3명 · 2명 작업 중')
+    expect(html).toMatch(/class="sidebar-disclosure" data-open="false"[^>]*aria-hidden="true"/)
+    const leads = html.split('data-testid="sidebar-team-lead"').slice(1).map(row => row.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '))
+    expect(leads).toHaveLength(2)
+    expect(leads[0]).toContain(`역할 1 ${teamT('ko', 'working')}`)
+    expect(leads[1]).toContain(`역할 3 ${teamT('ko', 'done')}`)
+  })
+  it('renders nothing without a team', () => { expect(render(undefined)).toBe(''); expect(render([])).toBe('') })
 })

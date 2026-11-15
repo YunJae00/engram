@@ -13,12 +13,11 @@ import { t, uiLocale } from '../i18n.js'
 import { displayTaskAnswer, threadLang } from '../lib/threadLang.js'
 import { useTeam } from '../lib/teamLive.js'
 import { lineLang } from '../lib/teamView.js'
-import { SidebarTeamLine } from './TeamSummary.js'
+import { SidebarTeam } from './TeamSummary.js'
 
 export const SidebarConversation = memo(function SidebarConversation({ bot, state, active }: { bot: BotDto; state: CometActivity; active: boolean }) {
   const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
-  const team = useTeam(bot.id)
   const preview = useMemo(() => {
     if (state === 'waiting') return t('sidebar.waiting')
     if (thread.busy) {
@@ -46,8 +45,13 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     <span className="sidebar-conversation-content" title={valid ? date.toLocaleString(uiLocale()) : undefined}>
       <span className="sidebar-conversation-top"><span className="sidebar-conversation-name" data-unread={unread || undefined}>{bot.name}</span>{bot.notify === 'off' && <BellOff className="sidebar-bell-off" size={12} role="img" aria-label={`${t('botInfo.notify')}: ${t('botInfo.notifyOff')}`} />}</span>
       <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>
-      <SidebarTeamLine team={team} lang={lineLang(thread.messages, bot.lastMessage)} />
     </span>
     {status && <span className="sidebar-status-dot" data-status={status} role="img" aria-label={status === 'unread' ? t('sidebar.unread') : cometActivityLabel(status === 'working' ? 'running' : state)} />}
   </>
 })
+
+// Sits under the row, not in it: the row is one button and the disclosure is its own.
+export function SidebarBotTeam({ bot }: { bot: BotDto }) {
+  const messages = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id).messages)
+  return <SidebarTeam team={useTeam(bot.id)} lang={lineLang(messages, bot.lastMessage)} />
+}
