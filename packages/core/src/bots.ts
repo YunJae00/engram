@@ -71,6 +71,10 @@ export interface BotTurn {
   scheduled?: boolean
   // Said while an earlier turn was still working; its own reply comes after that turn's answer.
   aside?: boolean
+  // The turn ended on this error instead of an answer; shown as an error card, never given to a model as something said.
+  error?: boolean
+  errorKind?: string
+  provider?: string
 }
 
 export interface BotSuggestion {

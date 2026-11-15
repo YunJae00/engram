@@ -223,6 +223,9 @@ export interface ChatTurnDto {
   evidence?: import('core').TurnEvidence
   scheduled?: boolean
   aside?: boolean
+  error?: boolean
+  errorKind?: string
+  provider?: string
 }
 
 export interface DelegatedTaskDto {

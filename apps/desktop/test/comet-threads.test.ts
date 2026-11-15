@@ -436,3 +436,11 @@ it('does not cut a streaming table at a follow-up, live or after a reload', () =
   ])
   expect(saved.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?', 'Rain list.', 'And snow?', 'Snow list.'])
 })
+
+// qa142 B2 follow-up: a failed turn saved on disk comes back as its error card, not as a question with no reply.
+it('shows a saved failed turn as an error after a reload and keeps it out of the next request', () => {
+  const store = createCometThreads(BOT)
+  store.load(BOT, [{ role: 'user', text: '회의록 정리해줘' }, { role: 'assistant', text: 'Invalid model', error: true, errorKind: 'unknown', provider: 'Claude' }])
+  expect(store.thread(BOT).messages.at(-1)).toMatchObject({ role: 'assistant', text: 'Invalid model', error: true, errorKind: 'unknown', provider: 'Claude' })
+  expect(store.begin(BOT, '다시').map(turn => turn.text)).toEqual(['회의록 정리해줘'])
+})

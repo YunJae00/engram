@@ -72,7 +72,7 @@ function lastTurnIn(bytes: Buffer, whole: boolean): BotTurn | undefined {
     if (!line.trim()) continue
     try {
       const parsed = JSON.parse(line) as BotTurn
-      if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string' && !parsed.progress) return parsed
+      if ((parsed?.role === 'user' || parsed?.role === 'assistant') && typeof parsed?.text === 'string' && !parsed.progress && !parsed.error) return parsed
     } catch {
       // one corrupt line must not cost the preview
     }

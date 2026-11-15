@@ -62,7 +62,7 @@ type PageRead = (id: string, before: number, limit: number) => Promise<ChatTurnD
 
 const identity = (turn: { role: string; at?: string; text: string }): string => `${turn.role}\n${turn.at ?? ''}\n${turn.text}`
 
-const toMessage = (turn: ChatTurnDto): CometMessage => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}) })
+const toMessage = (turn: ChatTurnDto): CometMessage => ({ role: turn.role, text: turn.text, ...(turn.at ? { at: turn.at } : {}), ...(turn.attachments?.length ? { attachments: turn.attachments } : {}), ...(turn.scheduled ? { scheduled: true } : {}), ...(turn.progress ? { progress: true } : {}), ...(turn.work ? { work: turn.work } : {}), ...(turn.evidence ? { evidence: turn.evidence } : {}), ...(turn.error ? { error: true, ...(turn.errorKind ? { errorKind: turn.errorKind } : {}), ...(turn.provider ? { provider: turn.provider } : {}) } : {}) })
 
 // Where `next` starts inside `coverage` so their overlap runs to the end of `coverage`, or -1.
 function alignAt(coverage: string[], next: string[]): number {

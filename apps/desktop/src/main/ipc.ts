@@ -2473,7 +2473,7 @@ export function registerIpc(ctx: VaultContext): void {
     // Short on purpose. These ride on EVERY local turn (the warm-session lane
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
-    const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress)
+    const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error)
     if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request) && !savedFollowUp(channel, request.message)) {
       await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
       recordedRequests.add(request)
@@ -2903,6 +2903,8 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'comet:step', channel, line: `outage: ${brainName(engine.id)}` })
         }
         else {
+          // No closing message follows this error, so the card itself is saved: after a reload the question still has its reply.
+          if (kind !== 'outage' && bot) await appendBotTurn(paths, bot.id, { role: 'assistant', text: withoutSecrets(said, request.message), at: new Date().toISOString(), error: true, ...(kind ? { errorKind: kind } : {}), provider: brainName(engine.id) }).catch(error => flog('chat-error-save', error))
           broadcast({ type: 'chat:error', channel, message: said, kind, provider: brainName(engine.id) })
           // An outage can pass, so its task still closes offering to continue; any other error says only itself.
           if (kind !== 'outage') turnOutcomes.set(channel, { answer: '', asked: false, unfinished: true, steps: 0, errored: said })
