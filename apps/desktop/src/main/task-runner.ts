@@ -71,13 +71,14 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean; /** In that follow-up: the preceding report's requirement checks, each of which the new report must restate as passed. */ requirements?: string[] }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
-const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
+const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[], requirements: string[]): string => [
   'Your result check passed except for one thing: these files were handed in with the result, but were not read back in full after their last write.',
   ...files.map(file => `- ${file.name}: ${file.path}`),
   'Read each of them in full with file_read, every page to the end, and reopen in full every other final file linked in the result below: only what this turn reads counts. Then call report_result_check again with the same requirement checks (reportUnchanged: true when nothing in the result needs correcting) and answer with the result below unchanged, keeping its file links.',
+  ...(requirements.length ? ['The new report must carry every one of these requirement checks, worded exactly like this; leaving one out leaves the result unverified:', ...requirements.map(requirement => `- ${requirement}`)] : []),
   'Do no other work: do not edit, create, rerun or re-derive anything. If a readback shows the result is wrong, report that check as failed and say exactly what differs instead of fixing it.',
   '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
@@ -285,7 +286,9 @@ export function taskRunner(deps: {
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
         readbackNext.delete(id)
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', ...(unread ? { readback: true } : {}) } } : {}) })
+        // The readback turn was granted because every check of the model's own passed; the host's own unresolved entries are not 'pass'.
+        const requirements = unread ? (verdicts.get(id)?.checks ?? []).filter(one => one.status === 'pass').map(one => one.requirement) : []
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread, requirements) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', ...(unread ? { readback: true, requirements } : {}) } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }
