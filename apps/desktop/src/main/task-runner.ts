@@ -41,15 +41,11 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 // The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
-// A link target (kept whole, less a saved copy's id) | a run of * _ ` ~ opening or closing emphasis (not one inside a word or standing alone).
-const LINK_OR_EMPHASIS = /\]\(([^\s)]+)\)|(?<![\p{L}\p{N}])[*_`~]+(?=\S)|(?<=\S)[*_`~]+(?![\p{L}\p{N}])/gu
-const SAVED_COPY_ID = /^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
-const plain = (text: string) => text.normalize('NFKC')
-  .replace(LINK_OR_EMPHASIS, (_, target?: string) => target === undefined ? '' : `](${target.replace(SAVED_COPY_ID, '$1')})`)
-  .replace(/\s+/g, ' ').trim()
-/** True only when a re-check answer is the delivered report again: the same text once full-width forms, whitespace runs, markdown emphasis
- *  and a saved copy's id are set aside. Punctuation, case and wording are kept, so anything else is posted, once: a changed comma
- *  ("No changes were made." after "No, changes were made.") or a dropped qualifier can reverse a report.
+const plain = (text: string) => text.normalize('NFKC').replace(/\s+/g, ' ').trim()
+/** True only when a re-check answer is the delivered report again: the same text once full-width forms and whitespace runs (line breaks
+ *  included) are set aside. Everything else is kept, so anything else is posted, once: a changed comma ("No changes were made." after
+ *  "No, changes were made.") or a dropped qualifier can reverse a report, ~~strikethrough~~ withdraws a claim, and a saved copy's id
+ *  tells two versions of report.md apart.
  *  The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   return plain(answer) === plain(report)

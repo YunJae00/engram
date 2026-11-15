@@ -12,7 +12,8 @@ it('preserves the engine answer and reported limitations through one verificatio
 })
 
 // qa142: every finished task was reported twice (the answer, then the re-check repeating it).
-// p2b-r7: only the report again (whitespace, emphasis and a saved copy's id aside) is silent; any other answer is posted, once.
+// p2b-r7: only the report again is silent; any other answer is posted, once.
+// p2b-r8: whitespace aside only. Emphasis markers and a saved copy's id are part of the text.
 const unchanged = (report: string, answer: string) => setup(async (_request, turn) => turn === 1
   ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
   : { ...done(answer, 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
@@ -75,10 +76,11 @@ it('posts a confirming re-check in its own words that links the same file under 
   await t.chat('Save the report')
   expect(t.delivered).toEqual([confirmed])
 })
-it('stays silent when the re-check repeats the report with the file under its saved-copy id', async () => {
-  const t = await unchanged('Saved. [Report](engram-artifact:report.md)', 'Saved. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)')
+it('posts a re-check that repeats the report with the file under its saved-copy id', async () => {
+  const answer = 'Saved. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)'
+  const t = await unchanged('Saved. [Report](engram-artifact:report.md)', answer)
   await t.chat('Save the report')
-  expect(t.delivered).toEqual([])
+  expect(t.delivered).toEqual([answer])
 })
 
 // qa142 p2b-r2 #1: a readback can correct a statement of a report whose own check passed, without touching a file;
@@ -117,12 +119,20 @@ it('posts once a re-check that restates only part of the report and affirms it i
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
   expect(t.delivered).toEqual([part])
 })
-it('stays silent when a re-check repeats the report, rewrapped and emphasised, and affirms it is unchanged', async () => {
-  const t = await recheck('**Saved;** the total\nis *12*.\n\n[Report](engram-artifact:report.md)\n', true)
+it('stays silent when a re-check repeats the report, rewrapped, and affirms it is unchanged', async () => {
+  const t = await recheck('Saved; the total\nis 12.\n\n[Report](engram-artifact:report.md)\n', true)
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
   expect(t.delivered).toEqual([])
+})
+it('posts once a re-check that repeats the report, rewrapped and emphasised, though it affirms it is unchanged', async () => {
+  const emphasised = '**Saved;** the total\nis ~~12~~.\n\n[Report](engram-artifact:report.md)'
+  const t = await recheck(emphasised, true)
+  await t.chat('Save the report')
+  expect(t.sent).toHaveLength(2)
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
+  expect(t.delivered).toEqual([emphasised])
 })
 
 // qa142 p2b-r3: reportUnchanged is necessary, not sufficient; the host reads the re-check answer itself and posts what corrects or adds.
@@ -138,7 +148,7 @@ it.each([
 })
 it('reads whether a re-check answer adds anything to the delivered report', () => {
   const report = 'Saved; the total is 12 for `sales.csv`. [Report](engram-artifact:report.md)'
-  expect(recheckAddsNothing('Saved; the total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(true)
+  expect(recheckAddsNothing('Saved; the total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(false)
   expect(recheckAddsNothing('The total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(false)
   expect(recheckAddsNothing('Checked again; the total is 12 for `sales.csv`. [Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)', report)).toBe(false)
   expect(recheckAddsNothing('Checked again; all rows match.', report)).toBe(false)
@@ -165,16 +175,30 @@ it('stays silent on the same values repeated and posts a restatement of part of 
   expect(recheckAddsNothing('A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(false)
   expect(recheckAddsNothing('합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(false)
 })
-// qa142 p2b-r7: the report again is silent whatever its line wrapping or emphasis; case, punctuation and wording are kept.
-it('stays silent when a re-check repeats the report with other line wrapping or emphasis', () => {
+// qa142 p2b-r7: the report again is silent whatever its line wrapping; case, punctuation and wording are kept.
+// p2b-r8: so are emphasis markers and a saved copy's id.
+it('stays silent when a re-check repeats the report with other line wrapping and posts one with other emphasis', () => {
   const report = 'Saved. A: 12; B: 14.\nStatus: passed. [Report](engram-artifact:report.md)'
   expect(recheckAddsNothing(report, report)).toBe(true)
-  expect(recheckAddsNothing('  **Saved.**\n\n**A**:   １２;\nB: *14*.\n\n__Status__:   `passed`.   ~~[Report](engram-artifact:report.md)~~\n', report)).toBe(true)
+  expect(recheckAddsNothing('  **Saved.**\n\n**A**:   １２;\nB: *14*.\n\n__Status__:   `passed`.   ~~[Report](engram-artifact:report.md)~~\n', report)).toBe(false)
+  expect(recheckAddsNothing('  Saved.\n\nA:   １２;\nB: 14.\n\nStatus:\tpassed.\r\n[Report](engram-artifact:report.md)\n', report)).toBe(true)
   expect(recheckAddsNothing('  **Saved.**\n\n- **a**:   １２;\n- b: *14*.\n\n__Status__:   passed.   [Report](engram-artifact:report.md)\n', report)).toBe(false)
   expect(recheckAddsNothing('saved. a: 12; b: 14. status: passed. [Report](engram-artifact:report.md)', report)).toBe(false)
-  // A marker inside a word or a link target is not emphasis.
   expect(recheckAddsNothing('Saved report_final.md and 2 * 3.', 'Saved reportfinal.md and 2 3.')).toBe(false)
   expect(recheckAddsNothing('[Report](engram-artifact:a_b.md)', '[Report](engram-artifact:ab.md)')).toBe(false)
+})
+it('posts a re-check that strikes through a claim of the report', () => {
+  expect(recheckAddsNothing('Saved. ~~All tests passed.~~', 'Saved. All tests passed.')).toBe(false)
+  expect(recheckAddsNothing('Saved. All tests passed.', 'Saved. ~~All tests passed.~~')).toBe(false)
+  expect(recheckAddsNothing('Saved. **All** tests passed.', 'Saved. All tests passed.')).toBe(false)
+})
+it('posts a re-check that links another saved copy of the same file name', () => {
+  const copy = (id: string) => `Saved. [Report](engram-artifact:${id}-report.md)`
+  const first = copy('0a1b2c3d-1111-2222-3333-444455556666')
+  expect(recheckAddsNothing(copy('9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff'), first)).toBe(false)
+  expect(recheckAddsNothing('Saved. [Report](engram-artifact:report.md)', first)).toBe(false)
+  expect(recheckAddsNothing(first, first)).toBe(true)
+  expect(recheckAddsNothing(`Saved.\n[Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)\n`, first)).toBe(true)
 })
 it('posts a re-check whose punctuation or dropped qualifier changes what the report said', () => {
   expect(recheckAddsNothing('No changes were made.', 'No, changes were made.')).toBe(false)
