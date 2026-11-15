@@ -217,20 +217,21 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const CONTENT = '\0content'
   // The artifact a creation receipt made; nothing for any other step (a read's observation names a path too).
   const ownArtifact = (step: TurnStep) => latestResultOutputs([step], [])[0]?.path ?? ''
-  // What a receipt with no fromPath was made from: its tool and the file it names (a render's source, an edited package), or nothing for inline input.
+  // What a receipt with no fromPath was made from: its tool and the file it names (a render's source, an edited package), or, for inline input, the input itself.
   // The same tool on the same input under the same name is one file made again (a report re-rendered after a fix): a revision, where the last one counts.
-  // Two different inputs under one name are two files. qa143 S19: three renders of one report were handed over as report, report-2 and report-3.
-  const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : ''}` : '' }
+  // Two different inputs under one name are two files, inline html or markdown included: nothing says one replaces the other, and a file is never dropped on a guess.
+  // qa143 S19: three renders of one report were handed over as report, report-2 and report-3.
+  const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : createHash('sha256').update(JSON.stringify(step.args)).digest('hex')}` : '' }
   const sourceOf = (step: TurnStep) => { const copy = step.tool === 'file_create_copy', from = copy && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : copy && typeof step.args['content'] === 'string' ? CONTENT : madeFrom(step); return twins.has(from) ? CONTENT : from }
   const receipts = new Map([...new Set(result.steps.map(sourceOf))].flatMap(source => latestResultOutputs(result.steps.map(step => sourceOf(step) === source ? step : { ...step, seeded: true }), [])).map(output => [output.path, output]))
-  // The artifacts this turn made that the answer itself already links, by name: where the comet quoted its final file, its other files of that
-  // name in this turn are the versions it replaced, and are not handed over beside it.
-  const madeHere = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)); return id ? [artifactHref(id), encodeURIComponent(id)] : [] })), quoted = result.answer
+  // The sources whose artifact the answer itself already links, by name: where the comet quoted one version of a file, that source's other
+  // versions under the name are the ones it replaced, and are not handed over beside it. Another source under that name is another file, and is.
+  const quoted = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)), name = id.replace(SAVED_ID, ''); return id && linkedIds(result.answer, name).some(href => href === artifactHref(id) || href === encodeURIComponent(id)) ? [`${name}\0${sourceOf(step)}`] : [] }))
   for (const output of [...receipts.values()].sort((a, b) => a.after! - b.after!)) {
     // A receipt is linked when the answer carries its own artifact, not merely a file of its name.
     const id = basename(output.path), others = linkedIds(result.answer, output.name)
     if (others.includes(artifactHref(id)) || others.includes(encodeURIComponent(id))) continue
-    if (linkedIds(quoted, output.name).some(href => madeHere.has(href))) continue
+    if (quoted.has(`${output.name}\0${sourceOf(result.steps[output.after!]!)}`)) continue
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.
