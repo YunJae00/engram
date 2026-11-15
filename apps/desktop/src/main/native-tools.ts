@@ -152,7 +152,7 @@ const CORE_HAND_IN = /\.(xlsx|docx|pptx|csv|tsv|md|txt|json)$/i
 // Every output of the turn reaches the answer as a file link: the ones a tool
 // saved (even when the turn was cut short, since each was read back), and the
 // raw files the answer names when the turn finished.
-export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string, revisionsOnly = false): Promise<void> {
+export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { answer: string; steps: TurnStep[]; asked?: unknown; stopped?: unknown }, since: number, task: string, checkTurn = false): Promise<void> {
   if (result.asked) return
   const linked = (name: string) => result.answer.includes(`-${artifactHref(name)})`) || result.answer.includes(`-${encodeURIComponent(name)})`)
   for (const output of latestResultOutputs(result.steps, [])) {
@@ -162,16 +162,18 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
   for (const path of await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))) {
-    // A check turn's own scripts are its tools, not results; only a revised hand-in is delivered.
-    if (revisionsOnly && !linkedIds(result.answer, basename(path)).length) continue
+    // A check turn's own scripts are its tools, not results; any other file it names is still handed in and checked.
+    if (checkTurn && /\.(py|js|ts|sh|ps1)$/i.test(path) && !linkedIds(result.answer, basename(path)).length) continue
     try {
       const name = basename(path)
       const real = await taskFile(paths, cwd, path)
       const raw = async () => JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
       // Core reads text back under its own 8 MB limit; a larger file still goes in as made, up to the 50 MB cap.
       const observation = CORE_HAND_IN.test(name) ? await handIn.run({ name, fromPath: path }, { task }).catch(raw) : await raw()
-      result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation })
-      const link = (JSON.parse(observation) as { markdownLink: string }).markdownLink, stale = linkedIds(result.answer, name)
+      const made = JSON.parse(observation) as { markdownLink: string }
+      // handedInFrom marks the host's own copy of a task file: the result check takes a full read of those bytes before the report as its readback.
+      result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation: JSON.stringify({ ...made, handedInFrom: real }) })
+      const link = made.markdownLink, stale = linkedIds(result.answer, name)
       // The revised file replaces the earlier hand-in where the answer quoted it.
       result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
     } catch (error) {

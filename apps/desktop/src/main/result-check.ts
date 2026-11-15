@@ -4,7 +4,7 @@ import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
 type Report = { checks: (Finding & { requirement: string })[]; grounding: Finding }
-type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[] }
+type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[]; source?: string }
 type Receipt = Record<string, unknown>
 type Read = { step: TurnStep; position: number; value?: Receipt }
 
@@ -70,6 +70,12 @@ export function resultCheckTool(config?: { outputs: { name: string; path: string
 function receipt(step: TurnStep): Receipt | undefined {
   try { const value: unknown = JSON.parse(step.observation); return object(value) ? value : undefined }
   catch { return undefined }
+}
+
+// The task file the host itself copied in after the turn (deliverOutputs); a model's own call never carries this.
+export function handedInFrom(step: TurnStep): string | undefined {
+  const from = step.tool === 'file_create_copy' ? receipt(step)?.handedInFrom : undefined
+  return typeof from === 'string' ? from : undefined
 }
 
 function badReceipt(value: Receipt, allowTruncated = false): boolean {
@@ -149,7 +155,8 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
     const value = receipt(step)
     if (!value || value.error || value.ok === false || typeof value.path !== 'string' || typeof value.sha256 !== 'string' || !HASH.test(value.sha256) || typeof step.args.name !== 'string') continue
     const sheets = Array.isArray(value.sheets) ? value.sheets.flatMap(sheet => object(sheet) && typeof sheet.sheet === 'string' ? [sheet.sheet] : []) : undefined
-    latest.set(step.args.name, { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}) })
+    const source = handedInFrom(step)
+    latest.set(step.args.name, { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}), ...(source ? { source } : {}) })
   }
   return [...latest.values()]
 }
@@ -174,7 +181,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     } catch (error) {
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)
     }
-    if (steps.slice(index + 1).some(step => !step.seeded && CHANGES.test(step.tool))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
+    // The host's own hand-in of a task file is not the model changing the result; its bytes are checked below.
+    if (steps.slice(index + 1).some(step => !step.seeded && CHANGES.test(step.tool) && !handedInFrom(step))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
   }
 
   const latest = latestResultOutputs(steps, outputs)
@@ -212,6 +220,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     const sheetsCovered = !workbook || sheetNames.size > 0 && [...sheetNames].every(sheet => fullReads.some(read => read.value?.sheet === sheet))
     // A workbook's extracted text, read through to the end, covers every sheet as well.
     const textCovered = !!textCoverage(reads, output.path, expected.hash, output.after) || (!workbook && packageCoverage(reads, output.path, expected.hash, output.after))
+      // A host hand-in is a byte copy made after the turn: the task file read in full at the same hash is that readback.
+      || (!!output.source && !!output.hash && !!textCoverage(reads, output.source, output.hash))
     if (!textCovered && (!fullReads.length || !sheetsCovered)) {
       issues.push(`Reread every final part of ${output.name} (${output.path}) after its last write: the whole text at one revision, every sheet of a workbook, or every listed textParts entry of a document package.`)
     }

@@ -1,3 +1,4 @@
+import { handedInFrom } from './result-check.js'
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
 export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' | 'asked' | 'pending' | 'stopped' | 'incomplete'>, turn?: { verification?: unknown; holdIf?: (answer: string, steps: TurnStep[]) => boolean }): boolean {
@@ -22,7 +23,8 @@ const READBACK = /^(app_read|app_text|read_open_page|read_pages|look|verify|read
 
 export function freshResultReadback(steps: TurnStep[]): boolean {
   // Failed moves can also invalidate the state observed before them.
-  const lastChange = steps.map(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
+  // The host's own hand-in copies bytes the result check already tied to a full read; it does not stale the readback.
+  const lastChange = steps.map(step => !step.seeded && !handedInFrom(step) && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
 

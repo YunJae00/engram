@@ -7,9 +7,10 @@ import { vaultPaths, type TurnStep, type VaultPaths } from 'core'
 const state = vi.hoisted(() => ({ home: '' }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => `${state.home}/${name}` }, dialog: { showMessageBox: vi.fn() }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: {}, nativeImage: {}, BrowserWindow: class {}, session: {} }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
-import { artifactDirectory, cometFileTools, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile } from '../src/main/file-work.js'
+import { artifactDirectory, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile } from '../src/main/file-work.js'
 import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
 import { checkResult, latestResultOutputs } from '../src/main/result-check.js'
+import { freshResultReadback } from '../src/main/task-result-state.js'
 
 let root: string, paths: VaultPaths
 const quiet = { onStep: vi.fn(), audit: vi.fn() }
@@ -220,6 +221,52 @@ it('a check turn does not hand in the script it wrote to check, only a revised h
   await deliverOutputs(paths, cwd, revised, 0, 'ask', true)
   expect(revised.steps.map(step => step.args.name)).toEqual(['report.md'])
   expect(revised.answer).not.toContain(link)
+})
+
+it('a check turn still hands in a new deliverable it names, and the result check asks for its readback', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  await writeFile(join(cwd, 'summary.md'), '# new\n')
+  await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
+  const finding = { status: 'pass', basis: 'Compared.' }
+  const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Summary written' }], grounding: finding } }) }
+  const result = { answer: 'Wrote summary.md, checked with check_merge.py.', steps: [report] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask', true)
+  expect(result.answer).toMatch(/\[summary\.md\]\(engram-artifact:/)
+  expect(result.answer).not.toContain('check_merge.py]')
+  const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
+  expect(outputs.map(output => output.name)).toEqual(['summary.md'])
+  // Never read in full this turn: delivered, but not reported as checked.
+  expect(checkResult(result.steps, outputs, []).issues.join(' ')).toContain('Reread every final part of summary.md')
+})
+
+it('the host hand-in of a file revised in a check turn is not a change after the report, while the model\'s own still is', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  await writeFile(join(cwd, 'report.md'), '# v1\n')
+  const first = { answer: 'Saved report.md.', steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, first, 0, 'ask')
+  const link = /\[report\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
+  await writeFile(join(cwd, 'report.md'), '# v2\n')
+  const tools = cometFileTools(paths, 'bot-x', [], [cwd])
+  const read: TurnStep = { tool: 'file_read', args: { path: join(cwd, 'report.md') }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: join(cwd, 'report.md') }, context) }
+  const finding = { status: 'pass', basis: 'Read the corrected file.' }
+  const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report corrected' }], grounding: finding } }) }
+  const judge = async (result: { answer: string; steps: TurnStep[] }) => checkResult(result.steps, latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }])), [])
+  const revised = { answer: `Corrected report.md.\n\n${link}`, steps: [read, report] }
+  await deliverOutputs(paths, cwd, revised, 0, 'ask', true)
+  expect(revised.steps.at(-1)!.tool).toBe('file_create_copy')
+  expect(await judge(revised)).toMatchObject({ accepted: true, verified: true, issues: [] })
+  expect(freshResultReadback(revised.steps)).toBe(true)
+  // Revised but never read back in full: the hand-in alone proves nothing.
+  await writeFile(join(cwd, 'report.md'), '# v3\n')
+  const unread = { answer: revised.answer, steps: [read, report] }
+  await deliverOutputs(paths, cwd, unread, 0, 'ask', true)
+  expect((await judge(unread)).issues.join(' ')).toContain('Reread every final part of report.md')
+  // The model's own copy after its report is still a change after the report.
+  const own: TurnStep = { tool: 'file_create_copy', args: { name: 'report.md', fromPath: join(cwd, 'report.md') }, observation: await tools.find(tool => tool.name === 'file_create_copy')!.run({ name: 'report.md', fromPath: join(cwd, 'report.md') }, context) }
+  expect((await judge({ answer: revised.answer, steps: [read, report, own] })).issues.join(' ')).toContain('The result changed after report_result_check')
+  expect(freshResultReadback([read, report, own])).toBe(false)
 })
 
 it('attaches a named file core will not read back, and says so when nothing can be attached', async () => {
