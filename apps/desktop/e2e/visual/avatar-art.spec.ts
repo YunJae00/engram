@@ -36,7 +36,7 @@ test.describe('avatar art', () => {
             const size = Number(cell.dataset['size'])
             const orb = cell.querySelector<HTMLElement>('.bot-orb')
             const name = `${cell.dataset['character']} ${size}`
-            if (!orb || orb.dataset['orb'] !== cell.dataset['character'] || orb.querySelectorAll('svg.bot-orb-ribbon path').length !== 3 || cell.querySelector('img')) { bad.push(`${name}: not an orb`); continue }
+            if (!orb || orb.dataset['orb'] !== cell.dataset['character'] || orb.querySelectorAll('svg.bot-orb-ribbon').length !== 3 || cell.querySelector('img')) { bad.push(`${name}: not an orb`); continue }
             const r = orb.getBoundingClientRect()
             if ((orb.dataset['motion'] === 'static') !== (size < 24)) bad.push(`${name}: motion ${orb.dataset['motion']}`)
             if (Math.abs(r.width - size) > 0.5 || Math.abs(r.height - size) > 0.5) bad.push(`${name}: drawn ${r.width}x${r.height}`)

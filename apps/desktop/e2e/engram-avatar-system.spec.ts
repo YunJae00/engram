@@ -50,7 +50,7 @@ async function sharp(avatar: Locator, px: number) {
       const r = el.getBoundingClientRect(), s = getComputedStyle(el)
       if (s.overflow !== 'visible' && (b.left < r.left - 0.5 || b.right > r.right + 0.5 || b.top < r.top - 0.5 || b.bottom > r.bottom + 0.5)) clipped = true
     }
-    return { box: [a.width, a.height], orb: [b.width, b.height], ribbons: orb.querySelectorAll('svg.bot-orb-ribbon path').length, images: node.querySelectorAll('img').length, clipped, motion: orb.getAttribute('data-motion') }
+    return { box: [a.width, a.height], orb: [b.width, b.height], ribbons: orb.querySelectorAll('svg.bot-orb-ribbon').length, images: node.querySelectorAll('img').length, clipped, motion: orb.getAttribute('data-motion') }
   })
   expect(m.box).toEqual([px, px])
   expect(m.orb).toEqual([px, px])

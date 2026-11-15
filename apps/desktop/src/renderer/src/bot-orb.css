@@ -21,19 +21,31 @@
 
 .bot-orb-ribbons, .bot-orb-ribbon, .bot-orb-core { position: absolute; inset: 0; width: 100%; height: 100%; }
 .bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 50% 50%; }
-.bot-orb-ribbon { overflow: visible; mix-blend-mode: screen; filter: blur(0.5cqw) drop-shadow(0 0 2.2cqw color-mix(in srgb, var(--orb) 38%, transparent)); }
-.bot-orb-ribbon .bot-orb-lit { stop-color: color-mix(in srgb, var(--orb) 82%, #FFFFFF); }
-.bot-orb-ribbon .bot-orb-tint { stop-color: var(--orb); }
-.bot-orb-ribbon .bot-orb-hot { stop-color: color-mix(in srgb, var(--orb) 40%, #FFFFFF); }
-.bot-orb-wash { stroke: none; }
-.bot-orb-sheet { stroke: none; }
-.bot-orb-front { opacity: 0.9; }
-.bot-orb-thin { opacity: 0.7; }
-.bot-orb-edge { fill: none; stroke-width: 1.1px; stroke-linecap: round; }
+/* Soft luminous sheets: a light blur and a tinted glow; each layer fades with a mask (the left sheet toward its lower lobe, the hook away from the core, the bubble toward the lower right). */
+.bot-orb-ribbon {
+  overflow: visible; fill: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke: color-mix(in srgb, var(--orb) 40%, #FFFFFF);
+  filter: blur(0.5cqw) drop-shadow(0 0 2.2cqw color-mix(in srgb, var(--orb) 38%, transparent));
+  -webkit-mask-image: linear-gradient(176deg, #000 33%, rgba(0, 0, 0, 0.6) 47%, rgba(0, 0, 0, 0.26) 62%, rgba(0, 0, 0, 0.1) 80%);
+  mask-image: linear-gradient(176deg, #000 33%, rgba(0, 0, 0, 0.6) 47%, rgba(0, 0, 0, 0.26) 62%, rgba(0, 0, 0, 0.1) 80%);
+}
+.bot-orb-ribbon:nth-child(2) {
+  -webkit-mask-image: radial-gradient(circle closest-side at 50% 50%, #000 40%, rgba(0, 0, 0, 0.72) 82%);
+  mask-image: radial-gradient(circle closest-side at 50% 50%, #000 40%, rgba(0, 0, 0, 0.72) 82%);
+}
+.bot-orb-ribbon:nth-child(3) {
+  -webkit-mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
+  mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
+}
+.bot-orb-wash { stroke: none; fill-opacity: 0.32; }
+.bot-orb-sheet { stroke: none; fill-opacity: 0.66; }
+.bot-orb-ribbon:nth-child(2) .bot-orb-sheet { fill-opacity: 0.6; }
+.bot-orb-ribbon:nth-child(2) .bot-orb-front { fill-opacity: 0.54; }
+.bot-orb-ribbon:nth-child(2) .bot-orb-thin { fill-opacity: 0.42; }
+.bot-orb-edge { fill: none; stroke-width: 1.1px; stroke-linecap: round; stroke-opacity: 0.9; }
+.bot-orb-edge-under { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.6; stroke-width: 1px; }
 .bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.42; stroke-width: 1px; }
-.bot-orb-edge-under { stroke-width: 1px; }
-.bot-orb-edge-soft { stroke-opacity: 0.1; }
-.bot-orb-bubble { stroke-width: 0.8px; }
+.bot-orb-edge-soft { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.12; stroke-width: 1px; }
+.bot-orb-bubble { fill-opacity: 0.3; stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.75; stroke-width: 0.8px; }
 .bot-orb-core {
   inset: auto; left: 25%; top: 24%; width: 50%; height: 50%; border-radius: 50%; opacity: 0.95;
   background: radial-gradient(circle, #FFFFFF 0%, #FFFFFF 4.5%, color-mix(in srgb, var(--orb) 22%, #FFFFFF) 10%, color-mix(in srgb, var(--orb) 55%, rgba(255, 255, 255, 0.7)) 17%, color-mix(in srgb, var(--orb) 60%, transparent) 26%, color-mix(in srgb, var(--orb) 26%, transparent) 42%, color-mix(in srgb, var(--orb) 8%, transparent) 58%, transparent 72%);
@@ -42,7 +54,7 @@
   .bot-orb-ribbons { opacity: 0.78; }
   .bot-orb-ribbon { filter: blur(0.25px); }
   .bot-orb-edge { stroke-width: 2px; }
-  .bot-orb-edge-faint { stroke-width: 1.4px; stroke-opacity: 0.3; }
+  .bot-orb-edge-under, .bot-orb-edge-faint, .bot-orb-edge-soft { stroke-width: 1.4px; }
   .bot-orb-bubble { stroke-width: 1.8px; }
   .bot-orb-core { left: 26%; top: 25%; width: 48%; height: 48%; }
 }

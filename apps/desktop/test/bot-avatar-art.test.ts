@@ -73,7 +73,9 @@ describe('bot avatar', () => {
       const html = render({ size, state: 'attention', primary: true })
       expect(html).not.toMatch(/<img|<image|url\(|<foreignObject|<text/)
       expect(html.match(/<svg /g)).toHaveLength(3)
-      expect(html.match(/<path /g)).toHaveLength(3)
+      // Two banded sheets (lobe, sheet, lit edges; hook, fold, streak, lit edges) and the ghost bubble.
+      expect(html.match(/<path /g)).toHaveLength(10)
+      expect(html.match(/<circle /g)).toHaveLength(1)
     }
     const batch = () => {
       for (let i = 0; i < 50; i++) for (const size of SIZES) render({ id: `bot-perf-${i}`, size })
