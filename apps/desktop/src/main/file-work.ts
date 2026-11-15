@@ -136,13 +136,17 @@ export async function linkedOutputs(directory: string, history: { role: string; 
 }
 // The files a turn's result check answers for: those its answer links and, on any re-check, those of the report it was given, also one the
 // answer leaves out (a budget stop names none, and a check that then passed on some other read let the unread report stand: qa143 S19b).
-// A re-check's answer that links a name again replaces that file, as its answer replaces the report. Not so when the report itself will
+// A re-check's answer that links a name again replaces the report's one file of that name, as its answer replaces the report. Not so when the report itself will
 // stand (stands: the re-check stopped at the budget): its files are then kept, by path, whatever the turn made or linked under their names,
 // so a new report.md created and read in the re-check is a second file and never the readback of the report's own.
 export async function checkedOutputs(directory: string, answer: string, rechecked?: string, stands = false): Promise<{ name: string; path: string; kept?: true }[]> {
   const own = await linkedOutputs(directory, [{ role: 'assistant', text: answer }], true)
   if (rechecked === undefined) return own
-  const earlier = (await linkedOutputs(directory, [{ role: 'assistant', text: rechecked }], true)).filter(output => !own.some(linked => stands ? linked.path === output.path : linked.name === output.name))
+  const linked = await linkedOutputs(directory, [{ role: 'assistant', text: rechecked }], true)
+  // Two files the report linked under one name are two files, not revisions: a link to one of them, or to a new file of that name, replaces
+  // neither of the others, so each still needs its own readback (qa143 p2 r9 S19a). Which one a new file corrects is not known; both are kept.
+  const twin = (output: { name: string; path: string }) => linked.some(other => other.name === output.name && other.path !== output.path)
+  const earlier = linked.filter(output => !own.some(now => stands || twin(output) ? now.path === output.path : now.name === output.name))
   return [...earlier.map(output => stands ? { ...output, kept: true as const } : output), ...own.filter(linked => !stands || !earlier.some(output => output.path === linked.path))]
 }
 

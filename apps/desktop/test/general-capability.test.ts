@@ -354,6 +354,15 @@ it('a re-check that links no file still answers for the files of the report it r
   expect(await recheck([newer.step, await reopen(newer.path), await reopen(report.path), passed('Leads merged')], `${budgetNote}\n\n${newer.link}`)).toEqual({ accepted: true, verified: true, issues: [] })
   // A re-check whose own answer stands (no budget stop) and links its corrected report.md answers for that one, as before.
   expect(await checkedOutputs(artifactDirectory(paths), `Corrected. ${newer.link}`, earlier)).toEqual([{ name: 'report.md', path: newer.path }])
+  // qa143 p2 r9 (S19a): the report linked two different files under one name. A re-check whose own answer stands and links and reads only one
+  // of them, or a new file of that name, does not drop the others: each is a file by its path and still needs its own readback.
+  const both = `Merged the leads. ${report.markdownLink} ${newer.link}`
+  const normal = async (steps: TurnStep[], answer: string) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, both)), [])
+  expect((await checkedOutputs(artifactDirectory(paths), `Checked. ${newer.link}`, both)).map(output => output.path)).toEqual([report.path, newer.path])
+  expect(await normal([await reopen(newer.path), passed('Leads merged')], `Checked. ${newer.link}`)).toMatchObject({ accepted: false, verified: false, issues: [expect.stringContaining(`Reread every final part of report.md (${report.path})`)] })
+  expect((await checkedOutputs(artifactDirectory(paths), `Corrected. ${third.link}`, both)).map(output => output.path)).toEqual([report.path, newer.path, third.path])
+  expect((await normal([third.step, await reopen(third.path), passed('Leads merged')], `Corrected. ${third.link}`)).issues.join(' ')).toContain(`Reread every final part of report.md (${report.path})`)
+  expect(await normal([await reopen(report.path), await reopen(newer.path), passed('Leads merged')], `Checked. ${newer.link}`)).toEqual({ accepted: true, verified: true, issues: [] })
 })
 
 it('scratch in the check folder the answer does not name stays out, and a file there the answer names is handed in and checked', async () => {
