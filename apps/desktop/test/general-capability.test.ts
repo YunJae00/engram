@@ -490,6 +490,29 @@ it('two files rendered under one name in one turn each get their own name and li
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
   expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
 })
+// qa142 p2a-r10: that holds for any tool's receipt with no fromPath, not a list of tools: two edited packages under one name are two files.
+it('two packages edited under one name in one turn each get their own name and link, and both enter the result check', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const edited = async (text: string): Promise<TurnStep> => ({ tool: 'file_edit_package', args: { name: 'report.docx', path: `${text}.docx` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.docx', Buffer.from(`PK-${text}`)), completeReadback: true }) })
+  const result = { answer: 'Edited both reports.', steps: [await edited('first'), await edited('second'), passed('Reports edited')] }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.docx', 'report-2.docx'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['PK-first', 'PK-second'])
+  expect(result.steps.map(step => step.args['name'])).toEqual(['report.docx', 'report-2.docx', undefined])
+  const steps = result.steps
+  const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
+  // Each name is checked at the artifact its own link carries.
+  expect(outputs.map(output => [output.name, output.path]).sort()).toEqual(links.map(match => [match[1], join(artifactDirectory(paths), decodeURIComponent(match[2]!))]).sort())
+  // Run again over the same steps: each receipt's own artifact is linked, so nothing is added.
+  const again = { answer: result.answer, steps: [...result.steps] }
+  await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
+  expect(again.answer).toBe(result.answer)
+  // The same bytes edited twice are one artifact: one link.
+  const twice = { answer: 'Edited.', steps: [await edited('same'), await edited('same')] }
+  await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
+  expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+})
 // Content written twice under one name is one file revised: only the last revision is linked.
 it('a content copy revised in the same turn is linked once, at its last revision', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
