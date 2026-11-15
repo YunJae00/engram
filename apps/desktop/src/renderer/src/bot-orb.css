@@ -5,10 +5,10 @@
   border-radius: 50%; overflow: hidden; isolation: isolate; container-type: size;
   /* Percent-based layers: a faint thin rim that fades inward, a little color near the center, a dark neutral glass body. */
   background:
-    radial-gradient(circle closest-side, transparent 97%, color-mix(in srgb, color-mix(in srgb, var(--orb) 60%, #FFFFFF) 30%, transparent) 99.3%, color-mix(in srgb, var(--orb) 10%, transparent) 100%),
-    radial-gradient(circle closest-side, transparent 80%, color-mix(in srgb, var(--orb) 4%, transparent) 90%, color-mix(in srgb, var(--orb) 10%, transparent) 95%, color-mix(in srgb, color-mix(in srgb, var(--orb) 70%, #FFFFFF) 12%, transparent) 99%),
+    radial-gradient(circle closest-side, transparent 93%, color-mix(in srgb, var(--orb) 14%, transparent) 96.5%, color-mix(in srgb, color-mix(in srgb, var(--orb) 72%, #FFFFFF) 40%, transparent) 99%, color-mix(in srgb, var(--orb) 24%, transparent) 100%),
+    radial-gradient(circle closest-side, transparent 78%, color-mix(in srgb, var(--orb) 6%, transparent) 89%, color-mix(in srgb, var(--orb) 16%, transparent) 95%, color-mix(in srgb, color-mix(in srgb, var(--orb) 80%, #FFFFFF) 22%, transparent) 99%),
     radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--orb) 15%, transparent) 0%, color-mix(in srgb, var(--orb) 4%, transparent) 60%, transparent 90%),
-    radial-gradient(circle, rgba(19, 18, 23, 0.98) 0%, rgba(15, 14, 18, 0.98) 100%);
+    radial-gradient(circle, rgba(14, 13, 18, 0.94) 0%, rgba(11, 10, 14, 0.94) 100%);
 }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
@@ -23,8 +23,8 @@
 .bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 50% 50%; }
 /* Soft luminous sheets: a light blur and a tinted glow; each layer fades with a mask (the left sheet toward its lower lobe, the hook away from the core, the bubble toward the lower right). */
 .bot-orb-ribbon {
-  overflow: visible; fill: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke: color-mix(in srgb, var(--orb) 40%, #FFFFFF);
-  filter: blur(0.45cqw) drop-shadow(0 0 2.4cqw color-mix(in srgb, var(--orb) 38%, transparent));
+  overflow: visible; fill: color-mix(in srgb, var(--orb) 90%, #FFFFFF); stroke: color-mix(in srgb, var(--orb) 45%, #FFFFFF);
+  filter: blur(0.4cqw) drop-shadow(0 0 0.9cqw color-mix(in srgb, var(--orb) 70%, transparent)) drop-shadow(0 0 2.6cqw color-mix(in srgb, var(--orb) 40%, transparent));
   -webkit-mask-image: linear-gradient(176deg, #000 38%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.46) 80%);
   mask-image: linear-gradient(176deg, #000 38%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.46) 80%);
 }
@@ -36,15 +36,15 @@
   -webkit-mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
   mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
 }
-.bot-orb-wash { stroke: none; fill-opacity: 0.2; }
-.bot-orb-sheet { stroke: none; fill-opacity: 0.36; }
-.bot-orb-ribbon:nth-child(2) .bot-orb-sheet { fill-opacity: 0.36; }
-.bot-orb-ribbon:nth-child(2) .bot-orb-front { fill-opacity: 0.46; }
+.bot-orb-wash { stroke: none; fill-opacity: 0.14; }
+.bot-orb-sheet { stroke: none; fill-opacity: 0.3; }
+.bot-orb-ribbon:nth-child(2) .bot-orb-sheet { fill-opacity: 0.3; }
+.bot-orb-ribbon:nth-child(2) .bot-orb-front { fill-opacity: 0.38; }
 .bot-orb-ribbon:nth-child(2) .bot-orb-thin { fill-opacity: 0.34; }
-.bot-orb-edge { fill: none; stroke-width: 0.8px; stroke-linecap: round; stroke-opacity: 0.8; }
-.bot-orb-edge-under { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.3; stroke-width: 0.7px; }
-.bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.36; stroke-width: 0.7px; }
-.bot-orb-bubble { fill-opacity: 0.3; stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.32; stroke-width: 1.4px; }
+.bot-orb-edge { fill: none; stroke-width: 1.1px; stroke-linecap: round; stroke-opacity: 0.95; }
+.bot-orb-edge-under { stroke: color-mix(in srgb, var(--orb) 75%, #FFFFFF); stroke-opacity: 0.72; stroke-width: 1px; }
+.bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 75%, #FFFFFF); stroke-opacity: 0.55; stroke-width: 0.9px; }
+.bot-orb-bubble { fill-opacity: 0.2; stroke: color-mix(in srgb, var(--orb) 70%, #FFFFFF); stroke-opacity: 0.46; stroke-width: 1.3px; }
 .bot-orb-core {
   inset: auto; left: 25%; top: 24%; width: 50%; height: 50%; border-radius: 50%; opacity: 0.95;
   background: radial-gradient(circle, #FFFFFF 0%, color-mix(in srgb, var(--orb) 14%, #FFFFFF) 5%, color-mix(in srgb, var(--orb) 34%, rgba(255, 255, 255, 0.88)) 10%, color-mix(in srgb, var(--orb) 55%, rgba(255, 255, 255, 0.55)) 16%, color-mix(in srgb, var(--orb) 60%, transparent) 24%, color-mix(in srgb, var(--orb) 30%, transparent) 34%, color-mix(in srgb, var(--orb) 10%, transparent) 48%, transparent 66%);
