@@ -148,6 +148,32 @@ it('demands no earlier requirement when the person instructs a task left waiting
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 4 })
 })
 
+// qa142 p2a-r9 #2: the host, not the prompt, keeps the follow-up to reading: one that changed a result is not accepted, even with every listed file read and a passing check.
+it.each([
+  ['writes a file with its own tool', { tool: 'Write', args: { file_path: '/task/check_merge.py', content: 'print(1)' }, observation: 'Native action completed.', committed: true }],
+  ['saves a new copy', { tool: 'file_create_copy', args: { name: 'check_merge.py', content: 'print(1)' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y"}' }],
+  ['renders a file', { tool: 'render_file', args: { name: 'report.pdf', html: '<p>x</p>' }, observation: '{"path":"/artifacts/id-report.pdf","sha256":"z","completeReadback":true}' }],
+  ['changes a task file by command that the host then hands in', { tool: 'file_create_copy', args: { name: 'check_merge.py', fromPath: 'check_merge.py' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y","handedInFrom":"/task/check_merge.py"}' }],
+])('ends waiting unverified when the readback-only turn %s and reads it back, and gives no further follow-up', async (_what, change) => {
+  const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
+    : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [change, fileRead] }, false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(task).toMatchObject({ state: 'waiting', turns: 3, verified: false, verificationIssue: expect.stringContaining('readback-only turn changed the result') })
+  expect(t.sent).toHaveLength(3)
+  expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
+})
+
+// A write that did not happen changed nothing: the follow-up that then only read is still verified.
+it('verifies a readback-only turn whose only write attempt failed', async () => {
+  const failed = { tool: 'Write', args: { file_path: '/task/check_merge.py', content: 'print(1)' }, observation: 'that did not work: Native action did not report success; it may have partly happened.', committed: true }
+  const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
+    : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [failed, fileRead] }, false)
+  await t.chat('Merge the leads')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
+})
+
 it('ends waiting when the readback-only turn still lacks the readback, and never gives a second one', async () => {
   const t = await setup(async () => ({ ...done(report, 1), check: unreadCheck, trail: [fileRead] }), false)
   await t.chat('Merge the leads')

@@ -6,6 +6,8 @@ export function holdTaskResult(result: Pick<AgentLoopResult, 'answer' | 'steps' 
 }
 
 export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+// Whether a turn successfully changed a result: any RESULT_CHANGES step (a host hand-in is a file_create_copy, so a task file a command changed counts once it is handed in), a rendered file, or a native file write.
+export const changedResult = (steps: TurnStep[]): boolean => successfulTurnSteps(steps).some(step => RESULT_CHANGES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool))
 // Work that leaves something behind: a document, a file, an app or a saved
 // procedure changed, or a press the person approved because it commits.
 // Reading a site - opening tabs, filters, pages - leaves nothing to check.

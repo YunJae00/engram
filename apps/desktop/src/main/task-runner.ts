@@ -33,7 +33,7 @@ import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { READ_CARD } from './read-card.js'
-import { freshResultReadback, RESULT_CHANGES } from './task-result-state.js'
+import { changedResult, freshResultReadback, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
 
@@ -169,6 +169,8 @@ export function taskRunner(deps: {
         t.verified = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !outcome.unfinished && !outcome.budgetExhausted && freshResultReadback(outcome.trail ?? []) && !teamReviewIssue(t)
         if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || 'The result has no fresh readback.'
         else delete t.verificationIssue
+        // The readback-only follow-up may only read: one that changed a result is not accepted, whatever it then read. No second follow-up is given, so the task ends waiting.
+        if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
       }
       delete t.verificationPending
       const pending = t.approvals.filter((a) => !a.answer)
