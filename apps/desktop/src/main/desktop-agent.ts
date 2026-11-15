@@ -110,8 +110,8 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         if (!previous) return JSON.stringify(desktopFailure('This snapshot is stale.'))
         const approval = await prepareQuietConfirmation(lane, app, previous, control, !!sendsKey || draftButton || /send|submit|post|publish|보내기|전송|제출|게시/i.test(name), context.signal)
         if (!approval) return JSON.stringify(confirmationFailure())
-        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope))
-          return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action needs explicit approval. No input was sent; continue reading or wait for the person.' })
+        if (!await (context as DesktopActionContext).approveAppAction?.(app, sendsKey ? 'Send' : name || 'Unnamed control', snapshot, approval.scope, { app: desktopBinding(lane)?.name, sending: [sendsKey ? field : previous.controls.find(item => item.can.set && !!item.value)].find(item => item && !item.secret)?.value ?? undefined }))
+          return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'unsafe', hint: 'This consequential action was not approved. No input was sent. Do not try it another way (no foreground control, no other key, button or app): tell the person it was not done and end the turn, or keep to reading.' })
         try { confirmedResult = await pressQuietConfirmed(lane, app, approval, context.signal, options) }
         catch (error) {
           if (/snapshot is stale/i.test(String(error))) return JSON.stringify(confirmationFailure())

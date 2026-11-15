@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentTool } from 'core'
-import { desktopOptIn } from '../src/main/desktop-opt-in.js'
+import { desktopOptIn, type DesktopActionContext } from '../src/main/desktop-opt-in.js'
+import { appGateTitle } from '../src/renderer/src/lib/threadLang.js'
 
 function fixture() {
   let enabled = false
@@ -67,4 +68,42 @@ it('never delivers after Stop while a consequential approval is pending', async 
   const [wrapped] = desktopOptIn([tool], { enabled: async () => true, enable: vi.fn(), ask: async () => { abort.abort(); return 'approve' } })
   await expect(wrapped!.run({}, { task: 'Send if approved', signal: abort.signal })).rejects.toThrow()
   expect(delivered).not.toHaveBeenCalled()
+})
+
+// qa142 B13: the send gate said `Allow "Send" in "window:85669:0"?` in a Korean thread, and after "no" the bot asked for computer control to do the same thing.
+function gated(answers: ('approve' | 'cancel')[]) {
+  const ask = vi.fn<(what: { words: string; url: string }) => Promise<'approve' | 'cancel'>>(async () => answers.shift() ?? 'cancel')
+  const seen: boolean[] = []
+  const tool: AgentTool = { name: 'app_press', description: '', argsSchema: {}, run: async (args, context) => {
+    const c = context as DesktopActionContext
+    seen.push(args['hands'] ? !!await c.approveComputerControl?.('bot-1') : !!await c.approveAppAction?.('window:85669:0', 'Send', 'snap', undefined, { app: 'Safari', sending: 'file:///tmp/form.html' }))
+    return ''
+  } }
+  return { tool: desktopOptIn([tool], { enabled: async () => true, enable: vi.fn(), ask })[0]!, ask, seen }
+}
+it('words the send gate with the app name and what is being sent, keyed by the same app and control', async () => {
+  const g = gated(['approve'])
+  await g.tool.run({}, { task: 'Submit the form' })
+  const asked = g.ask.mock.calls[0]![0]
+  expect(asked.url).toBe('engram://app/window%3A85669%3A0#Send')
+  expect(asked.words).toBe('Allow "Send" in "Safari"? Sending: file:///tmp/form.html. This may send or change data.')
+  const card = appGateTitle(asked.words.slice(0, 120), 'ko')!
+  expect(card).toBe('Safari에서 보내기(Enter)를 진행할까요? 보낼 내용: “file:///tmp/form.html”')
+  expect(card).not.toMatch(/window:|Allow|Send/)
+  expect(appGateTitle('Allow "Send" in "window:85669:0"? This may send or change data.', 'ko')).toBe('이 앱에서 보내기(Enter)를 진행할까요? 내용이 전송되거나 바뀔 수 있어요.')
+  expect(appGateTitle('Run this command outside the sandbox?', 'ko')).toBeNull()
+  expect(g.seen).toEqual([true])
+})
+it('does not ask for computer control after the person declined an action in the same turn', async () => {
+  const g = gated(['cancel', 'approve'])
+  await g.tool.run({}, { task: 'Submit the form' })
+  await g.tool.run({ hands: true }, { task: 'Submit the form' })
+  expect(g.seen).toEqual([false, false])
+  expect(g.ask).toHaveBeenCalledTimes(1)
+})
+it('still asks for computer control when nothing was declined', async () => {
+  const g = gated(['approve'])
+  await g.tool.run({ hands: true }, { task: 'Type the note' })
+  expect(g.seen).toEqual([true])
+  expect(g.ask.mock.calls[0]![0].url).toBe('engram://computer-control/bot-1')
 })

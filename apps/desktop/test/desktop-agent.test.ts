@@ -387,7 +387,7 @@ it.each([['Enter', 'c3'], ['Control+Enter', 'c3'], ['Enter', 'c9'], ['Control+En
   const tool = desktopAgentTools('bot-one').find(item => item.name === 'app_press')!
   const result = await tool.run({ app: 'Fixture', snapshot: 'a'.repeat(32), control, key }, Object.assign({ task: 'Send' }, { approveAppAction }))
   expect(JSON.parse(result).delivery).toBe('not_delivered')
-  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32), expect.any(String))
+  expect(approveAppAction).toHaveBeenCalledWith('Fixture', 'Send', 'a'.repeat(32), expect.any(String), { app: 'Fixture', sending: 'Draft' })
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
 

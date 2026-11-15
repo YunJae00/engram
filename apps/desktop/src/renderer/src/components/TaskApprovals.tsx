@@ -1,7 +1,7 @@
 import { AlertTriangle, CircleHelp, PauseCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
-import { displayTaskAnswer, threadWords } from '../lib/threadLang.js'
+import { appGateTitle, displayTaskAnswer, threadWords } from '../lib/threadLang.js'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
 import { useThreadT } from '../lib/useThreadT.js'
@@ -71,7 +71,7 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
           hint={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlHint : t('card.pressHint')}
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
-          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? t('card.needsOk') : t('card.press', { words: a.words })}
+          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? t('card.needsOk') : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
           sub={a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>

@@ -4,7 +4,8 @@ import { systemVolumeTool } from './desktop-volume.js'
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
   approveComputerControl?(lane: string): Promise<boolean>
-  approveAppAction?(app: string, control: string, snapshot: string, scope?: string): Promise<boolean>
+  // shown: the app's own name and the text about to go out, for the card only; the approval is still keyed by app and control.
+  approveAppAction?(app: string, control: string, snapshot: string, scope?: string, shown?: { app?: string; sending?: string }): Promise<boolean>
 }
 
 interface Consent {
@@ -15,6 +16,8 @@ interface Consent {
 
 export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] {
   let refused = false
+  // The person said no to an action in this turn: it is not tried again through foreground control.
+  let declined = false
   const allow = async (signal?: AbortSignal) => {
     signal?.throwIfAborted()
     if (await consent.enabled()) return
@@ -29,14 +32,17 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
     ...context,
     approveComputerControl: async lane => {
       context.signal?.throwIfAborted()
+      if (declined) return false
       const answer = await consent.ask?.({ words: 'Allow foreground computer control for this turn? Esc or Stop ends control.', url: `engram://computer-control/${encodeURIComponent(lane)}` })
       context.signal?.throwIfAborted()
       return answer === 'approve' && await consent.enabled()
     },
-    approveAppAction: async (app, control, _snapshot, scope) => {
+    approveAppAction: async (app, control, _snapshot, scope, shown) => {
       context.signal?.throwIfAborted()
-      const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${app.slice(0, 60)}"? This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(control)}`, ...(scope ? { scope } : {}) })
+      const sending = shown?.sending?.replace(/\s+/g, ' ').trim().slice(0, 40)
+      const answer = await consent.ask?.({ words: `Allow "${control.slice(0, 60)}" in "${(shown?.app?.trim() || app).slice(0, 60)}"?${sending ? ` Sending: ${sending}.` : ''} This may send or change data.`, url: `engram://app/${encodeURIComponent(app)}#${encodeURIComponent(control)}`, ...(scope ? { scope } : {}) })
       context.signal?.throwIfAborted()
+      if (answer !== 'approve') declined = true
       return answer === 'approve' && await consent.enabled()
     },
   })
