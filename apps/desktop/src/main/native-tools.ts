@@ -207,7 +207,9 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // Every receipt of the turn, not the last one per name: two sources copied under one name are two files. A later copy of the same source
   // (or of content, or of a content copy's task-folder twin) is a revision, and only the last revision counts.
   const twins = new Set(result.steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [path] : [] } catch { return [] } }))
-  const sourceOf = (step: TurnStep) => { const from = step.tool === 'file_create_copy' && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : ''; return twins.has(from) ? '' : from }
+  // A rendered file or a new workbook has no source it could be a revision of: each such receipt is its own source, known by its artifact, so two made under one name are two files.
+  const ownArtifact = (step: TurnStep) => { try { const path = /^(render_file|file_create_workbook)$/.test(step.tool) ? (JSON.parse(step.observation) as { path?: unknown }).path : undefined; return typeof path === 'string' ? path : '' } catch { return '' } }
+  const sourceOf = (step: TurnStep) => { const from = step.tool === 'file_create_copy' && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : ownArtifact(step); return twins.has(from) ? '' : from }
   const receipts = new Map([...new Set(result.steps.map(sourceOf))].flatMap(source => latestResultOutputs(result.steps.map(step => sourceOf(step) === source ? step : { ...step, seeded: true }), [])).map(output => [output.path, output]))
   for (const output of [...receipts.values()].sort((a, b) => a.after! - b.after!)) {
     // A receipt is linked when the answer carries its own artifact, not merely a file of its name.
