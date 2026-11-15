@@ -188,9 +188,12 @@ it('hands in a revised task file again and points the answer at the new copy', a
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const draft = JSON.parse(await copy.run({ name: 'report.py', content: 'print(1)\n' }, context))
   const answer = `Here it is: ${draft.markdownLink}`
-  const same = { answer, steps: [] as TurnStep[] }
+  // The turn that made the copy carries its receipt: the task-folder twin is on record as this link's source.
+  const made: TurnStep = { tool: 'file_create_copy', args: { name: 'report.py', content: 'print(1)\n' }, observation: JSON.stringify(draft) }
+  const same = { answer, steps: [made] }
   await deliverOutputs(paths, cwd, same, 0, 'ask')
   expect(same.answer).toBe(answer)
+  expect(same.steps).toEqual([made])
   await writeFile(join(cwd, 'report.py'), 'print(2)\n')
   const revised = { answer, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask')
@@ -392,6 +395,49 @@ it('a link the answer already carries is not replaced by a same-name file from a
   expect(result.answer).toContain(own.markdownLink)
   expect(result.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'one', 'report.md')], ['report-3.md', join(cwd, 'two', 'report.md')]])
   expect((await judged(result)).outputs).toEqual(['report-2.md', 'report-3.md', 'report.md'])
+})
+
+// qa142 p2a-r6 #1: a linked name is claimed only by the source its file_create_copy receipt names; with no record it is never replaced.
+it('a new top-level file never takes over a link the comet made from another source: it gets its own name and link, and both are checked', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(join(cwd, 'a'), { recursive: true })
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const args = { name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }
+  const own = JSON.parse(await copy.run(args, context)) as { markdownLink: string }
+  const first = { answer: `Saved a/x.md as the report.\n\n${own.markdownLink}`, steps: [{ tool: 'file_create_copy', args, observation: JSON.stringify(own) }] as TurnStep[] }
+  await deliverOutputs(paths, cwd, first, 0, 'ask')
+  // Its twin in the task folder and its source are the linked bytes: nothing more is handed in.
+  expect(first.steps).toHaveLength(1)
+  expect(first.answer).toBe(`Saved a/x.md as the report.\n\n${own.markdownLink}`)
+  // A later turn writes another report.md at the top of the task folder.
+  await writeFile(join(cwd, 'report.md'), '# another report\n')
+  const later = { answer: `Wrote report.md.\n\n${own.markdownLink}`, steps: [passed('Report written')] }
+  await deliverOutputs(paths, cwd, later, 0, 'ask')
+  expect(later.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'report-2.md', fromPath: join(cwd, 'report.md') } })
+  expect(later.answer).toContain(own.markdownLink)
+  const links = [...later.answer.matchAll(/\[(report(?:-2)?\.md)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x\n', '# another report\n'])
+  const { outputs, check } = await judged(later)
+  expect(outputs).toEqual(['report-2.md', 'report.md'])
+  expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
+  expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
+  // The receipt's own source still revises its own link.
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x, v2\n')
+  const revised = { answer: `Corrected a/x.md.\n\n${own.markdownLink}\n\n${links[1]![0]}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, revised, 0, 'ask')
+  expect(revised.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report.md', join(cwd, 'a', 'x.md')]])
+  expect(revised.answer).not.toContain(own.markdownLink)
+  expect(revised.answer).toContain(links[1]![0])
+  // No receipt in the trail and no record: the link is left alone, whatever the task folder holds under its name.
+  const loose = JSON.parse(await copy.run({ name: 'notes.md', content: '# notes\n' }, context)) as { markdownLink: string }
+  await writeFile(join(cwd, 'notes.md'), '# other notes\n')
+  const unknown = { answer: `Wrote notes.md.\n\n${loose.markdownLink}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, unknown, 0, 'ask')
+  expect(unknown.answer).toContain(loose.markdownLink)
+  expect(unknown.steps.map(step => step.args.name)).toEqual(['notes-2.md'])
+  expect(unknown.answer).toMatch(/\[notes-2\.md\]\(engram-artifact:/)
 })
 
 it('a check turn hands in a requested script it first wrote next to a linked workbook, and it enters the result check', async () => {

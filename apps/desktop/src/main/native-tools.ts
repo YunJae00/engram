@@ -140,7 +140,24 @@ async function readNames(file: string): Promise<HandInNames> {
   } catch { return {} }
 }
 const sourceKey = (cwd: string, path: string) => relative(cwd, path).split(/[\\/]/).join('/')
-const linkNames = (answer: string) => [...answer.matchAll(/\(engram-artifact:([^)\s]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '').toLowerCase()] } catch { return [] } })
+const SAVED_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
+const linkNames = (answer: string) => [...answer.matchAll(/\(engram-artifact:([^)\s]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(SAVED_ID, '').toLowerCase()] } catch { return [] } })
+// The comet's own copies go on record under the source their receipt names: fromPath, else the task-folder twin made from content.
+// Only that source may later replace the link; a name another source already holds is left alone.
+async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInNames): Promise<void> {
+  const roots = [cwd, await realpath(cwd).catch(() => cwd)]
+  for (const step of steps) {
+    if (step.tool !== 'file_create_copy' || step.seeded) continue
+    let made: Record<string, unknown>
+    try { made = JSON.parse(step.observation) as Record<string, unknown> } catch { continue }
+    if (!made || typeof made !== 'object' || made['error'] || typeof made['path'] !== 'string' || made['handedInFrom']) continue
+    const source = typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : made['taskPath']
+    const root = typeof source === 'string' ? roots.find(root => within(root, source)) : undefined
+    if (!root) continue
+    const key = sourceKey(root, source as string), name = basename(made['path']).replace(SAVED_ID, '')
+    if (!names[key] && !Object.values(names).some(taken => taken.toLowerCase() === name.toLowerCase())) names[key] = name
+  }
+}
 
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
@@ -149,7 +166,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
   const depth = (path: string) => path.split(/[\\/]/).length
-  // A name belongs to one source: the ones on record, and a link the answer already carries, which only the task folder's own top-level file of that name may claim.
+  // A name belongs to one source: the ones on record. A link the answer already carries with no record is never claimed or replaced: a new file gets the next free name.
   const taken = new Set(Object.values(names).map(name => name.toLowerCase())), linked = new Set(linkNames(answer))
   // Shallowest path first, so the top-level file keeps the plain name.
   for (const entry of entries.sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : 1))) {
@@ -161,9 +178,11 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
     // A file reached through a linked directory is outside the task folder.
     if (!info?.isFile() || !within(await realpath(cwd), await realpath(path)) || info.mtimeMs < since) continue
     let name = names[key]
+    // An unrecorded top-level file holding the very bytes linked under its name is that output's task-folder twin: nothing new to hand in.
+    if (!name && key === base && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, base, path)) continue
     for (let count = 1; !name; count++) {
       const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
-      if (!taken.has(free.toLowerCase()) && (key === base || !linked.has(free.toLowerCase()))) name = free
+      if (!taken.has(free.toLowerCase()) && !linked.has(free.toLowerCase())) name = free
     }
     taken.add((names[key] = name).toLowerCase())
     // An oversized revision cannot match a saved output, so it still gets its size warning.
@@ -189,6 +208,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
   // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
   const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
+  await recordOwnCopies(cwd, result.steps, names)
   const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
   for (const path of named) {
@@ -202,7 +222,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
       // handedInFrom marks the host's own copy of a task file: the result check takes a full read of those bytes before the report as its readback.
       result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation: JSON.stringify({ ...made, handedInFrom: real }) })
       const link = made.markdownLink, stale = linkedIds(result.answer, name)
-      // The revised file replaces its own earlier hand-in where the answer quoted it; another source's link has another name.
+      // The revised file replaces its own earlier hand-in where the answer quoted it; another source's link, or one with no record, has another name.
       result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
     } catch (error) {
       flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`)
