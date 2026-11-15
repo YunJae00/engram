@@ -129,22 +129,46 @@ async function handedIn(artifacts: string | undefined, answer: string, name: str
   return false
 }
 
+// Which hand-in name each task file has, by its path inside the task folder: two/report.md stays report-2.md in every later turn.
+// Kept beside the saved outputs, outside the folder the comet writes in.
+type HandInNames = Record<string, string>
+const namesFile = (paths: VaultPaths, cwd: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(cwd).digest('hex').slice(0, 32)}.json`)
+async function readNames(file: string): Promise<HandInNames> {
+  try {
+    const value: unknown = JSON.parse(await readFile(file, 'utf8'))
+    return value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {}
+  } catch { return {} }
+}
+const sourceKey = (cwd: string, path: string) => relative(cwd, path).split(/[\\/]/).join('/')
+const linkNames = (answer: string) => [...answer.matchAll(/\(engram-artifact:([^)\s]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '').toLowerCase()] } catch { return [] } })
+
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
-export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string): Promise<string[]> {
+// names (source path in the task folder -> hand-in name) is filled in for every file found or already handed in.
+export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string, names: HandInNames = {}): Promise<string[]> {
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
-  for (const entry of entries) {
-    const path = join(cwd, entry), name = basename(entry)
+  const depth = (path: string) => path.split(/[\\/]/).length
+  // A name belongs to one source: the ones on record, and a link the answer already carries, which only the task folder's own top-level file of that name may claim.
+  const taken = new Set(Object.values(names).map(name => name.toLowerCase())), linked = new Set(linkNames(answer))
+  // Shallowest path first, so the top-level file keeps the plain name.
+  for (const entry of entries.sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : 1))) {
+    const path = join(cwd, entry), base = basename(entry), key = sourceKey(cwd, path)
     // No location is excluded: a check's scratch stays out because the answer does not name it, and a file the answer names is handed in wherever it is.
-    if (name.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
+    if (base.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(base).toLowerCase()) || !answer.includes(base)) continue
     // lstat: a link is never a deliverable.
     const info = await lstat(path).catch(() => null)
     // A file reached through a linked directory is outside the task folder.
-    if (!info?.isFile() || !within(await realpath(cwd), await realpath(path))) continue
+    if (!info?.isFile() || !within(await realpath(cwd), await realpath(path)) || info.mtimeMs < since) continue
+    let name = names[key]
+    for (let count = 1; !name; count++) {
+      const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
+      if (!taken.has(free.toLowerCase()) && (key === base || !linked.has(free.toLowerCase()))) name = free
+    }
+    taken.add((names[key] = name).toLowerCase())
     // An oversized revision cannot match a saved output, so it still gets its size warning.
     if (linkedIds(answer, name).length && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, name, path)) continue
-    if (info.mtimeMs >= since) (info.size > OUTPUT_BYTES ? oversized : found).push(info.size > OUTPUT_BYTES ? name : path)
+    ;(info.size > OUTPUT_BYTES ? oversized : found).push(info.size > OUTPUT_BYTES ? base : path)
   }
   return found
 }
@@ -163,18 +187,13 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!
   const oversized: string[] = []
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
-  // Outputs are known by name, so two files with one name in different folders get distinct ones (report.md, report-2.md), shallowest path first.
-  const depth = (path: string) => path.split(/[\\/]/).length, taken = new Set<string>()
-  const distinct = (name: string) => {
-    let free = name
-    for (let count = 2; taken.has(free.toLowerCase()); count++) free = `${basename(name, extname(name))}-${count}${extname(name)}`
-    taken.add(free.toLowerCase())
-    return free
-  }
-  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths))
-  for (const path of named.sort((a, b) => depth(a) - depth(b) || (a < b ? -1 : 1))) {
+  // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
+  const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
+  const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names)
+  if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
+  for (const path of named) {
     try {
-      const name = distinct(basename(path))
+      const name = names[sourceKey(cwd, path)]!
       const real = await taskFile(paths, cwd, path)
       const raw = async () => JSON.stringify(await saveOutput(artifactDirectory(paths), name, await readFile(real)))
       // Core reads text back under its own 8 MB limit; a larger file still goes in as made, up to the 50 MB cap.
@@ -183,7 +202,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
       // handedInFrom marks the host's own copy of a task file: the result check takes a full read of those bytes before the report as its readback.
       result.steps.push({ tool: 'file_create_copy', args: { name, fromPath: path }, observation: JSON.stringify({ ...made, handedInFrom: real }) })
       const link = made.markdownLink, stale = linkedIds(result.answer, name)
-      // The revised file replaces the earlier hand-in where the answer quoted it.
+      // The revised file replaces its own earlier hand-in where the answer quoted it; another source's link has another name.
       result.answer = stale.length ? stale.reduce((text, id) => text.replaceAll(`(engram-artifact:${id})`, link.slice(link.lastIndexOf('('))), result.answer) : `${result.answer}\n\n${link}`
     } catch (error) {
       flog('native-tools', `could not hand in ${path}: ${error instanceof Error ? error.message : String(error)}`)

@@ -304,6 +304,68 @@ it('two named files with the same name in different folders are both handed in, 
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
 })
 
+it('a hand-in is known by its source path: same-name files with the same bytes each keep their own name and link across turns', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  for (const folder of ['one', 'two']) {
+    await mkdir(join(cwd, folder), { recursive: true })
+    await writeFile(join(cwd, folder, 'report.md'), '# same\n')
+  }
+  const content = async (answer: string, name: string) => readFile(join(artifactDirectory(paths), decodeURIComponent(new RegExp(`\\[${name.replace('.', '\\.')}\\]\\(engram-artifact:([^)]+)\\)`).exec(answer)![1]!)), 'utf8')
+  const linkOf = (answer: string, name: string) => new RegExp(`\\[${name.replace('.', '\\.')}\\]\\(engram-artifact:[^)]+\\)`).exec(answer)![0]
+  // Identical bytes, one name: both are handed in and both enter the check.
+  const first = { answer: 'Wrote one/report.md and two/report.md.', steps: [passed('Reports written')] }
+  await deliverOutputs(paths, cwd, first, 0, 'ask')
+  expect(first.steps.filter(step => step.tool === 'file_create_copy').map(step => [step.args.name, step.args.fromPath])).toEqual([['report.md', join(cwd, 'one', 'report.md')], ['report-2.md', join(cwd, 'two', 'report.md')]])
+  const both = await judged(first)
+  expect(both.outputs).toEqual(['report-2.md', 'report.md'])
+  expect(both.check.issues.join(' ')).toContain('Reread every final part of report.md')
+  expect(both.check.issues.join(' ')).toContain('Reread every final part of report-2.md')
+  const one = linkOf(first.answer, 'report.md'), two = linkOf(first.answer, 'report-2.md')
+  // A later turn that quotes only one/report.md's link: the unchanged identical two/report.md is not taken for it, and its link is added, not swapped in.
+  // since sits a second under the touched time: a set mtime can read back a hair below the value given.
+  const later = Date.now() + 5_000, since = later - 1_000, touch = (folder: string) => utimes(join(cwd, folder, 'report.md'), later / 1000, later / 1000)
+  await touch('two')
+  const quoted = { answer: `Both reports stand: one/report.md and two/report.md.\n\n${one}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, quoted, since, 'ask')
+  expect(quoted.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'two', 'report.md')]])
+  expect(quoted.answer).toContain(one)
+  expect(quoted.answer).toContain(two)
+  // Only two/report.md changes: one/report.md's link stays on one/report.md, and two/report.md's link moves to the new bytes.
+  await writeFile(join(cwd, 'two', 'report.md'), '# two v2\n')
+  await touch('two')
+  const revised = { answer: `Corrected two/report.md; one/report.md is unchanged.\n\n${one}\n\n${two}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, revised, since, 'ask')
+  expect(revised.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'two', 'report.md')]])
+  expect(revised.answer).toContain(one)
+  expect(revised.answer).not.toContain(two)
+  expect(await content(revised.answer, 'report.md')).toBe('# same\n')
+  expect(await content(revised.answer, 'report-2.md')).toBe('# two v2\n')
+  expect([...revised.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(2)
+  // Same when the changed file is the only one the turn touched and the answer quotes only the other's link.
+  await writeFile(join(cwd, 'two', 'report.md'), '# two v3\n')
+  await touch('two')
+  const other = { answer: `Corrected two/report.md again.\n\n${one}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, other, since, 'ask')
+  expect(other.answer).toContain(one)
+  expect(await content(other.answer, 'report-2.md')).toBe('# two v3\n')
+})
+
+it('a link the answer already carries is not replaced by a same-name file from another folder', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  // The comet's own copy: linked as report.md, with its twin at the top of the task folder.
+  const own = JSON.parse(await copy.run({ name: 'report.md', content: '# same\n' }, context)) as { markdownLink: string }
+  for (const folder of ['one', 'two']) {
+    await mkdir(join(cwd, folder), { recursive: true })
+    await writeFile(join(cwd, folder, 'report.md'), '# same\n')
+  }
+  const result = { answer: `Also wrote one/report.md and two/report.md.\n\n${own.markdownLink}`, steps: [] as TurnStep[] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  expect(result.answer).toContain(own.markdownLink)
+  expect(result.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'one', 'report.md')], ['report-3.md', join(cwd, 'two', 'report.md')]])
+  expect((await judged(result)).outputs).toEqual(['report-2.md', 'report-3.md', 'report.md'])
+})
+
 it('a check turn hands in a requested script it first wrote next to a linked workbook, and it enters the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(cwd, { recursive: true })
