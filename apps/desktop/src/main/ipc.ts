@@ -186,7 +186,7 @@ import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, h
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
-import { artifactDirectory, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskOutputs, taskRoot } from './file-work.js'
+import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskOutputs, taskRoot } from './file-work.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -2778,11 +2778,7 @@ export function registerIpc(ctx: VaultContext): void {
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
         let check: TurnOutcome['check']
         if (result.steps.some(step => step.tool === 'report_result_check')) {
-          const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [
-            // A readback-only follow-up answers for every file of the result it was given, also one its answer leaves out.
-            ...(turn?.verification?.readback ? [{ role: 'assistant' as const, text: turn.verification.result }] : []),
-            { role: 'assistant', text: result.answer },
-          ]))
+          const outputs = latestResultOutputs(result.steps, await checkedOutputs(artifactDirectory(paths), result.answer, turn?.verification?.result))
           const found = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
           check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.

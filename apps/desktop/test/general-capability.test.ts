@@ -7,7 +7,7 @@ import { CHECK_SCRATCH, continuationPrompt, vaultPaths, type DelegatedTask, type
 const state = vi.hoisted(() => ({ home: '' }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => `${state.home}/${name}` }, dialog: { showMessageBox: vi.fn() }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: {}, nativeImage: {}, BrowserWindow: class {}, session: {} }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
-import { artifactDirectory, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile } from '../src/main/file-work.js'
+import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile } from '../src/main/file-work.js'
 import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
 import { checkResult, latestResultOutputs } from '../src/main/result-check.js'
 import { freshResultReadback } from '../src/main/task-result-state.js'
@@ -307,6 +307,32 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const unread = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, unread, 0, 'ask')
   expect((await judged(unread)).check.issues.join(' ')).toContain('Reread every final part of merged.md')
+})
+
+// qa143 p2 r5 (S19b): a re-check that ran out of budget answers with the budget note, which links no file, so the host judged no file of the
+// report it was re-checking: a passing check and a read of some other file were accepted, and the runner then let the unread report stand as done.
+it('a re-check that links no file still answers for the files of the report it re-checks', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(cwd, { recursive: true })
+  const make = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const report = JSON.parse(await make.run({ name: 'report.md', content: '# report\n' }, context)) as { markdownLink: string; path: string }
+  const notes = JSON.parse(await make.run({ name: 'notes.md', content: '# notes\n' }, context)) as { path: string }
+  const tools = cometFileTools(paths, 'bot-x', [report.path, notes.path], [cwd])
+  const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path }, context) })
+  const earlier = `Merged the leads. ${report.markdownLink}`, budgetNote = 'The task token budget was reached. Work so far is preserved.'
+  const recheck = async (steps: TurnStep[], answer = budgetNote) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, earlier)), [])
+  // The other file was read, fresh, and every check passed: the report's own file is still unread, so the host does not accept the check.
+  const unrelated = [await reopen(notes.path), passed('Leads merged')]
+  expect(freshResultReadback(unrelated)).toBe(true)
+  expect(await recheck(unrelated)).toMatchObject({ accepted: false, verified: false, issues: [expect.stringContaining(`Reread every final part of report.md (${report.path})`)] })
+  // The same for a re-check that ended in its own words without the link.
+  expect(await recheck(unrelated, 'Checked again; nothing to correct.')).toMatchObject({ accepted: false, issues: [expect.stringContaining('Reread every final part of report.md')] })
+  expect(await recheck([passed('Leads merged')])).toMatchObject({ accepted: false })
+  // Its own file read back in full: accepted.
+  expect(await recheck([await reopen(report.path), passed('Leads merged')])).toEqual({ accepted: true, verified: true, issues: [] })
+  // A turn that re-checks nothing answers for its own links only, as before.
+  expect(await checkedOutputs(artifactDirectory(paths), budgetNote)).toEqual([])
+  expect(await checkedOutputs(artifactDirectory(paths), earlier)).toEqual([{ name: 'report.md', path: report.path }])
 })
 
 it('scratch in the check folder the answer does not name stays out, and a file there the answer names is handed in and checked', async () => {

@@ -133,6 +133,11 @@ export async function linkedOutputs(directory: string, history: { role: string; 
   }
   return found
 }
+// The files a turn's result check answers for: those its answer links and, on any re-check, those of the report it was given, also one the
+// answer leaves out (a budget stop names none, and a check that then passed on some other read let the unread report stand: qa143 S19b).
+// The report goes first, so a file the answer links again is judged at the answer's revision.
+export const checkedOutputs = (directory: string, answer: string, rechecked?: string): Promise<{ name: string; path: string }[]> =>
+  linkedOutputs(directory, [...(rechecked === undefined ? [] : [{ role: 'assistant', text: rechecked }]), { role: 'assistant', text: answer }])
 
 // A check that revised a file but ran out of time still answers with the
 // draft's links: each one is pointed at the newest revision of its name saved
