@@ -129,6 +129,8 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
   const message = chatMessage(draft, attachments)
   seats(active, store).add(botId)
   const ids = attachments.map(one => one.id)
+  // A put-back draft sent again unchanged is put back only once.
+  const again = !!store.thread(botId).restored
   const nextDraft = store.thread(botId).draft
   const nextFiles = store.thread(botId).attachments
   const history = store.begin(botId, message, ids, false, shown)
@@ -138,7 +140,7 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
     if (settled) return
     settled = true
     if (store.thread(botId).busy) store.fail(botId, reason)
-    if (!store.thread(botId).draft && !store.thread(botId).attachments.length) { store.setDraft(botId, draft); store.setAttachments(botId, attachments) }
+    if (!again && !store.thread(botId).draft && !store.thread(botId).attachments.length) { store.setDraft(botId, draft, true); store.setAttachments(botId, attachments) }
   }
   const channel = cometChannel(botId)
   const unsubscribe = api.onEvent(event => {

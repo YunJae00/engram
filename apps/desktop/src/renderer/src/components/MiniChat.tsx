@@ -24,6 +24,7 @@ import { CometMessages } from './CometMessages.js'
 export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = true }: { active?: boolean; botId: string; webOpen: boolean; onToggleWeb(): void; previewTile?: PreviewTile }) {
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId))
   const [draft, setDraft] = useState(thread.draft)
+  const putBack = useSyncExternalStore(cometThreads.subscribeDraft, () => !!cometThreads.thread(botId).restored)
   useEffect(() => setDraft(thread.draft), [thread.draft, thread.busy])
   // The draft taken from the box (queued, steered) or put back shows at once.
   useEffect(() => {
@@ -67,7 +68,7 @@ export function MiniChat({ botId, webOpen, onToggleWeb, previewTile, active = tr
           <ThreadAsks botId={botId} questionShown={!thread.busy && thread.messages.at(-1)?.role === 'assistant' && !thread.messages.at(-1)?.streaming ? thread.messages.at(-1)?.text : undefined} failureShown={!!thread.messages.at(-1)?.error} />
         </CometMessages>
       </div>
-      <div className="mini-chat-write"><ChatComposer value={draft} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} canQueue testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} actions={<button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /><span>{webOpen ? 'Hide website' : 'Show website'}</span></button>} tools={<ModelPicker scope={cometChannel(botId)} />} /></div>
+      <div className="mini-chat-write"><ChatComposer value={draft} putBack={putBack} placeholder={t('mission.say')} maxLength={2000} busy={thread.busy} canQueue testId={`mini-input-${botId}`} attachments={thread.attachments} onAttachmentsChange={next => cometThreads.setAttachments(botId, next)} onChange={value => { setDraft(value); cometThreads.setDraft(botId, value) }} onSend={() => void send(draft)} onStop={stop} actions={<button className="composer-web" aria-label={webOpen ? 'Hide website' : 'Show website'} aria-pressed={webOpen} onClick={onToggleWeb}><Globe size={15} aria-hidden /><span>{webOpen ? 'Hide website' : 'Show website'}</span></button>} tools={<ModelPicker scope={cometChannel(botId)} />} /></div>
     </div>
   )
 }

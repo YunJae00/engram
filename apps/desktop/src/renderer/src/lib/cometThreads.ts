@@ -32,6 +32,8 @@ export interface CometThread {
   keptWork: string[]
   offer: CometOffer | null
   draft: string
+  // The draft was put back by a failed send and not edited since.
+  restored?: boolean
   attachments: ChatAttachmentDto[]
   adopted: boolean
   stopped: boolean
@@ -231,10 +233,10 @@ export function createCometThreads(initialSelected: string | null = null) {
       patch(id, { messages: [...added, ...current.messages], older: current.older + added.length, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })
       return added.length
     },
-    setDraft(id: string, draft: string): void {
+    setDraft(id: string, draft: string, restored = false): void {
       const current = thread(id)
-      if (current.draft === draft) return
-      snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft } } }
+      if (current.draft === draft && !!current.restored === restored) return
+      snapshot = { ...snapshot, threads: { ...snapshot.threads, [id]: { ...current, draft, restored } } }
       for (const listener of draftListeners) listener()
     },
     setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
@@ -268,7 +270,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         workLines: [],
         keptWork: [],
         offer: null,
-        ...(scheduled ? {} : { draft: '', attachments: [] }),
+        ...(scheduled ? {} : { draft: '', attachments: [], restored: false }),
         messages: [...current.messages, ...(alreadyShown ? [] : [{ role: 'user' as const, text: message, ...(attachments.length ? { attachments } : {}), ...(scheduled ? { scheduled: true } : {}) }]), { role: 'assistant', text: '', streaming: true }],
       })
       return history

@@ -89,6 +89,8 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
     }
   }, [memoryOpen, onToggleMemory])
 
+  const putBack = useSyncExternalStore(cometThreads.subscribeDraft, () => !!cometThreads.thread(botId).restored)
+
   const change = (next: string) => {
     valueRef.current = next
     setValue(next)
@@ -108,6 +110,7 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
       <ChatComposer
         testId="bots-input"
         autoFocus
+        putBack={putBack}
         value={value}
         placeholder={locked ? t('errands.busy') : t('bots.placeholder')}
         maxLength={2000}

@@ -16,6 +16,7 @@ interface Props {
   disabled?: boolean
   testId?: string
   autoFocus?: boolean
+  putBack?: boolean
   tools?: ReactNode
   actions?: ReactNode
   attachments?: ChatAttachmentDto[]
@@ -52,7 +53,7 @@ const appMark = (app: Mentionable, size: number) => app.icon ? <img className="a
 
 export const ChatComposer = memo(
   forwardRef<HTMLTextAreaElement, Props>(function ChatComposer(
-    { value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
+    { value, placeholder, maxLength, busy, canQueue = false, disabled = false, testId, autoFocus = false, putBack = false, tools, actions, attachments = [], onAttachmentsChange, onAttachingChange, onChange, onSend, onStop },
     ref,
   ) {
     const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -72,6 +73,13 @@ export const ChatComposer = memo(
     const named = namedIn(value, apps)
     useImperativeHandle(ref, () => inputRef.current!)
     useAutoGrow(inputRef, value)
+    // A draft put back after a failed send arrives selected, and the next click selects it once more,
+    // so what is typed next replaces it instead of joining it.
+    const putBackArmed = useRef(false)
+    useLayoutEffect(() => {
+      putBackArmed.current = putBack
+      if (putBack && document.activeElement === inputRef.current) inputRef.current?.select()
+    }, [putBack])
     useLayoutEffect(() => {
       const caret = mentionCaret.current
       if (caret === null || !inputRef.current) return
@@ -188,6 +196,7 @@ export const ChatComposer = memo(
           value={value}
           onChange={(event) => { onChange(event.target.value); lookForMention(event.target.value, event.target.selectionStart) }}
           onKeyDown={onKeyDown}
+          onClick={() => { if (putBackArmed.current) { putBackArmed.current = false; inputRef.current?.select() } }}
           onBlur={() => setMention(null)}
           onPaste={event => {
             const files = Array.from(event.clipboardData.files)
