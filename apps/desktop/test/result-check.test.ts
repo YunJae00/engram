@@ -248,3 +248,11 @@ it('uses successful structured batch pages as sources but rejects a wholly faile
     expect(result.verified).toBe(ready)
   }
 })
+
+// qa142 p2b-r2 #1: the re-check's word that the delivered report stands is carried only when it is literally true.
+it('carries reportUnchanged only when the report says true', async () => {
+  expect(checkReport([await recorded({ ...payload(), reportUnchanged: true })])?.reportUnchanged).toBe(true)
+  expect(checkReport([await recorded({ ...payload(), reportUnchanged: false })])).not.toHaveProperty('reportUnchanged')
+  expect(checkReport([await recorded()])).not.toHaveProperty('reportUnchanged')
+  await expect(resultCheckTool().run({ ...payload(), reportUnchanged: 'yes' }, { task: 'Prepare a proposal' })).rejects.toThrow()
+})

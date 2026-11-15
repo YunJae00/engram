@@ -2777,8 +2777,8 @@ export function registerIpc(ctx: VaultContext): void {
           const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [
             { role: 'assistant', text: result.answer },
           ]))
-          const report = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
-          check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(report ? { report } : {}) }
+          const found = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
+          check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.
           const named = new Set([...result.answer.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')] } catch { return [] } }))
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs

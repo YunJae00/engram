@@ -41,7 +41,7 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 // The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'> }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
+export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
 export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
 const AUTO_CONTINUE_MAX = 3
@@ -182,11 +182,12 @@ export function taskRunner(deps: {
         }
       } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t)) { verifyNext.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
-    // One finished task, one report: a re-check stays silent only when it confirms the report already in the thread.
-    // It is posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown (so its answer says something the report did not).
+    // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
+    // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
+    // It is also posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown.
     const reported = verdicts.get(id)
     verdicts.set(id, outcome?.check?.report)
-    const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
+    const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result)
     if (after && outcome?.held && after.result && !repeats) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.

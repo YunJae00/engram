@@ -3,7 +3,7 @@ import { isAbsolute, relative, sep } from 'node:path'
 import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
-type Report = { checks: (Finding & { requirement: string })[]; grounding: Finding }
+type Report = { checks: (Finding & { requirement: string })[]; grounding: Finding; reportUnchanged?: boolean }
 type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[]; source?: string }
 type Receipt = Record<string, unknown>
 type Read = { step: TurnStep; position: number; value?: Receipt }
@@ -33,7 +33,8 @@ function finding(value: unknown, requirement = false): Finding & { requirement?:
 }
 
 function report(value: unknown): Report {
-  if (!object(value) || !keys(value, ['checks', 'grounding'], []) || !Array.isArray(value.checks) || !value.checks.length || value.checks.length > 32) {
+  if (!object(value) || !keys(value, ['checks', 'grounding'], ['reportUnchanged']) || !Array.isArray(value.checks) || !value.checks.length || value.checks.length > 32
+    || (value.reportUnchanged !== undefined && typeof value.reportUnchanged !== 'boolean')) {
     throw new Error('Provide 1 to 32 requirement checks and a separate grounding finding.')
   }
   value.checks.forEach(check => finding(check, true))
@@ -55,6 +56,7 @@ export function resultCheckTool(config?: { outputs: { name: string; path: string
       checks: { type: 'array', minItems: 1, maxItems: 32, items: { type: 'object', additionalProperties: false,
         required: ['requirement', 'status', 'basis'], properties: { requirement: { ...text, maxLength: 500 }, ...properties } } },
       grounding: { type: 'object', additionalProperties: false, required: ['status', 'basis'], properties },
+      reportUnchanged: { type: 'boolean', description: 'Only when re-checking a result you were given: true only if every statement in that result (numbers, names, dates, counts, status, file links) still holds exactly and you changed nothing, so the person needs no new report. Omit it or give false when anything in it needs correcting, adding or withdrawing.' },
     } },
     async run(args, context) {
       context.signal?.throwIfAborted()
@@ -247,7 +249,8 @@ const ownName = (path: string): string => (path.split(/[\\/]/).at(-1) ?? path).r
 // The last report the model made this turn, with what it read as sources
 // (the attachments, and originals read this turn; never its own outputs), in
 // the shape the answer carries to the person. Absent when no report was made.
-export function checkReport(steps: TurnStep[], options: { generatedDirectory?: string; attachments?: string[] } = {}): Omit<TurnEvidence, 'record'> | undefined {
+// reportUnchanged is the model's explicit word that a re-checked result needs no correction; absent means it may.
+export function checkReport(steps: TurnStep[], options: { generatedDirectory?: string; attachments?: string[] } = {}): (Omit<TurnEvidence, 'record'> & { reportUnchanged?: true }) | undefined {
   const last = steps.filter(step => step.tool === TOOL && !step.seeded).at(-1)
   const value = last && receipt(last)
   if (!value || !Object.hasOwn(value, 'resultCheck')) return undefined
@@ -276,5 +279,6 @@ export function checkReport(steps: TurnStep[], options: { generatedDirectory?: s
       ...(object(value.validation) && Array.isArray(value.validation.defects) ? value.validation.defects.filter((issue): issue is string => typeof issue === 'string').map(basis => ({ requirement: 'Unresolved verification', status: 'unknown' as const, basis })) : [])],
     grounding: { status: checked.grounding.status, basis: checked.grounding.basis },
     sources: [...sources],
+    ...(checked.reportUnchanged === true ? { reportUnchanged: true as const } : {}),
   }
 }
