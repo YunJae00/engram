@@ -140,7 +140,7 @@ async function sendNow(api: ChatApi, store: CometThreadsStore, botId: string, dr
     if (settled) return
     settled = true
     if (store.thread(botId).busy) store.fail(botId, reason)
-    if (!again && !store.thread(botId).draft && !store.thread(botId).attachments.length) { store.setDraft(botId, draft, true); store.setAttachments(botId, attachments) }
+    if (!again && !store.thread(botId).draft && !store.thread(botId).attachments.length) { store.setAttachments(botId, attachments); store.setDraft(botId, draft, true) }
   }
   const channel = cometChannel(botId)
   const unsubscribe = api.onEvent(event => {

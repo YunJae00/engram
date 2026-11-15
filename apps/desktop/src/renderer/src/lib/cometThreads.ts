@@ -253,7 +253,10 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (const listener of draftListeners) listener()
     },
     setAttachments(id: string, attachments: ChatAttachmentDto[]): void {
-      patch(id, { attachments })
+      // Changed files make it a new draft, so a put-back one may be put back again.
+      const changed = thread(id).attachments.map(one => one.id).join('\n') !== attachments.map(one => one.id).join('\n')
+      patch(id, { attachments, ...(changed && thread(id).restored ? { restored: false } : {}) })
+      if (changed) for (const listener of draftListeners) listener()
     },
     append(id: string, message: CometMessage): void {
       patch(id, { messages: [...thread(id).messages, message] })

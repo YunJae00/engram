@@ -186,6 +186,22 @@ it('marks a put-back draft so the next message replaces it, and puts the same dr
   expect(store.thread('first').messages.filter(message => message.role === 'user').map(message => message.text)).toEqual(['Go ahead like this', 'Go ahead like this'])
 })
 
+it('puts a draft back again when only its files changed since the last put-back', async () => {
+  const store = createCometThreads('first')
+  const api: Pick<EngramApi, 'chatSend' | 'onEvent'> = { onEvent: () => () => undefined, chatSend: vi.fn(async () => { throw new Error('Connection failed') }) }
+  const oldFile = { id: 'old-file', name: 'old.txt', size: 10 }, newFile = { id: 'new-file', name: 'new.txt', size: 10 }
+  store.setAttachments('first', [oldFile])
+  await sendCometMessage(api, store, 'first', 'Read this', [oldFile])
+  expect(store.thread('first')).toMatchObject({ draft: 'Read this', attachments: [oldFile], restored: true })
+  store.setAttachments('first', [newFile])
+  expect(store.thread('first').restored).toBe(false)
+  await sendCometMessage(api, store, 'first', 'Read this', [newFile])
+  expect(store.thread('first')).toMatchObject({ draft: 'Read this', attachments: [newFile], restored: true })
+  // Unchanged text and files: put back only once.
+  await sendCometMessage(api, store, 'first', 'Read this', [newFile])
+  expect(store.thread('first')).toMatchObject({ draft: '', attachments: [], restored: false })
+})
+
 it('waits for a settled turn’s IPC cleanup before sending the next message and ignores its late rejection', async () => {
   const store = createCometThreads('first')
   const oldFile = { id: 'old-file', name: 'old.txt', size: 10 }
