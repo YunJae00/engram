@@ -42,26 +42,18 @@ import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingR
 // The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
-const CORRECTION_WORDS = /아니라|아닌|아니고|정정|수정|잘못|틀렸|틀린|바로잡|\bnot\b|n['’]t\b|\binstead\b|\bcorrect(?:ed|ion|ing)|\bactually\b|\bwrong|\bmistake/i
-// One pass over an answer: link target | bare link | quoted or backticked value (six forms) | number | word | currency or percent sign.
-const TOKEN = /\]\(([^\s)]+)\)|\bhttps?:\/\/[^\s)\]]+|`([^`\n]+)`|"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|「([^」\n]+)」|(?<![\p{L}\p{N}])'([^'\n]+)'(?![\p{L}\p{N}])|((?<![\p{L}\p{N}])[-+−]?\d+(?:[.,]\d+)*%?)|[\p{L}\p{M}][\p{L}\p{M}\p{N}]*|[\p{Sc}%]/gu
-// The text as a sequence of tokens. NFKC folds full-width forms; punctuation and markdown emphasis are simply not tokens.
-const tokens = (text: string) => [...text.normalize('NFKC').matchAll(TOKEN)].map((match) => {
-  const quoted = match.slice(2, 8).find(one => one !== undefined)
-  // A saved copy's id must not make the same file read as a new link.
-  if (match[1] !== undefined || /^https?:/i.test(match[0])) return `L ${(match[1] ?? match[0]).replace(/^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '$1')}`
-  if (quoted !== undefined) return `Q ${quoted.trim().replace(/\s+/g, ' ').toLowerCase()}`
-  if (match[8] !== undefined) return `N ${match[8].replace('−', '-')}`
-  return `W ${match[0].toLowerCase()}`
-})
-/** True only when a re-check answer merely restates the delivered report (or repeats it): no correction wording, and every token of it
- *  (word, number, link target, quoted value) stands in the report between the same neighbouring tokens. No word is ignored, so any other
- *  text, a short "Confirmed, unchanged." included, is posted: a word that confirms in one report corrects another ("Rows match." after
- *  "Rows differ."). The host's own reading beside the model's reportUnchanged; unsure means post. */
+// A link target (kept whole, less a saved copy's id) | a run of * _ ` ~ opening or closing emphasis (not one inside a word or standing alone).
+const LINK_OR_EMPHASIS = /\]\(([^\s)]+)\)|(?<![\p{L}\p{N}])[*_`~]+(?=\S)|(?<=\S)[*_`~]+(?![\p{L}\p{N}])/gu
+const SAVED_COPY_ID = /^(engram-artifact:)[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
+const plain = (text: string) => text.normalize('NFKC')
+  .replace(LINK_OR_EMPHASIS, (_, target?: string) => target === undefined ? '' : `](${target.replace(SAVED_COPY_ID, '$1')})`)
+  .replace(/\s+/g, ' ').trim()
+/** True only when a re-check answer is the delivered report again: the same text once full-width forms, whitespace runs, markdown emphasis
+ *  and a saved copy's id are set aside. Punctuation, case and wording are kept, so anything else is posted, once: a changed comma
+ *  ("No changes were made." after "No, changes were made.") or a dropped qualifier can reverse a report.
+ *  The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
-  if (CORRECTION_WORDS.test(answer)) return false
-  const said = tokens(answer), had = `\n${tokens(report).join('\n')}\n`
-  return said.every((_, at) => had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).join('\n')}\n`))
+  return plain(answer) === plain(report)
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
@@ -226,7 +218,7 @@ export function taskRunner(deps: {
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
     // It is also posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown.
-    // That word alone is not trusted: the host also reads the answer, and posts it when it corrects or adds anything (recheckAddsNothing).
+    // That word alone is not trusted: the host also reads the answer, and posts it unless it is that report again (recheckAddsNothing).
     const reported = verdicts.get(id)
     verdicts.set(id, outcome?.check?.report)
     for (const one of outcome?.check?.report?.checks ?? []) {
