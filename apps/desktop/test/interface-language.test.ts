@@ -36,3 +36,16 @@ it('shows the error card in the language of the conversation', async () => {
   for (const english of ['Could not complete this request', 'Error details', 'Copy error']) expect(ko).not.toContain(english)
   expect(renderToStaticMarkup(createElement(ErrorAnswer, { text: 'Boom', lang: 'en' }))).toContain('Could not complete this request')
 })
+
+it('does not show the verifier\'s model-facing reason to the person; the unverified mark itself stays', async () => {
+  const { displayTaskAnswer } = await import('../src/renderer/src/lib/threadLang.js')
+  const { checkOfficeResult } = await import('../../../packages/core/src/office-verification.js')
+  // An Office write that was never read back: the host still marks the turn incomplete.
+  const result = checkOfficeResult({ answer: '슬라이드 4장을 만들었어요.', steps: [{ tool: 'ppt_build', args: {}, observation: '{}' }], fellBack: false })
+  expect(result.incomplete).toContain('Report incomplete or unverified work')
+  const shown = displayTaskAnswer(result.answer, 'ko')
+  expect(shown).toBe('확인하지 못한 항목이 있어요.\n\n파일에 쓴 내용을 다시 읽어 확인하지 못했어요. 쓰기 전에 한 번 열어서 확인해 주세요.\n\n현재까지 확인한 내용:\n슬라이드 4장을 만들었어요.')
+  expect(displayTaskAnswer(result.answer, 'en')).not.toMatch(/Report incomplete|read back of all changed targets/)
+  const evidence = 'A requested evidence capture, page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.'
+  expect(displayTaskAnswer(`Not verified as complete.\n\n${evidence}\n\nUnverified response:\n끝`, 'ko')).not.toMatch(/[A-Za-z]{4}/)
+})
