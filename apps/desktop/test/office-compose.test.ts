@@ -68,6 +68,19 @@ it('hands in one file when the same deck is built again', async () => {
   expect((await readdir(task)).filter(name => name.endsWith('.pptx'))).toHaveLength(1)
 })
 
+it('hands in one file when the same deck is built again seconds later (built bytes carry a timestamp)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  try {
+    vi.setSystemTime(new Date('2026-11-15T12:00:00Z'))
+    const tool = tools().find(t => t.name === 'ppt_build')!
+    const first = JSON.parse(await tool.run({ slides, theme: THEME }, { task: '슬라이드' }))
+    vi.setSystemTime(new Date('2026-11-15T12:00:07Z'))
+    const second = JSON.parse(await tool.run({ slides, theme: THEME }, { task: '슬라이드' }))
+    expect(second.artifact).toBe(first.artifact)
+    expect((await readdir(task)).filter(name => name.endsWith('.pptx'))).toHaveLength(1)
+  } finally { vi.useRealTimers() }
+})
+
 it('refuses to compose where no outputs are kept instead of writing to Documents', async () => {
   const tool = officeAgentTools('standing-watch').find(t => t.name === 'ppt_build')!
   await expect(tool.run({ slides, theme: THEME }, { task: 'Build slides' })).rejects.toThrow('keeps its outputs')

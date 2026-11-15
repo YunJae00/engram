@@ -51,8 +51,17 @@ let workQueue: Promise<unknown> = Promise.resolve()
 export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
-  const tools = officeTools({ run: (op, args, signal) => {
-    if (op === 'ppt.build' || op === 'word.write') return composeOffice(op, args, outputs, signal, () => assertDesktopTurnNotStopped(lane))
+  // The same deck or document built again in this session is the file already
+  // handed in, not a twin: built bytes carry a timestamp (QA 0.8.142 B11 duplicates).
+  const composed = new Map<string, unknown>()
+  const tools = officeTools({ run: async (op, args, signal) => {
+    if (op === 'ppt.build' || op === 'word.write') {
+      const key = `${op}\0${JSON.stringify(args)}`
+      if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
+      const receipt = await composeOffice(op, args, outputs, signal, () => assertDesktopTurnNotStopped(lane))
+      composed.set(key, receipt)
+      return receipt
+    }
     const run = async () => {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
