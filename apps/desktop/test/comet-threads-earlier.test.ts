@@ -166,4 +166,26 @@ describe('cometThreads earlier pages', () => {
     expect(read).toHaveBeenCalledTimes(2)
     expect(read).toHaveBeenLastCalledWith(BOT, 400, 100)
   })
+
+  // qa142 p2b-r1 #1: an older page gets the same order as a first load.
+  it('puts words said mid-turn after the answer they interrupted in an older page, also across the page boundary', async () => {
+    const all = history(500)
+    all[41] = { role: 'user', text: 'mid', at: 't41', aside: true }
+    all[42] = { role: 'assistant', text: 'ans40', at: 't42' }
+    all[43] = { role: 'assistant', text: 'reply-mid', at: 't43' }
+    all[99] = { role: 'user', text: 'edge', at: 't99', aside: true }
+    all[100] = { role: 'assistant', text: 'ans98', at: 't100' }
+    all[101] = { role: 'assistant', text: 'reply-edge', at: 't101' }
+    const store = createCometThreads(BOT)
+    store.load(BOT, newest(all, 400))
+    const before = keyed(store)
+    expect(await store.loadEarlier(BOT, reader(all))).toBe(100)
+    const texts = store.thread(BOT).messages.map(m => m.text)
+    expect(texts.slice(40, 44)).toEqual(['m40', 'ans40', 'mid', 'reply-mid'])
+    expect(texts.slice(98, 103)).toEqual(['m98', 'ans98', 'edge', 'reply-edge', 'm102'])
+    expect(texts).toHaveLength(500)
+    // Messages below the moved one keep their keys, so the scroll anchor holds.
+    expect(keyed(store).get('reply-edge')).toBe(before.get('reply-edge'))
+    expect(keyed(store).get('m499')).toBe(before.get('m499'))
+  })
 })

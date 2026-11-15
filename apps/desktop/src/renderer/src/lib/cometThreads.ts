@@ -234,17 +234,30 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let at = 0; at < overlap && fits; at++) fits = identity(page[page.length - overlap + at]!) === current.coverage[at]
       if (!fits) { patch(id, { pageLoading: false }); return 0 }
       const had = new Set(current.messages.map(identity))
-      const combined: ChatTurnDto[] = [...page, ...current.messages]
-      const added: CometMessage[] = [], seen: string[] = []
-      const said = shownTexts(combined)
-      for (let at = 0; at < page.length; at++) {
-        const key = identity(page[at]!)
-        if (at < page.length - overlap) seen.push(key)
-        if (at < page.length - overlap && !had.has(key) && said[at] !== null) { had.add(key); added.push({ ...toMessage(page[at]!), text: said[at]! }) }
+      const fresh = page.slice(0, page.length - overlap), seen = fresh.map(identity)
+      // Same order as a first load. Words said mid-turn whose interrupted answer is on the newer side of
+      // the page boundary are put after that answer, among the messages already held.
+      const late: ChatTurnDto[] = []
+      const ordered = askOrder(fresh, late)
+      const said = shownTexts([...ordered, ...current.messages])
+      const added: CometMessage[] = []
+      for (let at = 0; at < ordered.length; at++) {
+        const key = identity(ordered[at]!)
+        if (!had.has(key) && said[at] !== null) { had.add(key); added.push({ ...toMessage(ordered[at]!), text: said[at]! }) }
       }
-      if (added.length) beforeCommit?.()
-      patch(id, { messages: [...added, ...current.messages], older: current.older + added.length, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })
-      return added.length
+      const waiting = late.filter(turn => !had.has(identity(turn))).map(toMessage), moved = waiting.length
+      const rest: CometMessage[] = []
+      let open = true
+      for (const message of current.messages) {
+        if (open && message.role === 'user') { open = false; rest.push(...waiting.splice(0)) }
+        rest.push(message)
+        if (open && waiting.length && message.role === 'assistant' && !message.progress) rest.push(waiting.shift()!)
+      }
+      rest.push(...waiting)
+      if (added.length + moved) beforeCommit?.()
+      // shortcut: `older` also counts the moved ones, so a reload of the very same window starts over from the newest page instead of keeping these; track the boundary separately if that shows.
+      patch(id, { messages: [...added, ...rest], older: current.older + added.length + moved, cursor: before + page.length, pageDone: page.length < PAGE_SIZE, pageLoading: false, coverage: [...seen, ...current.coverage], unseenAppend: current.unseenAppend + overlap })
+      return added.length + moved
     },
     setDraft(id: string, draft: string, restored = false): void {
       const current = thread(id)
