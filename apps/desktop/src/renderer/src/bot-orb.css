@@ -37,17 +37,17 @@
   mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
 }
 .bot-orb-wash { stroke: none; fill-opacity: 0.2; }
-.bot-orb-sheet { stroke: none; fill-opacity: 0.5; }
+.bot-orb-sheet { stroke: none; fill-opacity: 0.36; }
 .bot-orb-ribbon:nth-child(2) .bot-orb-sheet { fill-opacity: 0.36; }
 .bot-orb-ribbon:nth-child(2) .bot-orb-front { fill-opacity: 0.46; }
 .bot-orb-ribbon:nth-child(2) .bot-orb-thin { fill-opacity: 0.34; }
 .bot-orb-edge { fill: none; stroke-width: 0.8px; stroke-linecap: round; stroke-opacity: 0.8; }
 .bot-orb-edge-under { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.3; stroke-width: 0.7px; }
 .bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.36; stroke-width: 0.7px; }
-.bot-orb-bubble { fill-opacity: 0.3; stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.5; stroke-width: 0.9px; }
+.bot-orb-bubble { fill-opacity: 0.3; stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.32; stroke-width: 1.4px; }
 .bot-orb-core {
-  inset: auto; left: 25%; top: 24%; width: 50%; height: 50%; border-radius: 50%; opacity: 0.9;
-  background: radial-gradient(circle, #FFFFFF 0%, color-mix(in srgb, var(--orb) 12%, #FFFFFF) 3%, color-mix(in srgb, var(--orb) 38%, rgba(255, 255, 255, 0.85)) 8.5%, color-mix(in srgb, var(--orb) 62%, rgba(255, 255, 255, 0.5)) 15%, color-mix(in srgb, var(--orb) 58%, transparent) 24%, color-mix(in srgb, var(--orb) 26%, transparent) 42%, color-mix(in srgb, var(--orb) 8%, transparent) 58%, transparent 72%);
+  inset: auto; left: 25%; top: 24%; width: 50%; height: 50%; border-radius: 50%; opacity: 0.95;
+  background: radial-gradient(circle, #FFFFFF 0%, color-mix(in srgb, var(--orb) 14%, #FFFFFF) 5%, color-mix(in srgb, var(--orb) 34%, rgba(255, 255, 255, 0.88)) 10%, color-mix(in srgb, var(--orb) 55%, rgba(255, 255, 255, 0.55)) 16%, color-mix(in srgb, var(--orb) 60%, transparent) 24%, color-mix(in srgb, var(--orb) 30%, transparent) 34%, color-mix(in srgb, var(--orb) 10%, transparent) 48%, transparent 66%);
 }
 @container (max-width: 40px) {
   .bot-orb-ribbons { opacity: 0.78; }
