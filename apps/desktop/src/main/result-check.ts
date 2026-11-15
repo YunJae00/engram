@@ -227,9 +227,12 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     const textCovered = !!textCoverage(reads, output.path, expected.hash, output.after) || (!workbook && packageCoverage(reads, output.path, expected.hash, output.after))
       // A host hand-in is a byte copy made after the turn: the task file read in full at the same hash is that readback.
       || (!!output.source && !!output.hash && !!textCoverage(reads, output.source, output.hash))
-    // A script's final bytes are also known when they equal the whole content the model wrote with its own write tool this turn.
+    // A script's final bytes are also known when they equal the whole content the model wrote to this very file with its own write tool this turn:
+    // a Write to the handed-in task file, or its own copy that made this output or the task file handed in. The same content written to another path proves nothing here.
     // The hash is of that call's content argument; a command's echo or output never counts, and bytes changed afterwards no longer match.
-    const wroteWhole = SCRIPT.test(output.name) && !!output.hash && reads.some(({ step, value }) => !step.seeded && /^(Write|file_create_copy)$/.test(step.tool)
+    const wroteWhole = SCRIPT.test(output.name) && !!output.hash && reads.some(({ step, value }) => !step.seeded
+      && (step.tool === 'Write' ? !!output.source && step.args.file_path === output.source
+        : step.tool === 'file_create_copy' && !!value && (value.path === output.path || (!!output.source && value.taskPath === output.source)))
       && typeof step.args.content === 'string' && !/^that did not work/.test(step.observation) && !(value && badReceipt(value))
       && createHash('sha256').update(step.args.content).digest('hex') === output.hash)
     if (!textCovered && !wroteWhole && (!fullReads.length || !sheetsCovered)) {

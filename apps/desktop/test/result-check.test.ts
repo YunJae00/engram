@@ -273,6 +273,13 @@ it('holds a script output to its final bytes: a full read, or the whole content 
   // Its own write of exactly these bytes is the evidence; a write of other bytes, or one that did not land, is not.
   expect(await judge([wrote(code)])).toEqual({ accepted: true, verified: true, issues: [] })
   expect((await judge([wrote('print("draft")\n')])).issues.join(' ')).toContain(reread)
+  // The same content written to another path, with a command writing the script itself: that write is not of this file.
+  const elsewhere: TurnStep = { tool: 'Write', args: { file_path: 'C:/task/notes/audit-copy.py', content: code }, observation: 'Native action completed.' }
+  const byCommand: TurnStep = { tool: 'Bash', args: { command: 'cp notes/audit-copy.py audit.py' }, observation: '' }
+  expect((await judge([elsewhere, byCommand])).issues.join(' ')).toContain(reread)
+  expect((await judge([{ tool: 'file_create_copy', args: { name: 'other.py', content: code }, observation: JSON.stringify({ path: 'C:/artifacts/id-other.py', taskPath: 'C:/task/other.py', sha256, completeReadback: true }) }, byCommand])).issues.join(' ')).toContain(reread)
+  // Its own copy from content whose task-folder twin is the file handed in is a write of this file.
+  expect((await judge([{ tool: 'file_create_copy', args: { name: 'audit.py', content: code }, observation: JSON.stringify({ path: 'C:/artifacts/id0-audit.py', taskPath: task, sha256, completeReadback: true }) }])).issues).toEqual([])
   expect((await judge([wrote(code, 'that did not work: Native action did not report success; it may have partly happened. Inspect the current state and do not repeat it.')])).issues.join(' ')).toContain(reread)
   expect((await judge([{ ...wrote(code), seeded: true }])).issues.join(' ')).toContain(reread)
   // The existing readback rule: the task file read in full at the handed-in hash.
