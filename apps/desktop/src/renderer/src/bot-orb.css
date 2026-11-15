@@ -5,10 +5,10 @@
   border-radius: 50%; overflow: hidden; isolation: isolate; container-type: size;
   /* Percent-based layers: a faint thin rim that fades inward, a little color near the center, a dark neutral glass body. */
   background:
-    radial-gradient(circle closest-side, transparent 96.5%, color-mix(in srgb, color-mix(in srgb, var(--orb) 72%, #FFFFFF) 36%, transparent) 99.2%, color-mix(in srgb, var(--orb) 10%, transparent) 100%),
-    radial-gradient(circle closest-side, transparent 74%, color-mix(in srgb, var(--orb) 5%, transparent) 91%, color-mix(in srgb, color-mix(in srgb, var(--orb) 80%, #FFFFFF) 12%, transparent) 98.5%),
+    radial-gradient(circle closest-side, transparent 97%, color-mix(in srgb, color-mix(in srgb, var(--orb) 72%, #FFFFFF) 34%, transparent) 99.3%, color-mix(in srgb, var(--orb) 10%, transparent) 100%),
+    radial-gradient(circle closest-side, transparent 80%, color-mix(in srgb, var(--orb) 4%, transparent) 90%, color-mix(in srgb, var(--orb) 10%, transparent) 95%, color-mix(in srgb, color-mix(in srgb, var(--orb) 80%, #FFFFFF) 16%, transparent) 99%),
     radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--orb) 15%, transparent) 0%, color-mix(in srgb, var(--orb) 4%, transparent) 60%, transparent 90%),
-    radial-gradient(circle, rgba(22, 20, 26, 0.96) 0%, rgba(17, 16, 20, 0.96) 100%);
+    radial-gradient(circle, rgba(19, 18, 23, 0.98) 0%, rgba(15, 14, 18, 0.98) 100%);
 }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
@@ -21,13 +21,14 @@
 
 .bot-orb-ribbons, .bot-orb-ribbon, .bot-orb-core { position: absolute; inset: 0; width: 100%; height: 100%; }
 .bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 50% 50%; }
-.bot-orb-ribbon { overflow: visible; mix-blend-mode: screen; filter: blur(0.42cqw) drop-shadow(0 0 2.2cqw color-mix(in srgb, var(--orb) 38%, transparent)); }
+.bot-orb-ribbon { overflow: visible; mix-blend-mode: screen; filter: blur(0.5cqw) drop-shadow(0 0 2.2cqw color-mix(in srgb, var(--orb) 38%, transparent)); }
 .bot-orb-ribbon .bot-orb-lit { stop-color: color-mix(in srgb, var(--orb) 82%, #FFFFFF); }
 .bot-orb-ribbon .bot-orb-tint { stop-color: var(--orb); }
 .bot-orb-ribbon .bot-orb-hot { stop-color: color-mix(in srgb, var(--orb) 40%, #FFFFFF); }
 .bot-orb-wash { stroke: none; }
 .bot-orb-sheet { stroke: none; }
-.bot-orb-front { opacity: 0.8; }
+.bot-orb-front { opacity: 0.9; }
+.bot-orb-thin { opacity: 0.7; }
 .bot-orb-edge { fill: none; stroke-width: 1.1px; stroke-linecap: round; }
 .bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 82%, #FFFFFF); stroke-opacity: 0.42; stroke-width: 1px; }
 .bot-orb-edge-under { stroke-width: 1px; }
@@ -38,11 +39,12 @@
   background: radial-gradient(circle, #FFFFFF 0%, #FFFFFF 4.5%, color-mix(in srgb, var(--orb) 22%, #FFFFFF) 10%, color-mix(in srgb, var(--orb) 55%, rgba(255, 255, 255, 0.7)) 17%, color-mix(in srgb, var(--orb) 60%, transparent) 26%, color-mix(in srgb, var(--orb) 26%, transparent) 42%, color-mix(in srgb, var(--orb) 8%, transparent) 58%, transparent 72%);
 }
 @container (max-width: 40px) {
+  .bot-orb-ribbons { opacity: 0.78; }
   .bot-orb-ribbon { filter: blur(0.25px); }
-  .bot-orb-edge { stroke-width: 2.4px; }
-  .bot-orb-edge-faint { stroke-width: 1.6px; stroke-opacity: 0.3; }
-  .bot-orb-bubble { stroke-width: 2px; }
-  .bot-orb-core { left: 30%; top: 30%; width: 40%; height: 40%; }
+  .bot-orb-edge { stroke-width: 2px; }
+  .bot-orb-edge-faint { stroke-width: 1.4px; stroke-opacity: 0.3; }
+  .bot-orb-bubble { stroke-width: 1.8px; }
+  .bot-orb-core { left: 26%; top: 25%; width: 48%; height: 48%; }
 }
 .bot-orb[data-motion='working'] .bot-orb-core { opacity: 1; }
 
