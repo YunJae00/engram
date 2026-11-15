@@ -259,3 +259,14 @@ it('find_files returns name/path candidates only when a finder is available, and
   // Without a finder dependency the tool is not offered at all.
   expect(fileWorkTools({ directory: join(root, 'outputs'), approveRead: async () => true }).some((tool) => tool.name === 'find_files')).toBe(false)
 })
+
+// qa142 p2a-r4 #3: a script result has a readback, behind the same approval as any file; the text tools still create none.
+it('reads an approved script as text in full, and only after approval', async () => {
+  const path = join(root, 'audit.py')
+  await writeFile(path, 'print("audited")\n')
+  const source = await tools()('file_read', { path })
+  expect(source).toMatchObject({ content: 'print("audited")\n', offset: 0, nextOffset: null, truncated: false })
+  expect(source.sha256).toMatch(/^[a-f0-9]{64}$/)
+  await expect(tools(async () => false)('file_read', { path })).rejects.toThrow('declined')
+  await expect(tools()('file_create_copy', { name: 'audit.py', content: 'print(1)\n' })).rejects.toThrow()
+})

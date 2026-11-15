@@ -1,4 +1,5 @@
 import { parseReadBatch } from 'core'
+import { createHash } from 'node:crypto'
 import { isAbsolute, relative, sep } from 'node:path'
 import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
@@ -15,7 +16,9 @@ const CREATES = /^(file_create_copy|file_create_workbook|file_edit_package|rende
 // These are capture/recording evidence, not text deliverables. Their own
 // provenance/approval checks remain responsible; this gate does not certify pixels.
 // No text readback exists for these; their own tool receipts stand.
-const CAPTURE_MEDIA = /\.(png|mp4|webm|pdf|jpe?g|gif|svg|html|zip|py|js|ts|sh|ps1)$/i
+const CAPTURE_MEDIA = /\.(png|mp4|webm|pdf|jpe?g|gif|svg|html|zip)$/i
+// Scripts are text deliverables: their final bytes need the same evidence as any text file.
+const SCRIPT = /\.(py|js|ts|sh|ps1)$/i
 const HASH = /^[a-f0-9]{64}$/i
 const object = (value: unknown): value is Receipt => !!value && typeof value === 'object' && !Array.isArray(value)
 const nonempty = (value: unknown, max = 2000): value is string => typeof value === 'string' && !!value.trim() && value.length <= max
@@ -224,7 +227,12 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     const textCovered = !!textCoverage(reads, output.path, expected.hash, output.after) || (!workbook && packageCoverage(reads, output.path, expected.hash, output.after))
       // A host hand-in is a byte copy made after the turn: the task file read in full at the same hash is that readback.
       || (!!output.source && !!output.hash && !!textCoverage(reads, output.source, output.hash))
-    if (!textCovered && (!fullReads.length || !sheetsCovered)) {
+    // A script's final bytes are also known when they equal the whole content the model wrote with its own write tool this turn.
+    // The hash is of that call's content argument; a command's echo or output never counts, and bytes changed afterwards no longer match.
+    const wroteWhole = SCRIPT.test(output.name) && !!output.hash && reads.some(({ step, value }) => !step.seeded && /^(Write|file_create_copy)$/.test(step.tool)
+      && typeof step.args.content === 'string' && !/^that did not work/.test(step.observation) && !(value && badReceipt(value))
+      && createHash('sha256').update(step.args.content).digest('hex') === output.hash)
+    if (!textCovered && !wroteWhole && (!fullReads.length || !sheetsCovered)) {
       issues.push(`Reread every final part of ${output.name} (${output.path}) after its last write: the whole text at one revision, every sheet of a workbook, or every listed textParts entry of a document package.`)
     }
     if (reads.some(({ step, value }) => !step.seeded && step.tool === 'file_read' && value?.path === output.path && object(value.tableValidation) && value.tableValidation.valid === false)) {

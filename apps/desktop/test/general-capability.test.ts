@@ -220,8 +220,10 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const link = first.markdownLink, artifact = first.path
   const read: TurnStep = { tool: 'file_read', args: { path: artifact }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: artifact }, context) }
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
+  // The script is a text result too: its final bytes are known because they equal what the turn's own Write call wrote.
+  const wrote: TurnStep = { tool: 'Write', args: { file_path: join(cwd, 'check_merge.py'), content: 'print(0)\n' }, observation: 'Native action completed.' }
   const ran: TurnStep = { tool: 'Bash', args: { command: 'python3 check_merge.py' }, observation: '0 mismatches' }
-  const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, ran, passed('Leads merged')] }
+  const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
   expect(checked.answer).toMatch(/\[check_merge\.py\]\(engram-artifact:/)
   expect(checked.answer).toContain(link)
@@ -234,6 +236,20 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const unmarked = checked.steps.map(step => step.tool === 'file_create_copy' ? { ...step, observation: JSON.stringify({ ...JSON.parse(step.observation), handedInFrom: undefined }) } : step)
   expect(checkResult(unmarked, latestResultOutputs(unmarked, []), []).issues.join(' ')).toContain('The result changed after report_result_check')
   expect(freshResultReadback(unmarked)).toBe(false)
+  // A script a command changed after that write, never reread, is not the bytes the model wrote: the check asks for its readback.
+  await writeFile(join(cwd, 'check_merge.py'), 'print(1)\n')
+  const patched: TurnStep = { tool: 'Bash', args: { command: 'sed -i s/0/1/ check_merge.py && cat check_merge.py' }, observation: 'print(1)\n' }
+  const changed = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, patched, passed('Leads merged')] }
+  await deliverOutputs(paths, cwd, changed, 0, 'ask')
+  const drifted = (await judged(changed)).check
+  expect(drifted).toMatchObject({ accepted: false, verified: false })
+  expect(drifted.issues.join(' ')).toContain('Reread every final part of check_merge.py')
+  // Rereading the task file in full at those bytes before the report is the readback.
+  const reread: TurnStep = { tool: 'file_read', args: { path: join(cwd, 'check_merge.py') }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: join(cwd, 'check_merge.py') }, context) }
+  const seen = { answer: changed.answer.replace(/\n\n\[check_merge\.py\][^\n]*/, ''), steps: [read, wrote, patched, reread, passed('Leads merged')] }
+  await deliverOutputs(paths, cwd, seen, 0, 'ask')
+  expect((await judged(seen)).check).toMatchObject({ accepted: true, verified: true, issues: [] })
+  await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
   // The real deliverable is still held to its readback: without the read of merged.md the same turn is not verified.
   const unread = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, unread, 0, 'ask')

@@ -256,3 +256,32 @@ it('carries reportUnchanged only when the report says true', async () => {
   expect(checkReport([await recorded()])).not.toHaveProperty('reportUnchanged')
   await expect(resultCheckTool().run({ ...payload(), reportUnchanged: 'yes' }, { task: 'Prepare a proposal' })).rejects.toThrow()
 })
+
+// qa142 p2a-r4 #3: a script is a text deliverable; only real media skip the final-bytes check.
+it('holds a script output to its final bytes: a full read, or the whole content the model wrote with its own write tool', async () => {
+  const { createHash } = await import('node:crypto')
+  const code = 'print("audited")\n', sha256 = createHash('sha256').update(code).digest('hex'), script = 'C:/artifacts/id-audit.py', task = 'C:/task/audit.py'
+  const handIn: TurnStep = { tool: 'file_create_copy', args: { name: 'audit.py', fromPath: task }, observation: JSON.stringify({ path: script, sha256, completeReadback: true, handedInFrom: task }) }
+  const wrote = (content: string, observation = 'Native action completed.'): TurnStep => ({ tool: 'Write', args: { file_path: task, content }, observation })
+  const judge = async (before: TurnStep[]) => { const steps = [...before, await recorded(), handIn]; return verifyResult(steps, latestResultOutputs(steps, []), []) }
+  const reread = 'Reread every final part of audit.py'
+  // Written by nothing the host saw whole (a command, a patch without content): the bytes were never in front of the model.
+  expect((await judge([])).issues.join(' ')).toContain(reread)
+  expect((await judge([{ tool: 'Write', args: { file_path: task }, observation: 'Native action completed.' }])).issues.join(' ')).toContain(reread)
+  // A command that printed or wrote the same text is not the model's write.
+  expect((await judge([{ tool: 'Bash', args: { command: `cat > audit.py <<'X'\n${code}X`, content: code }, observation: code }])).issues.join(' ')).toContain(reread)
+  // Its own write of exactly these bytes is the evidence; a write of other bytes, or one that did not land, is not.
+  expect(await judge([wrote(code)])).toEqual({ accepted: true, verified: true, issues: [] })
+  expect((await judge([wrote('print("draft")\n')])).issues.join(' ')).toContain(reread)
+  expect((await judge([wrote(code, 'that did not work: Native action did not report success; it may have partly happened. Inspect the current state and do not repeat it.')])).issues.join(' ')).toContain(reread)
+  expect((await judge([{ ...wrote(code), seeded: true }])).issues.join(' ')).toContain(reread)
+  // The existing readback rule: the task file read in full at the handed-in hash.
+  expect(await judge([read(task, { sha256, content: code })])).toEqual({ accepted: true, verified: true, issues: [] })
+  expect((await judge([read(task, { content: code })])).issues.join(' ')).toContain(reread)
+  // A script the model saved itself from content is the same proof; real media still need no text readback.
+  const saved: TurnStep = { tool: 'file_create_copy', args: { name: 'audit.py', content: code }, observation: JSON.stringify({ path: script, sha256, completeReadback: true }) }
+  expect(verifyResult([saved, await recorded()], latestResultOutputs([saved], []), [])).toEqual({ accepted: true, verified: true, issues: [] })
+  const copied: TurnStep = { ...saved, args: { name: 'audit.py', fromPath: task } }
+  expect(verifyResult([copied, await recorded()], latestResultOutputs([copied], []), []).issues.join(' ')).toContain(reread)
+  for (const name of ['shot.png', 'clip.mp4', 'report.pdf', 'bundle.zip']) expect(checkResult([create(name, `C:/artifacts/${name}`)], [], []).issues).toEqual([])
+})
