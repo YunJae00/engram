@@ -3,7 +3,7 @@ import { withoutSecretsIn } from './secrets.js'
 import { contextExcerpt } from './context-excerpt.js'
 
 // The checkpoint's own field names, which the resume prompt refers to.
-export const RESUME_FIELDS: readonly string[] = ['at', 'request', 'remaining', 'lastResponse', 'collection', 'committedActions', 'recentResults', 'tool', 'args', 'observation']
+export const RESUME_FIELDS: readonly string[] = ['at', 'request', 'remaining', 'lastResponse', 'collection', 'committedActions', 'committedActions.*.tool', 'committedActions.*.args', 'recentResults', 'recentResults.*.tool', 'recentResults.*.observation']
 
 // Historical context, not an executable plan or permission to resume input.
 export function resumeCheckpoint(task: string, result: AgentLoopResult): string | undefined {

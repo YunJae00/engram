@@ -30,19 +30,27 @@ export function withoutSecrets(text: string, source: string): string {
 // The same, for structured data that will be serialized: each string (values
 // and keys alike) is cleaned on its own, so a removed value can never eat a
 // quote or an escape of the serialized form (QA 0.8.142 B9: redacting JSON
-// text broke checkpoints). The caller's own field names (`fields`) are never
-// renamed, so a reader still finds them; every other key is cleaned.
+// text broke checkpoints). The caller's own field names are never renamed, so
+// a reader still finds them: `fields` lists their dotted paths, with `*` for
+// any array element (e.g. 'committedActions.*.tool'). Every other key,
+// including keys nested inside those fields' values, is cleaned.
 export function withoutSecretsIn<T>(value: T, source: string, fields: readonly string[] = []): T {
   const secrets = secretsIn(source)
   if (!secrets.length) return value
   const text = (value: string): string => { let out = value; for (const secret of secrets) out = out.split(secret).join('•'.repeat(6)); return out }
-  const clean = (item: unknown): unknown => {
+  const own = new Set(fields)
+  const clean = (item: unknown, at: string): unknown => {
     if (typeof item === 'string') return text(item)
-    if (Array.isArray(item)) return item.map(clean)
-    if (item && typeof item === 'object' && Object.getPrototypeOf(item) === Object.prototype) return Object.fromEntries(Object.entries(item).map(([key, entry]) => [fields.includes(key) ? key : text(key), clean(entry)]))
+    if (Array.isArray(item)) return item.map(entry => clean(entry, at ? `${at}.*` : '*'))
+    if (item && typeof item === 'object' && Object.getPrototypeOf(item) === Object.prototype) {
+      return Object.fromEntries(Object.entries(item).map(([key, entry]) => {
+        const path = at ? `${at}.${key}` : key
+        return [own.has(path) ? key : text(key), clean(entry, own.has(path) ? path : `${at}.\u0000`)]
+      }))
+    }
     return item
   }
-  return clean(value) as T
+  return clean(value, '') as T
 }
 
 export function carriesSecret(text: string, source: string): boolean {

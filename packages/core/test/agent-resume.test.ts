@@ -36,3 +36,9 @@ it('keeps its own field names when a labelled secret equals one of them', () => 
   expect(checkpoint.committedActions).toEqual([{ tool: 'press', args: { target: 'Send' } }])
   expect(checkpoint.request).toBe('my token: ••••••')
 })
+
+it('cleans a labelled secret used as a key inside committed action arguments', () => {
+  const checkpoint = resumeCheckpoint('my token: request', { answer: 'ok', steps: [{ tool: 'press', args: { request: 'safe' }, observation: 'sent', committed: true }], fellBack: false, incomplete: 'check' })!
+  expect(checkpoint).not.toMatch(/"request":"safe"/)
+  expect(JSON.parse(checkpoint).committedActions).toEqual([{ tool: 'press', args: { '••••••': 'safe' } }])
+})
