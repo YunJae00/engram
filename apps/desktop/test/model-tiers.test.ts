@@ -50,8 +50,9 @@ describe('three tiers', () => {
   it('maps hints to haiku, sonnet and opus, and only the dev variable overrides', () => {
     expect(chosenModel('fast')).toBe('haiku')
     expect(chosenModel('smart')).toBe('sonnet')
-    expect(chosenModel()).toBe('claude-opus-5-5')
-    expect(chosenModel('default')).toBe('claude-opus-5-5')
+    expect(chosenModel()).toBe('opus')
+    expect(chosenModel('default')).toBe('opus')
+    expect(chosenModel('default', '0.3.299')).toBe('claude-opus-5-5')
     vi.stubEnv('ENGRAM_CLAUDE_MODEL', 'forced')
     expect([chosenModel('fast'), chosenModel('smart'), chosenModel()]).toEqual(['forced', 'forced', 'forced'])
   })

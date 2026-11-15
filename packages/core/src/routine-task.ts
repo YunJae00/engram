@@ -1,6 +1,6 @@
 import { successfulTurnSteps, type TurnStep } from './routine-record.js'
 import type { Routine } from './routine-model.js'
-import { withoutSecrets } from './secrets.js'
+import { withoutSecrets, withoutSecretsIn } from './secrets.js'
 
 // Persist addresses and navigation evidence, not old page contents or typed secrets.
 export function routineTask(goal: string, steps: TurnStep[], context: string[] = []): NonNullable<Routine['task']> {
@@ -33,7 +33,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   }
   const checks = [...new Set(successful.flatMap(step => {
     if (['verify', 'wait_for'].includes(step.tool)) {
-      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [withoutSecrets(JSON.stringify({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }), source).slice(0, 500)] } catch { /* No verified criteria to retain. */ }
+      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [JSON.stringify(withoutSecretsIn({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }, source)).slice(0, 500)] } catch { /* No verified criteria to retain. */ }
     }
     return step.tool === 'task_plan' && Array.isArray(step.args['phases']) ? step.args['phases'].filter((value): value is string => typeof value === 'string').map(value => withoutSecrets(value, source).slice(0, 500)) : []
   }))].slice(0, 8)

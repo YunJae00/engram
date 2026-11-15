@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { renameWithRetry, withoutSecrets, type VaultPaths } from 'core'
+import { renameWithRetry, withoutSecretsIn, type VaultPaths } from 'core'
+import { flog } from './flog.js'
 
 interface Checkpoint { context?: string; pending: string[] }
 const writes = new Map<string, Promise<unknown>>()
@@ -14,16 +15,24 @@ export async function readCheckpoint(paths: VaultPaths, id: string): Promise<Che
   return read(file)
 }
 async function read(file: string): Promise<Checkpoint> {
+  let raw: string
+  try { raw = await readFile(file, 'utf8') } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { pending: [] }
+    throw error
+  }
   try {
-    const value: unknown = JSON.parse(await readFile(file, 'utf8'))
+    const value: unknown = JSON.parse(raw)
     if (!value || typeof value !== 'object') throw new Error('Invalid checkpoint')
     const data = value as Checkpoint & { returned?: unknown }
     const pending = Array.isArray(data.pending) ? data.pending.filter(text => typeof text === 'string') : []
     const returned = Array.isArray(data.returned) ? data.returned.filter((text): text is string => typeof text === 'string') : []
     return { ...(typeof data.context === 'string' ? { context: data.context } : {}), pending: [...new Set([...pending, ...returned])] }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { pending: [] }
-    throw error
+    // A damaged checkpoint (an older build redacted the serialized text and
+    // could break its JSON) must not stop the chat for good: it is only a
+    // resume hint, so start over from the saved history and rewrite it on the next change.
+    flog('checkpoint', `unreadable checkpoint ignored: ${(error as Error).name}`)
+    return { pending: [] }
   }
 }
 export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: Checkpoint) => Checkpoint): Promise<void> {
@@ -32,7 +41,7 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
     const next = change(await read(file))
     await mkdir(join(paths.cache, 'checkpoints'), { recursive: true })
     const scratch = `${file}.${process.pid}.tmp`
-    await writeFile(scratch, withoutSecrets(JSON.stringify(next), [next.context ?? '', ...next.pending].join('\n')))
+    await writeFile(scratch, JSON.stringify(withoutSecretsIn(next, [next.context ?? '', ...next.pending].join('\n'))))
     await renameWithRetry(scratch, file)
   })
   const settled = work.catch(() => undefined)

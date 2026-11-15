@@ -49,9 +49,11 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs() })
 
 describe('one engine, no knobs', () => {
-  it('works on claude-opus-5-5 and runs chores on haiku', () => {
+  it('works on the Opus tier the bundled runtime accepts and runs chores on haiku', () => {
     vi.stubEnv('ENGRAM_CLAUDE_MODEL', '')
-    expect(chosenModel()).toBe('claude-opus-5-5')
+    // The bundled runtime (Claude Code 2.1.272) rejects claude-opus-5-5 with a 400; it gets the opus alias.
+    expect(chosenModel()).toBe('opus')
+    expect(chosenModel(undefined, '0.3.280')).toBe('claude-opus-5-5')
     expect(chosenModel('fast')).toBe('haiku')
   })
 
@@ -59,7 +61,7 @@ describe('one engine, no knobs', () => {
     vi.stubEnv('ANTHROPIC_BASE_URL', 'https://gateway.example')
     vi.stubEnv('ANTHROPIC_MODEL', 'gateway-model')
     vi.stubEnv('ENGRAM_CLAUDE_MODEL', '')
-    expect(chosenModel()).toBe('claude-opus-5-5')
+    expect(chosenModel()).toBe('opus')
     vi.stubEnv('ENGRAM_CLAUDE_MODEL', 'fixture-model')
     expect(chosenModel()).toBe('fixture-model')
     expect(chosenModel('fast')).toBe('fixture-model')
@@ -72,7 +74,7 @@ describe('one engine, no knobs', () => {
     await writeFile(resolve(fixture.root, 'settings.json'), JSON.stringify({ claudeModel: 'sonnet' }))
     const engine = new ClaudeEngine()
     for await (const event of engine.run({ prompt: 'Hi', workdir: WORKDIR, model: 'sonnet' })) void event
-    expect(fixture.query.mock.lastCall![0].options.model).toBe('claude-opus-5-5')
+    expect(fixture.query.mock.lastCall![0].options.model).toBe('opus')
     for await (const event of engine.run({ prompt: 'Hi', workdir: WORKDIR, modelHint: 'fast', model: 'opus' })) void event
     expect(fixture.query.mock.lastCall![0].options.model).toBe('haiku')
   })

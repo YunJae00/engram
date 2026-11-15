@@ -7,7 +7,9 @@ import { pathToFileURL } from 'node:url'
 import { x as extract } from 'tar'
 import { renameWithRetry } from 'core'
 
-export const CLAUDE_RUNTIME_VERSION = '0.3.272'
+import { CLAUDE_RUNTIME_VERSION } from './claude-runtime-version.js'
+
+export { CLAUDE_RUNTIME_VERSION }
 export const CLAUDE_INSTALL_HELP = 'https://code.claude.com/docs/en/setup'
 const LIMIT = 300 * 1024 * 1024
 

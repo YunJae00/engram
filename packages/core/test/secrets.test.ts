@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carriesSecret, secretsIn, withoutSecrets } from '../src/secrets.js'
+import { carriesSecret, secretsIn, withoutSecrets, withoutSecretsIn } from '../src/secrets.js'
 
 // A password the person types into the chat is theirs. It must not reach a
 // note, a card, or the answer read back to them — the thread outlives the
@@ -36,5 +36,22 @@ describe('secrets the person marked themselves', () => {
     expect(secretsIn('비밀번호는 hunter2 야')).toEqual(['hunter2'])
     expect(secretsIn('비번 qwer1234')).toEqual(['qwer1234'])
     expect(secretsIn('my password is s3cr3t!')).toContain('s3cr3t!')
+  })
+})
+
+describe('structured redaction (QA 0.8.142 B9)', () => {
+  it('cleans every string value and keeps the serialized form valid', () => {
+    const source = 'the token ab12\\ and password: pending'
+    const value = { pending: ['token ab12\\ now'], context: 'saw ab12\\ "x"', nested: { list: [1, true, null, 'pending work'] } }
+    const clean = withoutSecretsIn(value, source)
+    const text = JSON.stringify(clean)
+    expect(() => JSON.parse(text)).not.toThrow()
+    expect(text).not.toContain('ab12')
+    expect(Object.keys(clean)).toEqual(['pending', 'context', 'nested'])
+    expect(clean).toEqual({ pending: ['token •••••• now'], context: 'saw •••••• "x"', nested: { list: [1, true, null, '•••••• work'] } })
+  })
+  it('returns the same value when nothing was labelled', () => {
+    const value = { a: 'plain' }
+    expect(withoutSecretsIn(value, 'nothing here')).toBe(value)
   })
 })

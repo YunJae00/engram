@@ -9,16 +9,20 @@ import { flog } from './flog.js'
 import { withLease, workerPool } from './worker-pool.js'
 import { claudeRetryAfterMs } from './usage-limit.js'
 import { afterFirstClaudeSession, claudeSessionStarted, loadClaudeSdk } from './claude-runtime.js'
+import { CLAUDE_RUNTIME_VERSION, workModelFor } from './claude-runtime-version.js'
 import { spawnRuntime } from './process-client.js'
 import { VoiceSession } from './engine-claude-voice.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
 // One engine, no knobs: stored and per-conversation model choices are ignored.
-export function chosenModel(hint?: string): string {
+// Work runs on the Opus 5.5 tier when the bundled runtime accepts it, otherwise
+// on the newest Opus that runtime knows, so a fresh install never asks for a
+// model its own runtime rejects.
+export function chosenModel(hint?: string, runtimeVersion = CLAUDE_RUNTIME_VERSION): string {
   const forced = process.env['ENGRAM_CLAUDE_MODEL']?.trim()
   if (forced) return forced
-  return hint === 'fast' ? 'haiku' : hint === 'smart' ? 'sonnet' : 'claude-opus-5-5'
+  return hint === 'fast' ? 'haiku' : hint === 'smart' ? 'sonnet' : workModelFor(runtimeVersion)
 }
 
 // Callers that share a call context name their own purpose for the tier log.
