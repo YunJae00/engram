@@ -62,9 +62,16 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
   return said.every((one, at) => !one.value || had.includes(`\n${said.slice(Math.max(0, at - 1), at + 2).map(each => each.text).join('\n')}\n`))
 }
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
+export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean }; holdIf?: (answer: string, steps: TurnStep[]) => boolean }
 type Reason = Parameters<typeof continuationPrompt>[1]
+// The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
+const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
+  'Your result check passed except for one thing: these files were handed in with the result, but were not read back in full after their last write.',
+  ...files.map(file => `- ${file.name}: ${file.path}`),
+  'Read each of them in full with file_read, every page to the end, and reopen in full every other final file linked in the result below: only what this turn reads counts. Then call report_result_check again with the same requirement checks (reportUnchanged: true when nothing in the result needs correcting) and answer with the result below unchanged, keeping its file links.',
+  'Do no other work: do not edit, create, rerun or re-derive anything. If a readback shows the result is wrong, report that check as failed and say exactly what differs instead of fixing it.',
+  '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
 const WORTH_KEEPING_STEPS = 3
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
@@ -119,6 +126,9 @@ export function taskRunner(deps: {
   const continuations = new Map<string, { count: number; reason: string }>()
   const verifyAttempts = new Set<string>()
   const verifyNext = new Set<string>()
+  // A check turn that lacked only handed-in files' readbacks gets one readback-only turn; these are its files, and the tasks that already had theirs.
+  const readbackNext = new Map<string, { name: string; path: string }[]>()
+  const readbackAttempts = new Set<string>()
   // The model's own verdicts in the last turn's result check, to tell a confirming re-check from a correcting one.
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
@@ -181,9 +191,14 @@ export function taskRunner(deps: {
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
       else if (outcome.check && !t.verified && !outcome.unfinished) {
+        const unread = outcome.check.readbacks ?? []
         if (!verifyAttempts.has(id) && !extra?.verification) {
           verifyAttempts.add(id); verifyNext.add(id)
           logTask(t, 'Retrying unresolved result checks once')
+        } else if (unread.length && unread.length === outcome.check.issues.length && !teamReviewIssue(t) && !readbackAttempts.has(id)) {
+          // Every check passed and the only issues are final bytes nobody read: one bounded turn to read them, never a pass without it.
+          readbackAttempts.add(id); readbackNext.set(id, unread)
+          logTask(t, 'Reading back the handed-in files once')
         } else { t.state = 'waiting'; logTask(t, 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.') }
       }
       else if (extra?.verification && !outcome.check && !outcome.unfinished) {
@@ -229,7 +244,7 @@ export function taskRunner(deps: {
 
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') trails.delete(task.id)
     if (['done', 'waiting', 'failed'].includes(task.state)) {
@@ -260,7 +275,9 @@ export function taskRunner(deps: {
         owners.set(channel, id)
         if (why === 'approved' && task.approvals.some(a => a.answer && !a.settled)) note = await takeDecisions(task)
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' ? { verification: { result: task.result ?? '' } } : {}) })
+        const unread = readbackNext.get(id)
+        readbackNext.delete(id)
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', ...(unread ? { readback: true } : {}) } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }

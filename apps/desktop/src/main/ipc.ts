@@ -2775,6 +2775,8 @@ export function registerIpc(ctx: VaultContext): void {
         let check: TurnOutcome['check']
         if (result.steps.some(step => step.tool === 'report_result_check')) {
           const outputs = latestResultOutputs(result.steps, await linkedOutputs(artifactDirectory(paths), [
+            // A readback-only follow-up answers for every file of the result it was given, also one its answer leaves out.
+            ...(turn?.verification?.readback ? [{ role: 'assistant' as const, text: turn.verification.result }] : []),
             { role: 'assistant', text: result.answer },
           ]))
           const found = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })

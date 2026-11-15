@@ -220,9 +220,37 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const link = first.markdownLink, artifact = first.path
   const read: TurnStep = { tool: 'file_read', args: { path: artifact }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: artifact }, context) }
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
-  // The script is a text result too: its final bytes are known because they equal what the turn's own Write call wrote.
-  const wrote: TurnStep = { tool: 'Write', args: { file_path: join(cwd, 'check_merge.py'), content: 'print(0)\n' }, observation: 'Native action completed.' }
+  // The S31 turn itself: the helper was made by a command, so no write of the turn showed its bytes. Every check passed, yet the script is a text
+  // result nobody read: the one issue is its readback, named as a hand-in so the runner gives the readback-only turn instead of stopping.
   const ran: TurnStep = { tool: 'Bash', args: { command: 'python3 check_merge.py' }, observation: '0 mismatches' }
+  const made: TurnStep = { tool: 'Bash', args: { command: "printf 'print(0)\\n' > check_merge.py" }, observation: '' }
+  const byCommand = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, made, ran, passed('Leads merged')] }
+  await deliverOutputs(paths, cwd, byCommand, 0, 'ask')
+  expect(byCommand.answer).toMatch(/\[check_merge\.py\]\(engram-artifact:/)
+  expect(byCommand.answer).toContain(link)
+  expect(byCommand.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'check_merge.py' } })
+  const before = await judged(byCommand)
+  expect(before.outputs).toEqual(['check_merge.py', 'merged.md'])
+  const handedIn = JSON.parse(byCommand.steps.at(-1)!.observation).path as string
+  expect(before.check).toMatchObject({ accepted: false, verified: false, readbacks: [{ name: 'check_merge.py', path: handedIn }] })
+  expect(before.check.issues).toHaveLength(1)
+  expect(before.check.issues[0]).toContain('Reread every final part of check_merge.py')
+  // The readback-only turn: nothing is changed or handed in again; both final files are read in full and the report is made again. It ends done.
+  // As in the app, the turn's file tools may read the files linked in the result it was given.
+  const later = cometFileTools(paths, 'bot-x', (await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])).map(output => output.path), [cwd])
+  const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await later.find(tool => tool.name === 'file_read')!.run({ path }, context) })
+  const followUp = { answer: byCommand.answer, steps: [await reopen(artifact), await reopen(handedIn), passed('Leads merged')] }
+  await deliverOutputs(paths, cwd, followUp, Date.now() + 60_000, 'ask')
+  expect(followUp.steps).toHaveLength(3)
+  expect(followUp.answer).toBe(byCommand.answer)
+  const second = await judged(followUp)
+  expect(second.outputs).toEqual(['check_merge.py', 'merged.md'])
+  expect(second.check).toEqual({ accepted: true, verified: true, issues: [] })
+  expect(freshResultReadback(followUp.steps)).toBe(true)
+  // A readback turn that reads only one of them is still not verified.
+  expect((await judged({ answer: byCommand.answer, steps: [await reopen(artifact), passed('Leads merged')] })).check.issues.join(' ')).toContain('Reread every final part of check_merge.py')
+  // The Write-created variant. The script is a text result too: its final bytes are known because they equal what the turn's own Write call wrote.
+  const wrote: TurnStep = { tool: 'Write', args: { file_path: join(cwd, 'check_merge.py'), content: 'print(0)\n' }, observation: 'Native action completed.' }
   const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
   expect(checked.answer).toMatch(/\[check_merge\.py\]\(engram-artifact:/)

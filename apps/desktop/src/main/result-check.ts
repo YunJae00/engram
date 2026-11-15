@@ -168,8 +168,10 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
 
 // The host decides from what it observed this turn; the model's report adds
 // only its own verdicts, and a fail or unknown there stays unresolved.
-export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[] } {
+export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
+  // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
+  const readbacks: { name: string; path: string }[] = []
   const unresolved: string[] = []
   let groundingPass = true
   const index = steps.map(step => step.tool === TOOL && !step.seeded).lastIndexOf(true)
@@ -237,6 +239,7 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       && createHash('sha256').update(step.args.content).digest('hex') === output.hash)
     if (!textCovered && !wroteWhole && (!fullReads.length || !sheetsCovered)) {
       issues.push(`Reread every final part of ${output.name} (${output.path}) after its last write: the whole text at one revision, every sheet of a workbook, or every listed textParts entry of a document package.`)
+      if (output.source) readbacks.push({ name: output.name, path: output.path })
     }
     if (reads.some(({ step, value }) => !step.seeded && step.tool === 'file_read' && value?.path === output.path && object(value.tableValidation) && value.tableValidation.valid === false)) {
       issues.push(`${output.name}: table structure is invalid. Correct its rows/quoting, then create and fully read a valid final copy.`)
@@ -250,7 +253,7 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       && JSON.stringify([...new Set(validation.defects)].sort()) === JSON.stringify(defects)
   }).length >= 2
   return { accepted: defects.length === 0 || repeated, verified: defects.length === 0 && unresolved.length === 0,
-    issues: [...new Set([...defects, ...unresolved])], ...(defects.length ? { defects } : {}) }
+    issues: [...new Set([...defects, ...unresolved])], ...(defects.length ? { defects } : {}), ...(readbacks.length ? { readbacks } : {}) }
 
 }
 

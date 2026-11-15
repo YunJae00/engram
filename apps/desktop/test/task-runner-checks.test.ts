@@ -80,3 +80,48 @@ it('waits when the verification retry provides no result check', async () => {
   await t.chat('Verify the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', turns: 2, verified: false, verificationIssue: 'The verification turn ended without a result check.' })
 })
+
+// qa142 p2a-r5 #4: a check turn whose checks all pass but that never read a handed-in file's final bytes gets one readback-only turn.
+const unreadCheck = { accepted: false, verified: false, issues: ['Reread every final part of check_merge.py (/artifacts/id-check_merge.py) after its last write: the whole text at one revision.'], readbacks: [{ name: 'check_merge.py', path: '/artifacts/id-check_merge.py' }] }
+const fileRead = { tool: 'file_read', args: { path: '/artifacts/id-check_merge.py' }, observation: '{"path":"/artifacts/id-check_merge.py","sha256":"x","content":"print(0)"}' }
+const report = 'Compared with check_merge.py: 0 mismatches.\n\n[merged.md](engram-artifact:merged.md)\n\n[check_merge.py](engram-artifact:check_merge.py)'
+
+it('gives a check turn that lacks only handed-in readbacks one readback-only turn, and ends done once they are read', async () => {
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: unreadCheck, trail: [pressed('Save')] }
+    : turn === 2 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
+    : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [fileRead] }, false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'done', turns: 3, verified: true })
+  expect(task.verificationIssue).toBeUndefined()
+  expect(task.log.map(entry => entry.line)).toContain('Reading back the handed-in files once')
+  // The ordinary check retry comes first; the third turn is the readback only.
+  expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  const prompt = t.sent[2]!.request.message
+  expect(prompt).toContain('- check_merge.py: /artifacts/id-check_merge.py')
+  expect(prompt).toContain('call report_result_check again')
+  expect(prompt).toContain('Do no other work')
+  expect(prompt).toContain('Merge the leads')
+  // The report reached the person once; the readback turn that confirms it adds no second message.
+  expect(t.delivered).toEqual([report])
+})
+
+it('ends waiting when the readback-only turn still lacks the readback, and never gives a second one', async () => {
+  const t = await setup(async () => ({ ...done(report, 1), check: unreadCheck, trail: [fileRead] }), false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'waiting', turns: 3, verified: false, verificationIssue: expect.stringContaining('Reread every final part of check_merge.py') })
+  expect(t.sent).toHaveLength(3)
+  expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
+})
+
+it.each([
+  ['a requirement is unresolved too', { ...unreadCheck, issues: [...unreadCheck.issues, 'Leads merged: unknown — not compared'] }],
+  ['the unread file is not a hand-in', { accepted: false, verified: false, issues: unreadCheck.issues }],
+])('gives no readback-only turn when %s', async (_why, check) => {
+  const t = await setup(async () => ({ ...done(report, 1), check, trail: [fileRead] }), false)
+  await t.chat('Merge the leads')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', turns: 2, verified: false })
+  expect(t.sent.every(one => !one.extra?.verification?.readback)).toBe(true)
+})
