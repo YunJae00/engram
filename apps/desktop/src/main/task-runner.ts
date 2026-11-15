@@ -159,6 +159,9 @@ export function taskRunner(deps: {
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
+    const reported = verdicts.get(id)
+    // The report a verification turn re-checks, when that report's own check passed every requirement and its grounding: only then can it stand without this turn.
+    const recheckOf = extra?.verification?.result.trim() && reported && [...reported.checks, reported.grounding].every(one => one.status === 'pass') ? extra.verification.result : ''
     const after = await edit(id, (t) => {
       if (t.state !== 'running') return
       if (stopped.has(channelOf(t))) { t.state = 'stopped'; logTask(t, 'Stopped by you'); return }
@@ -176,6 +179,9 @@ export function taskRunner(deps: {
       const pending = t.approvals.filter((a) => !a.answer)
       if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
+      // A re-check that ran out of budget leaves the report it was re-checking as the result: that report is in the thread and its own check passed every
+      // requirement, so the task is finished with it rather than failed at the limit (qa143 S19: a 9-page report ended "처리 한도에 닿아 끝나지 않았어요").
+      else if (outcome.budgetExhausted && recheckOf) { t.result = recheckOf; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the re-check stopped at the task token budget.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
@@ -214,12 +220,12 @@ export function taskRunner(deps: {
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
     // It is also posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown.
     // That word alone is not trusted: the host also reads the answer, and posts it unless it is that report again (recheckAddsNothing).
-    const reported = verdicts.get(id)
     // A readback-only follow-up does not re-judge requirements: the check turn's own report is carried over unchanged, whatever checks the follow-up reports.
     if (!extra?.verification?.readback) verdicts.set(id, outcome?.check?.report)
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
-    if (after && outcome?.held && after.result && !repeats) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+    const kept = !!outcome?.budgetExhausted && !!recheckOf && after?.state === 'done'
+    if (after && outcome?.held && after.result && !repeats && !kept) await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
     // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after

@@ -230,3 +230,39 @@ it.each([
   expect(task).toMatchObject({ state: 'waiting', verified: false, verificationIssue: 'The result has no fresh readback.' })
   expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
 })
+
+// qa143 S19 (b): the report existed and its check had passed every requirement; the automatic re-check then ran out of the task's
+// token budget, and the task ended failed with "작업이 처리 한도에 닿아 끝나지 않았어요" and the budget text as its result.
+const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: false, steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
+it('finishes with the checked report when only its re-check ran out of budget', async () => {
+  const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check: unreadCheck, trail: [fileRead] } : budgetStop, false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
+  expect(task).toMatchObject({ state: 'done', result: report, turns: 2 })
+  expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')
+  // Neither the budget text nor a second copy of the report is posted, and no limit-stop closing.
+  expect(t.delivered).toEqual([])
+  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
+})
+
+it.each([
+  ['its check left a requirement unresolved', { ...unreadCheck, report: { ...unreadReport, checks: [{ requirement: 'Leads merged', status: 'unknown' as const, basis: 'Not compared.' }] } }],
+  ['it had no check of its own', undefined],
+])('still stops at the budget when the report was not checked: %s', async (_why, check) => {
+  const t = await setup(async (_request, turn, extra) => {
+    if (turn === 1 && !check) { await hireLeads(t.paths); return { ...done(report, 1), tokensUsed: 240_000 } }
+    return turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check, trail: [fileRead] } : extra?.verification ? budgetStop : done(report, 1)
+  }, false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'failed', result: budgetStop.answer })
+  expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
+})
+
+it('still stops a working turn at the budget', async () => {
+  const t = await setup(async () => budgetStop, false)
+  await t.chat('Merge the leads')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed', result: budgetStop.answer })
+})
