@@ -154,6 +154,11 @@ it.each([
   ['saves a new copy', { tool: 'file_create_copy', args: { name: 'check_merge.py', content: 'print(1)' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y"}' }],
   ['renders a file', { tool: 'render_file', args: { name: 'report.pdf', html: '<p>x</p>' }, observation: '{"path":"/artifacts/id-report.pdf","sha256":"z","completeReadback":true}' }],
   ['changes a task file by command that the host then hands in', { tool: 'file_create_copy', args: { name: 'check_merge.py', fromPath: 'check_merge.py' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y","handedInFrom":"/task/check_merge.py"}' }],
+  // qa143 p2 r4 #1 (B14): a command that may have written a file is a change here too, by the rule freshness and the post-check list use.
+  ['rewrites the file with a script', { tool: 'Bash', args: { command: 'python3 rewrite.py' }, observation: 'ok' }],
+  ['rewrites the file with a redirect', { tool: 'Bash', args: { command: 'cat fixed.py > check_merge.py' }, observation: '' }],
+  ['edits the file in place by command', { tool: 'Shell', args: { command: 'sed -i s/0/1/ check_merge.py' }, observation: '' }],
+  ['runs a script that failed part-way', { tool: 'Bash', args: { command: 'python3 rewrite.py' }, observation: 'that did not work: exit 1' }],
 ])('ends waiting unverified when the readback-only turn %s and reads it back, and gives no further follow-up', async (_what, change) => {
   const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
     : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [change, fileRead] }, false)
@@ -170,6 +175,15 @@ it('verifies a readback-only turn whose only write attempt failed', async () => 
   const failed = { tool: 'Write', args: { file_path: '/task/check_merge.py', content: 'print(1)' }, observation: 'that did not work: Native action did not report success; it may have partly happened.', committed: true }
   const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
     : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [failed, fileRead] }, false)
+  await t.chat('Merge the leads')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
+})
+
+// A plain reader command changed nothing: the follow-up that compared and read is still verified.
+it('verifies a readback-only turn that only ran plain reader commands', async () => {
+  const readers = [{ tool: 'Bash', args: { command: 'diff merged.md leads.md; cat check_merge.py | wc -l' }, observation: '1' }]
+  const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
+    : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [...readers, fileRead] }, false)
   await t.chat('Merge the leads')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
 })
