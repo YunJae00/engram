@@ -194,10 +194,12 @@ test('the app sidebar switches between chats and saved routines, renames them, a
     const head = node.querySelector('.app-sidebar-head')!.getBoundingClientRect()
     const tools = node.querySelector('.sidebar-library-tools')!.getBoundingClientRect()
     const row = node.querySelector('.sidebar-conversations .sidebar-item')!.getBoundingClientRect()
+    // The scroll area now opens with the 'Bots' section head (637f7201) and the primary hero (rd-sidebar-bots, b8646f58) above the list, so the 12px gap sits between the toolbar and that head.
+    const content = node.querySelector('.sidebar-scroll .sidebar-tree-head')!.getBoundingClientRect()
     const search = node.querySelector('.sidebar-search')!.getBoundingClientRect()
     const add = node.querySelector('[data-testid="sidebar-create"]')!.getBoundingClientRect()
     const side = node.getBoundingClientRect()
-    return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: row.top - tools.bottom, heights: Math.abs(search.height - add.height) }
+    return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: content.top - tools.bottom, heights: Math.abs(search.height - add.height) }
   })
   // Since the bot sidebar (rd-sidebar-bots, b8646f58) rows sit 8px from each sidebar edge, bleeding 4px past the toolbar on both sides.
   // The brief's tolerance is 8±2 (the sidebar's right edge carries a fractional scrollbar/border inset).
@@ -220,6 +222,9 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   const routine = await page.evaluate(() => window.engram.routineAdd({ name: 'Portal notices', steps: [{ kind: 'open', url: 'https://example.com/notices' }] }))
   await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
   await openActivity(page, 'routines')
+  // The routine search also sits behind the toolbar toggle (606ca42a) and closes when left empty.
+  await expect(sidebar.getByRole('textbox', { name: 'Search routines' })).toBeHidden()
+  await page.getByTestId('sidebar-search-toggle').click()
   await expect(sidebar.getByRole('textbox', { name: 'Search routines' })).toBeVisible()
   await expect(page.getByTestId('sidebar-chats')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routines')).toContainText('Portal notices')

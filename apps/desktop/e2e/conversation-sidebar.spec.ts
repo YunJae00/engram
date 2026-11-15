@@ -326,7 +326,9 @@ test('conversation menus replace dates on interaction and pin without losing fol
   const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
   expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)
   await menu.getByRole('button', { name: 'Pin', exact: true }).click()
-  await expect(page.getByTestId('sidebar-chats').locator('.bots-row').first()).toHaveAttribute('data-testid', `bot-${id}`)
+  // The bot list is a tree since 8d78e3b8: loose pinned rows render in their own list ahead of sections and the unpinned list (sidebar-chats).
+  await expect(page.getByTestId('sidebar-chat-collection').locator('.bots-row').first()).toHaveAttribute('data-testid', `bot-${id}`)
+  await expect(page.getByTestId('sidebar-chats').getByTestId(`bot-${id}`)).toHaveCount(0)
   await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
   const before = (await page.evaluate(() => window.engram.sidebarLayout())).chat
   await page.reload()
@@ -397,9 +399,10 @@ test('unpinned conversations follow the latest activity, live and after relaunch
   await appendBotTurn(paths, a.id, { role: 'user', text: 'Pasta?', at: at(20).toISOString() }); await appendBotTurn(paths, b.id, { role: 'assistant', text: 'Airpods.', at: at(16).toISOString() })
   await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), pinned.id)
   const refresh = () => app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
-  const order = () => page.getByTestId('sidebar-chats').locator('.sidebar-item-main').evaluateAll((nodes, ids) => nodes.map(node => node.getAttribute('data-testid')!.slice(4)).filter(id => ids.includes(id)), [pinned.id, a.id, b.id])
+  // Pinned rows render in their own list ahead of sections and sidebar-chats in the bot tree (8d78e3b8), so order is read across the whole collection.
+  const order = () => page.getByTestId('sidebar-chat-collection').locator('.bots-row').evaluateAll((nodes, ids) => nodes.map(node => node.getAttribute('data-testid')!.slice(4)).filter(id => ids.includes(id)), [pinned.id, a.id, b.id])
   await openActivity(page, 'bots'); await showSidebar(); await refresh(); await expect.poll(order).toEqual([pinned.id, b.id, a.id])
-  await expect.poll(() => page.getByTestId('sidebar-chats').locator('.sidebar-item').first().getAttribute('data-pinned')).toBe('true')
+  await expect.poll(() => page.getByTestId('sidebar-chat-collection').locator('.sidebar-item').first().getAttribute('data-pinned')).toBe('true')
   await appendBotTurn(paths, a.id, { role: 'assistant', text: 'Fresh pasta.', at: at(1).toISOString() }); await refresh(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
   await app.close(); await launch(); await openActivity(page, 'bots'); await showSidebar(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
 })
