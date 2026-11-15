@@ -36,10 +36,18 @@ export function freshResultReadback(steps: TurnStep[]): boolean {
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
 
+// A command step has no receipt of what it touched, so it counts as a change unless every part of it is a plain reader with no redirection,
+// substitution or expansion: `diff a b`, `cat x | wc -l`. Anything else may have written a file (`cat > report.md`, `python3 build.py`, `sed -i`).
+// shortcut: reads the command text against a short list, so an unlisted reader (awk, jq, find) costs one readback; upgrade when command steps report the files they changed.
+const SHELL = /^(Bash|PowerShell|Shell)$/
+const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|cd|echo|printf|test|true|cut|nl|basename|dirname|shasum|sha256sum|md5|md5sum)$/
+export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
+  && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(part => READERS.test(part.split(/\s+/)[0]!))
+
 // Whether a result leaves nothing to read back: no step of the task changed or opened anything and the answer hands over no file.
 // A report made only of words (a team's merged text, compared against what the leads wrote) is checked by its result check alone.
 export const nothingToReadBack = (answer: string, steps: TurnStep[]): boolean =>
-  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool)))
+  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || (SHELL.test(step.tool) && !commandOnlyReads(step.args['command']))))
 
 export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
   // Held tasks are learned only after the runner confirms their final state.

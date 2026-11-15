@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentLoopResult, TurnStep } from 'core'
 import { checkResult, resultCheckTool } from '../src/main/result-check.js'
-import { canLearnTurn, freshResultReadback, holdTaskResult, needsResultCheck } from '../src/main/task-result-state.js'
+import { canLearnTurn, commandOnlyReads, freshResultReadback, holdTaskResult, needsResultCheck, nothingToReadBack } from '../src/main/task-result-state.js'
 import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
@@ -92,4 +92,21 @@ it('checks a result only when something was saved, committed or changed, not aft
   expect(needsResultCheck('Saved [Report](engram-artifact:report.md)', look)).toBe(true)
   expect(needsResultCheck('Done', [{ tool: 'excel_write', args: {}, observation: 'written' }])).toBe(true)
   expect(needsResultCheck('Done', [{ ...pressed('Save'), observation: 'that did not work: no such control' }])).toBe(false)
+})
+
+// qa143 p2 r2 #3: a command that may have written a file is a change, so a report of words alone is not exempt from its readback after one.
+it.each([
+  ['diff .check/a .check/b', true], ['cat notes.md | wc -l', true], ['cd leads && ls -la; grep -c 규정 a.md', true],
+  ['cat > report.md <<EOF\nx\nEOF', false], ['echo done >> report.md', false], ['python3 build.py', false], ['sed -i s/a/b/ report.md', false],
+  ['cat a.md | tee report.md', false], ['cp a.md report.md', false], ['echo $(rm report.md)', false], ['ls; mv a.md b.md', false], ['FOO=1 ls', false], [undefined, false],
+])('reads command %j as only reading: %s', (command, reads) => {
+  expect(commandOnlyReads(command)).toBe(reads)
+  for (const tool of ['Bash', 'PowerShell', 'Shell']) expect(nothingToReadBack('Five rules.', [{ tool, args: { command }, observation: 'Native action completed.' }])).toBe(reads)
+})
+it('has nothing to read back only for words, with no file linked and nothing changed', () => {
+  expect(nothingToReadBack('Five rules.', [])).toBe(true)
+  expect(nothingToReadBack('[Report](engram-artifact:report.md)', [])).toBe(false)
+  // A failed command may have partly happened; a seeded step is not this task's work.
+  expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'that did not work: exit 1' }])).toBe(false)
+  expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'Native action completed.', seeded: true }])).toBe(true)
 })

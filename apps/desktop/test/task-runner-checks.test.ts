@@ -222,6 +222,9 @@ it('ends a self-checked team report of words alone as done', async () => {
 it.each([
   ['hands over a file', '[보고서](engram-artifact:report.md)', [] as typeof compared],
   ['changed a file earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Write', args: { file_path: '/task/report.md' }, observation: 'Native action completed.' }]],
+  // qa143 p2 r2 #3: a command that wrote a task file is a change like any other write.
+  ['wrote a file with a command earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Bash', args: { command: 'cat > report.md <<EOF\n규정 5개\nEOF' }, observation: 'Native action completed.' }]],
+  ['ran a script earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Bash', args: { command: 'python3 build_report.py' }, observation: 'Native action completed.' }]],
 ])('still leaves a team report that %s unverified when its check turn read nothing back', async (_why, answer, earlier) => {
   const t = await setup(async (_request, turn) => {
     if (turn === 1) { await hireLeads(t.paths); return { ...done(answer, 1), trail: earlier } }
