@@ -281,7 +281,10 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const { outputs, check } = await judged(checked)
   expect(outputs).toEqual(['check_merge.py', 'merged.md'])
   expect(check).toMatchObject({ accepted: true, verified: true, issues: [] })
-  expect(freshResultReadback(checked.steps)).toBe(true)
+  // qa143 p2 r3 #2: the script ran after merged.md was read and a command has no receipt of what it wrote, so that read is stale;
+  // the same turn with the read after the run is fresh.
+  expect(freshResultReadback(checked.steps)).toBe(false)
+  expect(freshResultReadback([wrote, ran, read, ...checked.steps.slice(3)])).toBe(true)
   // What ended S31 as "unresolved checks": the same hand-in step without the host's mark reads as a change after the report.
   const unmarked = checked.steps.map(step => step.tool === 'file_create_copy' ? { ...step, observation: JSON.stringify({ ...JSON.parse(step.observation), handedInFrom: undefined }) } : step)
   expect(checkResult(unmarked, latestResultOutputs(unmarked, []), []).issues.join(' ')).toContain('The result changed after report_result_check')

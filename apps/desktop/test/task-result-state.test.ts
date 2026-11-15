@@ -102,6 +102,19 @@ it.each([
 ])('reads command %j as only reading: %s', (command, reads) => {
   expect(commandOnlyReads(command)).toBe(reads)
   for (const tool of ['Bash', 'PowerShell', 'Shell']) expect(nothingToReadBack('Five rules.', [{ tool, args: { command }, observation: 'Native action completed.' }])).toBe(reads)
+  // qa143 p2 r3 #2: the same rule decides whether an earlier readback is still fresh, and whether the result changed after its check.
+  const fileRead: TurnStep = { tool: 'file_read', args: { path: 'report.md' }, observation: '{"content":"x","completeReadback":true}' }
+  const finding = { status: 'pass', basis: 'Read.' }
+  const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report' }], grounding: finding } }) }
+  for (const tool of ['Bash', 'PowerShell', 'Shell']) {
+    const ran: TurnStep = { tool, args: { command }, observation: 'Native action completed.' }
+    expect(freshResultReadback([fileRead, ran])).toBe(reads)
+    expect(freshResultReadback([fileRead, ran, fileRead])).toBe(true)
+    expect(freshResultReadback([{ ...ran, seeded: true }, fileRead])).toBe(true)
+    expect(canLearnTurn({ steps: [fileRead, ran] }, false, { accepted: true, verified: true, issues: [] })).toBe(reads)
+    expect(checkResult([fileRead, report, ran], [], [], true).issues.includes('The result changed after report_result_check. Reread the affected result and submit a new report.')).toBe(!reads)
+    expect(checkResult([fileRead, ran, report], [], [], true).issues.join(' ')).not.toContain('The result changed after report_result_check')
+  }
 })
 it('has nothing to read back only for words, with no file linked and nothing changed', () => {
   expect(nothingToReadBack('Five rules.', [])).toBe(true)

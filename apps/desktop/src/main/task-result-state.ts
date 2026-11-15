@@ -1,4 +1,5 @@
-import { handedInFrom } from './result-check.js'
+import { commandChanged, handedInFrom } from './result-check.js'
+export { commandOnlyReads } from './result-check.js'
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
 // Whether a turn's answer is kept out of the thread for the task runner to post: a re-check always, and an answer the runner is about to
@@ -31,23 +32,16 @@ const READBACK = /^(app_read|app_text|read_open_page|read_pages|look|verify|read
 
 export function freshResultReadback(steps: TurnStep[]): boolean {
   // Failed moves can also invalidate the state observed before them.
+  // A command that may have written a file stales what was read before it, like any other write (qa143 B14).
   // The host's own hand-in copies bytes the result check already tied to a full read; it does not stale the readback.
-  const lastChange = steps.map(step => !step.seeded && !handedInFrom(step) && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool))).lastIndexOf(true)
+  const lastChange = steps.map(step => !step.seeded && !handedInFrom(step) && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || commandChanged(step))).lastIndexOf(true)
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
-
-// A command step has no receipt of what it touched, so it counts as a change unless every part of it is a plain reader with no redirection,
-// substitution or expansion: `diff a b`, `cat x | wc -l`. Anything else may have written a file (`cat > report.md`, `python3 build.py`, `sed -i`).
-// shortcut: reads the command text against a short list, so an unlisted reader (awk, jq, find) costs one readback; upgrade when command steps report the files they changed.
-const SHELL = /^(Bash|PowerShell|Shell)$/
-const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|cd|echo|printf|test|true|cut|nl|basename|dirname|shasum|sha256sum|md5|md5sum)$/
-export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
-  && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(part => READERS.test(part.split(/\s+/)[0]!))
 
 // Whether a result leaves nothing to read back: no step of the task changed or opened anything and the answer hands over no file.
 // A report made only of words (a team's merged text, compared against what the leads wrote) is checked by its result check alone.
 export const nothingToReadBack = (answer: string, steps: TurnStep[]): boolean =>
-  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || (SHELL.test(step.tool) && !commandOnlyReads(step.args['command']))))
+  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || commandChanged(step)))
 
 export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
   // Held tasks are learned only after the runner confirms their final state.

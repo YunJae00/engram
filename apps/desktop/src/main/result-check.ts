@@ -80,6 +80,15 @@ function receipt(step: TurnStep): Receipt | undefined {
   catch { return undefined }
 }
 
+// A command step has no receipt of what it touched, so it counts as a change unless every part of it is a plain reader with no redirection,
+// substitution or expansion: `diff a b`, `cat x | wc -l`. Anything else may have written a file (`cat > report.md`, `python3 build.py`, `sed -i`).
+// shortcut: reads the command text against a short list, so an unlisted reader (awk, jq, find) costs one readback; upgrade when command steps report the files they changed.
+const SHELL = /^(Bash|PowerShell|Shell)$/
+const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|cd|echo|printf|test|true|cut|nl|basename|dirname|shasum|sha256sum|md5|md5sum)$/
+export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
+  && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(part => READERS.test(part.split(/\s+/)[0]!))
+export const commandChanged = (step: TurnStep): boolean => SHELL.test(step.tool) && !commandOnlyReads(step.args['command'])
+
 // The task file the host itself copied in after the turn (deliverOutputs); a model's own call never carries this.
 export function handedInFrom(step: TurnStep): string | undefined {
   const from = step.tool === 'file_create_copy' ? receipt(step)?.handedInFrom : undefined
@@ -193,7 +202,7 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)
     }
     // The host's own hand-in of a task file is not the model changing the result; its bytes are checked below.
-    if (steps.slice(index + 1).some(step => !step.seeded && CHANGES.test(step.tool) && !handedInFrom(step))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
+    if (steps.slice(index + 1).some(step => !step.seeded && (CHANGES.test(step.tool) && !handedInFrom(step) || commandChanged(step)))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
   }
 
   const latest = latestResultOutputs(steps, outputs)

@@ -33,6 +33,7 @@ import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { READ_CARD } from './read-card.js'
+import { commandChanged } from './result-check.js'
 import { changedResult, freshResultReadback, nothingToReadBack, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
@@ -188,7 +189,7 @@ export function taskRunner(deps: {
         const rechecked = outcome.budgetExhausted && !outcome.errored ? extra?.verification?.result ?? '' : ''
         if (rechecked.trim() && accepted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(rechecked, trail))) recheckOf = rechecked
         t.verified = !!recheckOf || checked && !outcome.budgetExhausted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(outcome.answer, trail))
-        if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || 'The result has no fresh readback.'
+        if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || `The result has no fresh readback.${(outcome.trail ?? []).some(commandChanged) ? ' A command ran after the last read and may have changed a file: read the final result again after the last command.' : ''}`
         else delete t.verificationIssue
         // The readback-only follow-up may only read: one that changed a result is not accepted, whatever it then read. No second follow-up is given, so the task ends waiting.
         if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { recheckOf = ''; t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
