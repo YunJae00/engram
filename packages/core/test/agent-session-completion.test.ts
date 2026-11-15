@@ -1,4 +1,4 @@
-import { finalDesktopFailure } from '../src/agent-session-result.js'
+import { finalDesktopFailure, outputLinks } from '../src/agent-session-result.js'
 import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
 import { runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
@@ -234,4 +234,21 @@ it('finishes a blocked collection once without rewriting it as incomplete', asyn
   expect(result.asked).toBe(true)
   expect(result.incomplete).toBeUndefined()
   expect(result.stopped).toBeUndefined()
+})
+
+// QA 0.8.142 B5/B11 (codex p1 r4): a composed document or deck is attached in
+// the chat even when the answer forgets to quote its link, and only once.
+it('attaches word_write and ppt_build outputs the answer did not link, without repeating a linked one', () => {
+  const doc = { markdownLink: '[report.docx](engram-artifact:11111111-2222-3333-4444-555555555555-report.docx)' }
+  const deck = { markdownLink: '[deck.pptx](engram-artifact:11111111-2222-3333-4444-666666666666-deck.pptx)' }
+  const steps = [
+    { tool: 'word_write', args: {}, observation: JSON.stringify(doc) },
+    { tool: 'ppt_build', args: {}, observation: JSON.stringify(deck) },
+  ] as unknown as Parameters<typeof outputLinks>[0]
+  const unlinked = outputLinks(steps, '다 만들었어요.')
+  expect(unlinked).toContain(doc.markdownLink)
+  expect(unlinked).toContain(deck.markdownLink)
+  const linked = outputLinks(steps, `보고서: ${doc.markdownLink}`)
+  expect(linked.split(doc.markdownLink).length - 1).toBe(1)
+  expect(linked).toContain(deck.markdownLink)
 })
