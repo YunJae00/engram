@@ -1,6 +1,6 @@
 import { shell } from 'electron'
 import type { OfficeTheme } from 'core'
-import { saveOfficeOutput } from './office-output.js'
+import { officeOutputName, saveOfficeOutput } from './office-output.js'
 import { AlignmentType, BorderStyle, Document, Footer, HeadingLevel, LevelFormat, Packer, PageNumber, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from 'docx'
 
 // A document is composed as a file with a real page: a cover, headings that
@@ -63,7 +63,19 @@ function block(spec: DocBlock, t: OfficeTheme): Paragraph | Table | (Paragraph |
   }
 }
 
+// The document as bytes and the plain name it is handed in under; nothing is
+// written and no application is opened (QA 0.8.142 B5).
+export async function buildDoc(spec: DocSpec): Promise<{ name: string; data: Buffer; blocks: number }> {
+  return { name: officeOutputName(spec.title ?? '', '.docx', spec.saveAs, 'document'), data: await Packer.toBuffer(composeDoc(spec)), blocks: spec.blocks.length }
+}
+
 export async function renderDoc(spec: DocSpec, open = true, signal?: AbortSignal, assertActive?: () => void): Promise<{ path: string; blocks: number }> {
+  const path = await saveOfficeOutput(sanitize(spec.title ?? 'document'), '.docx', await Packer.toBuffer(composeDoc(spec)), spec.saveAs, signal, assertActive)
+  if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
+  return { path, blocks: spec.blocks.length }
+}
+
+function composeDoc(spec: DocSpec): Document {
   const t = spec.theme
   const children: (Paragraph | Table)[] = []
   for (const one of spec.blocks) { const made = block(one, t); if (Array.isArray(made)) children.push(...made); else children.push(made) }
@@ -77,7 +89,5 @@ export async function renderDoc(spec: DocSpec, open = true, signal?: AbortSignal
     styles: { default: { document: { run: { font: t.fonts.body, size: 22, color: t.colors.ink } } } },
     sections: [{ footers: { default: footer }, children }],
   })
-  const path = await saveOfficeOutput(sanitize(spec.title ?? 'document'), '.docx', await Packer.toBuffer(doc), spec.saveAs, signal, assertActive)
-  if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
-  return { path, blocks: spec.blocks.length }
+  return doc
 }

@@ -9,25 +9,31 @@ import { applicationWork, clearApplicationWork } from './application-work.js'
 // A new deck or document is composed as a file with a designed layout, not
 // clicked into a blank template; everything else on Office goes through the
 // application's own commands. The person keeps the mouse either way.
+// Where a composed document is handed in: the workspace's saved outputs and
+// the task folder, linked in the chat.
+export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>> }
+
+// A new deck or document is built headlessly and handed in; no Office window
+// opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
+async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+  signal?.throwIfAborted()
+  assertActive?.()
+  if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
+  const built = op === 'ppt.build'
+    ? await (await import('./deck-render.js')).buildDeck(args as unknown as Parameters<typeof import('./deck-render.js').buildDeck>[0])
+    : await (await import('./doc-render.js')).buildDoc(args as unknown as Parameters<typeof import('./doc-render.js').buildDoc>[0])
+  signal?.throwIfAborted()
+  assertActive?.()
+  const receipt = await outputs.save(built.name, built.data)
+  const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
+  return { ...receipt, ...count, verification: 'Built as a file and handed in to the chat; no Office window was opened. Read the saved file back before claiming completion.' }
+}
+
 async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {
   assertActive?.()
   const work = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
   const width = Math.min(1100, work.width * 0.82), height = Math.min(800, work.height * 0.82)
   const compact = { x: (work.x + (work.width - width) / 2) * 0.75, y: (work.y + (work.height - height) / 2) * 0.75, width: width * 0.75, height: height * 0.75 }
-  if (op === 'ppt.build') {
-    signal?.throwIfAborted()
-    const { renderDeck } = await import('./deck-render.js')
-    const result = await renderDeck(args as unknown as Parameters<typeof renderDeck>[0], false, signal, assertActive)
-    await officeRequest('ppt.read', { file: result.path, compact }, signal, assertActive, activity)
-    return { presentation: result.path, slides: result.slides, saved: result.path, verification: 'File generated; visual rendering is not verified. Inspect every slide before claiming completion.' }
-  }
-  if (op === 'word.write') {
-    signal?.throwIfAborted()
-    const { renderDoc } = await import('./doc-render.js')
-    const result = await renderDoc(args as unknown as Parameters<typeof renderDoc>[0], false, signal, assertActive)
-    await officeRequest('word.read', { file: result.path, compact }, signal, assertActive, activity)
-    return { document: result.path, blocks: result.blocks, saved: result.path, verification: 'File generated; application rendering is not verified.' }
-  }
   return officeRequest(op, { ...args, compact }, signal, assertActive, activity)
 }
 
@@ -42,10 +48,11 @@ export async function showOfficePreview(lane: string, op: OfficeOp): Promise<voi
   catch { /* The activity card remains available when no readable window exists. */ }
 }
 let workQueue: Promise<unknown> = Promise.resolve()
-export function officeAgentTools(lane: string): AgentTool[] {
+export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
   const tools = officeTools({ run: (op, args, signal) => {
+    if (op === 'ppt.build' || op === 'word.write') return composeOffice(op, args, outputs, signal, () => assertDesktopTurnNotStopped(lane))
     const run = async () => {
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)

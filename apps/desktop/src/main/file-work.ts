@@ -1,13 +1,15 @@
-import { app, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { app, ipcMain, nativeImage, shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { fitImage } from './image-fit.js'
 import { flog } from './flog.js'
 import { renderTool } from './render-file.js'
 import type { ArtifactViewDto } from '../shared/types.js'
+import type { Ask } from './page-actions.js'
 
 const within = (root: string, path: string) => {
   const tail = relative(root, path)
@@ -146,7 +148,25 @@ export async function newestRevisions(directory: string, text: string, since: nu
 
 const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 
-export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = []) {
+// Where composed files are handed in: the workspace's saved outputs (linked
+// in the chat), plus a twin in the task folder when there is one.
+export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>) {
+  return {
+    async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
+      const receipt = await saveOutput(artifactDirectory(paths), name, data)
+      const task = await folder?.()
+      if (!task) return receipt
+      try { return { ...receipt, taskPath: await placeInTask(await ensureTaskFolder(paths, task), name, data) } }
+      catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return receipt }
+    },
+  }
+}
+
+// How a read outside the usual folders is put to the person: a card in the
+// chat (QA 0.8.142 B6: an app-modal dialog froze the whole app for minutes).
+export interface ReadConsent { ask?: Ask; korean?: () => boolean }
+
+export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
   const approved = new Set(attachedPaths)
   const directory = artifactDirectory(paths), folder = handInRoots[0]
   const active = () => assertDesktopTurnNotStopped(lane)
@@ -186,19 +206,25 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       signal?.throwIfAborted()
       await assertReadable(path)
       if (approved.has(path) && await realpath(path) === path) return true
-      // The folders the comet's own file tools already read without asking.
       const real = await realpath(path)
+      // This task's folder: files the comet built itself, which its own file
+      // tools also read without asking. Its handed-in outputs are in `approved`.
+      const own = await Promise.all(handInRoots.map(root => realpath(root).catch(() => '')))
+      if (own.some(root => root && within(root, real))) return true
+      // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
       if (roots.some(root => root && within(root, real))) return true
-      const result = await dialog.showMessageBox({
-        type: 'question', buttons: ['Cancel', 'Read file'], defaultId: 0, cancelId: 0,
-        message: 'Allow this chat to read this saved file?',
-        detail: `${path}\n\nThe contents will be shared with your connected AI. The original file will not be changed. Unsaved application changes are not included.`,
-        ...(signal ? { signal } : {}),
-      })
+      // Anything else is asked in the chat; with no chat to ask in, it is not read.
+      if (!consent.ask) return false
+      const words = consent.korean?.()
+        ? `이 파일을 읽어도 될까요? 내용이 연결된 AI에 전달돼요. 원본 파일은 바뀌지 않아요.\n${path}`
+        : `Read this file? Its contents go to your connected AI. The original file is not changed.\n${path}`
+      const verdict = await consent.ask({ words, url: pathToFileURL(real).href })
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
-      return result.response === 1
+      if (verdict !== 'approve' && verdict !== 'always') return false
+      approved.add(path)
+      return true
     },
   }), workbookTool(directory, active), ...(folder ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save, assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
@@ -211,7 +237,8 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     if (!/^file_(create_copy|create_workbook|edit_package)$/.test(tool.name)) return result
     const output = JSON.parse(result)
     if (output.completeReadback !== true || typeof output.path !== 'string') return result
-    if (tool.name === 'file_create_workbook') approved.add(output.path)
+    // The comet may read back any output it just handed in (QA 0.8.142 B6: re-reading its own copy asked and froze the app).
+    approved.add(output.path)
     if (!folder) return result
     // The linked copy is the verified output; the task-folder twin is for combining work.
     try { return JSON.stringify({ ...output, taskPath: await placeInTask(await ensureTaskFolder(paths, folder), basename(output.path).replace(REVISION, ''), await readFile(output.path)) }) }

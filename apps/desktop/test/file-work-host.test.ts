@@ -3,10 +3,15 @@ import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promise
 import { resolve, join } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
-const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), getPath: vi.fn() }))
-vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.confirm }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
+// Reads outside the usual folders are asked in the chat (state.ask), never with an app-modal dialog (state.dialog).
+const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.fn(), getPath: vi.fn() }))
+vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
-import { cometFileTools } from '../src/main/file-work.js'
+import { pathToFileURL } from 'node:url'
+import { cometFileTools as hostFileTools } from '../src/main/file-work.js'
+
+// Every chat has its in-chat approval card; state.confirm answers it.
+const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
 
 let root: string
 beforeEach(async () => {
@@ -16,7 +21,8 @@ beforeEach(async () => {
   // Documents, Desktop and Downloads: read without asking. Files elsewhere ask.
   await mkdir(join(root, 'home'))
   state.stopped = false
-  state.confirm.mockReset().mockResolvedValue({ response: 1 })
+  state.confirm.mockReset().mockResolvedValue('approve')
+  state.dialog.mockReset()
   state.getPath.mockReset().mockImplementation(() => join(root, 'home'))
 })
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
@@ -43,10 +49,10 @@ it('requires an exact-path native consent and honors Stop during the consent dia
   const path = join(root, 'input.json')
   await writeFile(path, '{"safe":true}')
   const tool = cometFileTools(vaultPaths(root), 'lane').find((tool) => tool.name === 'file_read')!
-  state.confirm.mockImplementation(async () => { state.stopped = true; return { response: 1 } })
+  state.confirm.mockImplementation(async () => { state.stopped = true; return 'approve' })
   await expect(tool.run({ path }, { task: 'Read a file.' })).rejects.toThrow('Stopped')
-  expect(state.confirm.mock.calls[0]![0].detail).toContain(path)
-  expect(state.confirm.mock.calls[0]![0].defaultId).toBe(0)
+  expect(state.confirm.mock.calls[0]![0].words).toContain(path)
+  expect(state.confirm.mock.calls[0]![0].url).toBe(pathToFileURL(path).href)
 })
 
 it('reads explicitly attached copies without asking to approve their contents again', async () => {
@@ -60,7 +66,7 @@ it('reads explicitly attached copies without asking to approve their contents ag
 it('does not carry an interrupted read approval into a fresh tool session', async () => {
   const path=join(root,'review.txt')
   await writeFile(path,'draft r1')
-  let answer!: (value:{response:number})=>void
+  let answer!: (value:'approve'|'cancel')=>void
   state.confirm.mockImplementationOnce(()=>new Promise(resolve=>{answer=resolve}))
   const controller=new AbortController()
   const old=cometFileTools(vaultPaths(root),'lane').find(t=>t.name==='file_read')!
@@ -68,10 +74,10 @@ it('does not carry an interrupted read approval into a fresh tool session', asyn
   const rejected=expect(pending).rejects.toThrow()
   await vi.waitFor(()=>expect(state.confirm).toHaveBeenCalledOnce())
   controller.abort()
-  answer({response:1})
+  answer('approve')
   await rejected
   await writeFile(path,'draft r2')
-  state.confirm.mockResolvedValueOnce({response:0})
+  state.confirm.mockResolvedValueOnce('cancel')
   const fresh=cometFileTools(vaultPaths(root),'lane').find(t=>t.name==='file_read')!
   await expect(fresh.run({path},{task:'Continue reading'})).rejects.toThrow()
   expect(state.confirm).toHaveBeenCalledTimes(2)
@@ -116,4 +122,53 @@ it('reads a file in Documents, Desktop or Downloads without asking, as the runti
   const tool = cometFileTools(vaultPaths(root), 'lane').find((tool) => tool.name === 'file_read')!
   expect(JSON.parse(await tool.run({ path }, { task: 'Read the issue list.' })).content).toBe('{"open":3}')
   expect(state.confirm).not.toHaveBeenCalled()
+})
+
+// QA 0.8.142 B6: re-reading its own just-made copy raised a parentless native
+// dialog that froze the whole app for ~10 minutes.
+it('never opens an app-modal dialog: a read outside the usual folders is asked in the chat, in the person\'s language', async () => {
+  const path = join(root, 'outside.txt')
+  await writeFile(path, 'outside')
+  const ask = vi.fn().mockResolvedValue('approve')
+  const tool = hostFileTools(vaultPaths(root), 'lane', [], [], { ask, korean: () => true }).find(t => t.name === 'file_read')!
+  expect(JSON.parse(await tool.run({ path }, { task: '파일 읽어줘' })).content).toBe('outside')
+  expect(ask).toHaveBeenCalledOnce()
+  expect(ask.mock.calls[0]![0].words).toMatch(/^이 파일을 읽어도 될까요\?/)
+  expect(ask.mock.calls[0]![0].words).toContain(path)
+  // Approved once for this exact path in this tool session.
+  await tool.run({ path }, { task: '다시 읽어줘' })
+  expect(ask).toHaveBeenCalledOnce()
+  expect(state.dialog).not.toHaveBeenCalled()
+})
+
+it('declines, without any dialog, a read outside the usual folders when there is no chat to ask in', async () => {
+  const path = join(root, 'outside.txt')
+  await writeFile(path, 'outside')
+  const tool = hostFileTools(vaultPaths(root), 'lane').find(t => t.name === 'file_read')!
+  await expect(tool.run({ path }, { task: 'Read a file.' })).rejects.toThrow()
+  expect(state.dialog).not.toHaveBeenCalled()
+})
+
+it('a declined chat card keeps the file unread', async () => {
+  const path = join(root, 'outside.txt')
+  await writeFile(path, 'secret plan')
+  const ask = vi.fn().mockResolvedValue('cancel')
+  const tool = hostFileTools(vaultPaths(root), 'lane', [], [], { ask }).find(t => t.name === 'file_read')!
+  const result = await tool.run({ path }, { task: 'Read a file.' }).catch((error: Error) => error.message)
+  expect(String(result)).not.toContain('secret plan')
+  expect(ask).toHaveBeenCalledOnce()
+})
+
+it('re-reads a copy it just handed in, and files in its own task folder, without asking', async () => {
+  const task = join(root, 'workspace', 'tasks', 'lane')
+  await mkdir(task, { recursive: true })
+  await writeFile(join(task, 'draft.csv'), 'a,b\n1,2\n')
+  const ask = vi.fn().mockResolvedValue('cancel')
+  const tools = hostFileTools(vaultPaths(root), 'lane', [], [task], { ask })
+  const context = { task: 'Make and check a sheet.' }
+  const created = JSON.parse(await tools.find(t => t.name === 'file_create_copy')!.run({ name: 'expenses.csv', content: 'item,amount\nlunch,12000\n' }, context))
+  expect(JSON.parse(await tools.find(t => t.name === 'file_read')!.run({ path: created.path }, context)).content).toContain('lunch')
+  expect(JSON.parse(await tools.find(t => t.name === 'file_read')!.run({ path: join(task, 'draft.csv') }, context)).content).toContain('1,2')
+  expect(ask).not.toHaveBeenCalled()
+  expect(state.dialog).not.toHaveBeenCalled()
 })

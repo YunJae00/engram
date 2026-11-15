@@ -170,7 +170,7 @@ import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from '
 import { canLearnTurn, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { taskNotices, surfaceComet } from './task-notify.js'
-import { keepStopMark } from './task-closing.js'
+import { isKorean, keepStopMark } from './task-closing.js'
 import { registerWorkMapIpc, startWorkMap, workMapShortcuts } from './work-map-job.js'
 import { learnFromAnswer, workGuide } from './work-guide-learn.js'
 import { startFirstFiling } from './first-filing.js'
@@ -186,7 +186,7 @@ import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, h
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
-import { artifactDirectory, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskRoot } from './file-work.js'
+import { artifactDirectory, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskOutputs, taskRoot } from './file-work.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
 import { assertDesktopChatEngine, setDesktopEngineResolver, stopDesktopControl, stopDesktopForLane, endDesktopTurn } from './desktop-control.js'
@@ -2337,7 +2337,7 @@ export function registerIpc(ctx: VaultContext): void {
     const { channel, engine, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
     // Key connections decide which app tools are on the menu (a decision model adds app_do).
     await loadBrainConnections()
-    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel), ...desktopAgentTools(channel)], {
+    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel))), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
       ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
@@ -2439,7 +2439,7 @@ export function registerIpc(ctx: VaultContext): void {
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
-    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)]) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
+    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel)) }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {

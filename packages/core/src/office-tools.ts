@@ -211,7 +211,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'word_write',
-      description: `Compose a Word document as a designed file with a cover, headings, tables and a page-numbered footer. blocks in order: {kind:"title"|"subtitle"|"heading"|"subheading"|"paragraph", text}, {kind:"bullets"|"numbers", items:[...]}, {kind:"table", table:{rows:[["Item","Amount"],...]}} (first row is the header), or {kind:"pagebreak"}. title names the document and its file. saveAs names a file to save to. ${THEME_NOTE}`,
+      description: `Compose a Word document as a designed file with a cover, headings, tables and a page-numbered footer. blocks in order: {kind:"title"|"subtitle"|"heading"|"subheading"|"paragraph", text}, {kind:"bullets"|"numbers", items:[...]}, {kind:"table", table:{rows:[["Item","Amount"],...]}} (first row is the header), or {kind:"pagebreak"}. title names the document and its file. saveAs names the file (a plain name; folders are ignored). The file is saved with this task's outputs and attached in the chat; Word is not opened. ${THEME_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['blocks'],
         properties: {
@@ -264,7 +264,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
     },
     {
       name: 'ppt_build',
-      description: `Build a slide deck in PowerPoint from slides: [{title, subtitle?, bullets?, table?, chart?, notes?}]. The first slide with no body is the title slide. A slide may carry a table {rows:[["Q","Rev"],["Q4","4.2"]]} (first row is the header) and/or a chart {type:"column|line|bar|pie", categories:[...], series:[{name, values:[...]}]}. Keep titles under 70 characters, bullets under 140, at most 7 per slide, and write only about the subject - never about the deck itself. The result carries an audit; if it lists problems, fix the content and build again. saveAs names a file to save to. ${THEME_NOTE}`,
+      description: `Build a slide deck file (.pptx) from slides: [{title, subtitle?, bullets?, table?, chart?, notes?}]. The first slide with no body is the title slide. A slide may carry a table {rows:[["Q","Rev"],["Q4","4.2"]]} (first row is the header) and/or a chart {type:"column|line|bar|pie", categories:[...], series:[{name, values:[...]}]}. Keep titles under 70 characters, bullets under 140, at most 7 per slide, and write only about the subject - never about the deck itself. The result carries an audit; if it lists problems, fix the content and build again. saveAs names the file (a plain name; folders are ignored). The file is saved with this task's outputs and attached in the chat; PowerPoint is not opened. ${THEME_NOTE}`,
       argsSchema: {
         type: 'object', additionalProperties: false, required: ['slides'],
         properties: {

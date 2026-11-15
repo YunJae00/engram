@@ -5,6 +5,15 @@ import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 
 const reserved = /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i
 
+// The plain file name a composed document is handed in under: a requested
+// name keeps only its last part (never a folder), else the title names it.
+export function officeOutputName(title: string, extension: '.docx' | '.pptx', requested?: string, fallback = 'document'): string {
+  const last = typeof requested === 'string' ? requested.split(/[\\/]/).pop() ?? '' : ''
+  const clean = (value: string) => value.replace(new RegExp(`\\${extension}$`, 'i'), '').replace(/[^\p{L}\p{N}_ .()-]/gu, ' ').replace(/\s+/g, ' ').replace(/^[^\p{L}\p{N}_]+/u, '').trim().slice(0, 60).trim()
+  const stem = clean(last) || clean(title) || fallback
+  return reserved.test(stem) ? `${fallback}${extension}` : `${stem}${extension}`
+}
+
 // Exclusive creation protects both user files and simultaneous generations.
 export async function saveOfficeOutput(name: string, extension: '.docx' | '.pptx', data: Buffer, requested?: string, signal?: AbortSignal, assertActive?: () => void): Promise<string> {
   const safe = name.replace(/[^\p{L}\p{N}_ .-]/gu, ' ').trim().slice(0, 60) || 'document'

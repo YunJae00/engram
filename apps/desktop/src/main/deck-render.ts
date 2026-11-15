@@ -1,6 +1,6 @@
 import { shell } from 'electron'
 import { auditDeck, deckBodyLayout, describeDeckFindings, withoutMissingParts, type OfficeTheme } from 'core'
-import { saveOfficeOutput } from './office-output.js'
+import { officeOutputName, saveOfficeOutput } from './office-output.js'
 import PptxGenJS from 'pptxgenjs'
 
 // A deck is written as a file, not clicked into PowerPoint one shape at a
@@ -93,7 +93,20 @@ function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, chart: DeckChart, top
 
 // Renders the deck and returns the path it was written to; opens it for the
 // person unless asked not to.
+// The deck as bytes and the plain name it is handed in under; nothing is
+// written and no application is opened (QA 0.8.142 B11).
+export async function buildDeck(spec: DeckSpec): Promise<{ name: string; data: Buffer; slides: number }> {
+  return { name: officeOutputName(spec.slides[0]?.title ?? spec.title ?? '', '.pptx', spec.saveAs, 'deck'), data: await composeDeck(spec), slides: spec.slides.length }
+}
+
 export async function renderDeck(spec: DeckSpec, open = true, signal?: AbortSignal, assertActive?: () => void): Promise<{ path: string; slides: number }> {
+  const data = await composeDeck(spec)
+  const path = await saveOfficeOutput(sanitize(spec.slides[0]?.title ?? spec.title ?? 'deck'), '.pptx', data, spec.saveAs, signal, assertActive)
+  if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
+  return { path, slides: spec.slides.length }
+}
+
+async function composeDeck(spec: DeckSpec): Promise<Buffer> {
   const findings = auditDeck(spec.slides)
   if (findings.length) throw new Error(describeDeckFindings(findings))
   const t = spec.theme
@@ -109,8 +122,5 @@ export async function renderDeck(spec: DeckSpec, open = true, signal?: AbortSign
     if (slide.chart) addChart(pptx, s, slide.chart, layout.chartTop, t)
     if (slide.notes) s.addNotes(slide.notes)
   })
-  const data = await withoutMissingParts(await pptx.write({ outputType: 'nodebuffer' }) as Buffer)
-  const path = await saveOfficeOutput(sanitize(spec.slides[0]?.title ?? spec.title ?? 'deck'), '.pptx', data, spec.saveAs, signal, assertActive)
-  if (open) { signal?.throwIfAborted(); assertActive?.(); const error = await shell.openPath(path); if (error) throw new Error(`Saved ${path}, but opening failed: ${error}`) }
-  return { path, slides: spec.slides.length }
+  return withoutMissingParts(await pptx.write({ outputType: 'nodebuffer' }) as Buffer)
 }
