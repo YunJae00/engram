@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, CHECK_SCRATCH, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
+import { artifactHref, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
 import { artifactDirectory, ensureTaskFolder, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot } from './file-work.js'
 import { flog } from './flog.js'
@@ -136,8 +136,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
   const found: string[] = []
   for (const entry of entries) {
     const path = join(cwd, entry), name = basename(entry)
-    // A check's scratch folder holds its own tools, never a result.
-    if (entry.split(/[\\/]/)[0] === CHECK_SCRATCH) continue
+    // No location is excluded: a check's scratch stays out because the answer does not name it, and a file the answer names is handed in wherever it is.
     if (name.startsWith('.') || !OUTPUT_EXTENSIONS.has(extname(name).toLowerCase()) || !answer.includes(name)) continue
     // lstat: a link is never a deliverable.
     const info = await lstat(path).catch(() => null)

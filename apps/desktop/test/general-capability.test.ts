@@ -240,24 +240,35 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect((await judged(unread)).check.issues.join(' ')).toContain('Reread every final part of merged.md')
 })
 
-it('a script kept in the check scratch folder is never handed in, by its location alone', async () => {
+it('scratch in the check folder the answer does not name stays out, and a file there the answer names is handed in and checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(join(cwd, CHECK_SCRATCH, 'deep'), { recursive: true })
   await writeFile(join(cwd, 'merged.md'), '# merged\n')
   const first = { answer: 'Saved merged.md.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
   const link = /\[merged\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
-  // Any kind of file, at any depth, run or not: only the folder decides.
+  // Any kind of file, at any depth, run or not: unnamed scratch is not a result.
   for (const name of ['check_merge.py', 'diff.md', join('deep', 'counts.csv')]) await writeFile(join(cwd, CHECK_SCRATCH, name), 'x\n')
   const ran: TurnStep = { tool: 'Bash', args: { command: `python3 ${CHECK_SCRATCH}/check_merge.py` }, observation: '0 mismatches' }
   const steps = [ran, passed('Leads merged')]
-  const checked = { answer: `Compared with ${CHECK_SCRATCH}/check_merge.py (diff.md, counts.csv): 0 mismatches.\n\n${link}`, steps: [...steps] }
+  const checked = { answer: `Compared the merged file with the sources: 0 mismatches.\n\n${link}`, steps: [...steps] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
   expect(checked.steps).toEqual(steps)
   expect(checked.answer).not.toMatch(/\[(check_merge\.py|diff\.md|counts\.csv)\]/)
   expect((await judged(checked)).outputs).toEqual(['merged.md'])
   expect(await mentionedOutputs(cwd, checked.answer, 0)).toEqual([])
-  expect(continuationPrompt({ goal: 'Merge the leads.', result: 'Saved merged.md.' } as DelegatedTask, 'verify')).toContain(`inside the ${CHECK_SCRATCH}/ folder`)
+  const prompt = continuationPrompt({ goal: 'Merge the leads.', result: 'Saved merged.md.' } as DelegatedTask, 'verify')
+  expect(prompt).toContain(`inside the ${CHECK_SCRATCH}/ folder`)
+  expect(prompt).toContain('only when your answer names it')
+  // A requested deliverable that landed there is not dropped: the answer names it, so it is handed in and needs its readback.
+  await writeFile(join(cwd, CHECK_SCRATCH, 'report.md'), '# audit\n')
+  const named = { answer: `Wrote ${CHECK_SCRATCH}/report.md.\n\n${link}`, steps: [passed('Report written')] }
+  await deliverOutputs(paths, cwd, named, 0, 'ask')
+  expect(named.answer).toMatch(/\[report\.md\]\(engram-artifact:/)
+  expect(named.steps.at(-1)).toMatchObject({ tool: 'file_create_copy', args: { name: 'report.md' } })
+  const { outputs, check } = await judged(named)
+  expect(outputs).toEqual(['merged.md', 'report.md'])
+  expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
 })
 
 it('a check turn hands in a requested script it first wrote next to a linked workbook, and it enters the result check', async () => {
