@@ -37,11 +37,13 @@ async function read(file: string): Promise<Checkpoint> {
 }
 // The resume context is itself a serialized record (resumeCheckpoint): it is
 // cleaned as data and serialized again, so it stays valid JSON too.
+function recordIn(context: string | undefined): object | undefined {
+  if (context === undefined) return undefined
+  try { const parsed: unknown = JSON.parse(context); return parsed !== null && typeof parsed === 'object' ? parsed : undefined } catch { return undefined }
+}
 function cleanContext(context: string, source: string): string {
-  let parsed: unknown
-  try { parsed = JSON.parse(context) } catch { return withoutSecretsIn(context, source) }
-  // Its decoded texts join the source: a value labelled inside it is spelled with escapes in the serialized text.
-  return parsed !== null && typeof parsed === 'object' ? JSON.stringify(withoutSecretsIn(parsed, [source, ...textsIn(parsed)].join('\n'), RESUME_FIELDS)) : withoutSecretsIn(context, source)
+  const record = recordIn(context)
+  return record ? JSON.stringify(withoutSecretsIn(record, source, RESUME_FIELDS)) : withoutSecretsIn(context, source)
 }
 
 export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: Checkpoint) => Checkpoint): Promise<void> {
@@ -51,7 +53,10 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
     await mkdir(join(paths.cache, 'checkpoints'), { recursive: true })
     const scratch = `${file}.${process.pid}.tmp`
     // Only the stored texts are cleaned; the checkpoint's own field names stay as they are.
-    const source = [next.context ?? '', ...next.pending].join('\n')
+    // The context's decoded texts join the source: a value labelled inside it is spelled with
+    // escapes in the serialized text, and the pending messages are cleaned of it too.
+    const record = recordIn(next.context)
+    const source = [next.context ?? '', ...(record ? textsIn(record) : []), ...next.pending].join('\n')
     const clean: Checkpoint = { ...(next.context !== undefined ? { context: cleanContext(next.context, source) } : {}), pending: withoutSecretsIn(next.pending, source) }
     await writeFile(scratch, JSON.stringify(clean))
     await renameWithRetry(scratch, file)

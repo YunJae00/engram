@@ -85,3 +85,15 @@ it('cleans a value labelled inside the stored resume record even though it is es
     expect(JSON.parse(stored.context!).remaining).toBe('the token •••••• still needs a retry')
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+it('cleans a pending message of a value labelled only inside the escaped resume record', async () => {
+  const cache = await mkdtemp(join(tmpdir(), 'engram-checkpoint-'))
+  const paths = { cache } as VaultPaths
+  try {
+    const context = JSON.stringify({ remaining: 'the token ab12\\ retry' })
+    await changeCheckpoint(paths, 'pending-escaped', state => ({ ...state, context, pending: ['send ab12\\'] }))
+    const stored = await readCheckpoint(paths, 'pending-escaped')
+    expect(stored.pending).toEqual(['send ••••••'])
+    expect(JSON.stringify(stored)).not.toContain('ab12')
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})
