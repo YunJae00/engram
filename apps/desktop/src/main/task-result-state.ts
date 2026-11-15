@@ -1,4 +1,4 @@
-import { commandChanged, handedInFrom } from './result-check.js'
+import { commandChanged, handedInFrom, wroteFile } from './result-check.js'
 export { commandOnlyReads } from './result-check.js'
 import { successfulTurnSteps, type AgentLoopResult, type TurnStep } from 'core'
 
@@ -40,16 +40,16 @@ const READBACK = /^(app_read|app_text|read_open_page|read_pages|look|verify|read
 
 export function freshResultReadback(steps: TurnStep[]): boolean {
   // Failed moves can also invalidate the state observed before them.
-  // A command that may have written a file stales what was read before it, like any other write (qa143 B14).
+  // A native file write, or a command that may have written a file, stales what was read before it, like any other write (qa143 B14).
   // The host's own hand-in copies bytes the result check already tied to a full read; it does not stale the readback.
-  const lastChange = steps.map(step => !step.seeded && !handedInFrom(step) && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || commandChanged(step))).lastIndexOf(true)
+  const lastChange = steps.map(step => !step.seeded && !handedInFrom(step) && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || wroteFile(step))).lastIndexOf(true)
   return successfulTurnSteps(steps.slice(Math.max(0, lastChange))).some(step => READBACK.test(step.tool) || step.observedAfterAction === true)
 }
 
 // Whether a result leaves nothing to read back: no step of the task changed or opened anything and the answer hands over no file.
 // A report made only of words (a team's merged text, compared against what the leads wrote) is checked by its result check alone.
 export const nothingToReadBack = (answer: string, steps: TurnStep[]): boolean =>
-  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || commandChanged(step)))
+  !/\]\(engram-artifact:/.test(answer) && !steps.some(step => !step.seeded && (RESULT_CHANGES.test(step.tool) || VIEW_MOVES.test(step.tool) || step.tool === 'render_file' || wroteFile(step)))
 
 export function canLearnTurn(result: Pick<AgentLoopResult, 'asked' | 'stopped' | 'pending' | 'incomplete' | 'steps'>, held: boolean, check?: { accepted: boolean; verified?: boolean; issues?: string[] }): boolean {
   // Held tasks are learned only after the runner confirms their final state.

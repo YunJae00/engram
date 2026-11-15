@@ -89,6 +89,9 @@ const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|
 export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
   && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(part => READERS.test(part.split(/\s+/)[0]!))
 export const commandChanged = (step: TurnStep): boolean => SHELL.test(step.tool) && !commandOnlyReads(step.args['command'])
+// A step that may have written a file with no receipt of its own: a native file write, or a command that is not plainly a reader.
+// The one rule for the post-check scan, readback freshness and what leaves something to read back (qa143 p2 r9 B14).
+export const wroteFile = (step: TurnStep): boolean => /^(Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || commandChanged(step)
 
 // The task file the host itself copied in after the turn (deliverOutputs); a model's own call never carries this.
 export function handedInFrom(step: TurnStep): string | undefined {
@@ -211,7 +214,7 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)
     }
     // The host's own hand-in of a task file is not the model changing the result; its bytes are checked below.
-    if (steps.slice(index + 1).some(step => !step.seeded && (CHANGES.test(step.tool) && !handedInFrom(step) || commandChanged(step)))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
+    if (steps.slice(index + 1).some(step => !step.seeded && (CHANGES.test(step.tool) && !handedInFrom(step) || wroteFile(step)))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
   }
 
   const latest = latestResultOutputs(steps, outputs)

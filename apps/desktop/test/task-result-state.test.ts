@@ -116,6 +116,25 @@ it.each([
     expect(checkResult([fileRead, ran, report], [], [], true).issues.join(' ')).not.toContain('The result changed after report_result_check')
   }
 })
+// qa143 p2 r9 (B14): a native file write has no receipt either. After the check it stales the check; after the last read it stales the readback.
+it.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])('a native %s after the check or the last read stales them', (tool) => {
+  const fileRead: TurnStep = { tool: 'file_read', args: { path: 'report.md' }, observation: '{"content":"x","completeReadback":true}' }
+  const finding = { status: 'pass', basis: 'Read.' }
+  const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report' }], grounding: finding } }) }
+  const changed = 'The result changed after report_result_check. Reread the affected result and submit a new report.'
+  // Failed too: it may have partly happened.
+  for (const observation of ['Native action completed.', 'that did not work: exit 1']) {
+    const wrote: TurnStep = { tool, args: { file_path: 'report.md' }, observation }
+    expect(checkResult([fileRead, report, wrote], [], [], true).issues).toContain(changed)
+    expect(checkResult([fileRead, wrote, report], [], [], true).issues).not.toContain(changed)
+    expect(freshResultReadback([fileRead, report, wrote])).toBe(false)
+    expect(freshResultReadback([fileRead, wrote])).toBe(false)
+    expect(freshResultReadback([fileRead, wrote, fileRead])).toBe(true)
+    expect(freshResultReadback([{ ...wrote, seeded: true }, fileRead])).toBe(true)
+    expect(canLearnTurn({ steps: [fileRead, report, wrote] }, false, { accepted: true, verified: true, issues: [] })).toBe(false)
+    expect(nothingToReadBack('Five rules.', [wrote])).toBe(false)
+  }
+})
 it('has nothing to read back only for words, with no file linked and nothing changed', () => {
   expect(nothingToReadBack('Five rules.', [])).toBe(true)
   expect(nothingToReadBack('[Report](engram-artifact:report.md)', [])).toBe(false)
