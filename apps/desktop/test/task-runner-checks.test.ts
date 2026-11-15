@@ -98,9 +98,10 @@ it('gives a check turn that lacks only handed-in readbacks one readback-only tur
   expect(task.log.map(entry => entry.line)).toContain('Reading back the handed-in files once')
   // The ordinary check retry comes first; the third turn is the readback only.
   expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
-  // qa142 p2a-r6 #2: it is held to the preceding report's own requirement checks.
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true, requirements: ['Leads merged', 'No duplicates'] })
-  expect(t.sent[2]!.request.message).toContain('- Leads merged\n- No duplicates')
+  // qa142 p2a-r8 A: it is not held to a requirement list; the check turn's report stands and this turn only adds the reads.
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(t.sent[2]!.request.message).not.toContain('- Leads merged')
+  expect(t.sent[2]!.request.message).toContain('The requirement checks you already reported stand as they are')
   const prompt = t.sent[2]!.request.message
   expect(prompt).toContain('- check_merge.py: /artifacts/id-check_merge.py')
   expect(prompt).toContain('call report_result_check again')
@@ -110,28 +111,41 @@ it('gives a check turn that lacks only handed-in readbacks one readback-only tur
   expect(t.delivered).toEqual([report])
 })
 
-it('holds the readback-only turn to the model\'s own requirement checks, not to the entries the host added for the unread files', async () => {
+it('hands the readback-only turn no requirement list, neither the model\'s own checks nor the entries the host added for the unread files', async () => {
   const hostEntry = { requirement: 'Unresolved verification', status: 'unknown' as const, basis: 'Reread every final part of check_merge.py.' }
   const t = await setup(async () => ({ ...done(report, 1), check: { ...unreadCheck, report: { ...unreadReport, checks: [...unreadReport.checks, hostEntry] } }, trail: [fileRead] }), false)
   await t.chat('Merge the leads')
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true, requirements: ['Leads merged', 'No duplicates'] })
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
   expect(t.sent[2]!.request.message).not.toContain('- Unresolved verification')
 })
 
-// qa142 p2a-r7 #1: the readback-only turn is held to every requirement any report of the task stated, not only the preceding report's.
-it.each([[['Leads merged'], false], [['Leads merged', ' no  duplicates '], true]] as const)('holds the readback-only turn to a requirement the retry dropped: restating %j verifies %s', async (restated, verified) => {
+// qa142 p2a-r8 A: the readback-only turn does not re-judge requirements. Whatever checks its report restates, the check turn's report is carried over and only the reads decide.
+it.each([[['Leads merged']], [['Leads merged', ' no  duplicates ']], [[]]] as const)('verifies a readback-only turn that adds the reads and restates only %j', async restated => {
   const checks = (names: readonly string[]) => names.map(requirement => ({ requirement, status: 'pass' as const, basis: 'Compared.' }))
-  const t = await setup(async (_request, turn, extra) => {
-    // First report: both. Retry: only the first, still lacking the readback. Readback turn: the host's check, which takes the handed list as required.
+  const t = await setup(async (_request, turn) => {
+    // First report: both. Retry: only the first, still lacking the readback. Readback turn: the reads, and a report with fewer checks.
     if (turn < 3) return { ...done(report, 1), check: { ...unreadCheck, report: { ...unreadReport, checks: checks(turn === 1 ? ['Leads merged', 'No duplicates'] : ['Leads merged']) } }, trail: [fileRead] }
-    const same = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase()
-    const missing = (extra?.verification?.requirements ?? []).filter(required => !restated.some(one => same(one) === same(required)))
-    return { ...done(report, 1), check: { accepted: !missing.length, verified: !missing.length, issues: missing.map(one => `left out: ${one}`), report: { ...unreadReport, checks: checks(restated) }, reportUnchanged: true }, trail: [fileRead] }
+    return { ...done(report, 1), check: { accepted: true, verified: true, issues: [], report: { ...unreadReport, checks: checks(restated) }, reportUnchanged: true }, trail: [fileRead] }
   }, false)
   await t.chat('Merge the leads')
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true, requirements: ['Leads merged', 'No duplicates'] })
-  expect(t.sent[2]!.request.message).toContain('- Leads merged\n- No duplicates')
-  expect((await listTasks(t.paths))[0]).toMatchObject(verified ? { state: 'done', verified: true, turns: 3 } : { state: 'waiting', verified: false, turns: 3 })
+  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
+  // The carried report passed, so the confirming readback adds no second message.
+  expect(t.delivered).toEqual([report])
+})
+
+// A waiting task keeps no requirement list: the person's next instruction starts a normal turn judged by its own report.
+it('demands no earlier requirement when the person instructs a task left waiting after its readback-only turn', async () => {
+  const t = await setup(async (_request, turn) => turn <= 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
+    : { ...done('Only the count now: 12.', 1), check: { accepted: true, verified: true, issues: [], report: { ...unreadReport, checks: [{ requirement: 'Count reported', status: 'pass' as const, basis: 'Counted.' }] } }, trail: [fileRead] }, false)
+  await t.chat('Merge the leads')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', turns: 3, verified: false })
+  await t.chat('Forget the duplicates check, just report the count')
+  expect(await listTasks(t.paths)).toHaveLength(1)
+  expect(t.sent).toHaveLength(4)
+  expect(t.sent[3]?.extra?.verification).toBeUndefined()
+  expect(t.sent[3]!.request.message).not.toContain('No duplicates')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 4 })
 })
 
 it('ends waiting when the readback-only turn still lacks the readback, and never gives a second one', async () => {

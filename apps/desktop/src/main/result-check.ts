@@ -51,12 +51,10 @@ const properties = {
   refs: { type: 'array', maxItems: 40, items: { ...text, maxLength: 4096 } },
 }
 
-/** One requirement in any spacing or case. */
-export const sameRequirement = (requirement: string): string => requirement.trim().replace(/\s+/g, ' ').toLowerCase()
 /** The requirement name of the entries the host adds to a report for its own defects. */
 export const HOST_CHECK = 'Unresolved verification'
 
-export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; required?: string[] }): AgentTool {
+export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string }): AgentTool {
   return {
     name: TOOL,
     description: 'Only when asked to check a result: report the check after checking every requested outcome and final artifact. Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each basis concise: name the observed fact and how it satisfies or fails the requirement. grounding separately checks that material claims match the sources or are explicitly labeled assumptions, proposals or unverified. refs are optional notes. The host checks the evidence itself from this turn: each final text file must be reopened in full after its last write (a workbook: every sheet), and claims need a real source (an attachment or a read of an original page or file, not a generated output). PNG/MP4/WebM captures are outside this check: do not retake, upload or claim visual verification for them. Honest fail/unknown findings are accepted as unresolved, never as verified success; disclose them in the answer. If validation.accepted is false, fix only report defects, never invent a pass. If validation.accepted is true with issues, stop resubmitting and disclose those unresolved issues. Do not change anything after an accepted report. Then give a concise user-facing answer with only final artifact links; do not print the report JSON.',
@@ -71,7 +69,7 @@ export function resultCheckTool(config?: { outputs: { name: string; path: string
       const resultCheck = report(args)
       const observation = JSON.stringify({ resultCheck })
       if (!config) return observation
-      const validation = checkResult([...(context.steps ?? []), { tool: TOOL, args, observation }], config.outputs, config.sources, config.requireSourceEvidence, config.generatedDirectory, config.required)
+      const validation = checkResult([...(context.steps ?? []), { tool: TOOL, args, observation }], config.outputs, config.sources, config.requireSourceEvidence, config.generatedDirectory)
       return JSON.stringify({ resultCheck, validation })
     },
   }
@@ -173,8 +171,8 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
 
 // The host decides from what it observed this turn; the model's report adds
 // only its own verdicts, and a fail or unknown there stays unresolved.
-// required: every requirement check the task's earlier reports stated, which a readback-only follow-up must restate, each one passing; a new report cannot drop one.
-export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string, required: string[] = []): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
+// A readback-only follow-up is judged the same way: which requirements its report restates is not this function's concern (the task runner keeps the check turn's report).
+export function checkResult(steps: TurnStep[], outputs: { name: string; path: string }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
   // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
   const readbacks: { name: string; path: string }[] = []
@@ -190,9 +188,6 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       groundingPass = checked.grounding.status === 'pass'
       for (const item of [...checked.checks, { ...checked.grounding, requirement: 'Source grounding' }]) {
         if (item.status !== 'pass') unresolved.push(`${item.requirement}: ${item.status} — ${item.basis}`)
-      }
-      for (const requirement of required) {
-        if (!checked.checks.some(item => sameRequirement(item.requirement) === sameRequirement(requirement))) issues.push(`The report leaves out a requirement check of an earlier report: "${requirement}". Call report_result_check again with every one of them, worded the same.`)
       }
     } catch (error) {
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)

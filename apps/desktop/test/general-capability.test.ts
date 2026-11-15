@@ -250,21 +250,25 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect(second.outputs).toEqual(['check_merge.py', 'merged.md'])
   expect(second.check).toEqual({ accepted: true, verified: true, issues: [] })
   expect(freshResultReadback(followUp.steps)).toBe(true)
-  // qa142 p2a-r6 #2: the follow-up's report is held to every requirement check of the report before it.
+  // qa142 p2a-r8 A: the follow-up's report is not re-judged against the report before it; the host carries that one over, and the follow-up only adds the reads.
   const both: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: ['Leads merged', 'No duplicate leads'].map(requirement => ({ status: 'pass', basis: 'Compared.', requirement })), grounding: { status: 'pass', basis: 'Compared.' } } }) }
-  const held = async (report: TurnStep, required: string[]) => {
-    const steps = [await reopen(artifact), await reopen(handedIn), report]
-    return checkResult(steps, latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])), [], false, undefined, required)
+  const held = async (report: TurnStep, reads = [artifact, handedIn]) => {
+    const steps = [...await Promise.all(reads.map(reopen)), report]
+    return checkResult(steps, latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])), [], false)
   }
-  // Both files read, one requirement dropped: not verified.
-  const dropped = await held(passed('Leads merged'), ['Leads merged', 'No duplicate leads'])
-  expect(dropped).toMatchObject({ accepted: false, verified: false })
-  expect(dropped.issues.join(' ')).toContain('leaves out a requirement check of an earlier report: "No duplicate leads"')
-  // Restated but no longer passing: unresolved, not verified.
+  // Both files read, one requirement left out of the follow-up's report: verified, since that report cannot drop a check the host already judged.
+  const dropped = await held(passed('Leads merged'))
+  expect(dropped).toEqual({ accepted: true, verified: true, issues: [] })
+  expect(dropped.issues.join(' ')).not.toContain('leaves out a requirement check')
+  // The same report without the read of the handed-in file: not verified.
+  const oneRead = await held(passed('Leads merged'), [artifact])
+  expect(oneRead).toMatchObject({ accepted: false, verified: false })
+  expect(oneRead.issues.join(' ')).toContain('Reread every final part of check_merge.py')
+  // A check the follow-up itself reports as no longer passing: unresolved, not verified.
   const failing: TurnStep = { ...both, observation: both.observation.replace('"status":"pass","basis":"Compared.","requirement":"No duplicate leads"', '"status":"unknown","basis":"Not compared.","requirement":"No duplicate leads"') }
-  expect(await held(failing, ['Leads merged', 'No duplicate leads'])).toMatchObject({ verified: false, issues: ['No duplicate leads: unknown — Not compared.'] })
+  expect(await held(failing)).toMatchObject({ verified: false, issues: ['No duplicate leads: unknown — Not compared.'] })
   // Every requirement restated as passed, with the reads: verified, so S31 ends done.
-  expect(await held(both, ['Leads merged', ' no duplicate  leads '])).toEqual({ accepted: true, verified: true, issues: [] })
+  expect(await held(both)).toEqual({ accepted: true, verified: true, issues: [] })
   // A readback turn that reads only one of them is still not verified.
   expect((await judged({ answer: byCommand.answer, steps: [await reopen(artifact), passed('Leads merged')] })).check.issues.join(' ')).toContain('Reread every final part of check_merge.py')
   // The Write-created variant. The script is a text result too: its final bytes are known because they equal what the turn's own Write call wrote.
