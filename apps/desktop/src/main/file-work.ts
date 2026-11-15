@@ -10,6 +10,7 @@ import { flog } from './flog.js'
 import { renderTool } from './render-file.js'
 import type { ArtifactViewDto } from '../shared/types.js'
 import type { Ask } from './page-actions.js'
+import { READ_CARD } from './read-card.js'
 
 const within = (root: string, path: string) => {
   const tail = relative(root, path)
@@ -221,7 +222,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       const words = consent.korean?.()
         ? `이 파일을 읽어도 될까요? 내용이 연결된 AI에 전달돼요. 원본 파일은 바뀌지 않아요.\n${path}`
         : `Read this file? Its contents go to your connected AI. The original file is not changed.\n${path}`
-      const verdict = await consent.ask({ words, url: pathToFileURL(real).href })
+      const verdict = await consent.ask({ words, url: `${pathToFileURL(real).href}${READ_CARD}` })
       signal?.throwIfAborted()
       assertDesktopTurnNotStopped(lane)
       if (verdict !== 'approve' && verdict !== 'always') return false

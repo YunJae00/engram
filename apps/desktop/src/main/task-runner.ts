@@ -31,6 +31,7 @@ import type { ChatRequestDto, EngramEvent } from '../shared/types.js'
 import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
+import { READ_CARD } from './read-card.js'
 import { freshResultReadback } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
@@ -44,9 +45,10 @@ const WORTH_KEEPING_STEPS = 3
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
+// A file read card (#read, file-work.ts) is for that one file: approving it for the task covers only that file.
 const kindOf = (url: string, words: string): string => {
   if (!url.startsWith('file:')) return exactKey(url, words)
-  try { const u = new URL(url); return `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
+  try { const u = new URL(url); return u.hash === READ_CARD ? exactKey(url, words) : `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
 }
 
 export function taskRunner(deps: {

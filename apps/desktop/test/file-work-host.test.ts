@@ -52,7 +52,7 @@ it('requires an exact-path native consent and honors Stop during the consent dia
   state.confirm.mockImplementation(async () => { state.stopped = true; return 'approve' })
   await expect(tool.run({ path }, { task: 'Read a file.' })).rejects.toThrow('Stopped')
   expect(state.confirm.mock.calls[0]![0].words).toContain(path)
-  expect(state.confirm.mock.calls[0]![0].url).toBe(pathToFileURL(path).href)
+  expect(state.confirm.mock.calls[0]![0].url).toBe(`${pathToFileURL(path).href}#read`)
 })
 
 it('reads explicitly attached copies without asking to approve their contents again', async () => {
