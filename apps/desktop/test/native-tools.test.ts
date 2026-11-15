@@ -264,6 +264,19 @@ describe('outputs left in the task folder', () => {
     expect(found).toEqual(['out/summary.md', 'parse.py', 'report(2026.10.11.).xlsx'])
     expect(await mentionedOutputs(join(root, 'missing'), answer, since)).toEqual([])
   })
+
+  // qa143 p2 r11 S19a: a twin is the file a receipt itself placed, not any file with its bytes.
+  it('hands in a separately created file whose bytes match a linked receipt of the same name', async () => {
+    const { createHash } = await import('node:crypto'), { realpath } = await import('node:fs/promises')
+    await mkdir(join(cwd, 'subfolder'), { recursive: true })
+    for (const path of ['report.md', join('subfolder', 'report.md')]) await writeFile(join(cwd, path), '# same\n')
+    const hash = createHash('sha256').update('# same\n').digest('hex'), names: Record<string, string> = {}
+    // The bare hash is what the old hash-only check matched on: it dropped both files.
+    const made = new Set([hash, `${hash}\0${await realpath(join(cwd, 'report.md'))}`])
+    // The receipt's own twin (top-level report.md) is skipped; subfolder/report.md is another source and is handed in under the next free name.
+    expect(await mentionedOutputs(cwd, 'Wrote report.md. [report.md](engram-artifact:00000000-0000-4000-8000-000000000000-report.md)', 0, [], join(root, 'artifacts'), names, made)).toEqual([join(cwd, 'subfolder', 'report.md')])
+    expect(names).toEqual({ 'subfolder/report.md': 'report-2.md' })
+  })
 })
 
 describe('where a comet works', () => {

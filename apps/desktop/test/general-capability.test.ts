@@ -627,8 +627,9 @@ it('a report re-rendered and re-copied in one turn is handed over once per name,
   const copied = async (text: string, fromPath: string): Promise<TurnStep> => { await writeFile(join(cwd, fromPath), text); const args = { name: 'report.md', fromPath: join(cwd, fromPath) }; return { tool: 'file_create_copy', args, observation: await copy.run(args, context) } }
   await mkdir(cwd, { recursive: true })
   const steps = [await rendered('v1'), await copied('# v1\n', 'report.md'), await rendered('v2'), await rendered('v3'), await copied('# v3\n', 'report.md')]
-  // The first render left its own copy in the task folder, as render_file does; the later ones were cleaned up.
+  // The first render left its own copy in the task folder, as render_file does (its receipt names it); the later ones were cleaned up.
   await writeFile(join(cwd, 'report.pdf'), '%PDF-v1')
+  steps[0]!.observation = JSON.stringify({ ...JSON.parse(steps[0]!.observation) as object, taskPath: join(cwd, 'report.pdf') })
   const link = (step: TurnStep) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
   const result = { answer: `Done: report.pdf and report.md.\n\n${link(steps[3]!)}\n\n${link(steps[4]!)}`, steps: [...steps, passed('Report made')] }
   const quoted = result.answer

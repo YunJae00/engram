@@ -164,8 +164,9 @@ async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInName
 // A file the comet built in its task folder this turn and named in its answer,
 // but never handed in: the person was told about it, so it becomes an output.
 // names (source path in the task folder -> hand-in name) is filled in for every file found or already handed in.
-// made: the hashes of this turn's own receipts. A task file holding the bytes of one of them under a name the answer links is that receipt's
-// task-folder twin (a render's own copy, current or superseded), not another output.
+// made: this turn's own receipts as `hash\0taskPath`. The task file a receipt itself placed (its taskPath), still holding that receipt's bytes
+// under a name the answer links, is its task-folder twin (a render's own copy, current or superseded), not another output.
+// Another path with the same bytes is another file: two source paths under one name stay two files (qa143 S19a r11).
 export async function mentionedOutputs(cwd: string, answer: string, since: number, oversized: string[] = [], artifacts?: string, names: HandInNames = {}, made = new Set<string>()): Promise<string[]> {
   const entries = await readdir(cwd, { recursive: true }).catch(() => [] as string[])
   const found: string[] = []
@@ -184,7 +185,7 @@ export async function mentionedOutputs(cwd: string, answer: string, since: numbe
     let name = names[key]
     // An unrecorded top-level file holding the very bytes linked under its name is that output's task-folder twin: nothing new to hand in.
     if (!name && key === base && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && await handedIn(artifacts, answer, base, path)) continue
-    if (!name && made.size && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && made.has(createHash('sha256').update(await readFile(path)).digest('hex'))) continue
+    if (!name && made.size && linked.has(base.toLowerCase()) && info.size <= OUTPUT_BYTES && made.has(`${createHash('sha256').update(await readFile(path)).digest('hex')}\0${await realpath(path)}`)) continue
     name ??= freeName(base, free => taken.has(free) || linked.has(free))
     taken.add((names[key] = name).toLowerCase())
     // An oversized revision cannot match a saved output, so it still gets its size warning.
@@ -251,7 +252,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // Every new task file the answer names is handed in: nothing is left out by guessing what a file is for.
   // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
   await recordOwnCopies(cwd, result.steps, names, result.answer)
-  const hashes = new Set(result.steps.flatMap(step => latestResultOutputs([step], []).flatMap(output => output.hash ? [output.hash] : [])))
+  const hashes = new Set(await Promise.all(result.steps.flatMap(step => latestResultOutputs([step], []).flatMap(output => { try { const twin = (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath; return output.hash && typeof twin === 'string' ? [realpath(twin).then(real => `${output.hash}\0${real}`, () => '')] : [] } catch { return [] } }))))
   const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names, hashes)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
   for (const path of named) {
