@@ -115,7 +115,8 @@ export async function resolveOutput(directory: string, value: unknown): Promise<
 const findArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
 
 // Core's priorOutputs, for the wider set of output kinds.
-export async function linkedOutputs(directory: string, history: { role: string; text: string }[] | undefined): Promise<{ name: string; path: string }[]> {
+// every: each distinct file the text links, also two under one name (the readback gate answers for both: qa143 S19a); else the last one per name.
+export async function linkedOutputs(directory: string, history: { role: string; text: string }[] | undefined, every = false): Promise<{ name: string; path: string }[]> {
   const latest = new Map<string, string>()
   for (const turn of history ?? []) {
     if (turn.role !== 'assistant') continue
@@ -123,13 +124,13 @@ export async function linkedOutputs(directory: string, history: { role: string; 
       let id: string
       try { id = decodeURIComponent(match[1]!) } catch { continue }
       const name = id.replace(REVISION, '')
-      latest.delete(name)
-      latest.set(name, id)
+      latest.delete(every ? id : name)
+      latest.set(every ? id : name, id)
     }
   }
   const found: { name: string; path: string }[] = []
-  for (const [name, id] of [...latest].slice(-40)) {
-    try { found.push({ name, path: await findArtifact(directory, id) }) } catch { /* A removed or foreign file is not offered. */ }
+  for (const id of [...latest.values()].slice(-40)) {
+    try { found.push({ name: id.replace(REVISION, ''), path: await findArtifact(directory, id) }) } catch { /* A removed or foreign file is not offered. */ }
   }
   return found
 }
@@ -139,9 +140,9 @@ export async function linkedOutputs(directory: string, history: { role: string; 
 // stand (stands: the re-check stopped at the budget): its files are then kept, by path, whatever the turn made or linked under their names,
 // so a new report.md created and read in the re-check is a second file and never the readback of the report's own.
 export async function checkedOutputs(directory: string, answer: string, rechecked?: string, stands = false): Promise<{ name: string; path: string; kept?: true }[]> {
-  const own = await linkedOutputs(directory, [{ role: 'assistant', text: answer }])
+  const own = await linkedOutputs(directory, [{ role: 'assistant', text: answer }], true)
   if (rechecked === undefined) return own
-  const earlier = (await linkedOutputs(directory, [{ role: 'assistant', text: rechecked }])).filter(output => !own.some(linked => stands ? linked.path === output.path : linked.name === output.name))
+  const earlier = (await linkedOutputs(directory, [{ role: 'assistant', text: rechecked }], true)).filter(output => !own.some(linked => stands ? linked.path === output.path : linked.name === output.name))
   return [...earlier.map(output => stands ? { ...output, kept: true as const } : output), ...own.filter(linked => !stands || !earlier.some(output => output.path === linked.path))]
 }
 

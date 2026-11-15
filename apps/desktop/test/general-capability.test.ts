@@ -517,6 +517,47 @@ it('two sources copied under one name in one turn, neither linked, each get thei
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(again.answer).toBe(result.answer)
 })
+// qa143 p2 r8 (S19a): the answer linked neither of two inputs copied under one name, so core attached both as report.md. The host found each
+// one's own link and left them, files were known by name, and a passing check that read only the last one verified a turn whose first file was never read back.
+it('two inputs under one name that core attached are named apart, and reading the last one is not the readback of the first', async () => {
+  const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
+  const cwd = await workFolderFor(paths, 'bot-x')
+  await mkdir(join(cwd, 'a'), { recursive: true }); await mkdir(join(cwd, 'b'), { recursive: true })
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n'); await writeFile(join(cwd, 'b', 'y.md'), '# from b/y\n')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
+  const pathOf = (step: TurnStep) => (JSON.parse(step.observation) as { path: string }).path
+  // The first input is made twice: its earlier copy is a revision, and only the last one is a file.
+  const draft = await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') })
+  await writeFile(join(cwd, 'a', 'x.md'), '# from a/x, fixed\n')
+  const first = await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }), second = await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') })
+  const reader = cometFileTools(paths, 'bot-x', [pathOf(first), pathOf(second)], [cwd]).find(tool => tool.name === 'file_read')!
+  const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await reader.run({ path }, context) })
+  const creates = [draft, first, second]
+  const attached = outputLinks(creates as unknown as Parameters<typeof outputLinks>[0], 'Saved both reports.', cwd)
+  expect([...attached.matchAll(/\[([^\]]+)\]\(engram-artifact:/g)].map(match => match[1])).toEqual(['report.md', 'report.md'])
+  const gate = async (steps: TurnStep[], answer: string) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer)), [])
+  // The gate itself, where nothing renamed them (a turn that asked is not delivered): both linked files are checked, each by its path.
+  expect((await checkedOutputs(artifactDirectory(paths), attached)).map(output => output.path)).toEqual([pathOf(first), pathOf(second)])
+  const lastOnly = await gate([...creates, await reopen(pathOf(second)), passed('Reports saved')], attached)
+  expect(lastOnly).toMatchObject({ accepted: false, verified: false })
+  expect(lastOnly.issues).toEqual([expect.stringContaining(`Reread every final part of report.md (${pathOf(first)})`)])
+  expect(await gate([...creates, await reopen(pathOf(first)), await reopen(pathOf(second)), passed('Reports saved')], attached)).toEqual({ accepted: true, verified: true, issues: [] })
+  // Delivered: the second input is named apart, both are handed over, and the same last-only read still leaves the first unread.
+  const result = { answer: attached, steps: [...creates, await reopen(pathOf(second)), passed('Reports saved')] }
+  await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
+  const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
+  expect(links.map(match => match[1])).toEqual(['report.md', 'report-2.md'])
+  expect(await Promise.all(links.map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))).toEqual(['# from a/x, fixed\n', '# from b/y\n'])
+  expect(result.steps.slice(0, 3).map(step => step.args['name'])).toEqual(['report.md', 'report.md', 'report-2.md'])
+  const delivered = await gate(result.steps, result.answer)
+  expect(delivered).toMatchObject({ accepted: false, verified: false })
+  expect(delivered.issues.join(' ')).toContain(`Reread every final part of report.md (${pathOf(first)})`)
+  // Run again: each file's own link is there under its own name, so nothing changes.
+  const again = { answer: result.answer, steps: [...result.steps] }
+  await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
+  expect(again.answer).toBe(result.answer)
+})
 // qa142 p2a-r9 #1: a creation receipt with no fromPath is its own source, not one shared empty source where only the last per name survives.
 // qa143 S19: that source is what it was made from (here two source files); one input rendered again is a revision (see the S19 test below).
 it('two files rendered under one name in one turn each get their own name and link, and both enter the result check', async () => {

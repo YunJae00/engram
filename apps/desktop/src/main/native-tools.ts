@@ -221,14 +221,19 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const quoted = new Set(result.steps.flatMap(step => { const id = basename(ownArtifact(step)), name = id.replace(SAVED_ID, ''); return id && linkedIds(result.answer, name).some(href => href === artifactHref(id) || href === encodeURIComponent(id)) ? [`${name}\0${sourceOf(step)}`] : [] }))
   for (const output of [...receipts.values()].sort((a, b) => a.after! - b.after!)) {
     // A receipt is linked when the answer carries its own artifact, not merely a file of its name.
-    const id = basename(output.path), others = linkedIds(result.answer, output.name)
-    if (others.includes(artifactHref(id)) || others.includes(encodeURIComponent(id))) continue
-    if (quoted.has(`${output.name}\0${sourceOf(result.steps[output.after!]!)}`)) continue
+    const id = basename(output.path), others = linkedIds(result.answer, output.name), step = result.steps[output.after!]!
+    const own = others.find(href => href === artifactHref(id) || href === encodeURIComponent(id))
+    // Its own link is enough only while no other source's file is linked under this name ahead of it. Core attaches every unlinked source under
+    // the name it was given, so two inputs arrive here as two links both reading report.md, and a file is known by its name from here on
+    // (the readback gate, later turns): the later one is named apart like any second source (qa143 S19a). Its own revisions are not another source.
+    const revisions = new Set(result.steps.filter(one => sourceOf(one) === sourceOf(step) && ownArtifact(one)).flatMap(one => [artifactHref(basename(ownArtifact(one))), encodeURIComponent(basename(ownArtifact(one)))]))
+    if (own && !others.slice(0, others.indexOf(own)).some(href => !revisions.has(href))) continue
+    if (!own && quoted.has(`${output.name}\0${sourceOf(step)}`)) continue
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.
       try {
-        const step = result.steps[output.after!]!, held = new Set([...Object.values(names).map(name => name.toLowerCase()), ...linkNames(result.answer)])
+        const held = new Set([...Object.values(names).map(name => name.toLowerCase()), ...linkNames(result.answer)])
         const name = freeName(output.name, free => held.has(free))
         const saved = await saveOutput(artifactDirectory(paths), name, await readFile(output.path))
         // Its earlier revisions in this turn move with it, so the old name's latest receipt stays the other source's.
@@ -237,7 +242,8 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
         link = saved.markdownLink
       } catch (error) { flog('native-tools', `could not rename ${output.name}: ${error instanceof Error ? error.message : String(error)}`) }
     }
-    result.answer = `${result.answer}\n\n${link}`
+    // An own link that could not be renamed stays as it is: the readback gate keeps same-name files apart by path.
+    result.answer = own ? result.answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([^)\s]+)\)/g, (whole, href) => href === own ? link : whole) : `${result.answer}\n\n${link}`
   }
   if (result.stopped) return
   const handIn = fileWorkTools({ directory: artifactDirectory(paths), approveRead: async () => false, handInRoots: [cwd] }).find((tool) => tool.name === 'file_create_copy')!

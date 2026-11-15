@@ -167,7 +167,11 @@ function fullOutputRead(step: TurnStep, output: Output): boolean {
 }
 
 export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[]): Output[] {
-  const latest = new Map<string, Output>(outputs.map(output => [output.kept ? output.path : output.name, output]))
+  // Two linked files of one name are two files, each known by its path: a read of the last one is not the readback of the first (qa143 S19a).
+  // Any other receipt under their name is an earlier revision of one of them (core and the host link the last copy of every input), not a third file.
+  const twins = new Set(outputs.filter(output => !output.kept && outputs.some(other => !other.kept && other.name === output.name && other.path !== output.path)).map(output => output.name))
+  const byPath = (output: { name: string; kept?: true }) => !!output.kept || twins.has(output.name)
+  const latest = new Map<string, Output>(outputs.map(output => [byPath(output) ? output.path : output.name, output]))
   for (const [position, step] of steps.entries()) {
     if (step.seeded || !CREATES.test(step.tool)) continue
     const value = receipt(step)
@@ -176,8 +180,9 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
     const source = handedInFrom(step)
     const made: Output = { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}), ...(source ? { source } : {}) }
     // A kept file made again byte for byte is still that file, to be read after this write; any other file under its name is a second file beside it.
-    if (latest.get(value.path)?.kept) latest.set(value.path, { ...made, kept: true })
-    else latest.set(step.args.name, made)
+    const held = latest.get(value.path)
+    if (held) latest.set(value.path, { ...made, ...(held.kept ? { kept: true as const } : {}) })
+    else if (!twins.has(step.args.name)) latest.set(step.args.name, made)
   }
   return [...latest.values()]
 }
