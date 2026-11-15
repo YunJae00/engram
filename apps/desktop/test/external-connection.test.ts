@@ -10,7 +10,8 @@ import { initVault, loadBots } from 'core'
 import type { VaultContext } from '../src/main/vault.js'
 
 const fake = vi.hoisted(() => ({ data: '', approve: vi.fn(), clearWork: vi.fn(), settings: { computerUse: false } }))
-vi.mock('electron', () => ({ app: { getPath: () => fake.data }, dialog: { showMessageBox: fake.approve } }))
+const shown = vi.hoisted(() => ({ visible: true, window: { isDestroyed: () => false, isVisible: () => shown.visible } }))
+vi.mock('electron', () => ({ app: { getPath: () => fake.data }, dialog: { showMessageBox: fake.approve }, BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [shown.window] } }))
 vi.mock('../src/main/agent-courier.js', () => ({ agentCourier: () => ({}) }))
 vi.mock('../src/main/agent-browser.js', () => ({ resetLane: async () => {} }))
 vi.mock('../src/main/office-agent.js', () => ({ officeAgentTools: () => [] }))
@@ -51,6 +52,13 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   fake.approve.mockResolvedValue({ response: 0 })
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('declined')
   expect(await readdir(paths.inbox)).toHaveLength(0)
+  // QA 0.8.142 B6: always a sheet on Engram's visible window, never an app-modal dialog.
+  expect(fake.approve.mock.calls.at(-1)![0]).toBe(shown.window)
+  shown.visible = false
+  const asked = fake.approve.mock.calls.length
+  expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('not on screen')
+  expect(fake.approve.mock.calls.length).toBe(asked)
+  shown.visible = true
   fake.approve.mockResolvedValue({ response: 1 })
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toBeUndefined()
   expect(externalStatus().connected).toBe(1)
@@ -64,7 +72,7 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   expect((await request('engram_capture', { text: 'Denied' })).error).toContain('declined')
   expect((await readdir(paths.inbox)).filter(name => name.endsWith('-capture.md'))).toHaveLength(1)
   let signal: AbortSignal | undefined
-  fake.approve.mockImplementation((options: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+  fake.approve.mockImplementation((_owner: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
     signal = options.signal
     signal.addEventListener('abort', () => reject(new Error('Canceled')), { once: true })
   }))

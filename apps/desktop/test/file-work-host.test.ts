@@ -172,3 +172,16 @@ it('re-reads a copy it just handed in, and files in its own task folder, without
   expect(ask).not.toHaveBeenCalled()
   expect(state.dialog).not.toHaveBeenCalled()
 })
+
+it.skipIf(process.platform === 'win32')('does not trust a task folder that is a link to another chat\'s folder', async () => {
+  const other = join(root, 'workspace', 'tasks', 'other')
+  await mkdir(other, { recursive: true })
+  await writeFile(join(other, 'notes.txt'), 'other chat')
+  const linked = join(root, 'workspace', 'tasks', 'lane')
+  await symlink(other, linked)
+  const ask = vi.fn().mockResolvedValue('cancel')
+  const tool = hostFileTools(vaultPaths(root), 'lane', [], [linked], { ask }).find(t => t.name === 'file_read')!
+  const result = await tool.run({ path: join(other, 'notes.txt') }, { task: 'Read notes.' }).catch((error: Error) => error.message)
+  expect(String(result)).not.toContain('other chat')
+  expect(ask).toHaveBeenCalledOnce()
+})

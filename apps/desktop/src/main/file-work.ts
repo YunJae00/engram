@@ -204,12 +204,14 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     findFiles: (query, signal) => findLocalFiles(USER_FOLDERS.map((dir) => app.getPath(dir)), paths.privateDir, query, signal),
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
+      const realTaskRoot = await realpath(taskRoot(paths)).catch(() => '')
       await assertReadable(path)
       if (approved.has(path) && await realpath(path) === path) return true
       const real = await realpath(path)
       // This task's folder: files the comet built itself, which its own file
       // tools also read without asking. Its handed-in outputs are in `approved`.
-      const own = await Promise.all(handInRoots.map(root => realpath(root).catch(() => '')))
+      // A folder that is a link or leads out of the workspace's task folders is not trusted.
+      const own = await Promise.all(handInRoots.map(root => ensureTaskFolder(paths, root).then(real => within(realTaskRoot, real) ? real : '', () => '')))
       if (own.some(root => root && within(root, real))) return true
       // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
