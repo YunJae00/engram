@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest'
+import { join } from 'node:path'
 import { listTasks, TASK_TOKEN_BUDGET } from 'core'
 import { done, setup, pressed } from './task-runner-fixture.js'
 
@@ -268,6 +269,33 @@ it('finishes with the checked report when only its re-check ran out of budget', 
   // The report, which waited for that re-check, is posted once; the budget text is not, and there is no limit-stop closing.
   expect(t.delivered).toEqual([report])
   expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
+})
+
+// qa143 p2 r7 S19b: the re-check made another report.md, read both files in full and stopped at the budget, so the earlier report rightly
+// stood as done; but it was posted with the re-check's steps, and the host pointed its link at the newer report.md (newestRevisions).
+it('posts the report restored at a budget stop with its own file, not a same-name file made in the re-check', async () => {
+  const { saveArtifact } = await import('core')
+  const { latestResultOutputs } = await import('../src/main/result-check.js')
+  const { newestRevisions } = await import('../src/main/file-work.js')
+  let directory = '', own = '', since = 0
+  const read = (path: string) => ({ tool: 'file_read', args: { path }, observation: JSON.stringify({ path, sha256: 'x', content: 'x' }) })
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) {
+      directory = join(t.paths.cache, 'artifacts'); since = Date.now() - 1000
+      const first = await saveArtifact(directory, 'report.md', Buffer.from('# Report\n'))
+      own = `Report written.\n\n${first.markdownLink}`
+      return { ...done(own, 1), tokensUsed: 240_000, check: unreadCheck, trail: [read(first.path)] }
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const second = await saveArtifact(directory, 'report.md', Buffer.from('# Another report\n'))
+    const made = { tool: 'file_create_copy', args: { name: 'report.md', content: '# Another report\n' }, observation: JSON.stringify(second) }
+    return { ...budgetStop, check: hostAccepted, trail: [made, read(second.path), fileRead] }
+  }, false)
+  await t.chat('Write the report')
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: own, verified: true })
+  expect(t.delivered).toEqual([own])
+  // As ipc.ts deliver does with the trail it is handed.
+  expect(await newestRevisions(directory, own, since, latestResultOutputs(t.deliveredTrails[0]!, []).map(output => output.path))).toBe(own)
 })
 
 it.each([

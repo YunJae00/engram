@@ -127,6 +127,9 @@ export function taskRunner(deps: {
   // The transcript does not have it yet, so it is also saved on the task (task.unshown): a quit or crash during the re-check leaves it for resume to post.
   // It is saved (saveHeld) before the host drops the answer's visible draft, so no moment has the report neither on screen nor on disk (qa143 p2 r5 S19d).
   const unshown = new Map<string, string>()
+  // The steps up to the end of the last turn that was no re-check: a waiting report is posted with these alone. Its links are its own files;
+  // the re-check's steps would point them (newestRevisions) at a file of the same name made in the re-check (qa143 p2 r7 S19b).
+  const reportTrails = new Map<string, TurnStep[]>()
   // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
   const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
@@ -147,7 +150,7 @@ export function taskRunner(deps: {
   const flush = async (task: DelegatedTask | undefined): Promise<void> => {
     const draft = task && unshown.get(task.id)
     if (!task || draft === undefined) return
-    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), trails.get(task.id) ?? [])
+    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), reportTrails.get(task.id) ?? trails.get(task.id) ?? [])
     await shown(task.id)
   }
   // Cleared only once something stands in the thread for it: a crash in between posts it twice rather than never.
@@ -181,6 +184,7 @@ export function taskRunner(deps: {
     const outcome = deps.outcome(request.channel ?? '')
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
+    if (!extra?.verification) reportTrails.set(id, trail)
     const reported = verdicts.get(id)
     // Set when a verification turn ran out of budget after the host had accepted its check of the report it re-checks: only then can that report stand.
     let recheckOf = ''
@@ -289,7 +293,7 @@ export function taskRunner(deps: {
     await flush(task)
     if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
-    if (task.state !== 'waiting') trails.delete(task.id)
+    if (task.state !== 'waiting') { trails.delete(task.id); reportTrails.delete(task.id) }
     if (['done', 'waiting', 'failed'].includes(task.state)) {
       const checkpoint = await readCheckpoint(paths, task.botId)
       taskQueued(task.botId, !!(checkpoint.pending.length))
@@ -385,7 +389,7 @@ export function taskRunner(deps: {
       stopped.add(channel)
       deps.abort(channel)
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && ['queued', 'running', 'waiting'].includes(t.state))) {
-        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id)
+        approvalScopes.delete(task.id); approved.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); trails.delete(task.id); reportTrails.delete(task.id)
         await edit(task.id, t => { if (['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; logTask(t, 'Stopped by you') } })
       }
     },
