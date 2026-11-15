@@ -253,6 +253,30 @@ it('attaches word_write and ppt_build outputs the answer did not link, without r
   expect(linked).toContain(deck.markdownLink)
 })
 
+// qa143 p2 r3 #3: nothing after outputLinks hands over a word_write or ppt_build file, so the answer's link to one report.docx must not
+// hide another input's report.docx. The same input built again is a revision: the last one counts, once.
+it.each(['word_write', 'ppt_build'])('keeps another %s input under a linked name, and only the last build of one input', (tool) => {
+  const ext = tool === 'word_write' ? 'docx' : 'pptx'
+  const made = (id: number, input: string) => ({ tool, args: { title: 'report', blocks: [input] }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.${ext})` }) })
+  const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
+  const a1 = made(1, 'sales'), a2 = made(2, 'sales'), b = made(3, 'costs')
+  const steps = [a1, b, a2] as unknown as Parameters<typeof outputLinks>[0]
+  // The answer quotes the final build of one input: its earlier build is the version it replaced; the other input is another file.
+  const linked = outputLinks(steps, `보고서: ${link(a2)}`)
+  expect(linked).toContain(link(b))
+  expect(linked).not.toContain(link(a1))
+  expect(linked.split(link(a2)).length - 1).toBe(1)
+  // The answer quotes nothing: one file per input, the last build of each.
+  const unlinked = outputLinks(steps, '다 만들었어요.')
+  expect(unlinked).toContain(link(a2))
+  expect(unlinked).toContain(link(b))
+  expect(unlinked).not.toContain(link(a1))
+  // A file copy of that name is another source too; the host's own delivery still settles file receipts by name.
+  const copy = { tool: 'file_create_copy', args: { name: `report.${ext}` }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-000000000009-report.${ext})` }) }
+  expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(copy)}`)).toContain(link(b))
+  expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(b)}`)).not.toContain(link(copy))
+})
+
 // qa143 S19 (d): the wrap-up was checked (report_result_check) after a PDF's file_read found no text; the turn was still called unverified,
 // continued automatically and restated.
 it('leaves a failed file read to the result check reported after it', () => {

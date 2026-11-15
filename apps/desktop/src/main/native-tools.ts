@@ -5,7 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, type NativeDecision, type NativeTools, type PermissionMode, type TurnStep, type VaultPaths } from 'core'
 import type { Ask } from './page-actions.js'
-import { artifactDirectory, ensureTaskFolder, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot } from './file-work.js'
+import { artifactDirectory, ensureTaskFolder, freeName, OUTPUT_BYTES, OUTPUT_EXTENSIONS, saveOutput, taskFile, taskRoot } from './file-work.js'
 import { flog } from './flog.js'
 import { latestResultOutputs } from './result-check.js'
 import { noteScript } from './turn-scripts.js'
@@ -158,14 +158,6 @@ async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInName
     if (!root) continue
     const key = sourceKey(root, source as string), name = basename(made['path']).replace(SAVED_ID, '')
     if (!names[key] && !Object.values(names).some(taken => taken.toLowerCase() === name.toLowerCase())) names[key] = name
-  }
-}
-
-// The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
-function freeName(base: string, held: (name: string) => boolean): string {
-  for (let count = 1; ; count++) {
-    const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
-    if (!held(free.toLowerCase())) return free
   }
 }
 

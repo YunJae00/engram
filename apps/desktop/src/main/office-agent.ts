@@ -4,6 +4,7 @@ import { screen } from 'electron'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { bindDesktopForLane } from './desktop-access.js'
+import { freeName } from './file-work.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
 
 // A new deck or document is composed as a file with a designed layout, not
@@ -15,7 +16,7 @@ export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Recor
 
 // A new deck or document is built headlessly and handed in; no Office window
 // opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
-async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, names: Set<string>, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
   signal?.throwIfAborted()
   assertActive?.()
   if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
@@ -24,7 +25,10 @@ async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string
     : await (await import('./doc-render.js')).buildDoc(args as unknown as Parameters<typeof import('./doc-render.js').buildDoc>[0])
   signal?.throwIfAborted()
   assertActive?.()
-  const receipt = await outputs.save(built.name, built.data)
+  // Another input built under a name this session already handed in is another file, known by name: report.docx, report-2.docx (qa143 S19a).
+  const name = freeName(built.name, held => names.has(held))
+  const receipt = await outputs.save(name, built.data)
+  names.add(name.toLowerCase())
   const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
   return { ...receipt, ...count, verification: 'Built as a file and handed in to the chat; no Office window was opened. Read the saved file back before claiming completion.' }
 }
@@ -54,11 +58,12 @@ export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTo
   // The same deck or document built again in this session is the file already
   // handed in, not a twin: built bytes carry a timestamp (QA 0.8.142 B11 duplicates).
   const composed = new Map<string, unknown>()
+  const names = new Set<string>()
   const tools = officeTools({ run: async (op, args, signal) => {
     if (op === 'ppt.build' || op === 'word.write') {
       const key = `${op}\0${JSON.stringify(args)}`
       if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
-      const receipt = await composeOffice(op, args, outputs, signal, () => assertDesktopTurnNotStopped(lane))
+      const receipt = await composeOffice(op, args, outputs, names, signal, () => assertDesktopTurnNotStopped(lane))
       composed.set(key, receipt)
       return receipt
     }

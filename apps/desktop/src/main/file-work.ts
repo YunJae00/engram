@@ -75,6 +75,14 @@ export async function placeInTask(folder: string, name: string, data: Buffer): P
   } finally { await unlink(tmp).catch(() => undefined) }
 }
 
+// The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
+export function freeName(base: string, held: (name: string) => boolean): string {
+  for (let count = 1; ; count++) {
+    const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
+    if (!held(free.toLowerCase())) return free
+  }
+}
+
 export async function saveOutput(directory: string, name: string, data: Buffer) {
   outputName(name)
   if (data.length > OUTPUT_BYTES) throw new Error('Generated output exceeds 50 MB.')

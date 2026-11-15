@@ -59,6 +59,26 @@ it('writes a Word document the same way, without opening Word', async () => {
   await expect(stat(join(fake.home, 'Engram'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
+// qa143 p2 r3 #3: two different inputs under one name are two files, known by name; the same input built again is the file already handed in.
+// The answer's link to one of them does not hide the other.
+it('hands in a second input under one name as report-2, and keeps both when the answer links one', async () => {
+  const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
+  for (const [name, ext, input] of [['word_write', 'docx', (text: string) => ({ title: 'report', blocks: [{ kind: 'paragraph', text }], theme: THEME })], ['ppt_build', 'pptx', (text: string) => ({ slides: [{ title: text }], saveAs: 'report.pptx', theme: THEME })]] as const) {
+    const tool = tools().find(t => t.name === name)!
+    const run = async (text: string) => { const args = input(text), observation = await tool.run(args, { task: '보고서' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { markdownLink: string; artifact: string; taskPath: string } } }
+    const sales = await run('sales'), costs = await run('costs'), again = await run('sales')
+    expect(sales.receipt.markdownLink).toMatch(new RegExp(`^\\[report\\.${ext}\\]\\(engram-artifact:`))
+    expect(costs.receipt.markdownLink).toMatch(new RegExp(`^\\[report-2\\.${ext}\\]\\(engram-artifact:`))
+    expect(again.receipt.artifact).toBe(sales.receipt.artifact)
+    expect((await readdir(task)).filter(file => file.endsWith(`.${ext}`)).sort()).toEqual([`report-2.${ext}`, `report.${ext}`])
+    const steps = [sales.step, costs.step, again.step] as unknown as Parameters<typeof outputLinks>[0]
+    for (const quoted of [sales, costs]) {
+      const answer = outputLinks(steps, `보고서: ${quoted.receipt.markdownLink}`)
+      for (const one of [sales, costs]) expect(answer.split(one.receipt.markdownLink).length - 1).toBe(1)
+    }
+  }
+})
+
 it('hands in one file when the same deck is built again', async () => {
   const tool = tools().find(t => t.name === 'ppt_build')!
   const first = JSON.parse(await tool.run({ slides, theme: THEME }, { task: '슬라이드' }))

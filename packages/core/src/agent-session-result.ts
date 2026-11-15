@@ -4,19 +4,26 @@ import type { AgentLoopStep } from './agent-loop.js'
 export function outputLinks(steps: AgentLoopStep[], answer: string): string {
   const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
   const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
-  const outputs: { link: string; id: string; name: string }[] = []
-  const links = new Set<string>()
+  // What a composed document or deck was made from: its tool and its own input. Nothing later hands these over (the host's native delivery
+  // knows only file receipts), so a second input under a linked name is still attached here. Other kinds are settled by name; the host decides their sources.
+  const outputs: { link: string; id: string; name: string; source: string }[] = []
   for (const step of steps) {
     if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', 'word_write', 'ppt_build'].includes(step.tool)) continue
     try {
       const result = JSON.parse(step.observation) as { markdownLink?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
-      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!) })
+      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: ['word_write', 'ppt_build'].includes(step.tool) ? `${step.tool}\0${JSON.stringify(step.args)}` : '' })
     } catch { /* Failed writes have no output receipt. */ }
   }
-  const chosenNames = new Set(outputs.filter(output => selected.has(output.id)).map(output => output.name))
-  for (const output of outputs) if (!selected.has(output.id) && !chosenNames.has(output.name)) links.add(output.link)
-  return links.size ? `${answer}\n\n${[...links].join('\n\n')}` : answer
+  // The answer's link sets aside the other versions of the input it quotes (the same input built again is a revision, where the last one counts),
+  // not another input's file of that name: two different inputs under one name are two files (qa143 S19a).
+  const chosen = outputs.filter(output => selected.has(output.id))
+  const links = new Map<string, string>()
+  for (const output of outputs) {
+    if (selected.has(output.id) || chosen.some(one => one.name === output.name && (!output.source || one.source === output.source))) continue
+    links.set(output.source ? `${output.name}\0${output.source}` : output.link, output.link)
+  }
+  return links.size ? `${answer}\n\n${[...new Set(links.values())].join('\n\n')}` : answer
 }
 
 const reportedCheck = (step: AgentLoopStep): boolean => {
