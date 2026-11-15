@@ -29,6 +29,8 @@
 .sidebar-team .team-tree { padding: 2px 4px 2px 16px; }
 .sidebar-team .team-member-row { padding: 1px 0; }
 .sidebar-primary-button .sidebar-team-line { max-width: 100%; text-align: center; }
+.sidebar-primary:has(> .sidebar-team) { flex-direction: column; align-items: center; }
+.sidebar-primary > .sidebar-team { flex: none; max-width: 100%; padding: 0 8px; }
 @keyframes team-member-in { from { grid-template-rows: 0fr; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .team-member-in, .sidebar-team-line { animation: none; }

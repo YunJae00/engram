@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication } from '@playwright/test'
-import { createBot, createTask, initVault, resetBotsToV2, updateTask } from 'core'
+import { createBot, createTask, initVault, loadBots, resetBotsToV2, updateTask } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +18,11 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   const task = await createTask(paths, 'Plan the offsite', botId)
   const lead = (id: string, role: string, state: 'working' | 'done', parentId: string | null = null) => ({ id, parentId, depth: parentId ? 2 : 1, role, brief: role, state, sessionKey: `s-${id}`, hiredAt: new Date().toISOString() })
   await updateTask(paths, task.id, t => { t.state = 'waiting'; t.question = 'Which city?'; t.team = { members: [lead('m1', 'Venue lead', 'working'), lead('m2', 'Venue helper', 'working', 'm1'), lead('m3', 'Budget lead', 'done')], hires: 3, maxHires: 8, maxDepth: 3, big: false } })
+  // The primary bot's own button gets the same disclosure.
+  const heroId = (await loadBots(paths)).find(bot => bot.primary)!.id
+  expect(heroId).not.toBe(botId)
+  const heroTask = await createTask(paths, 'Plan the launch', heroId)
+  await updateTask(paths, heroTask.id, t => { t.state = 'waiting'; t.question = 'Which day?'; t.team = { members: [lead('h1', 'Launch lead', 'working')], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-sidebar-team-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'mock', ENGRAM_HIDDEN: '1' } })
   const page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
@@ -35,4 +40,9 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   await expect(row.getByTestId('sidebar-team-lead').first()).toBeVisible()
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  const heroToggle = page.locator('.sidebar-primary').getByTestId('sidebar-team-toggle')
+  await expect(heroToggle, 'SIDEBAR-TEAM primary collapsed by default').toHaveAttribute('aria-expanded', 'false')
+  expect((await heroToggle.boundingBox())!.y, 'SIDEBAR-TEAM primary disclosure sits under its button').toBeGreaterThanOrEqual((b => b.y + b.height - 1)((await page.getByTestId(`bot-${heroId}`).boundingBox())!))
+  await heroToggle.click()
+  await expect(page.locator('.sidebar-primary').getByTestId('sidebar-team-lead'), 'SIDEBAR-TEAM primary leads').toHaveText([/Launch lead.+/])
 })
