@@ -22,26 +22,27 @@
 .bot-orb-ribbons, .bot-orb-ribbon, .bot-orb-core { position: absolute; inset: 0; width: 100%; height: 100%; }
 .bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 52% 53%; }
 .bot-orb-ribbon {
-  overflow: visible; fill: color-mix(in srgb, var(--orb) 84%, #FFFFFF); fill-opacity: 0.34;
-  stroke: color-mix(in srgb, var(--orb) 62%, #FFFFFF); stroke-opacity: 0.6; stroke-width: clamp(0.5px, 1cqw, 1.6px); filter: blur(0.25cqw);
+  overflow: visible; fill: color-mix(in srgb, var(--orb) 84%, #FFFFFF); fill-opacity: 0.38;
+  stroke: color-mix(in srgb, var(--orb) 62%, #FFFFFF); stroke-opacity: 0.42; stroke-width: clamp(0.7px, 1.6cqw, 2.4px);
+  filter: blur(0.45cqw) drop-shadow(0 0 1.2cqw color-mix(in srgb, var(--orb) 50%, transparent));
   stroke-linejoin: round; vector-effect: non-scaling-stroke;
   -webkit-mask-image: radial-gradient(circle at 52% 53%, #000 24%, rgba(0, 0, 0, 0.42) 80%);
   mask-image: radial-gradient(circle at 52% 53%, #000 24%, rgba(0, 0, 0, 0.42) 80%);
 }
 .bot-orb-ribbon path { vector-effect: non-scaling-stroke; }
-.bot-orb-ribbon:nth-child(2) { fill-opacity: 0.32; }
+.bot-orb-ribbon:nth-child(2) { fill-opacity: 0.36; }
 .bot-orb-ribbon:nth-child(3) { fill-opacity: 0.1; stroke-opacity: 0.3; -webkit-mask-image: none; mask-image: none; }
 .bot-orb-core {
   inset: auto; left: 32%; top: 33%; width: 40%; height: 40%; border-radius: 50%; opacity: 0.92;
   background: radial-gradient(circle, #FFFFFF 0%, #FFFFFF 7%, color-mix(in srgb, var(--orb) 40%, #FFFFFF) 15%, color-mix(in srgb, var(--orb) 55%, transparent) 30%, color-mix(in srgb, var(--orb) 18%, transparent) 50%, transparent 70%);
 }
 @container (max-width: 40px) {
-  .bot-orb-ribbon { fill-opacity: 0.34; stroke-opacity: 0.9; }
+  .bot-orb-ribbon { fill-opacity: 0.42; stroke-opacity: 0.7; filter: none; }
   .bot-orb-ribbon:nth-child(3) { fill-opacity: 0.1; stroke-opacity: 0.4; }
   .bot-orb-core { left: 26%; top: 27%; width: 52%; height: 52%; }
 }
 .bot-orb[data-motion='working'] .bot-orb-core { opacity: 1; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon { stroke-opacity: 0.9; }
+.bot-orb[data-motion='working'] .bot-orb-ribbon { stroke-opacity: 0.58; }
 
 .bot-orb[data-motion='idle'] .bot-orb-ribbons { animation: bot-orb-sway 12s ease-in-out infinite; will-change: transform; }
 .bot-orb[data-motion='idle'] .bot-orb-ribbon:not(:last-child) { --m: 0.5; animation: bot-orb-morph 11s ease-in-out infinite; will-change: transform; }
