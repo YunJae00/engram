@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp } from './navigation.js'
 
 const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-let app: ElectronApplication, page: Page, dirs: string[] = []
+let app: ElectronApplication, page: Page, dirs: string[] = [], paths: Awaited<ReturnType<typeof initVault>>
 
 test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-fade-vault-')), data = await mkdtemp(join(tmp, 'e2e-fade-data-'))
   dirs = [vault, data]
-  const paths = await initVault(vault, { git: false })
+  paths = await initVault(vault, { git: false })
   await writeFile(join(data, 'settings.json'), JSON.stringify({ theme: 'light', uiLanguage: 'en' }))
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: data, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow()
@@ -58,3 +58,38 @@ test('an in-view message with empty space above it is fully opaque', async () =>
   }, { points: [spot.first, spot.last], width: spot.width })
   for (let channel = 0; channel < 3; channel++) expect(Math.abs(first![channel]! - last![channel]!), `top bubble ${first} vs last bubble ${last}`).toBeLessThanOrEqual(3)
 })
+
+test('qa143 S24: scrolled messages are cut off below the title pill, never behind it', async () => {
+  const thread = page.locator('[data-testid="bots-view"] .bots-thread')
+  const edges = await thread.evaluate(node => {
+    node.scrollTop = 120
+    const pill = document.querySelector('[data-testid="bots-view"] [data-testid="bots-title-pill"]')!.getBoundingClientRect()
+    return { scrolled: node.scrollTop, threadTop: node.getBoundingClientRect().top, pillBottom: pill.bottom }
+  })
+  expect(edges.scrolled).toBeGreaterThan(0)
+  expect(edges.threadTop).toBeGreaterThanOrEqual(edges.pillBottom)
+  await thread.evaluate(node => { node.scrollTop = 0 })
+  const first = await thread.locator('.bubble-msg').first().boundingBox()
+  expect(first!.y).toBeGreaterThanOrEqual(edges.pillBottom)
+})
+
+test('qa143 S04/S14: one answer is one bubble, and a file made in a turn is carded once', async () => {
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Card Bot' }))
+  const at = new Date().toISOString(), link = '[deck.pptx](engram-artifact:deck.pptx)'
+  await appendBotTurn(paths, bot.id, { role: 'user', text: 'Make the deck', at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `Made the deck.\n\n${link}\n\n---\n\nFour slides, cover first.`, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `Read it again.\n\n${link}`, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `All checked.\n---\nNothing to fix.\n\n\`\`\`replies\nThanks\nAdd a slide\n\`\`\`\n\n${link}`, at })
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  const answers = page.locator('[data-testid="bots-view"] .bots-thread .bubble-msg.assistant')
+  await expect(answers).toHaveCount(3)
+  await expect(answers.nth(0)).toContainText('Made the deck.')
+  await expect(answers.nth(0)).toContainText('Four slides, cover first.')
+  await expect(answers.nth(0).locator('h2, hr')).toHaveCount(0)
+  await expect(answers.nth(2)).toContainText('Nothing to fix.')
+  await expect(page.locator('[data-testid="bots-view"] [data-testid="answer-file"]')).toHaveCount(1)
+  await expect(answers.nth(2).getByTestId('answer-file')).toHaveCount(1)
+})
+

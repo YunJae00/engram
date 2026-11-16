@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, answerWhole, laterFiles, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
@@ -192,4 +192,24 @@ it('opens the exact Accessibility settings link through the external window hand
   const html = answerHtml('[Settings](x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility)')
   expect(html).toContain('target="_blank"')
   expect(html).toContain('rel="noopener noreferrer"')
+})
+
+describe('qa143 one answer, one bubble, one card', () => {
+  it('S14/S26 keeps a lead line and its details in one bubble, without the separator turning the lead into a heading', () => {
+    const whole = answerWhole('It is Gyeongbokgung.\n---\nBuilt in 1395.\n\n---\n\n```\na\n---\nb\n```\n```replies\nMore\n```')
+    expect(whole).toBe('It is Gyeongbokgung.\n\nBuilt in 1395.\n\n```\na\n---\nb\n```')
+    expect(answerHtml(whole)).not.toMatch(/<h2|<hr/)
+    expect(answerWhole('Just one line.')).toBe('Just one line.')
+  })
+  it('S04 cards a file once per turn, under the last answer that links it', () => {
+    const link = (id: string) => `[${id}](engram-artifact:${encodeURIComponent(id)})`
+    const messages = [
+      { role: 'assistant', text: `Earlier turn.\n\n${link('deck.pptx')}` },
+      { role: 'user', text: 'make it again' },
+      { role: 'assistant', text: `Made it.\n\n${link('deck.pptx')}\n${link('notes.md')}` },
+      { role: 'assistant', text: `Read it again.\n\n${link('deck.pptx')}` },
+      { role: 'assistant', text: `Checked.\n\n\`\`\`replies\nOk\n\`\`\`\n\n${link('deck.pptx')}` },
+    ]
+    expect(laterFiles(messages)).toEqual(['', '', 'deck.pptx', 'deck.pptx', ''])
+  })
 })

@@ -102,6 +102,9 @@ export function answerBubbles(text: string): string[] {
   return bubbles.length ? bubbles : [answerText(text)]
 }
 
+// One answer is one bubble: its separator lines fall away and the parts stay paragraphs of it.
+export const answerWhole = (text: string): string => answerBubbles(text).join('\n\n')
+
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
 }
@@ -143,6 +146,20 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
     } catch { /* A malformed link stays as written. */ }
   }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
+}
+
+// A file made in a turn gets one card, under the last answer that links it. For each message: the
+// ids (one per line) that a later answer to the same question cards, so this one does not.
+export function laterFiles(messages: readonly { role: string; text: string }[]): string[] {
+  const out: string[] = [], later = new Set<string>()
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const { role, text } = messages[i]!
+    if (role !== 'assistant') later.clear()
+    const ids = role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []
+    out[i] = ids.filter(id => later.has(id)).join('\n')
+    for (const id of ids) later.add(id)
+  }
+  return out
 }
 
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
