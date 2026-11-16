@@ -32,7 +32,7 @@ export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'r
 export const LOOKUP_SOFT_MS = 18_000
 export const LOOKUP_HARD_MS = 24_000
 export const LOOKUP_MAX_CALLS = 6
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about twenty seconds. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about twenty seconds. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the address of each page the facts came from (the page itself, never a search-results address). A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -98,6 +98,18 @@ export function releaseAll(team: TaskTeam, at: string): string[] {
 
 // One line that only says what the member is about to do ("지금 검색하겠습니다."): cut off there, it reported nothing.
 const PROGRESS_ONLY = /^(?:[^\n]{0,120}(?:겠습니다|겠어요|[할볼릴]게요|하는 중(?:입니다|이에요)?)|(?:I['’]ll|I will|I am going to|I'm going to|Let me|Searching|Looking|Checking)\b[^\n]{0,120})[.!…\s]*$/i
+// A results page is where a member searched, not where the fact is; a wall or an error page answered nothing.
+const SEARCH_PAGE = /^https?:\/\/(?:[^/\s]*\bsearch\.|[^\s?#]*\/(?:search|results)\b|\S*[?&](?:q|query|search_query|wd|keyword)=)/i
+const WALLED = /로봇|캡차|자동\s?입력|비정상적인 (?:트래픽|접근)|접근이?\s?(?:거부|차단|제한)|차단(?:되|됐|당)|오류(?:가|를)?\s?(?:발생|났|나서)|에러|페이지를 찾을 수 없|열리지 않|(?:열|읽|찾|확인할|가져올|접속할) 수 ?(?:가 )?없|(?:읽|찾|확인하|가져오|접속하)지 못|실패|\b(?:robot|captcha|unusual traffic|access denied|forbidden|blocked|not found|error|failed|could ?n[o']t|cannot|can't|unable to|timed out)\b/i
+// grokbar review r1: "지금 검색하겠습니다. https://search.naver.com/…" was accepted for its link alone. A member answered its brief
+// when, the links and the "about to do" lines taken out, facts are left, nothing in it reports a wall or a failure, and a source is a page of its own.
+// shortcut: wording only, no model reads the brief against the answer; the lead still reads every result while merging.
+export function answeredLookup(answer: string): boolean {
+  const links = answer.match(/https?:\/\/[^\s)\]>"']+/g) ?? []
+  if (!links.some(link => !SEARCH_PAGE.test(link)) || WALLED.test(answer)) return false
+  const said = answer.replace(/https?:\/\/[^\s)\]>"']+/g, ' ').split(/(?<=[.!?…。])\s+|\n+/).filter(part => part.trim() && !PROGRESS_ONLY.test(part.trim())).join(' ').replace(/[\s\p{P}\p{S}]+/gu, '')
+  return said.length >= 30 || /\d/.test(said) && said.length >= 4
+}
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = outcome.answer.trim(), answer = outcome.timedOut && PROGRESS_ONLY.test(said) ? '' : said
@@ -109,7 +121,7 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   member.result = cut(answer, MEMBER_RESULT_CHARS - tail.length) + tail
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
-  else if (member.lookup && member.state === 'done' && !tail && /https?:\/\/[^\s)]+/.test(answer)) member.review = { ok: true, note: AUTO_REVIEW }
+  else if (member.lookup && member.state === 'done' && !tail && answeredLookup(answer)) member.review = { ok: true, note: AUTO_REVIEW }
 }
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`

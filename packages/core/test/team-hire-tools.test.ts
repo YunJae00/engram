@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { LOOKUP_RULE, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -78,6 +78,19 @@ describe('team hire tools', () => {
     expect(settled({ answer: '', error: 'it was stopped.' }).review).toBeUndefined()
     expect(settled({ answer: '정리했어요 https://weather.example\n/tmp/out/weather.xlsx' }).review).toBeUndefined()
     expect(settled({ answer: '서울 12도 (https://weather.example/seoul)' }, { lookup: undefined }).review).toBeUndefined()
+    // grokbar review r1: a link alone is not an answer. An opening line, a results page as the only source, a wall or an error keep the lead's review.
+    for (const answer of [
+      '지금 검색하겠습니다. https://search.naver.com/search.naver?query=weather', '지금 검색하겠습니다. https://weather.example/seoul', "I'll look it up now. https://weather.example/seoul", '확인해 볼게요. 잠시만요. https://weather.example/seoul',
+      '서울 12도 맑음 https://search.naver.com/search.naver?query=서울+날씨', '서울 12도 https://www.google.com/search?q=seoul+weather', '서울 12도 https://www.bing.com/search?q=seoul', '서울 12도 https://duckduckgo.com/?q=seoul+weather',
+      '로봇 확인 화면이 떠서 읽지 못했습니다. https://shop.example/item/1', '페이지를 찾을 수 없습니다 (404 Not Found) https://shop.example/a', 'Access denied on https://shop.example/price so I could not read it', '오류가 발생했습니다. 가격 799달러 https://shop.example/a',
+    ]) {
+      expect(answeredLookup(answer), answer).toBe(false)
+      expect(settled({ answer }), answer).toMatchObject({ state: 'done' })
+      expect(settled({ answer }).review, answer).toBeUndefined()
+    }
+    for (const answer of ['엔비디아(NVDA) 종가 162.85달러 (-2.01%). 출처: https://finance.example/quote/NVDA', '갤럭시 S27은 내년 2월 공개가 유력하고 가격은 아직 발표되지 않았습니다.\nhttps://news.example/s27', '서울 12도 맑음. 검색: https://search.naver.com/search.naver?query=서울 출처: https://weather.example/seoul', 'Seoul is 12°C and clear today. https://weather.example/today/seoul'])
+      expect(settled({ answer }).review, answer).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(LOOKUP_RULE).toContain('never a search-results address')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`

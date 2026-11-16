@@ -180,7 +180,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, withFirstLine } from './first-line.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, smallTalkAnswer, withFirstLine } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2660,6 +2660,10 @@ export function registerIpc(ctx: VaultContext): void {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
       releaseWallHold(channel)
+      // grokbar Q1: a greeting or thanks is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
+      const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)
+      if (signal.aborted) return
+      if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }
       // A results address pasted into the thread is the answer to "where
       // should I search": its shape is learned here, with nothing to press.
       const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null

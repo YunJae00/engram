@@ -1,11 +1,11 @@
 import { conversationProgress } from './conversation-progress.js'
 import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
-import { appendBotTurn, withoutSecrets, type VaultPaths } from 'core'
+import { appendBotTurn, readBotTranscript, withoutSecrets, type VaultPaths } from 'core'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
-import { asides, STEER_CAP, workSoFar } from './turn-state.js'
+import { asides, STEER_CAP, turnGoals, workSoFar } from './turn-state.js'
 
 export interface AsideIpcDeps {
   paths: VaultPaths
@@ -64,9 +64,13 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
     const busy = deps.busy(channel)
     if (busy && deps.stop && STOP_WORDS.test(text)) {
-      const reply = /[가-힣]/.test(text) ? '중지했어요.' : 'Stopped.'
+      // The thread's language, not the stop word's: a bare "stop" in a Korean thread got "Stopped." (grokbar review r1).
+      const korean = [text, turnGoals.get(channel) ?? '', ...(await readBotTranscript(deps.paths, channel.slice('bot-'.length), 6).catch(() => [])).map(turn => turn.text)].some(said => /[가-힣]/.test(said))
+      const reply = korean ? '중지했어요.' : 'Stopped.'
       await appendBotTurn(deps.paths, channel.slice('bot-'.length), { role: 'user', text: text.trim(), at: new Date().toISOString(), aside: true })
-      await deps.stop(channel, reply)
+      // The thread shows the stopped line only while its turn is still open there, so this answer leaves before the stop's own events do
+      // (grokbar T3: the turn must end with the line under it, within 3 s).
+      setImmediate(() => { void deps.stop!(channel, reply).catch(error => flog('aside', error)) })
       return { ok: true, action: 'stop', reply }
     }
     // Words said after the answer are the next turn, not part of this one: the thread sends them when it ends.
