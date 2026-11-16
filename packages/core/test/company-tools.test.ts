@@ -443,12 +443,14 @@ test('the merged report is one table: a row per agent, their link, a missing par
   expect(report.split('\n')).toEqual([
     '지민, 서연, 도윤 결과예요.', '', '| 맡은 일 (담당) | 내용과 출처 |', '|---|---|',
     '| 노션 (지민) | Notion Agent 업그레이드 (11/12) · 새 모델 라우터 · [notion.com](https://www.notion.com/releases) |',
-    '| 슬랙 (서연) | Salesforce 스워밍 도입 / 채널 자동 생성 · (시간 한도에서 멈춤: 여기까지 찾은 내용) · [slack.com](https://slack.com/blog/news) · [slack.com](https://slack.com/intl/ko-kr/whats-new) |',
+    '| 슬랙 (서연) | Salesforce 스워밍 도입 / 채널 자동 생성 · (여기까지만 찾았어요) · [slack.com](https://slack.com/blog/news) · [slack.com](https://slack.com/intl/ko-kr/whats-new) |',
     '| 리니어 (도윤) | 조사하지 못했어요. |',
   ])
   // One table and nothing an internal note or a tool would say.
   expect(report.match(/^\|---/gm)).toHaveLength(1)
   expect(report).not.toMatch(/Failed|ran out of time/)
+  // Codex cap (b7 r3): the host's limit note for a result cut short was shown in the row as written.
+  expect(report).not.toMatch(/한도|멈춤|stopped at/)
 })
 
 test('one agent\'s result stands as they wrote it, and a handoff keeps the facts it was made from', () => {

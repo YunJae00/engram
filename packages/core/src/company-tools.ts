@@ -371,7 +371,9 @@ const inCell = (text: string): string => clip(text.replace(/\[([^\]]*)\]\([^)]*\
   .map(line => line.replace(/^\s*(?:[-*•>#]+|\d+[.)])\s*/, '').replace(/\*\*|`/g, '').replace(/\|/g, '/').trim())
   .filter(line => line && !/^[\s/:-]+$/.test(line) && !/^(출처|sources?)\s*[:：]?$/i.test(line)).join(' · '), 320)
 // What an agent delivered; '' when they delivered nothing ("Failed: ..." is the host's own note, never shown).
-const delivered = (m: TeamMember): string => m.state === 'failed' || m.state === 'hired' || m.state === 'working' || !m.result?.trim() || m.result.startsWith('Failed: ') ? '' : m.result.trim()
+// settleMember's closing note for a result cut short is the host's own wording for the lead ("시간 한도에서 멈춤"); the person reads a colleague's.
+const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]*)\)$/
+const delivered = (m: TeamMember): string => m.state === 'failed' || m.state === 'hired' || m.state === 'working' || !m.result?.trim() || m.result.startsWith('Failed: ') ? '' : m.result.trim().replace(CUT_SHORT, '\n(여기까지만 찾았어요)')
 const NOTHING = '조사하지 못했어요.'
 
 /** The agents' results as the one answer the person reads. topics: member id to the short name of its part ("노션"). */

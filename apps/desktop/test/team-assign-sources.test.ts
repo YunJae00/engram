@@ -46,6 +46,9 @@ it('every agent stopped at the time limit still gets a link in their row, at the
     expect(row).toContain(`${topic}이 AI 요약 기능을 냈다`)
     expect(row).toContain(`[search.naver.com](${address(`${topic} 신기능`)})`)
   }
+  // Codex cap (b7 r3): the row of an agent cut at the limit says so the way a colleague would, never with the host's limit note.
+  expect(answer).not.toMatch(/한도|멈춤|stopped at/)
+  expect(rows.every(row => row.includes('(여기까지만 찾았어요)'))).toBe(true)
   // Review r2: the thread turns a table of three or more columns into cards, so the person never saw a table. It must stay one.
   const shown = answerHtml(answer)
   expect(shown).not.toContain('answer-card')
