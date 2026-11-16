@@ -108,22 +108,29 @@ export function readDocument(mark?: number): FrameReading {
     hiddenLength += Math.min(words.length, 2_000)
     if (hiddenLength > HIDDEN_CAP) break
   }
+  // grokbar c3 R2/R3: the first 25 anchors of a results page were its tabs, filters and ads, so a search handed over no article address.
+  // Every shown anchor is kept up to LINKS_MAX, one per address and label (a result is several anchors: outlet, date, title, snippet),
+  // and the page's own links come before those of its menus, header and footer. Keep in step with plain-page.ts.
+  const LINKS_MAX = 200
+  const CHROME = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"]'
   const seen = new Set<string>()
-  const links: { text: string; url: string }[] = []
+  const own: { text: string; url: string }[] = [], chrome: { text: string; url: string }[] = []
   for (const el of all) {
-    if (el.tagName !== 'A') continue
+    if (el.tagName !== 'A' || foldedOf.get(el)) continue
     const href = (el as HTMLAnchorElement).href
     const label = clean((el as HTMLElement).innerText)
-    if (!/^https?:/.test(href) || label.length < 4 || seen.has(href)) continue
+    if (!/^https?:/.test(href) || label.length < 4 || seen.has(`${href}\n${label}`)) continue
     try {
       if (new URL(href).href.split('#')[0] === location.href.split('#')[0]) continue
     } catch {
       continue
     }
-    seen.add(href)
-    links.push({ text: label.slice(0, 120), url: href })
-    if (links.length >= 25) break
+    seen.add(`${href}\n${label}`)
+    if (el.closest(CHROME)) chrome.push({ text: label.slice(0, 120), url: href })
+    else own.push({ text: label.slice(0, 120), url: href })
+    if (own.length >= LINKS_MAX) break
   }
+  const links = [...own, ...chrome].slice(0, LINKS_MAX)
   const textOfIds = (ids: string | null): string =>
     (ids ?? '')
       .split(/\s+/)
@@ -354,7 +361,7 @@ export async function readFrames(page: Page, signal?: AbortSignal): Promise<Page
       whole.lines.push(`#${index} [${control.kind}] ${control.name || '(no words)'}${control.state ? ` (${control.state})` : ''}${control.context ? ` | row: ${control.context}` : ''}`)
     })
   }
-  whole.links = whole.links.slice(0, 25)
+  whole.links = whole.links.slice(0, 200)
   whole.faults = whole.faults.slice(0, 12)
   observation.revision++
   if (observation.document === document) placed.set(page, map)

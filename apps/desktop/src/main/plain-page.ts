@@ -11,6 +11,7 @@ const PLAIN_TIMEOUT_MS = 10_000
 const TEXT_CAP = 60_000
 // Below this a plain read is taken for a script-drawn shell, not the page.
 export const PLAIN_TEXT_MIN = 200
+export const LINKS_MAX = 200
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
 const decode = (text: string): string => text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
@@ -24,10 +25,15 @@ export function plainPage(html: string, url: string): WebPage {
   const title = words(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '')
   const body = html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<(script|style|noscript|svg|template|head)\b[\s\S]*?<\/\1\s*>/gi, ' ')
   const links: { text: string; url: string }[] = []
-  for (const match of body.matchAll(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi)) {
+  const seen = new Set<string>()
+  // The page's own links come before its menus, header and footer, so the limit is spent on content (grokbar c3: a results page's first anchors are its tabs).
+  for (const part of [body.replace(/<(nav|header|footer|aside)\b[\s\S]*?<\/\1\s*>/gi, ' '), body]) for (const match of part.matchAll(/<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>([\s\S]*?)<\/a\s*>/gi)) {
     const text = words(match[4] ?? '')
-    if (!text || links.length >= 200) continue
-    try { const to = new URL(decode(match[1] ?? match[2] ?? match[3] ?? ''), url); if (/^https?:$/.test(to.protocol)) links.push({ text: text.slice(0, 160), url: to.href }) } catch { /* not an address */ }
+    if (!text || links.length >= LINKS_MAX) continue
+    try {
+      const to = new URL(decode(match[1] ?? match[2] ?? match[3] ?? ''), url), key = `${to.href}\n${text}`
+      if (/^https?:$/.test(to.protocol) && !seen.has(key)) { seen.add(key); links.push({ text: text.slice(0, 160), url: to.href }) }
+    } catch { /* not an address */ }
   }
   const text = decode(body.replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/section|\/article|\/table)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' '))
     .replace(/[ \t\r\f\v]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{2,}/g, '\n').trim()

@@ -1,3 +1,4 @@
+import { siteOf } from './search-links.js'
 // Where to search is the person's choice, not this codebase's. Rather than
 // naming engines in code — which fixes the answer for everyone and cannot
 // learn a company's own search — the app learns the shape once: the person
@@ -90,6 +91,69 @@ function unwrapBingLink(url: URL): string | null {
   } catch {
     return null
   }
+}
+
+// What a results page lists, one entry per address: its title, the words under it and the date beside it.
+// grokbar c3 R2/R3: the first anchors of a Naver or Bing results page are tabs, filters and ads (measured on saved pages: the first
+// article is anchor 60 of 344), and one result is several anchors (outlet, date, title, snippet). So the page's anchors are grouped by
+// where they lead, the furniture is dropped, and the rest is ordered by how much of the question each echoes.
+export interface SearchResult { title: string; url: string; snippet: string; date: string }
+const NEW_WINDOW = /\s*(새\s?창\s?열림|opens? in (a )?new (window|tab))\s*/gi
+const AD_HOST = /(^|\.)(ad|ads|ader|adcr|adclick|saedu|doubleclick|googleadservices|googlesyndication)\./i
+const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
+const RESULT_SNIPPET = 160
+export function searchResults(links: { text: string; url: string }[], text: string, query: string, from?: string, cap = 8): SearchResult[] {
+  let page: URL | null = null
+  try { page = from ? new URL(from) : null } catch { page = null }
+  const groups = new Map<string, string[]>()
+  for (const link of resultLinks(links, from)) {
+    let url: URL
+    try { url = new URL(link.url) } catch { continue }
+    if (!/^https?:$/.test(url.protocol) || AD_HOST.test(url.host)) continue
+    // The engine's own front doors (its home, its help, its sign-in) are not results; a page deeper in one of its sites (a blog post, an article) is.
+    if (page && siteOf(url.host) === siteOf(page.host) && url.pathname.length <= 1) continue
+    // Bing's redirector, where it leads back into Bing (its tabs, its terms): resultLinks unwrapped the ones that lead out.
+    if (page && url.host === page.host && url.pathname === '/ck/a') continue
+    const label = link.text.replace(NEW_WINDOW, ' ').replace(/\s+/g, ' ').trim()
+    url.hash = ''
+    if (label) groups.set(url.href, [...(groups.get(url.href) ?? []), label])
+  }
+  const words = query.toLowerCase().split(/[\s,./?!]+/).filter(word => word.length > 1)
+  const dateOf = (value: string): string => value.match(SHOWN_DATE)?.at(-1) ?? ''
+  const scored = [...groups].flatMap(([url, labels], order) => {
+    const isDate = (label: string): boolean => label.length <= 24 && !!dateOf(label)
+    // The line that shows the address ("apple.com https://www.apple.com › iphone") is not the title.
+    const titles = labels.filter(label => !isDate(label) && !/https?:\/\/|›/.test(label) && label.length >= 4)
+    const title = titles[0]
+    if (!title) return []
+    const at = text.indexOf(title.slice(0, 60))
+    const own = titles.find(label => label !== title && label.length > 40)
+    // Without words of its own under the title, the two lines after it are the result's (a related article: its outlet, its date).
+    const after = at < 0 ? '' : text.slice(at + title.length, at + title.length + RESULT_SNIPPET).replace(NEW_WINDOW, ' ').trim().split('\n').slice(0, 2).join(' ')
+    const snippet = (own ?? after).replace(/\s+/g, ' ').trim().slice(0, RESULT_SNIPPET)
+    // The date sits beside the title: one of the result's own anchors, or the line above it (outlet, "9시간 전") when its words follow, or right after it.
+    const date = dateOf(labels.find(isDate) ?? '') || (own ? '' : after.match(SHOWN_DATE)?.[0] ?? '') || (at < 0 ? '' : dateOf(text.slice(Math.max(0, at - 120), at)))
+    // Counted on the result's own words: the page text after a menu link is the next result's.
+    const hay = `${title} ${own ?? ''} ${url}`.toLowerCase()
+    const hits = words.filter(word => (isLatin(word) ? hay.includes(word) : gluedWord(word, hay))).length
+    return [{ result: { title: title.slice(0, 120), url, snippet, date }, hits, score: hits * 100 + Math.min(title.length, 60) - order / 100 }]
+  })
+  // When the page has results that echo the question, what echoes none of it is furniture that got through (an outlet's home, a promo).
+  const echoing = scored.filter(one => one.hits > 0)
+  return (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score).slice(0, cap).map(one => one.result)
+}
+
+// A news ask is searched where news is listed: each entry an article with its outlet and date, not a blog round-up
+// (grokbar c3 R3/H6: the web tab gave two weekly round-up posts for "AI 스타트업 투자 뉴스").
+export const NEWS_ASK = /뉴스|기사|속보|보도\s?자료|헤드라인|\b(news|headlines?)\b/i
+// shortcut: only Naver's news tab is known; another engine's template is searched as it is, add its news address here when one is used.
+export function newsTemplate(template: string): string {
+  try {
+    const url = new URL(template.replace('{q}', 'QQ'))
+    if (url.host !== 'search.naver.com') return template
+    url.searchParams.set('where', 'news')
+    return url.toString().replace('QQ', '{q}')
+  } catch { return template }
 }
 
 export function rankLinks(
