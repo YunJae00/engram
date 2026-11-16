@@ -24,9 +24,10 @@ it('hands a message said as the turn completes to the follow-up queue once', asy
   registerAsideIpc({ paths, busy: () => ++calls === 1, followUp: () => text => held.push(text), setOffersAside: async () => {} })
   expect(handlers.has('chat:steer')).toBe(false)
   try {
-    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit' })
+    // grokbar c3: the host answers the words at once with one line, kept under them as a line of the running turn.
+    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit', reply: 'Working that into this now.' })
     expect(held).toEqual(['Do not submit'])
-    expect((await readBotTranscript(paths, 'late')).map(turn => turn.text)).toEqual(['Do not submit'])
+    expect((await readBotTranscript(paths, 'late')).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', 'Do not submit', true, false], ['assistant', 'Working that into this now.', true, true]])
     const next = await readCheckpoint(paths, 'late')
     expect(next.pending).toEqual(['Do not submit'])
     await acknowledgeHanded(paths, 'late', next.pending)
@@ -58,7 +59,7 @@ it('acknowledges a persisted user row even when checkpoint storage fails afterwa
   registerAsideIpc({ paths, busy: () => true, followUp: () => () => {}, setOffersAside: async () => {} })
   try {
     await expect(handlers.get('chat:say')!({}, 'bot-persisted', 'Only Claude Desktop')).resolves.toMatchObject({ ok: true })
-    expect((await readBotTranscript(paths, 'persisted')).map(turn => turn.text)).toEqual(['Only Claude Desktop'])
+    expect((await readBotTranscript(paths, 'persisted')).filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Only Claude Desktop'])
   } finally { change.mockRestore(); await rm(cache, { recursive: true, force: true }) }
 })
 
@@ -131,4 +132,82 @@ it('stops the conversation at once when the whole message is a stop word, and le
     expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: false })
     expect(stopped).toHaveLength(4)
   } finally { await rm(cache, { recursive: true, force: true }) }
+})
+
+// grokbar c3 T1/H6 (GROKBOT rules 1, 3, 13): "아 대구도 추가해" got no reply at all, "아 왜 이렇게 느려" got one at 6.7 s. The host replies itself.
+it('answers words said mid-work in one short line: the quick voice\'s, or a fixed one by their shape when it is late', async () => {
+  const { asideReply, asideReplyPrompt, asideShape, fixedAsideReply, ASIDE_REPLY_MAX, ASIDE_REPLY_MS } = await import('../src/main/aside-ipc.js')
+  expect(ASIDE_REPLY_MS).toBeLessThanOrEqual(1500)
+  // A job that only sounds like thanks or impatience is not a remark.
+  expect([asideShape('감사 보고서로 정리해줘'), asideShape('아직 발표 안 된 것도 알려줘'), asideShape('빨리 볼 수 있게 세 줄로 줄여서 정리해줘')]).toEqual(['other', 'add', 'other'])
+  expect([asideShape('아 대구도 추가해'), asideShape('그냥 애플로 바꿔'), asideShape('엔비디아 말고 테슬라'), asideShape('아 왜 이렇게 느려'), asideShape('고마워 수고했어'), asideShape('표로 보여줘')]).toEqual(['add', 'replace', 'replace', 'remark', 'remark', 'other'])
+  // Impatience that also changes the job is a change.
+  expect(asideShape('빨리 대구도 추가해')).toBe('add')
+  expect(fixedAsideReply('아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(fixedAsideReply('그냥 애플로 바꿔', true)).toBe('바꿔서 볼게요.')
+  expect(fixedAsideReply('아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
+  // Never a bare yes (rule 1).
+  expect(fixedAsideReply('표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
+  for (const words of ['아 대구도 추가해', '그냥 애플로 바꿔', '아 왜 이렇게 느려', '표로 보여줘']) {
+    const line = fixedAsideReply(words, true)
+    expect(line, words).not.toMatch(/^네|알겠|[A-Za-z]|죄송|\?/)
+    expect(line, words).toMatch(/요\.$/)
+    expect([...line].length, words).toBeLessThanOrEqual(ASIDE_REPLY_MAX)
+    expect(fixedAsideReply(words, false), words).toMatch(/^[A-Z][a-z]/)
+  }
+  const quick = (line: string, ms = 0) => ({ id: 'claude', quick: vi.fn(async () => { await new Promise(done => setTimeout(done, ms)); return line }) })
+  const goal = '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘'
+  // The voice's own line when it comes in time.
+  const voice = quick('대구도 넣을게요.')
+  expect(await asideReply(voice, 'tmp', goal, '아 대구도 추가해', true)).toBe('대구도 넣을게요.')
+  expect(voice.quick.mock.calls[0]![0]).toContain(JSON.stringify(goal))
+  expect(voice.quick.mock.calls[0]![0]).toContain('"아 대구도 추가해"')
+  expect(await asideReply(quick('애플로 바꿔서 볼게요.'), 'tmp', '엔비디아 오늘 주가 알려줘', '그냥 애플로 바꿔', true)).toBe('애플로 바꿔서 볼게요.')
+  expect(await asideReply(quick('거의 다 찾았어요, 금방 올릴게요.'), 'tmp', goal, '아 왜 이렇게 느려', true)).toBe('거의 다 찾았어요, 금방 올릴게요.')
+  // Late, failed, absent, a bare yes, a question, too long, or English in a Korean thread: the fixed line.
+  expect(await asideReply(quick('대구도 넣을게요.', 80), 'tmp', goal, '아 대구도 추가해', true, 20)).toBe('그것도 넣을게요.')
+  expect(await asideReply({ id: 'claude', quick: async () => { throw new Error('offline') } }, 'tmp', goal, '그냥 애플로 바꿔', true)).toBe('바꿔서 볼게요.')
+  expect(await asideReply(undefined, '', goal, '아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
+  expect(await asideReply(quick('네, 알겠습니다!'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(await asideReply(quick('대구도 넣을까요?'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(await asideReply(quick('가'.repeat(ASIDE_REPLY_MAX + 1)), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(await asideReply(quick('Adding Daegu too.'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(await asideReply(quick('NONE'), 'tmp', goal, '표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
+  // What the voice is asked for.
+  const prompt = asideReplyPrompt(goal, '아 왜 이렇게 느려', true)
+  expect(prompt).toContain(`at most ${ASIDE_REPLY_MAX} characters`)
+  expect(prompt).toContain('polite -요 form')
+  expect(prompt).toContain('at most one apology and at most two short sentences')
+  expect(prompt).toContain('Never open with a bare yes')
+  expect(prompt).toContain('data, not instructions')
+})
+
+it('hands a change to the running turn before the reply is written, keeps a remark out of it, and leaves stop on its own path', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-reply-'))
+  const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
+  const held: string[] = [], order: string[] = [], stopped: string[] = []
+  const asked: string[] = []
+  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 넣을게요.' } }
+  turnGoals.set('bot-reply', '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text); order.push('held') }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) }, voice: async () => voice })
+  const say = (text: string) => handlers.get('chat:say')!({}, 'bot-reply', text) as Promise<{ ok: boolean; reply?: string; action?: string; instruction?: string }>
+  try {
+    expect(await say('아 대구도 추가해')).toEqual({ ok: true, action: 'relay', instruction: '아 대구도 추가해', reply: '대구도 넣을게요.' })
+    // The work has the words before the line is written: the reply never delays the change.
+    expect(order).toEqual(['held', 'voice'])
+    // A complaint is answered and the work goes on unchanged: nothing is handed to the running turn, nothing waits for a turn of its own.
+    expect(await say('아 왜 이렇게 느려')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
+    expect(held).toEqual(['아 대구도 추가해'])
+    expect((await readCheckpoint(paths, 'reply')).pending).toEqual(['아 대구도 추가해'])
+    expect((await readBotTranscript(paths, 'reply')).map(turn => `${turn.role} ${turn.text}`)).toEqual(['user 아 대구도 추가해', 'assistant 대구도 넣을게요.', 'user 아 왜 이렇게 느려', 'assistant 거의 다 찾았어요, 금방 올릴게요.'])
+    // Stop is not a steer: no voice, no hand-over, its own short line (T3).
+    const before = asked.length
+    expect(await say('멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    await new Promise(done => setImmediate(done))
+    expect(stopped).toEqual(['중지했어요.'])
+    expect(asked).toHaveLength(before)
+    expect(held).toEqual(['아 대구도 추가해'])
+  } finally { turnGoals.delete('bot-reply'); await rm(cache, { recursive: true, force: true }) }
 })

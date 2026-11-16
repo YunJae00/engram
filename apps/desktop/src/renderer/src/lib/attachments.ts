@@ -69,7 +69,9 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     const stopCount = store.thread(botId).stopCount
     const said = chatMessage(draft, attachments)
     const words = threadT(threadLang(store.thread(botId).messages))
-    store.noteUser(botId, said, attachments.map(file => file.id))
+    // Files cannot join a turn already under way; words alone are handed to it and stay where they were said.
+    const joins = !attachments.length && !!api.chatSay
+    store.noteUser(botId, said, attachments.map(file => file.id), joins)
     // The words left the box (sent trimmed); a reply chip leaves what is typed alone.
     if (store.thread(botId).draft.trim() === draft.trim()) store.setDraft(botId, '')
     // Files cannot join a turn already under way: they start the next one.
@@ -82,6 +84,7 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     const answer = await api.chatSay(cometChannel(botId), draft.trim()).catch(() => ({ ok: false as const }))
     if (store.thread(botId).stopCount !== stopCount) return
     if (!answer.ok) {
+      store.sinkUser(botId, said)
       store.noteWork(botId, `said: ${words('aside.next')}`)
       enqueueShown(store, botId, draft, [])
       void flushQueuedCometMessages(api, store, botId)
@@ -89,7 +92,7 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
     }
     // A stop is said where the work ends; anything else in the running work.
     if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? '', answer.reply); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
-    if (answer.reply) store.noteWork(botId, `said: ${answer.reply}`)
+    if (answer.reply) store.noteReply(botId, said, answer.reply)
     void flushQueuedCometMessages(api, store, botId)
     return
   }

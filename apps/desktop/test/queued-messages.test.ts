@@ -37,7 +37,8 @@ it('keeps a recorded late follow-up out of automatic resend and preserves the ne
   expect(store.thread('one').draft).toBe('Still typing')
 })
 
-it('shows words sent mid-reply at once in the running work and answers them there', async () => {
+// grokbar c3 T1: the words were drawn under the answer and the reply was a work line; both now sit where they were said, above the answer to come.
+it('shows words sent mid-reply at once, with the host\'s reply under them and above the answer still to come', async () => {
   const store = createCometThreads()
   const chatSay = vi.fn(async () => ({ ok: true, reply: 'I will look at Seoul only.', action: 'relay' as const, instruction: 'Only Seoul' }))
   const client = { ...api(), chatSay }
@@ -46,8 +47,12 @@ it('shows words sent mid-reply at once in the running work and answers them ther
   await sendCometMessage(client, store, 'one', 'Only Seoul please')
   expect(store.thread('one').draft).toBe('')
   expect(chatSay).toHaveBeenCalledWith('bot-one', 'Only Seoul please')
-  expect(store.thread('one').workLines).toEqual(['said: I will look at Seoul only.'])
-  expect(store.thread('one').messages.map(m => m.role)).toEqual(['user', 'assistant', 'user'])
+  expect(store.thread('one').workLines).toEqual([])
+  expect(store.thread('one').messages.map(m => [m.role, m.text])).toEqual([['user', 'Find the postings'], ['user', 'Only Seoul please'], ['assistant', 'I will look at Seoul only.'], ['assistant', '']])
+  expect(store.thread('one').messages[2]).toMatchObject({ progress: true, aside: true })
+  // The answer lands under the reply, in the bubble that was waiting for it.
+  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'Seoul postings: 3.' })
+  expect(store.thread('one').messages.map(m => m.text)).toEqual(['Find the postings', 'Only Seoul please', 'I will look at Seoul only.', 'Seoul postings: 3.'])
   expect(store.thread('one').queued).toEqual([])
 })
 

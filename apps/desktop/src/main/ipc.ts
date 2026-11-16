@@ -1126,6 +1126,7 @@ export function registerIpc(ctx: VaultContext): void {
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
     setOffersAside,
     stop: stopChat,
+    voice: channel => chatEngine(channel, ctx.engines),
   })
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
@@ -2816,8 +2817,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
-        // A lookup turn shows its answer and its reply to words said mid-turn, never the notes it writes between calls.
-        let replying = false
+        // A lookup turn shows its answer, never the notes it writes between calls.
         const read = new Set<string>()
         const quiet = lane ? quietRounds(text => broadcast({ type: 'chat:token', channel, text })) : undefined
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
@@ -2839,7 +2839,8 @@ export function registerIpc(ctx: VaultContext): void {
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             ...(company ? { modelHint: 'smart' as const } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),
-            ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); replying ||= said.length > 0; return said } }),
+            // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
+            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             ...(desk ? { modelHint: 'smart' as const } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
@@ -2863,8 +2864,8 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, replying); else broadcast({ type: 'chat:token', channel, text }) } },
-            onReset: (drop, tool) => { quiet?.reset(); replying = false; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
+            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
+            onReset: (drop, tool) => { quiet?.reset(); broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
             onObservation: (tool: string, observation: string) => {
               observedProgress.push({ tool, args: {}, observation })
               if (observedProgress.length > 8) observedProgress.shift()

@@ -26,18 +26,30 @@ export function shownTexts(list: ChatTurnDto[]): (string | null)[] {
   return out
 }
 
-// Words said while a turn worked are saved where they were said. Each is shown after the answer of
-// the turn running then, so every reply sits under its own question. With `late`, the ones whose
-// answer is not in the list are handed back there instead of being put at the end.
+// Words said while a turn worked are saved where they were said, and the running turn takes them in: they stay there, above the
+// one answer that covers them (grokbar c3 T1: the added city was drawn under the four-city table). Only words that were
+// answered by a turn of their own are shown after the running turn's answer, so that reply sits under its own question: when N
+// answers follow in the same stretch, the last N-1 of the words said there each got one. The host's one-line reply moves with its words.
+// With `late`, the list is one page of a longer thread: words whose stretch runs off its end are handed back there, to be
+// placed after the answer on the newer side as before.
 export function askOrder<T extends ChatTurnDto>(list: T[], late?: T[]): T[] {
-  const out: T[] = [], held: T[] = []
-  for (const turn of list) {
-    if (turn.role === 'user' && turn.aside) { held.push(turn); continue }
-    if (turn.role === 'user') out.push(...held.splice(0))
-    out.push(turn)
-    if (isAnswer(turn) && held.length) out.push(held.shift()!)
+  const out: T[] = [], held: T[][] = []
+  const said = (turn: T): boolean => turn.role === 'user' && !!turn.aside
+  const ownTurn = (at: number): boolean => {
+    let answers = 0, after = 0, i = at + 1
+    for (; i < list.length && !(list[i]!.role === 'user' && !list[i]!.aside); i++) { if (isAnswer(list[i]!)) answers++; else if (said(list[i]!)) after++ }
+    // shortcut: at a page boundary the answers are on the other page, so the words are placed the old way (after the next answer); count across pages if that shows.
+    return after < answers - 1 || !!late && i === list.length && answers === 0
   }
-  if (!late) return [...out, ...held]
-  late.push(...held)
+  for (const [at, turn] of list.entries()) {
+    if (said(turn) && ownTurn(at)) { held.push([turn]); continue }
+    // The reply line under words that were held goes with them.
+    if (turn.role === 'assistant' && turn.aside && held.length && at > 0 && held.at(-1)!.at(-1) === list[at - 1]) { held.at(-1)!.push(turn); continue }
+    if (turn.role === 'user' && !turn.aside) out.push(...held.splice(0).flat())
+    out.push(turn)
+    if (isAnswer(turn) && held.length) out.push(...held.shift()!)
+  }
+  if (!late) return [...out, ...held.flat()]
+  late.push(...held.flat())
   return out
 }

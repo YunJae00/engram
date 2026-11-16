@@ -65,7 +65,9 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
   expect(ipc).toContain('const lane = !company && fastLane(request.message, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
-  expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); replying ||= said.length > 0; return said }')
+  // grokbar c3: the host answers mid-turn words itself (aside-ipc), so the turn is told they were answered and writes no line of its own.
+  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
+  expect(ipc).toContain('voice: channel => chatEngine(channel, ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).
   expect(ipc).toContain('(!turn?.context || turn.learned === true)')
@@ -138,11 +140,41 @@ it('shows a lookup turn\'s answer and its reply to mid-turn words, never the not
   quiet.reset()
   quiet.token('지금 1달러에 1,385원이에요.', false)
   expect(shown).toEqual([])
-  // Words the person said mid-turn are answered where they can see it, at once.
+  // A round marked aloud is shown as it comes.
   quiet.reset()
   quiet.token('대구도 넣을게요.', true)
   expect(shown).toEqual(['대구도 넣을게요.'])
+  // grokbar c3 T2: the reply to mid-turn words is the host's line now, so no round of a lookup is aloud: "알겠어요, 애플 주가로 알려드릴게요." was a second reply.
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (quiet) quiet.token(text, replying); else broadcast({ type: \'chat:token\', channel, text })')
-  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); replying = false; broadcast(')
+  expect(ipc).toContain('if (quiet) quiet.token(text, false); else broadcast({ type: \'chat:token\', channel, text })')
+  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); broadcast(')
+})
+
+// grokbar c3: R2 ended "다시 시도해볼까요, 아니면 지금은 여기까지로 둘까요?", T2 said "시간이 다 돼서 이번 턴에서는…", R1 opened with
+// "세 봇이 조사한 … 취합해서 알려드릴게요.", and L1-L4 read "수치와 출처를 나열… 검색 결과를 옮긴 듯".
+it('asks a lookup for a colleague\'s short answer from the results, with no offer, no retry question and no failure report', () => {
+  // One search, answered from the results list.
+  expect(LANE_NOTE).toContain('one search_web is the normal case')
+  expect(LANE_NOTE).toContain("answer from them and cite that result's own address")
+  expect(LANE_NOTE).toContain('open a page (read_pages) only when a number they asked for is in none of them')
+  expect(LANE_NOTE).toContain('exactly as many items as they asked for')
+  // How it reads.
+  expect(LANE_NOTE).toContain('lead with the answer in one sentence')
+  expect(LANE_NOTE).toContain('at most two short sentences')
+  expect(LANE_NOTE).toContain('leave out numbers they did not ask for')
+  expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')
+  expect(LANE_NOTE).toContain('one friendly lead sentence that already gives the gist, with nothing after the table')
+  // The merged answer of a team.
+  expect(LANE_NOTE).toContain('never a status line about bots or collecting')
+  expect(LANE_NOTE).toContain("the link text the site's name, never a member's role")
+  expect(LANE_NOTE).toContain('"못 찾았어요"')
+  // What is missing is said plainly; the answer never ends on a question, an offer or a failure report.
+  expect(LANE_NOTE).toContain('"픽셀 11은 아직 공식 가격이 안 나왔어요"')
+  expect(LANE_NOTE).toContain('This note overrides any rule that allows a closing offer or question')
+  expect(LANE_NOTE).toContain('never ends on a question or an offer ("다시 시도해볼까요?", "더 찾아드릴까요?"')
+  expect(LANE_NOTE).toContain('never reports a failure of your own')
+  expect(LANE_NOTE).toContain('never speaks of time, limits, turns, attempts, tools or pages that did not open')
+  // The old wording that asked for the opposite is gone.
+  expect(LANE_NOTE).not.toContain('say in the answer what is missing.')
+  expect(LANE_NOTE).not.toContain('answer in a few lines')
 })
