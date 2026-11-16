@@ -5,8 +5,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import * as core from 'core/src/bot-character'
-import { avatarCharacter, CHARACTERS, defaultCharacter, FALLBACK_CHARACTER, fnv1a, OPT_MAX_PX, ORBS } from '../src/renderer/src/lib/botAvatar.js'
+import { avatarCharacter, CHARACTERS, defaultCharacter, FALLBACK_CHARACTER, fnv1a, ORBS, RIPPLE_MIN_PX, SMALL_MAX_PX } from '../src/renderer/src/lib/botAvatar.js'
 import { BotAvatar, type BotAvatarProps } from '../src/renderer/src/components/BotAvatar.js'
+import { BotOrb } from '../src/renderer/src/components/BotOrb.js'
+import { ORB_LOOP_MS, ORB_WAVE_LAYERS, ORB_WORK_LAYERS, orbPaths } from '../src/renderer/src/lib/orbWave.js'
 
 const SRC = join(__dirname, '../src/renderer/src')
 const SIZES = [20, 24, 32, 36, 48, 64, 96] as const
@@ -58,25 +60,75 @@ describe('bot avatar', () => {
     for (const state of ['idle', 'working', 'attention'] as const) expect(render({ id: 'bot-snap', state, primary: true })).toMatchSnapshot(`state-${state}`)
   })
 
-  it('is static below 24px, idle at 24px and above, and working only while the bot works', () => {
-    expect(OPT_MAX_PX).toBe(24)
+  it('is the small still master up to 32px, breathes under 64px, ripples from 64px, and shows working at every size', () => {
+    expect([SMALL_MAX_PX, RIPPLE_MIN_PX]).toEqual([32, 64])
     for (const size of SIZES) {
       for (const state of ['idle', 'working', 'attention'] as const) {
-        const motion = size < 24 ? 'static' : state === 'working' ? 'working' : 'idle'
-        expect(render({ override: { character: '04-lobe' }, size, state })).toContain(`data-orb="orb-green" data-motion="${motion}"`)
+        const motion = state === 'working' ? 'working' : size <= 32 ? 'static' : 'idle'
+        const html = render({ override: { character: '04-lobe' }, size, state })
+        expect(html).toContain(`data-orb="orb-green" data-motion="${motion}" data-master="${size <= 32 ? 'small' : 'full'}"`)
+        // The ripple is redrawn per frame only from 64px; a small working orb shows its work with css alone.
+        expect(html.includes('data-ripple="true"'), `${size} ${state}`).toBe(size >= 64)
       }
     }
+    // An orb with no size given (the team tree's 16px orb) is the small master.
+    const bare = renderToStaticMarkup(createElement(BotOrb, { orb: 'orb-teal', motion: 'static' }))
+    expect(bare).toContain('data-orb="orb-teal" data-motion="static" data-master="small"')
+    expect(bare).not.toContain('data-ripple')
+  })
+
+  it('draws all 8 colors from one silhouette: the core stays white and silver is untinted', () => {
+    const css = readFileSync(join(SRC, 'bot-orb.css'), 'utf8')
+    const shapes = new Set(ORBS.map(orb => render({ override: { character: orb } }).replaceAll(orb, 'orb')))
+    expect(shapes.size).toBe(1)
+    expect(css).toMatch(/\.bot-orb-core \{ fill: #FFFFFF;/)
+    expect(css).toMatch(/\.bot-orb-work-core \{ fill: #FFFFFF;/)
+    for (const part of ['shade', 'mist', 'floor', 'warm', 'cool', 'warm-haze', 'cool-haze', 'rim', 'caustic']) expect(css, part).toMatch(new RegExp(`--${part}: color-mix\\([^;]*var\\(--orb\\) var\\(--tint-(rim|glow|mist)\\)`))
+    expect(css).toContain(".bot-orb[data-orb='orb-silver'] { --tint-rim: 0%; --tint-glow: 0%; --tint-mist: 0%; }")
+    expect(css.match(/--tint-rim: 0%/g)).toHaveLength(1)
+    // The ball is the same on a light and a dark surface.
+    expect(css).not.toMatch(/data-theme/)
+  })
+
+  it('builds the wave as closed ribbons: a seamless 12s loop, a plainer and thicker small master, a working core about 55% thicker', () => {
+    expect(ORB_LOOP_MS).toBe(12000)
+    const layers = [...ORB_WAVE_LAYERS, ...ORB_WORK_LAYERS]
+    expect(layers).toEqual(['shade', 'warm-haze', 'cool-haze', 'warm', 'cool', 'core', 'work-warm', 'work-cool', 'work-core'])
+    for (const master of ['full', 'small'] as const) {
+      const still = orbPaths(master, 0)
+      expect(still).toHaveLength(layers.length)
+      for (const d of still) expect(d).toMatch(/^M-?\d+(\.\d+)? -?\d+(\.\d+)?(L-?\d+(\.\d+)? -?\d+(\.\d+)?)+Z$/)
+      expect(orbPaths(master, 1)).toEqual(still)
+      expect(orbPaths(master, 0.5)).not.toEqual(still)
+      expect(orbPaths(master, 0.25)).not.toEqual(orbPaths(master, 0.75))
+    }
+    // Thickness of a ribbon at the middle of the ball: its first half runs left to right along the top edge, its second half back along the bottom.
+    const thick = (d: string) => {
+      const ys = d.slice(1, -1).split('L').map(point => Number(point.split(' ')[1]))
+      const mid = Math.floor(ys.length / 4)
+      return ys[ys.length - 1 - mid]! - ys[mid]!
+    }
+    const [full, small] = [orbPaths('full', 0), orbPaths('small', 0)]
+    const ratio = thick(full[8]!) / thick(full[5]!)
+    expect(ratio).toBeGreaterThan(1.45)
+    expect(ratio).toBeLessThan(1.65)
+    expect(thick(small[5]!)).toBeGreaterThan(thick(full[5]!) * 2)
+    // The haze widens with the work too.
+    expect(thick(full[6]!)).toBeGreaterThan(thick(full[1]!) * 1.3)
+    // The small master has no hooks: its line is lower at the left glass and higher at the right than the full master's, which runs up and down the glass.
+    const edge = (d: string, i: number) => Number(d.slice(1).split('L')[i]!.split(' ')[1])
+    expect(edge(small[5]!, 0)).toBeGreaterThan(edge(full[5]!, 0))
+    expect(edge(small[5]!, 40)).toBeLessThan(edge(full[5]!, 40))
   })
 
   it('is self-contained and cheap', () => {
     for (const size of SIZES) {
       const html = render({ size, state: 'attention', primary: true })
-      expect(html).not.toMatch(/<img|<image|url\(|<foreignObject|<text/)
-      expect(html.match(/<svg /g)).toHaveLength(5)
-      // Five layers: the air and the bloom, the two fringes, the band, the filament, the bead. Each arc path holds the top arc and its twin at the bottom.
-      // The air is a faint blurred fill inside the circle, not a drawn disc: no circle element, no glow span.
-      expect(html.match(/<path /g)).toHaveLength(7)
-      expect(html).not.toMatch(/<circle |bot-orb-core|bot-orb-glow/)
+      expect(html).not.toMatch(/<img|<image|<canvas|url\(|<foreignObject|<text|<filter|<linearGradient|<radialGradient| id=/)
+      // Two svgs: the wave (the dark upper half, two hazes, two fringes, the core) and the working overlay (two hazes, a thicker core).
+      expect(html.match(/<svg /g)).toHaveLength(2)
+      expect(html.match(/<path /g)).toHaveLength(9)
+      expect(html).not.toMatch(/<circle |<rect /)
     }
     const batch = () => {
       for (let i = 0; i < 50; i++) for (const size of SIZES) render({ id: `bot-perf-${i}`, size })
@@ -85,49 +137,66 @@ describe('bot avatar', () => {
     const times = [0, 1, 2].map(() => { const t = performance.now(); batch(); return performance.now() - t })
     // Shared CI runners (notably macos-26-intel) are several times slower than a dev Mac; the budget guards against regressions, not runner speed.
     expect(Math.min(...times)).toBeLessThan(process.env['CI'] ? 300 : 50)
+    // One frame of the ripple is nine short strings; the shared ticker builds them once for every orb on screen.
+    const t = performance.now()
+    for (let i = 0; i < 360; i++) orbPaths('full', i / 360)
+    expect(performance.now() - t).toBeLessThan(process.env['CI'] ? 1500 : 300)
   })
 
-  it('keeps motion css transform and opacity only, slow, scoped to idle or working, pausable, with no per-frame script', () => {
+  it('keeps css motion to transform and opacity, slow, scoped to idle or working, pausable, and still under reduced motion', () => {
     const avatar = readFileSync(join(SRC, 'bot-avatar.css'), 'utf8')
     const orb = readFileSync(join(SRC, 'bot-orb.css'), 'utf8')
     expect(avatar.startsWith("@import './bot-orb.css';")).toBe(true)
     const css = orb + avatar
     const keyframes = [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\n\}/g)]
-    // The turn, the bead that slides along the arcs, and the working swell.
-    expect(keyframes).toHaveLength(3)
+    // The breathe of the light layer under 64px, and the working overlay's pulse.
+    expect(keyframes).toHaveLength(2)
     for (const [, body] of keyframes) {
       const props = [...body!.matchAll(/\{\s*([^}]*)\}/g)].flatMap(m => [...m[1]!.matchAll(/(?:^|;)\s*([\w-]+)\s*:/g)].map(p => p[1]!))
       expect(props.length).toBeGreaterThan(0)
       for (const prop of props) expect(['transform', 'opacity']).toContain(prop)
     }
     const animated = blocks(css).filter(block => /animation(-name)?\s*:(?! none)/.test(block.body))
-    expect(animated.length).toBeGreaterThanOrEqual(2)
+    expect(animated).toHaveLength(2)
     for (const { selector, body } of animated) {
-      expect(selector).toMatch(/^\.bot-orb\[data-motion='(idle|working)'\] /)
-      const [, name, time, easing] = /animation:\s*([\w-]+) (\d+(?:\.\d+)?)s (ease-in-out|linear) infinite/.exec(body) ?? []
-      // Only the turn is linear (an eased turn lurches at each end of its loop); everything else eases.
-      expect(easing).toBe(name === 'bot-orb-turn' ? 'linear' : 'ease-in-out')
-      const seconds = Number(time)
-      expect(seconds).toBeGreaterThanOrEqual(8)
-      expect(seconds).toBeLessThanOrEqual(12)
+      for (const one of selector.split(',')) expect(one.trim()).toMatch(/^\.bot-orb\[data-motion='(idle|working)'\]/)
+      const [, name, time] = /animation:\s*([\w-]+) (\d+(?:\.\d+)?)s ease-in-out infinite/.exec(body) ?? []
+      expect(Number(time)).toBe(12)
+      // The breathe never runs on the small master or on an orb whose wave the ticker redraws; the pulse belongs to working alone.
+      if (name === 'bot-orb-breathe') for (const one of selector.split(',')) expect(one).toMatch(/\[data-master='full'\]:not\(\[data-ripple\]\) \.bot-orb-light$/)
+      else expect([name, selector]).toEqual(['bot-orb-pulse', ".bot-orb[data-motion='working'] .bot-orb-work"])
     }
-    // The turn is a plain rotation by a half turn, which the mark's 180-degree symmetry closes without a seam.
-    expect(orb).toMatch(/@keyframes bot-orb-turn \{\s*from \{ transform: rotate\(0deg\); \}\s*to \{ transform: rotate\(180deg\); \}\s*\}/)
-    expect(animated.some(block => block.body.includes('bot-orb-turn'))).toBe(true)
     expect(css).not.toMatch(/data-motion='static'/)
-    expect(css).not.toMatch(/mix-blend-mode|transition\s*:/)
+    expect(css).not.toMatch(/mix-blend-mode/)
+    // Work begins and ends as one fade of the overlay, not a jump.
+    expect(css.match(/transition\s*:[^;]*/g)).toEqual(['transition: opacity 0.9s ease-in-out', 'transition: none !important'])
+    expect(orb).toMatch(/\.bot-orb-work \{ opacity: 0; transition: opacity 0\.9s ease-in-out; \}/)
+    expect(orb).toMatch(/\.bot-orb\[data-motion='working'\] \.bot-orb-work \{ opacity: 1;/)
     for (const sheet of [avatar, orb]) {
-      expect(sheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.bot-(avatar|orb)[^{]*\{ animation: none !important; \}/)
+      expect(sheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.bot-(avatar|orb)[^{]*\{ animation: none !important;( transition: none !important;)? \}/)
       expect(sheet).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-(avatar|orb)[^{]*\{ animation-play-state: paused; \}/)
     }
     expect(avatar).not.toMatch(/#2F6FEB|#4C86F0|blue/i)
-    // The orb is light, not a ball: no glass body is painted and nothing clips it to a disc.
+    // The avatar is the ball alone: a circle that clips its light, with no plate behind it.
     const body = blocks(orb).find(block => block.selector.endsWith('.bot-orb'))!.body
-    expect(body).not.toMatch(/background|overflow|border-radius/)
-    expect(orb).not.toMatch(/overflow:\s*hidden|\.bot-orb::(before|after)/)
+    expect(body).toMatch(/border-radius: 50%; overflow: hidden;/)
+    expect([...orb.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1])).toEqual(['50%', '50%'])
+    expect(orb).not.toMatch(/box-shadow|squircle|plate/)
+  })
+
+  it('redraws the wave from one shared, pausable ticker and nowhere else', () => {
     const orbSource = readFileSync(join(SRC, 'components/BotOrb.tsx'), 'utf8')
-    expect(orbSource).not.toMatch(/\buse[A-Z]|requestAnimationFrame|setInterval|setTimeout/)
+    // One loop for every orb: it is started when an orb comes on screen and re-armed only from inside itself while one is still there.
+    expect(orbSource.match(/requestAnimationFrame\(/g)).toHaveLength(2)
+    expect(orbSource).toContain('frame = live.size > 0 ? requestAnimationFrame(tick) : 0')
+    expect(orbSource).toContain('if (live.size > 0 && frame === 0) frame = requestAnimationFrame(tick)')
+    expect(orbSource.match(/new IntersectionObserver\(/g)).toHaveLength(1)
+    expect(orbSource).toContain("document.documentElement.dataset['windowFocused'] !== 'true'")
+    expect(orbSource).toContain("matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 :")
+    expect(orbSource).toContain("const rippling = motion !== 'static' && size >= RIPPLE_MIN_PX")
+    expect(orbSource).not.toMatch(/setInterval|setTimeout|<canvas|getContext/)
     expect(readFileSync(join(SRC, 'components/BotAvatar.tsx'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout/)
+    expect(readFileSync(join(SRC, 'lib/orbWave.ts'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout|document|window/)
   })
 
   it('holds the contract edges: primary keeps its hashed face, no photo is ever shown', () => {

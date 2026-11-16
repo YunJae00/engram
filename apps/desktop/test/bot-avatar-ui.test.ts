@@ -24,7 +24,7 @@ describe('bot avatar ui', () => {
     for (const size of [20, 24, 32, 36, 48, 64, 96] as const) {
       const html = render({ primary: true, size })
       expect(html).not.toContain('<img')
-      expect(html).toContain(`data-motion="${size < 24 ? 'static' : 'idle'}"`)
+      expect(html).toContain(`data-motion="${size <= 32 ? 'static' : 'idle'}"`)
       expect(html.includes('bot-avatar-primary')).toBe(size >= 36)
     }
     const row = read('renderer/src/components/SidebarConversation.tsx')

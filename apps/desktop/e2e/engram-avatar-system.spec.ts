@@ -50,11 +50,12 @@ async function sharp(avatar: Locator, px: number) {
       const r = el.getBoundingClientRect(), s = getComputedStyle(el)
       if (s.overflow !== 'visible' && (b.left < r.left - 0.5 || b.right > r.right + 0.5 || b.top < r.top - 0.5 || b.bottom > r.bottom + 0.5)) clipped = true
     }
-    return { box: [a.width, a.height], orb: [b.width, b.height], ribbons: orb.querySelectorAll('svg.bot-orb-ribbon').length, images: node.querySelectorAll('img').length, clipped, motion: orb.getAttribute('data-motion') }
+    return { box: [a.width, a.height], orb: [b.width, b.height], layers: [...orb.querySelectorAll('svg')].map(svg => svg.getAttribute('class')), canvases: node.querySelectorAll('canvas').length, images: node.querySelectorAll('img').length, clipped, motion: orb.getAttribute('data-motion') }
   })
   expect(m.box).toEqual([px, px])
   expect(m.orb).toEqual([px, px])
-  expect(m.ribbons).toBe(5)
+  expect(m.layers).toEqual(['bot-orb-wave', 'bot-orb-work'])
+  expect(m.canvases).toBe(0)
   expect(m.images).toBe(0)
   expect(m.clipped).toBe(false)
   return m.motion
@@ -94,9 +95,9 @@ test('8-orb assignment and picker', async () => {
   for (const bot of made) await expect(rowAvatar(page, bot.id)).toHaveAttribute('data-character', (bot.avatar as { character: string }).character)
   expect((await list(page)).slice(-5).map(b => b.avatar)).toEqual(made.map(b => b.avatar))
 
-  // The sidebar row draws a 32px orb, unclipped, large enough to animate.
+  // The sidebar row draws a 32px orb, unclipped: the small master, which sits still while its bot is idle.
   const target = made[2]!
-  expect(await sharp(rowAvatar(page, target.id), 32)).not.toBe('static')
+  expect(await sharp(rowAvatar(page, target.id), 32)).toBe('static')
 
   // Picking in the 4x2 updates the sidebar and the 36px header immediately, with an ink ring.
   await page.getByTestId(`bot-${target.id}`).click()

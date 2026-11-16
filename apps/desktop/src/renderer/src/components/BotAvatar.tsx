@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { avatarCharacter, OPT_MAX_PX } from '../lib/botAvatar.js'
+import { avatarCharacter, SMALL_MAX_PX } from '../lib/botAvatar.js'
 import { BotOrb } from './BotOrb.js'
 import type { CometActivity } from '../lib/cometActivity.js'
 
@@ -23,11 +23,11 @@ export function BotAvatar({ id, override, primary, size, state }: BotAvatarProps
     const width = box.current?.getBoundingClientRect().width
     if (width) setShown(Math.round(width))
   })
-  const motion = shown < OPT_MAX_PX ? 'static' : state === 'working' ? 'working' : 'idle'
+  const motion = state === 'working' ? 'working' : shown <= SMALL_MAX_PX ? 'static' : 'idle'
   return (
     <span ref={box} className="bot-avatar" data-size={size} data-state={state} data-character={orb} aria-hidden="true">
       <span className="bot-avatar-art">
-        <BotOrb orb={orb} motion={motion} />
+        <BotOrb orb={orb} motion={motion} size={shown} />
       </span>
       {state === 'attention' && <span className="bot-avatar-alert" />}
       {primary === true && size >= 36 && <span className="bot-avatar-primary" />}

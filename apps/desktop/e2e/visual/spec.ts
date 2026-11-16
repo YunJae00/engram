@@ -353,8 +353,8 @@ async function measureGallery(page: Page): Promise<Check[]> {
     return [...document.querySelectorAll<HTMLElement>('.gallery-cell')].map(cell => ({
       size: Number(cell.dataset['size']), state: cell.dataset['state'], primary: cell.dataset['primary'] === 'true',
       avatar: box(cell.querySelector(':scope > .bot-avatar')), alert: box(cell.querySelector('.bot-avatar-alert')), badge: box(cell.querySelector('.bot-avatar-primary')),
-      ribbon: (ribbon => ribbon ? getComputedStyle(ribbon).fill : null)(cell.querySelector('.bot-orb-ribbon')),
-      sphere: (orb => orb ? getComputedStyle(orb).backgroundImage.match(/rgba?\([^()]*\)/g)?.at(-1) ?? null : null)(cell.querySelector('.bot-orb')),
+      ribbon: (core => core ? getComputedStyle(core).fill : null)(cell.querySelector('.bot-orb-core')),
+      sphere: (orb => orb ? getComputedStyle(orb).backgroundColor : null)(cell.querySelector('.bot-orb')),
     }))
   })
   const sized = g.filter(c => c.avatar && Math.abs(c.avatar.width - c.size) <= 1 && Math.abs(c.avatar.height - c.size) <= 1).length
@@ -376,7 +376,7 @@ async function measureGallery(page: Page): Promise<Check[]> {
   const within = (a: number, b: number) => Math.abs(a - b) <= 1
   const prim = g.filter(c => c.primary && c.size >= 36), att = g.filter(c => c.state === 'attention'), both = prim.filter(c => c.state === 'attention')
   return [make('gallery cell sizes', CELL, `${sized}/${g.length}`, '113 cells, each .bot-avatar = data-size ±1', g.length === 113 && sized === 113),
-    atLeast('ribbon contrast on the sphere', `${CELL} .bot-orb-ribbon`, low, 3, '≥3:1'),
+    atLeast('wave contrast on the mist', `${CELL} .bot-orb-core`, low, 3, '≥3:1'),
     equals('working animated properties', `${CELL}[data-state=working]`, props, 'opacity,transform'),
     near('blur paused animations', `${CELL} .bot-avatar`, unpaused, 0, 0), near('reduced motion animations', 'document', running, 0, 0),
     ratio('primary badge bottom-right', prim.filter(c => c.avatar && c.badge && within(c.badge.right, c.avatar.right) && within(c.badge.bottom, c.avatar.bottom)).length, prim.length, 12, '12/12 within 1px'),

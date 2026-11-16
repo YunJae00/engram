@@ -1,16 +1,23 @@
-/* The orb is light, not a ball: two identical arcs of one circle, top and bottom, each built in layers like the app icon: a far bloom, a warm fringe
-   outside the circle and a cool one inside, a band (the body of the light), a hairline filament and a caustic bead, with a breath of air inside the circle.
-   Nothing is filled and nothing is clipped, so the surface shows through. The mark is unchanged by a half turn, so a slow linear half turn loops with no seam.
-   The bead slides along the arcs as they turn. Working: the same turn, and the bloom swells. */
+/* S1 Glass: a dark glass ball with a thin silver rim, mist lit from below, and one S-shaped wave of light across the middle:
+   a white core, a peach fringe above it and a blue one below. The ball is the same on a light and a dark surface.
+   Back to front: the mist (this element's background), the light layer (the dark upper half and the wave, then the working overlay),
+   the glass (::before: a highlight at the top, a glow inside the rim, a caustic where the wave meets the glass) and the rim (::after).
+   The core stays white; the orb's color tints the mist most, the haze and the floor glow less, and the rim and fringes a little. Silver is untinted. */
 .bot-orb {
-  --orb: #8B7CF6; position: relative; display: block; width: 100%; height: 100%;
-  isolation: isolate; container-type: size;
-  /* The fringes keep the orb's color: the warm one leans it toward peach, the cool one toward blue. */
-  --warm: color-mix(in srgb, var(--orb) 50%, #FFB98A); --cool: color-mix(in srgb, var(--orb) 55%, #5E9BFF);
-  /* On a light surface a bloom is invisible, so the band carries the color at full strength (deepened a little) over a tight tinted under-glow,
-     and only the filament is white. */
-  --band: color-mix(in srgb, var(--orb) 86%, #1C1C4A); --core: #FFFFFF;
-  --air: 0.07; --bloom: 0.62; --bloom-blur: 3.4cqw; --fringe: 0.9; --bead: 0.7;
+  --orb: #8B7CF6; --tint-rim: 30%; --tint-glow: 50%; --tint-mist: 60%;
+  position: relative; display: block; width: 100%; height: 100%;
+  isolation: isolate; container-type: size; border-radius: 50%; overflow: hidden;
+  --shade: color-mix(in srgb, color-mix(in srgb, #FFFFFF, var(--orb) var(--tint-rim)) 9%, #000000);
+  --mist: color-mix(in srgb, color-mix(in srgb, #FAFCFF, var(--orb) var(--tint-mist)) 56%, #000000);
+  --floor: color-mix(in srgb, #FFEDD6, var(--orb) var(--tint-glow));
+  --warm: color-mix(in srgb, #FF9952, var(--orb) var(--tint-rim)); --cool: color-mix(in srgb, #4D9EFF, var(--orb) var(--tint-rim));
+  --warm-haze: color-mix(in srgb, #FFBD94, var(--orb) var(--tint-glow)); --cool-haze: color-mix(in srgb, #80A8E6, var(--orb) var(--tint-glow));
+  --rim: color-mix(in srgb, #EDF5FF, var(--orb) var(--tint-rim)); --caustic: color-mix(in srgb, #FFCC99, var(--orb) var(--tint-rim));
+  /* The mist is a bright column in the middle that falls off to the sides, with a warm glow on the floor. */
+  background:
+    radial-gradient(ellipse 42% 30% at 50% 90%, color-mix(in srgb, var(--floor) 34%, transparent), transparent),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.36) 25%, rgba(0, 0, 0, 0.12) 40%, transparent 55%, rgba(0, 0, 0, 0.12) 70%, rgba(0, 0, 0, 0.36) 85%, rgba(0, 0, 0, 0.55)),
+    var(--mist);
 }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
@@ -20,70 +27,63 @@
 .bot-orb[data-orb='orb-rose'] { --orb: #E8798F; }
 .bot-orb[data-orb='orb-lilac'] { --orb: #D3A4F0; }
 .bot-orb[data-orb='orb-silver'] { --orb: #B8BCC8; }
-/* Blue mixed into amber or silver goes grey, so those two take the app icon's own blue; silver has no hue, so it takes the peach as well. */
-.bot-orb[data-orb='orb-amber'], .bot-orb[data-orb='orb-silver'] { --cool: #6FA2F5; }
-.bot-orb[data-orb='orb-silver'] { --warm: #F2A474; }
-/* Lilac and silver are pale: on a light surface their band is deepened further, or it would wash out. */
-.bot-orb[data-orb='orb-lilac'] { --band: #B272E8; }
-.bot-orb[data-orb='orb-silver'] { --band: #7F869C; }
-/* On a dark surface the light can be light: a pale band, a white filament, a wide bloom. */
-[data-theme='dark'] .bot-orb[data-orb] {
-  --band: color-mix(in srgb, var(--orb) 34%, #FFFFFF); --core: color-mix(in srgb, var(--orb) 4%, #FFFFFF);
-  --air: 0.1; --bloom: 0.5; --bloom-blur: 6cqw; --fringe: 1; --bead: 1;
-}
+.bot-orb[data-orb='orb-silver'] { --tint-rim: 0%; --tint-glow: 0%; --tint-mist: 0%; }
 
-.bot-orb-ribbons { position: absolute; inset: 0; transform-origin: 50% 50%; }
-/* Each layer is drawn on a box half again as large as the orb, so its blur has room. */
-.bot-orb-ribbon { position: absolute; inset: -25%; width: 150%; height: 150%; overflow: visible; transform-origin: 50% 50%; }
-.bot-orb-ribbon:nth-child(1) { filter: blur(var(--bloom-blur)); }
-.bot-orb-ribbon:nth-child(2) { filter: blur(1.5cqw); opacity: var(--fringe); }
-.bot-orb-ribbon:nth-child(3) { filter: blur(0.7cqw); }
-.bot-orb-ribbon:nth-child(4) { filter: blur(0.18cqw) drop-shadow(0 0 1.6cqw color-mix(in srgb, var(--band) 60%, transparent)); }
-.bot-orb-ribbon:nth-child(5) { filter: blur(1.8cqw); opacity: var(--bead); }
-.bot-orb-air { fill: var(--orb); fill-opacity: var(--air); }
-.bot-orb-bloom { fill: var(--orb); fill-opacity: var(--bloom); }
-.bot-orb-warm { fill: var(--warm); }
-.bot-orb-cool { fill: var(--cool); }
-.bot-orb-band { fill: var(--band); }
-.bot-orb-light, .bot-orb-bead { fill: var(--core); }
-/* Small orbs: a blur would eat the arcs, so the layers sharpen and a stroke in the same color gives them weight. The bead is too small to read. */
-@container (max-width: 40px) {
-  .bot-orb-ribbon:nth-child(1) { filter: blur(1.5px); }
-  .bot-orb-ribbon:nth-child(2), .bot-orb-ribbon:nth-child(3), .bot-orb-ribbon:nth-child(4) { filter: none; }
-  .bot-orb-ribbon:nth-child(5) { opacity: 0; }
-  .bot-orb-warm { stroke: var(--warm); stroke-width: 2px; }
-  .bot-orb-cool { stroke: var(--cool); stroke-width: 2px; }
-  .bot-orb-band { stroke: var(--band); stroke-width: 2.5px; }
-  .bot-orb-light { stroke: var(--core); stroke-width: 0.6px; }
+.bot-orb::before, .bot-orb::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: 50%; pointer-events: none; }
+.bot-orb::before {
+  background:
+    radial-gradient(ellipse 5% 11% at 2% 37%, var(--caustic), transparent),
+    radial-gradient(ellipse 5% 11% at 98% 64%, var(--caustic), transparent),
+    radial-gradient(ellipse 34% 20% at 50% 5%, color-mix(in srgb, var(--rim) 14%, transparent), transparent),
+    radial-gradient(closest-side, transparent 84%, color-mix(in srgb, var(--rim) 16%, transparent) 96%);
 }
+/* The rim is brightest underneath, where the light inside spills onto it, and dimmest on the upper sides. */
+.bot-orb::after {
+  --lit: color-mix(in srgb, var(--rim) 90%, #000000); --dim: color-mix(in srgb, var(--rim) 58%, #000000);
+  background: conic-gradient(color-mix(in srgb, var(--rim) 72%, #000000), var(--dim) 55deg, var(--dim) 85deg, var(--lit) 130deg, var(--lit) 185deg, var(--dim) 265deg, var(--dim) 305deg, color-mix(in srgb, var(--rim) 72%, #000000));
+  mask: radial-gradient(closest-side, transparent 96%, #000000 98%);
+}
+/* The small master (32px and under): a rim thick enough to read at 16px, and no caustics. */
+.bot-orb[data-master='small']::before { background: radial-gradient(ellipse 34% 20% at 50% 5%, color-mix(in srgb, var(--rim) 14%, transparent), transparent); }
+.bot-orb[data-master='small']::after { mask: radial-gradient(closest-side, transparent 85%, #000000 91%); }
 
-.bot-orb[data-motion='idle'] .bot-orb-ribbons,
-.bot-orb[data-motion='working'] .bot-orb-ribbons { animation: bot-orb-turn 12s linear infinite; will-change: transform; }
-.bot-orb[data-motion='idle'] .bot-orb-ribbon:nth-child(5),
-.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(5) { animation: bot-orb-bead 12s ease-in-out infinite; will-change: transform, opacity; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(1) { animation: bot-orb-pulse 12s ease-in-out infinite; will-change: transform, opacity; }
+.bot-orb-light { position: absolute; inset: 0; transform-origin: 50% 50%; }
+.bot-orb-wave, .bot-orb-work { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* Blur lengths on svg content are in the svg's own 100-unit box, so they scale with the orb. */
+.bot-orb-shade { fill: var(--shade); filter: blur(0.7px); }
+.bot-orb-warm-haze { fill: var(--warm-haze); fill-opacity: 0.6; filter: blur(2.6px); }
+.bot-orb-cool-haze { fill: var(--cool-haze); fill-opacity: 0.42; filter: blur(3px); }
+.bot-orb-warm { fill: var(--warm); fill-opacity: 0.75; filter: blur(1.5px); }
+.bot-orb-cool { fill: var(--cool); fill-opacity: 0.85; filter: blur(1.5px); }
+.bot-orb-core { fill: #FFFFFF; filter: blur(0.5px); }
+.bot-orb-work-warm { fill: var(--warm-haze); fill-opacity: 0.75; filter: blur(4px); }
+.bot-orb-work-cool { fill: var(--cool-haze); fill-opacity: 0.6; filter: blur(4.5px); }
+.bot-orb-work-core { fill: #FFFFFF; filter: blur(0.9px); }
+/* The small master halves the fringes. */
+.bot-orb[data-master='small'] .bot-orb-warm { fill-opacity: 0.4; }
+.bot-orb[data-master='small'] .bot-orb-cool { fill-opacity: 0.45; }
 
-/* Run linear, or the turn would lurch at each end of the loop. */
-@keyframes bot-orb-turn {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(180deg); }
+/* Working: the overlay fades in (a core about 55% thicker, a wider haze) and fades out again when the work ends.
+   Under 64px the idle motion is a breathe of the whole light layer; the small master sits still. From 64px BotOrb redraws the wave instead. */
+.bot-orb-work { opacity: 0; transition: opacity 0.9s ease-in-out; }
+.bot-orb[data-motion='working'] .bot-orb-work { opacity: 1; animation: bot-orb-pulse 12s ease-in-out infinite; will-change: opacity; }
+.bot-orb[data-motion='idle'][data-master='full']:not([data-ripple]) .bot-orb-light,
+.bot-orb[data-motion='working'][data-master='full']:not([data-ripple]) .bot-orb-light { animation: bot-orb-breathe 12s ease-in-out infinite; will-change: transform; }
+
+@keyframes bot-orb-breathe {
+  0%, 50%, 100% { transform: translateY(0) skewY(0deg); }
+  25% { transform: translateY(-1.2%) skewY(-2deg); }
+  75% { transform: translateY(1.2%) skewY(2deg); }
 }
-/* The caustic: the bead crosses each arc once per turn and is gone at both ends, where the loop closes. */
-@keyframes bot-orb-bead {
-  0%, 100% { opacity: 0; }
-  0% { transform: rotate(-46deg); }
-  50% { opacity: var(--bead); }
-  100% { transform: rotate(46deg); }
-}
-/* Two swells per turn, so it still closes with the loop. */
+/* Two swells per loop, so it closes with the loop. */
 @keyframes bot-orb-pulse {
-  0%, 50%, 100% { transform: scale(1); opacity: 0.7; }
-  25%, 75% { transform: scale(1.06); opacity: 1; }
+  0%, 50%, 100% { opacity: 0.72; }
+  25%, 75% { opacity: 1; }
 }
 
 :root:not([data-window-focused='true']) .bot-orb,
 :root:not([data-window-focused='true']) .bot-orb * { animation-play-state: paused; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bot-orb, .bot-orb * { animation: none !important; }
+  .bot-orb, .bot-orb * { animation: none !important; transition: none !important; }
 }

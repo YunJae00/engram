@@ -82,7 +82,8 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
     const avatar = rowAvatar(page, id)
     await expect(avatar).toHaveAttribute('data-character', /^orb-/)
     await expect(avatar.locator('.bot-orb')).toHaveCount(1)
-    await expect(avatar.locator('svg.bot-orb-ribbon')).toHaveCount(5)
+    await expect(avatar.locator('.bot-orb svg')).toHaveCount(2)
+    await expect(avatar.locator('canvas')).toHaveCount(0)
     await expect(avatar.locator('img')).toHaveCount(0)
   }
   await expect(rowAvatar(page, old.id)).toHaveAttribute('data-character', 'orb-violet')
@@ -124,7 +125,7 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   await expect(rowAvatar(page, old.id)).toHaveAttribute('data-character', 'orb-violet')
   await page.keyboard.press('Escape')
 
-  // Motion: CSS animations of transform/opacity only, working livelier than idle.
+  // Motion under 64px: CSS animations of transform/opacity only. A 32px row sits still while idle and pulses while working; the 36px header breathes.
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
   await app!.evaluate(({ BrowserWindow }, event) => {
@@ -133,24 +134,33 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   const working = `[data-testid="bot-${two.id}"] .sidebar-conversation-avatar > .bot-avatar`
   const idle = `[data-testid="bot-${old.id}"] .sidebar-conversation-avatar > .bot-avatar`
   await expect(page.locator(`${working} .bot-orb`)).toHaveAttribute('data-motion', 'working')
-  await expect(page.locator(`${idle} .bot-orb`)).toHaveAttribute('data-motion', 'idle')
+  await expect(page.locator(`${idle} .bot-orb`)).toHaveAttribute('data-motion', 'static')
+  for (const row of [working, idle]) {
+    await expect(page.locator(`${row} .bot-orb`)).toHaveAttribute('data-master', 'small')
+    await expect(page.locator(`${row} .bot-orb`)).not.toHaveAttribute('data-ripple')
+  }
+  await expect(page.locator(`${working} .bot-orb-work`)).toHaveCSS('opacity', /^(0\.[7-9]\d*|1)$/)
+  await expect(page.locator(`${idle} .bot-orb-work`)).toHaveCSS('opacity', '0')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
-  // Working: the turn, the bead that slides along the arcs, and the bloom's swell. Idle: the turn and the bead.
-  await expect.poll(async () => (await animationsIn(page, working)).length).toBe(3)
-  const [busy, calm] = [await animationsIn(page, working), await animationsIn(page, idle)]
-  expect(calm.length).toBe(2)
+  // Working: the overlay's pulse. Idle at 32px: nothing. The 36px header: the breathe of the light layer.
+  await expect.poll(async () => (await animationsIn(page, working)).length).toBe(1)
+  const header = '[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar'
+  const [busy, calm, breathing] = [await animationsIn(page, working), await animationsIn(page, idle), await animationsIn(page, header)]
+  expect(calm.length).toBe(0)
   expect(busy.length).toBeGreaterThan(calm.length)
-  for (const animation of [...busy, ...calm]) {
+  expect(breathing.map(animation => animation.props)).toEqual([['transform']])
+  for (const animation of [...busy, ...calm, ...breathing]) {
     expect(animation.css).toBe(true)
     expect(animation.props.filter(prop => prop !== 'transform' && prop !== 'opacity')).toEqual([])
     expect(animation.duration).toBeGreaterThanOrEqual(8000)
     expect(animation.duration).toBeLessThanOrEqual(12000)
   }
 
-  // The animation never touches the DOM, so React has nothing to re-render.
+  // Under 64px the animation never touches the DOM, so React has nothing to re-render. The only writes are the ticker's path data on the 64px primary orb.
+  await expect(page.locator('[data-testid="app-sidebar"] .bot-orb[data-ripple]')).toHaveCount(1)
   const mutations = await page.evaluate(() => new Promise<number>(done => {
     let count = 0
-    const observer = new MutationObserver(list => { count += list.length })
+    const observer = new MutationObserver(list => { count += list.filter(one => !(one.attributeName === 'd' && (one.target as Element).closest('.bot-orb[data-ripple] svg'))).length })
     observer.observe(document.querySelector('[data-testid="app-sidebar"]')!, { subtree: true, childList: true, attributes: true, characterData: true })
     setTimeout(() => { observer.disconnect(); done(count) }, 1500)
   }))
@@ -162,8 +172,29 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   }
   expect(Math.min(...cpu), `renderer cpu samples ${cpu.join(', ')}`).toBeLessThan(20)
 
-  // Reduced motion: a static frame, even for the working row.
+  // From 64px one shared ticker redraws the wave so the ripple travels: the info pane's 64px orb moves, the 36px header's path never changes.
+  await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+  const big = '[data-testid="bot-info-avatar"] .bot-orb'
+  await expect(page.locator(big)).toHaveAttribute('data-ripple', 'true')
+  await expect(page.locator(`${big} canvas`)).toHaveCount(0)
+  const core = (selector: string) => page.evaluate(selector => document.querySelector(`${selector} .bot-orb-core`)!.getAttribute('d'), selector)
+  const [bigStart, headerStart] = [await core(big), await core(`${header} .bot-orb`)]
+  await expect.poll(() => core(big)).not.toBe(bigStart)
+  expect(await core(`${header} .bot-orb`)).toBe(headerStart)
+  // The window loses focus: the ripple holds.
+  await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'false' })
+  await page.waitForTimeout(150)
+  const held = await core(big)
+  await page.waitForTimeout(300)
+  expect(await core(big)).toBe(held)
+  await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
+
+  // Reduced motion: a static frame, even for the working row, and the large orb returns to the still wave and stays there.
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(() => core(big)).toBe(headerStart)
+  await page.waitForTimeout(300)
+  expect(await core(big)).toBe(headerStart)
+  await expect(page.locator(`${working} .bot-orb-work`)).toHaveCSS('opacity', '1')
   await expect(page.locator(`${working}[data-state="working"]`)).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-avatar')).length)).toBe(0)
 })

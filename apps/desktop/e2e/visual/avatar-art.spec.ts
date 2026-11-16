@@ -13,7 +13,7 @@ const OUT = join(TMP, 'visual', 'rd-avatar-system-v1')
 test.describe('avatar art', () => {
   test.skip(process.env['ENGRAM_VISUAL'] !== '1', 'Opt-in visual harness: set ENGRAM_VISUAL=1')
 
-  test('gallery shows all 8 orbs drawn at every size, static below 24px', async () => {
+  test('gallery shows all 8 orbs drawn at every size, the small still master up to 32px', async () => {
     await mkdir(OUT, { recursive: true })
     const vault = await mkdtemp(join(TMP, 'avatar-art-vault-')), profile = await mkdtemp(join(TMP, 'avatar-art-profile-'))
     await seedVisualVault(vault)
@@ -36,9 +36,9 @@ test.describe('avatar art', () => {
             const size = Number(cell.dataset['size'])
             const orb = cell.querySelector<HTMLElement>('.bot-orb')
             const name = `${cell.dataset['character']} ${size}`
-            if (!orb || orb.dataset['orb'] !== cell.dataset['character'] || orb.querySelectorAll('svg.bot-orb-ribbon').length !== 3 || cell.querySelector('img')) { bad.push(`${name}: not an orb`); continue }
+            if (!orb || orb.dataset['orb'] !== cell.dataset['character'] || orb.querySelectorAll('svg').length !== 2 || cell.querySelector('canvas') || cell.querySelector('img')) { bad.push(`${name}: not an orb`); continue }
             const r = orb.getBoundingClientRect()
-            if ((orb.dataset['motion'] === 'static') !== (size < 24)) bad.push(`${name}: motion ${orb.dataset['motion']}`)
+            if ((orb.dataset['motion'] === 'static') !== (size <= 32) || (orb.dataset['master'] === 'small') !== (size <= 32) || (orb.dataset['ripple'] === 'true') !== (size >= 64)) bad.push(`${name}: motion ${orb.dataset['motion']}`)
             if (Math.abs(r.width - size) > 0.5 || Math.abs(r.height - size) > 0.5) bad.push(`${name}: drawn ${r.width}x${r.height}`)
           }
           return cells.length === 8 * 7 ? bad : [`${cells.length} cells, not 56`]
