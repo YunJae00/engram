@@ -100,10 +100,20 @@ const eitherForm = (pattern: RegExp, line: string) => pattern.test(line) || patt
 // offer ("알려줄게", "해 드릴게요", "I'll …") is a suggested reply or the comet's own voice.
 const PROMISE = /\u11AF\s?\u1100\u1166(\u110B\u116D)?[\s.!~]*$|드리겠습니다[\s.!~]*$|^(i['’]ll|i will|i can|let me)\b/i
 
-// An order ("…포함시킬 것", "…해 주세요") is a standing rule only when the person set one.
+// An order ("…포함시킬 것", "…해 주세요") is a standing rule only when the person set that rule:
+// the sentence of theirs that says "앞으로/always" must itself carry most of the rule's words.
+// shortcut: words are compared by their first two Hangul letters (or whole, otherwise), no synonyms; a rule the person worded very differently is dropped.
 const ORDER = /\u11AF\s?\u1100\u1165\u11BA[\s.!]*$|(하세요|주세요|하십시오)[\s.!]*$|^(make sure|be sure|do not|don['’]t|please)\b/i
 const STANDING = /앞으로|항상|매번|늘\s|언제나|다음부터|이제부터|지금부터|할 때마다|from now on|always|never|every time|whenever/i
-const unaskedRule = (line: string, said: string) => eitherForm(ORDER, normalizeFact(line)) && !STANDING.test(said)
+const stems = (text: string) => (text.match(/[\p{L}\p{N}]{2,}/gu) ?? []).map((word) => (/[가-힣]/.test(word) ? word.slice(0, 2) : word.toLowerCase()))
+function personSetRule(line: string, said: string): boolean {
+  const rule = stems(line)
+  return said.split(/[.!?。\n]+/).filter((sentence) => STANDING.test(sentence)).some((sentence) => {
+    const theirs = new Set(stems(sentence))
+    return rule.filter((stem) => theirs.has(stem)).length * 2 > rule.length
+  })
+}
+const unaskedRule = (line: string, said: string) => eitherForm(ORDER, normalizeFact(line)) && !personSetRule(normalizeFact(line), said)
 
 export function normalizeFact(text: string): string {
   return text
@@ -139,28 +149,16 @@ export function factScore(fact: BotFact, now: Date): number {
 export interface MemoryChange {
   added: number
   touched: number
-  // Older lines a new one took the place of.
-  replaced: string[]
-}
-
-// The same sentence with other numbers is the same fact with a new value, but only when the words
-// before the first number name one subject: "행사 일정은 …" fits two different events, so both stay.
-// shortcut: a short subject or a changed name is replaced only by the extractor's "outdated:" line.
-const SUBJECT_WORDS = 3
-function valueKey(text: string): string | null {
-  const fact = normalizeFact(text).toLowerCase()
-  const subject = fact.slice(0, fact.search(/\d/)).trim()
-  return subject.split(' ').length >= SUBJECT_WORDS ? fact.replace(/\d+/g, '#') : null
 }
 
 // A fact said again is the same fact with a fresh clock, never a second line.
+// A changed value is a new line; the old one leaves only through the extractor's "outdated:" line.
 export function recordFacts(paths: VaultPaths, botId: string, lines: string[], now = new Date()): Promise<MemoryChange> {
   return serialized(memoryPath(paths, botId), async () => {
     const file = await loadBotMemory(paths, botId)
     const stamp = now.toISOString()
     let added = 0
     let touched = 0
-    const replaced: string[] = []
     for (const line of lines) {
       const text = normalizeFact(line)
       if (!text) continue
@@ -169,14 +167,6 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
         same.touchedAt = stamp
         touched++
       } else {
-        // A later value wins: the older line leaves, so it is never recalled beside the new one.
-        // Lines written in this same call are separate facts, never each other's correction.
-        const slot = valueKey(text)
-        const older = slot ? file.facts.filter((f) => f.at !== stamp && valueKey(f.text) === slot) : []
-        if (older.length) {
-          replaced.push(...older.map((f) => f.text))
-          file.facts = file.facts.filter((f) => !older.includes(f))
-        }
         file.facts.push({ id: `f-${now.getTime().toString(36)}-${randomBytes(3).toString('hex')}`, text, at: stamp, touchedAt: stamp })
         added++
       }
@@ -185,7 +175,7 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
     if (file.facts.length > DISK_CAP)
       file.facts = [...file.facts].sort((a, b) => factScore(b, now) - factScore(a, now)).slice(0, DISK_CAP)
     await saveBotMemory(paths, botId, file)
-    return { added, touched, replaced }
+    return { added, touched }
   })
 }
 
@@ -232,12 +222,12 @@ const FACT_LINES_MAX = 6
 
 // A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
 // A reply that is not a list of facts (the model answered the chat instead) keeps nothing.
-// `said` is the person's message: without a standing rule in it, a line worded as an order is dropped.
+// `said` is the person's message: a line worded as an order is dropped unless they set that rule in it.
 export function scopeFacts(raw: string, known: readonly string[], said = ''): { shared: string[]; own: string[]; outdated?: string[] } {
   const written = raw.split('\n').filter((line) => line.trim())
   if (written.length > FACT_LINES_MAX || written.some((line) => !FACT_LINE.test(line) && !SCOPE_MARK.test(line) && !OUTDATED_MARK.test(line))) return { shared: [], own: [] }
   const knownKeys = new Set(known.map((k) => normalizeFact(k).toLowerCase()))
-  // Only a line that is really kept can be called outdated.
+  // Only a line that is really kept can be called outdated, and only when this reply keeps its replacement.
   const outdated = written.filter((line) => OUTDATED_MARK.test(line)).map((line) => normalizeFact(line.replace(OUTDATED_MARK, ''))).filter((line) => knownKeys.has(line.toLowerCase()))
   const lines = written.filter((line) => !OUTDATED_MARK.test(line)).map((line) => {
     const mark = SCOPE_MARK.exec(line)
@@ -246,7 +236,7 @@ export function scopeFacts(raw: string, known: readonly string[], said = ''): { 
   }).filter((line) => !unaskedRule(line.text, said))
   const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
   const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
-  return { shared, own, ...(outdated.length ? { outdated } : {}) }
+  return { shared, own, ...(outdated.length && shared.length + own.length ? { outdated } : {}) }
 }
 
 // Shared and own facts as one list, each line once, the fresher clock kept.

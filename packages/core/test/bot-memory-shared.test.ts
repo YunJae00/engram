@@ -90,6 +90,22 @@ describe('qa145 memory pollution', () => {
     expect(scopeFacts('- everyone: 보고서는 표로 받는 걸 좋아한다\n- everyone: 결정: 배포는 목요일 오후에만 한다', []).shared).toHaveLength(2)
   })
 
+  it('r3: a standing-rule word elsewhere in the message does not admit a rule the person never gave', () => {
+    const rule = '- everyone: 팀 코드명(은하수)을 문서에 포함시킬 것'
+    expect(scopeFacts(rule, [], '앞으로 스프린트 마감은 11월 25일이야.')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts(rule, [], '우리 팀 코드명은 은하수야. 문서는 내가 쓸게. 앞으로 스프린트 마감은 11월 25일이야.')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts(`${rule}\n- everyone: 다음 스프린트 마감은 11월 25일이다`, [], '앞으로 스프린트 마감은 11월 25일이야.').shared).toEqual(['다음 스프린트 마감은 11월 25일이다'])
+    expect(scopeFacts('- everyone: Make sure the code name is in every report', [], 'The deadline is always on Friday.')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: Make sure the code name is in every report', [], 'From now on put the code name in every report.').shared).toHaveLength(1)
+  })
+
+  it('r3: an outdated line is ignored when no replacement was kept', () => {
+    const kept = ['다음 스프린트 마감은 11월 25일이다']
+    expect(scopeFacts('- everyone: 스프린트 마감 바뀌면 알려줄게\n- outdated: 다음 스프린트 마감은 11월 25일이다', kept)).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- outdated: 다음 스프린트 마감은 11월 25일이다', kept)).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: 다음 스프린트 마감은 11월 27일이다\n- outdated: 다음 스프린트 마감은 11월 25일이다', kept)).toEqual({ shared: ['다음 스프린트 마감은 11월 27일이다'], own: [], outdated: kept })
+  })
+
   it('names a kept line outdated only when it is really kept', () => {
     expect(scopeFacts('- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다\n- outdated: 없는 줄', ['팀 코드명은 은하수다'])).toEqual({ shared: ['팀 코드명은 노을이다'], own: [], outdated: ['팀 코드명은 은하수다'] })
   })

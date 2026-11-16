@@ -47,8 +47,7 @@ async function sync(paths: VaultPaths, now: Date, learned: string[], forgotten: 
   const memory = await loadBotMemory(paths, PERSON_MEMORY)
   const known = new Set(memory.facts.map(f => key(f.text)))
   const additions = [...profileLines(note?.body ?? ''), ...learned].filter(line => !removed.has(key(line)) && !known.has(key(line)))
-  // A line a newer value replaced leaves the note too, or the next sync would learn it back.
-  if (additions.length) for (const line of (await recordFacts(paths, PERSON_MEMORY, additions, now)).replaced) removed.add(key(line))
+  if (additions.length) await recordFacts(paths, PERSON_MEMORY, additions, now)
   const facts = (await loadBotMemory(paths, PERSON_MEMORY)).facts.sort((a, b) => a.at.localeCompare(b.at))
   if (!note && !facts.length) return
   // Retain the person's prose and formatting; append only newly learned lines.

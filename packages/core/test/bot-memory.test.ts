@@ -58,7 +58,7 @@ describe('recordFacts', () => {
   it('lands under the cache folder and comes back after a fresh load', async () => {
     const paths = await tempPaths()
     const change = await recordFacts(paths, 'b1', ['Sits on the 4th floor', 'Prefers short answers'], T1)
-    expect(change).toEqual({ added: 2, touched: 0, replaced: [] })
+    expect(change).toEqual({ added: 2, touched: 0 })
     await stat(join(paths.cache, 'bot-memory', 'b1.json'))
     const file = await loadBotMemory(paths, 'b1')
     expect(file.facts.map((f) => f.text)).toEqual(['Sits on the 4th floor', 'Prefers short answers'])
@@ -69,7 +69,7 @@ describe('recordFacts', () => {
     const paths = await tempPaths()
     await recordFacts(paths, 'b1', ['Prefers short answers.'], T1)
     const change = await recordFacts(paths, 'b1', ['prefers  short answers'], T2)
-    expect(change).toEqual({ added: 0, touched: 1, replaced: [] })
+    expect(change).toEqual({ added: 0, touched: 1 })
     const [fact] = (await loadBotMemory(paths, 'b1')).facts
     expect(fact?.at).toBe(T1.toISOString())
     expect(fact?.touchedAt).toBe(T2.toISOString())
@@ -123,24 +123,31 @@ describe('ranking and rendering', () => {
     expect(prompt).not.toContain('스프린트 마감 바뀌면 알려줄게')
     expect(prompt).toContain('- outdated: ')
   })
-  it('qa145: a later value replaces the older one, and junk already on disk is not read back', async () => {
+  it('qa145: a later value is kept beside the older one until the extractor calls it outdated, and junk already on disk is not read back', async () => {
     const paths = await tempPaths()
     await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 20일이다', '팀 코드명은 은하수다'], T1)
     const change = await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 25일이다'], T2)
-    expect(change.replaced).toEqual(['다음 스프린트 마감은 11월 20일이다'])
-    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+    expect(change).toEqual({ added: 1, touched: 0 })
+    const all = ['다음 스프린트 마감은 11월 20일이다', '팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다']
+    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(all)
     await recordFacts(paths, 'bot-q', ['# 도구를 사용하겠습니다', '<execute>', '| 사과 | 1000 |', '## COMET-REMEMBER'], T2)
-    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(all)
   })
   it('qa145 r2: two events with different dates both stay', async () => {
     const paths = await tempPaths()
     await recordFacts(paths, 'bot-e', ['행사 일정은 11월 20일이다'], T1)
     const later = await recordFacts(paths, 'bot-e', ['행사 일정은 12월 4일이다'], T2)
-    expect(later.replaced).toEqual([])
+    expect(later).toEqual({ added: 1, touched: 0 })
     // Said together, even a long shared subject is two facts.
     const together = await recordFacts(paths, 'bot-e', ['다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'], T2)
-    expect(together.replaced).toEqual([])
+    expect(together).toEqual({ added: 2, touched: 0 })
     expect((await loadBotMemory(paths, 'bot-e')).facts.map((f) => f.text)).toEqual(['행사 일정은 11월 20일이다', '행사 일정은 12월 4일이다', '다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'])
+  })
+  it('qa145 r3: two customer visits recorded one after the other both stay', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-v', ['다음 분기 고객 방문은 1월 8일이다'], T1)
+    await recordFacts(paths, 'bot-v', ['다음 분기 고객 방문은 2월 3일이다'], T2)
+    expect((await loadBotMemory(paths, 'bot-v')).facts.map((f) => f.text)).toEqual(['다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'])
   })
   it('qa145 r2: a promise already on disk is not read back', async () => {
     const paths = await tempPaths()

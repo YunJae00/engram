@@ -93,7 +93,7 @@ it('search_chats leaves a saved error turn out of what earlier conversations sai
 it('qa145: a corrected date replaces the old one in memory and in the profile note', async () => {
   const paths = await tempPaths()
   await remember(paths, '- everyone: 다음 스프린트 마감은 11월 20일이다\n- everyone: 팀 코드명은 은하수다')
-  await remember(paths, '- everyone: 다음 스프린트 마감은 11월 25일이다')
+  await remember(paths, '- everyone: 다음 스프린트 마감은 11월 25일이다\n- outdated: 다음 스프린트 마감은 11월 20일이다')
   expect(await texts(paths, PERSON_MEMORY)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
   expect(await noteLines(paths)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
   await remember(paths, '- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다')
@@ -102,4 +102,12 @@ it('qa145: a corrected date replaces the old one in memory and in the profile no
   const nova = renderMemory(mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, 'nova')))
   expect(nova).not.toContain('11월 20일')
   expect(nova).not.toContain('은하수')
+})
+
+it('qa145 r3: an outdated line with no kept replacement leaves the real fact alone', async () => {
+  const paths = await tempPaths()
+  await remember(paths, '- everyone: 다음 스프린트 마감은 11월 25일이다')
+  await remember(paths, '- everyone: 스프린트 마감 바뀌면 알려줄게\n- outdated: 다음 스프린트 마감은 11월 25일이다')
+  expect(await texts(paths, PERSON_MEMORY)).toEqual(['다음 스프린트 마감은 11월 25일이다'])
+  expect(await noteLines(paths)).toEqual(['다음 스프린트 마감은 11월 25일이다'])
 })
