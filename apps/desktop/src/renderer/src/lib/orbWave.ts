@@ -41,7 +41,7 @@ export function orbPaths(master: OrbMaster, t: number): string[] {
     const bands: [number, number][] = [
       [-0.05 * env, 0.05 * env], [0.06 * env, 0.06 * env],
       [-1.6 * w, w * Math.sqrt(env)], [1.7 * w, 1.1 * w * Math.sqrt(left)],
-      [0, 1.25 * w * core(1.6, env)],
+      [0, (small ? 1 : 1.25) * w * core(1.6, env)],
       [-0.075 * busy, 0.075 * busy], [0.085 * busy, 0.085 * busy], [0, (small ? 1.45 : 1.72) * w * core(2.24, busy)],
     ]
     shade.push(`${at(x)} ${at(y + 0.5 * w * k)}`)

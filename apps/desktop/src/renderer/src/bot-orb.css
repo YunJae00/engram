@@ -43,7 +43,8 @@
   background: conic-gradient(color-mix(in srgb, var(--rim) 72%, #000000), var(--dim) 55deg, var(--dim) 85deg, var(--lit) 130deg, var(--lit) 185deg, var(--dim) 265deg, var(--dim) 305deg, color-mix(in srgb, var(--rim) 72%, #000000));
   mask: radial-gradient(closest-side, transparent 96%, #000000 98%);
 }
-/* The small master (32px and under): a rim thick enough to read at 16px, and no caustics. */
+/* The small master (32px and under): a rim thick enough to read at 16px, and no caustics. The rim carries more of the color, so small orbs can be told apart. */
+.bot-orb[data-master='small'] { --rim: color-mix(in srgb, #EDF5FF, var(--orb) var(--tint-mist)); }
 .bot-orb[data-master='small']::before { background: radial-gradient(ellipse 34% 20% at 50% 5%, color-mix(in srgb, var(--rim) 14%, transparent), transparent); }
 .bot-orb[data-master='small']::after { mask: radial-gradient(closest-side, transparent 85%, #000000 91%); }
 
