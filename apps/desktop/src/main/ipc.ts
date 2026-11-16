@@ -2727,7 +2727,7 @@ export function registerIpc(ctx: VaultContext): void {
         const firstSaid = firstLineNote(channel)
         const everyTool = await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit })
         // A person's own plain ask: nothing attached, resumed, scheduled, studied or re-checked.
-        const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && !turn?.context && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
+        const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
         const lane = fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
         const laneNote = lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''

@@ -53,7 +53,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
+export interface TaskTurn { tokenBudget?: number; context?: string; /** The context is only a route learned from an earlier run of the same ask, not resumed or answered work. */ learned?: boolean; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -388,7 +388,7 @@ export function taskRunner(deps: {
             'This is a scheduled task. Start with the saved procedure and its known URLs, or the existing page in this conversation. Do not rediscover the same service with search_web. If no saved route is available, ask_person for the address. If login expired, ask_person to sign in and stop in waiting; do not search for another login page.',
             playbook ? playbookContext(playbook) : '',
           ].filter(Boolean).join('\n\n') }
-          : playbook ? { context: playbookContext(playbook) } : undefined
+          : playbook ? { context: playbookContext(playbook), learned: true } : undefined
         after = await turn(task.id, { ...request, channel }, extra)
         if (after?.state === 'running') await carryOn(after.id, nextReason(after), '', channel)
         else await finished(after)

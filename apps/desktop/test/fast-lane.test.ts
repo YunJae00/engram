@@ -54,6 +54,9 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   expect(ipc).toContain('...(native && !lane ? { native } : {}),')
   expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
+  // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).
+  expect(ipc).toContain('(!turn?.context || turn.learned === true)')
+  expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')
   expect(ipc).toContain('steered: followUpSaid')
   expect(ipc).toContain('stop: stopChat,')
 })
