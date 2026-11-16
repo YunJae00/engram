@@ -4,6 +4,7 @@ import { appendFile, copyFile, lstat, mkdir, readdir, readFile, writeFile } from
 import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { renameWithRetry } from './rename-with-retry.js'
 import { localAliasesPath } from './aliases.js'
+import { localOnlyList } from './git.js'
 import { vaultPaths, type VaultPaths } from './vault.js'
 
 // There is one workspace now. Everything a person kept in their other workspaces is copied into the one
@@ -186,15 +187,12 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
   for (const dir of ['artifacts', 'chat-attachments', 'skills']) await copyTree(join(from.cache, dir), join(target.cache, dir))
   await copyTree(join(from.views, 'cards'), join(target.views, 'cards'))
   await copyTree(from.privateDir, target.privateDir)
+  // In a team's workspace they arrive as this computer's own: named in the local-only list (and the repository's exclusion file) before they are written.
   keepLocal = options.tracked === false ? await localOnly(target.workspace) : null
-  // Without a repository folder to write the exclusion in, there is no way to keep them off the team's history.
-  if (options.tracked === false && !keepLocal) report.skipped.push('notes, inbox, sources, aliases: this workspace is shared with a team and has no .git folder to keep them local, so they were left in their folder')
-  else {
-    await copyTree(from.notes, target.notes)
-    await copyTree(from.inbox, target.inbox)
-    await copyTree(from.sources, target.sources)
-    await mergeAliases(join(from.workspace, 'aliases.md'), keepLocal ? localAliasesPath(target) : join(target.workspace, 'aliases.md'))
-  }
+  await copyTree(from.notes, target.notes)
+  await copyTree(from.inbox, target.inbox)
+  await copyTree(from.sources, target.sources)
+  await mergeAliases(join(from.workspace, 'aliases.md'), keepLocal ? localAliasesPath(target) : join(target.workspace, 'aliases.md'))
   keepLocal = null
 
   // What the person told every bot: their lines join the ones already kept.
@@ -245,23 +243,28 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
   return report
 }
 
-// The repository's own exclusion list: read by git on this computer only, so a path named in it is never staged by `git add -A`.
-// Returns null when the workspace has no .git folder of its own.
-async function localOnly(workspace: string): Promise<((path: string) => Promise<void>) | null> {
-  if (!(await lstat(join(workspace, '.git')).catch(() => null))?.isDirectory()) return null
+// The person's own files in a team's workspace. Each name goes to the local-only list, which outlives the repository folder and is
+// applied again before anything is staged (git.ts keepLocalOnly), and to the repository's exclusion file when there is one now:
+// read by git on this computer only, so a path named in it is never staged by `git add -A`.
+async function localOnly(workspace: string): Promise<(path: string) => Promise<void>> {
+  const list = localOnlyList(workspace)
+  await mkdir(join(list, '..'), { recursive: true })
+  const listed = new Set((await readFile(list, 'utf8').catch(() => '')).split('\n'))
+  const repository = (await lstat(join(workspace, '.git')).catch(() => null))?.isDirectory() === true
   const file = join(workspace, '.git', 'info', 'exclude')
-  await mkdir(join(file, '..'), { recursive: true })
-  const held = await readFile(file, 'utf8').catch(() => '')
+  if (repository) await mkdir(join(file, '..'), { recursive: true })
+  const held = repository ? await readFile(file, 'utf8').catch(() => '') : ''
   const lines = new Set(held.split('\n'))
   let open = held !== '' && !held.endsWith('\n')
   const add = async (line: string): Promise<void> => {
-    if (lines.has(line)) return
+    if (!listed.has(line)) { await appendFile(list, `${line}\n`); listed.add(line) }
+    if (!repository || lines.has(line)) return
     await appendFile(file, `${open ? '\n' : ''}${line}\n`)
     open = false
     lines.add(line)
   }
-  // Bot work folders ignore themselves only once the app has used them here.
-  await add('/tasks/')
+  // Bot work folders ignore themselves only once the app has used them here; the list and the private alias lines are this computer's too.
+  for (const line of ['/tasks/', '/.engram/local-only', '/.engram/aliases.local.md']) await add(line)
   return async (path) => {
     const rel = relative(workspace, path).split(sep).join('/')
     // Anchored and literal; both spellings of a Korean name, since git may read the folder in either.

@@ -1,6 +1,24 @@
 import { simpleGit, type SimpleGit } from 'simple-git'
+import { appendFile, lstat, mkdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { BinaryProvider } from './binary.js'
 import { defaultBinaryProvider } from './binary.js'
+
+// Files of the person's own that sit in a team's workspace (workspace-merge.ts). The list is kept outside the repository folder,
+// so a repository made or replaced later is told the same names before anything is staged.
+export const localOnlyList = (workspace: string): string => join(workspace, '.engram', 'local-only')
+/** Puts every listed name in the repository's own exclusion file. Throws when there are names and no repository folder to hold them: staging would send them. */
+export async function keepLocalOnly(workspace: string): Promise<void> {
+  const want = (await readFile(localOnlyList(workspace), 'utf8').catch(() => '')).split('\n').filter(Boolean)
+  if (!want.length) return
+  if (!(await lstat(join(workspace, '.git')).catch(() => null))?.isDirectory()) throw new Error('local-only files cannot be kept out: this workspace has no .git folder of its own')
+  const file = join(workspace, '.git', 'info', 'exclude')
+  const held = await readFile(file, 'utf8').catch(() => '')
+  const have = new Set(held.split('\n')), missing = want.filter(line => !have.has(line))
+  if (!missing.length) return
+  await mkdir(join(file, '..'), { recursive: true })
+  await appendFile(file, `${held && !held.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`)
+}
 
 export function bundledGitExecPath(provider: BinaryProvider): string | null {
   const bundled = provider as { gitExecPath?(): string | null }
@@ -103,6 +121,7 @@ export class GitLayer {
 
   // Commits everything that changed; returns the commit hash or null when clean.
   async autoCommit(message: string): Promise<string | null> {
+    await keepLocalOnly(this.workdir)
     await this.git.add('-A')
     const status = await this.git.status()
     if (status.staged.length === 0 && status.files.length === 0) return null

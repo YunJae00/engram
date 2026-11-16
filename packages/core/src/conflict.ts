@@ -1,6 +1,7 @@
 import { basename } from 'node:path'
 import { createCard, type Card } from './cards.js'
 import { collectResult, engineCwd, type Engine } from './engine/types.js'
+import { keepLocalOnly } from './git.js'
 import { generateNoteId } from './id.js'
 import { readNote, writeNote } from './notes.js'
 import { parseNote } from './schema.js'
@@ -84,6 +85,7 @@ export async function resolveConflicts(
       ourNote.front.status = 'disputed'
       ourNote.front.updated = new Date().toISOString()
       await writeNote(paths, ourNote)
+      await keepLocalOnly(paths.workspace)
       await sync.raw().add(['-A'])
       result.preservedBoth.push(noteId)
     }

@@ -1,7 +1,7 @@
 import { simpleGit, type SimpleGit } from 'simple-git'
 import type { BinaryProvider } from './binary.js'
 import { defaultBinaryProvider } from './binary.js'
-import { bundledGitEnv, bundledGitExecPath, gitEnv } from './git.js'
+import { bundledGitEnv, bundledGitExecPath, gitEnv, keepLocalOnly } from './git.js'
 import { initVault, vaultPaths, type VaultPaths } from './vault.js'
 
 // Team sync: workspace/ is the repo; the UI never says "git".
@@ -99,6 +99,7 @@ export class TeamSync {
   }
 
   async commitAll(message: string): Promise<void> {
+    await keepLocalOnly(this.paths.workspace)
     await this.git.add('-A')
     const status = await this.git.status()
     if (status.staged.length > 0 || status.files.length > 0) await this.git.commit(message)

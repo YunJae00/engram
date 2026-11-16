@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { addAliasGroup, loadAliasGroups } from '../src/aliases.js'
 import { loadBots, loadArchivedBots } from '../src/bots.js'
+import { GitLayer } from '../src/git.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { initVault, vaultPaths, type VaultPaths } from '../src/vault.js'
 import { mergeWorkspace } from '../src/workspace-merge.js'
@@ -250,15 +251,33 @@ describe('mergeWorkspace', () => {
     expect(await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })).toBeNull()
   })
 
-  it('a shared workspace with no repository folder keeps the notes out rather than risk sending them', async () => {
+  // Codex cap (sm r3): with no .git folder the notes were left in the closed workspace and the source was still marked done.
+  it('a shared workspace with no repository folder still receives the notes, and a repository made later never stages them', async () => {
     const main = await mainVault(), work = await workVault()
+    await writeFile(join(work.inbox, 'later.md'), 'inbox item\n')
+    const before = await snapshot(work.root)
     const report = await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })
-    expect((await readdir(main.notes)).sort()).toEqual(['n-1.md', 'n-person-profile.md'])
-    expect(await readdir(main.sources)).toEqual([])
+    // Everything the other workspace held is here now; the alias file a team would share is as it was.
+    const here = (await readdir(main.notes)).sort()
+    expect(here.filter(name => !/^n-person-profile-[0-9a-f]{6}\.md$/.test(name))).toEqual(['n-1.md', 'n-2.md', 'n-person-profile.md'])
+    expect(here).toHaveLength(4)
+    expect(await readdir(main.inbox)).toContain('later.md')
+    expect(await readdir(main.sources)).toContain('paper.pdf')
+    expect(report!.skipped.join(' ')).not.toContain('shared with a team')
     expect(await text(main, 'workspace/aliases.md')).toBe('# Aliases\n\n- 민호 = Minho\n')
-    // What git does not carry still arrives.
-    expect(names(await loadBots(main))).toContain('박사원')
-    expect(report!.skipped.join(' ')).toContain('shared with a team')
+    expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
+    expect(await snapshot(work.root)).toEqual(before)
+    // With names to keep local and no repository folder to hold them, nothing is staged at all.
+    await expect(new GitLayer(main.workspace).autoCommit('sync')).rejects.toThrow(/local-only/)
+    // A repository made (or cloned again) afterwards: the app's own commit names them first, so only the team's files go in.
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.quotepath=false', ...args], { cwd: main.workspace, encoding: 'utf8' })
+    git('init', '-q'); git('config', 'user.name', 't'); git('config', 'user.email', 't@t')
+    await new GitLayer(main.workspace).autoCommit('sync')
+    const staged = git('ls-files').trim().split('\n')
+    expect(staged).toContain('notes/n-1.md')
+    expect(staged.filter(name => /n-2\.md|n-person-profile-|later\.md|paper\.pdf|local-only|aliases\.local/.test(name))).toEqual([])
+    // A second run is a no-op.
+    expect(await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })).toBeNull()
   })
 
   it('leaves an older bot list, a missing folder and a link alone', async () => {
