@@ -38,6 +38,8 @@ it('keeps the lane menu small enough to be preloaded, with the team and reading 
   for (const name of ['hire_members', 'review_member', 'search_web', 'read_pages', 'ask_person']) expect(LANE_TOOLS.has(name), name).toBe(true)
   expect(LANE_NOTE).toContain('one table')
   expect(LANE_NOTE).toContain('source address in every row')
+  // grokbar baseline R2: the lead redid two members and then went looking itself; the answer never came.
+  expect(LANE_NOTE).toContain('do not redo a member and do not look up the missing parts yourself')
   expect(SMALL_TALK_NOTE).toContain('one or two short sentences')
 })
 
