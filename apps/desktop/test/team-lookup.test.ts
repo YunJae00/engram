@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // perf146: "봇 3개 생성해서 서울 부산 제주 날씨 조사" ran three opus members with 65 tools each for 118-213 s; the lead waited for the slowest.
@@ -33,6 +33,8 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
   expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS })
+  // perf146 r3: the lead waits for its slowest member, so the member phase is bounded at 55 s for a 60-80 s answer.
+  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([40_000, 55_000, 10])
   expect(lookup!.options.native).toBeUndefined()
   expect(lookup!.options.persona).toContain('You only look things up')
   // A member that makes something keeps the full set and the work model.

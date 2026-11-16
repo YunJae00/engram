@@ -23,10 +23,11 @@ const REVIEW_NOTE = 'Review each member with review_member before you report. A 
 // each took 118-213 s on a weather lookup, one of them 90 s on an optional extra, and the lead waits for the slowest.
 export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'read_open_page', 'look', 'reveal', 'search_memory', 'read_note', 'search_chats', 'ask_person'])
 // After the soft limit no new tool call starts and the member reports what it has; at the hard limit it is stopped with what it wrote so far.
-export const LOOKUP_SOFT_MS = 60_000
-export const LOOKUP_HARD_MS = 80_000
-export const LOOKUP_MAX_CALLS = 12
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about a minute. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+// perf146 r3: at 60 s / 80 s / 12 calls the members took 71-76 s of a 102 s answer; the lead waits for the slowest, so these bound the team.
+export const LOOKUP_SOFT_MS = 40_000
+export const LOOKUP_HARD_MS = 55_000
+export const LOOKUP_MAX_CALLS = 10
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and well under a minute. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -155,7 +156,7 @@ const text = (value: unknown, max: number): string => typeof value === 'string' 
 export function teamHireTools(host: TeamHost): AgentTool[] {
   const hire: AgentTool = {
     name: 'hire_members',
-    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools and about a minute; leave it out for a part that makes or changes something. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review each with review_member.`,
+    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools and under a minute; leave it out for a part that makes or changes something. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review each with review_member.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
