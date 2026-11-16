@@ -22,7 +22,7 @@ async function world(base: number, script: (turn: Turn) => Promise<string | { an
   const pool = new WorkerPool({ base, sample: async () => ({ freePct: 60, swapGrowthBytes: 0, cpuBusyPct: 10 }), log: () => undefined })
   const created = await createTask(paths, 'Research the weather in Seoul, Jeju and Busan', 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
-  const closed: string[] = [], seen: Turn[] = [], ended: string[] = []
+  const closed: string[] = [], seen: Turn[] = [], ended: string[] = [], busy = new Set<string>()
   const peak = { running: 0, working: 0, top: 0 }
   const run: Run = async (deps, prompt, options = {}) => {
     const lease = await pool.lease(options.signal)
@@ -38,7 +38,7 @@ async function world(base: number, script: (turn: Turn) => Promise<string | { an
       return typeof out === 'string' ? reply(out) : { ...reply(out.answer), asked: true }
     } finally { lease.end() }
   }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: key => closed.push(key), endLane: lane => ended.push(lane), step: () => undefined, changed: () => undefined, run })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: key => closed.push(key), endLane: lane => ended.push(lane), step: () => undefined, changed: () => undefined, busy: channel => busy.has(channel), run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), { name: 'app_click', description: '', argsSchema: {}, run: async () => 'clicked' }, { name: 'new_bot', description: '', argsSchema: {}, run: async () => '' }] }
   // The lead's turn holds a pool slot, as a real turn's tools do.
   const lead = async (name: string, args: Record<string, unknown> = {}) => {
@@ -47,7 +47,7 @@ async function world(base: number, script: (turn: Turn) => Promise<string | { an
   }
   const task = async () => (await listTasks(paths)).find(t => t.id === created.id)!
   const members = async () => (await task()).team!.members
-  return { paths, pool, team, kit, lead, task, members, closed, seen, ended, peak, id: created.id }
+  return { paths, pool, team, kit, lead, task, members, closed, seen, ended, peak, busy, id: created.id }
 }
 
 describe('team runner', () => {
@@ -306,6 +306,20 @@ describe('employees handed work by the chief of staff (assign)', () => {
     // Its tokens are saved with the task, not left hanging in flight.
     expect((await w.task()).tokensUsed).toBe(1000)
     expect(continuationPrompt(await w.task(), 'report')).toContain('- 박사원 [done]: 문구 3개 <- 김대리 자료')
+  })
+
+  it('an employee mid-turn in their own conversation gets the job on their record after that turn, and the chief of staff is not kept waiting', async () => {
+    const w = await staffed(async () => '노션 결과 https://notion.so/releases')
+    const { appendBotTurn, readBotTranscript } = await import('core')
+    const texts = async () => (await readBotTranscript(w.paths, w.kim.id)).map(turn => turn.text)
+    w.busy.add(`bot-${w.kim.id}`)
+    await appendBotTurn(w.paths, w.kim.id, { role: 'user', text: '내 질문', at: new Date().toISOString() })
+    const out = JSON.parse(await w.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능 조사' }] }))
+    expect(out.reports[0]).toMatchObject({ who: '김대리', state: 'done' })
+    expect(await texts()).toEqual(['내 질문'])
+    await appendBotTurn(w.paths, w.kim.id, { role: 'assistant', text: '내 답', at: new Date().toISOString() })
+    w.busy.delete(`bot-${w.kim.id}`)
+    await vi.waitFor(async () => expect(await texts()).toEqual(['내 질문', '내 답', '노션 신기능 조사', '노션 결과 https://notion.so/releases']), { timeout: 3000 })
   })
 
   it('a stop aborts background employees and no report follows', async () => {

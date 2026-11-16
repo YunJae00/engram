@@ -33,6 +33,8 @@ export function teamRunner(deps: {
   endLane(lane: string): void
   step(channel: string, line: string): void
   changed(): void
+  /** A conversation has a turn of its own under way: an employee's finished job is written to their conversation after it. */
+  busy?(channel: string): boolean
   run?: typeof runComet
   // Test seam: a lookup member's hard time limit.
   lookupHardMs?: number
@@ -137,7 +139,11 @@ export function teamRunner(deps: {
         ended = m?.state
         if (m?.botId && ended === 'done') done = { botId: m.botId, brief: m.brief, result: m.result ?? '' }
       })
-      if (done) await employeeWriteBack(paths, done).catch(error => flog('team', error))
+      if (done) {
+        // An employee mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
+        const busy = () => deps.busy?.(`bot-${done!.botId}`) ?? false, wrote = employeeWriteBack(paths, done, undefined, busy).catch(error => flog('team', error))
+        if (!busy()) await wrote
+      }
     } catch (error) { flog('team', error) } finally {
       signal?.removeEventListener('abort', stop)
       live.delete(key)

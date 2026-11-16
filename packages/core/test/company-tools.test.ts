@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { loadBotMemory, recordFacts } from '../src/bot-memory.js'
 import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript } from '../src/bots.js'
-import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isStatusAsk, isTeamWorkAsk, staffTool } from '../src/company-tools.js'
+import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
@@ -129,6 +129,39 @@ test('only a bare status question skips the model; staff messages take the compa
   // Work that only names an employee or a team needs the full tool set: it never takes the lane.
   for (const ask of ['김대리가 만든 엑셀 고쳐줘', '마케팅팀 자료 PPT로 만들어줘', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해', '매주 월요일 아침 9시에 마케팅팀 주간보고 올려', '마케팅팀 이번 주 한 일 요약해', '홍보 문구 3개 뽑아줘', '김대리 로고 시안 뽑아줘', '과장된 표현만 뽑아줘', '이 표 마케팅팀에 넣어줘', '김대리가 쓴 글 좀 봐줘', '직원 교육 자료 만들어줘', '김대리 뭐해? 그리고 어제 그 파일도 열어줘'])
     expect(isCompanyAsk(ask, known, true), ask).toBe(false)
+})
+
+// B2 r3: "사람 사진 3장 뽑아줘" took the lane ("사람" read as a person to hire, "뽑아" as hiring) and lost the image tools.
+test('picking or making things is never a hire: a hire needs a staff word and no artifact', () => {
+  const known = ['김대리', '박사원', '김과장', '마케팅팀']
+  for (const ask of ['사람 사진 3장 뽑아줘', '직원 사진 3장 뽑아줘', '담당자 이름 뽑아줘', '팀원 후보 5개 뽑아줘', '인턴 채용 공고 문구 뽑아줘', '이미지 2개 뽑아줘', '핵심만 세 줄 뽑아줘', '사람 하나 뽑아줘', '대리 운전 번호 뽑아줘', '직원 명단 표 한 장 뽑아줘', '로고 시안 4개 뽑아줘', '3개 뽑아줘', '10장 뽑아줘', '김대리 사진 몇 장 뽑아줘', '직원 소개 문구 뽑아줘', '사람 그림 뽑아줘'])
+    expect(isCompanyAsk(ask, known, true), ask).toBe(false)
+  for (const ask of ['김대리 하나 뽑아줘. 리서치 담당이야', '직원 두 명 뽑아줘', '인턴 한 명 채용해줘. 영업 담당', '디자인 담당 팀원 뽑아줘', '마케팅팀 만들고 김대리랑 새로 박사원 뽑아서 넣어줘. 박사원은 카피 담당', '이과장 뽑아줘'])
+    expect(isCompanyAsk(ask, known, true), ask).toBe(true)
+})
+
+// B3 r2: "마케팅팀 이번 주 한 일 요약해서 슬랙에 올려" took the lane, which has no posting tool and so no approval gate to reach.
+test('anything that goes outside or names an app keeps the normal path, also on a scheduled run; keeping a duty stays in the lane', () => {
+  const who = { staff: ['김대리', '박사원'], gone: ['이과장'], teams: ['마케팅팀'], chief: true }
+  for (const ask of ['마케팅팀 이번 주 한 일 요약해서 슬랙에 올려', '마케팅팀 주간보고 메일로 보내', '마케팅팀 이번 주 한 일 요약해서 노션에 올려줘', '김대리한테 시켜서 거래처에 문자 보내', '김대리 뭐하는지 카톡으로 알려줘', '마케팅팀 성과 요약해서 팀 채널에 공유해']) {
+    expect(isOutsideAsk(ask), ask).toBe(true)
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
+    expect(takesCompanyLane(ask, { ...who, scheduled: true }), `scheduled: ${ask}`).toBe(false)
+  }
+  // Said with a regular time it is only kept (schedule add posts nothing); the run it starts later is the one that posts.
+  expect(takesCompanyLane('매주 월요일 아침 9시에 마케팅팀 주간보고 슬랙에 올려', who)).toBe(true)
+  expect(takesCompanyLane('매주 월요일 아침 9시에 마케팅팀 주간보고 슬랙에 올려', { ...who, scheduled: true })).toBe(false)
+  // Nothing outside: the lane still takes them, a scheduled report in the thread included.
+  for (const ask of ['마케팅팀 이번 주 한 일 요약해', '마케팅팀 주간보고 올려', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 뭐해?', '이과장 다시 불러와']) {
+    expect(takesCompanyLane(ask, who), ask).toBe(true)
+    expect(takesCompanyLane(ask, { ...who, scheduled: true }), `scheduled: ${ask}`).toBe(true)
+  }
+  expect(takesCompanyLane('마케팅팀 이번 주 한 일 요약해', { ...who, chief: false })).toBe(false)
+  // The BAR's own company sentences keep the lane: an app named as a subject (C3) or "내보내" (C8) is not something going outside.
+  const all = { staff: ['김대리', '박사원', '이과장'], teams: ['마케팅팀'], chief: true }
+  for (const ask of ['김대리 하나 뽑아줘. 리서치 담당이야', '마케팅팀 만들고 김대리랑 새로 박사원 뽑아서 넣어줘. 박사원은 카피 담당', '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 보고해. 김대리, 박사원, 이과장한테 나눠서 시켜', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해', '매주 월요일 아침 9시에 마케팅팀 주간보고 올려', '박사원 내보내고 김대리는 김과장으로 승진시켜', '이과장 무슨 일 하는 사람이야?', '마케팅팀 이번 주 한 일 요약해', '슬랙에서 뭐 나왔는지 김대리한테 조사 시켜'])
+    expect(takesCompanyLane(ask, all), ask).toBe(true)
+  expect(takesCompanyLane('오늘 날씨 어때?', who)).toBe(false)
 })
 
 test('the prompt note lists the roster and gives a named employee\'s memory and finished work', async () => {
@@ -259,6 +292,44 @@ test('a handoff with no new brief joins the job the employee is on, or takes the
   const out = JSON.parse(await o.assign(hand))
   expect(out.reports.map((r: { who: string }) => r.who)).toEqual(['박사원'])
   expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '11월 20일 서울 AI 서밋 https://example.com/summit'))
+})
+
+// B3 r2: the last result was taken from every stored task, so a result from another conversation could land in an employee's brief.
+test('a handoff with no new brief never takes a result from another thread', async () => {
+  const o = await office()
+  const { createBot } = await import('../src/bots.js'), { createTask, updateTask } = await import('../src/delegated-tasks.js')
+  const kim = (await o.named('김대리'))!, other = await createBot(o.paths, { name: '개인 메모' })
+  const elsewhere = await createTask(o.paths, '사적인 일', other.id)
+  await updateTask(o.paths, elsewhere.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '사적인 조사', botId: kim.id, state: 'released', result: '다른 대화의 비공개 결과', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T09:00:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
+  const hand = { wait: true, to: [{ who: '김대리', then: { who: '박사원', brief: '홍보 문구 3개' } }] }
+  expect(await o.assign(hand)).toBe('김대리가 끝낸 일이 아직 없어서 넘길 게 없어요.')
+  expect(o.task.team).toBeUndefined()
+  // With an older result in this thread, that one is handed over, not the newer one from elsewhere.
+  const here = await createTask(o.paths, '행사 조사', o.chief.id)
+  await updateTask(o.paths, here.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사', botId: kim.id, state: 'released', result: '이 대화의 결과', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
+  await o.assign(hand)
+  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '이 대화의 결과'))
+  expect(JSON.stringify(o.task.team)).not.toContain('비공개')
+})
+
+// B3 r2: the pair was appended while the employee was mid-turn, giving own user → delegated user → delegated assistant → own assistant.
+test('a finished job waits for the employee\'s own turn to end and goes into their conversation whole', async () => {
+  const o = await office()
+  const { appendBotTurn } = await import('../src/bots.js')
+  const kim = (await o.named('김대리'))!, at = '2026-11-16T02:59:00.000Z'
+  let busy = true
+  await appendBotTurn(o.paths, kim.id, { role: 'user', text: '내 질문', at })
+  const wrote = employeeWriteBack(o.paths, { botId: kim.id, brief: '노션 조사', result: '노션 결과' }, new Date('2026-11-16T03:00:00.000Z'), () => busy)
+  await new Promise(resolve => setTimeout(resolve, 60))
+  // Their memory has the line at once; their conversation is untouched while the turn runs.
+  expect((await loadBotMemory(o.paths, kim.id)).facts).toHaveLength(1)
+  expect((await readBotTranscript(o.paths, kim.id)).map(turn => turn.text)).toEqual(['내 질문'])
+  await appendBotTurn(o.paths, kim.id, { role: 'assistant', text: '내 답', at })
+  busy = false
+  await wrote
+  // A turn that starts the moment the pair is written lands after both halves.
+  await appendBotTurn(o.paths, kim.id, { role: 'user', text: '다음 질문', at })
+  expect((await readBotTranscript(o.paths, kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '내 질문'], ['assistant', '내 답'], ['user', '노션 조사'], ['assistant', '노션 결과'], ['user', '다음 질문']])
 })
 
 test('assign refuses a let-go employee and the chief of staff, and starts nothing', async () => {

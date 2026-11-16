@@ -177,8 +177,10 @@ export const COMPANY_ASK_CHARS = 200
 // what they are doing. Anything that reads like work stays on the normal path, which is slower but has every tool (and the same staff tool).
 const WORK = /엑셀|excel|ppt|파워포인트|pdf|워드|파일|문서|자료|보고|메일|요약|정리|조사|검색|번역|작성|문구|고쳐|수정|맡겨|맡기|넘겨|한테|에게|매주|매일|마다/iu
 const HIRE = /뽑아|뽑고|채용|고용/u
-// A hire names a person to be: a head count, a duty, or a job title standing as a word ("박사원", not "과장된").
-const PERSON = /직원|사람|팀원|인턴|담당|[한두세네\d]\s*명|(사원|주임|대리|과장|차장|부장|팀장)(?=$|[\s,.!?]|[을를이가은는도랑과와]|하고|으로)/u
+// A hire names a staff member to be: a head count, a duty, or a job title standing as a word ("박사원", not "과장된"). "사람" alone is not one ("사람 사진").
+const PERSON = /직원|팀원|인턴|담당|[한두세네\d]\s*명|(사원|주임|대리|과장|차장|부장|팀장)(?=$|[\s,.!?]|[을를이가은는도랑과와]|하고|으로)/u
+// Something to be made or picked out, never a person: "사람 사진 3장 뽑아줘", "후보 5개 뽑아줘". Counted in pieces, sheets or lines, or named.
+const ARTIFACT = /(\d|[한두세네몇]\s|여러\s*)\s*(장|개|줄|건|편|쪽|컷|가지|페이지)|사진|이미지|그림|일러스트|로고|아이콘|영상|동영상|썸네일|배너|포스터|문구|카피|슬로건|제목|시안|초안|(?<![가-힣])표|차트|그래프|목록|리스트|명단|자료|데이터|통계|숫자|번호|이름|키워드|아이디어|후보|예시|샘플|문장|단어|내용|핵심|코드|링크|주소/u
 const CHANGE = /내보내|해고|승진|다시\s*(불러|데려)|복직|(이름|직함|직급|호칭).{0,12}바꿔/u
 const NEW_TEAM = /팀\s*(을|를)?\s*(하나\s*)?(새로\s*)?만들/u
 // What is left of a question once the names are taken out, spaces removed. Whole-string matches only.
@@ -204,7 +206,7 @@ export function isCompanyAsk(message: string, known: readonly string[], chief: b
   if (!chief) return false
   if (ROSTER.test(left) || (named >= 2 && MOVE.test(left))) return true
   if (WORK.test(message)) return false
-  return NEW_TEAM.test(message) || (HIRE.test(message) && PERSON.test(rest)) || (CHANGE.test(message) && (named > 0 || PERSON.test(rest)))
+  return NEW_TEAM.test(message) || (HIRE.test(message) && PERSON.test(rest) && !ARTIFACT.test(rest)) || (CHANGE.test(message) && (named > 0 || PERSON.test(rest)))
 }
 
 // Handing work to staff is also a sentence the lane can finish: the chief of staff only hands off (assign) and merges, the employees work with their own full tools.
@@ -231,6 +233,17 @@ const TEAM_WORK = /한\s*일|했던\s*일|뭐\s*했|뭘\s*했|요약|주간\s*�
 export function isTeamWorkAsk(message: string, teams: readonly string[]): boolean {
   if (message.length > COMPANY_ASK_CHARS || FILE_WORK.test(message) || !TEAM_WORK.test(message)) return false
   return teams.some(name => name.trim().length >= 2 && message.includes(name.trim()))
+}
+
+// Sending, posting or messaging outside, or an app named as the place to put something ("슬랙에", not 슬랙 as a subject to research): the lane has no such tool, and the normal path has it with its approval gate.
+const OUTSIDE = /(슬랙|slack|노션|notion|메일|gmail|카톡|카카오톡|문자|디스코드|discord|텔레그램|telegram|팀즈|teams|트위터|인스타|인스타그램|페이스북|링크드인|블로그|유튜브|게시판|채널|단톡방?|드라이브|drive|깃허브|github|지라|jira|컨플루언스|confluence|캘린더|calendar)\s*(에|으로|로)(?!서)|(?<!내)보내|전송|발송|게시|포스팅|트윗|공유|(에|으로|로)\s*(올려|올리|업로드|등록)/iu
+export const isOutsideAsk = (message: string): boolean => OUTSIDE.test(message)
+
+/** Whether a message takes the company lane (small menu, fast tier). Keeping a duty only stores it, so it stays in the lane whatever the duty does; its scheduled run, and anything else that goes outside, takes the normal path. */
+export function takesCompanyLane(message: string, who: { staff: readonly string[]; gone?: readonly string[]; teams: readonly string[]; chief: boolean; scheduled?: boolean }): boolean {
+  if (who.chief && !who.scheduled && isDutyAsk(message)) return true
+  if (isOutsideAsk(message)) return false
+  return (who.chief && (isAssignAsk(message, [...who.staff, ...who.teams]) || isTeamWorkAsk(message, who.teams))) || isCompanyAsk(message, [...who.staff, ...(who.gone ?? []), ...who.teams], who.chief)
 }
 
 /** The roster for a prompt, with what each employee named in the message remembers and last did: "who is 김과장" needs no tool. */
@@ -284,19 +297,23 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date)
 export const teamMemoryId = (folderId: string): string => `_team-${folderId}`
 
 /** A finished job goes on the employee's own record: the brief and the result in their conversation, one dated line in their memory and in their team's. No model is asked. */
-export async function employeeWriteBack(paths: VaultPaths, job: { botId: string; brief: string; result: string }, now = new Date()): Promise<void> {
+export async function employeeWriteBack(paths: VaultPaths, job: { botId: string; brief: string; result: string }, now = new Date(), /** The employee's own conversation has a turn under way. */ busy: () => boolean = () => false): Promise<void> {
   const bots = await loadBots(paths), bot = bots.find(one => one.id === job.botId)
   if (!bot) return
   const at = now.toISOString()
-  await appendBotTurn(paths, bot.id, { role: 'user', text: job.brief, at })
-  await appendBotTurn(paths, bot.id, { role: 'assistant', text: job.result, at })
   // Ends on the name and the day, so the line is never read as a question, a label or the bot's own "…했습니다" (notAFact).
   const what = clip(job.brief.split('\n')[0]!.replace(/^[#|<`\s]+/, ''), 40), tail = ` (${bot.name}, ${at.slice(0, 10)})`
   const line = `${what} → ${clip(job.result, 150 - Array.from(what).length - tail.length)}${tail}`
   await recordFacts(paths, bot.id, [line], now)
   const folder = (await readSidebarLayout(paths, { chat: bots.map(one => one.id) })).chat.items.find(item => item.id === bot.id)?.folder
   if (folder) await recordFacts(paths, teamMemoryId(folder), [line], now)
+  // The pair goes in whole and never inside the employee's own exchange: it waits for their turn to end, and both appends are queued in the
+  // same tick as the last check, so a turn that starts afterwards writes behind them.
+  // shortcut: polls and is not kept across a quit (the memory lines above already are); persist the pending pair if that loss ever matters.
+  while (busy()) await new Promise(resolve => setTimeout(resolve, WRITE_BACK_POLL_MS))
+  await Promise.all([appendBotTurn(paths, bot.id, { role: 'user', text: job.brief, at }), appendBotTurn(paths, bot.id, { role: 'assistant', text: job.result, at })])
 }
+const WRITE_BACK_POLL_MS = 500
 
 const ASSIGN_MAX = 4
 const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member for it. Give the person ONE merged report in their language, each part under the name of the employee who did it, keeping the source addresses each one gave. Mention anyone in "hired" in one short line. Where one employee handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one. Say plainly which part failed or is missing. A report with state waiting needs the person: close with its question, and when they answer pass it with review_member({id, ok:false, note:<answer>}).'
@@ -332,7 +349,9 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         else hiring.set(one.who, one.title || '사원')
       }
       // Work handed over with no new brief comes from the job they are on now, or else the last one they finished.
-      const tasks = parts.some(part => !part.brief) ? await listTasks(paths) : []
+      // Only work done in this thread (the chief of staff's with the person): a result from another conversation is never passed on.
+      const thread = (await host.load())?.botId
+      const tasks = parts.some(part => !part.brief) && thread ? (await listTasks(paths)).filter(task => task.botId === thread) : []
       const lastResult = (botId: string): string | undefined => tasks.flatMap(task => task.team?.members ?? [])
         .filter(m => m.botId === botId && (m.state === 'done' || m.state === 'released') && m.review?.ok !== false && !!m.result && !m.result.startsWith('Failed: '))
         .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))[0]?.result

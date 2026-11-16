@@ -40,7 +40,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, isCompanyAsk, isAssignAsk, isDutyAsk, isTeamWorkAsk, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -1784,7 +1784,7 @@ export function registerIpc(ctx: VaultContext): void {
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
   // It resumes once the brains have had a moment to connect after start.
   const told = taskNotices(paths, broadcast)
-  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => { broadcast({ type: 'tasks:changed' }); told.team() } })
+  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => { broadcast({ type: 'tasks:changed' }); told.team() }, busy: c => answering.has(c) || tasks.activeChannels().includes(c) || routineLanes.has(c) })
   const tasks = taskRunner({
     paths,
     send: (request, turn) => { takeOutcome(request.channel ?? ''); return sendChat(request, undefined, undefined, turn) },
@@ -2721,7 +2721,7 @@ export function registerIpc(ctx: VaultContext): void {
       const teams = new Map(staff.flatMap(one => { const folder = sidebar?.chat.items.find(item => item.id === one.id)?.folder, name = sidebar?.chat.folders.find(f => f.id === folder)?.name; return name ? [[one.id, name] as const] : [] }))
       const chief = bot.primary === true
       const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)
-        && (turn?.report === true || (chief && (isAssignAsk(request.message, [...staff.map(one => one.name), ...teams.values()]) || (!request.scheduled && isDutyAsk(request.message)) || isTeamWorkAsk(request.message, [...teams.values()]))) || isCompanyAsk(request.message, [...staff, ...employees(await loadArchivedBots(paths))].map(one => one.name).concat([...teams.values()]), chief))
+        && (turn?.report === true || takesCompanyLane(request.message, { staff: staff.map(one => one.name), gone: employees(await loadArchivedBots(paths)).map(one => one.name), teams: [...teams.values()], chief, scheduled: request.scheduled === true }))
         ? await companyNote(paths, { bots: everyone, message: request.message, teams, teamIds: new Map((sidebar?.chat.folders ?? []).map(folder => [folder.name, folder.id])), tasks: await listTasks(paths), chief }) : ''
       let resendAfterOutage = false
       let toolStarted = false
