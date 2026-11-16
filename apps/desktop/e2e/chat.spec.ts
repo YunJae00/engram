@@ -63,7 +63,7 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
   await composer.press('Enter')
-  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?', { timeout: 60_000 })
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure', { timeout: 60_000 })
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 30_000 })
 })
@@ -122,7 +122,7 @@ test('starts fresh without losing chats, sends from welcome, and renders long ti
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await expect(page.getByTestId('settings-view')).toHaveCount(0)
   expect((await page.evaluate(() => window.engram.settingsGet())).computerUse).toBe(true)
-  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure' }).first().click()
 })
 test('the welcome composer offers no model choice and stays inside the main surface at every window size', async () => {
   await page.reload()
@@ -140,7 +140,7 @@ test('the welcome composer offers no model choice and stays inside the main surf
   }
   await page.setViewportSize({ width: 1280, height: 840 })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).first().click()
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure' }).first().click()
 })
 test('the conversation survives leaving and re-entering the tab', async () => {
   await openActivity(page, 'sky')
@@ -173,12 +173,12 @@ test('the selected comet is remembered across tabs', async () => {
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expect(page.locator('.bots-row')).toHaveCount(count)
-  await page.locator('.bots-row', { hasText: 'What is our deploy procedure?' }).click()
-  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
+  await page.locator('.bots-row', { hasText: 'What is our deploy procedure' }).click()
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure')
   await openActivity(page, 'list')
   await expect(page.getByTestId('bots-view')).toBeHidden()
   await openActivity(page, 'bots')
-  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure?')
+  await expect(page.locator('.bots-row.active')).toContainText('What is our deploy procedure')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()).toContainText(
     'Record this if you want it kept',
   )

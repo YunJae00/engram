@@ -224,10 +224,15 @@ export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<v
 export const UNTITLED_BOT_NAME = 'New comet'
 const TITLE_CHARS = 40
 
+// The first sentence without its closing mark, cut at a word; never an ellipsis in the stored name - the row clips what is long.
 export function titleFromMessage(message: string): string {
   const line = message.replace(/\s+/g, ' ').trim()
-  const chars = Array.from(line)
-  return (chars.length > TITLE_CHARS ? `${chars.slice(0, TITLE_CHARS).join('').trimEnd()}…` : line) || UNTITLED_BOT_NAME
+  const first = (/^.*?[.?!。？！](?=\s|$)/u.exec(line)?.[0] ?? line).replace(/[.?!。？！\s]+$/u, '') || line
+  const chars = Array.from(first)
+  if (chars.length <= TITLE_CHARS) return first || UNTITLED_BOT_NAME
+  const cut = chars.slice(0, TITLE_CHARS).join('')
+  const space = cut.lastIndexOf(' ')
+  return (space > TITLE_CHARS / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:·-]+$/u, '')
 }
 
 export async function createBot(
