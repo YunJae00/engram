@@ -1,7 +1,7 @@
 import { AlertTriangle, CircleHelp, PauseCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DelegatedTaskDto } from '../../../shared/types.js'
-import { appGateTitle, displayTaskAnswer, threadWords } from '../lib/threadLang.js'
+import { appGateTitle, commandGate, displayTaskAnswer, threadWords } from '../lib/threadLang.js'
 import { api } from '../api.js'
 import { webPane } from '../lib/webPane.js'
 import { useThreadT } from '../lib/useThreadT.js'
@@ -71,15 +71,16 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
           hint={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlHint : t('card.pressHint')}
           icon={<AlertTriangle size={14} />}
           label={`${t('card.needsOk')}${pending.length > 1 ? ` · ${pending.length}` : ''}`}
-          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? t('card.needsOk') : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
-          sub={a.host}
+          title={a.url.startsWith('engram://computer-control/') ? threadWords(t.lang).controlTitle : a.url.startsWith('file:') ? commandGate(a.words, t.lang).title : (a.url.startsWith('engram://app/') ? appGateTitle(a.words, t.lang) : null) ?? t('card.press', { words: a.words })}
+          // An engram: address has no site to name; its host is only a route word like "app".
+          sub={a.url.startsWith('engram:') ? undefined : a.host}
           actions={<>
             <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'decline')}>{t('card.decline')}</button>
             {!a.url.startsWith('engram://computer-control/') && <button className="secondary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve-task')}>{threadWords(t.lang).approveTask}</button>}
             <button className="primary" disabled={pendingDecision} onClick={() => void decide(a.id, 'approve')}>{t('card.continue')}</button>
           </>}
         >
-          {a.url.startsWith('file:') && <pre className="approval-command">{a.words}</pre>}
+          {a.url.startsWith('file:') && commandGate(a.words, t.lang).body && <pre className="approval-command">{commandGate(a.words, t.lang).body}</pre>}
         </DecisionCard>
       ))}
     </div>

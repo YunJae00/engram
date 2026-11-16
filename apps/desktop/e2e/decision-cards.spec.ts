@@ -32,7 +32,8 @@ test('split panes show localized approval and choice cards without overflow', as
     const approval = tile.getByTestId('task-approvals')
     await expect(approval).toContainText('진행하기 전에')
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
-    const command = `Run this command outside the sandbox?\n${'echo safe; '.repeat(30)}Remove-Item report.txt`
+    const shown = `${'echo safe; '.repeat(30)}Remove-Item report.txt`
+    const command = `Run this command outside the sandbox?\n${shown}`
     await updateTask(paths, task.id, value => {
       value.state = 'running'
       value.approvals[0]!.words = command
@@ -44,7 +45,10 @@ test('split panes show localized approval and choice cards without overflow', as
       ipcMain.handle('tasks:list', () => tasks)
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'tasks:changed' })
     }, await listTasks(paths))
-    await expect(approval.locator('.approval-command')).toHaveText(command)
+    // The card asks once in the conversation's language and shows the whole command below it.
+    await expect(approval.locator('.approval-command')).toHaveText(shown)
+    await expect(approval.locator('.decision-card-title')).toHaveText('샌드박스 밖에서 이 명령을 실행할까요?')
+    await expect(approval.getByText('진행하기 전에')).toHaveCount(1)
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeEnabled()
     expect(await approval.evaluate(node => !!node.closest('.mini-chat-thread'))).toBe(true)
     await app.evaluate(({ BrowserWindow }, id) => {
