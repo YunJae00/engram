@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { en, followSettings, t, type StringKey } from '../src/renderer/src/i18n'
 import { ko4 } from '../src/renderer/src/i18n-ko-4'
 import { answerHtml } from '../src/renderer/src/markdown'
-import { connectionLabel } from '../src/renderer/src/lib/connectionStatus'
+import { connectionLabel, usageLabel } from '../src/renderer/src/lib/connectionStatus'
 
 const ENGLISH: Record<string, string> = {
   'onboard.stepOf': 'Step {step} of 4',
@@ -58,6 +58,8 @@ const ENGLISH: Record<string, string> = {
   'welcome.placeholder': 'Ask Engram…',
   'welcome.openWeb': 'Open the page panel',
   'model.systemAccount': 'System account',
+  'model.limit5h': '5-hour limit',
+  'model.limitWeekly': 'Weekly limit',
   'model.needsAttention': 'Needs attention',
   'model.effortNone': 'None',
   'model.effortMinimal': 'Minimal',
@@ -146,6 +148,13 @@ describe('bot surface strings', () => {
       expect(isOffending(value.replace(/\{\w+\}/g, '1')), key).toBe(false)
       expect(value, key).not.toMatch(/\{\w+\}(이|가|을|를|은|는|과|와|으로|로)/)
     }
+  })
+
+  it('the system account and limit window names follow the UI language', async () => {
+    await language('ko')
+    expect(['System account', '5-hour limit', 'Weekly limit', 'Personal', 'codex · 5h'].map(usageLabel)).toEqual(['시스템 계정', '5시간 한도', '주간 한도', 'Personal', 'codex · 5h'])
+    await language('en')
+    expect(['System account', '5-hour limit', 'Weekly limit'].map(usageLabel)).toEqual(['System account', '5-hour limit', 'Weekly limit'])
   })
 
   it('the code block header follows the UI language', async () => {

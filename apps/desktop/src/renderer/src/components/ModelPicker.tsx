@@ -10,7 +10,7 @@ import type { ReasoningEffort } from 'core'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 import { ProfileDialog } from './AccountProfiles.js'
 import { useAccountUsage } from '../lib/accountUsage.js'
-import { connectionConfirmed, connectionLabel } from '../lib/connectionStatus.js'
+import { connectionConfirmed, connectionLabel, usageLabel } from '../lib/connectionStatus.js'
 
 type Provider = AppSettingsDto['defaultEngine']
 const PROVIDERS = [{ id: 'claude', name: 'Claude' }, { id: 'codex', name: 'ChatGPT' }] as const
@@ -214,7 +214,7 @@ function SessionModelPicker({ variant = 'composer', scope, controlled, showAccou
   const efforts = rows.find(row => row.value === model)?.efforts ?? []
   const effortLabel = (level?: string) => level ? level in EFFORT_KEYS ? t(EFFORT_KEYS[level as ReasoningEffort]) : level.charAt(0).toUpperCase() + level.slice(1) : t('model.effortAuto')
   const choices: ModelChoiceDto[] = [{ value: '', label: t('settings.modelAuto'), detail: t('model.autoDetail') }, ...rows, ...(model && !rows.some(row => row.value === model) ? [{ value: model, label: model, detail: t('model.savedSelection') }] : [])]
-  const description = `${providerName} · ${label}${effort ? ` · ${effortLabel(effort)}` : ''} · ${accountName}\n${status}\n${limits.length ? limits.map(window => `${window.name}: ${window.used === undefined ? t('model.limitUnavailable') : t('model.percentLeft', { percent: Math.round(100 - window.used) })}${window.resetsAt !== undefined ? t('model.resets', { time: new Date(window.resetsAt).toLocaleString(uiLocale()) }) : ''}`).join('\n') : account?.loading ? t('model.checkingLimits') : t('model.limitsUnavailable')}\n${t('model.choose')}`
+  const description = `${providerName} · ${label}${effort ? ` · ${effortLabel(effort)}` : ''} · ${accountName}\n${status}\n${limits.length ? limits.map(window => `${usageLabel(window.name)}: ${window.used === undefined ? t('model.limitUnavailable') : t('model.percentLeft', { percent: Math.round(100 - window.used) })}${window.resetsAt !== undefined ? t('model.resets', { time: new Date(window.resetsAt).toLocaleString(uiLocale()) }) : ''}`).join('\n') : account?.loading ? t('model.checkingLimits') : t('model.limitsUnavailable')}\n${t('model.choose')}`
 
   if (!settings && !controlled) return <div className="model-picker" role="status" aria-label={t('model.loadingSelection')}><LoaderCircle size={16} className="computer-spinner" aria-hidden /><span className="skeleton-line" style={{ width: 92 }} />{saveError && <button onClick={setup}>{t('model.openSettings')}</button>}</div>
 

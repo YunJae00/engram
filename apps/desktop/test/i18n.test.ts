@@ -54,6 +54,11 @@ describe('i18n', () => {
     expect(en['tour.cometsTitle']).toContain('Bots')
   })
 
+  it('Korean settings name the cosmos the way its Korean tab does', () => {
+    expect(ko['topbar.tabSky']).toBe('코스모스')
+    for (const key of (Object.keys(en) as (keyof typeof en)[]).filter(key => key.startsWith('settingsUi.'))) expect(ko[key], key).not.toContain('Cosmos')
+  })
+
   it('system ko-KR→ko, en-US→en, ja-JP→ko, default is system', () => {
     expect(resolveUiLanguage('system', 'ko-KR')).toBe('ko')
     expect(resolveUiLanguage('system', 'en-US')).toBe('en')

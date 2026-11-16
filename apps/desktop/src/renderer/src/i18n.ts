@@ -1040,6 +1040,8 @@ export const en = {
   'welcome.placeholder': 'Ask Engram…',
   'welcome.openWeb': 'Open the page panel',
   'model.systemAccount': 'System account',
+  'model.limit5h': '5-hour limit',
+  'model.limitWeekly': 'Weekly limit',
   'model.needsAttention': 'Needs attention',
   'model.effortNone': 'None',
   'model.effortMinimal': 'Minimal',
