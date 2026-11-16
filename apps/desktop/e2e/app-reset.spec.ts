@@ -38,7 +38,6 @@ test('reset confirmation erases local app data and returns to first setup withou
       await session.defaultSession.cookies.flushStore()
     })
     await openActivity(page, 'settings')
-    await page.getByTestId('settings-nav-memory').click()
     const button = page.getByTestId('settings-reset')
     await button.click()
     await expect(button).toBeEnabled()

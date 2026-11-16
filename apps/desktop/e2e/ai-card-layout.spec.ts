@@ -44,15 +44,15 @@ async function screenshot(name: string) {
 
 test('AI cards separate account details from actions and show a calm connected badge', async () => {
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   const settings = page.getByTestId('settings-view')
   const claude = settings.getByRole('region', { name: 'Claude connection', exact: true })
   const codex = settings.getByRole('region', { name: 'ChatGPT connection', exact: true })
   await expect(claude.getByRole('button', { name: 'Install Claude runtime', exact: true })).toBeVisible()
   const connected = page.getByTestId('brain-codex-status')
   await expect(connected).toHaveText('Connected')
-  await codex.getByRole('button', { name: 'Refresh ChatGPT usage' }).click()
-  await expect(codex).toContainText('94% remaining')
+  // Limits left the card for the account dialog; the card keeps the account row and its actions.
+  await expect(codex.locator('.account-usage')).toHaveCount(0)
+  await expect(codex.getByRole('button', { name: 'Manage ChatGPT accounts', exact: true })).toBeVisible()
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate(value => window.engram.settingsSet({ theme: value }), theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)

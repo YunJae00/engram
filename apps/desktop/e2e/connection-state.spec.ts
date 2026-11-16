@@ -26,7 +26,6 @@ test.afterAll(async () => { await app?.close() })
 
 test('a historical successful sign-in never overrides a signed-out probe', async () => {
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-status')).toHaveText('Not connected')
   await expect(page.getByTestId('brain-claude-connect')).toBeEnabled()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
@@ -40,7 +39,6 @@ test('a stalled provider does not hold the other provider or spin forever', asyn
   })
   await page.getByRole('button', { name: 'Close settings', exact: true }).click()
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
   await expect(page.getByTestId('brain-claude-status')).toHaveText('Connection not verified', { timeout: 25_000 })
   await expect(page.getByTestId('brain-claude-status')).toHaveAttribute('data-connected', 'false')
@@ -57,7 +55,6 @@ test('a known authentication failure stays visible in both settings and accounts
   })
   await page.getByRole('button', { name: 'Close settings', exact: true }).click()
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Reconnect required')
   await expect(page.getByTestId('brain-codex-status')).toHaveAttribute('data-connected', 'false')
   await expect(page.getByTestId('brain-codex-connect')).toBeEnabled()

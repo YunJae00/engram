@@ -142,13 +142,12 @@ async function control(next: DesktopControlStatusDto) {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'desktop:control', control: status })
   }, next)
 }
-// The session-control dialog opens from Settings, for the conversation open behind it.
-async function openComputerControls() {
+// Settings has no computer section and nothing in it opens the session-control dialog.
+async function openSettingsWithoutComputerControls() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-general').click()
-  await page.getByTestId('computer-settings').getByTestId('computer-controls-open').click()
-  return page.getByTestId('computer-dialog')
+  await expect(page.getByTestId('settings-start-fresh')).toBeVisible()
+  for (const id of ['computer-settings', 'computer-use-state', 'computer-controls-open', 'computer-dialog', 'computer-control-start']) await expect(page.getByTestId(id)).toHaveCount(0)
 }
 async function orbit() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
@@ -217,23 +216,20 @@ test('terminal errors never add an in-app banner or bottom space at any width', 
   await page.setViewportSize({ width: 1440, height: 900 })
 })
 
-test('settings show computer use state without a permission switch', async () => {
+test('settings show no computer use state or permission switch and computer use stays on', async () => {
   await orbit()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
-  if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-general').click()
-  const settings = page.getByTestId('computer-settings')
-  await expect(settings).toContainText('Apps on this computer')
+  await openSettingsWithoutComputerControls()
+  const settings = page.getByTestId('settings-view')
+  await expect(settings).not.toContainText('Apps on this computer')
   await expect(settings).not.toContainText('select a window')
   await expect(page.getByTestId('setting-computer-use')).toHaveCount(0)
-  await expect(settings).toContainText('Claude is controlling your computer')
+  await expect(settings).not.toContainText('Claude is controlling your computer')
   await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
-  expect(await settings.evaluate((box) => box.getBoundingClientRect().bottom <= innerHeight)).toBe(true)
   await page.evaluate(() => window.engram.settingsSet({ computerUse: false }))
   await expect.poll(() => page.evaluate(() => window.engram.settingsGet().then((value) => value.computerUse))).toBe(true)
   await control({ state: 'idle' })
-  await expect(settings).toContainText('Ready')
+  await expect(page.getByTestId('computer-use-state')).toHaveCount(0)
 })
 
 
@@ -272,20 +268,16 @@ test('session app previews stay inside the conversation and preserve drafts', as
   await page.getByTestId('preview-card-reopen').click()
   await expect(preview).toBeVisible()
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
-  // Computer controls left the composer: its + only attaches files, and the dialog opens from Settings.
+  // Computer controls left the composer: its + only attaches files, and Settings opens no dialog either.
   await expect(page.getByTestId('bots-input-add')).toHaveAttribute('aria-label', 'Attach files')
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
-  const dialog = await openComputerControls()
-  await expect(dialog).toBeVisible()
-  // Esc belongs to the dialog: Settings stays open underneath.
+  await openSettingsWithoutComputerControls()
+  // Esc closes Settings itself: no dialog sits on top of it.
   await page.keyboard.press('Escape')
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByTestId('settings-view')).toBeVisible()
-  await page.getByTestId('computer-controls-open').click()
-  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
-  await expect(page.getByTestId('settings-view')).toBeVisible()
+  await expect(page.getByTestId('settings-view')).toHaveCount(0)
+  await openSettingsWithoutComputerControls()
   await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
+  await expect(page.getByTestId('settings-view')).toHaveCount(0)
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
 })
 
@@ -294,6 +286,13 @@ test('foreground access requires the explicit session control button', async () 
   await app.evaluate(({ ipcMain, BrowserWindow }, lane) => {
     ipcMain.removeHandler('desktop:bindings')
     ipcMain.handle('desktop:bindings', () => [{ lane, source: 'window:fixture:0', name: 'Draft fixture', readable: true }])
+    // The permission request lives in the thread: a card for this conversation only.
+    const asks: unknown[] = []
+    ;(globalThis as unknown as { permissionAsks: unknown[] }).permissionAsks = asks
+    ipcMain.removeHandler('desktop:permissionCard')
+    ipcMain.handle('desktop:permissionCard', (_event, requested) => requested === lane ? { permission: 'accessibility', lang: 'en', label: 'Permission needed', title: 'Allow Engram to use this app', why: 'Needed to work in Draft fixture.', button: 'Open System Settings' } : null)
+    ipcMain.removeHandler('desktop:permissionPane')
+    ipcMain.handle('desktop:permissionPane', (_event, permission) => { asks.push(permission) })
     ipcMain.removeHandler('desktop:controlStart')
     ipcMain.handle('desktop:controlStart', (_event, requested) => {
       if (requested !== lane) throw new Error('Wrong conversation')
@@ -309,29 +308,29 @@ test('foreground access requires the explicit session control button', async () 
   expect((await state()).resumes).toBe(0)
   await expect(page.getByTestId('bots-input')).toBeVisible()
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
-  const dialog = await openComputerControls()
-  await expect(dialog.getByTestId('computer-control-start')).toBeEnabled()
+  // No session-control dialog exists any more; the explicit button is the in-thread permission card.
+  const card = page.getByTestId('bots-thread').getByTestId('permission-card')
+  await expect(card).toContainText('Allow Engram to use this app')
   expect((await state()).resumes).toBe(0)
-  await dialog.getByTestId('computer-control-start').click()
-  await expect.poll(async () => (await state()).control.state).toBe('ready')
-  expect((await state()).resumes).toBe(1)
-  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
+  await card.getByTestId('permission-card-open').click()
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { permissionAsks: unknown[] }).permissionAsks)).toEqual(['accessibility'])
+  await openSettingsWithoutComputerControls()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
+  // Neither opening the conversation, the card nor Settings started control.
+  expect(await state()).toMatchObject({ resumes: 0, control: { state: 'idle' } })
 })
 
 test('a delayed first-run tour does not cover a conversation already in use', async () => {
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('app:tourEligible')
-    ipcMain.handle('app:tourEligible', () => new Promise<boolean>(resolve => { (globalThis as unknown as { resolveTour: (eligible: boolean) => void }).resolveTour = resolve }))
-  })
+  // The first-run tour is gone: even a profile that never finished it gets no overlay.
   await page.evaluate(() => localStorage.removeItem('engram.tour.done'))
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
-  await expect.poll(() => app.evaluate(() => typeof (globalThis as unknown as { resolveTour?: unknown }).resolveTour)).toBe('function')
+  await expect(page.getByTestId('tour-overlay')).toHaveCount(0)
+  expect(await page.evaluate(() => 'tourEligible' in window.engram)).toBe(false)
   const bot = await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.name === 'Computer review')!)
   await page.getByTestId(`bot-${bot.id}`).click()
   await page.getByTestId('bots-input').fill('Keep typing without an introductory overlay')
   await page.getByTestId('bots-input').press('End')
-  await app.evaluate(() => (globalThis as unknown as { resolveTour: (eligible: boolean) => void }).resolveTour(true))
   await page.waitForTimeout(1100)
   await expect(page.getByTestId('tour-overlay')).toHaveCount(0)
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep typing without an introductory overlay')
