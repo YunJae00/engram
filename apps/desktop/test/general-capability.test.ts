@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, truncate, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, truncate, utimes, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { CHECK_SCRATCH, continuationPrompt, vaultPaths, type DelegatedTask, type TurnStep, type VaultPaths } from 'core'
 
 const state = vi.hoisted(() => ({ home: '' }))
 vi.mock('electron', () => ({ app: { getPath: (name: string) => `${state.home}/${name}` }, dialog: { showMessageBox: vi.fn() }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: {}, nativeImage: {}, BrowserWindow: class {}, session: {} }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => undefined }))
-import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile } from '../src/main/file-work.js'
+import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, OUTPUT_BYTES, placeInTask, resolveOutput, saveOutput, taskFile, twinsFile } from '../src/main/file-work.js'
 import { cometNativeTools, deliverOutputs, mentionedOutputs, nativeDecision, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
 import { checkResult, latestResultOutputs } from '../src/main/result-check.js'
 import { freshResultReadback } from '../src/main/task-result-state.js'
@@ -381,7 +381,8 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   expect(checked.steps).toEqual(steps)
   expect(checked.answer).not.toMatch(/\[(check_merge\.py|diff\.md|counts\.csv)\]/)
   expect((await judged(checked)).outputs).toEqual(['merged.md'])
-  expect(await mentionedOutputs(cwd, checked.answer, 0)).toEqual([])
+  // merged.md is on record as the source of the link (r12: no file is taken for a linked one by its place and bytes alone).
+  expect(await mentionedOutputs(cwd, checked.answer, 0, [], artifactDirectory(paths), { 'merged.md': 'merged.md' })).toEqual([])
   const prompt = continuationPrompt({ goal: 'Merge the leads.', result: 'Saved merged.md.' } as DelegatedTask, 'verify')
   expect(prompt).toContain(`inside the ${CHECK_SCRATCH}/ folder`)
   expect(prompt).toContain('only when your answer names it')
@@ -476,6 +477,36 @@ it('a link the answer already carries is not replaced by a same-name file from a
 })
 
 // qa142 p2a-r7 #2: a receipt is linked by its own artifact, not by a file name the answer already links.
+// qa143 p2 r12 (S19a): the inverse of the case above. The copy came from subfolder/report.md, and a top-level report.md made on its own holds
+// the same bytes. The receipt found that file already there and names it as its task copy, but did not place it: it is a second source.
+it('a top-level file made on its own is handed in beside the same-byte copy of a subfolder file linked under its name', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
+  await mkdir(join(cwd, 'subfolder'), { recursive: true })
+  for (const path of ['report.md', join('subfolder', 'report.md')]) await writeFile(join(cwd, path), '# same\n')
+  const args = { name: 'report.md', fromPath: join(cwd, 'subfolder', 'report.md') }
+  const step: TurnStep = { tool: 'file_create_copy', args, observation: await copy.run(args, context) }
+  const own = JSON.parse(step.observation) as { markdownLink: string; taskPath: string }
+  expect(own.taskPath).toBe(join(await realpath(cwd), 'report.md'))
+  const result = { answer: `Wrote report.md and subfolder/report.md.\n\n${own.markdownLink}`, steps: [step, passed('Report written')] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  expect(result.answer).toContain(own.markdownLink)
+  expect(result.answer).toMatch(/\[report-2\.md\]\(engram-artifact:/)
+  expect(result.steps.slice(2).map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'report.md')]])
+  const after = await judged(result)
+  expect(after.outputs).toEqual(['report-2.md', 'report.md'])
+  // The second file needs its own full readback: the read of report.md is not it.
+  expect(after.check).toMatchObject({ verified: false, issues: expect.arrayContaining([expect.stringContaining('Reread every final part of report-2.md')]) })
+  // The copy the receipt itself placed is its twin and nothing more: with no top-level file before the copy, one link.
+  await writeFile(join(cwd, 'subfolder', 'notes.md'), '# notes\n')
+  const from = { name: 'notes.md', fromPath: join(cwd, 'subfolder', 'notes.md') }
+  const placed: TurnStep = { tool: 'file_create_copy', args: from, observation: await copy.run(from, context) }
+  const twin = { answer: `Wrote notes.md.\n\n${(JSON.parse(placed.observation) as { markdownLink: string }).markdownLink}`, steps: [placed] }
+  await deliverOutputs(paths, cwd, twin, 0, 'ask')
+  expect(twin.steps).toEqual([placed])
+  expect([...twin.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
+})
+
 it('a new copy under a name the answer still links from an older artifact gets its own link, and both are checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(join(cwd, 'a'), { recursive: true })
@@ -628,8 +659,9 @@ it('a report re-rendered and re-copied in one turn is handed over once per name,
   await mkdir(cwd, { recursive: true })
   const steps = [await rendered('v1'), await copied('# v1\n', 'report.md'), await rendered('v2'), await rendered('v3'), await copied('# v3\n', 'report.md')]
   // The first render left its own copy in the task folder, as render_file does (its receipt names it); the later ones were cleaned up.
-  await writeFile(join(cwd, 'report.pdf'), '%PDF-v1')
-  steps[0]!.observation = JSON.stringify({ ...JSON.parse(steps[0]!.observation) as object, taskPath: join(cwd, 'report.pdf') })
+  // Placed the way the tool places it, so it is on record as that receipt's twin (r12: a twin is known by the placement record, not by its bytes).
+  const real = await realpath(cwd)
+  steps[0]!.observation = JSON.stringify({ ...JSON.parse(steps[0]!.observation) as object, taskPath: await placeInTask(real, 'report.pdf', Buffer.from('%PDF-v1'), twinsFile(paths, real)) })
   const link = (step: TurnStep) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
   const result = { answer: `Done: report.pdf and report.md.\n\n${link(steps[3]!)}\n\n${link(steps[4]!)}`, steps: [...steps, passed('Report made')] }
   const quoted = result.answer

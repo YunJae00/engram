@@ -1,7 +1,7 @@
 import { app, ipcMain, nativeImage, shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { appendFile, link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
@@ -57,15 +57,24 @@ export async function taskFile(paths: VaultPaths, folder: string, requested: unk
   return real
 }
 
+// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path` per line, kept outside the folder the comet writes in.
+export const twinsFile = (paths: VaultPaths, folder: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(folder).digest('hex').slice(0, 32)}.twins`)
+
 // Never overwrites: a different file of the same name gets a numbered twin.
-export async function placeInTask(folder: string, name: string, data: Buffer): Promise<string> {
+// record (a twinsFile) notes the file only when this call created it: one found already there with the same bytes came from elsewhere,
+// or is on record from the receipt that placed it (qa143 S19a r12).
+export async function placeInTask(folder: string, name: string, data: Buffer, record?: string): Promise<string> {
   outputName(name)
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.')
   await writeFile(tmp, data, { flag: 'wx' })
   try {
     for (let count = 1; count < 100; count += 1) {
       const path = join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
-      try { await link(tmp, path); return path } catch (error) {
+      try {
+        await link(tmp, path)
+        if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${createHash('sha256').update(data).digest('hex')}\0${path}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        return path
+      } catch (error) {
         if (!exists(error)) throw error
         const info = await lstat(path)
         if (info.isFile() && info.size === data.length && (await readFile(path)).equals(data)) return path
@@ -74,6 +83,8 @@ export async function placeInTask(folder: string, name: string, data: Buffer): P
     throw new Error('Too many files in the task folder share this name.')
   } finally { await unlink(tmp).catch(() => undefined) }
 }
+
+const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real)) }
 
 // The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
 export function freeName(base: string, held: (name: string) => boolean): string {
@@ -181,7 +192,7 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
       const task = await folder?.()
       if (!task) return receipt
-      try { return { ...receipt, taskPath: await placeInTask(await ensureTaskFolder(paths, task), name, data) } }
+      try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data) } }
       catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return receipt }
     },
   }
@@ -198,7 +209,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
   const save = async (name: string, data: Buffer) => {
     const receipt = await saveOutput(directory, name, data)
     approved.add(receipt.path)
-    return { ...receipt, taskPath: await placeInTask(await ensureTaskFolder(paths, folder!), name, data) }
+    return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data) }
   }
   // Kinds core does not hold (scripts, HTML, images, PDF, ZIP) are saved by the host.
   const createWide = async (args: Record<string, unknown>): Promise<string> => {
@@ -273,7 +284,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     approved.add(output.path)
     if (!folder) return result
     // The linked copy is the verified output; the task-folder twin is for combining work.
-    try { return JSON.stringify({ ...output, taskPath: await placeInTask(await ensureTaskFolder(paths, folder), basename(output.path).replace(REVISION, ''), await readFile(output.path)) }) }
+    try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path)) }) }
     catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return result }
   } }))
 }

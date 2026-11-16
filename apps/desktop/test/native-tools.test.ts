@@ -277,6 +277,18 @@ describe('outputs left in the task folder', () => {
     expect(await mentionedOutputs(cwd, 'Wrote report.md. [report.md](engram-artifact:00000000-0000-4000-8000-000000000000-report.md)', 0, [], join(root, 'artifacts'), names, made)).toEqual([join(cwd, 'subfolder', 'report.md')])
     expect(names).toEqual({ 'subfolder/report.md': 'report-2.md' })
   })
+
+  // qa143 p2 r12 S19a: the inverse. The linked report.md came from subfolder/report.md (on record); a top-level report.md with the same bytes
+  // that no receipt placed is not its twin for sitting at the linked name. The old byte-only shortcut dropped it.
+  it('hands in a top-level file whose bytes match the linked copy of a subfolder file of the same name', async () => {
+    const id = '00000000-0000-4000-8000-000000000000-report.md', artifacts = join(root, 'artifacts')
+    await mkdir(join(cwd, 'subfolder'), { recursive: true })
+    await mkdir(artifacts, { recursive: true })
+    for (const path of [join(cwd, 'report.md'), join(cwd, 'subfolder', 'report.md'), join(artifacts, id)]) await writeFile(path, '# same\n')
+    const names: Record<string, string> = { 'subfolder/report.md': 'report.md' }
+    expect(await mentionedOutputs(cwd, `Wrote report.md. [report.md](engram-artifact:${id})`, 0, [], artifacts, names)).toEqual([join(cwd, 'report.md')])
+    expect(names).toEqual({ 'subfolder/report.md': 'report.md', 'report.md': 'report-2.md' })
+  })
 })
 
 describe('where a comet works', () => {
