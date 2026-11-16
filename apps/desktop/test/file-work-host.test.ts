@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools, taskOutputs } from '../src/main/file-work.js'
+import { cometFileTools as hostFileTools, placeInTask, taskOutputs, twinsFile } from '../src/main/file-work.js'
 
 // Every chat has its in-chat approval card; state.confirm answers it.
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
@@ -235,4 +235,37 @@ it.skipIf(process.platform === 'win32')('still asks for everything that is not t
     expect(String(result)).toMatch(/declined/)
   }
   expect(ask).toHaveBeenCalledTimes(gated.length)
+})
+
+// QA 0.8.145 S03/S33: a remake of a.xlsx left "a (2).xlsx" beside it in the task folder, one more per fix.
+it('a remake replaces its own earlier copy in the task folder instead of piling up numbered ones', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane'), outputs = taskOutputs(paths, async () => task)
+  const first = await outputs.save('a.xlsx', Buffer.from('v1'))
+  const second = await outputs.save('a.xlsx', Buffer.from('v2'))
+  const third = await outputs.save('a.xlsx', Buffer.from('v3'))
+  expect(third.taskPath).toBe(first.taskPath)
+  expect((await readdir(task)).sort()).toEqual(['a.xlsx'])
+  expect(await readFile(join(task, 'a.xlsx'), 'utf8')).toBe('v3')
+  // The earlier versions stay in the saved outputs, where the chat's "(이전)" link points.
+  expect(await readFile(first.path as string, 'utf8')).toBe('v1')
+  expect(await readFile(second.path as string, 'utf8')).toBe('v2')
+})
+
+it('never replaces a file it did not place, or one changed since it was placed', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane'), outputs = taskOutputs(paths, async () => task)
+  await mkdir(task, { recursive: true })
+  await writeFile(join(task, 'budget.xlsx'), 'the person\'s own')
+  expect(await outputs.save('budget.xlsx', Buffer.from('v1'))).toMatchObject({ taskPath: expect.stringContaining('budget (2).xlsx') })
+  // Its own numbered copy is the one a remake replaces; the person's file is untouched.
+  expect(await outputs.save('budget.xlsx', Buffer.from('v2'))).toMatchObject({ taskPath: expect.stringContaining('budget (2).xlsx') })
+  expect(await readFile(join(task, 'budget.xlsx'), 'utf8')).toBe('the person\'s own')
+  expect(await readFile(join(task, 'budget (2).xlsx'), 'utf8')).toBe('v2')
+  // Edited after it was placed (by the person or a script): kept, and the new one is numbered.
+  await writeFile(join(task, 'budget (2).xlsx'), 'edited by hand')
+  expect(await outputs.save('budget.xlsx', Buffer.from('v3'))).toMatchObject({ taskPath: expect.stringContaining('budget (3).xlsx') })
+  expect(await readFile(join(task, 'budget (2).xlsx'), 'utf8')).toBe('edited by hand')
+  // With no placement record nothing is known to be its own.
+  await placeInTask(task, 'plain.md', Buffer.from('one'))
+  expect(await placeInTask(task, 'plain.md', Buffer.from('two'))).toContain('plain (2).md')
+  expect(await readFile(twinsFile(paths, await (await import('node:fs/promises')).realpath(task)), 'utf8')).not.toContain('plain')
 })

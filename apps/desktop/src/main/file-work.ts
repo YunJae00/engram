@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { appendFile, link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { artifactHref, fileWorkTools, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
+import { artifactHref, fileWorkTools, renameWithRetry, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { fitImage } from './image-fit.js'
 import { flog } from './flog.js'
@@ -60,13 +60,18 @@ export async function taskFile(paths: VaultPaths, folder: string, requested: unk
 // The task files receipts themselves placed in a task folder (its real path), one `sha256\0path` per line, kept outside the folder the comet writes in.
 export const twinsFile = (paths: VaultPaths, folder: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(folder).digest('hex').slice(0, 32)}.twins`)
 
-// Never overwrites: a different file of the same name gets a numbered twin.
+// Never overwrites a file it did not place: a different file of the same name gets a numbered twin.
+// The one exception is its own earlier copy: a file on record as placed here that still holds the bytes it was placed with is the
+// comet's own output made again, and is replaced in place (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx").
+// The earlier version stays in the saved outputs, where the chat's "(이전)" link points. A file the person or a script changed or
+// put there is never on record with its bytes, so it is kept and the new one is numbered.
 // record (a twinsFile) notes the file only when this call created it: one found already there with the same bytes came from elsewhere,
 // or is on record from the receipt that placed it (qa143 S19a r12).
 export async function placeInTask(folder: string, name: string, data: Buffer, record?: string): Promise<string> {
   outputName(name)
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.')
   await writeFile(tmp, data, { flag: 'wx' })
+  let placed: Set<string> | undefined
   try {
     for (let count = 1; count < 100; count += 1) {
       const path = join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
@@ -77,7 +82,15 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
       } catch (error) {
         if (!exists(error)) throw error
         const info = await lstat(path)
-        if (info.isFile() && info.size === data.length && (await readFile(path)).equals(data)) return path
+        if (!info.isFile()) continue
+        const held = await readFile(path)
+        if (held.equals(data)) return path
+        placed ??= new Set(record ? (await readFile(record, 'utf8').catch(() => '')).split('\n') : [])
+        if (placed.has(`${createHash('sha256').update(held).digest('hex')}\0${path}`)) {
+          await renameWithRetry(tmp, path)
+          await appendFile(record!, `${createHash('sha256').update(data).digest('hex')}\0${path}\n`).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`))
+          return path
+        }
       }
     }
     throw new Error('Too many files in the task folder share this name.')
