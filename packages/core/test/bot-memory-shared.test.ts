@@ -70,3 +70,18 @@ describe('prompt budget per layer', () => {
     expect(own.map((f) => f.at)).toEqual(own.map((f) => f.at).sort())
   })
 })
+
+// QA145 S12/S19: what the extractor wrote when it answered the chat instead of the job.
+describe('qa145 memory pollution', () => {
+  it('keeps nothing from a reply that is an answer, not a list of facts', () => {
+    const derailed = '# 도구를 사용하겠습니다\n<execute>\n<command>date</command>\n</execute>\n지금 **오후 2시 정도**예요.\n## COMET-REMEMBER\n- 채팅 이름은 기다릴게요'
+    expect(scopeFacts(derailed, [])).toEqual({ shared: [], own: [] })
+    const table = ['- 수정된 구조:', '- | 날짜 | 항목 | 금액 |', '- |---|---|---|', '- 날짜 열 추가', '- 합계 수식 조정됨', '- 더 고칠까요?', '- 합계를 금액 열로 옮김'].join('\n')
+    expect(scopeFacts(table, [])).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: # 답변\n- this bot: | 사과 | 1000 |\n- this bot: 항목 더 추가할까요?\n- everyone: 팀 코드명은 은하수다', [])).toEqual({ shared: ['팀 코드명은 은하수다'], own: [] })
+  })
+
+  it('names a kept line outdated only when it is really kept', () => {
+    expect(scopeFacts('- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다\n- outdated: 없는 줄', ['팀 코드명은 은하수다'])).toEqual({ shared: ['팀 코드명은 노을이다'], own: [], outdated: ['팀 코드명은 은하수다'] })
+  })
+})

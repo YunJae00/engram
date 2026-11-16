@@ -89,3 +89,17 @@ it('search_chats leaves a saved error turn out of what earlier conversations sai
   expect(found).toContain('회의록 quarterly 정리해줘')
   expect(found).not.toContain('Invalid model')
 })
+
+it('qa145: a corrected date replaces the old one in memory and in the profile note', async () => {
+  const paths = await tempPaths()
+  await remember(paths, '- everyone: 다음 스프린트 마감은 11월 20일이다\n- everyone: 팀 코드명은 은하수다')
+  await remember(paths, '- everyone: 다음 스프린트 마감은 11월 25일이다')
+  expect(await texts(paths, PERSON_MEMORY)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+  expect(await noteLines(paths)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+  await remember(paths, '- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다')
+  expect(await texts(paths, PERSON_MEMORY)).toEqual(['다음 스프린트 마감은 11월 25일이다', '팀 코드명은 노을이다'])
+  expect(await noteLines(paths)).toEqual(['다음 스프린트 마감은 11월 25일이다', '팀 코드명은 노을이다'])
+  const nova = renderMemory(mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, 'nova')))
+  expect(nova).not.toContain('11월 20일')
+  expect(nova).not.toContain('은하수')
+})

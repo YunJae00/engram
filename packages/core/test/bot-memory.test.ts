@@ -37,6 +37,12 @@ describe('memorableTurn', () => {
     expect(memorableTurn('내 자리는 4층 창가야', '알겠습니다')).toBe(true)
     expect(memorableTurn('What is our deploy procedure?', 'Thursday afternoons.')).toBe(true)
   })
+  it('qa145: a value handed over only to be written back is not kept, a told fact is', () => {
+    expect(memorableTurn('프로젝트 코드명은 TeStCode 야. 이 코드명을 대소문자 그대로 한 줄로만 다시 적어 줘.', 'TeStCode')).toBe(false)
+    expect(memorableTurn('스프린트 마감은 11월 20일이야. 그 문장 그대로 한 줄로만 다시 적어 줘.', '스프린트 마감은 11월 20일이야.')).toBe(false)
+    expect(memorableTurn('기억해 줘. 우리 팀 코드명은 은하수이고, 다음 스프린트 마감은 11월 25일이야. 이 두 가지만 기억하고, 파일은 만들지 마.', '기억했어요')).toBe(true)
+    expect(memorableTurn('우리 팀 코드명은 은하수야. 기억하고 다시 적어 줘.', '은하수')).toBe(true)
+  })
 })
 
 describe('parseFactLines', () => {
@@ -52,7 +58,7 @@ describe('recordFacts', () => {
   it('lands under the cache folder and comes back after a fresh load', async () => {
     const paths = await tempPaths()
     const change = await recordFacts(paths, 'b1', ['Sits on the 4th floor', 'Prefers short answers'], T1)
-    expect(change).toEqual({ added: 2, touched: 0 })
+    expect(change).toEqual({ added: 2, touched: 0, replaced: [] })
     await stat(join(paths.cache, 'bot-memory', 'b1.json'))
     const file = await loadBotMemory(paths, 'b1')
     expect(file.facts.map((f) => f.text)).toEqual(['Sits on the 4th floor', 'Prefers short answers'])
@@ -63,7 +69,7 @@ describe('recordFacts', () => {
     const paths = await tempPaths()
     await recordFacts(paths, 'b1', ['Prefers short answers.'], T1)
     const change = await recordFacts(paths, 'b1', ['prefers  short answers'], T2)
-    expect(change).toEqual({ added: 0, touched: 1 })
+    expect(change).toEqual({ added: 0, touched: 1, replaced: [] })
     const [fact] = (await loadBotMemory(paths, 'b1')).facts
     expect(fact?.at).toBe(T1.toISOString())
     expect(fact?.touchedAt).toBe(T2.toISOString())
@@ -108,7 +114,23 @@ describe('ranking and rendering', () => {
     expect(prompt).toContain('JOB: COMET-REMEMBER')
     expect(prompt).toContain('- Prefers short answers')
     expect(prompt).toContain('Person: 내 자리는 4층이야')
-    expect(prompt.length).toBeLessThan(1_200)
+    expect(prompt.length).toBeLessThan(1_800)
+  })
+  it('qa145: suggested replies never reach the extractor', () => {
+    const prompt = rememberPrompt({ user: '우리 팀 코드명은 은하수야', answer: '기억했어요.\n\n```replies\n고마워\n코드명도 문서에 넣어줘\n```', previous: '정리했어요.\n\n```replies\n스프린트 마감 바뀌면 알려줄게\n```' }, [])
+    expect(prompt).toContain('You answered: 기억했어요.')
+    expect(prompt).not.toContain('코드명도 문서에 넣어줘')
+    expect(prompt).not.toContain('스프린트 마감 바뀌면 알려줄게')
+    expect(prompt).toContain('- outdated: ')
+  })
+  it('qa145: a later value replaces the older one, and junk already on disk is not read back', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 20일이다', '팀 코드명은 은하수다'], T1)
+    const change = await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 25일이다'], T2)
+    expect(change.replaced).toEqual(['다음 스프린트 마감은 11월 20일이다'])
+    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+    await recordFacts(paths, 'bot-q', ['# 도구를 사용하겠습니다', '<execute>', '| 사과 | 1000 |', '## COMET-REMEMBER'], T2)
+    expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
   })
 })
 

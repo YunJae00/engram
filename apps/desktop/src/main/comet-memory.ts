@@ -91,10 +91,13 @@ export async function rememberTurn(deps: {
   signal?: AbortSignal
 }): Promise<void> {
   if (!memorableTurn(deps.message, deps.answer)) return
-  const known = mergeMemory(await loadBotMemory(deps.paths, PERSON_MEMORY), await loadBotMemory(deps.paths, deps.botId)).facts.map((f) => f.text)
+  let known: string[] = []
   let raw = ''
   try {
-    const call = remembering.then(() => collectResult(deps.engine, {
+    const call = remembering.then(async () => {
+      // Read when this call's turn comes, so it sees what the calls queued before it kept.
+      known = mergeMemory(await loadBotMemory(deps.paths, PERSON_MEMORY), await loadBotMemory(deps.paths, deps.botId)).facts.map((f) => f.text)
+      return collectResult(deps.engine, {
       prompt: rememberPrompt(
         { user: withoutSecrets(deps.message, deps.message), answer: withoutSecrets(deps.answer, deps.message), ...(deps.previous ? { previous: withoutSecrets(deps.previous, deps.message) } : {}), ...(deps.places?.length ? { places: deps.places.map((place) => withoutSecrets(place, deps.message)) } : {}) },
         known,
@@ -105,7 +108,8 @@ export async function rememberTurn(deps: {
       modelHint: 'fast',
       maxTokens: REMEMBER_TOKENS,
       ...(deps.signal ? { signal: deps.signal } : {}),
-    }))
+      })
+    })
     remembering = call.catch(() => undefined)
     raw = await call
   } catch (err) {
@@ -113,8 +117,10 @@ export async function rememberTurn(deps: {
     flog('comet-memory', `remembering failed — ${errorText(err)}`)
     return
   }
-  const { shared, own } = scopeFacts(raw, known)
+  const { shared, own, outdated = [] } = scopeFacts(raw, known)
+  for (const line of outdated) await forgetFactText(deps.paths, deps.botId, line).catch((err) => flog('comet-memory', `forgetting failed — ${errorText(err)}`))
   const change = { added: 0, touched: 0 }
+  const replaced = [...outdated]
   const kept = await Promise.allSettled([
     own.length ? recordFacts(deps.paths, deps.botId, own) : null,
     shared.length ? recordFacts(deps.paths, PERSON_MEMORY, shared) : null,
@@ -124,10 +130,11 @@ export async function rememberTurn(deps: {
     else if (result.value) {
       change.added += result.value.added
       change.touched += result.value.touched
+      replaced.push(...result.value.replaced)
     }
   }
   // Facts are already on disk, so a failed note sync loses nothing; the next turn publishes them.
-  if (shared.length) await syncPersonNote(deps.paths, new Date(), shared).catch((err) => flog('comet-memory', `profile note sync failed — ${errorText(err)}`))
+  if (shared.length || replaced.length) await syncPersonNote(deps.paths, new Date(), shared, replaced).catch((err) => flog('comet-memory', `profile note sync failed — ${errorText(err)}`))
   flog('comet-memory', `kept ${change.added} new, ${change.touched} said again`)
   broadcast({ type: 'comet:remembered', channel: deps.channel, botId: deps.botId, added: change.added, touched: change.touched })
 }

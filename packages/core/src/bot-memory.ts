@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { withoutReplies } from './agent-history.js'
 import { namesSubject } from './search-template.js'
 import { secretsIn } from './secrets.js'
 import type { VaultPaths } from './vault.js'
@@ -54,7 +55,7 @@ export async function loadBotMemory(paths: VaultPaths, botId: string): Promise<B
     const facts = Array.isArray(raw.facts)
       ? raw.facts.filter(
           (f): f is BotFact =>
-            typeof f?.id === 'string' && typeof f?.text === 'string' && typeof f?.at === 'string' && typeof f?.touchedAt === 'string',
+            typeof f?.id === 'string' && typeof f?.text === 'string' && typeof f?.at === 'string' && typeof f?.touchedAt === 'string' && !notAFact(f.text),
         )
       : []
     return { facts, turns: typeof raw.turns === 'number' ? raw.turns : 0 }
@@ -72,11 +73,23 @@ async function saveBotMemory(paths: VaultPaths, botId: string, file: BotMemoryFi
 // worth keeping; neither does a turn the comet could not answer.
 const TRIVIAL = /^(hi|hey|hello|thanks?|thank you|thx|ok|okay|k|cool|nice|great|yes|yep|no|nope|sure|bye|고마워요?|감사합니다|ㅇㅋ|오케이|응|네|넵|아니요?|알겠어요?|안녕하?세요?|잘가|수고해?요?)[\s!.~^ㅋㅎ]*$/i
 
+// A value handed over only to be written back ("그대로 다시 적어 줘") is a
+// probe of this one answer, not something the person told the comet to know.
+const ECHO_PROBE = /다시\s*(적어|써|말해)|라고만\s*(적어|써|말해)|그대로\s*(적어|써|따라)|\b(repeat|echo) (it|this|that)\b|\b(write|say|type) (it|this|that) back\b/i
+const ASKED_TO_KEEP = /기억|remember|keep in mind/i
+
 export function memorableTurn(message: string, answer: string): boolean {
   const said = message.trim()
   if (said.length < 6 || !answer.trim()) return false
   if (TRIVIAL.test(said)) return false
+  if (ECHO_PROBE.test(said) && !ASKED_TO_KEEP.test(said)) return false
   return namesSubject(said)
+}
+
+// Leftovers of an answer rather than a fact: headings, table rows, tool
+// markup, the job's own name, a question, a label with nothing after it.
+export function notAFact(text: string): boolean {
+  return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(text.trim())
 }
 
 export function normalizeFact(text: string): string {
@@ -96,7 +109,7 @@ export function parseFactLines(raw: string, known: readonly string[]): string[] 
   for (const line of raw.split('\n')) {
     const fact = normalizeFact(line)
     if (!fact || /^none$/i.test(fact) || fact.length < 4) continue
-    if (secretsIn(fact).length > 0) continue
+    if (secretsIn(fact).length > 0 || notAFact(fact)) continue
     const key = fact.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -113,7 +126,13 @@ export function factScore(fact: BotFact, now: Date): number {
 export interface MemoryChange {
   added: number
   touched: number
+  // Older lines a new one took the place of.
+  replaced: string[]
 }
+
+// The same sentence with other numbers is the same fact with a new value.
+// shortcut: only number changes are matched, a changed name needs the extractor's "outdated:" line.
+const valueKey = (text: string) => normalizeFact(text).toLowerCase().replace(/\d+/g, '#')
 
 // A fact said again is the same fact with a fresh clock, never a second line.
 export function recordFacts(paths: VaultPaths, botId: string, lines: string[], now = new Date()): Promise<MemoryChange> {
@@ -122,6 +141,7 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
     const stamp = now.toISOString()
     let added = 0
     let touched = 0
+    const replaced: string[] = []
     for (const line of lines) {
       const text = normalizeFact(line)
       if (!text) continue
@@ -130,6 +150,12 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
         same.touchedAt = stamp
         touched++
       } else {
+        // A later value wins: the older line leaves, so it is never recalled beside the new one.
+        const slot = valueKey(text)
+        if (slot.includes('#')) {
+          replaced.push(...file.facts.filter((f) => valueKey(f.text) === slot).map((f) => f.text))
+          file.facts = file.facts.filter((f) => valueKey(f.text) !== slot)
+        }
         file.facts.push({ id: `f-${now.getTime().toString(36)}-${randomBytes(3).toString('hex')}`, text, at: stamp, touchedAt: stamp })
         added++
       }
@@ -138,7 +164,7 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
     if (file.facts.length > DISK_CAP)
       file.facts = [...file.facts].sort((a, b) => factScore(b, now) - factScore(a, now)).slice(0, DISK_CAP)
     await saveBotMemory(paths, botId, file)
-    return { added, touched }
+    return { added, touched, replaced }
   })
 }
 
@@ -178,17 +204,27 @@ export function isIdentityFact(text: string): boolean {
 }
 
 const SCOPE_MARK = /^\s*(?:[-*•]\s*)?(everyone|this bot)\s*:\s*/i
+const OUTDATED_MARK = /^\s*(?:[-*•]\s*)?outdated\s*:\s*/i
+const FACT_LINE = /^\s*(?:[-*•]\s|none\s*$)/i
+// The job asks for three lines; a reply far past that is an answer, not notes.
+const FACT_LINES_MAX = 6
 
 // A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
-export function scopeFacts(raw: string, known: readonly string[]): { shared: string[]; own: string[] } {
-  const lines = raw.split('\n').map((line) => {
+// A reply that is not a list of facts (the model answered the chat instead) keeps nothing.
+export function scopeFacts(raw: string, known: readonly string[]): { shared: string[]; own: string[]; outdated?: string[] } {
+  const written = raw.split('\n').filter((line) => line.trim())
+  if (written.length > FACT_LINES_MAX || written.some((line) => !FACT_LINE.test(line) && !SCOPE_MARK.test(line) && !OUTDATED_MARK.test(line))) return { shared: [], own: [] }
+  const knownKeys = new Set(known.map((k) => normalizeFact(k).toLowerCase()))
+  // Only a line that is really kept can be called outdated.
+  const outdated = written.filter((line) => OUTDATED_MARK.test(line)).map((line) => normalizeFact(line.replace(OUTDATED_MARK, ''))).filter((line) => knownKeys.has(line.toLowerCase()))
+  const lines = written.filter((line) => !OUTDATED_MARK.test(line)).map((line) => {
     const mark = SCOPE_MARK.exec(line)
     const text = mark ? line.slice(mark[0].length) : line
     return { text, shared: mark ? mark[1]?.toLowerCase() === 'everyone' : isIdentityFact(text) }
   })
   const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
   const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
-  return { shared, own }
+  return { shared, own, ...(outdated.length ? { outdated } : {}) }
 }
 
 // Shared and own facts as one list, each line once, the fresher clock kept.
@@ -244,7 +280,8 @@ export function rememberPrompt(exchange: { user: string; answer: string; previou
   return [
     'JOB: COMET-REMEMBER',
     'You keep short notes about the person you assist. From the exchange below, write only what is worth remembering in later, unrelated conversations: who they are, how they like to be helped, ongoing work, decisions, dates.',
-    'When the person corrects your previous answer or says how they want something done, keep the rule they gave, stated so it applies next time.',
+    'When the person corrects your previous answer or says how they want something done from now on, keep the rule they gave, stated so it applies next time. How to word or format this one answer is not a rule; neither is a suggestion of yours they did not take up.',
+    'A value given only to be repeated, formatted or tested is not a fact. When they change a fact in "Already kept", write the new fact, then a line "- outdated: " with the kept line copied exactly; never keep the value they call wrong.',
     'Where their work lives is worth keeping: a page below that held what they asked for, as what it is for plus its address.',
     'Begin each line with "- everyone: " for a fact about the person (who they are, how they like things done, tools, accounts, places, people they work with, standing decisions, ongoing projects with goal and status, e.g. "결정: …", "진행 중인 프로젝트: …") or "- this bot: " only for this assistant\'s own job (its site, its routine details).',
     'Rules: at most 3 lines, each a complete short sentence in their language. Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',
@@ -252,9 +289,9 @@ export function rememberPrompt(exchange: { user: string; answer: string; previou
     'Already kept:',
     ...(known.length ? known.map((k) => `- ${k}`) : ['(nothing yet)']),
     '',
-    ...(exchange.previous ? [`Your previous answer: ${exchange.previous.slice(0, 400)}`] : []),
+    ...(exchange.previous ? [`Your previous answer: ${withoutReplies(exchange.previous).slice(0, 400)}`] : []),
     `Person: ${exchange.user.slice(0, 600)}`,
-    `You answered: ${exchange.answer.slice(0, 600)}`,
+    `You answered: ${withoutReplies(exchange.answer).slice(0, 600)}`,
     ...(exchange.places?.length ? ['Pages the work reached:', ...exchange.places.slice(0, 6).map((place) => `- ${place}`)] : []),
   ].join('\n')
 }
