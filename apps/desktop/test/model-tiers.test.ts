@@ -393,7 +393,7 @@ describe('instant first line', () => {
     // grokbar cycle 3 (C7): a plain weekly or daily ask is the schedule call made by the host under the same gates.
     expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && !split && !change && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
     expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : split \? \{ tool: 'assign', args: split \} : hire \? \{ tool: 'agents', args: hire \} : change \? \{ tool: 'agents', args: change \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
-    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : await runComet\(/)
+    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : fixed \? /)
     // grokbar B7: adding one agent is the agents call made by the host under the same gates; who an agent is and a background result need no model either.
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
     // grokbar cycle 3: the background result is written by the quick model from the agents' texts (the host's own table is the fallback).
@@ -491,8 +491,8 @@ describe('instant first line', () => {
       firstLineReady('bot-1')
       const reply = smallTalkAnswer('bot-1')
       await vi.advanceTimersByTimeAsync(900)
-      // Within the 2 s bar, and never also shown as a first line: one greeting.
-      expect(await reply, message).toBe('안녕하세요! 오늘은 무엇을 도와드릴까요?')
+      // Within the 2 s bar, and never also shown as a first line: one greeting. c5c Q1: the help-desk sentence is dropped, in any wording.
+      expect(await reply, message).toBe('안녕하세요!')
       expect(live.quick.mock.calls[0]![0]).toContain('small talk')
       expect(show).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')

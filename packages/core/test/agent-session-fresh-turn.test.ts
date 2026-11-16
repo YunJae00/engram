@@ -23,3 +23,21 @@ it.each([true, false])('requests fresh turn evidence only for desktop tasks (des
   }
   expect(jobs[0]!.system).toBe(jobs[1]!.system)
 })
+
+// c5c D1, M2: a note the host already read thought for 20 s, a one-word correction for 7.5 s. Such a turn runs at low effort like a lookup.
+// Effort is part of the session's signature, so the thread's next turn may open a fresh session: every turn carries the thread so far.
+it('runs a light turn at low effort, and the next turn of the thread still holds what was said', async () => {
+  const jobs: ToolSessionJob[] = []
+  const engine = { runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '정리했어요.' } } } as Engine
+  const deps = { engine, workdir: 'C:/tmp' as EngineCwd, tools: [{ name: 'search_memory', description: 'Read', argsSchema: {}, run: async () => 'text' }] }
+  await runToolSession(deps, 'fixtures/meeting-notes.md 회의록 요약해줘', { session: 'bot-1', light: true, history: [] })
+  const history = [{ role: 'user' as const, text: 'fixtures/meeting-notes.md 회의록 요약해줘' }, { role: 'assistant' as const, text: '결정사항: 온보딩 화면 시안 확정. 할 일: 한서연 11월 20일.' }]
+  await runToolSession(deps, '위 회의록으로 워드 보고서 만들어줘', { session: 'bot-1', history })
+  await runToolSession(deps, '아 그거 말고 11월 걸로', { session: 'bot-1', lookup: true, history })
+  expect(jobs.map(job => job.effort)).toEqual(['low', undefined, 'low'])
+  expect(jobs[0]!.opening).toBeUndefined()
+  for (const job of jobs.slice(1)) {
+    expect(job.opening).toContain('fixtures/meeting-notes.md 회의록 요약해줘')
+    expect(job.opening).toContain('한서연 11월 20일')
+  }
+})

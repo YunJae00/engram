@@ -131,6 +131,8 @@ export interface AgentLoopOptions {
   modelHint?: 'fast' | 'smart'
   // A turn that only looks things up and reports: its tool session runs without the browser-work receipts (collect_results).
   lookup?: boolean
+  // A turn with what it needs already in its prompt, or one small call to make: it runs without long thinking, like a lookup.
+  light?: boolean
   // Wall-clock share of a tool session: past it no new tool call starts and the model is told to report what it has.
   deadlineMs?: number
   // The tool session has its turn and starts working: time limits count from here, not from the wait in line.

@@ -103,6 +103,22 @@ describe('a warm session: one process, many turns', () => {
       expect(optionsSeen.map(options => options['effort'])).toEqual(['low', 'high', 'medium'])
     } finally { pool.closeAll() }
   })
+  // c5c D1: a note turn runs at low effort and the next turn of the thread (D2 "위 회의록으로 …") does not, so that turn opens a fresh
+  // session. It must still know the thread: a fresh session's first message is the conversation so far and then the task.
+  it('gives a session opened by a change of effort the conversation so far', async () => {
+    const log: string[] = []
+    const { sdk, processes } = fakeSdk(log)
+    const pool = new SessionPool()
+    const spec = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    try {
+      await pool.run(job('Task: 회의록 요약해줘', { sessionKey: 'bot-1', effort: 'low' }), spec)
+      await pool.run(job('Task: 위 회의록으로 워드 보고서 만들어줘', { sessionKey: 'bot-1', opening: 'User: 회의록 요약해줘\nYou: 결정사항은 네 가지예요.' }), spec)
+      // The same effort again: the same session, and the thread is not sent twice.
+      await pool.run(job('Task: 표도 넣어줘', { sessionKey: 'bot-1', opening: 'User: …\nYou: …' }), spec)
+      expect(processes()).toBe(2)
+      expect(log).toEqual(['user: Task: 회의록 요약해줘', 'user: User: 회의록 요약해줘\nYou: 결정사항은 네 가지예요.\n\nTask: 위 회의록으로 워드 보고서 만들어줘', 'user: Task: 표도 넣어줘'])
+    } finally { pool.closeAll() }
+  })
   it('records tool duration and between-tool wait without task content', async () => {
     timingLog.mockClear()
     const { sdk } = fakeSdk([])

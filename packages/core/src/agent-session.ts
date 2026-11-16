@@ -271,7 +271,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),
     // A lookup reads and reports: it needs no long thinking between calls (grokbar c3 R3: 14.5 s of model time between two searches).
-    ...(options.lookup ? { effort: 'low' as const } : {}),
+    // c5c D1, M2: a note the host already read was answered after 20 s (1,330 of 1,586 output tokens were thinking), a one-word correction after 7.5 s.
+    // A change of effort opens a fresh session (engine-claude-session.ts signatureOf); its first turn is given the thread so far (opening).
+    ...(options.lookup || options.light ? { effort: 'low' as const } : {}),
     ...(options.native ? { native: {
       ...options.native,
       decide: async (name, input, signal) => {

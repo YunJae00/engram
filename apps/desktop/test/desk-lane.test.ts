@@ -42,7 +42,7 @@ describe('desk lane', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const } : {}),")
+    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),")
     expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
     // The shell is the normal lead's; the menu is the kind's own when it has one (c3c-voice-docs.test.ts), and every tool otherwise.
     expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
@@ -117,13 +117,16 @@ describe('a question about a named file', () => {
 describe('document and tidy answers', () => {
   const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
   it('closes a document turn with one or two sentences and no list of contents', () => {
-    expect(DESK_NOTE).toContain('one or two sentences that say what it is and the one choice you made')
+    // c5c: the closing starts with what is in the file, not with "<kind> 만들었어요.".
+    expect(DESK_NOTE).toContain('one or two sentences that start with what is in the file and the one choice you made')
     expect(DESK_NOTE).toContain('never a list of its sections, slides, sheets or contents')
     expect(core('agent-voice.ts')).toContain('never a list of its sections, slides, sheets or contents')
     expect(core('agent-session-shape.ts')).toContain('never a list of its sections, slides, sheets or contents')
   })
   it('asks for the offer in one place only, at most once across document turns, and exactly once after an extraction', () => {
-    expect(DESK_NOTE).not.toMatch(/offer|원하시면/)
+    // c5c H4: the model did not follow the one place two cycles in a row, so the desk note asks for the extraction's offer too (and the host backs it: withOffer).
+    expect(DESK_NOTE).toContain('An extraction ("할 일만 뽑아줘") ends with exactly one short offer line')
+    expect(DESK_NOTE).toContain('unless an earlier reply of yours in this conversation already ended with an offer')
     const voice = core('agent-voice.ts')
     expect(voice.match(/ONE short offer line/g)).toHaveLength(1)
     expect(voice).toContain('An extraction from a file ("할 일만 뽑아줘") ends with exactly ONE short offer line')
@@ -131,8 +134,9 @@ describe('document and tidy answers', () => {
     expect(voice).toContain('document turns in a row carry at most one offer between them')
   })
   it('keeps decisions and to-dos apart in a summary, and names each folder with its count after a tidy-up', () => {
-    expect(DESK_NOTE).toContain('결정사항 is what was decided and 할 일 is who does what by when')
-    expect(DESK_NOTE).toContain('never both')
+    // c5c D1: the notes' own decisions were four tasks, and both headings listed the same four lines.
+    expect(DESK_NOTE).toContain('결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when')
+    expect(DESK_NOTE).toContain('the same sentence never appears under both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
     expect(DESK_NOTE).toContain('- PDF 폴더: 6개\n- 이미지 폴더: 4개')
     expect(DESK_NOTE).toContain('a markdown list with one line per folder that names the folder')
