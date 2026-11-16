@@ -1675,13 +1675,7 @@ button.comet-keep-name:hover { background: var(--hover-bg); }
 input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inset 0 0 0 1px var(--accent-line); min-width: 220px; }
 .comet-keep-does { font-size: var(--fs-small); color: var(--fg-dim); }
 .comet-keep-acts { display: flex; align-items: center; gap: 8px; }
-.bots-choices { margin: 4px 0; }
 .bots-question-heading { display: flex; align-items: center; gap: 8px; color: var(--fg-dim); font-size: var(--fs-small); }
-.bots-choices .bots-choice { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; white-space: normal; padding: 10px; border: 0; border-radius: 10px; }
-.bots-choice > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.bots-choice-number { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border-radius: 50%; background: var(--hover-bg); color: var(--fg-dim); font-size: var(--fs-small); }
-.bots-choice > svg { flex: none; color: var(--fg-dim); }
-.bots-choice { max-width: 100%; white-space: normal; text-align: left; }
 /* One pick among three, as a segmented control: the chosen one is lifted
    onto the page's white, the others rest on the strip. */
 /* A short free-form value beside a fact key (a model id). */

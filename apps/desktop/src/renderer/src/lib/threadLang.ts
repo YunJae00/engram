@@ -19,11 +19,10 @@ export function readsKorean(text: string): boolean {
   return /[\uac00-\ud7a3]/.test(text) && !/(?:[A-Za-z][A-Za-z'’-]*[\s,;:]+){3}[A-Za-z]/.test(prose)
 }
 
-export type ThreadTranslate = ((key: Parameters<Translate>[0] | 'aside.unapplied', vars?: Parameters<Translate>[1]) => string) & { lang: ThreadLang }
+export type ThreadTranslate = ((key: Parameters<Translate>[0], vars?: Parameters<Translate>[1]) => string) & { lang: ThreadLang }
 
 export function threadT(lang: ThreadLang): ThreadTranslate {
   const translate = ((key, vars) => {
-    if (key === 'aside.unapplied') return lang === 'ko' ? KO[key]! : 'These messages are saved in the conversation.'
     const template = lang === 'ko' ? KO[key] : undefined
     if (!template) return tIn(lang, key, vars)
     return vars ? template.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match)) : template

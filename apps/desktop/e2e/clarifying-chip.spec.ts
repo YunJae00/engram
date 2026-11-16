@@ -8,7 +8,6 @@ const FIRST = '내 건도 마감일 정해줘'
 const SAME = '박과장이랑 같은 날로'
 const NEXT = '이걸 문서로 저장해줘'
 const QUESTION = '마감일을 언제로 할까요? 박과장님과 같은 날로 할지, 다른 날로 할지 알려주세요.'
-const FAILED = 'Cannot send this choice. Enter a message instead.'
 type Fixture = typeof globalThis & { pending: { resolve(): void }[]; requests: string[]; rejectNext: boolean }
 
 let app: ElectronApplication, page: Page, botId: string
@@ -70,6 +69,8 @@ async function openNarrow(): Promise<Locator> {
 async function say(scope: Locator, text: string) {
   await expect(scope.getByTestId('reply-chips')).toHaveCount(0)
   await expect(scope.getByTestId('reply-chip-0')).toHaveCount(0)
+  await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
+  await expect(scope.getByTestId('bots-choice-0')).toHaveCount(0)
   const input = page.getByTestId('bots-input')
   await input.fill(text); await input.press('Enter')
 }
@@ -83,16 +84,9 @@ async function clarifyThenAnswer(scope: Locator, kind: 'replies' | 'asked') {
   if (kind === 'asked') await offer([SAME, '다른 날로'])
   await resolveAll()
   await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('다른 날로 할지')
-  if (kind === 'replies') await say(scope, SAME)
-  else {
-    const choice = scope.getByTestId('bots-choice-0')
-    await expect(choice).toContainText(SAME)
-    await input.fill('composer draft')
-    await choice.click()
-    await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
-    await expect(input).toHaveValue('composer draft')
-    if (await choice.count()) await choice.dispatchEvent('click')
-  }
+  await expect(scope.getByRole('button', { name: SAME })).toHaveCount(0)
+  await say(scope, SAME)
+  await expect(input).toHaveValue('')
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await expect.poll(requests).toEqual([FIRST, SAME])
   await page.waitForTimeout(400)
@@ -110,7 +104,7 @@ test('full view: a typed reply to a clarifying answer sends once; no reply chip 
   await clarifyThenAnswer(await openFull(), 'replies')
 })
 
-test('full view: an asked choice after a typed message sends once and leaves the composer alone', async () => {
+test('full view: an asked question draws no choice button and its typed answer sends once', async () => {
   await clarifyThenAnswer(await openFull(), 'asked')
 })
 
@@ -118,17 +112,17 @@ test('narrow window: a typed reply to a clarifying answer sends once; no tile or
   await clarifyThenAnswer(await openNarrow(), 'replies')
 })
 
-test('narrow window: an asked choice after a typed message sends once and leaves the composer alone', async () => {
+test('narrow window: an asked question draws no choice button and its typed answer sends once', async () => {
   await clarifyThenAnswer(await openNarrow(), 'asked')
 })
 
-test('a choice behind an unresolved send, a repeated label, invalid options and a failed send are never silent', async () => {
+test('offered options never become buttons: a typed answer behind an unresolved send, a repeated answer and a failed send are never silent', async () => {
   const scope = await openFull()
   await say(scope, FIRST)
   await expect.poll(requests).toEqual([FIRST])
   await done(QUESTION)
   await offer([SAME, '다른 날로'])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, SAME)
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await page.waitForTimeout(300)
   expect(await requests()).toEqual([FIRST])
@@ -138,7 +132,7 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
   await resolveAll()
 
   await offer([SAME])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, SAME)
   await expect(bubbles(scope, SAME)).toHaveCount(2)
   await expect.poll(requests).toEqual([FIRST, SAME, SAME])
   await done('다시 금요일로 맞췄어요.')
@@ -147,11 +141,8 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
   const users = await scope.locator('.bubble-msg.user').count()
   for (const invalid of ['   ', `${'가 '.repeat(1000)}다`]) {
     await offer([invalid])
-    for (const attempt of [1, 2]) {
-      await scope.getByTestId('bots-choice-0').click()
-      await expect(page.locator('.toast'), `attempt ${attempt}`).toHaveText(FAILED)
-      await expect(scope.getByTestId('bots-choice-0')).toBeVisible()
-    }
+    await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
+    await expect(scope.locator('button.bots-choice')).toHaveCount(0)
   }
   await page.waitForTimeout(300)
   await expect(scope.locator('.bubble-msg.user')).toHaveCount(users)
@@ -159,7 +150,7 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
 
   await app.evaluate(() => { (globalThis as Fixture).rejectNext = true })
   await offer(['실패해도 보여줘'])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, '실패해도 보여줘')
   await expect.poll(requests).toEqual([FIRST, SAME, SAME, '실패해도 보여줘'])
   await expect(scope.locator('.bubble-msg.assistant.error')).toHaveCount(1)
   await expect(bubbles(scope, '실패해도 보여줘')).toHaveCount(1)

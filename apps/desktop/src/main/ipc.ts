@@ -144,7 +144,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
+ appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -2880,7 +2880,7 @@ export function registerIpc(ctx: VaultContext): void {
           await dropHeldDraft(turn, result.answer, () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }))
         } else {
           await deliverAnswer(
-            `${result.answer}${note}`,
+            `${result.asked ? askText(result.answer, result.options) : result.answer}${note}`,
             result.asked && result.options?.length
               ? { kind: 'asked', question: result.answer, options: result.options }
               : undefined,

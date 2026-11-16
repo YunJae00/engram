@@ -9,7 +9,7 @@ const fileName = (arg: string): string => {
   return arg.trim().split(/[\\/]/).pop() || 'a file'
 }
 
-export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
+export const KO: Partial<Record<StringKey, string>> = {
   'bots.thinking': '생각하는 중',
   'bots.stepFindProcedure': '전에 배운 방법이 있는지 보는 중',
   'bots.stepSearchMemory': '전에 나눈 얘기 살펴보는 중',
@@ -43,7 +43,6 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'error.stopped': '문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.',
   'card.replyBelow': '아래 입력창에 답해 주시면 이어서 할게요.',
   'aside.passed': '대화 기록에 넣었어요.',
-  'aside.unapplied': '대화 기록에 저장된 말이에요.',
   'aside.next': '알겠어요. 지금 하던 거 끝나면 바로 할게요.',
   'habit.label': '일하는 방식',
   'study.offerLabel': '다른 방법을 찾아볼까요?',
@@ -62,7 +61,6 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'habit.answerBelow': '아래 질문에 답해 주시면 채워서 저장할게요.',
   'habit.kept': '저장했어요. 다음에 이 일이 오면 이 순서로 할게요.',
   'habit.dismissed': '넘겼어요. 다시 묻지 않을게요.',
-  'card.choose': '어떻게 할까요?',
   'card.post': '이대로 올릴까요?',
   'card.signIn': '로그인이 필요해요',
   'card.check': '직접 확인이 필요해요',
@@ -84,7 +82,6 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'routines.wallStop': '그만하기',
   'routines.running': '실행 중…',
   'routines.run': '실행',
-  'bots.offerAsked': '하나 고르거나 직접 적어 주세요.',
   'bots.offerRun': '“{name}”로 바로 할 수 있어요. 실행할까요?',
   'bots.offerStanding': '“{name}”을 {times} 부탁하셨어요. {when}에 알아서 할까요?',
   'bots.offerStandingGo': '네, {when}',

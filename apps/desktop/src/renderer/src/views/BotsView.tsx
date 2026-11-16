@@ -1,9 +1,8 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
-import { CHIP_FAILED, sendCometMessage, sendCometReply } from '../lib/attachments.js'
+import { sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
-import { ThreadOffers } from '../components/ThreadOffers.js'
 import { isSaidLine, isYouLine, pendingStatus, stepLabel } from '../lib/pendingStatus.js'
 import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
@@ -18,7 +17,6 @@ import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
 import { PermissionCard } from '../components/PermissionCard.js'
 import { BotComposer } from '../components/BotComposer.js'
-import { useShellState } from '../state-slices.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 import { BotEmpty } from '../components/BotEmpty.js'
 import { takeOnboardBot } from '../lib/onboardBot.js'
@@ -32,7 +30,6 @@ import { takeOnboardBot } from '../lib/onboardBot.js'
 
 
 export const BotsView = memo(function BotsView({ active }: { active: boolean }) {
-  const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
@@ -98,17 +95,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   useLoadEarlier(listRef, selected?.id ?? null, older)
   // The bubble the current work belongs to: the last one the comet wrote.
 
-  // A tapped choice goes the same way as typed words: through the thread,
-  // so the comet hears it with the conversation behind it.
   const sendText = async (message: string, attachments: ChatAttachmentDto[] = []) => {
     if ((!message && !attachments.length) || !selected) return
     await sendCometMessage(api, cometThreads, selected.id, message, attachments)
-  }
-
-  const sendChip = (label: string): boolean => {
-    if (selected && sendCometReply(api, cometThreads, selected.id, label)) return true
-    showToast(CHIP_FAILED)
-    return false
   }
 
   const stop = async () => {
@@ -131,7 +120,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
               {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} />}
               <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork}> 
-                <ThreadOffers botId={selected.id} onSend={sendChip} />
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
                 <PermissionCard lane={cometChannel(selected.id)} />
               </CometMessages>

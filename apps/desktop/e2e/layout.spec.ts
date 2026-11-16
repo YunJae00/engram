@@ -179,6 +179,7 @@ test('the conversation shows animated pending status and elapsed time without an
   const status = thread.getByTestId('bots-thinking')
   await expect(status).toBeVisible()
   await expect(status.locator('.thinking-elapsed')).toHaveText(/^Total [1-9]\d*s$/)
+  await expect(status.locator('.thinking-elapsed')).not.toHaveAttribute('title', /./)
   await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'thinking-shimmer')
   await expect(thread.locator('.answer-actions')).toHaveCount(0)
   await screenshot('chat-thinking.png')

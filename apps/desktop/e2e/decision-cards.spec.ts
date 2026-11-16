@@ -53,14 +53,13 @@ test('the chat shows localized approval and choice cards without overflow', asyn
     await app.evaluate(({ BrowserWindow }, id) => {
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which one?', options: ['먼저 확인해줘', '나중에 할게'] } })
     }, bot.id)
-    const choices = tile.getByTestId('bots-choices')
-    await expect(choices).toContainText('어떻게 할까요?')
-    await expect(choices.getByTestId('bots-choice-0')).toBeVisible()
+    // A question's options are never buttons: the person answers by typing.
+    await expect(tile.getByTestId('bots-choices')).toHaveCount(0)
+    await expect(tile.getByRole('button', { name: /먼저 확인해줘|나중에 할게/ })).toHaveCount(0)
     for (const width of [950, 620]) {
       await page.setViewportSize({ width, height: 900 })
       if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
       await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
-      expect(await choices.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       expect(await approval.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       await approval.getByRole('button', { name: '진행해 주세요' }).scrollIntoViewIfNeeded()
       expect(await approval.getByRole('button', { name: '진행해 주세요' }).evaluate(node => {
