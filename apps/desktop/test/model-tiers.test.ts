@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, greeting, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -121,6 +121,12 @@ describe('instant first line', () => {
     expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
   })
 
+  // grokbar: measured 4.6 s or more per line with thinking on, 0.6-1.1 s with it off; the budget is 1.5 s.
+  it('asks the first-line voice for its sentence without thinking', () => {
+    expect(source('engine-claude-voice.ts')).toContain("thinking: { type: 'disabled' }")
+    expect(FIRST_LINE_BUDGET_MS).toBe(1500)
+  })
+
   it('holds a line that comes before the request is saved, and shows it right after', async () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 100)))
     await vi.advanceTimersByTimeAsync(100)
@@ -130,12 +136,28 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toContain('보고서를 표로 정리해드릴게요.')
   })
 
-  it('never shows a line that arrives after the main prompt was built, so the prompt is exact', async () => {
+  // grokbar: the main prompt is built 10-57 ms after the send and the line takes ~1 s, so a line dropped at prompt build was never shown at all.
+  it('shows a line that arrives after the main prompt was built, and that prompt is told a line may be up', async () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
     firstLineReady('bot-1')
-    expect(firstLineNote('bot-1')).toBe('')
+    const note = firstLineNote('bot-1')
+    expect(note).toContain('may already be on screen')
+    expect(note).toContain('Do not open with a greeting, a restatement')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(show).toHaveBeenCalledExactlyOnceWith('보고서를 표로 정리해드릴게요.')
+    expect(firstLineCarried('bot-1')).toBe('보고서를 표로 정리해드릴게요.')
+  })
+
+  it('drops a line still on its way once the answer says its first word, and adds no note when no line is asked for', async () => {
+    const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
+    firstLineReady('bot-1')
+    firstLineNote('bot-1')
+    firstLineSpoke('bot-1')
     await vi.advanceTimersByTimeAsync(1000)
     expect(show).not.toHaveBeenCalled()
+    expect(firstLineNote('bot-1')).toBe('')
+    endFirstLine('bot-1')
+    begin(voice(later('x', 10)), { message: '안녕' })
     expect(firstLineNote('bot-1')).toBe('')
   })
 
@@ -180,7 +202,7 @@ describe('instant first line', () => {
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
     const skipped: Partial<FirstLineAsk>[] = [
-      { message: '안녕' }, { message: 'ㅇㅇ' }, { message: '??' }, { message: '👍' }, { message: 'ok' }, { message: '네!' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' }, { message: 'How are you?' }, { message: "what's up" }, { message: '잘 지냈어요?' }, { message: 'how are you doing today?' },
+      { message: 'ㅇㅇ' }, { message: '??' }, { message: '👍' }, { message: 'ok' }, { message: '네!' }, { message: '좋아요' }, { message: 'sure' },
       { studying: true }, { limited: true }, { followUp: true }, { interactive: false }, { secret: true }, { message: '/tidy the inbox now please' }, { channel: 'panel' }, { channel: 'new-comet' },
     ]
     for (const patch of skipped) {
@@ -196,6 +218,54 @@ describe('instant first line', () => {
     expect(wantsFirstLine(ask({ message: 'Summarize the attached contract and list the risks', korean: false }))).toBeNull()
     // A short question can be a job; the small model answers NONE when one sentence settles it.
     for (const message of ['메일 써줘', '소설 써줘', 'help', 'Can you draft the Q3 report?', 'ok, draft the report', 'What is 2+2?', '고마워, 이제 계약서 요약해줘']) expect(wantsFirstLine(ask({ message, korean: false })), message).toBeNull()
+  })
+
+  // grokbar Q1: "안녕" had no visible text for 2.7 s (the main model's first word). The quick voice gives the whole reply; the main model is not asked.
+  it('answers a greeting or thanks whole from the quick voice, once, and never an affirmation or a job', async () => {
+    for (const message of ['안녕', '안녕하세요!', 'thanks!', 'Thanks for your help', '고마워요 잘 됐어요', 'How are you?', "what's up", '잘 지냈어요?', 'how are you doing today?', '감사합니다']) {
+      expect(greeting(message), message).toBe(true)
+      expect(wantsFirstLine(ask({ message })), message).toBe('chit-chat')
+      endFirstLine('bot-1')
+      const live = voice(later('안녕하세요! 오늘은 무엇을 도와드릴까요?', 900))
+      const { show } = begin(live, { message })
+      firstLineReady('bot-1')
+      const reply = smallTalkAnswer('bot-1')
+      await vi.advanceTimersByTimeAsync(900)
+      // Within the 2 s bar, and never also shown as a first line: one greeting.
+      expect(await reply, message).toBe('안녕하세요! 오늘은 무엇을 도와드릴까요?')
+      expect(live.quick.mock.calls[0]![0]).toContain('small talk')
+      expect(show).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+      expect(firstLineCarried('bot-1')).toBeUndefined()
+      expect(withFirstLine('bot-1', '안녕하세요! 오늘은 무엇을 도와드릴까요?')).toBe('안녕하세요! 오늘은 무엇을 도와드릴까요?')
+    }
+    expect(FIRST_LINE_BUDGET_MS).toBeLessThan(2000)
+    expect(smallTalkPrompt('안녕', true)).toContain('Korean, polite -요 form')
+    // "네" or "ok" may answer what the assistant asked; a job is a job: the main turn answers, with no wait.
+    for (const message of ['네', 'ok', '좋아', 'ㅇㅇ', '👍', '안녕, 계약서 요약해줘', '고마워, 이제 계약서 요약해줘', '오늘 서울 날씨 어때?']) {
+      expect(greeting(message), message).toBe(false)
+      endFirstLine('bot-1')
+      begin(voice(async () => '네, 진행할게요.'), { message })
+      expect(await smallTalkAnswer('bot-1'), message).toBeUndefined()
+    }
+    // No reply in time, NONE, a failure, a stop, another brain: nothing, and the main turn answers as before.
+    const stop = new AbortController()
+    for (const [engine, signal] of [[voice(later('안녕하세요!', 5000))], [voice(async () => 'NONE')], [voice(async () => { throw new Error('voice down') })], [voice(later('안녕하세요!', 500)), stop.signal], [{ id: 'mock', quick: async () => '안녕하세요!' }], [undefined]] as const) {
+      endFirstLine('bot-1')
+      begin(engine, { message: '안녕' }, signal)
+      const reply = smallTalkAnswer('bot-1')
+      if (signal) stop.abort()
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
+      expect(await reply).toBeUndefined()
+    }
+    // Not a person's own fresh turn: nobody is asked.
+    for (const patch of [{ followUp: true }, { interactive: false }, { studying: true }, { limited: true }, { channel: 'panel' }]) {
+      endFirstLine('bot-1')
+      const live = voice(async () => '안녕하세요!')
+      begin(live, { message: '안녕', ...patch })
+      expect(await smallTalkAnswer(patch.channel ?? 'bot-1')).toBeUndefined()
+      expect(live.quick).not.toHaveBeenCalled()
+    }
   })
 
   it('stays silent for mock or missing engines, NONE answers and failures', async () => {

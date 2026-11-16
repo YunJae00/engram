@@ -31,6 +31,11 @@ export function deriveSearchTemplate(pasted: string, terms?: string): string | n
 
 // Fill the blank. Returns null when the template lost its placeholder, so a
 // caller never silently searches for nothing.
+// The search used until the person's own is learned: a public results page that answers plain questions (weather, a price, a rate) on the page itself.
+// grokbar: with no address known, search_web answered "open a results page yourself" in 1 ms and the page the model then guessed met a robot check:
+// two model rounds (~10 s) per lookup before anything was read.
+export const defaultSearchTemplate = (query: string): string => /[가-힣]/.test(query) ? 'https://search.naver.com/search.naver?query={q}' : 'https://www.bing.com/search?q={q}'
+
 export function searchUrlFor(template: string, query: string): string | null {
   if (!template.includes('{q}')) return null
   const filled = template.replace('{q}', encodeURIComponent(query))

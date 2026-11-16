@@ -2,13 +2,14 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { readBotTranscript, type VaultPaths } from 'core'
+import { appendBotTurn, readBotTranscript, type VaultPaths } from 'core'
 const handlers = vi.hoisted(() => new Map<string, (...args: unknown[]) => Promise<unknown>>())
 vi.mock('electron', () => ({ ipcMain: { removeHandler: vi.fn(), handle: (name: string, fn: (...args: unknown[]) => Promise<unknown>) => handlers.set(name, fn) } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn(), tapBroadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
+import { turnGoals } from '../src/main/turn-state.js'
 import { tapBroadcast } from '../src/main/engine-health.js'
 import type { EngramEvent } from '../src/shared/types.js'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
@@ -93,5 +94,41 @@ it('relays words said while the answer streams, and refuses them once the answer
     expect((await say('After the answer landed')).ok).toBe(false)
     expect(held).toEqual(['While it streams', 'At a work tool start', 'Next turn, still writing'])
     expect((await readBotTranscript(paths, 'done')).filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['While it streams', 'At a work tool start', 'Next turn, still writing'])
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})
+
+// grokbar T3: "멈춰" typed while a team works stopped nothing; it waited behind the turn and was answered as its own turn.
+it('stops the conversation at once when the whole message is a stop word, and leaves any other message to the turn', async () => {
+  const { STOP_WORDS } = await import('../src/main/aside-ipc.js')
+  for (const word of ['멈춰', '멈춰!', ' 그만해 ', '중지해줘', '취소', 'stop', 'Stop.', 'cancel']) expect(STOP_WORDS.test(word), word).toBe(true)
+  for (const word of ['멈춰 있는 창 닫아줘', '그만큼만 정리해', '주가 조사 말고 환율로 해', 'stop words 목록 알려줘', '아 대구도 추가해', '취소 수수료 알려줘']) expect(STOP_WORDS.test(word), word).toBe(false)
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-stop-'))
+  const paths = { cache } as VaultPaths
+  const stopped: [string, string][] = [], held: string[] = []
+  let busy = true
+  registerAsideIpc({ paths, busy: () => busy, answered: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async (channel, said) => { stopped.push([channel, said]) } })
+  try {
+    // Also after the answer is out, while the team or a check still runs.
+    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    // grokbar review r1: the reply is in the thread's language, not the stop word's.
+    expect(await handlers.get('chat:say')!({}, 'bot-team', 'stop')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    await appendBotTurn(paths, 'en', { role: 'user', text: 'Compare the three phones', at: new Date().toISOString() })
+    expect(await handlers.get('chat:say')!({}, 'bot-en', 'stop')).toEqual({ ok: true, action: 'stop', reply: 'Stopped.' })
+    turnGoals.set('bot-fresh', '아이폰 18 가격 조사해줘')
+    expect(await handlers.get('chat:say')!({}, 'bot-fresh', 'Cancel')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    turnGoals.delete('bot-fresh')
+    // The answer is back before the stop runs: nothing was stopped yet when it returned.
+    expect(stopped).toEqual([['bot-team', '중지했어요.'], ['bot-team', '중지했어요.'], ['bot-en', 'Stopped.']])
+    await new Promise(done => setImmediate(done))
+    expect(stopped).toEqual([['bot-team', '중지했어요.'], ['bot-team', '중지했어요.'], ['bot-en', 'Stopped.'], ['bot-fresh', '중지했어요.']])
+    expect(held).toEqual([])
+    expect((await readBotTranscript(paths, 'team')).map(turn => [turn.role, turn.text, turn.aside])).toEqual([['user', '멈춰', true], ['user', 'stop', true]])
+    expect((await readCheckpoint(paths, 'team')).pending).toEqual([])
+    // Nothing is running: the word is an ordinary message for the next turn.
+    busy = false
+    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: false })
+    expect(stopped).toHaveLength(4)
   } finally { await rm(cache, { recursive: true, force: true }) }
 })

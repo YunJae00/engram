@@ -5,7 +5,8 @@ import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint }
 import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
-import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, savedFollowUp } from './midstream-followup.js'
+import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
+import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -179,7 +180,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, withFirstLine } from './first-line.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, smallTalkAnswer, withFirstLine } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -1071,11 +1072,12 @@ export function registerIpc(ctx: VaultContext): void {
   }))
 
   // Stopping a running answer is the difference between waiting and being stuck.
-  ipcMain.handle('chat:abort', async (_e, channel?: string, said?: unknown) => {
+  const stopChat = async (channel?: string, said?: unknown): Promise<void> => {
     const stopping = [...chatAborts].find(entry => entry.channel === channel); noteStopped(channel, said); abortAllChat(channel); if (stopping) void keepStopMark(paths, broadcast, channel, said, () => chatAborts.has(stopping))
     if (channel) { await tasks.stopChannel(channel); if (channel.startsWith('bot-')) await changeCheckpoint(paths, channel.slice(4), () => ({ pending: [] })) }
     else for (const task of await listTasks(paths)) await tasks.stopChannel(`bot-${task.botId}`)
-  })
+  }
+  ipcMain.handle('chat:abort', (_e, channel?: string, said?: unknown) => stopChat(channel, said))
   // Start this conversation over: the running turn stops, what was said is
   // put away (not deleted), the brain's warm session forgets it, and the
   // comet's page closes so the next ask starts clean everywhere.
@@ -1109,6 +1111,7 @@ export function registerIpc(ctx: VaultContext): void {
     followUp: followUpFor,
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
     setOffersAside,
+    stop: stopChat,
   })
 
   // Delegate one goal to the on-device librarian. The invoke returns the moment
@@ -1781,7 +1784,7 @@ export function registerIpc(ctx: VaultContext): void {
   // Delegated work runs on comets of its own, turn after turn (task-runner.ts).
   // It resumes once the brains have had a moment to connect after start.
   const told = taskNotices(paths, broadcast)
-  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => { broadcast({ type: 'tasks:changed' }); told.team() } })
+  const takeOutcome = (channel: string) => { const outcome = turnOutcomes.get(channel); turnOutcomes.delete(channel); return outcome }; const team = teamRunner({ paths, askFor: (c, f, w) => tasks.askFor(c, f, w), waitingForPerson: c => tasks.waitingForPerson(c), closeSession: closeClaudeSession, endLane: lane => { void resetLaneView(lane); endDesktopTurn(lane); releaseDesktop(lane) }, step: (channel, line) => broadcast({ type: 'comet:step', channel, line }), changed: () => { broadcast({ type: 'tasks:changed' }); told.team() }, steered: followUpSaid })
   const tasks = taskRunner({
     paths,
     send: (request, turn) => { takeOutcome(request.channel ?? ''); return sendChat(request, undefined, undefined, turn) },
@@ -2657,6 +2660,10 @@ export function registerIpc(ctx: VaultContext): void {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
       releaseWallHold(channel)
+      // grokbar Q1: a greeting or thanks is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
+      const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)
+      if (signal.aborted) return
+      if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }
       // A results address pasted into the thread is the answer to "where
       // should I search": its shape is learned here, with nothing to press.
       const pastedSearch = /^https?:\/\/\S+\?\S+$/.test(request.message.trim()) ? deriveSearchTemplate(request.message) : null
@@ -2722,12 +2729,21 @@ export function registerIpc(ctx: VaultContext): void {
         let firstToken = true
         let tokensUsed = 0
         const firstSaid = firstLineNote(channel)
+        const everyTool = await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit })
+        // A person's own plain ask: nothing attached, resumed, scheduled, studied or re-checked.
+        const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
+        // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
+        const lane = fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
+        const laneNote = lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
+        if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
+        // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
+        const steered: string[] = []
         const result = await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit }),
+            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)) : everyTool,
           },
           request.message,
           {
@@ -2737,14 +2753,16 @@ export function registerIpc(ctx: VaultContext): void {
             waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
-            skills: await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+            skills: lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+            ...(lane ? { modelHint: 'smart' as const } : {}),
+            ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || team.note(channel)) ? { attachmentContext: [attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', firstSaid].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || team.note(channel)) ? { attachmentContext: [attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -2753,7 +2771,7 @@ export function registerIpc(ctx: VaultContext): void {
             history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),
             // A cloud brain keeps this comet's session open between turns.
             session: bot.id,
-            ...(native ? { native } : {}),
+            ...(native && !lane ? { native } : {}),
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)
@@ -2827,7 +2845,7 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'vault:changed' })
         }
         const checkpoint = resumeCheckpoint(request.message, result)
-        await acknowledgeHanded(paths, bot.id, stored.pending, checkpoint)
+        await acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))

@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, deriveSearchTemplate, rankLinks, searchUrlFor } from './search-template.js'
+import { answersTheQuestion, defaultSearchTemplate, deriveSearchTemplate, rankLinks, searchUrlFor } from './search-template.js'
 import { resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -15,7 +15,8 @@ const signInAsk = (task: string | undefined, search = false): string => formatAs
   : search ? 'Please sign in on the open search page, then tell me when it is done.' : 'Please sign in or complete the check in the open page, then tell me when it is done.', [])
 
 const RESULTS_CAP = 8
-const RESULTS_PROSE_CAP = 300
+// A results page often holds the answer itself (weather, a price, a rate) a few hundred characters in.
+const RESULTS_PROSE_CAP = 1200
 const RESULT_TITLE_CAP = 100
 const SNIPPET_CAP = 160
 const RETRY_AFTER_MS = 2_500
@@ -147,11 +148,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
         async run(args, context) {
           const query = str(args, 'query')
           if (!query) return 'search_web needs something to look for'
-          const template = (await deps.searchTemplate?.()) ?? null
-          if (!template)
-            return deps.guided === false
-              ? 'no search address is known yet — open the results page of any search yourself: call open_page with the address of a results page for this query; its shape is learned from that visit'
-              : 'ASK: Where should I search? Paste the address of a results page from the search you use — I will remember the shape and use it from now on.'
+          const template = (await deps.searchTemplate?.()) || defaultSearchTemplate(query)
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           let page: Awaited<ReturnType<typeof courier.fetchPage>>
