@@ -115,7 +115,7 @@ it('says first that an address answered with an error, and does not count it as 
 it('shows each search result with the words beside it and leaves the choice to the reader', async () => {
   const results: WebPage = {
     url: 'https://example.test/search?q=report', title: 'Search', text: 'Weekly report North and South totals for the region. Unrelated advert text.',
-    links: [{ text: 'Weekly report', url: 'https://reports.example/weekly' }, { text: 'Monthly report archive', url: 'https://reports.example/monthly' }],
+    links: [{ text: 'Weekly report', url: 'https://reports.example/weekly' }, { text: 'Monthly report archive', url: 'https://archive.example/monthly' }],
   }
   const search = cometTools({ paths, retrieve: async () => [], searchTemplate, courier: { fetchPage: async () => results } }).find(tool => tool.name === 'search_web')!
   const text = await search.run({ query: 'report' }, context)

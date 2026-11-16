@@ -22,7 +22,9 @@ it('the old reading of a results page held no article: its first 25 addresses ar
 it('lists the articles of a Naver results page, not the page\'s own tabs and ads', () => {
   const page = saved('naver-web', NAVER)
   const results = searchResults(page.links!, page.text, '국내 AI 스타트업 투자', NAVER, 8, SAVED_AT)
-  expect(results).toHaveLength(8)
+  // c5a r2: one row per site. This page has six sites; its further blog.naver.com posts are not listed.
+  expect(results).toHaveLength(6)
+  expect(new Set(results.map(one => new URL(one.url).hostname.replace(/^(www|m)\./, ''))).size).toBe(6)
   for (const one of results) expect(one.url).not.toMatch(furniture)
   expect(results.map(one => one.url)).toContain('https://blog.naver.com/paperprogram/224475566836')
   const post = results.find(one => one.url === 'https://blog.naver.com/paperprogram/224475566836')!
@@ -67,11 +69,13 @@ it('search_web hands over results a lookup can answer from, and a news ask is se
   expect(news).toMatch(/- \[단독\]최태원 차녀[^\n]* — https:\/\/www\.bloter\.net\/news\/articleView\.html\?idxno=678728 — [^\n]* — 11월 16일/)
   // c4 R3/H6: no age is left for the model to copy, in the results or in the page's own words.
   expect(news).not.toMatch(/\d+\s*(분|시간|일|주|개월)\s*전/)
-  // c5: a news list gets up to 12 rows; a plain search keeps 8.
-  expect(news.split('\n').filter(line => line.startsWith('- '))).toHaveLength(12)
+  // c5: a news list gets up to 12 rows; a plain search keeps 8. One row per site either way (c5a r2), so the web page's six sites are six rows.
+  const newsRows = news.split('\n').filter(line => line.startsWith('- '))
+  expect(newsRows).toHaveLength(12)
+  expect(new Set(newsRows.map(line => new URL(/ — (https?:\S+)/.exec(line)![1]!).hostname.replace(/^(www|m)\./, ''))).size).toBe(12)
   await tool.run({ query: '국내 AI 스타트업 투자', kind: 'news' }, context)
   expect(new URL(asked[1]!).searchParams.get('where')).toBe('news')
-  expect((await tool.run({ query: '국내 AI 스타트업 투자' }, context)).split('\n').filter(line => line.startsWith('- '))).toHaveLength(8)
+  expect((await tool.run({ query: '국내 AI 스타트업 투자' }, context)).split('\n').filter(line => line.startsWith('- '))).toHaveLength(6)
   expect(new URL(asked[2]!).searchParams.has('where')).toBe(false)
   expect(tool.description).toMatch(/"kind": "news"/)
 })
@@ -120,7 +124,7 @@ it('turns a result\'s age into the calendar date it means and leaves a written d
 })
 
 // grokbar c5 R2: three lookups each cited "네이버 블로그". One row per site first, a maker's or an outlet's page before a blog, café or forum.
-it('lists the best row of each site first, community posts after the others, and drops no row for being a blog', () => {
+it('keeps one row per site, community posts after the others, and still returns a blog when only blogs exist', () => {
   const row = (title: string, url: string) => ({ text: title, url })
   const anchors = [
     row('갤럭시 S27 가격 출시일 총정리 후기 모음', 'https://blog.naver.com/a/1'),
@@ -132,13 +136,33 @@ it('lists the best row of each site first, community posts after the others, and
     row('갤럭시 S27 가격 또 오른다', 'https://www.yna.co.kr/view/AKR2'),
   ]
   const hosts = (cap: number) => searchResults(anchors, '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x', cap).map(one => new URL(one.url).hostname)
-  // Outlets and the maker first, one each; then one post per community site; a site's second row only fills what is left.
+  // Outlets and the maker first, one each; then one post per community site; a site's second row is not listed (c5a r2).
   expect(hosts(8).slice(0, 2).sort()).toEqual(['news.samsung.com', 'www.yna.co.kr'])
-  expect(hosts(8).slice(2, 4).sort()).toEqual(['blog.naver.com', 'phone.tistory.com'])
-  expect(hosts(8)).toHaveLength(7)
-  expect(hosts(4).filter(host => host.endsWith('blog.naver.com'))).toHaveLength(1)
-  // Only blogs: they are still returned.
-  expect(searchResults(anchors.slice(0, 3), '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x')).toHaveLength(3)
+  expect(hosts(8).slice(2).sort()).toEqual(['blog.naver.com', 'phone.tistory.com'])
+  // Only blogs: the best one is still returned, and only one (c5a r2: three blog.naver.com rows came back as three sources).
+  const blogs = [1, 2, 3].map(n => row('갤럭시 S27 가격 출시일 예상', `https://blog.naver.com/p${n}/${n}`))
+  expect(searchResults(blogs, '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x').map(one => one.url)).toEqual(['https://blog.naver.com/p1/1'])
+  expect(searchResults(anchors.slice(0, 3), '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x')).toHaveLength(1)
+  // A site's own search lists its own pages: every one is a result.
+  const wiki = [1, 2, 3].map(n => row(`휴가 규정 안내 ${n}판`, `https://wiki.example.com/page/${n}`))
+  expect(searchResults(wiki, '', '휴가 규정', 'https://wiki.example.com/search?q=x')).toHaveLength(3)
+})
+
+// c5a r2: an old article dated "2024년 4월 16일" had no date read, and a row with no date passes the recent-news filter.
+it('reads a date written with 년 월 일 or with hyphens, so an old article is out of a recent period', () => {
+  const now = new Date(2026, 10, 17), url = 'https://news.example/2024', from = 'https://search.naver.com/search.naver?where=news'
+  for (const [written, shown] of [['2024년 4월 16일', '2024년 4월 16일'], ['2024년4월16일', '2024년4월16일'], ['2024-04-16', '2024-04-16'], ['2024.04.16.', '2024.04.16.']] as const) {
+    const [old] = searchResults([{ text: '국내 AI 스타트업 투자 유치', url }, { text: written, url }], '', '국내 AI 스타트업 투자 뉴스', from, 12, now)
+    expect(old!.date).toBe(shown)
+    expect(inPeriod(old!.date, 'month', now)).toBe(false)
+    expect(resultDay(old!.date, now)).toEqual(new Date(2024, 3, 16))
+  }
+  // The date in the line under the title, not only in an anchor of its own.
+  const [under] = searchResults([{ text: '국내 AI 스타트업 투자 유치 소식', url }], '국내 AI 스타트업 투자 유치 소식\n한국경제 2024년 4월 16일\n', '국내 AI 스타트업 투자 뉴스', from, 12, now)
+  expect(inPeriod(under!.date, 'month', now)).toBe(false)
+  // A recent one written the same way stays.
+  const [recent] = searchResults([{ text: '국내 AI 스타트업 투자 유치', url }, { text: '2026년 11월 10일', url }], '', '국내 AI 스타트업 투자 뉴스', from, 12, now)
+  expect(inPeriod(recent!.date, 'month', now)).toBe(true)
 })
 
 // grokbar c5 R3/H6: "요즘 … 투자 뉴스" came back as 2024 rounds. A recent-news ask is searched with a period and filtered by date on the host.

@@ -100,7 +100,8 @@ function unwrapBingLink(url: URL): string | null {
 export interface SearchResult { title: string; url: string; snippet: string; date: string }
 const NEW_WINDOW = /\s*(새\s?창\s?열림|opens? in (a )?new (window|tab))\s*/gi
 const AD_HOST = /(^|\.)(ad|ads|ader|adcr|adclick|saedu|doubleclick|googleadservices|googlesyndication)\./i
-const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
+const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d{4}년\s*\d{1,2}월\s*\d{1,2}일|\d{4}-\d{2}-\d{2}|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
+// c5a r2: "2024년 4월 16일" and "2024-04-16" were not read as a date, so an old article had none and passed the recent-news filter as undated.
 const RESULT_SNIPPET = 160
 // grokbar c4 R3/H6: a news table's date column read "1주 전 / 1주 전 / 11시간 전": the results page's own age was passed through as written.
 // An age is turned into the calendar date it means, from the time the page was fetched, before the model sees it; a written date is left alone.
@@ -162,12 +163,13 @@ export function searchResults(links: { text: string; url: string }[], text: stri
   // When the page has results that echo the question, what echoes none of it is furniture that got through (an outlet's home, a promo).
   const echoing = scored.filter(one => one.hits > 0)
   // grokbar c5 R2: three lookups each got a page of blog posts and all three rows were cited to "네이버 블로그". The best row of each site
-  // comes first, a maker's or an outlet's page before a blog, café or forum post; a site's further rows only fill what is left of the cap,
-  // so a page of nothing but blogs is still returned whole.
-  const seen = new Set<string>(), lead: typeof scored = [], rest: typeof scored = []
-  for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); (seen.has(site) ? rest : lead).push(one); seen.add(site) }
+  // is the only one kept (c5a r2: a site's further rows used to fill the cap, so a page of blogs was three rows of one source), a maker's
+  // or an outlet's page before a blog, café or forum post. A blog is never dropped for being one: when only blogs exist, the best is returned.
+  // A site's own search (a wiki's, a shop's) lists its own pages: those are all results, not one source repeated.
+  const seen = new Set<string>(), lead: typeof scored = [], own = page ? siteKey(page.href) : ''
+  for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); if (site === own || !seen.has(site)) lead.push(one); seen.add(site) }
   const sinks = (one: typeof scored[number]): number => Number(COMMUNITY.test(siteKey(one.result.url)))
-  return [...lead.sort((a, b) => sinks(a) - sinks(b)), ...rest].slice(0, cap).map(one => one.result)
+  return lead.sort((a, b) => sinks(a) - sinks(b)).slice(0, cap).map(one => one.result)
 }
 const siteKey = (url: string): string => new URL(url).hostname.replace(/^(www|m)\./, '')
 // shortcut: a closed list of places where anyone posts; another one is ranked as a site of its own until it is added here.
@@ -195,9 +197,9 @@ const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\
 const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31 }
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-// The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "Nov 15", "Apr 16, 2024"); null when it names none.
+// The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
 export function resultDay(date: string, now = new Date()): Date | null {
-  const dot = /(\d{4})\.\s?(\d{1,2})\.\s?(\d{1,2})/.exec(date), ko = /(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일/.exec(date), en = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?/i.exec(date)
+  const dot = /(\d{4})(?:\.\s?|-)(\d{1,2})(?:\.\s?|-)(\d{1,2})/.exec(date), ko = /(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일/.exec(date), en = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?/i.exec(date)
   const [year, month, day] = dot ? [dot[1], Number(dot[2]), dot[3]] : ko ? [ko[1], Number(ko[2]), ko[3]] : en ? [en[3], MONTHS.indexOf(en[1]!.toLowerCase()) + 1, en[2]] : []
   if (!month || !day) return null
   const at = new Date(Number(year ?? now.getFullYear()), month - 1, Number(day))
