@@ -142,6 +142,14 @@ async function control(next: DesktopControlStatusDto) {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'desktop:control', control: status })
   }, next)
 }
+// The session-control dialog opens from Settings, for the conversation open behind it.
+async function openComputerControls() {
+  if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-general').click()
+  await page.getByTestId('computer-settings').getByTestId('computer-controls-open').click()
+  return page.getByTestId('computer-dialog')
+}
 async function orbit() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'mission')
@@ -264,13 +272,24 @@ test('session app previews stay inside the conversation and preserve drafts', as
   await page.getByTestId('preview-card-reopen').click()
   await expect(preview).toBeVisible()
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
-  // Computer controls left the composer: its + only attaches files, and Settings shows what is in use (see the settings test above).
+  // Computer controls left the composer: its + only attaches files, and the dialog opens from Settings.
   await expect(page.getByTestId('bots-input-add')).toHaveAttribute('aria-label', 'Attach files')
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
-  await expect(page.getByTestId('computer-dialog')).toHaveCount(0)
+  const dialog = await openComputerControls()
+  await expect(dialog).toBeVisible()
+  // Esc belongs to the dialog: Settings stays open underneath.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('settings-view')).toBeVisible()
+  await page.getByTestId('computer-controls-open').click()
+  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('settings-view')).toBeVisible()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
+  await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
 })
 
-test('foreground access never starts just from opening the conversation', async () => {
+test('foreground access requires the explicit session control button', async () => {
   const bot = await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.name === 'Computer review')!)
   await app.evaluate(({ ipcMain, BrowserWindow }, lane) => {
     ipcMain.removeHandler('desktop:bindings')
@@ -288,11 +307,15 @@ test('foreground access never starts just from opening the conversation', async 
   await page.reload()
   await page.getByTestId(`bot-${bot.id}`).click()
   expect((await state()).resumes).toBe(0)
-  // The composer's session-control dialog is gone with its button, so nothing in the conversation can start control by hand.
   await expect(page.getByTestId('bots-input')).toBeVisible()
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
-  await expect(page.getByTestId('computer-control-start')).toHaveCount(0)
+  const dialog = await openComputerControls()
+  await expect(dialog.getByTestId('computer-control-start')).toBeEnabled()
   expect((await state()).resumes).toBe(0)
+  await dialog.getByTestId('computer-control-start').click()
+  await expect.poll(async () => (await state()).control.state).toBe('ready')
+  expect((await state()).resumes).toBe(1)
+  await dialog.getByRole('button', { name: 'Close computer controls', exact: true }).click()
 })
 
 test('a delayed first-run tour does not cover a conversation already in use', async () => {
