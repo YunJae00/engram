@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, greeting, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -198,6 +198,58 @@ describe('instant first line', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(show).not.toHaveBeenCalled()
     expect(firstLineNote('bot-1')).toBe('')
+  })
+
+  // as-e1cf9bfd C1/C2/C5-C10: the company lane's prompt is built ~15 ms after Enter, so the small model's line was dropped on every turn.
+  it('the company lane says a fixed Korean line at once, and the small model\'s late line is never shown over it', async () => {
+    const { show } = begin(voice(later('김대리를 뽑아드릴게요.', 300)), { message: '김대리 하나 뽑아줘. 리서치 담당이야' })
+    firstLineReady('bot-1')
+    firstLineNow('bot-1', '김대리 하나 뽑아줘. 리서치 담당이야', true)
+    expect(show).toHaveBeenCalledExactlyOnceWith('네, 바로 할게요.')
+    expect(firstLineNote('bot-1')).toContain('네, 바로 할게요.')
+    // A closing tool's reply sends no reset, so the line opens the saved answer.
+    expect(withFirstLine('bot-1', '김대리를 리서치 담당으로 뽑았어요.')).toBe('네, 바로 할게요.\n\n김대리를 리서치 담당으로 뽑았어요.')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(show).toHaveBeenCalledOnce()
+    expect(laneLine('김과장 무슨 일 하는 사람이야?', true)).toBe('네, 확인해 볼게요.')
+    expect(laneLine('내 일정 뭐 있어?', true)).toBe('네, 확인해 볼게요.')
+    expect(laneLine('마케팅팀 이번 주 한 일 요약해', true)).toBe('네, 바로 할게요.')
+    expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
+    expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
+    expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
+    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: \[\{ tool: 'assign', args: handoff!, observation: handed \}\], fellBack: false \} : await runComet\(/)
+  })
+
+  it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {
+    for (const patch of [{ interactive: false }, { message: '다들 뭐하고 있어?' }, { followUp: true }, { secret: true }]) {
+      const { show } = begin(voice(async () => 'x'), patch)
+      firstLineReady('bot-1')
+      firstLineNow('bot-1', patch.message ?? '김대리 하나 뽑아줘', true)
+      expect(show, JSON.stringify(patch)).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+    }
+    const abort = new AbortController()
+    const { show } = begin(voice(later('x', 300)), {}, abort.signal)
+    firstLineReady('bot-1')
+    abort.abort()
+    firstLineNow('bot-1', '김대리 하나 뽑아줘', true)
+    expect(show).not.toHaveBeenCalled()
+  })
+
+  it('starts no first line for the staff status question, however fast the small model is', async () => {
+    for (const message of ['다들 뭐하고 있어?', '직원들 지금 뭐 하고 있어요?', '현황']) {
+      expect(wantsFirstLine(ask({ message })), message).toBe('status')
+      const live = voice(async () => '직원 현황을 알려드릴게요.')
+      const { show } = begin(live, { message })
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(live.quick).not.toHaveBeenCalled()
+      expect(show).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+    }
+    // A longer ask about the staff is a job and still gets its line.
+    expect(wantsFirstLine(ask({ message: '다들 뭐하고 있는지 표로 정리해서 메일로 보내줘' }))).toBeNull()
   })
 
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {

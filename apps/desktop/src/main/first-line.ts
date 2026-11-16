@@ -1,4 +1,4 @@
-import type { Engine, EngineCwd } from 'core'
+import { isStatusAsk, type Engine, type EngineCwd } from 'core'
 import { flog } from './flog.js'
 
 export const FIRST_LINE_BUDGET_MS = 1500
@@ -50,6 +50,8 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
   if (ask.followUp) return 'follow-up'
   if (ask.secret) return 'secret'
   if (ask.message.trim().startsWith('/')) return 'command'
+  // The status question is answered whole from stored state: a first line beside it would be a second answer on screen.
+  if (isStatusAsk(ask.message)) return 'status'
   return plainReply(ask.message) ? 'chit-chat' : null
 }
 
@@ -148,6 +150,19 @@ export function firstLineSpoke(channel: string): void {
 // Nothing (at once for any other turn, within the budget for a greeting) means the main turn answers as before.
 export function smallTalkAnswer(channel: string): Promise<string | undefined> {
   return turns.get(channel)?.talk ?? Promise.resolve(undefined)
+}
+
+// The company lane builds its prompt in milliseconds, so the small model's line can never arrive first (as-e1cf9bfd: dropped on
+// every lane turn, first text 2.5-25 s). Where a first line is wanted at all, the lane says a fixed one at once.
+export const laneLine = (message: string, korean: boolean): string => {
+  const asks = /[?？]\s*$|뭐|무슨|누구|어디|언제|어떻게|어때|몇|왜|\b(what|who|when|where|which|how|why)\b/i.test(message.trim())
+  return korean ? (asks ? '네, 확인해 볼게요.' : '네, 바로 할게요.') : (asks ? 'Let me check.' : 'On it.')
+}
+export function firstLineNow(channel: string, message: string, korean: boolean): void {
+  const turn = turns.get(channel)
+  if (!turn?.open) return
+  turn.line = laneLine(message, korean)
+  reveal(channel, turn)
 }
 
 // One sentence for the main turn, read when its prompt is built; never waits.

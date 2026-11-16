@@ -1,3 +1,4 @@
+import { isOutsideAsk } from 'core'
 // grokbar: a web lookup, or a "have bots research this" ask, ran on the work model with ~72 tools and a 38k-char prompt:
 // 13 s to plan a hire, 8 s to merge, 30-45 s for one weather or stock lookup. Such a turn runs on the smart tier with a
 // menu small enough to be put in the prompt whole (PRELOADED_TOOLS_MAX). The match is a closed word list, no model:
@@ -27,6 +28,7 @@ export function fastLane(message: string, plain: boolean): boolean {
   const team = TEAM.exec(text)
   // The words that ask for the team ("봇 3개 만들어서") are not other work.
   const rest = team ? text.replace(team[0], ' ') : text
-  if (OTHER_WORK.test(rest) || TARGET.test(rest)) return false
+  // isOutsideAsk: the company lane's own check for sending or posting outside; both lanes leave such a turn to the normal lead and its approval gate.
+  if (OTHER_WORK.test(rest) || TARGET.test(rest) || isOutsideAsk(rest)) return false
   return !!team || LOOKUP.test(text)
 }

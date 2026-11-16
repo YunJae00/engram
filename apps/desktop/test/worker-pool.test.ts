@@ -174,9 +174,40 @@ describe('WorkerPool', () => {
     expect(order).toEqual(['D', 'B', 'C'])
   })
 
+  // as-e1cf9bfd C2/C10: at target 1 the person's next message sat 21 s and 24 s behind the last turn's memory note.
+  it('a person\'s turn never waits behind work nobody is watching: one slot past the target is theirs', async () => {
+    const { p } = pool(1)
+    const memory = track(withTurnPriority({ interactive: true }, () => asBackground(() => p.acquire())))
+    await flush()
+    const say = vi.fn()
+    const turn = track(withTurnPriority({ interactive: true, say }, () => p.acquire()))
+    await flush()
+    expect(turn.settled).toBe(true)
+    expect(p.running).toBe(2)
+    // Only one: a second turn of theirs, and more background work, wait as before.
+    const second = track(withTurnPriority({ interactive: true }, () => p.acquire()))
+    const chore = track(p.acquire())
+    await flush()
+    expect([second.settled, chore.settled]).toEqual([false, false])
+    memory.release?.()
+    await flush()
+    expect([second.settled, chore.settled]).toEqual([false, false])
+    turn.release?.()
+    await flush()
+    expect([second.settled, chore.settled]).toEqual([true, false])
+    second.release?.()
+    await flush()
+    expect(chore.settled).toBe(true)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(say).not.toHaveBeenCalled()
+    chore.release?.()
+    expect(p.running).toBe(0)
+  })
+
   it('drops a waiter aborted while queued without running it', async () => {
     const { p } = pool(1)
-    const a = track(p.acquire())
+    // The slot is held by another conversation's turn of the person's: a turn of theirs waits only behind one of their own.
+    const a = track(withTurnPriority({ interactive: true }, () => p.acquire()))
     await flush()
     const say = vi.fn()
     const abort = new AbortController()
@@ -253,7 +284,7 @@ describe('WorkerPool', () => {
   it('a waiting interactive turn says once after 2 s, in the thread language', async () => {
     for (const korean of [true, false]) {
       const { p } = pool(1)
-      const a = track(p.acquire())
+      const a = track(withTurnPriority({ interactive: true }, () => p.acquire()))
       await flush()
       const say = vi.fn()
       void withTurnPriority({ interactive: true, korean, say }, () => p.acquire())

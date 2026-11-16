@@ -62,7 +62,9 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)) : everyTool,')
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const } : {}),")
-  expect(ipc).toContain('...(native && !lane ? { native } : {}),')
+  // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
+  expect(ipc).toContain('const lane = !company && fastLane(request.message, plainAsk)')
+  expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).

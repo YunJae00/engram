@@ -57,6 +57,10 @@ export interface AgentTool {
   // The same call for a brain that can take a picture; the words alone go
   // to one that cannot.
   runRich?(args: Record<string, unknown>, context: AgentToolContext): Promise<ToolOutcome>
+  // Its reply is the answer to the person: a tool session ends the turn with it when no other call ran beside it.
+  // shortcut: the step loop (brains without a tool session) ignores this and writes its own answer; honor it there if such a brain becomes the primary's.
+  // A function decides per call from its arguments (assign closes only when it does not wait).
+  closes?: true | ((args: Record<string, unknown>) => boolean)
 }
 
 export interface AgentLoopDeps {

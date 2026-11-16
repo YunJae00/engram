@@ -71,6 +71,10 @@ describe('team hire tools', () => {
     const m = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', lookup: true as const, state: 'working' as const, sessionKey: 'k', hiredAt: '' }
     const settled = (outcome: Parameters<typeof settleMember>[1], patch: Record<string, unknown> = {}) => { const one = { ...m, ...patch } as Parameters<typeof settleMember>[0]; settleMember(one, outcome, 'now', true); return one }
     expect(settled({ answer: '서울 12도 맑음 (https://weather.example/seoul)' }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    // stack-1: an employee handed work by assign is settled here too, by the same rule: a sourced lookup that answered, in the background or not; a job that makes something, or a reply with no answer in it, is not.
+    expect(settled({ answer: '서울 12도 맑음 (https://weather.example/seoul)' }, { botId: 'b1', background: true }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '서울 12도 맑음 (https://weather.example/seoul)' }, { botId: 'b1', lookup: undefined }).review).toBeUndefined()
+    expect(settled({ answer: '지금 검색하겠습니다. https://search.naver.com/search.naver?query=x' }, { botId: 'b1' }).review).toBeUndefined()
     expect(settled({ answer: '서울 12도 맑음' }).review).toBeUndefined()
     expect(settled({ answer: '서울 12도 (https://weather.example/seoul)', timedOut: true }).review).toBeUndefined()
     expect(settled({ answer: '서울 12도 (https://weather.example/seoul)', budgetExhausted: true }).review).toBeUndefined()

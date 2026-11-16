@@ -13,6 +13,8 @@ export interface ScheduleDeps {
   // Read-only listing tools the host can look at by itself before a run.
   watchable?: string[]
   now?(): Date
+  /** The chief of staff's: a kept duty is confirmed by the tool's own Korean line, which ends the turn (one model round), and it runs in this conversation. */
+  duty?: true
 }
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/
@@ -24,6 +26,16 @@ export function scheduleWords(schedule: Schedule): string {
   const days = [...schedule.days].sort((a, b) => a - b)
   const when = days.length === 7 ? 'every day' : days.length === 5 && days.every(d => d >= 1 && d <= 5) ? 'weekdays' : days.map(d => DAY_NAMES[d]).join(', ')
   return schedule.every ? `${when} every ${schedule.every} min from ${time}` : `${when} ${time}`
+}
+
+const DAY_KO = ['일', '월', '화', '수', '목', '금', '토']
+/** "매주 월요일 09:00", for the line the person reads. */
+export function scheduleWordsKo(schedule: Schedule): string {
+  const time = `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`
+  if (schedule.on) return `${schedule.on} ${time}에 한 번`
+  const days = [...schedule.days].sort((a, b) => a - b)
+  const when = days.length === 7 ? '매일' : days.length === 5 && days.every(d => d >= 1 && d <= 5) ? '평일' : `매주 ${days.map(d => DAY_KO[d]).join('·')}요일`
+  return schedule.every ? `${when} ${time}부터 ${schedule.every}분마다` : `${when} ${time}`
 }
 
 function described(task: BotTask): Record<string, string> {
@@ -51,7 +63,8 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
   const watchNote = watchable.length ? ` onlyWhenNew {tool, args} (tool one of ${watchable.join(', ')}, args as that tool takes them) makes each run wait until that listing shows items not seen at the last run; the new items come with the request.` : ''
   return {
     name: 'schedule',
-    description: `Keep something the person wants done later, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone in a new conversation), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. every (minutes, ${EVERY_MIN} to ${EVERY_MAX}) repeats it on those days from that time, answering in one conversation.${watchNote} At that time it runs in a new conversation and the result waits in their notifications (the bell by the search box). "list" shows everything kept; "remove" with id stops one. Only when they ask for something later or repeated. Kept on this bot; when they ask for a new bot to do it, use new_bot instead.`,
+    ...(deps.duty ? { closes: (args: Record<string, unknown>) => args['action'] === 'add' } : {}),
+    description: `Keep something the person wants done later, by itself, at a set local time: action "add" with what (their request, in their words, complete enough to run alone in a new conversation), time "HH:MM" (24-hour) and either days (0 Sunday to 6 Saturday; all seven for every day) or date (YYYY-MM-DD) for once. every (minutes, ${EVERY_MIN} to ${EVERY_MAX}) repeats it on those days from that time, answering in one conversation.${watchNote} At that time it runs in a new conversation and the result waits in their notifications (the bell by the search box). "list" shows everything kept; "remove" with id stops one. Only when they ask for something later or repeated. ${deps.duty ? 'A standing duty of the staff or a team ("매주 월요일 9시에 마케팅팀 주간보고 올려") is kept the same way, with the team or employee named in what; it runs in this conversation, and the reply to "add" is shown to the person as your answer and ends the turn. When the same sentence also asks for something now ("지금 슬랙에 올리고 매주 월요일 9시에도 올려"), do that first, then add. "내 일정 뭐 있어?" asks for "list".' : 'Kept on this bot; when they ask for a new bot to do it, use new_bot instead.'}`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['action'],
       properties: {
@@ -89,6 +102,7 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
         watch = { tool, args: toolArgs as Record<string, unknown> }
       }
       const task = await deps.add({ name: what.slice(0, 60), goal: what, schedule, ...(watch ? { watch } : {}) })
+      if (deps.duty) return `${scheduleWordsKo(schedule)} 일정으로 넣었어요: ${what}`
       return JSON.stringify({ scheduled: described(task), note: 'Say back in one line what will run and when.' })
     },
   }

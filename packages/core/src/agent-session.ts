@@ -42,6 +42,9 @@ export function withSteer(text: string, said: string[]): string {
   return `${text}\n\nThe person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
 }
 
+const CLOSE_GRACE_MS = 150
+const CLOSE_TAIL_MS = 15_000
+
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
@@ -82,6 +85,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let extended = false
   let toolMs = 0
   let stalled = false, stallNote = ''
+  // A closing tool's reply is the answer (AgentTool.closes): the turn ends on it unless another kind of call ran this turn or one follows within the grace.
+  let closed: string | undefined, composing = false, close: ((result: ToolSessionResult) => void) | undefined
+  const closeLines: string[] = []
+  // Once a closing tool has succeeded the model's words are held, not shown: dropped if the turn closes, shown in order if it goes on.
+  let held: (() => void)[] | undefined
+  const release = (): void => { const kept = held; held = undefined; for (const show of kept ?? []) show() }
   let pageStepCalls = 0
   const decisionAvailable = deps.tools.some(tool => tool.name === 'page_do' || tool.name === 'app_do')
   const calls: ToolSessionCall[] = tools.map((tool) => ({
@@ -92,6 +101,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
+      if (closed !== undefined) return 'The turn already ended with your last reply to the person. Call nothing more.'
+      const closing = typeof tool.closes === 'function' ? tool.closes(args) : tool.closes === true
+      if (!closing) { composing = true; release() }
       if (options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs) {
         exhausted = true
         return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
@@ -162,6 +174,12 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
+      if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
+        closeLines.push(observation)
+        held ??= []
+        const mark = startedCalls
+        setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)
+      } else release()
       const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
@@ -253,9 +271,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onContextReset: () => { compactPage() },
     onStart: () => { working = Date.now(); options.onStart?.() },
     maxCalls: options.maxCalls ?? (browser ? CALL_CEILING : planned ? 120 : SESSION_MAX_CALLS),
-    onToken: (text: string) => { if (text) options.onToken?.(text) },
+    onToken: (text: string) => { if (!text || closed !== undefined) return; if (held) held.push(() => options.onToken?.(text)); else options.onToken?.(text) },
     onSteerable: (steer) => { liveSteer = steer; options.onSteerable?.(steer) },
-    ...(options.onReset ? { onReset: options.onReset } : {}),
+    ...(options.onReset ? { onReset: (...args: Parameters<NonNullable<typeof options.onReset>>) => { if (closed !== undefined) return; if (held) held.push(() => options.onReset!(...args)); else options.onReset!(...args) } } : {}),
     signal,
   }
   let session: ToolSessionResult
@@ -267,17 +285,21 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   })
   try {
     signal.throwIfAborted()
-    session = await Promise.race([runTools.call(deps.engine, job), ended])
+    const run = runTools.call(deps.engine, job)
+    session = await Promise.race([run, ended, new Promise<ToolSessionResult>(resolve => { close = resolve })])
+    // The model's own closing words are not waited for or shown, but its round is left to finish (bounded): cutting it would cost the warm session.
+    if (closed !== undefined) { const stop = () => lifetime.abort(new Error('The tool session has ended.')), limit = setTimeout(stop, CLOSE_TAIL_MS); void run.catch(() => undefined).finally(() => { clearTimeout(limit); stop() }) }
   } finally {
     options.onSteerable?.(null)
     clearInterval(watchdog)
     unfinishedCalls = queued > 0
-    lifetime.abort(new Error('The tool session has ended.'))
+    if (closed === undefined) { if (!signal.aborted) release(); lifetime.abort(new Error('The tool session has ended.')) }
     signal.removeEventListener('abort', end)
     running.clear(); queued = 0
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
+  if (closed !== undefined) return { answer: withoutSecrets(closed, task), steps, fellBack: false, tokensUsed }
   if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"), deps.workdir), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }
