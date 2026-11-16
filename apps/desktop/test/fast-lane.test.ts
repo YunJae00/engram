@@ -183,12 +183,24 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('every cell is a short value, never a sentence, and never two points in one cell')
   expect(LANE_NOTE).toContain('"미발표, 예상 130만 원대"')
   expect(LANE_NOTE).toContain('"미발표, 전작 S26 115만 원"')
-  expect(LANE_NOTE).toContain('never a cell with no figure when the results hold one')
+  // c5 R2: "미발표, 전작 S26보다 인상 예상" had no number. The cell carries one, from a result or the previous model's launch price, labeled.
+  expect(LANE_NOTE).not.toContain('when the results hold one')
+  expect(LANE_NOTE).toContain('never a number of your own, and never a cell with no number in it')
+  expect(LANE_NOTE).toContain('labeled 예상 or 전작')
+  expect(LANE_NOTE).toContain('never "네이버 블로그" or "네이버 카페"')
+  // c5 R3/H6: a news list is numbered lines, never a table, with no paragraph about the search; a plan or a visit is not an investment.
+  expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item: what happened, the date, and the outlet as a named link')
+  expect(LANE_NOTE).toContain('never a table, and never a closing paragraph about what the search did or did not have')
+  expect(LANE_NOTE).toContain('a plan to raise, a visit, a forum, a support programme or a partnership is not an investment')
+  expect(LANE_NOTE).toContain('give the fewer and say so in half a sentence')
+  expect(LANE_NOTE).toContain('(a news list is not one)')
+  // c5 T1/R2: asked for a split, the lead says in one clause how it was split.
+  expect(LANE_NOTE).toContain('it says in one short clause how the work was split, from "split" in the hire result')
+  expect(LANE_NOTE).toContain('"대구는 한 명 더 붙여서 넷이 나눠 봤어요."')
   expect(LANE_NOTE).toContain('For a comparison every brief names the same points its row needs')
   // c4 R3/H6: N items are N different events of the kind asked, each with a real date.
   expect(LANE_NOTE).toContain('"N개" means N different events of the kind they asked for')
   expect(LANE_NOTE).toContain('never two items about the same event')
-  expect(LANE_NOTE).toContain('a forum, a support programme or a partnership is not an investment')
   expect(LANE_NOTE).toContain('never as an age ("1주 전")')
   expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')
   expect(LANE_NOTE).toContain('one friendly lead sentence that already gives the gist, with nothing after the table')

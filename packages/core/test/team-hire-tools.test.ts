@@ -121,6 +121,13 @@ describe('team hire tools', () => {
     expect(citeOwn('애플은 352.34달러예요.\n[네이버 증권](https://finance.naver.com/aapl)\n', [], true)).toBe('애플은 352.34달러예요. [네이버 증권](https://finance.naver.com/aapl)')
     for (const kept of ['| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)', '- 첫째\n- 둘째\n\n[네이버 검색](https://search.naver.com/x)', '[네이버 날씨](https://weather.naver.com/today)']) expect(citeOwn(kept, naver, true)).toBe(kept)
     expect(citeOwn('', naver, true)).toBe('')
+    // c5 L2: the stored answer ends with its suggested replies; the link under the sentence still joins it, and the replies stay last.
+    const replies = '\n\n```replies\n애플 주가도 알려줘\n어제랑 비교해줘\n```'
+    expect(citeOwn(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요.\n\n[네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`, [], true))
+      .toBe(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요. [네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`)
+    // An answer with no link gets its link after the sentence, not after the replies.
+    expect(citeOwn(`1,335원이에요.${replies}`, ['https://finance.example/usd'], true)).toBe(`1,335원이에요. [finance.example](https://finance.example/usd)${replies}`)
+    expect(citeOwn(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)${replies}`, [], true)).toBe(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)${replies}`)
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`
@@ -168,6 +175,32 @@ describe('team hire tools', () => {
     expect(teamReviewIssue(state.task)).toBe('')
     // Nothing left open: an empty call is refused as before.
     await expect(hire.run({ members: [] }, { task: '' })).rejects.toThrow('members needs 1 to 4 entries')
+  })
+
+  // c5 T1/R2: "봇 3개에 네 도시를 어떻게 나눠 맡겼는지는 말하지 않아". The host says who took part and who joined mid-work; the lead puts it in a clause.
+  it('tells the lead how the work was split: how many took part, and who joined after the person spoke mid-work', async () => {
+    const plain = world('서울 부산 제주 날씨')
+    const out = JSON.parse(await plain.call(null, 'hire_members', { members: three }))
+    expect(out.split).toBe('3 took part, one part each')
+    expect(out.note).toContain('says in a few words how it was split, from "split" in this result')
+    expect(out.note).toContain('"대구는 한 명 더 붙여서 넷이 나눠 봤어요."')
+    expect(out.note).toContain('a member id or a role label')
+    const { state, tools } = world('서울 부산 제주 날씨')
+    let finish!: () => void, speak!: () => void
+    state.gate = new Promise(resolve => { finish = resolve })
+    state.steer = new Promise(resolve => { speak = resolve })
+    const hire = tools(null).find(tool => tool.name === 'hire_members')!
+    const first = hire.run({ members: three }, { task: '' })
+    await new Promise(resolve => setTimeout(resolve, 5))
+    speak()
+    expect(JSON.parse(await first).split).toBeUndefined()
+    state.steer = new Promise(() => undefined)
+    const added = hire.run({ members: [{ role: '대구날씨', brief: '대구 날씨', deliverable: '한 줄' }] }, { task: '' })
+    finish()
+    expect(JSON.parse(await added).split).toBe('4 took part, one part each; 1 of them joined after the person added to the job mid-work (대구날씨)')
+    // One member is no split.
+    const solo = world('서울 날씨')
+    expect(JSON.parse(await solo.call(null, 'hire_members', { members: three.slice(0, 1) })).split).toBeUndefined()
   })
 
   it('waits for the members left working when called with no new members; a member cannot be steered', async () => {
@@ -288,13 +321,23 @@ describe('team hire tools', () => {
     expect(LOOKUP_RULE).toContain('about ten seconds')
     // grokbar c3 R2/C3: members reported "소스 접근 실패", "이번 턴 안에 내용을 읽어오지 못했습니다". They answer from the results list, in the
     // person's language, and say what is missing in a plain clause.
-    expect(LOOKUP_RULE).toContain('Search once')
+    // c5 R2/C3: a first search that does not hold the answer is followed by one more, in other words, inside the same limits.
+    expect(LOOKUP_RULE).not.toContain('Search once')
+    expect(LOOKUP_RULE).toContain('search once more in other words before you report')
+    expect(LOOKUP_RULE).toContain('"Linear changelog"')
+    expect(LOOKUP_RULE).toContain('or a news search (kind "news")')
+    expect(LOOKUP_RULE).toContain('never a third time')
+    expect(LOOKUP_RULE).toContain('still gives a number with its currency, labeled 예상 or 전작')
+    expect(LOOKUP_RULE).toContain('"미발표, 2027년 2월 예상"')
+    expect(LOOKUP_RULE).toContain("comes from a result or is the previous model's known launch price")
+    expect(LOOKUP_RULE).toContain('never a number of your own, and never a line with no number in it')
+    expect(LOOKUP_RULE).not.toContain('when the results hold one')
+    expect(LOOKUP_RULE).toContain('never "네이버 블로그" or "네이버 카페"')
     expect(LOOKUP_RULE).toContain('report at once from them, each fact with the address of the result it came from')
     expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
     expect(LOOKUP_RULE).toContain("Report in the person's language")
     // c4 R2: a value that is not announced still carries a labeled figure; each point asked is its own short line; a maker or news page before a blog.
     expect(LOOKUP_RULE).toContain('"미발표, 예상 130만 원대"')
-    expect(LOOKUP_RULE).toContain('never a line with no figure when the results hold one')
     expect(LOOKUP_RULE).toContain('report each on a line of its own, "가격: …", "출시일: …"')
     expect(LOOKUP_RULE).toContain("the maker's own page or a news article when the list has one, before a café or blog post")
     // c4 R1/L3: a figure from the results page's own box is cited to that service at the address that was loaded.
@@ -332,13 +375,14 @@ describe('team hire tools', () => {
     expect(out.members.map((m: { sources?: string[] }) => m.sources)).toEqual([['https://weather.naver.com/today/09', 'https://search.naver.com/search.naver?query=seoul'], ['https://search.naver.com/search.naver?query=busan'], undefined])
     expect(out.note).toContain('markdown link')
     // grokbar c3 R1/R2: rows read "서울 (서울날씨봇)" and the closing line "출처: iPhone18 · GalaxyS27 · Pixel11".
-    expect(out.note).toContain("the link text the site's own name")
+    expect(out.note).toContain("the link text the site's or publication's own name")
+    expect(out.note).toContain('never "네이버 블로그" or "네이버 카페"')
     expect(out.note).toContain("never a member's role or name")
     expect(out.note).toContain('A row names a member only when the person named the members themselves')
     // One friendly lead and one table, no status sentence, and a plain line for a member that found nothing.
     expect(out.note).toContain('one friendly lead sentence that already gives the gist, then one table')
     expect(out.note).toContain('nothing after the table')
-    expect(out.note).toContain('No status sentence about bots, members or collecting results')
+    expect(out.note).toContain('No other sentence about bots, members or collecting results')
     expect(out.note).toContain('"못 찾았어요"')
     expect(out.note).toContain('never re-run')
     void call

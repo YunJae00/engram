@@ -21,9 +21,9 @@ const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask
 export const AUTO_REVIEW = 'auto: sourced lookup'
 const ACCEPTED_NOTE = 'Members with accepted true are sourced lookups, already accepted and released: do not call review_member for them. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
-export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. No status sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result: how many took part, and that something they added mid-work got one more ("셋이 하나씩 맡아 알아봤어요.", "대구는 한 명 더 붙여서 넷이 나눠 봤어요."); never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
-const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s own name (네이버 날씨, Apple), never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
+const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a blog or café post by its own title, never "네이버 블로그" or "네이버 카페", never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
@@ -40,7 +40,9 @@ export const LOOKUP_HARD_MS = 15_000
 export const LOOKUP_MAX_CALLS = 4
 // grokbar c3 R2/R3: members spent their ten seconds thinking between a search and a page that was then refused, and reported "소스 접근 실패".
 // The search now hands over the results themselves (title, address, words, date), so one search is the normal case.
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search once, with the query in the person\'s language: the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A value that is not announced yet says so and still gives the figure a colleague would give, labeled: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"), and the expected month for a date ("미발표, 내년 2월 예상"); never a line with no figure when the results hold one; never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+// c5 R2/C3: a member whose one search held no figure reported "미발표, 전작보다 인상 예상" at 3 s of its 8; "Search once" and "when the
+// results hold one" let it. It now looks once more inside the same limits, and a price that is not out still carries a number.
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and, when that does not hold the answer, one more search or one page. Search first with the query in the person\'s language: the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report - the maker\'s or the product\'s English name ("Galaxy S27 price", "Linear changelog"), or a news search (kind "news") - and never a third time. A source is named by its site or publication (삼성전자 뉴스룸, 연합뉴스), a blog or café post by its own title: never "네이버 블로그" or "네이버 카페". When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A price that is not announced yet says so and still gives a number with its currency, labeled 예상 or 전작: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"); a date the same way, the expected month with its year ("미발표, 2027년 2월 예상"). That number comes from a result or is the previous model\'s known launch price, labeled as what it is: never a number of your own, and never a line with no number in it ("전작보다 인상 예상" alone is not a price); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -251,6 +253,10 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
 // c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.
 export function citeOwn(answer: string, read: readonly string[], korean = false): string {
+  // c5 L2: the stored answer ends with its suggested replies, so the link was never "at the end" and stayed on a line of its own ("네이버 증권").
+  // The replies are set aside, the answer is cited as if they were not there, and they go back as they were.
+  const replies = /\s*```replies[^]*$/.exec(answer)?.[0]
+  if (replies) return citeOwn(answer.slice(0, -replies.length), read, korean) + replies
   // stack-3 (c3a run, L1/L2/T2): the model put its one link on a line of its own under the answer ("네이버 날씨"), which read as a stray label.
   // A lone closing link under a sentence joins that sentence, as in "…1,385원이에요. [네이버 금융](…)"; under a table or a list it stays.
   // stack-4 (c4a run, L1/L4): the link still sat alone ("네이버") when its address was the results page's as given, with a space in it.
@@ -358,13 +364,17 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
   const open = new Map<string, Promise<void>>()
   // One early return per turn: words the turn does not take with the result (a check turn takes none) must not end every wait at once.
   let steerable = host.self === null && !!host.steered
+  // c5 T1/R2: the merged answer never said how the work was split. The lead's hires of this turn, call by call: who took part, and who was
+  // hired after the person spoke mid-work, is the host's to say; the lead puts it in a clause (MERGED_SHAPE).
+  const took: string[] = [], late = new Set<string>()
+  let spoke = false
   // Waits for the open members, or for the person's words to the lead, and hands back what there is.
   const collect = async (): Promise<string> => {
     const heard = new AbortController()
     const all = Promise.all([...new Set(open.values())])
     let steered = false
     try { steered = await Promise.race([all.then(() => false), steerable ? host.steered!(heard.signal).then(() => true) : new Promise<never>(() => undefined)]) } catch (error) { open.clear(); throw error } finally { heard.abort() }
-    if (steered) steerable = false
+    if (steered) { steerable = false; spoke = true }
     const team = (await host.load())?.team
     const mine = (team?.members ?? []).filter(m => open.has(m.id))
     const working = (m: TeamMember): boolean => steered && (host.live(m.id) || m.state === 'hired' || m.state === 'working')
@@ -377,7 +387,9 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     const partial = ended.some(m => m.state === 'waiting') && ended.some(m => m.state === 'done')
     const base = partial ? PARTIAL_NOTE : ended.every(accepted) ? ACCEPTED_NOTE : ended.some(accepted) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
     const note = `${ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base}${partial ? '' : ` ${MERGED_SHAPE}`}`
-    return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, note })
+    const added = (team?.members ?? []).filter(m => late.has(m.id))
+    const split = host.self === null && took.length > 1 ? { split: `${took.length} took part, one part each${added.length ? `; ${added.length} of them joined after the person added to the job mid-work (${added.map(m => m.role).join(', ')})` : ''}` } : {}
+    return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, ...split, note })
   }
   const hire: AgentTool = {
     name: 'hire_members',
@@ -428,6 +440,8 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       })
       if (!out) return 'No running task: nothing was hired.'
       if ('refuse' in out) return out.refuse
+      took.push(...out.ids)
+      if (spoke) for (const id of out.ids) late.add(id)
       const run = host.run(out.ids, context.signal)
       // An early return leaves this running with nobody awaiting it.
       run.catch(() => undefined)
