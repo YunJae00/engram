@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, namedText, routeAsk, onlyTells, TOLD_NOTE } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyTells, TOLD_NOTE, withOffer } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, koreanLead, talkOnly, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2773,7 +2773,8 @@ export function registerIpc(ctx: VaultContext): void {
       // What every comet has learned about the person, with this comet's own.
       // The profile note is the person's edit surface: their edits land first.
       await syncPersonNote(paths).catch((error) => flog('comet-memory', error))
-      const botMemory = mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, bot.id))
+      const personMemory = await loadBotMemory(paths, PERSON_MEMORY)
+      const botMemory = mergeMemory(personMemory, await loadBotMemory(paths, bot.id))
       const remembered = botMemory.facts.map((f) => f.text)
       const memory = [await workGuide(paths), renderMemory(botMemory), await workMapShortcuts(ctx), taskRecall(ctx.store, request.message)].filter(Boolean).join('\n\n')
       // Everything the comet does on the person's behalf is written down
@@ -2879,6 +2880,12 @@ export function registerIpc(ctx: VaultContext): void {
         const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\n\n') : ''
         if (given) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-preread', bytes: given.text.length }))
         if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane', kind }))
+        // c5c M2: a plain "X 말고 Y야" on one kept fact is corrected here through keep_in_mind itself, with no model round (desk-lane.ts keptFix):
+        // the fact with Y in X's place, the old line named as replaced, in the memory that held it. Anything else, or a call that throws, goes to the model.
+        const fix = !handed && kind === 'keep' ? keptFix(request.message, remembered) : undefined
+        const fixArgs = fix ? { facts: [fix.fact], replaces: [fix.old], scope: personMemory.facts.some(fact => fact.text === fix.old) ? 'everyone' : 'this bot' } : undefined
+        const fixed = fix && fixArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(fixArgs, { task: request.message, signal }).then(() => fix.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
+        if (fixed) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-fix' })) }
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
         // A lookup turn shows its answer, never the notes it writes between calls.
@@ -2887,7 +2894,7 @@ export function registerIpc(ctx: VaultContext): void {
         // "3번 슬라이드 제목이 … 그 부분만 바꿔요.") were shown under it. Such a turn shows no round as it comes (first-line.ts heldRounds); what is shown replaces a line still waiting.
         const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }
         const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
-        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
+        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
@@ -2910,7 +2917,8 @@ export function registerIpc(ctx: VaultContext): void {
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
-            ...(desk ? { modelHint: 'smart' as const } : {}),
+            // A note the host already read, or something to remember: no long thinking (agent-session.ts light).
+            ...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
@@ -2977,6 +2985,12 @@ export function registerIpc(ctx: VaultContext): void {
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         // A short ask answered with no tool call shows the answer alone, without a line that only announces it (first-line.ts answerAlone).
         if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)
+        // c5c Q3: a line asked for in another language is led by a few Korean words (first-line.ts koreanLead).
+        if (kind === 'ask' && !result.asked) result.answer = koreanLead(request.message, result.answer, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)))
+        // c5c Q1: small talk never asks how it can help (first-line.ts withoutHelpDesk).
+        if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
+        // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
+        if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
         // A Korean thread's answer does not open with an English working note (first-line.ts withoutWorkNote).
         if (!result.asked && threadKorean(request.message, request.history ?? [])) result.answer = withoutWorkNote(result.answer)
         clearApplicationWork(channel)

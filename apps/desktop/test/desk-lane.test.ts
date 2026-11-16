@@ -15,6 +15,7 @@ describe('desk lane', () => {
   it('takes the everyday asks that were slow on the work model', () => {
     for (const ask of [
       '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '아 지민호 말고 민호야', '나 누구랑 일하지?', '정리한 폴더에 PDF 몇 개야?',
+      'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '회의록 요약해서 워드로 만들어줘',
       'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적',
       'Remember that I work with Minho', 'Organize the files in the inbox folder by type',
     ]) expect(deskLane(ask, true), ask).toBe(true)
@@ -22,7 +23,7 @@ describe('desk lane', () => {
 
   it('leaves everything else, and any turn that is not a plain ask, to the work model', () => {
     for (const ask of [
-      'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '이 계약서 검토해서 위험한 조항 정리한 보고서 작성해줘', '회의록 요약해서 워드로 만들어줘', '경쟁사 분석 자료 조사해서 정리해줘',
+      '이 계약서 검토해서 위험한 조항 정리한 보고서 작성해줘', '회의록 요약해서 워드로 만들어서 민호한테 보내줘', '경쟁사 분석 자료 조사해서 정리해줘',
       '기억해\n그리고 보고서도 써줘', `기억해 ${'가'.repeat(200)}`, '/plan', '',
     ]) expect(deskLane(ask, true), ask).toBe(false)
     expect(deskLane('나 누구랑 일하지?', false)).toBe(false)
@@ -42,7 +43,7 @@ describe('desk lane', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const } : {}),")
+    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),")
     expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
     // The shell is the normal lead's; the menu is the kind's own when it has one (c3c-voice-docs.test.ts), and every tool otherwise.
     expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
@@ -117,13 +118,16 @@ describe('a question about a named file', () => {
 describe('document and tidy answers', () => {
   const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
   it('closes a document turn with one or two sentences and no list of contents', () => {
-    expect(DESK_NOTE).toContain('one or two sentences that say what it is and the one choice you made')
+    // c5c: the closing starts with what is in the file, not with "<kind> 만들었어요.".
+    expect(DESK_NOTE).toContain('one or two sentences that start with what is in the file and the one choice you made')
     expect(DESK_NOTE).toContain('never a list of its sections, slides, sheets or contents')
     expect(core('agent-voice.ts')).toContain('never a list of its sections, slides, sheets or contents')
     expect(core('agent-session-shape.ts')).toContain('never a list of its sections, slides, sheets or contents')
   })
   it('asks for the offer in one place only, at most once across document turns, and exactly once after an extraction', () => {
-    expect(DESK_NOTE).not.toMatch(/offer|원하시면/)
+    // c5c H4: the model did not follow the one place two cycles in a row, so the desk note asks for the extraction's offer too (and the host backs it: withOffer).
+    expect(DESK_NOTE).toContain('An extraction ("할 일만 뽑아줘") ends with exactly one short offer line')
+    expect(DESK_NOTE).toContain('unless an earlier reply of yours in this conversation already ended with an offer')
     const voice = core('agent-voice.ts')
     expect(voice.match(/ONE short offer line/g)).toHaveLength(1)
     expect(voice).toContain('An extraction from a file ("할 일만 뽑아줘") ends with exactly ONE short offer line')
@@ -131,8 +135,9 @@ describe('document and tidy answers', () => {
     expect(voice).toContain('document turns in a row carry at most one offer between them')
   })
   it('keeps decisions and to-dos apart in a summary, and names each folder with its count after a tidy-up', () => {
-    expect(DESK_NOTE).toContain('결정사항 is what was decided and 할 일 is who does what by when')
-    expect(DESK_NOTE).toContain('never both')
+    // c5c D1: the notes' own decisions were four tasks, and both headings listed the same four lines.
+    expect(DESK_NOTE).toContain('결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when')
+    expect(DESK_NOTE).toContain('the same sentence never appears under both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
     expect(DESK_NOTE).toContain('- PDF 폴더: 6개\n- 이미지 폴더: 4개')
     expect(DESK_NOTE).toContain('a markdown list with one line per folder that names the folder')

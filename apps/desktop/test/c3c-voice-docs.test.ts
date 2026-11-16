@@ -232,10 +232,10 @@ describe('the first line is a waiting line, not part of the answer', () => {
   // grokbar H1: the opening statement of the trip started 47 steps of web research.
   it('answers something the person only told with one line from the quick voice, with the conversation in view', async () => {
     const said = '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어'
-    const { show, quick } = start('제주 좋죠. 아버님 무릎 생각해서 덜 걷는 쪽으로 챙겨 둘게요.', { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
+    const { show, quick } = start('부모님이랑 제주 가시는군요, 좋으시겠어요.', { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
     const reply = smallTalkAnswer('bot-1')
     await vi.advanceTimersByTimeAsync(500)
-    expect(await reply).toBe('제주 좋죠. 아버님 무릎 생각해서 덜 걷는 쪽으로 챙겨 둘게요.')
+    expect(await reply).toBe('부모님이랑 제주 가시는군요, 좋으시겠어요.')
     expect(show).not.toHaveBeenCalled()
     expect(quick.mock.calls[0]![0]).toContain('it asks for nothing')
     expect(quick.mock.calls[0]![0]).toContain('Conversation so far:\nPerson: 안녕')
@@ -417,7 +417,8 @@ describe('desk tool menus', () => {
     expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)
     // A short question keeps every tool, and so does a turn that is no desk turn.
     expect(DESK_TOOLS.question).toBeUndefined()
-    for (const message of ['fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '위 회의록으로 워드 보고서 만들어줘', '회의록 요약해서 워드로 만들어줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
+    // c5c r2: a Word or Excel ask takes the document menu (c5c-voice-docs.test.ts); one that is also sent somewhere keeps every tool.
+    for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
@@ -428,8 +429,8 @@ describe('desk tool menus', () => {
     // H4 closed on "(참고: …)" with no offer; Q3 opened with "회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요."
     expect(DESK_NOTE).toContain('one line per folder that names the folder and how many files went into it')
     expect(DESK_NOTE).toContain('no table and no file names unless they ask')
-    // c4c: the offer is asked for in one place only (core agent-voice.ts COLLEAGUE_RULE; stack-3 risk 7).
-    expect(DESK_NOTE).not.toContain('offer')
+    // c5c H4: the desk note asks for the one offer after an extraction (the model did not follow COLLEAGUE_RULE alone), and never a list of offers.
+    expect(DESK_NOTE.match(/exactly one short offer line/g)).toHaveLength(1)
     expect(SHORT_QUESTION_NOTE).toContain('never a sentence that restates the ask or says what you are about to write')
     expect(DESK_NOTE).toContain('no table and no file names unless they ask')
     expect(DESK_NOTE).toContain('answered in the chat itself')

@@ -124,7 +124,7 @@ describe('how the bot is told to talk', () => {
     expect(prompt).toContain('네, 알겠습니다')
     expect(prompt).not.toMatch(/restates the job/)
     const talk = smallTalkPrompt('안녕', true)
-    expect(talk).toMatch(/never ask how you can help/)
+    expect(talk).toMatch(/never ask or offer help in any wording/)
     expect(talk).toContain('Korean, polite -요 form')
   })
 })
