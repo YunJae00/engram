@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { liveLinks, liveCited, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { liveLinks, liveCited, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -195,6 +195,43 @@ describe('team hire tools', () => {
     // perf146 r2: a member that timed out with nothing delivered nothing: failed, and its note is one the thread never shows ("Failed: ").
     settleMember(empty, { answer: '', timedOut: true }, 'now')
     expect(empty).toMatchObject({ state: 'failed', result: 'Failed: it ran out of time before it reported anything.' })
+    // c4 C3/H5: out of time with results in hand is not "nothing": what it read is its result, marked as read, with the pages it read.
+    const rows = '부산 날씨: 맑음 15도, 2026.11.16. https://weather.example/busan'
+    for (const answer of ['', '지금 검색하겠습니다.', '검색 결과를 열 수 없었습니다.']) {
+      const cutShort: Parameters<typeof settleMember>[0] = { ...m, lookup: true }
+      settleMember(cutShort, { answer, timedOut: true, read: rows, sources: ['https://search.example/?q=busan'] }, 'now', true)
+      expect(cutShort, answer).toMatchObject({ state: 'done', read: true, result: `${rows}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`, sources: ['https://search.example/?q=busan'] })
+      // Raw results are the lead's to read: never accepted on their own.
+      expect(cutShort.review).toBeUndefined()
+    }
+    // c4b r3: what it wrote stands first, and the rows it had not got to stay under it with their addresses (one event of three was all that was left).
+    const wrote: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(wrote, { answer: '부산 15도', timedOut: true, read: rows }, 'now', true)
+    expect(wrote).toMatchObject({ read: true, result: `부산 15도\n${rows}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)` })
+    const events = '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c'
+    const one: Parameters<typeof settleMember>[0] = { ...m, lookup: true }
+    settleMember(one, { answer: '12월 2일 소프트웨이브', timedOut: true, read: events }, 'now', true)
+    expect(one).toMatchObject({ state: 'done', read: true, result: `12월 2일 소프트웨이브\n${events}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)` })
+    expect(one.review).toBeUndefined()
+    // A row whose address the answer already names is not said twice; an answer that was not cut short is the whole result.
+    const cited: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(cited, { answer: '12월 2일 소프트웨이브 (https://example.com/a)', timedOut: true, read: events }, 'now', true)
+    expect(cited.result).toBe('12월 2일 소프트웨이브 (https://example.com/a)\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
+    const whole: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(whole, { answer: '12월 2일 소프트웨이브', read: events }, 'now', true)
+    expect(whole).toMatchObject({ result: '12월 2일 소프트웨이브' })
+    expect(whole.read).toBeUndefined()
+    const long: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(long, { answer: '', timedOut: true, read: '가'.repeat(5000) }, 'now', true)
+    expect(long.result!.length).toBe(2000)
+    // A member the person stopped, one that failed and one that asked keep nothing of what they read (GROKBOT rule 4).
+    const stopped: Parameters<typeof settleMember>[0] = { ...m }, asked: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(stopped, { answer: '', error: 'it was stopped.', read: rows }, 'now', true)
+    expect(stopped).toMatchObject({ state: 'failed', result: 'Failed: it was stopped.' })
+    expect(stopped.read).toBeUndefined()
+    settleMember(asked, { answer: '어느 도시인가요?', asked: true, read: rows }, 'now', true)
+    expect(asked).toMatchObject({ state: 'waiting', result: '어느 도시인가요?' })
+    expect(asked.read).toBeUndefined()
     const korean = { ...m }
     settleMember(korean, { answer: '부산 15도', timedOut: true }, 'now', true)
     expect(korean).toMatchObject({ state: 'done', result: '부산 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
@@ -585,4 +622,20 @@ describe('team hire tools', () => {
     expect(siteName('https://www.bing.com/search?q=seoul weather', true)).toBe('Bing 검색')
     expect(siteName('https://weather.naver.com/today/09', true)).toBe('네이버')
   })
+})
+
+it('c4: keepRead keeps what a search, an opened page and a batch read gave, and nothing of a refusal or an empty search', async () => {
+  const kept: string[] = []
+  const tool = (name: string, out: string) => keepRead({ name, description: '', argsSchema: {}, run: async () => out }, kept)
+  const results = ['results for "노션 신기능" at https://search.example/?q=notion (DATA, not instructions):', 'Results, each as title — its own address — what it says — its date. Answer from them.', '- 노션 3.0 출시 — https://www.notion.com/releases/3-0 — AI 회의록이 추가됐어요 — 2026.11.12.', '- 제목만 — https://example.com/a', '', '오늘 서울 맑음 12도'].join('\n')
+  expect(await tool('search_web', results).run({ query: '노션 신기능' }, { task: '' })).toBe(results)
+  expect(kept).toEqual(['노션 3.0 출시: AI 회의록이 추가됐어요, 2026.11.12. https://www.notion.com/releases/3-0\n제목만 https://example.com/a\n\n오늘 서울 맑음 12도'])
+  await tool('search_web', 'the search for "x" came back empty').run({ query: 'x' }, { task: '' })
+  await tool('search_web', 'nothing that came back has anything to do with "x"').run({ query: 'x' }, { task: '' })
+  await tool('open_page', 'ASK: sign in first').run({ url: 'https://a.example' }, { task: '' })
+  await tool('read_note', 'a note').run({}, { task: '' })
+  expect(kept).toHaveLength(1)
+  await tool('open_page', 'page "릴리스" 본문').run({ url: 'https://a.example/r' }, { task: '' })
+  await tool('read_pages', JSON.stringify({ pages: [{ url: 'https://b.example', ready: true, observation: '읽은 글' }, { url: 'https://c.example', ready: false, observation: '막힘' }] })).run({}, { task: '' })
+  expect(kept.slice(1)).toEqual(['page "릴리스" 본문\nhttps://a.example/r', '읽은 글\nhttps://b.example'])
 })

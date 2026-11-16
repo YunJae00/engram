@@ -1,14 +1,14 @@
 import { useId, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { teamT, type TeamLang } from '../i18n-team.js'
-import { memberChip, teamForest, teamSummaryText, type TeamView } from '../lib/teamView.js'
+import { memberChip, teamForest, teamSummaryText, teamWorking, type TeamView } from '../lib/teamView.js'
 import { SidebarDisclosure } from './SidebarDisclosure.js'
 import { TeamTree } from './TeamTree.js'
 
 export function TeamSummary({ team, lang }: { team: TeamView | undefined; lang: TeamLang }) {
   const [open, setOpen] = useState(false)
   const id = useId()
-  if (!team?.members.length) return null
+  if (!team || !teamWorking(team.members)) return null
   return <section className="team-card" data-testid="team-card">
     <button type="button" className="team-summary" data-testid="team-summary" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
       <ChevronRight size={12} aria-hidden />

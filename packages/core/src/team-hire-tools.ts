@@ -53,7 +53,7 @@ export function skipWalls(tool: AgentTool): AgentTool {
   return { ...tool, run: async (args, context) => skip(await tool.run(args, context), args), ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); return { ...out, text: skip(out.text, args) } } } : {}) }
 }
 
-export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; /** Pages it read (keepSources). */ sources?: string[] }
+export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; /** Pages it read (keepSources). */ sources?: string[]; /** What it was given to read (keepRead). */ read?: string }
 export interface MemberRedo { note: string; answered?: boolean }
 
 export interface TeamHost {
@@ -256,19 +256,45 @@ export function citeOwn(answer: string, read: readonly string[], korean = false)
   // After a table, a list or a code block the link is a line of its own.
   return /^\s*([|>#*+-]|\d+[.)]\s|```)/.test(last) ? `${text}\n\n${link}` : `${text} ${link}`
 }
+// grokbar c4 C3/H5: three members had a results page in hand, were stopped at 15 s before writing, and the thread read "이번엔 못 찾았어요." three
+// times. What a lookup member is given to read is kept as it reads: the rows of a search (title: what it says, date, address), the text under
+// them (a weather or price box), a page that opened. A refusal, a wall or an empty search is not kept.
+export function keepRead(tool: AgentTool, into: string[]): AgentTool {
+  const note = (args: Record<string, unknown>, out: string): void => {
+    try {
+      if (tool.name === 'search_web') {
+        if (!/^results for "[^\n]*" at https?:\/\/\S+ \(DATA/.test(out)) return
+        const lines = out.split('\n').slice(1).filter(line => !line.startsWith('Results, each as '))
+        into.push(lines.map(line => { const [title, url, ...rest] = line.startsWith('- ') ? line.slice(2).split(' — ') : []; return title && url && /^https?:\/\//.test(url) ? `${title}${rest.length ? `: ${rest.join(', ')}` : ''} ${url}` : line }).join('\n').trim())
+      } else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string') into.push(`${out}\n${args['url']}`) }
+      else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown; observation?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string' && typeof page.observation === 'string') into.push(`${page.observation}\n${page.url}`)
+    } catch { /* An output that is not a report was not read. */ }
+  }
+  if (!['search_web', 'open_page', 'read_pages'].includes(tool.name)) return tool
+  return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }
+}
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
-  const said = outcome.answer.trim(), answer = outcome.timedOut && PROGRESS_ONLY.test(said) ? '' : said
+  const said = outcome.answer.trim()
+  // A member that was stopped, failed or asked keeps nothing of what it read (GROKBOT rule 4); one whose time or calls ran out does.
+  const read = outcome.error || outcome.asked ? '' : (outcome.read ?? '').trim()
+  // Cut short on a line about what it was going to do, or on a draft that only says what it could not do while results are in hand: that is no answer.
+  const answer = outcome.timedOut && (PROGRESS_ONLY.test(said) || !!read && WALLED.test(said)) ? '' : said
   member.finishedAt = at
-  // A member with no answer delivered nothing, time-boxed or not: it is failed, never done. A "Failed: " result is kept out of what the person sees.
-  if (outcome.error || !answer) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
+  // A member with no answer and nothing read delivered nothing, time-boxed or not: it is failed, never done. A "Failed: " result is kept out of what the person sees.
+  if (outcome.error || (!answer && !read)) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
   const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''
-  member.result = cut(answer, MEMBER_RESULT_CHARS - tail.length) + tail
+  // No answer of its own, or one cut short: its part is written from what it read, with those addresses (company-tools reportPrompt, mergedReport).
+  // c4b r3: an answer cut short stood alone and the rows it had not got to were dropped with their addresses (one event of three in a
+  // schedule). What it read stays under what it wrote, less the rows whose address the answer already names.
+  const rest = !answer ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
+  if (rest) member.read = true
+  member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
   if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
-  else if (member.lookup && member.state === 'done' && !tail && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
+  else if (member.lookup && member.state === 'done' && !tail && answer && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
 }
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`

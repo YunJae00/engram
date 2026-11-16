@@ -1,5 +1,5 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -59,6 +59,10 @@ export function teamRunner(deps: {
   const leads = new Map<string, { job: ToolSessionJob; spent: number }>()
   // Told when the background members of a task have all ended: the lead reports in a turn of its own (task-runner report).
   let report: ((channel: string, taskId: string) => void) | undefined
+  // What a task's background members were started with: a part added while they work starts the same way (steer).
+  const laterKits = new Map<string, TurnKit>()
+  // Tasks whose lead was told: two batches of one task that end together are one report (a part added mid-work is a batch of its own).
+  const told = new Set<string>()
   const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
@@ -111,13 +115,13 @@ export function teamRunner(deps: {
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
-      const sources = new Set<string>()
+      const sources = new Set<string>(), kept: string[] = []
       const begun = () => { if (me.lookup || me.writer) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS) }
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepSources(skipWalls(tool), sources) : tool, taskId, me))
+        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepRead(keepSources(skipWalls(tool), sources), kept) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
@@ -147,7 +151,7 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, sources.size ? { ...outcome, sources: [...sources] } : outcome, now(), isKorean(goal))
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: kept.join('\n\n') } : {}) }, now(), isKorean(goal))
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
         if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
@@ -188,11 +192,13 @@ export function teamRunner(deps: {
 
   // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.
   async function later(taskId: string, leadChannel: string, ids: string[], kit: TurnKit): Promise<void> {
+    laterKits.set(taskId, kit)
+    told.delete(taskId)
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
     const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
     void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).then(async () => {
       const task = await find(taskId)
-      if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task)) report?.(leadChannel, taskId)
+      if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task) && !told.has(taskId)) { told.add(taskId); report?.(leadChannel, taskId) }
     }).catch(error => flog('team', error))
   }
 
@@ -229,7 +235,7 @@ export function teamRunner(deps: {
   async function settle(task: DelegatedTask): Promise<void> {
     if (!task.team) return
     for (const m of task.team.members) deps.closeSession(m.sessionKey)
-    if (TERMINAL.includes(task.state)) { if (task.team.members.some(m => m.state !== 'released')) await change(task.id, t => { if (t.team) releaseAll(t.team, now()) }); notes.delete(channelOf(task)) }
+    if (TERMINAL.includes(task.state)) { laterKits.delete(task.id); told.delete(task.id); if (task.team.members.some(m => m.state !== 'released')) await change(task.id, t => { if (t.team) releaseAll(t.team, now()) }); notes.delete(channelOf(task)) }
   }
 
   return {
@@ -287,6 +293,17 @@ export function teamRunner(deps: {
       }) as Ask
     },
     reportTo(tell: (channel: string, taskId: string) => void): void { report = tell },
+    // c4b r2 (GROKBOT rule 3): words said while a task's background members work change that work. A part taken off is stopped and leaves
+    // nothing; a part added starts beside the others, and the one report waits for it (later). False: nothing was changed.
+    async steer(taskId: string, leadChannel: string, work: (task: DelegatedTask) => { ids: string[]; stop: string[] } | undefined): Promise<boolean> {
+      const kit = laterKits.get(taskId)
+      if (!kit) return false
+      const out = await change(taskId, work)
+      if (!out) return false
+      if (out.ids.length) await later(taskId, leadChannel, out.ids, kit)
+      for (const id of out.stop) live.get(`${taskId}/${id}`)?.control.abort()
+      return true
+    },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
     // The lead's answer with a link for every member whose pages it left out.

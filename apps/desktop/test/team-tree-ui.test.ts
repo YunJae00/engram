@@ -124,6 +124,11 @@ describe('team card and sidebar line', () => {
 
   it('renders nothing without a team', () => {
     expect(summary(undefined)).toBe('')
+    // c4 (R1/R2/H5): with nobody working there is no strip in the thread ("팀 3명 · 모두 끝" read as a status report); the sidebar line stays.
+    const over = [member('m1', null, 'done'), member('m2', null, 'released'), member('m3', null, 'failed')]
+    expect(summary(over)).toBe('')
+    expect(line(over)).toContain('팀 3명 · 모두 끝')
+    for (const state of ['hired', 'working', 'waiting', 'reviewing'] as const) expect(summary([...over, member('m4', null, state)]), state).toContain('data-testid="team-card"')
     expect(summary([])).toBe('')
     expect(line(undefined)).toBe('')
     expect(line([])).toBe('')

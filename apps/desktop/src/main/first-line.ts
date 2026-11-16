@@ -229,7 +229,8 @@ const LANE_KO: [RegExp, string][] = [
   [/내보내|해고|빼(고|\s*줘)/u, '바로 정리할게요.'],
   [/뽑아|채용|고용|팀에\s*(추가|넣)|추가해/u, '바로 팀에 넣을게요.'],
   [/이름.{0,12}바꿔|승진|(으로|로)\s*불러/u, '바로 바꿔 둘게요.'],
-  // The line that follows a split is "…한테 나눠 맡겼어요.": the first line names the step before it, not the same thing again.
+  // A plain split is made by the host and answers "…한테 나눠 맡겼어요." itself with no line before it (core plainSplit, answersItself).
+  // Only a split the model has to work out gets here: the line names the step before the hand-off, not the same thing again.
   [/나눠/u, '누가 뭘 맡을지 나눠 볼게요.'],
   [/맡겨|맡기|시켜|시키|넘겨|넘기/u, '바로 맡길게요.'],
   [/매주|매일|매달|매월|마다|요일.{0,8}\d{1,2}\s*시/u, '일정에 넣어 둘게요.'],
@@ -277,6 +278,9 @@ export function firstLineNow(channel: string, message: string, korean: boolean):
   const turn = turns.get(channel)
   if (!turn?.open) return
   turn.line = laneLine(message, korean)
+  // c4 C10, C7: this fixed line was frozen above the answer ("지금 정리할게요." over the summary). It is the host's waiting line like any other:
+  // it gives way to the answer and is never kept as a bubble of its own.
+  turn.canned = true
   reveal(channel, turn)
 }
 

@@ -48,6 +48,10 @@ export function teamCounts(members: TeamMemberView[]): { total: number; active: 
   return { total: members.length, active: members.filter(member => ACTIVE.includes(member.state)).length, failed: members.filter(member => member.state === 'failed').length }
 }
 
+// grokbar c4 R1/R2/H5: the finished summary (summaryIdle) stayed under a delivered answer and read as a status report. The strip in the thread is there
+// only while someone is working (GROKBOT rule 8); the sidebar row keeps its line.
+export const teamWorking = (members: TeamMemberView[]): boolean => teamCounts(members).active > 0
+
 export function teamSummaryText(members: TeamMemberView[], lang: TeamLang): string {
   const { total, active, failed } = teamCounts(members)
   const summary = active ? teamT(lang, 'summaryWorking', { n: total, m: active }) : teamT(lang, 'summaryIdle', { n: total })

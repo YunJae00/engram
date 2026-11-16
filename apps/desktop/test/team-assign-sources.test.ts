@@ -50,7 +50,8 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   expect(answer).not.toMatch(/한도|멈춤|stopped at/)
   // grokbar cycle 3: and it is said once, in words under the table, not as "(여기까지만 찾았어요)" in every row.
   expect(answer).not.toContain('(여기까지')
-  expect(answer.match(/이번엔 여기까지 찾았어요\./g)).toHaveLength(1)
+  // c4 C5: and nothing at all is said about the cut: the person reads what was found.
+  expect(answer).not.toMatch(/여기까지|더 있을 수/)
   // Review r2: the thread turns a table of three or more columns into cards, so the person never saw a table. It must stay one.
   const shown = answerHtml(answer)
   expect(shown).not.toContain('answer-card')
@@ -69,4 +70,20 @@ it('agents that reached no page are said so in their rows, and that answer is no
   expect(answer.split('\n').filter(line => line.endsWith(') | 이번엔 못 찾았어요. |'))).toHaveLength(3)
   expect(answer).not.toMatch(/https?:/)
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
+})
+
+// grokbar c4 C3 (c3b run): each agent had its search results at 13.5 s, was stopped at 15 s before it wrote a word, and the thread read
+// "이번엔 못 찾았어요." three times. What an agent read is its part: the row is written from it, with its link.
+it('c4: agents stopped before they wrote anything still fill their rows from what they read', async () => {
+  const w = await world(async (deps, prompt, options = {}) => {
+    options.onStart?.()
+    const topic = /노션|슬랙|리니어/.exec(prompt)![0]
+    await deps.tools.find(t => t.name === 'search_web')!.run({ query: `${topic} 신기능` }, { task: '' })
+    options.onStep?.(`search_web: ${topic} 신기능`)
+    return stuck(options, topic === '슬랙' ? '추가로 검색하겠습니다.' : '')
+  })
+  const answer = await w.assign()
+  expect(answer).not.toMatch(/못 찾았어요|한도|멈춤|여기까지|더 있을 수/)
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`| ${topic} (${who}) |`))).toBe(`| ${topic} (${who}) | 새 기능 · [search.naver.com](${address(`${topic} 신기능`)}) |`)
+  expect((await w.task()).team!.members.map(m => [m.state, m.read])).toEqual([['released', true], ['released', true], ['released', true]])
 })
