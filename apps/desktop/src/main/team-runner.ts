@@ -35,7 +35,7 @@ export function teamRunner(deps: {
   changed(): void
   // Resolves when the person says something in this lead's thread mid-turn (a lead waiting on its members hears it at once).
   steered?(channel: string, signal: AbortSignal): Promise<void>
-  /** A conversation has a turn of its own under way: an employee's finished job is written to their conversation after it. */
+  /** A conversation has a turn of its own under way: an agent's finished job is written to their conversation after it. */
   busy?(channel: string): boolean
   run?: typeof runComet
   // Test seam: a lookup member's hard time limit.
@@ -100,7 +100,7 @@ export function teamRunner(deps: {
       role = me.role; roles.set(key, role)
       // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
-      // An employee works as themselves: their role and what they remember ride with the member rules.
+      // An agent on the team works as themselves: their role and what they remember ride with the member rules.
       const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId) : '')
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
@@ -142,7 +142,7 @@ export function teamRunner(deps: {
         if (m?.botId && ended === 'done') done = { botId: m.botId, brief: m.brief, result: m.result ?? '' }
       })
       if (done) {
-        // An employee mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
+        // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
         const busy = () => deps.busy?.(`bot-${done!.botId}`) ?? false, wrote = employeeWriteBack(paths, done, undefined, busy).catch(error => flog('team', error))
         if (!busy()) await wrote
       }
@@ -231,7 +231,7 @@ export function teamRunner(deps: {
       }
       return new Proxy(engine, { get: (target, prop) => { if (prop === 'runTools') return runTools; const value = Reflect.get(target, prop, target) as unknown; return typeof value === 'function' ? value.bind(target) : value } })
     },
-    // staffChanged is given on the chief of staff's own turn only: it alone may hand work to employees (assign).
+    // staffChanged is given on the primary thread's own turn only: it alone may hand work to agents on the team (assign).
     tools(channel: string, kit: TurnKit, staffChanged?: () => void): AgentTool[] {
       const leadChannel = leadOf(channel), self = laneMember(channel)?.[2] ?? null
       if (!/^bot-[^~]+$/.test(leadChannel)) return []
@@ -250,7 +250,7 @@ export function teamRunner(deps: {
       return [...teamHireTools(host), assignTool(paths, {
         ...host,
         later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
-        // The job that employee is on right now in this thread, whichever task of the thread it belongs to.
+        // The job that agent is on right now in this thread, whichever task of the thread it belongs to.
         attach: async (botId, then) => {
           for (const [key, one] of live) {
             if (one.channel !== leadChannel) continue

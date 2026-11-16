@@ -16,9 +16,9 @@ const NORMAL = [
   '안녕', '1년은 몇 초야?', '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', '방금 말한 거 더 짧게',
   'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘', '위 회의록으로 워드 보고서 만들어줘', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적',
   'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '정리한 폴더에 PDF 몇 개야?',
-  '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '아 지민호 말고 민호야', '김대리 하나 뽑아줘. 리서치 담당이야', '매주 월요일 아침 9시에 마케팅팀 주간보고 올려',
-  // Work given to a named employee is the company tools' (B2/B3), not this lane's.
-  '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 보고해. 김대리, 박사원, 이과장한테 나눠서 시켜', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해',
+  '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '아 지민호 말고 민호야', '지민 하나 추가해줘. 리서치 담당이야', '서연도 추가해줘. 카피 담당이야', '매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘', '서연은 빼고 지민은 이름을 지우로 바꿔',
+  // Work given to a named agent is the team tools' (B2/B3), not this lane's.
+  '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', '이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해',
   // A lookup that also asks for other work keeps every tool.
   '서울 날씨 조사해서 엑셀로 만들어줘', '엔비디아 주가 알려주고 메모에 저장해줘', '경쟁사 뉴스 찾아서 메일로 보내줘', '/skill 날씨', 'Research the news and write a report',
   // grokbar review r1: an app, a destination, a delivery or an output target is work the lane's menu cannot finish.

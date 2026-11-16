@@ -200,36 +200,36 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toBe('')
   })
 
-  // as-e1cf9bfd C1/C2/C5-C10: the company lane's prompt is built ~15 ms after Enter, so the small model's line was dropped on every turn.
-  it('the company lane says a fixed Korean line at once, and the small model\'s late line is never shown over it', async () => {
-    const { show } = begin(voice(later('김대리를 뽑아드릴게요.', 300)), { message: '김대리 하나 뽑아줘. 리서치 담당이야' })
+  // as-e1cf9bfd C1/C2/C5-C10: the team lane's prompt is built ~15 ms after Enter, so the small model's line was dropped on every turn.
+  it('the team lane says a fixed Korean line at once, and the small model\'s late line is never shown over it', async () => {
+    const { show } = begin(voice(later('지민을 추가할게요.', 300)), { message: '지민 하나 추가해줘. 리서치 담당이야' })
     firstLineReady('bot-1')
-    firstLineNow('bot-1', '김대리 하나 뽑아줘. 리서치 담당이야', true)
+    firstLineNow('bot-1', '지민 하나 추가해줘. 리서치 담당이야', true)
     expect(show).toHaveBeenCalledExactlyOnceWith('네, 바로 할게요.')
     expect(firstLineNote('bot-1')).toContain('네, 바로 할게요.')
     // A closing tool's reply sends no reset, so the line opens the saved answer.
-    expect(withFirstLine('bot-1', '김대리를 리서치 담당으로 뽑았어요.')).toBe('네, 바로 할게요.\n\n김대리를 리서치 담당으로 뽑았어요.')
+    expect(withFirstLine('bot-1', '지민을 리서치 담당으로 추가했어요.')).toBe('네, 바로 할게요.\n\n지민을 리서치 담당으로 추가했어요.')
     await vi.advanceTimersByTimeAsync(2000)
     expect(show).toHaveBeenCalledOnce()
-    expect(laneLine('김과장 무슨 일 하는 사람이야?', true)).toBe('네, 확인해 볼게요.')
+    expect(laneLine('지우 무슨 일 하는 사람이야?', true)).toBe('네, 확인해 볼게요.')
     expect(laneLine('내 일정 뭐 있어?', true)).toBe('네, 확인해 볼게요.')
-    expect(laneLine('마케팅팀 이번 주 한 일 요약해', true)).toBe('네, 바로 할게요.')
+    expect(laneLine('이번 주 팀이 한 일 요약해', true)).toBe('네, 바로 할게요.')
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
     expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
     // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
-    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'staff', args: hire \} : undefined/)
+    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'agents', args: hire \} : undefined/)
     expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : await runComet\(/)
-    // grokbar B7: a plain hire is the staff call made by the host under the same gates; who an employee is and a background report need no model either.
+    // grokbar B7: adding one agent is the agents call made by the host under the same gates; who an agent is and a background result need no model either.
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? employeesReport\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\)\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\), teams\)/)
+    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? employeesReport\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\)\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
   })
 
   it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {
     for (const patch of [{ interactive: false }, { message: '다들 뭐하고 있어?' }, { followUp: true }, { secret: true }]) {
       const { show } = begin(voice(async () => 'x'), patch)
       firstLineReady('bot-1')
-      firstLineNow('bot-1', patch.message ?? '김대리 하나 뽑아줘', true)
+      firstLineNow('bot-1', patch.message ?? '지민 하나 추가해줘', true)
       expect(show, JSON.stringify(patch)).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
     }
@@ -237,14 +237,14 @@ describe('instant first line', () => {
     const { show } = begin(voice(later('x', 300)), {}, abort.signal)
     firstLineReady('bot-1')
     abort.abort()
-    firstLineNow('bot-1', '김대리 하나 뽑아줘', true)
+    firstLineNow('bot-1', '지민 하나 추가해줘', true)
     expect(show).not.toHaveBeenCalled()
   })
 
-  it('starts no first line for the staff status question, however fast the small model is', async () => {
-    for (const message of ['다들 뭐하고 있어?', '직원들 지금 뭐 하고 있어요?', '현황']) {
+  it('starts no first line for the team status question, however fast the small model is', async () => {
+    for (const message of ['다들 뭐하고 있어?', '팀원들 지금 뭐 하고 있어요?', '현황']) {
       expect(wantsFirstLine(ask({ message })), message).toBe('status')
-      const live = voice(async () => '직원 현황을 알려드릴게요.')
+      const live = voice(async () => '팀 현황을 알려드릴게요.')
       const { show } = begin(live, { message })
       firstLineReady('bot-1')
       await vi.advanceTimersByTimeAsync(2000)
@@ -252,7 +252,7 @@ describe('instant first line', () => {
       expect(show).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
     }
-    // A longer ask about the staff is a job and still gets its line.
+    // A longer ask about the team is a job and still gets its line.
     expect(wantsFirstLine(ask({ message: '다들 뭐하고 있는지 표로 정리해서 메일로 보내줘' }))).toBeNull()
   })
 
