@@ -140,9 +140,10 @@ it('hands the lead each member\'s pages and does not wait for a straggler past t
   expect(Math.max(...started) - Math.min(...started)).toBeLessThan(500)
   expect(Date.now() - began).toBeLessThan(2_000)
   expect(out.members.map((m: { state: string; result: string; sources: string[] }) => [m.state, m.result, m.sources])).toEqual([
-    ['done', '서울 흐림 13도', [address('서울 날씨')]],
+    // r4: a member with facts and a read on record is accepted and let go with no review round; the one cut short is left for the lead.
+    ['released', '서울 흐림 13도', [address('서울 날씨')]],
     ['done', '부산 비 14도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)', [address('부산 날씨')]],
-    ['done', '제주 흐림 13도', [address('제주 날씨')]],
+    ['released', '제주 흐림 13도', [address('제주 날씨')]],
   ])
   const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 흐림 13도 | 네이버 날씨 |\n| 부산 | 비 14도 | 네이버 날씨 |\n| 제주 | 흐림 13도 | 네이버 날씨 |'
   const cited = await team.cited('bot-b1', table)

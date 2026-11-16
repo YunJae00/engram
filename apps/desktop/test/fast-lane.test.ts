@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, NARRATION_MAX, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -60,12 +60,12 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(skipWalls) : everyTool,')
+  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : everyTool,')
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),")
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
   expect(ipc).toContain('const lane = !company && fastLane(request.message, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
-  expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
+  expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); replying ||= said.length > 0; return said }')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).
   expect(ipc).toContain('(!turn?.context || turn.learned === true)')
@@ -87,6 +87,9 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   // hire, a second hire for words said mid-turn, and a review for each of four members.
   expect(LANE_TEAM_CALLS).toBeGreaterThanOrEqual(6)
   expect(laneToday(new Date(2026, 10, 16, 21))).toContain('Today is 2026-11-16 (Monday).')
+  // stack-1 L1 had no date and L3 no Saturday: the note gives the date in the person's own form and asks for each day by name.
+  expect(laneToday(new Date(2026, 10, 16, 21))).toContain('11월 16일 월요일')
+  expect(laneToday(new Date(2026, 10, 16, 21))).toContain('day by day')
   expect(LANE_NOTE).toContain('[site name](address)')
   expect(LANE_NOTE).toContain('never a site name alone')
   // grokbar B6 r2 (GROKBOT rule 1): the first line names the first concrete step; "바로 찾아볼게요." named none.
@@ -99,10 +102,10 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(laneFirstLine("what's the weather in Seoul?", false)).toBe('Checking the weather now.')
   for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길)/) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` :')
+  expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` :")
   // A lookup cut at its limit is delivered as the answer it wrote (no English wrapper, no auto-continue), then every member's link is added.
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
-  expect(ipc).toContain('result.answer = await team.cited(channel, result.answer)')
+  expect(ipc).toContain('result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))')
   expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
   expect(ipc).toContain(': { whole: quickQuestion(request.message) }')
@@ -112,4 +115,34 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
 it('lets the quick voice answer only a short question that needs nothing about the person, the thread, the company or the present', () => {
   for (const message of ['1년은 몇 초야?', '1마일은 몇 km야?', '물의 끓는점은 몇 도야?', 'How many seconds are in a year?']) expect(quickQuestion(message), message).toBe(true)
   for (const message of ['나 누구랑 일하지?', '내 일정 뭐 있어?', '김대리 누구야?', '다들 뭐하고 있어?', '원달러 환율 지금 얼마야?', '오늘 서울 날씨 어때?', '그럼 2년은?', '민호 전화번호 뭐야?', '이 파일 뭐야?', '오늘 며칠이야?', '1234 곱하기 5678은?', '1년은 몇 초야', '회의 늦어서 죄송합니다를 영어로 써줘', 'who is on my team?', ...LANE]) expect(quickQuestion(message), message).toBe(false)
+})
+
+// grokbar stack-1 R3: "Now I have solid sources for all 5 items. Let me verify the 뉴스1 엔비디아 article URL by reading it directly." was a bubble in a Korean thread.
+it('shows a lookup turn\'s answer and its reply to mid-turn words, never the notes written between calls', () => {
+  const shown: string[] = []
+  const quiet = quietRounds(text => shown.push(text))
+  // A note, then a tool call: never shown.
+  quiet.token('Now I have solid sources for all 5 items. ', false)
+  quiet.token('Let me verify the article URL by reading it directly.', false)
+  quiet.reset()
+  expect(shown).toEqual([])
+  // The answer: held while it could still be a note, then shown whole and streamed on.
+  const answer = '요즘 국내 AI 스타트업 투자 뉴스 5개예요.\n\n| 회사 | 내용 | 날짜 | 출처 |\n|---|---|---|---|\n' + '| 업스테이지 | 시리즈C 2차 | 2026-11-09 | [뉴스1](https://www.news1.kr/it-science/6348203) |\n'.repeat(3)
+  expect([...answer].length).toBeGreaterThan(NARRATION_MAX)
+  for (const piece of answer.match(/[^]{1,40}/g)!) quiet.token(piece, false)
+  quiet.token(' 끝.', false)
+  expect(shown.join('')).toBe(`${answer} 끝.`)
+  expect(shown.length).toBeGreaterThan(1)
+  // A short answer is not streamed; the delivered answer shows it (ipc deliverAnswer), so nothing is lost.
+  shown.length = 0
+  quiet.reset()
+  quiet.token('지금 1달러에 1,385원이에요.', false)
+  expect(shown).toEqual([])
+  // Words the person said mid-turn are answered where they can see it, at once.
+  quiet.reset()
+  quiet.token('대구도 넣을게요.', true)
+  expect(shown).toEqual(['대구도 넣을게요.'])
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).toContain('if (quiet) quiet.token(text, replying); else broadcast({ type: \'chat:token\', channel, text })')
+  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); replying = false; broadcast(')
 })

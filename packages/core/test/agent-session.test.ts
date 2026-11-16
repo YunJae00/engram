@@ -130,6 +130,38 @@ it('rewrites the answer with words said after the last tool result, in the same 
   expect(waiting).toEqual([])
 })
 
+// grokbar B6 r4: a lookup at its call or time limit did not take the words; the 엔비디아 answer went out and "애플로 바꿔" became its own turn.
+it('takes words said while a lookup at its call or time limit writes its answer, and gives the new ask calls and time of its own', async () => {
+  for (const limit of [{ maxCalls: 2 }, { maxCalls: 4, deadlineMs: 10 }]) {
+    const waiting: string[] = [], seen: string[] = []
+    let runs = 0
+    const tool: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async args => `${String(args['query'])} 결과` }
+    const engine = sessionBrain(async job => {
+      const search = (query: string) => job.tools.find(t => t.name === 'search_web')!.run({ query }) as Promise<string>
+      if (++runs === 1) {
+        seen.push(await search('엔비디아 주가'))
+        await new Promise(done => setTimeout(done, 15))
+        await search('엔비디아 시간외')
+        // The limit is reached: this call is refused, so the words have no tool result to ride on.
+        seen.push(await search('엔비디아 전망'))
+        waiting.push('그냥 애플로 바꿔')
+        return { answer: '엔비디아는 189달러예요.' }
+      }
+      seen.push(await search('애플 주가'))
+      return { answer: '애플은 230달러예요.' }
+    })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, ...limit, takeSteer: () => waiting.splice(0) })
+    expect(seen[0]).toContain('엔비디아 주가 결과')
+    expect(seen[1]).toMatch(/No more calls|Time is up/)
+    expect(seen[2]).toContain('애플 주가 결과')
+    expect(result.answer).toBe('애플은 230달러예요.')
+    expect(runs).toBe(2)
+    expect(waiting).toEqual([])
+    // The rewrite stayed inside its own limit, so it is a finished answer.
+    expect(result.stopped).toBeUndefined()
+  }
+})
+
 it('writes the answer once when nothing was said, and leaves a question to the person alone', async () => {
   let runs = 0
   const quiet = sessionBrain(async () => { runs++; return { answer: 'Done' } })

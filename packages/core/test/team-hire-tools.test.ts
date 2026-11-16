@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -95,6 +95,22 @@ describe('team hire tools', () => {
     for (const answer of ['엔비디아(NVDA) 종가 162.85달러 (-2.01%). 출처: https://finance.example/quote/NVDA', '갤럭시 S27은 내년 2월 공개가 유력하고 가격은 아직 발표되지 않았습니다.\nhttps://news.example/s27', '서울 12도 맑음. 검색: https://search.naver.com/search.naver?query=서울 출처: https://weather.example/seoul', 'Seoul is 12°C and clear today. https://weather.example/today/seoul'])
       expect(settled({ answer }).review, answer).toEqual({ ok: true, note: AUTO_REVIEW })
     expect(LOOKUP_RULE).toContain('never a search-results address')
+    // grokbar stack-1 R1/T1: a weather member answers from the results page it read, so its only address is a search page. The read on
+    // record is the evidence: it is accepted without a review round. Words alone, an opening line or a wall are still the lead's to review.
+    const naver = ['https://search.naver.com/search.naver?query=서울+날씨']
+    expect(settled({ answer: '서울 12.4도 흐림, 16시부터 비. https://search.naver.com/search.naver?query=서울+날씨', sources: naver }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '서울 12.4도 흐림, 16시부터 비.', sources: naver }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '지금 검색하겠습니다.', sources: naver }).review).toBeUndefined()
+    expect(settled({ answer: '로봇 확인 화면이 떠서 읽지 못했습니다.', sources: naver }).review).toBeUndefined()
+    expect(settled({ answer: '서울 12.4도 흐림', sources: naver, timedOut: true }).review).toBeUndefined()
+    expect(answeredLookup('서울 12.4도 흐림', naver)).toBe(true)
+    // A lone lookup's answer names the page it read when its words gave no address; one that has an address is left alone.
+    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과\n\n출처: [search.naver.com](https://search.naver.com/search.naver?query=원달러%20환율)')
+    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C.\n\nSource: [weather.example](https://www.weather.example/seoul) · [google.com](https://www.google.com/search?q=seoul)')
+    const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
+    expect(citeOwn(linked, naver, true)).toBe(linked)
+    expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
+    expect(citeOwn('', naver, true)).toBe('')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`

@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, fallbackLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLinePrompt, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -274,6 +274,70 @@ describe('instant first line', () => {
     expect(ipc.indexOf('firstLineReady(channel)')).toBeLessThan(ipc.indexOf('const firstSaid = firstLineNote(channel)'))
     expect(ipc).toContain('extractChatCaptures(finishProgress(channel, withFirstLine(channel, rawText)))')
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
+  })
+
+  // grokbar B6 r4: Q2 3.1 s, M1 9.2 s, M2 8.3 s, F2 7 s, D1 7.8 s: the small model said NONE at ~0.6 s or was late, and nothing was said until the answer.
+  it('opens the turn with the host\'s own line when the small model says NONE, fails or is late, and never holds a whole reply past that', async () => {
+    const start = (engine: unknown, patch: Partial<FirstLineAsk> = {}, more: { whole?: boolean } = {}) => {
+      const show = vi.fn(), message = patch.message ?? '내 이름은 권윤재고 지민호랑 같이 일해. 기억해'
+      beginFirstLine({ ...ask({ ...patch, message }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, fallback: fallbackLine(message, patch.korean ?? true), ...more })
+      firstLineReady('bot-1')
+      return show
+    }
+    // NONE: the line is up when the small model answers, not at the budget.
+    let show = start(voice(later('NONE', 600)))
+    await vi.advanceTimersByTimeAsync(600)
+    expect(show).toHaveBeenCalledExactlyOnceWith('바로 처리할게요.')
+    expect(firstLineNote('bot-1')).toContain('바로 처리할게요.')
+    expect(withFirstLine('bot-1', '기억했어요.')).toBe('바로 처리할게요.\n\n기억했어요.')
+    // Late: the host's line at 1.3 s, and the small model's own line is not shown over it.
+    endFirstLine('bot-1')
+    show = start(voice(later('회의록을 요약해드릴게요.', 1400)), { message: 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘' })
+    await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS - 1)
+    expect(show).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(show).toHaveBeenCalledExactlyOnceWith('파일부터 확인할게요.')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).toHaveBeenCalledOnce()
+    expect(FIRST_LINE_FALLBACK_MS).toBeLessThanOrEqual(1500)
+    // A failure, and an English thread.
+    endFirstLine('bot-1')
+    show = start(voice(async () => { throw new Error('voice down') }), { message: 'Who do I work with?', korean: false })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(show).toHaveBeenCalledExactlyOnceWith('Checking now.')
+    // In time: the small model's own line, and no second one.
+    endFirstLine('bot-1')
+    show = start(voice(later('회의록부터 읽어볼게요.', 900)))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).toHaveBeenCalledExactlyOnceWith('회의록부터 읽어볼게요.')
+    // A short question the small model declines: the main turn is released at once with the line up; a whole reply that comes late is never shown as a line.
+    for (const [reply, ms, at] of [['NONE', 600, 600], ['1년은 31,536,000초예요.', 1400, FIRST_LINE_FALLBACK_MS]] as const) {
+      endFirstLine('bot-1')
+      show = start(voice(later(reply, ms)), { message: '1년은 몇 초야?' }, { whole: true })
+      const whole = smallTalkAnswer('bot-1')
+      await vi.advanceTimersByTimeAsync(at)
+      expect(await whole).toBeUndefined()
+      expect(show).toHaveBeenCalledExactlyOnceWith('바로 확인해 볼게요.')
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(show).toHaveBeenCalledOnce()
+    }
+    // The answer spoke first: nothing is added after it. A greeting the small model declines stays with the main turn.
+    endFirstLine('bot-1')
+    show = start(voice(later('NONE', 600)))
+    firstLineSpoke('bot-1')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).not.toHaveBeenCalled()
+    endFirstLine('bot-1')
+    show = start(voice(later('NONE', 600)), { message: '안녕' })
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(show).not.toHaveBeenCalled()
+    // The host's line is never a bare yes (GROKBOT rule 1: "네, 알겠습니다!").
+    for (const message of ['아 지민호 말고 민호야', '나 누구랑 일하지?', '정리한 폴더에 PDF 몇 개야?']) expect(fallbackLine(message, true)).not.toMatch(/[A-Za-z]|알겠|네,/)
+    // The small model is asked for the first step, not for the request said back (GROKBOT rule 1).
+    expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('names the first concrete thing')
+    expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('Do not restate the request')
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    expect(ipc).toContain('fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show:')
   })
 
   it('drops a line that misses the budget', async () => {

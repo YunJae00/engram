@@ -420,3 +420,14 @@ it('runs a lookup session without collection receipts, and ends on its answer on
   await runToolSession({ engine: plain, workdir: WORKDIR, tools: [page] }, '부산 날씨')
   expect(offered).toContain('collect_results')
 })
+
+// grokbar stack-1 L2: one page of a batch did not load, and the price found by the search went out under "The last batch stopped before all pages were read", then the turn was continued (41 s).
+it('a lookup whose page did not load still ends on its answer; the same turn outside a lookup is left unfinished', async () => {
+  const pages: AgentTool = { name: 'read_pages', description: 'read', argsSchema: {}, run: async () => { throw new Error('the page did not load') } }
+  const brain = () => sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'read_pages')!.run({ pages: ['https://finance.example/nvda'] }); return { answer: '엔비디아는 162.85달러예요.' } })
+  const lookup = await runToolSession({ engine: brain(), workdir: WORKDIR, tools: [pages] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 4 })
+  expect(lookup.answer).toBe('엔비디아는 162.85달러예요.')
+  expect(lookup.incomplete).toBeUndefined()
+  const plain = await runToolSession({ engine: brain(), workdir: WORKDIR, tools: [pages] }, '엔비디아 오늘 주가 알려줘')
+  expect(plain.incomplete).toContain('The last batch stopped')
+})

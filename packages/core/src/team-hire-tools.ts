@@ -108,9 +108,11 @@ const WALLED = /로봇|캡차|자동\s?입력|비정상적인 (?:트래픽|접�
 // grokbar review r1: "지금 검색하겠습니다. https://search.naver.com/…" was accepted for its link alone. A member answered its brief
 // when, the links and the "about to do" lines taken out, facts are left, nothing in it reports a wall or a failure, and a source is a page of its own.
 // shortcut: wording only, no model reads the brief against the answer; the lead still reads every result while merging.
-export function answeredLookup(answer: string): boolean {
+// read: the pages it is known to have read (keepSources). A weather or price lookup is answered from the results page itself, so its only
+// address is a search page; the read is then the evidence, not the link (grokbar stack-1 R1/T1: every such member cost a review round, ~5 s).
+export function answeredLookup(answer: string, read: readonly string[] = []): boolean {
   const links = answer.match(/https?:\/\/[^\s)\]>"']+/g) ?? []
-  if (!links.some(link => !SEARCH_PAGE.test(link)) || WALLED.test(answer)) return false
+  if (!links.some(link => !SEARCH_PAGE.test(link)) && !read.length || WALLED.test(answer)) return false
   const said = answer.replace(/https?:\/\/[^\s)\]>"']+/g, ' ').split(/(?<=[.!?…。])\s+|\n+/).filter(part => part.trim() && !PROGRESS_ONLY.test(part.trim())).join(' ').replace(/[\s\p{P}\p{S}]+/gu, '')
   return said.length >= 30 || /\d/.test(said) && said.length >= 4
 }
@@ -164,6 +166,12 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   if (!missing.length) return fixed
   return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${missing.map(m => `[${m.role.replace(/[[\]]/g, '')}](${href(m)})`).join(' · ')}`
 }
+// A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
+export function citeOwn(answer: string, read: readonly string[], korean = false): string {
+  if (!answer.trim() || !read.length || /https?:\/\//.test(answer)) return answer
+  const site = (url: string): string => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url } }
+  return `${answer.trimEnd()}\n\n${korean ? '출처' : 'Source'}: ${sourcesOf(read).map(url => `[${site(url)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`).join(' · ')}`
+}
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = outcome.answer.trim(), answer = outcome.timedOut && PROGRESS_ONLY.test(said) ? '' : said
@@ -176,7 +184,7 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
-  else if (member.lookup && member.state === 'done' && !tail && answeredLookup(answer)) member.review = { ok: true, note: AUTO_REVIEW }
+  else if (member.lookup && member.state === 'done' && !tail && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
 }
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`

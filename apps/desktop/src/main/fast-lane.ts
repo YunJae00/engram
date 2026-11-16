@@ -20,6 +20,22 @@ export const LANE_NOTE = 'Fast lookup turn: you have reading tools and a hidden 
 export const LANE_SOLO_CALLS = 4
 export const LANE_SOLO_SOFT_MS = 12_000
 export const LANE_TEAM_CALLS = 8
+// grokbar R3: the lead's notes to itself between calls ("Now I have solid sources for all 5 items. Let me verify...") were shown as
+// bubbles, in English. On a lookup turn a round's words are held until they are clearly the answer; a round that ends in a tool call
+// is dropped unseen. A round that answers words the person just said is shown as it comes ("대구도 넣을게요.").
+// shortcut: "clearly the answer" is its length; a longer note between calls would still show, hold the whole round if that is seen.
+export const NARRATION_MAX = 200
+export function quietRounds(show: (text: string) => void): { token(text: string, aloud: boolean): void; reset(): void } {
+  let held = '', flowing = false
+  return {
+    token(text, aloud) {
+      if (flowing || aloud) return show(text)
+      held += text
+      if ([...held].length > NARRATION_MAX) { flowing = true; show(held); held = '' }
+    },
+    reset() { held = ''; flowing = false },
+  }
+}
 export const teamAsk = (message: string): boolean => TEAM.test(message)
 // The line a lookup turn opens with, at once and with no model: it names the first step ("지금 시세 확인할게요.").
 // grokbar B6 r2: "바로 찾아볼게요." named no step, and the quick voice's line restated the request 0.6-1.5 s later.
@@ -32,7 +48,7 @@ const FIRST_STEPS: [RegExp, string, string][] = [
 ]
 export const laneFirstLine = (message: string, korean: boolean): string => { const step = FIRST_STEPS.find(([words]) => words.test(message)); return korean ? step?.[1] ?? '웹에서 검색해 볼게요.' : step?.[2] ?? 'Searching the web now.' }
 // grokbar L1: "오늘 서울 날씨" was answered without the date it was for.
-export const laneToday = (now = new Date()): string => `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}). An answer about today, now or a coming day says the date it is for, written the way the person writes dates.`
+export const laneToday = (now = new Date()): string => `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}). An answer about today, now or a coming day says the date it is for, written the way the person writes dates (in Korean: ${now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}); one about a weekend or several days goes day by day, each day named with its date.`
 export const SMALL_TALK_NOTE = 'This message is small talk: reply in one or two short sentences, with no tools.'
 // grokbar Q2: "1년은 몇 초야?" got six lines (leap year, Julian year, a memory trick) and took 8-10 s on the work model.
 export const SHORT_QUESTION_NOTE = 'This is a short question: give the answer first, in one to three sentences, with exact figures written out in digits. No other variants, background or tips unless they ask.'
