@@ -4,8 +4,17 @@ import { isAbsolute, relative, sep } from 'node:path'
 import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
-// A rule with nothing to apply to in this result is neither passed nor open: it does not hold the result back and is not shown (qa145 B14).
+// A work-guide rule with nothing to apply to in this result is neither passed nor open: it does not hold the result back, and stays in the report as set aside (qa145 B14).
 const NOT_APPLICABLE = 'not_applicable'
+/** What a not_applicable check is held to: the person's work guide as the turn carried it, and what they asked for. */
+export type Standing = { guide: string; request: string }
+const plain = (value: string): string => value.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
+// The host cannot judge relevance, so it accepts only what it can prove: the requirement is a whole line of the work guide, and the request does not state it itself.
+// Anything the person asked for, and anything the host cannot place in the guide, has to be pass, fail or unknown (qa145 r2).
+function standingRule(requirement: string, standing?: Standing): boolean {
+  const rule = plain(requirement)
+  return !!standing && rule.length >= 4 && standing.guide.split('\n').some(line => plain(line) === rule) && !plain(standing.request).includes(rule)
+}
 type Check = Omit<Finding, 'status'> & { status: Finding['status'] | typeof NOT_APPLICABLE; requirement: string }
 type Report = { checks: Check[]; grounding: Finding; reportUnchanged?: boolean }
 // kept: a file of the report a re-check answers for, known by its path: nothing else under its name replaces it (checkedOutputs).
@@ -58,10 +67,10 @@ const properties = {
 /** The requirement name of the entries the host adds to a report for its own defects. */
 export const HOST_CHECK = 'Unresolved verification'
 
-export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string }): AgentTool {
+export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; standing?: Standing }): AgentTool {
   return {
     name: TOOL,
-    description: 'Only when asked to check a result: report the check after checking every requested outcome and final artifact. Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each basis concise: name the observed fact and how it satisfies or fails the requirement. grounding separately checks that material claims match the sources or are explicitly labeled assumptions, proposals or unverified. refs are optional notes. The host checks the evidence itself from this turn: each final text file must be reopened in full after its last write (a workbook: every sheet), and claims need a real source (an attachment or a read of an original page or file, not a generated output). PNG/MP4/WebM captures are outside this check: do not retake, upload or claim visual verification for them. Each status judges the result as you hand it over now: a mismatch you corrected and confirmed is pass (name the correction in its basis); fail or unknown only for what is still wrong or unconfirmed after your corrections. A standing rule or guide item with nothing to apply to in this result (a spreadsheet rule when no spreadsheet was asked for) is not_applicable, never unknown; a requested outcome that is missing is fail, never not_applicable. Honest fail/unknown findings are accepted as unresolved, never as verified success; disclose them in the answer. If validation.accepted is false, fix only report defects, never invent a pass. If validation.accepted is true with issues, stop resubmitting and disclose those unresolved issues. Do not change anything after an accepted report. Then give a concise user-facing answer with only final artifact links; do not print the report JSON.',
+    description: 'Only when asked to check a result: report the check after checking every requested outcome and final artifact. Derive acceptance checks only from the original requested outcomes and constraints, plus correctness or safety conditions necessary to satisfy them. Do not promote optional inspection methods or extra workflows into new requirements; report unperformed scope limitations separately. Keep each basis concise: name the observed fact and how it satisfies or fails the requirement. grounding separately checks that material claims match the sources or are explicitly labeled assumptions, proposals or unverified. refs are optional notes. The host checks the evidence itself from this turn: each final text file must be reopened in full after its last write (a workbook: every sheet), and claims need a real source (an attachment or a read of an original page or file, not a generated output). PNG/MP4/WebM captures are outside this check: do not retake, upload or claim visual verification for them. Each status judges the result as you hand it over now: a mismatch you corrected and confirmed is pass (name the correction in its basis); fail or unknown only for what is still wrong or unconfirmed after your corrections. Only a rule of the work guide of this person with nothing to apply to in this result (a spreadsheet rule when no spreadsheet was asked for) is not_applicable, never unknown: give that guide line word for word, with nothing added, as its requirement. The host accepts not_applicable for nothing else: anything the request itself asks for is pass, fail or unknown, and a requested outcome that is missing is fail. Honest fail/unknown findings are accepted as unresolved, never as verified success; disclose them in the answer. If validation.accepted is false, fix only report defects, never invent a pass. If validation.accepted is true with issues, stop resubmitting and disclose those unresolved issues. Do not change anything after an accepted report. Then give a concise user-facing answer with only final artifact links; do not print the report JSON.',
     argsSchema: { type: 'object', additionalProperties: false, required: ['checks', 'grounding'], properties: {
       checks: { type: 'array', minItems: 1, maxItems: 32, items: { type: 'object', additionalProperties: false,
         required: ['requirement', 'status', 'basis'], properties: { requirement: { ...text, maxLength: 500 }, ...properties, status: { type: 'string', enum: [...properties.status.enum, NOT_APPLICABLE] } } } },
@@ -73,7 +82,7 @@ export function resultCheckTool(config?: { outputs: { name: string; path: string
       const resultCheck = report(args)
       const observation = JSON.stringify({ resultCheck })
       if (!config) return observation
-      const validation = checkResult([...(context.steps ?? []), { tool: TOOL, args, observation }], config.outputs, config.sources, config.requireSourceEvidence, config.generatedDirectory)
+      const validation = checkResult([...(context.steps ?? []), { tool: TOOL, args, observation }], config.outputs, config.sources, config.requireSourceEvidence, config.generatedDirectory, config.standing)
       return JSON.stringify({ resultCheck, validation })
     },
   }
@@ -200,7 +209,7 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
 // The host decides from what it observed this turn; the model's report adds
 // only its own verdicts, and a fail or unknown there stays unresolved.
 // A readback-only follow-up is judged the same way: which requirements its report restates is not this function's concern (the task runner keeps the check turn's report).
-export function checkResult(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
+export function checkResult(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string, standing?: Standing): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
   // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
   const readbacks: { name: string; path: string }[] = []
@@ -215,7 +224,9 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       const checked = report(result.resultCheck)
       groundingPass = checked.grounding.status === 'pass'
       for (const item of [...checked.checks, { ...checked.grounding, requirement: 'Source grounding' }]) {
-        if (item.status !== 'pass' && item.status !== NOT_APPLICABLE) unresolved.push(`${item.requirement}: ${item.status} — ${item.basis}`)
+        if (item.status === NOT_APPLICABLE) {
+          if (!standingRule(item.requirement, standing)) issues.push(`"${item.requirement}" cannot be not_applicable: that is only for a line of the person's work guide given word for word as the requirement, and never for something the request asks for. Report it pass, fail or unknown from what you observed.`)
+        } else if (item.status !== 'pass') unresolved.push(`${item.requirement}: ${item.status} — ${item.basis}`)
       }
       // Setting every requirement aside checks nothing.
       if (checked.checks.every(item => item.status === NOT_APPLICABLE)) unresolved.push('No requirement was checked: every one was reported not_applicable.')
@@ -323,7 +334,7 @@ export function checkReport(steps: TurnStep[], options: { generatedDirectory?: s
     }
   }
   return {
-    checks: [...checked.checks.flatMap(({ requirement, status, basis }) => status === NOT_APPLICABLE ? [] : [{ requirement, status, basis }]),
+    checks: [...checked.checks.map(({ requirement, status, basis }) => ({ requirement, status, basis })),
       ...(object(value.validation) && Array.isArray(value.validation.defects) ? value.validation.defects.filter((issue): issue is string => typeof issue === 'string').map(basis => ({ requirement: HOST_CHECK, status: 'unknown' as const, basis })) : [])],
     grounding: { status: checked.grounding.status, basis: checked.grounding.basis },
     sources: [...sources],

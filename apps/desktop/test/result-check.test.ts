@@ -55,18 +55,45 @@ describe('result check receipt', () => {
   })
 
   // qa145 B14 (S31/S32): a finished team report stopped as "일부를 확인하지 못했어요" on a guide rule that had nothing to apply to, reported unknown.
-  it('does not hold a result back on a rule that has nothing to apply to, and does not show it', async () => {
-    const rule = { requirement: '합계는 SUM 수식으로 입력(작업 가이드 규칙)', status: 'not_applicable', basis: '합계나 스프레드시트가 없어 적용 대상이 없음.' }
-    const value = { ...payload(), checks: [...payload().checks, rule] }
-    const step = await recorded(value)
-    expect(checkResult([read(), step], outputs, [source])).toEqual({ accepted: true, verified: true, issues: [] })
-    expect(checkReport([read(), step])!.checks.map(check => check.requirement)).toEqual(['Complete proposal'])
+  const guide = 'How this person works, in their own words.\n## Rules\n- 합계는 SUM 수식으로 입력\n- 온보딩 목록은 표로 정리'
+  const standing = { guide, request: '규정 초안을 써 줘' }
+  const rule = { requirement: '합계는 SUM 수식으로 입력', status: 'not_applicable', basis: '합계나 스프레드시트가 없어 적용 대상이 없음.' }
+  const withRule = (...checks: unknown[]) => ({ ...payload(), checks: checks.length ? checks : [...payload().checks, rule] })
+  const gate = (step: TurnStep, held: typeof standing | undefined = standing) => checkResult([read(), step], outputs, [source], false, undefined, held)
+
+  it('does not hold a result back on a work-guide rule that has nothing to apply to, and still shows it', async () => {
+    const step = await recorded(withRule())
+    expect(gate(step)).toEqual({ accepted: true, verified: true, issues: [] })
+    expect(checkReport([read(), step])!.checks.map(check => [check.requirement, check.status])).toEqual([['Complete proposal', 'pass'], [rule.requirement, 'not_applicable']])
     // The same rule reported unknown, a missing outcome, an unsure grounding, and a report that set every requirement aside still stop the turn.
-    expect(checkResult([read(), await recorded({ ...value, checks: [payload().checks[0], { ...rule, status: 'unknown' }] })], outputs, [source]).verified).toBe(false)
-    expect(checkResult([read(), await recorded({ ...value, checks: [{ ...payload().checks[0], status: 'fail' }, rule] })], outputs, [source]).verified).toBe(false)
-    expect(checkResult([read(), await recorded({ ...value, checks: [rule] })], outputs, [source]).issues.join(' ')).toContain('No requirement was checked')
-    await expect(recorded({ ...value, grounding: { ...payload().grounding, status: 'not_applicable' } })).rejects.toThrow()
+    expect(gate(await recorded(withRule(payload().checks[0], { ...rule, status: 'unknown' }))).verified).toBe(false)
+    expect(gate(await recorded(withRule({ ...payload().checks[0], status: 'fail' }, rule))).verified).toBe(false)
+    expect(gate(await recorded(withRule(rule))).issues.join(' ')).toContain('No requirement was checked')
+    await expect(recorded({ ...withRule(), grounding: { ...payload().grounding, status: 'not_applicable' } })).rejects.toThrow()
     expect(resultCheckTool().description).toContain('a mismatch you corrected and confirmed is pass')
+  })
+
+  // qa145 r2: one passing check let a requested deliverable be set aside as not_applicable, and the turn ended verified with that item gone from the report.
+  it('stops the turn when anything but an exact work-guide line the request does not state is set aside', async () => {
+    const dropped = async (requirement: string, held?: typeof standing) => {
+      const step = await recorded(withRule(payload().checks[0], { ...rule, requirement }))
+      return { result: gate(step, held ?? standing), step }
+    }
+    // A requested deliverable, in the reviewer's words.
+    const asked = await dropped('요청된 온보딩 목록')
+    expect(asked.result).toMatchObject({ accepted: false, verified: false })
+    expect(asked.result.issues.join(' ')).toContain('"요청된 온보딩 목록" cannot be not_applicable')
+    expect(checkReport([read(), asked.step])!.checks).toContainEqual({ requirement: '요청된 온보딩 목록', status: 'not_applicable', basis: rule.basis })
+    // A guide line the request itself asks for is a requirement of this request.
+    expect((await dropped('온보딩 목록은 표로 정리', { guide, request: '규정 초안이랑, 온보딩 목록은 표로 정리해 줘' })).result.verified).toBe(false)
+    // A guide line with a requested outcome attached, a fragment of a line, and a host that has no guide to hold it to.
+    expect((await dropped('합계는 SUM 수식으로 입력, 요청된 온보딩 목록')).result.verified).toBe(false)
+    expect((await dropped('온보딩 목록')).result.verified).toBe(false)
+    expect(checkResult([read(), await recorded(withRule())], outputs, [source]).verified).toBe(false)
+    // The tool tells the model at once, so it can correct the report in the same turn.
+    const told = JSON.parse(await resultCheckTool({ outputs: [], sources: [], standing }).run(withRule(payload().checks[0], { ...rule, requirement: '요청된 온보딩 목록' }), { task: 'x' }))
+    expect(told.validation).toMatchObject({ accepted: false, verified: false })
+    expect(JSON.parse(await resultCheckTool({ outputs: [], sources: [], standing }).run(withRule(), { task: 'x' })).validation).toMatchObject({ accepted: true, verified: true })
   })
 
   it.each(['fail', 'unknown'])('keeps %s verdicts unresolved despite good readback', async status => {

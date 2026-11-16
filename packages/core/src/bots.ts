@@ -53,7 +53,8 @@ export type BotPatch = Partial<Pick<Bot, 'name' | 'purpose' | 'avatar' | 'label'
 
 // How a checked answer was checked: verdicts with their basis, sources read, and the confirmed record.
 export interface TurnEvidence {
-  checks: { requirement: string; status: 'pass' | 'fail' | 'unknown'; basis: string }[]
+  // not_applicable: a work-guide rule with nothing to apply to in this result; shown, but not open.
+  checks: { requirement: string; status: 'pass' | 'fail' | 'unknown' | 'not_applicable'; basis: string }[]
   grounding: { status: 'pass' | 'fail' | 'unknown'; basis: string }
   sources: string[]
   record?: { confirmed: number; checked: number }

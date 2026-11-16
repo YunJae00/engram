@@ -53,7 +53,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
+export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -256,7 +256,7 @@ export function taskRunner(deps: {
     // A readback-only follow-up does not re-judge requirements: the check turn's own report is carried over unchanged, whatever checks the follow-up reports.
     if (!extra?.verification?.readback) verdicts.set(id, outcome?.check?.report)
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
-      && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
+      && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass' && one.status !== 'not_applicable')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     const kept = !!outcome?.budgetExhausted && !!recheckOf && after?.state === 'done'
     if (after && outcome?.held && after.result) {
       // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
@@ -324,7 +324,7 @@ export function taskRunner(deps: {
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
         readbackNext.delete(id)
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', ...(unread ? { readback: true } : {}) } } : {}) })
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', goal: task.goal, ...(unread ? { readback: true } : {}) } } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }

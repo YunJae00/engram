@@ -2443,6 +2443,7 @@ export function registerIpc(ctx: VaultContext): void {
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
+      standing: { guide: await workGuide(paths), request: turn.verification.goal ?? turnGoals.get(channel) ?? '' },
     } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))) }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
@@ -2780,7 +2781,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (result.steps.some(step => step.tool === 'report_result_check')) {
           const outputs = latestResultOutputs(result.steps, await checkedOutputs(artifactDirectory(paths), result.answer, turn?.verification?.result, !!result.budgetExhausted))
           const found = checkReport(result.steps, { generatedDirectory: artifactDirectory(paths), attachments: attachments.paths })
-          check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths)), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
+          check = { ...checkResult(result.steps, outputs, attachments.evidencePaths, attachments.paths.length > 0, artifactDirectory(paths), { guide: await workGuide(paths), request: turn?.verification?.goal ?? request.message }), ...(found ? { report: { checks: found.checks, grounding: found.grounding, sources: found.sources } } : {}), ...(found?.reportUnchanged ? { reportUnchanged: true } : {}) }
           // Only the files the answer itself hands over, at their latest revision; all of them if it named none.
           const named = new Set([...result.answer.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].flatMap(match => { try { return [decodeURIComponent(match[1]!).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')] } catch { return [] } }))
           const delivered = outputs.some(output => named.has(output.name)) ? outputs.filter(output => named.has(output.name)) : outputs

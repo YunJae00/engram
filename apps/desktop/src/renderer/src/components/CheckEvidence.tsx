@@ -1,16 +1,17 @@
 import { threadWords, type ThreadLang } from '../lib/threadLang.js'
-import { Check, ChevronRight, CircleHelp, X } from 'lucide-react'
+import { Check, ChevronRight, CircleHelp, Minus, X } from 'lucide-react'
 import type { TurnEvidence } from 'core'
 
 // How a checked answer was checked, under the answer: each requirement with
 // the fact behind its verdict, what was read, and this comet's record. The
 // person reads only the lines that need a look; the rest stays folded.
-const MARK = { pass: Check, fail: X, unknown: CircleHelp } as const
+const MARK = { pass: Check, fail: X, unknown: CircleHelp, not_applicable: Minus } as const
 
 export function CheckEvidence({ evidence, lang = 'en' }: { evidence: TurnEvidence; lang?: ThreadLang }) {
   const words = threadWords(lang)
   const findings = [...evidence.checks, { requirement: words.sourceGrounding, ...evidence.grounding }]
-  const passed = findings.filter(finding => finding.status === 'pass').length
+  // A rule set aside as not applicable is shown but is not open.
+  const passed = findings.filter(finding => finding.status === 'pass' || finding.status === 'not_applicable').length
   const open = passed < findings.length
   return <details className="check-evidence" data-testid="check-evidence" open={open || undefined}>
     <summary>

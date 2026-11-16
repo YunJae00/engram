@@ -47,6 +47,7 @@ it('continues with the goal verbatim and says why', async () => {
   // qa145 B14 (S19): a re-check that corrected the report in its answer still reported that statement failed, and the finished team turn stopped.
   expect(verify).toContain('a mismatch you corrected and confirmed is a pass')
   expect(verify).toContain('nothing to apply to in this result is not_applicable, not unknown')
+  expect(verify).toContain('Nothing the request itself asks for can be not_applicable')
 })
 
 it('counts how often a comet\'s checked work was confirmed, leaving unchecked tasks out', async () => {
