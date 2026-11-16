@@ -286,8 +286,8 @@ test('assign runs each agent as a member of their own, adds an unknown name on t
   const lee = (await o.named('도윤'))!
   expect(lee.label).toBe('리니어 담당')
   expect(said).toBe([
-    '도윤은 리니어 담당으로 새로 추가했어요.', '지민, 서연, 도윤 결과예요.', '', '| 맡은 일 (담당) | 내용 | 출처 |', '|---|---|---|',
-    '| 노션 (지민) | 지민 결과 | [example.com](https://example.com/m1) |', '| 슬랙 (서연) | 서연 결과 | [example.com](https://example.com/m2) |', '| 리니어 (도윤) | 도윤 결과 | [example.com](https://example.com/m3) |',
+    '도윤은 리니어 담당으로 새로 추가했어요.', '지민, 서연, 도윤 결과예요.', '', '| 맡은 일 (담당) | 내용과 출처 |', '|---|---|',
+    '| 노션 (지민) | 지민 결과 · [example.com](https://example.com/m1) |', '| 슬랙 (서연) | 서연 결과 · [example.com](https://example.com/m2) |', '| 리니어 (도윤) | 도윤 결과 · [example.com](https://example.com/m3) |',
   ].join('\n'))
   // Each is the employee (botId), a fast lookup, and already accepted: the lead needs no review round.
   expect(o.task.team!.members.map(m => [m.botId === (m.role === '도윤' ? lee.id : m.botId), m.lookup, m.state, m.review?.ok, m.background])).toEqual([[true, true, 'released', true, undefined], [true, true, 'released', true, undefined], [true, true, 'released', true, undefined]])
@@ -323,7 +323,7 @@ test('a failed part is said as failed, and an agent who needs the person is aske
   const failing = await office(member => member.role === '서연' ? { answer: '', error: 'no source' } : { answer: `${member.role} 결과` })
   const out = await failing.assign({ wait: true, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
   // The missing part is said in its own row, never dropped and never the host's own failure note.
-  expect(out.split('\n').slice(-2)).toEqual(['| 지민 | 지민 결과 | - |', '| 서연 | 조사하지 못했어요. | - |'])
+  expect(out.split('\n').slice(-2)).toEqual(['| 지민 | 지민 결과 |', '| 서연 | 조사하지 못했어요. |'])
   expect(out).not.toMatch(/Failed|no source/)
   expect(failing.task.team!.members.every(m => m.state === 'released' && !!m.review)).toBe(true)
   const asking = await office(() => ({ answer: '어느 달인가요?', asked: true }))
@@ -441,10 +441,10 @@ test('the merged report is one table: a row per agent, their link, a missing par
     part('m3', '도윤', '리니어', { state: 'failed', result: 'Failed: it ran out of time before it reported anything.' }),
   ], new Map([['m1', '노션'], ['m2', '슬랙'], ['m3', '리니어']]))
   expect(report.split('\n')).toEqual([
-    '지민, 서연, 도윤 결과예요.', '', '| 맡은 일 (담당) | 내용 | 출처 |', '|---|---|---|',
-    '| 노션 (지민) | Notion Agent 업그레이드 (11/12) · 새 모델 라우터 | [notion.com](https://www.notion.com/releases) |',
-    '| 슬랙 (서연) | Salesforce 스워밍 도입 / 채널 자동 생성 · (시간 한도에서 멈춤: 여기까지 찾은 내용) | [slack.com](https://slack.com/blog/news) · [slack.com](https://slack.com/intl/ko-kr/whats-new) |',
-    '| 리니어 (도윤) | 조사하지 못했어요. | - |',
+    '지민, 서연, 도윤 결과예요.', '', '| 맡은 일 (담당) | 내용과 출처 |', '|---|---|',
+    '| 노션 (지민) | Notion Agent 업그레이드 (11/12) · 새 모델 라우터 · [notion.com](https://www.notion.com/releases) |',
+    '| 슬랙 (서연) | Salesforce 스워밍 도입 / 채널 자동 생성 · (시간 한도에서 멈춤: 여기까지 찾은 내용) · [slack.com](https://slack.com/blog/news) · [slack.com](https://slack.com/intl/ko-kr/whats-new) |',
+    '| 리니어 (도윤) | 조사하지 못했어요. |',
   ])
   // One table and nothing an internal note or a tool would say.
   expect(report.match(/^\|---/gm)).toHaveLength(1)

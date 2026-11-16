@@ -5,6 +5,7 @@ import { expect, it } from 'vitest'
 import { createBot, createTask, listTasks, LOOKUP_HARD_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamCheckDue } from '../src/main/task-runner.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { answerHtml } from '../src/renderer/src/markdown.js'
 
 // grokbar B7 review r1 (C3, stack1: 131 s, 0 links): all three agents were stopped at the time limit with no address in what they had
 // written, so every source cell was '-', and the answer without an address was re-checked for another 90 s.
@@ -45,6 +46,12 @@ it('every agent stopped at the time limit still gets a link in their row, at the
     expect(row).toContain(`${topic}이 AI 요약 기능을 냈다`)
     expect(row).toContain(`[search.naver.com](${address(`${topic} 신기능`)})`)
   }
+  // Review r2: the thread turns a table of three or more columns into cards, so the person never saw a table. It must stay one.
+  const shown = answerHtml(answer)
+  expect(shown).not.toContain('answer-card')
+  expect(shown.match(/<table>/g)).toHaveLength(1)
+  expect(shown.match(/<tr>/g)).toHaveLength(4)
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(shown).toMatch(new RegExp(`<td>${topic} \\(${who}\\)</td>\\s*<td>[^<]*<a href="https://search\\.naver\\.com/`))
   expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 신기능`)]))
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
   // The agents are held 15 s at most inside the 35 s answer.
@@ -54,7 +61,7 @@ it('every agent stopped at the time limit still gets a link in their row, at the
 it('agents that reached no page are said so in their rows, and that answer is not re-checked either', async () => {
   const w = await world(async (_deps, _prompt, options = {}) => { options.onStart?.(); return stuck(options, '') })
   const answer = await w.assign()
-  expect(answer.split('\n').filter(line => line.endsWith('| 조사하지 못했어요. | - |'))).toHaveLength(3)
+  expect(answer.split('\n').filter(line => line.endsWith(') | 조사하지 못했어요. |'))).toHaveLength(3)
   expect(answer).not.toMatch(/https?:/)
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
 })

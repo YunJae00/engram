@@ -384,9 +384,10 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
   if (parts.length > 1 && !parts.some(m => handedFrom(m.brief))) {
     const rows = parts.map(m => {
       const said = delivered(m), topic = topics.get(m.id)?.replace(/[|()]/g, ' ').trim()
-      return `| ${topic ? `${topic} (${m.role})` : m.role} | ${said ? inCell(said) || NOTHING : NOTHING} | ${said ? linksOf(pagesOf(said, m.sources), 2) || '-' : '-'} |`
+      // Two columns on purpose: the thread shows a table of three or more columns as a stack of cards, not as a table.
+      return `| ${topic ? `${topic} (${m.role})` : m.role} | ${said ? [inCell(said) || NOTHING, linksOf(pagesOf(said, m.sources), 2)].filter(Boolean).join(' · ') : NOTHING} |`
     })
-    return `${lead(`${parts.map(m => m.role).join(', ')} 결과예요.`)}\n\n| 맡은 일 (담당) | 내용 | 출처 |\n|---|---|---|\n${rows.join('\n')}`
+    return `${lead(`${parts.map(m => m.role).join(', ')} 결과예요.`)}\n\n| 맡은 일 (담당) | 내용과 출처 |\n|---|---|\n${rows.join('\n')}`
   }
   return parts.map((m, i) => {
     const said = delivered(m), from = handedFrom(m.brief)
