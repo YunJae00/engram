@@ -99,6 +99,11 @@ it('clears an unknown write only by a complete read-back of the same file', () =
   // A reported path counts as the file; another path does not.
   expect(officeWriteUnverified([step('ppt_build', { path: '/out/a.pptx' }), good('b.pptx')])).toBeDefined()
   expect(officeWriteUnverified([step('ppt_build', { path: '/out/a.pptx' }), good('x.pptx', '/out/a.pptx')])).toBeUndefined()
+  // c3c review r3 (Codex): asked for as a.pptx but saved under a numbered name: that read-back is of another file.
+  expect(officeWriteUnverified([failed('a.pptx'), good('a.pptx', '/out/a-2.pptx')])).toBeDefined()
+  expect(officeWriteUnverified([step('ppt_build', { path: '/out/a.pptx' }), good('a.pptx', '/other/a.pptx')])).toBeDefined()
+  // A name asked for without its ending is still the saved file's name.
+  expect(officeWriteUnverified([failed('a'), good('a', '/out/a.pptx')])).toBeUndefined()
   // A write that names no file cannot be matched to any read-back.
   expect(officeWriteUnverified([failed(), good('b.pptx')])).toBeDefined()
   expect(officeWriteUnverified([failed(), step('ppt_build', built)])).toBeDefined()

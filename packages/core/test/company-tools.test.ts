@@ -638,6 +638,27 @@ test('a hand-off carries the pages the first teammate read when the memo names n
   }
 })
 
+// c3b review r3 (Codex): a memo that named only a search-results address counted as cited, so the page the teammate read was dropped
+// from the hand-off, the host's answer and the writer's prompt, and an answer citing only the search was let through.
+test('a hand-off whose memo names only a search-results address still carries the page that was read', async () => {
+  const search = 'https://search.naver.com/search.naver?query=seoul', page = 'https://weather.example/seoul'
+  const kim = part('m1', '지민', '서울 날씨 조사', { background: true, then: { botId: 'bot-m2', who: '서연', brief: '문구 쓰기' }, result: `서울은 맑아요. ${search}`, sources: [page] })
+  const carried = handoffBrief('문구 쓰기', '지민', kim.result!, kim.brief, kim.sources)
+  expect(carried.endsWith(`\n${page}`)).toBe(true)
+  // A brief written before this fix (no page in it) is cited from the handing teammate's record too.
+  for (const brief of [carried, handoffBrief('문구 쓰기', '지민', kim.result!, kim.brief)]) {
+    const members = [kim, part('m2', '서연', brief, { background: true, lookup: undefined, writer: true, result: '맑은 서울로 떠나요.' })]
+    expect(mergedReport(members)).toContain(`[weather.example](${page})`)
+    expect(mergedReport(members)).not.toContain('search.naver.com')
+    expect(reportPrompt('문구 써줘', members)).toContain(page)
+    const text = '서연이 지민 조사로 문구를 썼어요.\n\n맑은 서울로 떠나요.\n\n지민이 찾은 내용: 서울은 맑아요.'
+    expect(checkedReport(`${text} [네이버 검색](${search})`, members)).toBeUndefined()
+    expect(checkedReport(`${text} [날씨 예보](${page})`, members)).toBe(`${text} [날씨 예보](${page})`)
+  }
+  // Nothing read but the search: the search address still stands in, as before.
+  expect(mergedReport([part('m1', '지민', '서울 날씨 조사', { background: true, result: `서울은 맑아요. ${search}` })])).toContain('search.naver.com')
+})
+
 test('a name as people write it names the teammate: 지민이, 지민이는, 지민이랑, 지민한테, 지민 씨', async () => {
   const staff = ['지민', '서연', '도윤', '지민아']
   for (const word of ['지민', '지민이', '지민이는', '지민이랑', '지민한테', '지민이한테', '지민 씨', '지민씨는', '지민은', '지민님']) expect(teamName(word, staff), word).toBe('지민')

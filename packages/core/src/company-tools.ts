@@ -419,7 +419,8 @@ export const writesFromHandover = (brief: string): boolean => !READS_WEB.test(br
 export const handoffBrief = (brief: string, from: string, result: string, job = '', sources: readonly string[] = []): string => {
   const what = clip((handedFrom(job)?.brief ?? job).split('\n')[0]!.replace(/[()]/g, ' '), 80)
   // grokbar c3b r2: a memo that named no address was handed on without the pages its agent read, so nothing downstream could cite them.
-  const read = result.match(ADDRESS) ? [] : pagesOf('', sources).slice(0, 3)
+  // c3b r3: a memo that named only a search-results address counted as cited, and the pages its agent read were dropped.
+  const read = pagesOf(result, sources).filter(url => !result.includes(url)).slice(0, 3)
   return `${brief}\n\nHanded over by ${from}${what ? ` (their job: ${what})` : ''}. Work from this result, and keep the facts and source addresses you use from it in your own result:\n${[result, ...read].join('\n')}`
 }
 const HANDED = /\n\nHanded over by (.+?)(?: \(their job: ([^)\n]*)\))?\. Work from this result[^\n]*:\n/
@@ -474,7 +475,9 @@ const trimmed = (url: string): string => url.replace(/[.,;:!?]+$/, '')
 // The pages a result stands on: the ones it names, or else the ones its agent read. One per site: two links that read the same say nothing more.
 const pagesOf = (text: string, read: readonly string[] = []): string[] => {
   const named = (text.match(ADDRESS) ?? []).map(trimmed), seen = new Set<string>()
-  const all = named.length ? named : read.map(trimmed), pages = all.filter(url => !/[?&](q|query)=/.test(url))
+  const search = (url: string): boolean => /[?&](q|query)=/.test(url)
+  // Named addresses that are all search results do not stand for the pages read (c3b r3: the read page was dropped from a hand-off's answer).
+  const all = named.some(url => !search(url)) ? named : [...named, ...read.map(trimmed)], pages = all.filter(url => !search(url))
   // A search-results address is where they looked, not where the fact is: it stands in only when no page was read.
   return (pages.length ? pages : all).filter(url => { const host = hostOf(url); if (!host || seen.has(host)) return false; seen.add(host); return true })
 }

@@ -127,6 +127,9 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
   })
   const watching = new Set<number>()
+  // c3a review r3 #2: a stop said while an earlier message waited for the quick voice (up to 1.3 s) was followed by that message's reply,
+  // or its words were handed to work that had just been stopped. Each stop is counted; a message that waited across one says and hands nothing.
+  const stops = new Map<string, number>()
   ipcMain.handle('chat:queued', (event, botId: string, pending: boolean) => {
     if (typeof botId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(botId) || typeof pending !== 'boolean') return
     const source = event.sender.id
@@ -144,6 +147,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (busy && deps.stop && STOP_WORDS.test(text)) {
       const korean = await inKorean()
       const reply = korean ? '중지했어요.' : 'Stopped.'
+      stops.set(channel, (stops.get(channel) ?? 0) + 1)
       await appendBotTurn(deps.paths, channel.slice('bot-'.length), { role: 'user', text: text.trim(), at: new Date().toISOString(), aside: true })
       // The thread shows the stopped line only while its turn is still open there, so this answer leaves before the stop's own events do
       // (grokbar T3: the turn must end with the line under it, within 3 s).
@@ -160,11 +164,13 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const goal = turnGoals.get(channel) ?? ''
     // The running answer is not cut at these words: it is saved whole, and the mark tells the thread they were said mid-work.
     await appendBotTurn(deps.paths, botId, { role: 'user', text: withoutSecrets(said, said), at: new Date().toISOString(), aside: true })
-    const started = Date.now()
+    const started = Date.now(), stopsBefore = stops.get(channel) ?? 0
+    const stopped = (): boolean => (stops.get(channel) ?? 0) !== stopsBefore
     const korean = await inKorean()
     const workdir = deps.voice ? engineCwd(deps.paths) : ''
     // A question of its own is answered here and, like a remark, never handed to the running turn.
     const answer = await asideAnswer(deps.voice?.(channel), workdir, said, korean)
+    if (stopped()) return { ok: true }
     const steer = !answer && asideShape(said) !== 'remark'
     if (steer) {
       await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
@@ -175,6 +181,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     // A quick question the voice had no answer for has used the budget: it gets the fixed line, not a second wait.
     const reply = answer ?? (quickQuestion(said) ? fixedAsideReply(said, korean) : await asideReply(deps.voice?.(channel), workdir, goal, said, korean))
+    if (stopped()) return { ok: true }
     flog('aside', JSON.stringify({ channel, reply: 'shown', shape: answer ? 'answer' : asideShape(said), ms: Date.now() - started }))
     // The reply is kept under the words it answers, as a line of the running turn, not as its answer.
     await appendBotTurn(deps.paths, botId, { role: 'assistant', text: withoutSecrets(reply, said), at: new Date().toISOString(), progress: true, aside: true }).catch(error => flog('aside', error))

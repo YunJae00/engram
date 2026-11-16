@@ -13,7 +13,7 @@ import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLine
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
-import { fastLane, NARRATION_MAX, quietRounds, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
+import { fastLane, quietRounds, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { answerOnly, asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
@@ -53,6 +53,39 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('first-line.ts')).not.toContain('export function withFirstLine')
   })
 
+  // stack-3: the three branches meet on the first line. c3c: a canned line is a waiting line. c3b: an ask the host answers shows none, even
+  // though it now also carries c3c's fallback and "told" reply. c3a: a lookup's own line is shown at once and stays as its acknowledgement.
+  it('stack-3: a host-answered ask shows no line, a lookup shows its own line at once and keeps it, and no round of either hold is aloud', async () => {
+    const hosted = start('NONE', { message: '지우가 누구야?', host: true }, { told: true })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(hosted.show).not.toHaveBeenCalled()
+    expect(hosted.quick).not.toHaveBeenCalled()
+    expect(firstLineWaiting('bot-1')).toBe(false)
+    endFirstLine('bot-1')
+    const show = vi.fn(), hide = vi.fn(), quick = vi.fn(later('NONE', 500))
+    beginFirstLine({ ...ask({ message: '엔비디아 오늘 주가 알려줘' }), engine: async () => ({ id: 'claude' as const, quick }) as never, workdir: WORKDIR, signal: new AbortController().signal, show, hide, line: '지금 시세 확인할게요.', fallback: '바로 확인해 볼게요.' })
+    firstLineReady('bot-1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(show).toHaveBeenCalledExactlyOnceWith('지금 시세 확인할게요.')
+    expect(quick).not.toHaveBeenCalled()
+    // It names a step, so it is not the host's waiting line: the search's reset freezes it as the acknowledgement, and the fallback never replaces it.
+    expect(firstLineWaiting('bot-1')).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(show).toHaveBeenCalledOnce()
+    firstLineSaw({ type: 'chat:token', channel: 'bot-1', reset: true })
+    firstLineSpoke('bot-1')
+    expect(hide).not.toHaveBeenCalled()
+    // ipc.ts: held words never take a line down, no round is aloud (the host answers mid-work words itself, aside-ipc.ts), and that reply does not pass through the hold.
+    const ipc = source('ipc.ts')
+    expect(ipc).toContain('beginFirstLine({ host: hostAnswers, channel: entry.channel,')
+    expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
+    expect(ipc).toContain("if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text })")
+    expect(ipc).not.toContain('replying')
+    const aside = source('aside-ipc.ts')
+    expect(aside).toContain('asideReply(')
+    expect(aside).not.toContain('heldRounds')
+  })
+
   it('NONE and a tool call: the waiting line is not frozen into a bubble, in the thread or on disk', async () => {
     const root = await mkdtemp(join(process.cwd(), 'tmp/c3c-')), paths = await initVault(root, { git: false })
     try {
@@ -70,7 +103,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
       vi.useRealTimers()
       expect((await readBotTranscript(paths, '1')).map(turn => turn.text)).toEqual(['내 이름은 권윤재고 지민호랑 같이 일해. 기억해'])
       // ipc.ts: the model's own tool-call reset is held back the same way.
-      expect(source('ipc.ts')).toContain('onReset: (drop, tool) => { quiet?.reset(); replying = false; if (firstLineWaiting(channel)) return; broadcast(')
+      expect(source('ipc.ts')).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
     } finally { turnGoals.delete('bot-1'); await rm(root, { recursive: true, force: true }) }
   })
 
@@ -199,7 +232,6 @@ describe('nothing is said before or between tool calls once the host has spoken'
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
       const shown: string[] = [], quiet = quietRounds(text => shown.push(text))
       quiet.token(narration, false)
-      quiet.reset()
       quiet.token('3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.', false)
       expect(shown, narration).toEqual([])
     }
@@ -208,15 +240,15 @@ describe('nothing is said before or between tool calls once the host has spoken'
   // c3c r2 (Codex): past 200 characters the lookup hold lets a round through, so a long English note before a tool call reached a Korean thread.
   it('shows no round of a general turn as it comes, however long, and still shows a reply to words said mid-turn', () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
-      expect([...narration].length).toBeGreaterThan(NARRATION_MAX)
+      expect([...narration].length).toBeGreaterThan(200)
       const shown: string[] = [], held = heldRounds(text => shown.push(text))
       for (const piece of narration.match(/.{1,40}/g)!) held.token(piece, false)
       held.reset()
       expect(shown, narration.slice(0, 30)).toEqual([])
-      // The same words on the lookup hold do get through: that is why a general turn has its own.
+      // stack-3: the lookup hold lost its 200-character rule too (c3a r3), so neither hold lets a round through.
       const leaked: string[] = [], lookup = quietRounds(text => leaked.push(text))
       lookup.token(narration, false)
-      expect(leaked.join('')).toBe(narration)
+      expect(leaked).toEqual([])
     }
     const shown: string[] = [], held = heldRounds(text => shown.push(text))
     held.token('대구도 넣을게요.', true)

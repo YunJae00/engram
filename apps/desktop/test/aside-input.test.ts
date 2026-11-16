@@ -244,5 +244,23 @@ it('hands a change to the running turn before the reply is written, keeps a rema
     expect(stopped).toEqual(['중지했어요.'])
     expect(asked).toHaveLength(before)
     expect(held).toEqual(['아 대구도 추가해'])
+    // c3a review r3 #2: "멈춰" said while an earlier message still waits for the quick voice. That message says nothing after the stop,
+    // is not handed to the stopped work and leaves nothing waiting, whether it was a question of its own or a change.
+    for (const [words, line] of [['1톤은 몇 kg야?', '1,000kg이에요.'], ['아 광주도 추가해', '광주도 넣을게요.']] as const) {
+      const rows = (await readBotTranscript(paths, 'reply')).length, pending = (await readCheckpoint(paths, 'reply')).pending
+      let release = (): void => {}
+      const waiting = new Promise<void>(done => { release = done })
+      const slow = voice.quick
+      // A change is handed over before its line is asked for (above), so only the stop that lands before the hand-over is checked for it.
+      voice.quick = async () => { await waiting; return line }
+      const early = say(words)
+      await new Promise(done => setTimeout(done, 20))
+      expect((await say('멈춰')).action).toBe('stop')
+      release()
+      expect(await early).toEqual({ ok: true })
+      voice.quick = slow
+      expect((await readBotTranscript(paths, 'reply')).slice(rows).map(turn => `${turn.role} ${turn.text}`)).toEqual([`user ${words}`, 'user 멈춰'])
+      if (words.includes('?')) { expect(held).toEqual(['아 대구도 추가해']); expect((await readCheckpoint(paths, 'reply')).pending).toEqual(pending) }
+    }
   } finally { turnGoals.delete('bot-reply'); await rm(cache, { recursive: true, force: true }) }
 })

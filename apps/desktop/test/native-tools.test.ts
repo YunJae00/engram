@@ -83,6 +83,22 @@ describe('native tool policy', () => {
     expect(await edit(asked('report.md 고쳐줘'), join(workspace, 'fixtures', 'myreport.md'))).toBe('deny')
     expect(await edit(asked('report.md.bak은 그대로 둬'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
     expect(await edit(asked('myreport.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
+    // c3c review r3 (Codex): a folder name with a space in it is still that file's folder; another folder that only ends the same way is not.
+    await Promise.all(['my folder', 'folder', 'our folder'].map(folder => mkdir(join(workspace, 'fixtures', folder), { recursive: true })))
+    await Promise.all(['my folder', 'folder', 'our folder'].map(folder => writeFile(join(workspace, 'fixtures', folder, 'report.md'), 'x')))
+    expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'my folder', 'report.md'))).toBe('allow')
+    expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'our folder', 'report.md'))).toBe('deny')
+    expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
+    // c3c review r3 (Codex): a teammate handed the job is given the same words (ipc.ts nativeFor) and the same gate: the named file, nothing else.
+    const member = (named?: string): NativePolicy => ({ ...asked(named), cwd: join(mine, 'team', 'm1'), roots: [join(mine, 'team', 'm1'), mine], member: true })
+    await mkdir(join(mine, 'team', 'm1'), { recursive: true })
+    expect(await edit(member('fixtures/meeting-notes.md 지민한테 고치라고 해'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
+    expect(await edit(member('fixtures/meeting-notes.md 지민한테 고치라고 해'), join(workspace, 'fixtures', 'budget.md'))).toBe('deny')
+    expect(await edit(member('meeting-notes.md 지민한테 고치라고 해'), join(outside, 'meeting-notes.md'))).toBe('deny')
+    expect(await edit(member(), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('deny')
+    expect((await nativeDecision(member('fixtures/meeting-notes.md 지워줘'), 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    expect(ipc).toContain('attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane,')
     // 3. Outside the workspace, named or not.
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(outside, 'meeting-notes.md'))).toBe('deny')
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(workspace, 'fixtures', '..', '..', 'elsewhere', 'meeting-notes.md'))).toBe('deny')
@@ -92,7 +108,7 @@ describe('native tool policy', () => {
     expect((await nativeDecision({ ...asked('fixtures/meeting-notes.md 지워줘'), ask }, 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
     expect(ask).toHaveBeenCalledOnce()
     // The host hands over what the person said in this thread.
-    expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain("named: [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\\n')")
+    expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain("const named = [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\\n')")
   })
 
   it('writes only in the work folder and points deliverables at the file tools', async () => {

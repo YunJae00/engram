@@ -2364,6 +2364,8 @@ export function registerIpc(ctx: VaultContext): void {
   // The tools a comet is offered, the same list for a turn and for a session
   // warmed ahead of one: what differs per turn rides in the closures.
   const cometToolSet = async (input: {
+    // c3c review r3: what the person said in this thread, so a teammate handed the job can change a workspace file they named, like the lead (native-tools.ts namedBy).
+    named?: string
     channel: string; engine: Engine; settings: Awaited<ReturnType<typeof loadSettings>>; permission: PermissionMode; native: NativeTools | undefined
     attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof linkedOutputs>>; turn: TaskTurn | undefined
     recovery: string | null | undefined; remembered: string[]; guided: boolean; webOnly: boolean; audit: (kind: AuditKind, rest: { tool?: string; url?: string; detail?: string }) => void
@@ -2458,7 +2460,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
@@ -2783,9 +2785,11 @@ export function registerIpc(ctx: VaultContext): void {
         await rememberWorkFolder(paths, channel, workFolder)
         // Scripts left from a turn that never finished do not belong to this one.
         takeTurnScripts(channel)
+        // The person's own words in this thread, never the assistant's: only a file they named is changed where it is.
+        const named = [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\n')
         const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, named: [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\n'), ask: (() => { const ask = team.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, named, ask: (() => { const ask = team.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
@@ -2793,7 +2797,7 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
         let firstToken = true
         let tokensUsed = 0
-        const everyTool = (await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit, chief })).filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))
+        const everyTool = (await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit, chief, named })).filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))
         // A plain hand-off to one agent is the same assign call with the person's own words as the brief: made here, its reply is the answer
         // and no model is asked. A call that throws falls through to the model.
         const handoff = company && chief && !turn?.report && request.scheduled !== true ? plainHandoff(request.message, staff.map(one => one.name)) : undefined

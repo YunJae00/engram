@@ -28,7 +28,14 @@ export function namedBy(said: string | undefined, path: string): boolean {
     // "report.md.bak" and "report.mdx" are other files; a Korean particle after the name ("report.md를") is not part of it.
     if (/^([\w/-]|\.\w)/.test(words.slice(at + name.length))) continue
     const written = /[^\s"'`“”‘’()[\]<>,:]*$/.exec(words.slice(0, at))![0].replace(/^[.~]*\/+/, '') + name
-    if (file.endsWith(`/${written}`)) return true
+    // c3c review r3: the folder was read up to the last space, so "fixtures/my folder/report.md" named "folder/report.md" and the edit was refused.
+    // The words up to the name must end with a tail of this file's own path, cut at a folder, that covers at least what was written there.
+    const upTo = words.slice(0, at + name.length)
+    for (let cut = file.lastIndexOf('/'); cut >= 0; cut = cut > 0 ? file.lastIndexOf('/', cut - 1) : -1) {
+      const tail = file.slice(cut + 1)
+      if (!upTo.endsWith(tail)) break
+      if (tail.length >= written.length) return true
+    }
   }
   return false
 }

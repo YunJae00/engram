@@ -71,8 +71,13 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
       // c3c r3: it cleared every unknown write of that builder, so a ppt_build that may have left part of a.pptx passed on b.pptx's read-back.
       // A write that names no file cannot be shown to be the same one, and stays unread.
       if (result?.['completeReadback'] === true && typeof result['artifact'] === 'string') {
-        const files = named(step, result)
-        for (let at = unknown.length - 1; at >= 0; at--) if (unknown[at]!.tool === step.tool && unknown[at]!.file && files.includes(unknown[at]!.file!)) unknown.splice(at, 1)
+        // c3c review r3: the name asked for counted beside the path saved, so a build asked as a.pptx but saved as a-2.pptx cleared a.pptx.
+        // The file read back is the one at the reported path (the name asked for only when no path is reported); two paths must be the
+        // same path, and a bare name is matched against the saved file's own name.
+        const file = named(step, result)[0]
+        const stem = (one: string): string => one.replaceAll('\\', '/').replace(/^.*\//, '').replace(/\.[^.]+$/, '')
+        const same = (one: string): boolean => one === file || ((!/[\\/]/.test(one) || !/[\\/]/.test(file!)) && stem(one) === stem(file!))
+        for (let at = unknown.length - 1; at >= 0; at--) if (file && unknown[at]!.tool === step.tool && unknown[at]!.file && same(unknown[at]!.file!)) unknown.splice(at, 1)
         continue
       }
       if (step.observation.includes(OFFICE_CLOSED)) continue
