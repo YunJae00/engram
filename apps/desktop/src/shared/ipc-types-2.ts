@@ -53,7 +53,7 @@ export type EngramEvent =
   | { type: 'sweep:job'; job: string; index: number; total: number }
   | { type: 'sweep:done'; report: SweepReportDto }
   | { type: 'sweep:error'; message: string }
-  | { type: 'chat:token'; channel: string; text: string; reset?: boolean; drop?: boolean }
+  | { type: 'chat:token'; channel: string; text: string; reset?: boolean; drop?: boolean; tool?: string }
   | {
       type: 'chat:done'
       channel: string

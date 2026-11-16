@@ -37,7 +37,11 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   stopListening = tapBroadcast((event) => {
     progress.observe(event)
     if (event.type === 'comet:working') { spoke.delete(event.channel); saving.delete(event.channel) }
-    else if (event.type === 'chat:token' && event.channel) { if (event.drop) spoke.delete(event.channel); else if (event.text.trim()) spoke.add(event.channel) }
+    else if (event.type === 'chat:token' && event.channel) {
+      if (event.drop) spoke.delete(event.channel); else if (event.text.trim()) spoke.add(event.channel)
+      // The reset that closes the short bubble already names the memory tool: no gap until its step arrives.
+      else if (event.reset && spoke.has(event.channel) && /(^|__)keep_(in_mind|how_to)$/.test(event.tool ?? '')) saving.add(event.channel)
+    }
     else if (event.type === 'comet:step' && spoke.has(event.channel) && /^keep_(in_mind|how_to): /.test(event.line)) saving.add(event.channel)
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
   })

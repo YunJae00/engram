@@ -67,7 +67,7 @@ interface Turn {
   detachAbort(): void
   onToken?: (text: string) => void
   onProgress?: () => void
-  onReset?: () => void
+  onReset?: (dropDraft?: boolean, tool?: string) => void
   onContextReset?: () => void
   onUsage?: (tokens: number) => void
 }
@@ -76,7 +76,7 @@ interface Turn {
 interface PartialEvent {
   type?: string
   delta?: { type?: string; text?: string; thinking?: unknown; partial_json?: unknown }
-  content_block?: { type?: string }
+  content_block?: { type?: string; name?: string }
 }
 
 export class WarmSession {
@@ -214,7 +214,7 @@ export class WarmSession {
           if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
           // Words written before a tool call were thinking aloud; the reply
           // starts over after the call.
-          else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') this.turn?.onReset?.()
+          else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') this.turn?.onReset?.(undefined, event.content_block.name)
           continue
         }
         if (message.type === 'assistant') {

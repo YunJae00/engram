@@ -195,7 +195,7 @@ class CodexSession {
     if (method === 'item/started') {
       if (type === 'agentMessage' && turn.answer) job.onReset?.()
       // Words before an action were thinking aloud, not the reply.
-      if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.()
+      if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.(undefined, text(item['tool']) || undefined)
       if (type === 'fileChange') turn.changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
       if (type === 'commandExecution' || type === 'fileChange') {
         recorded.add(id)

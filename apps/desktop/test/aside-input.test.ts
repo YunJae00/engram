@@ -77,16 +77,21 @@ it('relays words said while the answer streams, and refuses them once the answer
     event({ type: 'comet:step', channel: 'bot-done', line: 'keep_in_mind: saved before any words' })
     event({ type: 'chat:token', channel: 'bot-done', text: 'I will remember that.' })
     expect((await say('While it streams')).ok).toBe(true)
+    // The tool-use start closes the bubble and names the memory tool, before its step.
+    event({ type: 'chat:token', channel: 'bot-done', text: '', reset: true, tool: 'mcp__engram__keep_in_mind' })
+    expect((await say('Before the memory step')).ok).toBe(false)
     event({ type: 'comet:step', channel: 'bot-done', line: 'keep_in_mind: launch is Dec 5' })
     expect((await say('After the short answer')).ok).toBe(false)
     event({ type: 'comet:working', channel: 'bot-done', working: false })
     event({ type: 'comet:working', channel: 'bot-done', working: true })
     event({ type: 'chat:token', channel: 'bot-done', text: 'A long essay' })
+    event({ type: 'chat:token', channel: 'bot-done', text: '', reset: true, tool: 'Read' })
+    expect((await say('At a work tool start')).ok).toBe(true)
     event({ type: 'comet:step', channel: 'bot-done', line: 'search_web: essay facts' })
     expect((await say('Next turn, still writing')).ok).toBe(true)
     answered = true
     expect((await say('After the answer landed')).ok).toBe(false)
-    expect(held).toEqual(['While it streams', 'Next turn, still writing'])
-    expect((await readBotTranscript(paths, 'done')).map(turn => turn.text)).toEqual(['While it streams', 'Next turn, still writing'])
+    expect(held).toEqual(['While it streams', 'At a work tool start', 'Next turn, still writing'])
+    expect((await readBotTranscript(paths, 'done')).filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['While it streams', 'At a work tool start', 'Next turn, still writing'])
   } finally { await rm(cache, { recursive: true, force: true }) }
 })

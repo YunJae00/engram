@@ -2761,7 +2761,7 @@ export function registerIpc(ctx: VaultContext): void {
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
             onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
-            onReset: drop => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}) }),
+            onReset: (drop, tool) => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }),
             onObservation: (tool: string, observation: string) => {
               observedProgress.push({ tool, args: {}, observation })
               if (observedProgress.length > 8) observedProgress.shift()

@@ -270,7 +270,7 @@ function streamingSdk(beforeReply?: () => AsyncIterable<{ type: string; [key: st
           if (partial) {
             if (beforeReply) yield* beforeReply()
             yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Let me look. ' } } }
-            yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use' } } }
+            yield { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', name: 'mcp__engram__keep_in_mind' } } }
             for (const word of ['The ', 'answer ', 'is 42.']) yield { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: word } } }
           }
           yield { type: 'assistant', message: { content: [{ type: 'text', text: 'The answer is 42.' }] } }
@@ -313,11 +313,12 @@ describe('the reply streams as it is written', () => {
     const pool = new SessionPool()
     const spec = { sdk: streamingSdk(), binary: 'claude', workdir: 'C:/tmp', model: 'sonnet' }
     const pieces: string[] = []
-    let resets = 0
-    const result = await pool.run(job('Task: anything', { sessionKey: 'k', onToken: (text) => pieces.push(text), onReset: () => resets++ }), spec)
+    const resetTools: unknown[] = []
+    const result = await pool.run(job('Task: anything', { sessionKey: 'k', onToken: (text) => pieces.push(text), onReset: (_drop, tool) => resetTools.push(tool) }), spec)
     expect(result.answer).toBe('The answer is 42.')
     expect(pieces).toEqual(['Let me look. ', 'The ', 'answer ', 'is 42.'])
-    expect(resets).toBe(1)
+    // The reset names the tool that starts, so main knows a memory save before its step arrives.
+    expect(resetTools).toEqual(['mcp__engram__keep_in_mind'])
     pool.closeAll()
   })
 })

@@ -183,7 +183,8 @@ export interface ToolSessionJob {
   // The reply as it is written, and the word that what came so far was
   // said before a tool call and is not the reply.
   onToken?(text: string): void
-  onReset?(): void
+  // `tool` names the call that starts, when the engine already knows it.
+  onReset?(dropDraft?: boolean, tool?: string): void
   // Host-only activity, without private reasoning or unfinished tool arguments.
   onProgress?(): void
   // An engine that can put the person's words into its running turn, as
