@@ -54,7 +54,7 @@ function AnswerFileCard({ file }: { file: AnswerFile }) {
     <button type="button" className="chat-file-action" data-testid="answer-file-reveal" aria-label={`${reveal}: ${file.name}`} title={reveal}
       style={{ position: 'absolute', right: 6, bottom: 8, display: 'grid', placeItems: 'center', width: 24, height: 24, padding: 0, borderRadius: '50%' }}
       onClick={() => void window.engram.artifactReveal(file.id)}><FolderOpen size={13} aria-hidden /></button>
-    {previous && <button type="button" className="link" data-testid="answer-file-previous" aria-label={`${previousTitle}: ${file.name}`} title={previousTitle}
+    {previous && <button type="button" data-testid="answer-file-previous" aria-label={`${previousTitle}: ${file.name}`} title={previousTitle}
       style={{ display: 'block', margin: '2px 0 0 4px', padding: 0, border: 0, background: 'none', color: 'var(--text-secondary, inherit)', font: 'inherit', fontSize: 12, opacity: 0.7, cursor: 'pointer' }}
       onClick={() => window.dispatchEvent(new CustomEvent('engram:open-artifact', { detail: previous }))}>{ko ? FILE_CARD_KO.previous : '(previous)'}</button>}
   </div>
