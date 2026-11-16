@@ -34,12 +34,12 @@ describe('the waiting line in a Korean thread', () => {
 // Codex cap (hux r3): an attached file's card said "Click to read", "Loading preview…" and its copy and limit lines in English in a Korean thread.
 describe('an attached file in a Korean thread', () => {
   it('has no English beside the file\'s own name, in the card or in any line it can show', async () => {
-    const { attachmentWords, UserMessage } = await import('../src/renderer/src/components/ChatAttachment.js')
+    const { UserMessage } = await import('../src/renderer/src/components/ChatAttachment.js')
     const id = `${'0'.repeat(36)}-보고서.txt`
     const html = renderToStaticMarkup(createElement(UserMessage, { text: '이거 요약해줘', attachments: [id], lang: 'ko' }))
     expect(html).toContain('보고서.txt')
     expect(html.replace(/보고서\.txt/g, '').replace(/aria-label="([^"]*)"/g, ' $1 ').replace(/<[^>]+>/g, ' ')).not.toMatch(/[A-Za-z]{2,}/)
-    const ko = attachmentWords('ko'), en = attachmentWords('en')
+    const ko = threadWords('ko').attachment, en = threadWords('en').attachment
     expect(Object.keys(ko)).toEqual(Object.keys(en))
     for (const line of Object.values(ko)) expect(typeof line === 'function' ? line('') : line).not.toMatch(/[A-Za-z]{2,}/)
     // The thread passes its own language down; an English thread keeps its words.
