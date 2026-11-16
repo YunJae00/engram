@@ -52,6 +52,7 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   const targetRow = page.getByTestId(`bot-${target.id}`)
   const otherRow = page.getByTestId(`bot-${other.id}`)
   await expect(otherRow).toBeVisible()
+  const looseX = (await otherRow.boundingBox())!.x
   // With no 24h filter (bot sidebar redesign) the old conversation is listed, but its collapsed folder keeps it out of sight.
   await expect(targetRow).toBeHidden()
   await expect(page.getByTestId(`sidebar-folder-${before.chat.folders.find(one => one.name === 'Archive')!.id}`).locator('.sidebar-folder-head .sidebar-item-main')).toHaveAttribute('aria-expanded', 'false')
@@ -60,6 +61,8 @@ test('search finds a token from earlier messages of an old, unopened conversatio
     await page.getByTestId('sidebar-search-toggle').click(); await input.fill(query)
     await expect(targetRow).toBeVisible()
     await expect(otherRow).toHaveCount(0)
+    // S16: a row inside a folder sits to the right of a loose row, so membership shows.
+    expect((await targetRow.boundingBox())!.x).toBeGreaterThanOrEqual(looseX + 10)
     await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
   }
   await input.fill('Weekly sy')
