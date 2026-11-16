@@ -239,9 +239,13 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   await runRoutine(writer.id)
   await expect(page.getByTestId('routines-view')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread')).toContainText('already ran today')
-  await expect(page.getByTestId('bots-offer-run')).toBeVisible()
+  // The guarded retry is said in the thread and asked for in chat: no run button, and no button anywhere in the reply.
+  await expect(page.getByTestId('bots-offer-run')).toHaveCount(0)
+  await expect(page.getByTestId('bots-offer')).toHaveCount(0)
+  await expect(page.locator('[data-testid="bots-thread"] .decision-card button')).toHaveCount(0)
   expect(posted).toEqual(['shipped the replayer'])
-  await page.getByTestId('bots-offer-run').click()
+  // A run the person asked for again still stops at the submit gate before anything is posted.
+  await page.evaluate(id => window.engram.routineRun(id, true), writer.id)
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await page.getByTestId('routine-submit-cancel').click()
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 60_000 })
@@ -332,10 +336,13 @@ test('keeping a task saves its source as a routine, survives reload and runs onl
   await app.evaluate(({ BrowserWindow }, botId) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
     type: 'chat:offer', channel: `bot-${botId}`, offer: { kind: 'keep', name: 'Collect entry notes', goal: 'Read every entry and verify the summary', does: 'Collect and check every note' },
   }), bot.id)
-  await expect(page.getByRole('textbox', { name: 'Routine instructions' })).toBeVisible()
-  await page.getByRole('textbox', { name: 'Routine instructions' }).fill('Read every entry, collect its notes and verify the final table')
-  await page.getByTestId('bots-offer-keep').click()
+  // A "keep this" offer draws no card and no form: nothing in the thread has a text box or a save button for it.
+  await expect(page.getByTestId('bots-thread')).toContainText('Read all notes')
   await expect(page.getByTestId('bots-offer-keep-card')).toHaveCount(0)
+  await expect(page.getByTestId('bots-offer-keep')).toHaveCount(0)
+  await expect(page.locator('[data-testid="bots-thread"] textarea')).toHaveCount(0)
+  await expect(page.getByText('Instructions for each new run')).toHaveCount(0)
+  await page.evaluate(id => window.engram.botTaskAdd(id, { name: 'Collect entry notes', goal: 'Read every entry, collect its notes and verify the final table' }), bot.id)
   await expect(page.locator('.bots-tasks')).toHaveCount(0)
   const saved = (await page.evaluate(() => window.engram.routinesList())).find(one => one.name === 'Collect entry notes')!
   expect(saved.task?.urls).toContain(`${siteUrl}notices`)

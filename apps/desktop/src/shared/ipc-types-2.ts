@@ -1,4 +1,4 @@
-import type { NoteDto, MissionFrameDto, EngineHealthReason, ScheduleDto, UpdateCheckDto, EngineStatusDto, SweepReportDto, AppSettingsDto, FirstSetupDto, EngineLoginDto } from './types.js'
+import type { NoteDto, MissionFrameDto, EngineHealthReason, UpdateCheckDto, EngineStatusDto, SweepReportDto, AppSettingsDto, FirstSetupDto, EngineLoginDto } from './types.js'
 import type { DesktopControlStatusDto } from './desktop.js'
 import type { DevUpdate } from './developers.js'
 
@@ -60,11 +60,8 @@ export type EngramEvent =
       text: string
       evidence?: import('core').TurnEvidence
 
-      offer?:
-        | { kind: 'run'; routineId: string; name: string; slots?: Record<string, string>; force?: boolean }
-        | { kind: 'keep'; name: string; goal: string; does: string }
-        | { kind: 'standing'; name: string; goal: string; count: number; schedule: ScheduleDto; routineId: string }
-        | { kind: 'asked'; question: string; options: string[] }
+      // Only a question the bot asked leaves choices; running, keeping or repeating a job is said in chat.
+      offer?: { kind: 'asked'; question: string; options: string[] }
     }
   | { type: 'chat:error'; channel: string; message: string; kind?: EngineHealthReason; provider?: string }
   | { type: 'firstSetup:changed'; status: FirstSetupDto }

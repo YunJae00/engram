@@ -7,16 +7,19 @@ import { seedVisualVault } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
 
-test('there is no info pane, title pill or tabs: the bot shows in its sidebar row and its empty thread, and its settings are changed through the app', async () => {
+test('there is no info pane, title pill or tabs: the bot shows in its sidebar row and its empty thread, and its instructions and notifications are changed by chat', async () => {
   await mkdir(TMP, { recursive: true })
-  const vault = await mkdtemp(join(TMP, 'e2e-info-pane-')), profile = await mkdtemp(join(TMP, 'e2e-info-pane-profile-'))
+  const vault = await mkdtemp(join(TMP, 'e2e-info-pane-')), profile = await mkdtemp(join(TMP, 'e2e-info-pane-profile-')), mock = await mkdtemp(join(TMP, 'e2e-info-pane-mock-'))
   let app: ElectronApplication | undefined
   try {
     await seedVisualVault(vault)
     await writeFile(join(profile, 'settings.json'), JSON.stringify({ theme: 'light', uiLanguage: 'en' }))
+    await writeFile(join(mock, 'COMET-STEP.json'), JSON.stringify({ tool: 'teammate_settings', args: { instructions: 'Writes the Friday report by noon.', notify: 'off' } }))
+    await writeFile(join(mock, 'COMET-ANSWER.md'), 'The report is due Friday noon now, and notifications are off.')
+    await writeFile(join(mock, 'default.md'), 'OK.')
     app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
       ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: profile,
-      ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1',
+      ENGRAM_ENGINE: 'mock', ENGRAM_MOCK_DIR: mock, ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1',
     } })
     const page = await app.firstWindow()
     await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800) })
@@ -41,12 +44,17 @@ test('there is no info pane, title pill or tabs: the bot shows in its sidebar ro
     await expect(view.getByRole('radiogroup')).toHaveCount(0)
     await expect(input).toBeVisible()
 
-    // What the pane edited is still the bot's own data: instructions and notifications change through the app, the routine is kept.
-    await page.evaluate(() => window.engram.botUpdate('vis-routine', { purpose: 'Writes the Friday report by noon.', notify: 'off' }))
+    // What the pane edited is changed by saying so in chat: the canned brain makes the one tool call a real one would, and nothing but the composer is touched.
+    await input.fill('From now on write the Friday report by noon, and turn your notifications off.')
+    await input.press('Enter')
+    await expect.poll(async () => (await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-routine')))?.notify, { timeout: 60_000 }).toBe('off')
     const saved = await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-routine'))
     expect(saved).toMatchObject({ purpose: 'Writes the Friday report by noon.', notify: 'off' })
     expect(saved?.tasks?.map(task => task.id)).toEqual(['vis-task'])
     await expect(page.locator('[data-testid="bot-vis-routine"] .sidebar-bell-off')).toBeVisible()
+    await expect(page.getByTestId('bots-thread')).toContainText('The report is due Friday noon now, and notifications are off.', { timeout: 60_000 })
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(pane).toHaveCount(0)
 
     await input.focus()
     await page.keyboard.press('Escape')
@@ -66,6 +74,6 @@ test('there is no info pane, title pill or tabs: the bot shows in its sidebar ro
     await expect(page.getByTestId('bot-info-empty')).toHaveCount(0)
   } finally {
     await closeTestApp(app)
-    for (const dir of [vault, profile]) await rm(dir, { recursive: true, force: true })
+    for (const dir of [vault, profile, mock]) await rm(dir, { recursive: true, force: true })
   }
 })

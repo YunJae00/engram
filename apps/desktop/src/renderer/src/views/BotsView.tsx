@@ -4,7 +4,7 @@ import { CHIP_FAILED, sendCometMessage, sendCometReply } from '../lib/attachment
 import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
 import { ThreadOffers } from '../components/ThreadOffers.js'
-import { pendingStatus } from '../lib/pendingStatus.js'
+import { isSaidLine, isYouLine, pendingStatus, stepLabel } from '../lib/pendingStatus.js'
 import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { useLoadEarlier } from '../lib/useLoadEarlier.js'
@@ -40,7 +40,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const listRef = useRef<HTMLDivElement | null>(null)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt, awaitingModel } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
+  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   // Each comet works on its own tab with its own brain session: only this
@@ -49,9 +49,8 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const { compact } = useCompactBrowser()
   const locked = false
 
-  // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
-  const status = pendingStatus(threadT(threadLang(messages)), awaitingModel ? undefined : latestStep)
+  const status = pendingStatus(threadT(threadLang(messages)))
 
   // Until the first read comes back, an empty list means "not read yet",
   // and the screen says nothing rather than "no comets" - a claim it cannot
@@ -115,7 +114,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const stop = async () => {
     if (!selected) return
     const tt = threadT(threadLang(messages))
-    const said = cometThreads.stop(selected.id, stoppedText(messages, latestStep ? pendingStatus(tt, latestStep) : undefined), tt('bubble.stopped'))
+    const said = cometThreads.stop(selected.id, stoppedText(messages, !latestStep ? undefined : isSaidLine(latestStep) || isYouLine(latestStep) ? pendingStatus(tt) : stepLabel(tt, latestStep)), tt('bubble.stopped'))
     await api.chatAbort(cometChannel(selected.id), said).catch(() => undefined)
   }
 

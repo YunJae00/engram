@@ -4,6 +4,7 @@ import { quickPrimary } from './quick-comet.js'
 import { checkpointResume, acknowledgeHanded, changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { registerBrowserTabs } from './browser-tabs.js'
 import { standingApprovalsTool } from './approval-tools.js'
+import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
@@ -2446,6 +2447,7 @@ export function registerIpc(ctx: VaultContext): void {
     deskActivityTool,
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
+    ...(channel.startsWith('bot-') && !isHelperLane(channel) ? [teammateSettingsTool(paths, channel.slice('bot-'.length), () => broadcast({ type: 'bots:changed' }))] : []),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
     // Separate questions looked into at once, each on a tab of its own.
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
@@ -2850,32 +2852,13 @@ export function registerIpc(ctx: VaultContext): void {
         }
         // A model that was pushed to act may announce that it acted. The
         // record is corrected here, in the same breath as the answer, so the
-        // person is never told a chore was done when it was not — and when the
-        // unmade call was a procedure, the thread offers to make it.
-        const call = parsePendingCall(result.pending)
-        const wanted = call?.tool === 'run_procedure' && typeof call.args['id'] === 'string' ? String(call.args['id']) : null
-        const routine = wanted ? (await listRoutines(paths)).find((r) => r.id === wanted) : undefined
-        // The blanks arrive either nested under "slots" or, as a small model
-        // more often manages, one key per blank beside the id. The offer has
-        // to understand both, or a one-tap run comes back empty.
-        const nested =
-          call && typeof call.args['slots'] === 'object' && call.args['slots'] !== null
-            ? (call.args['slots'] as Record<string, unknown>)
-            : {}
-        const flatArgs = Object.fromEntries(
-          Object.entries(call?.args ?? {}).filter(([key]) => key !== 'id' && key !== 'slots'),
-        )
-        const slots = Object.fromEntries(
-          Object.entries({ ...flatArgs, ...nested }).filter(
-            (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '...',
-          ),
-        )
+        // person is never told a chore was done when it was not.
         // Only an unrun PROCEDURE deserves the alarm. Any other unmade call —
         // a page the model chose not to read — is an ordinary decision, and
         // warning about it on a plain web question is a false alarm.
-        const note = call?.tool === 'run_procedure' && !routine
-          ? '\n\n⚠ Nothing was actually run — the procedure is still waiting. Open Routines and press Run when you want it done.'
-          : ''
+        const note = parsePendingCall(result.pending)?.tool !== 'run_procedure' ? ''
+          : isKorean(request.message) ? '\n\n아직 실행하지는 않았어요. 실행하려면 여기서 다시 말씀해 주세요.'
+            : '\n\nNothing was actually run yet. Ask again here when you want it done.'
         const held = holdTaskResult(result, turn, check)
         const finished = canLearnTurn(result, held, check)
         if (finished) await recordSkillUse(paths, result).catch(error => flog('skill-use', error))
@@ -2900,9 +2883,7 @@ export function registerIpc(ctx: VaultContext): void {
             `${result.answer}${note}`,
             result.asked && result.options?.length
               ? { kind: 'asked', question: result.answer, options: result.options }
-              : routine
-                  ? { kind: 'run', routineId: routine.id, name: routine.name, slots }
-                  : undefined,
+              : undefined,
           )
         }
         answerDelivered = true

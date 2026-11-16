@@ -8,7 +8,7 @@ import { openRuleLines } from '../../../packages/core/src/agent-prompt.js'
 import { firstLinePrompt, smallTalkPrompt } from '../src/main/first-line.js'
 import { errorLine } from '../src/renderer/src/components/ErrorAnswer.js'
 import { teamKo } from '../src/renderer/src/i18n-ko-team.js'
-import { pendingStatus, workLabel } from '../src/renderer/src/lib/pendingStatus.js'
+import { pendingStatus, stepLabel, workLabel } from '../src/renderer/src/lib/pendingStatus.js'
 import { displayTaskAnswer, threadT } from '../src/renderer/src/lib/threadLang.js'
 import { GROUP_KO, KO, KO_STOP, KO_WORDS, WORK_KO } from '../src/renderer/src/lib/threadLangKo.js'
 
@@ -59,7 +59,7 @@ describe('fixed copy a person reads in a conversation', () => {
       // A file step is given its whole path, the way the loop writes it: only the file's name may be shown.
       const arg = /^(Read|Write|Edit|MultiEdit|Glob|Grep|Bash|file_|artifact_read)/.test(tool) ? '/Users/kim/vault/workspace/tasks/bot-ab12cd34/보고서.docx' : '보고서'
       for (const line of [`${tool}: ${arg}`, `${tool}: `]) {
-        const status = pendingStatus(t, line), group = workLabel(line, 'ko')
+        const status = stepLabel(t, line), group = workLabel(line, 'ko')
         expect(jargon(status), `${tool} → ${status}`).toEqual([])
         expect(status, tool).toMatch(/[가-힣]/)
         expect(status, tool).not.toContain(tool)
@@ -67,9 +67,10 @@ describe('fixed copy a person reads in a conversation', () => {
         expect(group, `${tool} group`).not.toMatch(/[A-Za-z]{4,}/)
       }
     }
-    expect(pendingStatus(t, 'made_up_tool: x')).toBe('일하는 중')
+    expect(stepLabel(t, 'made_up_tool: x')).toBe('일하는 중')
+    expect(pendingStatus(t)).toBe('생각하는 중')
     // Looking in memory is not announced (memory is silent).
-    expect(pendingStatus(t, 'search_memory: 민호')).not.toMatch(/기억|메모리/)
+    expect(stepLabel(t, 'search_memory: 민호')).not.toMatch(/기억|메모리/)
   })
 
   it('turns any failure into one human line that says what to do next', () => {
@@ -93,9 +94,11 @@ describe('fixed copy a person reads in a conversation', () => {
   })
 
   it('keeps English notes the model made to itself out of a Korean thread', () => {
-    const lines = ['said: Now I have solid sources for all 5 items.', 'said: 서울·부산 날씨는 정리했어요.', 'you: 대구도 추가해']
+    const lines = ['said: Now I have solid sources for all 5 items.', 'said: 확인했어요. Searching the web for results', 'said: 서울·부산 날씨는 정리했어요.', 'said: `npm run build`로 돌렸고 [Naver Finance stock quote page today](https://finance.naver.com)도 봤어요.', 'you: 대구도 추가해']
     const ko = renderToStaticMarkup(createElement(CometWork, { busy: true, lines, lang: 'ko' }))
     expect(ko).not.toContain('solid sources')
+    expect(ko).not.toContain('Searching the web')
+    expect(ko).toContain('finance.naver.com')
     expect(ko).toContain('서울·부산 날씨는 정리했어요.')
     expect(ko).toContain('대구도 추가해')
     expect(renderToStaticMarkup(createElement(CometWork, { busy: true, lines, lang: 'en' }))).toContain('solid sources')

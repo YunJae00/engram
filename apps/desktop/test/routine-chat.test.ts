@@ -146,7 +146,9 @@ describe('manual routine chats', () => {
     }
     const first = await startRoutineChat(paths, routine.id, { slots: { entry: 'A note' } }, deps)
     const completed = events.find((event) => event.type === 'chat:done')!
-    expect(completed).toMatchObject({ type: 'chat:done', offer: { kind: 'run', force: true, routineId: routine.id, slots: { entry: 'A note' } } })
+    // A guarded retry is asked for in chat; no button is offered for it.
+    expect(completed).toMatchObject({ type: 'chat:done' })
+    expect(completed).not.toHaveProperty('offer')
     expect((await readBotTranscript(paths, first.botId!))[1]?.text).toContain('Check the website')
     const second = await startRoutineChat(paths, routine.id, { force: true, slots: { entry: 'A note' } }, deps)
     expect(second.botId).not.toBe(first.botId)

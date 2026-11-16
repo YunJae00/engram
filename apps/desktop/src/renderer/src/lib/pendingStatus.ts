@@ -119,9 +119,8 @@ function englishWorkLabel(line: string): string {
   return tool.includes(' ') || !/^[a-z_]+$/.test(tool) ? line : tool.replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase())
 }
 
-// One sentence for the wait: the last step line if there is one - that is
-// what the work is actually doing - and otherwise the generic word, which is
-// only ever shown before the first step lands.
-export function pendingStatus(t: Translate, latestStep: string | undefined): string {
-  return latestStep && !isSaidLine(latestStep) && !isYouLine(latestStep) ? stepLabel(t, latestStep) : t('bots.thinking')
+// The wait is one fixed word. Naming each step as it comes ("searching… opening a page… checking…") is a step stream;
+// what the person hears about is a finished milestone, said in the chat.
+export function pendingStatus(t: Translate): string {
+  return t('bots.thinking')
 }

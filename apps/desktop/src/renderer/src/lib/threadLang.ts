@@ -13,6 +13,12 @@ export function threadLang(messages: { role: string; text: string }[]): ThreadLa
   return /[\uac00-\ud7a3]/.test(asked) ? 'ko' : 'en'
 }
 
+// Whether words written mid-work read as Korean: some Hangul, and no run of four or more English words outside code, links (a source's title is its name) and quotes.
+export function readsKorean(text: string): boolean {
+  const prose = text.replace(/`[^`]*`|\[[^\]]*\]\([^)]*\)|https?:\/\/\S+|"[^"]*"|“[^”]*”/g, ' ')
+  return /[\uac00-\ud7a3]/.test(text) && !/(?:[A-Za-z][A-Za-z'’-]*[\s,;:]+){3}[A-Za-z]/.test(prose)
+}
+
 export type ThreadTranslate = ((key: Parameters<Translate>[0] | 'aside.unapplied', vars?: Parameters<Translate>[1]) => string) & { lang: ThreadLang }
 
 export function threadT(lang: ThreadLang): ThreadTranslate {
