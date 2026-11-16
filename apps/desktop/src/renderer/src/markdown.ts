@@ -1,4 +1,5 @@
 import { marked, type Tokens } from 'marked'
+import { t } from './i18n.js'
 import { normalizeProse, suggestedReplyDefaults } from '../../../../../packages/core/src/prose.js'
 
 // A model that indents its bullets turns the whole answer into a markdown code
@@ -167,6 +168,6 @@ export function answerHtml(text: string, sourceUrls: string[] = [], notes: strin
   const table = renderer.table.bind(renderer)
   renderer.table = (token) => cardsHtml(token, (tokens) => renderer.parser.parseInline(tokens)) ?? table(token)
   const code = renderer.code.bind(renderer)
-  renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>Code</span><button type="button" data-copy-code="true">Copy code</button></div>${code(token)}</div>`
+  renderer.code = (token) => `<div class="answer-code"><div class="answer-code-head"><span>${t('answer.code')}</span><button type="button" data-copy-code="true">${t('answer.copyCode')}</button></div>${code(token)}</div>`
   return marked.parse(dedent(visible) || '…', { async: false, breaks: true, renderer, tokenizer: markdownTokenizer() }) as string
 }

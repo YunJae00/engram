@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { en, followSettings, t, type StringKey } from '../src/renderer/src/i18n'
 import { ko4 } from '../src/renderer/src/i18n-ko-4'
+import { answerHtml } from '../src/renderer/src/markdown'
 import { connectionLabel } from '../src/renderer/src/lib/connectionStatus'
 
 const ENGLISH: Record<string, string> = {
@@ -35,6 +36,14 @@ const ENGLISH: Record<string, string> = {
   'onboard.finishFailed': 'Could not finish setup. Please try again.',
   'onboard.loginWindowFailed': 'Could not update the sign-in window. Please try again.',
   'onboard.pickerFailed': 'Could not open the folder picker. Type a path instead.',
+  'answer.code': 'Code',
+  'answer.copyCode': 'Copy code',
+  'answer.copy': 'Copy answer',
+  'answer.copyFailed': 'Could not copy. Select the text and copy it manually.',
+  'answer.badLink': 'This output link is invalid.',
+  'answer.memorySourcesOne': '{n} memory source',
+  'answer.memorySources': '{n} memory sources',
+  'answer.sites': 'Websites in this answer',
   'composer.attachedFiles': 'Attached files',
   'composer.appsNamed': 'Apps named',
   'composer.add': 'Add to conversation',
@@ -137,6 +146,16 @@ describe('bot surface strings', () => {
       expect(isOffending(value.replace(/\{\w+\}/g, '1')), key).toBe(false)
       expect(value, key).not.toMatch(/\{\w+\}(이|가|을|를|은|는|과|와|으로|로)/)
     }
+  })
+
+  it('the code block header follows the UI language', async () => {
+    await language('ko')
+    const korean = answerHtml('```\nx\n```')
+    expect(korean).toContain('<span>코드</span>')
+    expect(korean).toContain('>코드 복사</button>')
+    expect(korean).not.toContain('Copy code')
+    await language('en')
+    expect(answerHtml('```\nx\n```')).toContain('<span>Code</span><button type="button" data-copy-code="true">Copy code</button>')
   })
 
   it('connection labels and effort names follow the UI language', async () => {
