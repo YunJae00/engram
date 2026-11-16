@@ -555,8 +555,13 @@ describe('team hire tools', () => {
     // 서울's member page is dead: its row gets no link. 부산's row cited a dead blog: it gets its member's page instead. 제주 keeps its own live link, and its member's live page closes the answer as before.
     const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://dead.example/blog) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |'
     const out = await liveCited(table, [], cite, alive, true)
-    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |\n\n출처: [ok.example](https://ok.example/jeju)')
+    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [ok.example](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |\n\n출처: [ok.example](https://ok.example/jeju)')
     expect(out).not.toMatch(/gone\.example|dead\.example/)
+    // c4 r3: the dead link's name ("블로그") does not become the name of the member's page; words that do name the linked site are kept.
+    expect(out).not.toContain('블로그')
+    // A row no teammate's page can take keeps the dead link's name as plain words; a name the lead wrote for a live page is kept as written.
+    expect(await liveCited('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | [블로그](https://dead.example/blog) |\n| 부산 | 비 | 부산 기상 |', [], answer => citeMembers(answer, members.slice(1, 2), true), async url => !/dead\.example/.test(url), true))
+      .toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | 블로그 |\n| 부산 | 비 | [부산 기상](https://ok.example/busan) |')
     // One pass: each address asked once, the ones only the citing would add among them.
     expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
     // The closing line: a dead member page is not listed, a live one is.

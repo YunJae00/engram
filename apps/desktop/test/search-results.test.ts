@@ -89,6 +89,11 @@ it('turns a result\'s age into the calendar date it means and leaves a written d
   // Another year is named.
   expect(calendarDates('1년 전', now)).toBe('2025년 11월 17일')
   expect(calendarDates('3주 전', new Date(2027, 0, 5, 9))).toBe('2026년 12월 15일')
+  // c4 r3: a month or a year back from a day the earlier month does not have is that month's last day, never a day in the later month.
+  expect(calendarDates('1개월 전', new Date(2026, 2, 31, 9))).toBe('2월 28일')
+  expect(calendarDates('1달 전', new Date(2026, 4, 31, 9))).toBe('4월 30일')
+  expect(calendarDates('3 months ago', new Date(2026, 4, 31, 9))).toBe('Feb 28')
+  expect(calendarDates('1년 전', new Date(2028, 1, 29, 9))).toBe('2027년 2월 28일')
   // English ages read as English dates.
   expect(calendarDates('2 days ago', now)).toBe('Nov 15')
   expect(calendarDates('5 hours ago', now)).toBe('Nov 17')

@@ -111,8 +111,9 @@ export function calendarDates(text: string, now = new Date(), words = true): str
   return text.replace(AGO, (whole: string, n?: string, unit?: string, n2?: string, unit2?: string, word?: string) => {
     if (word && !words) return whole
     const at = new Date(now), count = Number(n ?? n2 ?? (word === '그저께' ? 2 : 1)), per = (unit ?? unit2 ?? '일').toLowerCase()
-    if (/개월|달|month/.test(per)) at.setMonth(at.getMonth() - count)
-    else if (/년|year/.test(per)) at.setFullYear(at.getFullYear() - count)
+    // c4 r3: March 31 less a month overflowed to March 3; a day the earlier month does not have is that month's last day.
+    if (/개월|달|month/.test(per)) { at.setMonth(at.getMonth() - count); if (at.getDate() !== now.getDate()) at.setDate(0) }
+    else if (/년|year/.test(per)) { at.setFullYear(at.getFullYear() - count); if (at.getDate() !== now.getDate()) at.setDate(0) }
     else at.setTime(at.getTime() - count * AGO_MINUTES[per]! * 60_000)
     const sameYear = at.getFullYear() === now.getFullYear()
     return /[가-힣]/.test(whole) ? `${sameYear ? '' : `${at.getFullYear()}년 `}${at.getMonth() + 1}월 ${at.getDate()}일` : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })

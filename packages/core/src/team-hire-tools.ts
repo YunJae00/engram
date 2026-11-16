@@ -212,12 +212,12 @@ async function deadOf(shown: readonly string[], alive: (url: string, signal: Abo
   limit.abort()
   return dead
 }
-function withoutDead(answer: string, dead: readonly string[], read: readonly string[], korean: boolean): string {
+function withoutDead(answer: string, dead: readonly string[], read: readonly string[], korean: boolean, named = true): string {
   const own = sourcesOf(read)[0], literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   let out = answer
   for (const url of dead) {
     const swap = own && !plainAddress(out).includes(plainAddress(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
-    out = out.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), (_whole, name: string) => swap ? `[${siteName(own!, korean)}](${swap})` : name)
+    out = out.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), (_whole, name: string) => swap ? `[${siteName(own!, korean)}](${swap})` : named ? name : '')
       .replace(new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g'), swap)
   }
   return out
@@ -230,7 +230,16 @@ export async function liveLinks(answer: string, read: readonly string[], alive: 
 // answer's own. A dead address is taken out before citing, so its row gets its member's page, and again after, so a member's dead page goes too.
 export async function liveCited(answer: string, read: readonly string[], cite: (answer: string) => Promise<string> | string, alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
   const dead = await deadOf(unloaded(`${answer}\n${await cite(answer.replace(ADDRESS, ''))}`, read), alive, ms)
-  const out = withoutDead(await cite(withoutDead(answer, dead, read, korean)), dead, read, korean)
+  const row = /^\s*\|.*\|\s*$/, cells = (line: string): string[] => line.trim().slice(1, -1).split('|').map(cell => cell.trim())
+  const was = withoutDead(answer, dead, read, korean).split('\n'), bare = withoutDead(answer, dead, read, korean, false).split('\n')
+  // c4 r3: a dead link's name ("블로그") became the name of the member's page that took its place. In a table row the dead link goes with its
+  // name before citing, so the page put there is named as itself; a row that got no live page keeps the source cell it had, as plain words.
+  const rows = (await cite(was.map((line, i) => row.test(line) ? bare[i]! : line).join('\n'))).split('\n').map((line, i) => {
+    const had = was[i]
+    if (had === undefined || !row.test(had) || !row.test(line)) return line
+    return dead.some(url => line.includes(url) && !had.includes(url)) || bare[i] !== had && !/https?:\/\//.test(cells(line).at(-1)!) ? `| ${[...cells(line).slice(0, -1), cells(had).at(-1)!].join(' | ')} |` : line
+  })
+  const out = withoutDead(rows.join('\n'), dead, read, korean)
   // A closing source line lists links only: a member's dead page leaves no bare name there.
   return out.replace(/\n\n(출처|Sources): ([^\n]*)$/, (_whole, label: string, items: string) => { const kept = items.split(' · ').filter(item => /\]\(https?:\/\//.test(item)); return kept.length ? `\n\n${label}: ${kept.join(' · ')}` : '' })
 }
