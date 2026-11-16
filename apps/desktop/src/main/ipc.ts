@@ -7,6 +7,7 @@ import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
 import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from './fast-lane.js'
+import { DESK_NOTE, deskLane } from './desk-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -2777,6 +2778,10 @@ export function registerIpc(ctx: VaultContext): void {
         const lane = !company && fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
         const laneNote = company ? '' : lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
+        // Everyday desk work (remember, a short question, tidy a folder, a slide deck): the smart tier with every tool kept (desk-lane.ts).
+        const desk = !company && !lane && deskLane(request.message, plainAsk)
+        const deskNote = desk && !shortQuestion(request.message) ? DESK_NOTE : ''
+        if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
@@ -2799,12 +2804,13 @@ export function registerIpc(ctx: VaultContext): void {
             ...(lane ? { modelHint: 'smart' as const } : {}),
             ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
+            ...(desk ? { modelHint: 'smart' as const } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, deskNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
