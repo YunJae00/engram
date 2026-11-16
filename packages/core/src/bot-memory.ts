@@ -58,7 +58,7 @@ export async function loadBotMemory(paths: VaultPaths, botId: string): Promise<B
             typeof f?.id === 'string' && typeof f?.text === 'string' && typeof f?.at === 'string' && typeof f?.touchedAt === 'string' && !notAFact(f.text),
         )
       : []
-    return { facts, turns: typeof raw.turns === 'number' ? raw.turns : 0 }
+    return { facts: settleFacts(facts), turns: typeof raw.turns === 'number' ? raw.turns : 0 }
   } catch {
     return { facts: [], turns: 0 }
   }
@@ -90,8 +90,11 @@ export function memorableTurn(message: string, answer: string): boolean {
 // markup, the job's own name, a question, a label with nothing after it.
 export function notAFact(text: string): boolean {
   const line = text.trim()
-  return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(line) || eitherForm(PROMISE, line)
+  return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(line) || eitherForm(PROMISE, line) || OWN_REPORT.test(line)
 }
+
+// The comet reporting what it just did ("…다른 것을 확인했어요") is about this one turn, not the person.
+const OWN_REPORT = /(확인|저장|완료|수정|생성|작성)(했|하였)(어요|습니다)[\s.!]*$/
 
 // Hangul endings are matched decomposed (ㄹ받침 is its own code point), whole words composed.
 const eitherForm = (pattern: RegExp, line: string) => pattern.test(line) || pattern.test(line.normalize('NFD'))
@@ -103,7 +106,7 @@ const PROMISE = /\u11AF\s?\u1100\u1166(\u110B\u116D)?[\s.!~]*$|드리겠습니�
 // An order ("…포함시킬 것", "…해 주세요") is a standing rule only when the person set that rule:
 // the sentence of theirs that says "앞으로/always" must itself carry most of the rule's words.
 // shortcut: words are compared by their first two Hangul letters (or whole, otherwise), no synonyms; a rule the person worded very differently is dropped.
-const ORDER = /\u11AF\s?\u1100\u1165\u11BA[\s.!]*$|(하세요|주세요|하십시오)[\s.!]*$|^(make sure|be sure|do not|don['’]t|please)\b/i
+const ORDER = /\u11AF\s?\u1100\u1165\u11BA[\s.!]*$|(하세요|주세요|하십시오|해\s?줘요?|지\s?마요?|지\s?마세요)[\s.!]*$|^(make sure|be sure|do not|don['’]t|please)\b/i
 const STANDING = /앞으로|항상|매번|늘\s|언제나|다음부터|이제부터|지금부터|할 때마다|from now on|always|never|every time|whenever/i
 const stems = (text: string) => (text.match(/[\p{L}\p{N}]{2,}/gu) ?? []).map((word) => (/[가-힣]/.test(word) ? word.slice(0, 2) : word.toLowerCase()))
 function personSetRule(line: string, said: string): boolean {
@@ -117,12 +120,69 @@ const unaskedRule = (line: string, said: string) => eitherForm(ORDER, normalizeF
 
 export function normalizeFact(text: string): string {
   return text
-    .replace(/^[-*•\d.)\s]+/, '')
+    // Only a list marker goes: a fact may begin with its own number ("11월 28일 출시").
+    .replace(/^\s*(?:[-*•]\s*|\d+[.)]\s+)+/, '')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[.。!]+$/, '')
     .slice(0, FACT_CHARS)
 }
+
+// A correction replaces. A line may arrive carrying the value it replaces ("…(이전 11월 28일을 대체)",
+// "…이고, 초안의 "TeStCode"는 오타입니다"): that part is cut, a line that is nothing else is dropped, and the
+// value it names takes the older line about the same subject with it. Markers are kept narrow on purpose:
+// a plain negation ("Slack은 쓰지 않는다") or "이전 직장" is an ordinary fact.
+// shortcut: discarded values are read only when quoted, a date, or "X가 아니라"; subjects match by word stems, no synonyms.
+const RESIDUE = /오타\s*(이|임|였|라|입니)|읽기\s*오류|(예전|이전|옛)\s*(\S+\s+)?(값|목표|마감|코드명|날짜|표기)|이전(에|\s*\S+에)\s*(쓰던|써\s?둔|적힌|적어\s?둔|사용하던)|더\s*이상\s*(쓰지|사용하지|유효하지)\s*않|[을를]\s*대체(함|됨|했\S*|합니다|한다)?$|\b(typo|misspell\w*|misread|(old|previous) value|no longer (used|valid|correct)|supersed\w+)\b/i
+const NOT_BUT = /((?:\d+월\s*)?\S+)[이가]\s+아니라,?\s+/g
+const STOP = new Set(['사용', '입니', '합니', '있습', '있어', '이다', '프로', 'the', 'is', 'are', 'of', 'to', 'in', 'on', 'for', 'and'])
+const subject = (text: string) => new Set(stems(text.replace(/["“‘'][^"”’']*["”’']/g, ' ')).filter((stem) => !/^\d/.test(stem) && !STOP.has(stem)))
+const sameSubject = (a: string, b: string) => { const theirs = subject(b); return [...subject(a)].some((stem) => theirs.has(stem)) }
+// Dates as month/day; a line that lost its month to the old list-marker bug ("월 28일 …") matches any month.
+const datesIn = (text: string) => [...text.matchAll(/(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})\/(\d{1,2})(?!\d)|^()월\s*(\d{1,2})일/g)].map((m) => `${Number(m[1] ?? m[3]) || '*'}/${Number(m[2] ?? m[4] ?? m[6])}`)
+const quotedIn = (text: string) => [...text.matchAll(/["“‘']([^"”’']{2,40})["”’']/g)].map((m) => (m[1] ?? '').toLowerCase())
+const loose = (text: string) => normalizeFact(text).replace(/(입니다|이다|이에요|예요)$/, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase()
+
+function withoutResidue(raw: string): { text: string; gone: string[] } {
+  const gone: string[] = []
+  let text = raw.replace(NOT_BUT, (_whole, value: string) => { gone.push(/\d/.test(value) ? value : `"${value.replace(/["“”‘’']/g, '')}"`); return '' })
+  const tail = /^(.*?)\s*\(([^()]*)\)$/.exec(text)
+  const tailResidue = tail?.[2]?.split(/,\s*/).filter((part) => RESIDUE.test(part.trim())) ?? []
+  if (tail && tailResidue.length) { gone.push(...tailResidue); text = tail[1] ?? '' }
+  const clauses = text.split(/[,;]\s+/)
+  const kept = clauses.filter((clause) => !RESIDUE.test(clause.trim()))
+  if (kept.length < clauses.length) { gone.push(...clauses.filter((clause) => !kept.includes(clause))); text = kept.join(', ').replace(/이(고|며)$/, '이다') }
+  return { text: text.trim(), gone }
+}
+
+// Takes one line into the kept ones: returns it without residue (or '' when nothing is left or it only
+// says a kept line again), and removes the kept lines whose value it replaces.
+function settleInto<T extends { text: string }>(kept: T[], raw: string): string {
+  const { text, gone } = withoutResidue(raw)
+  if (!text) return ''
+  if (gone.length) {
+    const named = gone.join('\n')
+    const dates = datesIn(named).filter((date) => !datesIn(text).includes(date))
+    const values = quotedIn(named).filter((value) => !text.toLowerCase().includes(value))
+    for (let i = kept.length - 1; i >= 0; i--) {
+      const old = kept[i]?.text ?? ''
+      const holds = values.some((value) => old.toLowerCase().includes(value)) || datesIn(old).some((date) => dates.some((named) => named === date || (date.startsWith('*/') && named.endsWith(date.slice(1)))))
+      if (holds && sameSubject(text, old)) kept.splice(i, 1)
+    }
+    if (kept.some((one) => loose(one.text) === loose(text))) return ''
+  }
+  return text
+}
+
+export function settleFacts<T extends { text: string }>(facts: readonly T[]): T[] {
+  const kept: T[] = []
+  for (const fact of facts) {
+    const text = settleInto(kept, fact.text)
+    if (text) kept.push(text === fact.text ? fact : { ...fact, text })
+  }
+  return kept
+}
+
 
 // The model's lines, kept only where they are facts: not NONE, not a
 // restatement of something kept, never a secret.
@@ -132,7 +192,7 @@ export function parseFactLines(raw: string, known: readonly string[]): string[] 
   for (const line of raw.split('\n')) {
     const fact = normalizeFact(line)
     if (!fact || /^none$/i.test(fact) || fact.length < 4) continue
-    if (secretsIn(fact).length > 0 || notAFact(fact)) continue
+    if (secretsIn(fact).length > 0 || notAFact(fact) || !withoutResidue(fact).text) continue
     const key = fact.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -152,7 +212,7 @@ export interface MemoryChange {
 }
 
 // A fact said again is the same fact with a fresh clock, never a second line.
-// A changed value is a new line; the old one leaves only through the extractor's "outdated:" line.
+// A changed value is a new line; the old one leaves through the extractor's "outdated:" line or when the new line names what it replaces.
 export function recordFacts(paths: VaultPaths, botId: string, lines: string[], now = new Date()): Promise<MemoryChange> {
   return serialized(memoryPath(paths, botId), async () => {
     const file = await loadBotMemory(paths, botId)
@@ -160,7 +220,7 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
     let added = 0
     let touched = 0
     for (const line of lines) {
-      const text = normalizeFact(line)
+      const text = settleInto(file.facts, normalizeFact(line))
       if (!text) continue
       const same = file.facts.find((f) => normalizeFact(f.text).toLowerCase() === text.toLowerCase())
       if (same) {
@@ -226,9 +286,9 @@ const FACT_LINES_MAX = 6
 export function scopeFacts(raw: string, known: readonly string[], said = ''): { shared: string[]; own: string[]; outdated?: string[] } {
   const written = raw.split('\n').filter((line) => line.trim())
   if (written.length > FACT_LINES_MAX || written.some((line) => !FACT_LINE.test(line) && !SCOPE_MARK.test(line) && !OUTDATED_MARK.test(line))) return { shared: [], own: [] }
-  const knownKeys = new Set(known.map((k) => normalizeFact(k).toLowerCase()))
-  // Only a line that is really kept can be called outdated, and only when this reply keeps its replacement.
-  const outdated = written.filter((line) => OUTDATED_MARK.test(line)).map((line) => normalizeFact(line.replace(OUTDATED_MARK, ''))).filter((line) => knownKeys.has(line.toLowerCase()))
+  // Only a line that is really kept can be called outdated (quotes and spacing aside), and only by a line this reply keeps about the same subject.
+  const named = written.filter((line) => OUTDATED_MARK.test(line)).map((line) => loose(line.replace(OUTDATED_MARK, '')))
+  const candidates = known.map(normalizeFact).filter((line) => named.includes(loose(line)))
   const lines = written.filter((line) => !OUTDATED_MARK.test(line)).map((line) => {
     const mark = SCOPE_MARK.exec(line)
     const text = mark ? line.slice(mark[0].length) : line
@@ -236,7 +296,8 @@ export function scopeFacts(raw: string, known: readonly string[], said = ''): { 
   }).filter((line) => !unaskedRule(line.text, said))
   const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
   const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
-  return { shared, own, ...(outdated.length && shared.length + own.length ? { outdated } : {}) }
+  const outdated = candidates.filter((line) => [...shared, ...own].some((fresh) => sameSubject(withoutResidue(fresh).text, line)))
+  return { shared, own, ...(outdated.length ? { outdated } : {}) }
 }
 
 // Shared and own facts as one list, each line once, the fresher clock kept.
@@ -293,7 +354,8 @@ export function rememberPrompt(exchange: { user: string; answer: string; previou
     'JOB: COMET-REMEMBER',
     'You keep short notes about the person you assist. From the exchange below, write only what is worth remembering in later, unrelated conversations: who they are, how they like to be helped, ongoing work, decisions, dates.',
     'When the person corrects your previous answer or says how they want something done from now on, keep the rule they gave, stated so it applies next time. How to word or format this one answer is not a rule; neither is a suggestion of yours they did not take up.',
-    'A value given only to be repeated, formatted or tested is not a fact. When they change a fact in "Already kept", write the new fact, then a line "- outdated: " with the kept line copied exactly; never keep the value they call wrong.',
+    'A value given only to be repeated, formatted or tested is not a fact. When they change a fact in "Already kept", write the new fact alone, then a line "- outdated: " with the kept line copied exactly; never write the old or wrong value in a fact, not even to say it is wrong or replaced.',
+    'Only what the person told you or decided: what you found in a file, what the app can or cannot do and what you did this turn are not facts about them.',
     'Where their work lives is worth keeping: a page below that held what they asked for, as what it is for plus its address.',
     'Begin each line with "- everyone: " for a fact about the person (who they are, how they like things done, tools, accounts, places, people they work with, standing decisions, ongoing projects with goal and status, e.g. "결정: …", "진행 중인 프로젝트: …") or "- this bot: " only for this assistant\'s own job (its site, its routine details).',
     'Rules: at most 3 lines, each a complete short sentence in their language. Nothing that is already in "Already kept". Nothing about this one request itself. No passwords or keys. If nothing is worth keeping, write only: NONE',

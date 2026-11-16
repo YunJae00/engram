@@ -14,7 +14,7 @@ const FACTS_PER_CALL = 3
 export function keepInMindTool(deps: { keep(lines: string[], scope: 'everyone' | 'this bot'): Promise<void> }): AgentTool {
   return {
     name: 'keep_in_mind',
-    description: 'keep a short fact for later conversations: where something of theirs lives (with its address), how they want a kind of thing done, a standing decision or a date - not this request alone, never a password or key. Facts about the person are for every assistant; add "scope": "this bot" only for this assistant\'s own job (its site, its routine). Args: {"facts": ["one complete sentence in their language"], "scope": "everyone"}',
+    description: 'keep a short fact for later conversations: where something of theirs lives (with its address), how they want a kind of thing done, a standing decision or a date - not this request alone, never a password or key. When a kept fact changes, give only the new fact; never write the old or wrong value in it. Facts about the person are for every assistant; add "scope": "this bot" only for this assistant\'s own job (its site, its routine). Args: {"facts": ["one complete sentence in their language"], "scope": "everyone"}',
     argsSchema: { type: 'object', additionalProperties: false, required: ['facts'], properties: { facts: { type: 'array', minItems: 1, maxItems: FACTS_PER_CALL, items: { type: 'string', minLength: 1, maxLength: FACT_CAP } }, scope: { type: 'string', enum: ['everyone', 'this bot'] } } },
     async run(args, context) {
       context.signal?.throwIfAborted()

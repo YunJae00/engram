@@ -14,6 +14,7 @@ import {
   rememberPrompt,
   renderMemory,
   selectForPrompt,
+  settleFacts,
   type BotMemoryFile,
 } from '../src/bot-memory.js'
 import type { VaultPaths } from '../src/vault.js'
@@ -175,5 +176,79 @@ describe('the profile every comet shares', () => {
     expect(prompt).toContain('Your previous answer: The total is 1,234.56 EUR')
     expect(prompt).toContain('keep the rule they gave')
     expect(rememberPrompt({ user: 'Hi there, my team is Ops', answer: 'Noted.' }, [])).not.toContain('Your previous answer')
+  })
+})
+
+describe('qa146: a correction replaces', () => {
+  const texts = async (paths: VaultPaths, bot: string) => (await loadBotMemory(paths, bot)).facts.map((f) => f.text)
+
+  it('a fact that begins with its own number keeps it', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-n', ['- 11월 28일 출시 목표인 프로젝트를 진행 중', '2. 11/18 10:30 다음 미팅'], T1)
+    expect(await texts(paths, 'bot-n')).toEqual(['11월 28일 출시 목표인 프로젝트를 진행 중', '11/18 10:30 다음 미팅'])
+  })
+
+  it('a line that names what it replaces takes the old line with it and never stores the old value', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-c', ['출시 제품의 코드명은 "북극성"이다', '11월 28일 출시 목표인 프로젝트를 진행 중', '"사용자메모-북극성.txt" 파일은 workspace 폴더에 있다', '킥오프 행사는 11월 28일이다'], T1)
+    await recordFacts(paths, 'bot-c', ['프로젝트 코드명은 "은하호"입니다(2026-11-16 사용자가 지정, 이전에 쓰던 "북극성"을 대체)'], T2)
+    await recordFacts(paths, 'bot-c', ['은하호 프로젝트의 새 출시 목표는 2026년 12월 2일입니다(2026-11-16 사용자가 지정, 이전 11월 28일을 대체)'], T2)
+    await recordFacts(paths, 'bot-c', ['기존 보고서·덱·메모 파일에는 아직 11월 28일(이전 출시 목표)이 기록되어 있어요'], T2)
+    await recordFacts(paths, 'bot-c', ['은하호 프로젝트의 출시일은 2026년 12월 5일입니다(2026-11-16 사용자가 지정, 이전 12월 2일을 대체)'], T2)
+    await recordFacts(paths, 'bot-c', ['할 일: 지민호가 API 문서를 2026년 12월 1일까지 작업합니다'], T2)
+    await recordFacts(paths, 'bot-c', ['할 일: 민호가 API 문서를 2026년 12월 1일까지 작업합니다(담당자 이름은 "민호"가 맞고, 이전에 써둔 "지민호"는 읽기 오류입니다)'], T2)
+    await recordFacts(paths, 'bot-c', ['할 일: 민호가 API 문서를 2026년 12월 3일까지 작업합니다(2026-11-16 사용자가 지정, 이전 12월 1일을 대체)'], T2)
+    // The file with 북극성 in its name and the other event on 11월 28일 are different subjects and stay.
+    expect(await texts(paths, 'bot-c')).toEqual([
+      '"사용자메모-북극성.txt" 파일은 workspace 폴더에 있다',
+      '킥오프 행사는 11월 28일이다',
+      '프로젝트 코드명은 "은하호"입니다',
+      '은하호 프로젝트의 출시일은 2026년 12월 5일입니다',
+      '할 일: 민호가 API 문서를 2026년 12월 3일까지 작업합니다',
+    ])
+  })
+
+  it('a typo correction keeps only the right value', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-t', ['사용자의 팀 이름은 은하수입니다', '다음 스프린트 마감은 11월 25일입니다'], T1)
+    await recordFacts(paths, 'bot-t', ['정식 팀 이름은 은하수이고, 이전 초안에 적힌 "TeStCode"는 오타이물로 사용하지 않습니다', '다음 스프린트 마감은 11월 25일이고, 어떤 메모에 적힌 11월 20일은 지나간 예전 값입니다', 'TeStCode는 오타이므로 사용 금지', '담당은 민재가 아니라 민호다'], T2)
+    const kept = await texts(paths, 'bot-t')
+    expect(kept).toEqual(['사용자의 팀 이름은 은하수입니다', '다음 스프린트 마감은 11월 25일입니다', '정식 팀 이름은 은하수이다', '담당은 민호다'])
+    expect(renderMemory(await loadBotMemory(paths, 'bot-t'), T2)).not.toMatch(/TeStCode|11월 20일|민재/)
+  })
+
+  it('ordinary facts that only look like corrections are left alone', () => {
+    const plain = ['Slack은 쓰지 않는다', '이전 직장은 삼성이다', '앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다', '대체로 아침에 일한다', '오타 검수는 수아가 맡는다', '행사 일정은 11월 20일이다', '행사 일정은 12월 4일이다', '팀 할 일: 유진 랜딩(11/18), 태호 결제(11/17), 리스크 리뷰(담당 미정)']
+    expect(settleFacts(plain.map((text) => ({ text }))).map((f) => f.text)).toEqual(plain)
+  })
+
+  it('the polluted v0.8.146 memory is read back clean', () => {
+    const disk = [
+      '월 28일 출시 목표인 프로젝트를 진행 중 (QA 11/19-21, 매일 오전 10시 트리아지)',
+      '유진·태호·수아와 팀으로 작업',
+      '출시 제품의 코드명은 "북극성"이다',
+      '사용자의 이름은 윤재입니다',
+      '사용자의 팀 이름은 은하수입니다',
+      '다음 스프린트 마감은 11월 25일입니다',
+      '정식 팀 이름은 은하수이고, 이전 초안에 적힌 "TeStCode"는 오타이물로 사용하지 않습니다',
+      '다음 스프린트 마감은 11월 25일이고, 어떤 메모에 적힌 11월 20일은 지나간 예전 값입니다',
+      '프로젝트 코드명은 "은하호"입니다(2026-11-16 사용자가 지정, 이전에 쓰던 "북극성"을 대체)',
+      '은하호 프로젝트의 새 출시 목표는 2026년 12월 2일입니다(2026-11-16 사용자가 지정, 이전 11월 28일을 대체)',
+      '기존 보고서·덱·메모 파일에는 아직 11월 28일(이전 출시 목표)이 기록되어 있어요',
+      '은하호 프로젝트의 출시일은 2026년 12월 5일입니다(2026-11-16 사용자가 지정, 이전 12월 2일을 대체)',
+      '할 일: 지민호가 API 문서를 2026년 12월 1일까지 작업합니다(2026-11-16 사용자가 지정)',
+      '할 일: 민호가 API 문서를 2026년 12월 1일까지 작업합니다(담당자 이름은 "민호"가 맞고, 이전에 써둔 "지민호"는 읽기 오류입니다)',
+      '할 일: 민호가 API 문서를 2026년 12월 3일까지 작업합니다(2026-11-16 사용자가 지정, 이전 12월 1일을 대체)',
+    ]
+    expect(settleFacts(disk.map((text) => ({ text }))).map((f) => f.text)).toEqual([
+      '유진·태호·수아와 팀으로 작업',
+      '사용자의 이름은 윤재입니다',
+      '사용자의 팀 이름은 은하수입니다',
+      '다음 스프린트 마감은 11월 25일입니다',
+      '정식 팀 이름은 은하수이다',
+      '프로젝트 코드명은 "은하호"입니다',
+      '은하호 프로젝트의 출시일은 2026년 12월 5일입니다',
+      '할 일: 민호가 API 문서를 2026년 12월 3일까지 작업합니다',
+    ])
   })
 })

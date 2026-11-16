@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { forgetFactText, loadBotMemory, normalizeFact, PERSON_MEMORY, recordFacts } from './bot-memory.js'
+import { forgetFactText, loadBotMemory, normalizeFact, PERSON_MEMORY, recordFacts, settleFacts } from './bot-memory.js'
 import { renameWithRetry } from './rename-with-retry.js'
 import { readNote, writeNote } from './notes.js'
 import type { Note } from './schema.js'
@@ -40,13 +40,18 @@ async function sync(paths: VaultPaths, now: Date, learned: string[], forgotten: 
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   if (!Array.isArray(previous) || previous.some(line => typeof line !== 'string')) throw new Error('Invalid profile snapshot')
   const removed = new Set(forgotten.map(key))
-  const inNote = new Set(profileLines(note?.body ?? '').map(key))
+  const noteLines = profileLines(note?.body ?? '')
+  const inNote = new Set(noteLines.map(key))
+  // A line that only carries a replaced value, or that a later line replaces, leaves the note as it leaves memory.
+  const settled = settleFacts([...noteLines, ...learned].map(text => ({ text }))).map(fact => fact.text)
+  const stays = new Set(settled.map(key))
+  for (const line of noteLines) if (!stays.has(key(line))) removed.add(key(line))
   // Compare to what was actually published, not an editor-controlled timestamp.
   for (const line of previous) if (!inNote.has(key(line))) removed.add(key(line))
   for (const line of removed) await forgetFactText(paths, PERSON_MEMORY, line)
   const memory = await loadBotMemory(paths, PERSON_MEMORY)
   const known = new Set(memory.facts.map(f => key(f.text)))
-  const additions = [...profileLines(note?.body ?? ''), ...learned].filter(line => !removed.has(key(line)) && !known.has(key(line)))
+  const additions = settled.filter(line => !removed.has(key(line)) && !known.has(key(line)))
   if (additions.length) await recordFacts(paths, PERSON_MEMORY, additions, now)
   const facts = (await loadBotMemory(paths, PERSON_MEMORY)).facts.sort((a, b) => a.at.localeCompare(b.at))
   if (!note && !facts.length) return

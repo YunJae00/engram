@@ -109,4 +109,22 @@ describe('qa145 memory pollution', () => {
   it('names a kept line outdated only when it is really kept', () => {
     expect(scopeFacts('- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다\n- outdated: 없는 줄', ['팀 코드명은 은하수다'])).toEqual({ shared: ['팀 코드명은 노을이다'], own: [], outdated: ['팀 코드명은 은하수다'] })
   })
+
+  it('qa146: an outdated line deletes only what a kept line about the same subject replaces', () => {
+    const deadline = ['다음 스프린트 마감은 11월 25일이다']
+    // The codex repro: an unrelated new fact must not take the deadline with it.
+    expect(scopeFacts('- everyone: 팀 코드명은 은하수다\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline, '우리 팀 코드명은 은하수야.')).toEqual({ shared: ['팀 코드명은 은하수다'], own: [] })
+    expect(scopeFacts('- everyone: 다음 스프린트 마감은 11월 27일이다\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline).outdated).toEqual(deadline)
+    // The kept line copied without its quotes or full stop is still that line.
+    expect(scopeFacts('- everyone: 프로젝트 코드명은 은하호다\n- outdated: 출시 제품의 코드명은 북극성이다.', ['출시 제품의 코드명은 "북극성"이다']).outdated).toEqual(['출시 제품의 코드명은 "북극성"이다'])
+    // A line that only talks about the discarded value is not a replacement, and is not kept.
+    expect(scopeFacts('- everyone: TeStCode는 오타이므로 사용 금지\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline)).toEqual({ shared: [], own: [] })
+  })
+
+  it('qa146: a one-off request and the comet reporting its own work are not facts about the person', () => {
+    const said = '보고서를 워드 파일로 만들어 줘. 관련 앱을 열지 말고 저장만 해줘.'
+    for (const junk of ['파일을 만들 때는 관련 앱을 열지 말고 저장만 해줘', '메모 마감 12/03이 11/28 출시 목표와 다른 것을 확인했어요', '작업 중에는 워드를 열지 마세요'])
+      expect(scopeFacts(`- everyone: ${junk}`, [], said)).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: 파일을 만들 때는 관련 앱을 열지 말고 저장만 해줘', [], '앞으로 파일을 만들 때는 관련 앱을 열지 말고 저장만 해줘').shared).toHaveLength(1)
+  })
 })

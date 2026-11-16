@@ -56,3 +56,23 @@ it('serializes concurrent shared learning without dropping either new fact', asy
   expect(facts).toEqual(['Prefers totals in EUR', 'Reviews invoices on Mondays'])
   expect(profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8')).sort()).toEqual(facts)
 })
+
+it('qa146: a corrected value replaces the old line in the note, and a polluted note is cleaned on the next write', async () => {
+  const paths = await tempPaths()
+  const file = join(paths.notes, `${PROFILE_NOTE_ID}.md`)
+  await syncPersonNote(paths, T1, ['출시 제품의 코드명은 "북극성"이다', '사용자의 팀 이름은 은하수입니다', '11월 28일 출시 목표인 프로젝트를 진행 중'])
+  expect(profileLines(await readFile(file, 'utf8'))).toContain('11월 28일 출시 목표인 프로젝트를 진행 중')
+  // What keep_in_mind wrote on v0.8.146: the new value with the old one named beside it.
+  await syncPersonNote(paths, T2, ['프로젝트 코드명은 "은하호"입니다(2026-11-16 사용자가 지정, 이전에 쓰던 "북극성"을 대체)', '출시일은 12월 5일입니다(이전 11월 28일을 대체)'])
+  const clean = ['사용자의 팀 이름은 은하수입니다', '프로젝트 코드명은 "은하호"입니다', '출시일은 12월 5일입니다']
+  expect(profileLines(await readFile(file, 'utf8'))).toEqual(clean)
+  expect((await loadBotMemory(paths, PERSON_MEMORY)).facts.map((f) => f.text)).toEqual(clean)
+  // Residue already published by the old version leaves the note and does not come back.
+  const body = await readFile(file, 'utf8')
+  await writeFile(file, `${body.trimEnd()}\n- 정식 팀 이름은 은하수이고, 이전 초안에 적힌 "TeStCode"는 오타이물로 사용하지 않습니다\n- 기존 보고서에는 아직 11월 28일(이전 출시 목표)이 기록되어 있어요\n`)
+  await syncPersonNote(paths, T3)
+  await syncPersonNote(paths, T3)
+  const after = await readFile(file, 'utf8')
+  expect(after).not.toMatch(/TeStCode|11월 28일|북극성/)
+  expect(profileLines(after)).toEqual([...clean, '정식 팀 이름은 은하수이다'])
+})
