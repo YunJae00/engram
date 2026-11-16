@@ -257,18 +257,23 @@ describe('team hire tools', () => {
     void call
   })
 
-  it('carries every member\'s link into the one merged table answer, and leaves an answer that already cites them alone', () => {
+  it('carries every member\'s link into its own row of the one merged table, and leaves an answer that already cites them alone', () => {
     const member = (id: string, role: string, sources: string[] | undefined, state = 'released') => ({ id, role, sources, state, parentId: null, depth: 1, brief: '', sessionKey: id, hiredAt: '' }) as never
     const members = [member('m1', '서울 날씨', ['https://weather.naver.com/today/09']), member('m2', '부산 날씨', ['https://search.naver.com/search.naver?query=부산 날씨']), member('m3', '제주 날씨', ['https://weather.naver.com/today/14']), member('m4', '대구 날씨', undefined), member('m5', '광주 날씨', ['https://failed.example'], 'failed')]
     const table = '세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | 네이버 날씨 검색 |\n| 제주 | 흐림 | 15.6°C | 네이버 날씨 검색 |'
     const cited = citeMembers(table, members, true)
-    // The table is untouched and still the only one; the two rows that named a site alone get their links in one closing line.
-    expect(cited.startsWith(table)).toBe(true)
-    expect(cited.match(/^\|---/gm)).toHaveLength(1)
-    expect(cited.slice(table.length)).toBe('\n\n출처: [부산 날씨](https://search.naver.com/search.naver?query=부산%20날씨) · [제주 날씨](https://weather.naver.com/today/14)')
-    for (const url of ['https://weather.naver.com/today/09', 'https://search.naver.com/search.naver?query=부산%20날씨', 'https://weather.naver.com/today/14']) expect(cited.split(url)).toHaveLength(2)
+    // grokbar B6 r2: the link goes into the member's own row (a closing line left 부산 and 제주 with a site name alone). Still one table, no closing line.
+    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
+    for (const row of cited.split('\n').slice(4)) expect(row).toMatch(/\]\(https:\/\//)
+    expect(citeMembers(cited, members, true)).toBe(cited)
     expect(cited).not.toContain('failed.example')
-    expect(citeMembers(cited.replace('%20', ' '), members.slice(0, 1), true)).toBe(cited.replace('%20', ' '))
+    // No source column: the row keeps its cells and gains the link. A row named with its employee, an empty source cell.
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
+    const staff = [member('m1', '김대리', ['https://notion.com/releases']), member('m2', '박사원', ['https://slack.com/changelog'])]
+    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | - |\n| 슬랙(박사원) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | [김대리](https://notion.com/releases) |\n| 슬랙(박사원) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
+    // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line.
+    const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
+    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [서울 날씨](https://weather.naver.com/today/09) · [부산 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
     expect(citeMembers(table, members.slice(0, 1), true)).toBe(table)
     expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [서울 날씨](https://weather.naver.com/today/09)')
     expect(citeMembers('', members, true)).toBe('')

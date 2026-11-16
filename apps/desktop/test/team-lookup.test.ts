@@ -146,8 +146,9 @@ it('hands the lead each member\'s pages and does not wait for a straggler past t
   ])
   const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 흐림 13도 | 네이버 날씨 |\n| 부산 | 비 14도 | 네이버 날씨 |\n| 제주 | 흐림 13도 | 네이버 날씨 |'
   const cited = await team.cited('bot-b1', table)
-  expect(cited.startsWith(table)).toBe(true)
-  for (const city of ['서울', '부산', '제주']) expect(cited).toContain(`[${city} 날씨](${address(`${city} 날씨`)})`)
+  // grokbar B6 r2: each row carries its own member's link; no line is added under the table.
+  expect(cited.split('\n')).toHaveLength(5)
+  for (const city of ['서울', '부산', '제주']) expect(cited.split('\n').find(row => row.includes(city))).toContain(`[네이버 날씨](${address(`${city} 날씨`)})`)
   // A thread with no team on its task is answered as written.
   expect(await team.cited('bot-other', table)).toBe(table)
 })

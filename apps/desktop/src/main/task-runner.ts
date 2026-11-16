@@ -70,8 +70,10 @@ const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 // The team check is one more full lead turn. It is skipped only for a words-only report whose members the lead all reviewed and that
 // names its sources (perf146: a weather lookup paid 20-60 s for it). Little budget left is no reason to skip: the check starts, and
 // one that then runs out leaves the delivered report as the result (teamKept below).
+// grokbar B6 r2: a team of lookup members only read and reported; they made nothing a check could reopen. When none of them reached a
+// page the report had no address, and the check ran 90 s after the answer and posted nothing (R1, R2, T1). Such a team is never checked.
 export const teamCheckDue = (task: DelegatedTask, answer: string): boolean =>
-  !(!teamReviewIssue(task) && !savedFile(answer) && /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer))
+  !(!savedFile(answer) && (task.team?.members.every(m => m.lookup) || !teamReviewIssue(task) && /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer)))
 const WORTH_KEEPING_STEPS = 3
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.

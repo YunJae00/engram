@@ -6,7 +6,7 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -2295,7 +2295,7 @@ export function registerIpc(ctx: VaultContext): void {
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(!request.attachments?.length && !turn?.context && fastLane(request.message, true) ? { fallback: laneFirstLine(threadKorean(request.message, request.history ?? [])) } : {}), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
+    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { whole: quickQuestion(request.message) }), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2680,7 +2680,7 @@ export function registerIpc(ctx: VaultContext): void {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
       releaseWallHold(channel)
-      // grokbar Q1: a greeting or thanks is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
+      // grokbar Q1, Q2: a greeting, thanks or a short general-knowledge question is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
       const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)
       if (signal.aborted) return
       if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }

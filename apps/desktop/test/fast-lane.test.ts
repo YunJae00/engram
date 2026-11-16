@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -89,13 +89,27 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(laneToday(new Date(2026, 10, 16, 21))).toContain('Today is 2026-11-16 (Monday).')
   expect(LANE_NOTE).toContain('[site name](address)')
   expect(LANE_NOTE).toContain('never a site name alone')
-  expect(laneFirstLine(true)).toBe('바로 찾아볼게요.')
-  expect(laneFirstLine(true)).not.toMatch(/[A-Za-z]/)
+  // grokbar B6 r2 (GROKBOT rule 1): the first line names the first concrete step; "바로 찾아볼게요." named none.
+  expect(laneFirstLine('엔비디아 오늘 주가 알려줘', true)).toBe('지금 시세 확인할게요.')
+  expect(laneFirstLine('오늘 서울 날씨 어때?', true)).toBe('지금 날씨 확인할게요.')
+  expect(laneFirstLine('원달러 환율 지금 얼마야?', true)).toBe('지금 환율 확인할게요.')
+  expect(laneFirstLine('오늘 AI 뉴스 5개 찾아줘', true)).toBe('최신 뉴스 검색할게요.')
+  expect(laneFirstLine('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', true)).toBe('봇들한테 나눠 맡길게요.')
+  expect(laneFirstLine('아이폰 17 출시일 조사해줘', true)).toBe('웹에서 검색해 볼게요.')
+  expect(laneFirstLine("what's the weather in Seoul?", false)).toBe('Checking the weather now.')
+  for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길)/) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` :')
   // A lookup cut at its limit is delivered as the answer it wrote (no English wrapper, no auto-continue), then every member's link is added.
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
   expect(ipc).toContain('result.answer = await team.cited(channel, result.answer)')
   expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
-  expect(ipc).toContain('fastLane(request.message, true) ? { fallback: laneFirstLine(')
+  expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
+  expect(ipc).toContain(': { whole: quickQuestion(request.message) }')
+})
+
+// grokbar B6 r2 Q2: "1년은 몇 초야?" had its first text at 2.7-4.3 s (the work model's first word).
+it('lets the quick voice answer only a short question that needs nothing about the person, the thread, the company or the present', () => {
+  for (const message of ['1년은 몇 초야?', '1마일은 몇 km야?', '물의 끓는점은 몇 도야?', 'How many seconds are in a year?']) expect(quickQuestion(message), message).toBe(true)
+  for (const message of ['나 누구랑 일하지?', '내 일정 뭐 있어?', '김대리 누구야?', '다들 뭐하고 있어?', '원달러 환율 지금 얼마야?', '오늘 서울 날씨 어때?', '그럼 2년은?', '민호 전화번호 뭐야?', '이 파일 뭐야?', '오늘 며칠이야?', '1234 곱하기 5678은?', '1년은 몇 초야', '회의 늦어서 죄송합니다를 영어로 써줘', 'who is on my team?', ...LANE]) expect(quickQuestion(message), message).toBe(false)
 })

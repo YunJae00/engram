@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, FIRST_LINE_BUDGET_MS, firstLineCarried, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -113,66 +113,95 @@ describe('instant first line', () => {
   })
 
   // grokbar B6: L1/L3 got NONE (first text 12.7 s), R2/R3/T2 missed the budget (first text 4.4-128 s).
-  it('opens a lookup turn with its fallback line when the small model says NONE, misses the budget or fails; its own line wins when in time', async () => {
-    const start = (engine: unknown, fallback?: string, patch: Partial<FirstLineAsk> = {}) => {
+  // r2: the lookup's line names its first step and is shown at once; the small model is not asked, so it cannot restate the request or be late.
+  it('opens a lookup turn with its own first line at once, without asking the small model', async () => {
+    const start = (engine: unknown, line?: string, patch: Partial<FirstLineAsk> = {}) => {
       const show = vi.fn()
-      beginFirstLine({ ...ask({ message: '오늘 서울 날씨 어때?', ...patch }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, ...(fallback ? { fallback } : {}) })
+      beginFirstLine({ ...ask({ message: '오늘 서울 날씨 어때?', ...patch }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, ...(line ? { line } : {}) })
       return show
     }
-    let show = start(voice(later('NONE', 600)), '바로 찾아볼게요.')
-    firstLineReady('bot-1')
-    await vi.advanceTimersByTimeAsync(600)
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 찾아볼게요.')
-    expect(firstLineNote('bot-1')).toContain('바로 찾아볼게요.')
-    expect(withFirstLine('bot-1', '서울은 13도예요.')).toBe('바로 찾아볼게요.\n\n서울은 13도예요.')
-
-    endFirstLine('bot-1')
-    show = start(voice(later('서울 날씨를 알려드릴게요.', 5000)), '바로 찾아볼게요.')
-    firstLineReady('bot-1')
-    await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS - 1)
-    expect(show).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1)
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 찾아볼게요.')
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(show).toHaveBeenCalledOnce()
-
-    endFirstLine('bot-1')
-    show = start(voice(() => Promise.reject(new Error('down'))), '바로 찾아볼게요.')
-    firstLineReady('bot-1')
-    await vi.advanceTimersByTimeAsync(0)
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 찾아볼게요.')
-
-    endFirstLine('bot-1')
-    show = start(voice(later('서울 날씨를 알려드릴게요.', 300)), '바로 찾아볼게요.')
-    firstLineReady('bot-1')
-    await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
-    expect(show).toHaveBeenCalledExactlyOnceWith('서울 날씨를 알려드릴게요.')
+    for (const live of [voice(later('NONE', 600)), voice(later('서울 날씨를 알려드릴게요.', 300)), voice(() => Promise.reject(new Error('down')))]) {
+      endFirstLine('bot-1')
+      const show = start(live, '지금 날씨 확인할게요.')
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(show).toHaveBeenCalledExactlyOnceWith('지금 날씨 확인할게요.')
+      expect(live.quick).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toContain('지금 날씨 확인할게요.')
+      expect(withFirstLine('bot-1', '서울은 13도예요.')).toBe('지금 날씨 확인할게요.\n\n서울은 13도예요.')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(show).toHaveBeenCalledOnce()
+    }
 
     // The answer already spoke: nothing is put in front of it. The request not yet in the thread: the line waits for it.
     endFirstLine('bot-1')
-    show = start(voice(later('NONE', 600)), '바로 찾아볼게요.')
-    firstLineReady('bot-1')
+    let show = start(voice(later('NONE', 600)), '지금 날씨 확인할게요.')
     firstLineSpoke('bot-1')
+    firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
     expect(show).not.toHaveBeenCalled()
     endFirstLine('bot-1')
-    show = start(voice(later('NONE', 600)), '바로 찾아볼게요.')
+    show = start(voice(later('NONE', 600)), '지금 날씨 확인할게요.')
     await vi.advanceTimersByTimeAsync(600)
     expect(show).not.toHaveBeenCalled()
     firstLineReady('bot-1')
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 찾아볼게요.')
+    expect(show).toHaveBeenCalledExactlyOnceWith('지금 날씨 확인할게요.')
 
-    // No fallback (not a lookup), a greeting, a stopped turn: silent as before.
+    // No line (not a lookup), a greeting, another brain, a turn that is not the person's own: silent as before.
     endFirstLine('bot-1')
     show = start(voice(later('NONE', 600)))
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
     expect(show).not.toHaveBeenCalled()
-    endFirstLine('bot-1')
-    show = start(voice(later('NONE', 600)), '바로 찾아볼게요.', { message: '안녕' })
+    for (const [engine, patch] of [[voice(later('NONE', 600)), { message: '안녕' }], [{ id: 'mock', quick: async () => 'x' }, {}], [voice(later('NONE', 600)), { interactive: false }]] as const) {
+      endFirstLine('bot-1')
+      show = start(engine, '지금 날씨 확인할게요.', patch)
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
+      expect(show).not.toHaveBeenCalled()
+    }
+  })
+
+  // grokbar B6 r2 Q2: "1년은 몇 초야?" had no text for 2.7-4.3 s. The quick voice gives the whole answer; NONE, a miss or a failure leaves it to the main turn.
+  it('answers a short general-knowledge question whole from the quick voice, and leaves it to the main turn on NONE', async () => {
+    const start = (engine: unknown, patch: Partial<FirstLineAsk> = {}, whole = true) => {
+      const show = vi.fn()
+      beginFirstLine({ ...ask({ message: '1년은 몇 초야?', ...patch }), engine: async () => engine as never, workdir: WORKDIR, signal: new AbortController().signal, show, whole })
+      return show
+    }
+    const live = voice(later('1년은 31,536,000초예요.', 900))
+    let show = start(live)
     firstLineReady('bot-1')
-    await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
+    const reply = smallTalkAnswer('bot-1')
+    await vi.advanceTimersByTimeAsync(900)
+    expect(await reply).toBe('1년은 31,536,000초예요.')
+    expect(live.quick.mock.calls[0]![0]).toBe(quickAnswerPrompt('1년은 몇 초야?', true))
+    expect(quickAnswerPrompt('1년은 몇 초야?', true)).toContain('reply with exactly NONE')
+    // The answer is the turn's one bubble: never also a first line, and nothing for the main turn to avoid repeating.
     expect(show).not.toHaveBeenCalled()
+    expect(firstLineNote('bot-1')).toBe('')
+    for (const engine of [voice(async () => 'NONE'), voice(later('31,536,000초예요.', 5000)), voice(async () => { throw new Error('down') }), voice(async () => '여러 줄\n답')]) {
+      endFirstLine('bot-1')
+      show = start(engine)
+      firstLineReady('bot-1')
+      const none = smallTalkAnswer('bot-1')
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_BUDGET_MS)
+      expect(await none).toBeUndefined()
+      expect(show).not.toHaveBeenCalled()
+    }
+    // Not marked whole (a job, a question about the person): the ordinary first line, and the main turn does not wait.
+    endFirstLine('bot-1')
+    show = start(voice(later('매출을 표로 정리해드릴게요.', 300)), { message: '지난 분기 매출 보고서를 표로 정리해줘' }, false)
+    firstLineReady('bot-1')
+    expect(await smallTalkAnswer('bot-1')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(show).toHaveBeenCalledExactlyOnceWith('매출을 표로 정리해드릴게요.')
+    // A turn that is not the person's own fresh one asks nobody.
+    endFirstLine('bot-1')
+    const idle = voice(async () => '31,536,000초예요.')
+    start(idle, { followUp: true })
+    expect(await smallTalkAnswer('bot-1')).toBeUndefined()
+    expect(idle.quick).not.toHaveBeenCalled()
   })
 
   it('never holds the main turn: the note is read without waiting and the turn races the line', () => {

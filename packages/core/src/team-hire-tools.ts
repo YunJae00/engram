@@ -131,13 +131,33 @@ export function keepSources(tool: AgentTool, seen: Set<string>): AgentTool {
 // A page of its own comes before the results page it was found on.
 const sourcesOf = (read: readonly string[]): string[] => [...new Set(read)].sort((a, b) => Number(SEARCH_PAGE.test(a)) - Number(SEARCH_PAGE.test(b))).slice(0, SOURCES_MAX)
 
-// The merged answer names every member's source as a link: the lead is told to put it in the member's row, and a member whose pages
-// are all missing from the answer gets them in one closing line, so no row is left with a site name alone.
+// The merged answer names every member's source as a link, in that member's own row. The lead is told to put it there; a row it left
+// with a site name alone ("네이버 날씨 검색") is repaired here: the row is matched to the one member whose role or brief names its first
+// cell, and its last cell becomes the link (a source column) or gains one. A member no row could take gets a closing line instead.
+// grokbar B6 r2: the closing line alone left the 부산 and 제주 rows of R1 without a link.
+const TABLE_RULE = /^\s*\|[\s:|-]+\|\s*$/
 export function citeMembers(answer: string, members: readonly TeamMember[], korean = false): string {
   if (!answer.trim()) return answer
-  const missing = members.filter(m => m.sources?.length && m.state !== 'failed' && !m.sources.some(url => answer.includes(url)))
-  if (!missing.length) return answer
-  return `${answer.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${missing.map(m => `[${m.role.replace(/[[\]]/g, '')}](${m.sources![0]!.replace(/\)/g, '%29').replace(/ /g, '%20')})`).join(' · ')}`
+  const cited = members.filter(m => m.sources?.length && m.state !== 'failed')
+  const href = (m: TeamMember): string => m.sources![0]!.replace(/\)/g, '%29').replace(/ /g, '%20')
+  const lines = answer.split('\n')
+  let sourceColumn = false
+  for (const [i, line] of lines.entries()) {
+    if (!/^\s*\|.*\|\s*$/.test(line) || TABLE_RULE.test(line)) continue
+    const cells = line.trim().slice(1, -1).split('|').map(cell => cell.trim())
+    if (TABLE_RULE.test(lines[i + 1] ?? '')) { sourceColumn = /출처|링크|source|link/i.test(cells.at(-1)!); continue }
+    if (/https?:\/\//.test(line)) continue
+    const words = cells[0]!.replace(/[*_`]/g, '').split(/[\s(),/·]+/).filter(word => word.length >= 2)
+    const scored = cited.map(m => ({ m, hits: words.filter(word => `${m.role} ${m.brief}`.includes(word)).length })).filter(one => one.hits).sort((x, y) => y.hits - x.hits)
+    if (!scored.length || scored[1]?.hits === scored[0]!.hits) continue
+    const own = scored[0]!.m, last = cells.at(-1)!.replace(/[[\]]/g, '')
+    cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || own.role.replace(/[[\]]/g, '')}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+    lines[i] = `| ${cells.join(' | ')} |`
+  }
+  const fixed = lines.join('\n')
+  const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)))
+  if (!missing.length) return fixed
+  return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${missing.map(m => `[${m.role.replace(/[[\]]/g, '')}](${href(m)})`).join(' · ')}`
 }
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {

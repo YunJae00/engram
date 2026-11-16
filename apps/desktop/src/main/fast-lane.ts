@@ -21,8 +21,16 @@ export const LANE_SOLO_CALLS = 4
 export const LANE_SOLO_SOFT_MS = 12_000
 export const LANE_TEAM_CALLS = 8
 export const teamAsk = (message: string): boolean => TEAM.test(message)
-// The line a lookup turn opens with when the quick voice gives none in time.
-export const laneFirstLine = (korean: boolean): string => korean ? '바로 찾아볼게요.' : 'Looking it up now.'
+// The line a lookup turn opens with, at once and with no model: it names the first step ("지금 시세 확인할게요.").
+// grokbar B6 r2: "바로 찾아볼게요." named no step, and the quick voice's line restated the request 0.6-1.5 s later.
+const FIRST_STEPS: [RegExp, string, string][] = [
+  [TEAM, '봇들한테 나눠 맡길게요.', 'Splitting this across the team now.'],
+  [/날씨|기온|강수|비\s*(와|오|올)|눈\s*(와|오|올)|미세\s*먼지|\b(weather|forecast)\b/i, '지금 날씨 확인할게요.', 'Checking the weather now.'],
+  [/환율|\bexchange rate\b/i, '지금 환율 확인할게요.', 'Checking the exchange rate now.'],
+  [/주가|주식|시세|\b(stock|share) price\b/i, '지금 시세 확인할게요.', 'Checking the price now.'],
+  [/뉴스|\bnews\b/i, '최신 뉴스 검색할게요.', 'Searching the latest news now.'],
+]
+export const laneFirstLine = (message: string, korean: boolean): string => { const step = FIRST_STEPS.find(([words]) => words.test(message)); return korean ? step?.[1] ?? '웹에서 검색해 볼게요.' : step?.[2] ?? 'Searching the web now.' }
 // grokbar L1: "오늘 서울 날씨" was answered without the date it was for.
 export const laneToday = (now = new Date()): string => `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}). An answer about today, now or a coming day says the date it is for, written the way the person writes dates.`
 export const SMALL_TALK_NOTE = 'This message is small talk: reply in one or two short sentences, with no tools.'
@@ -30,6 +38,12 @@ export const SMALL_TALK_NOTE = 'This message is small talk: reply in one or two 
 export const SHORT_QUESTION_NOTE = 'This is a short question: give the answer first, in one to three sentences, with exact figures written out in digits. No other variants, background or tips unless they ask.'
 // One short line that ends as a question; a short job ("메일 써줘") is not one.
 export const shortQuestion = (message: string): boolean => { const text = message.trim(); return [...text].length <= 40 && !text.includes('\n') && /[?？]$/.test(text) }
+
+// grokbar B6 r2 Q2: "1년은 몇 초야?" waited 2.7-4.3 s for the work model's first word. A short question that needs nothing about the person,
+// the thread, the company or the present is answered whole by the quick voice (first-line.ts), which still says NONE when unsure.
+// shortcut: a closed word list; a question it wrongly keeps out costs only speed, one it wrongly lets in rests on the voice's NONE.
+const NEEDS_CONTEXT = /(^|\s)(나|난|내|내가|나는|나한테|저|전|제|제가|저는|우리|너|넌|네가|니가|당신|그럼|그러면|그거|그건|그게|이거|이건|이게|저거|아까|방금|다시|또|더)(?=\s|[?？]|$)|누구|누가|다들|직원|사원|대리|과장|차장|부장|팀|봇|님|번호|주소|연락처|생일|오늘|지금|현재|요즘|최근|올해|내일|어제|이번|다음|언제|몇\s*시|며칠|요일|어디|\b(i|me|my|mine|we|our|you|your|it|that|this|these|those|he|she|they|who|whose|where|when|today|now|current|currently|latest|recent|tomorrow|yesterday|again|more|team|bot)\b/i
+export const quickQuestion = (message: string): boolean => shortQuestion(message) && (message.match(/\d{3,}/g) ?? []).length < 2 && ![NEEDS_CONTEXT, LOOKUP, OTHER_WORK, TARGET, TEAM].some(words => words.test(message))
 
 // plain: an ordinary first turn by the person on a Claude brain - no attachment, no resumed or scheduled work, no check turn.
 export function fastLane(message: string, plain: boolean): boolean {
