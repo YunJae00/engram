@@ -44,8 +44,11 @@ async function openChat(page: Page, chatId: string): Promise<void> {
 
 async function openSettings(page: Page): Promise<void> {
   // The sheet reloads after a language switch; its overlay is there before its rows are.
-  if (!await page.locator('.settings-overlay').isVisible()) await page.getByTestId('activity-settings').click()
-  await expect(page.getByTestId('settings-view')).toBeVisible()
+  // The check and the click retry as one unit: the overlay can come back between them and swallow the click.
+  await expect(async () => {
+    if (!await page.locator('.settings-overlay').isVisible()) await page.getByTestId('activity-settings').click({ timeout: 1000 })
+    await expect(page.getByTestId('settings-view')).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 15000 })
 }
 
 async function savedLanguage(profile: string): Promise<unknown> {
