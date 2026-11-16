@@ -346,16 +346,13 @@ it('skips the team check when every member was reviewed and the report names its
 it('keeps the team check for a report without sources, a member not reviewed, or a handed-in file', async () => {
   const reviewed = { team: { members: [{ state: 'released', review: { ok: true, note: '' }, role: 'a', id: 'm1' }] } } as never
   const open = { team: { members: [{ state: 'done', role: 'a', id: 'm1' }] } } as never
-  expect(teamCheckDue(reviewed, sourced, 100_000)).toBe(false)
-  expect(teamCheckDue(reviewed, '서울 12도\n\n**출처**: 기상청 날씨누리', 100_000)).toBe(false)
-  expect(teamCheckDue(reviewed, '서울 12도예요.', 100_000)).toBe(true)
-  expect(teamCheckDue(open, sourced, 100_000)).toBe(true)
-  expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`, 100_000)).toBe(true)
-  expect(teamCheckDue(reviewed, '서울 12도예요.', 10_000)).toBe(false)
-  // perf146 r2: little budget left never excuses a member nobody reviewed or a handed-in file nobody read.
-  expect(teamCheckDue(open, '서울 12도예요.', 10_000)).toBe(true)
-  expect(teamCheckDue(open, sourced, 10_000)).toBe(true)
-  expect(teamCheckDue(reviewed, '[표](engram-artifact:weather.md)', 10_000)).toBe(true)
+  expect(teamCheckDue(reviewed, sourced)).toBe(false)
+  expect(teamCheckDue(reviewed, '서울 12도\n\n**출처**: 기상청 날씨누리')).toBe(false)
+  expect(teamCheckDue(reviewed, '서울 12도예요.')).toBe(true)
+  expect(teamCheckDue(open, sourced)).toBe(true)
+  expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`)).toBe(true)
+  expect(teamCheckDue(open, '서울 12도예요.')).toBe(true)
+  expect(teamCheckDue(reviewed, '[표](engram-artifact:weather.md)')).toBe(true)
 })
 
 it('ends done with the delivered report when the team check runs out of the task budget', async () => {
@@ -370,11 +367,19 @@ it('ends done with the delivered report when the team check runs out of the task
   expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
 })
 
-it('does not start a team check the budget left cannot finish', async () => {
-  const t = await setup(async () => { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: TASK_TOKEN_BUDGET - 10_000, trail: hired } }, false)
+// perf146 r3: with under 45,000 tokens left a source-free report skipped its check and was called done. Little budget is no reason to skip:
+// the check starts, and when it then runs out of the budget the delivered report stands.
+it('still starts the team check of a report without sources when little budget is left', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: TASK_TOKEN_BUDGET - 10_000, trail: hired } }
+    return budgetStop
+  }, false)
   await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
-  expect(t.sent).toHaveLength(1)
-  expect(await teamEnd(t)).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[1]?.extra?.verification).toBeTruthy()
+  const task = await teamEnd(t)
+  expect(task).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(task.log.at(-1)!.line).toBe('Done; the team check stopped at its time or token budget.')
   expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
 })
 
