@@ -37,6 +37,8 @@ describe('keep_in_mind scope', () => {
     expect(keep).toHaveBeenLastCalledWith(['포털은 portal.example 이다'], 'this bot')
     await tool.run({ facts: ['다른 값'], scope: 'nobody' }, { task: '' })
     expect(keep).toHaveBeenLastCalledWith(['다른 값'], 'everyone')
+    await tool.run({ facts: ['프로젝트 코드명은 은하호다'], replaces: ['북극성'] }, { task: '' })
+    expect(keep).toHaveBeenLastCalledWith(['프로젝트 코드명은 은하호다'], 'everyone', ['북극성'])
     await expect(tool.run({ facts: ['Use the key sk-abcdefghijklmnopqrstuvwxyz123456'] }, { task: '' })).rejects.toThrow('key')
   })
 })
@@ -119,6 +121,28 @@ describe('qa145 memory pollution', () => {
     expect(scopeFacts('- everyone: 프로젝트 코드명은 은하호다\n- outdated: 출시 제품의 코드명은 북극성이다.', ['출시 제품의 코드명은 "북극성"이다']).outdated).toEqual(['출시 제품의 코드명은 "북극성"이다'])
     // A line that only talks about the discarded value is not a replacement, and is not kept.
     expect(scopeFacts('- everyone: TeStCode는 오타이므로 사용 금지\n- outdated: 다음 스프린트 마감은 11월 25일이다', deadline)).toEqual({ shared: [], own: [] })
+  })
+
+  it('qa146 r2: an outdated line is honoured only for the same property, not for another event of the same project', () => {
+    const kickoff = ['은하호 프로젝트의 킥오프 일정은 11월 28일이다']
+    expect(scopeFacts('- everyone: 은하호 프로젝트의 출시일은 12월 5일이다\n- outdated: 은하호 프로젝트의 킥오프 일정은 11월 28일이다', kickoff)).toEqual({ shared: ['은하호 프로젝트의 출시일은 12월 5일이다'], own: [] })
+    expect(scopeFacts('- everyone: 은하호 프로젝트의 킥오프 일정은 12월 1일이다\n- outdated: 은하호 프로젝트의 킥오프 일정은 11월 28일이다', kickoff).outdated).toEqual(kickoff)
+  })
+
+  it('qa146 r2: what the comet found out about the app or a file is not a fact about the person', () => {
+    expect(scopeFacts('- everyone: 앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다\n- everyone: 사용자메모 파일은 workspace 폴더에 있다', [], '파일을 만들어 줘')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: 11월 지출 합계는 120만원이다', [], '파일을 만들어 줘')).toEqual({ shared: [], own: [] })
+    // What the person said themselves stays, a file they placed included.
+    const told: [string, string][] = [
+      ['사용자의 팀 이름은 은하수입니다', '기억해 줘. 우리 팀 이름은 은하수야.'],
+      ['다음 스프린트 마감은 11월 25일이다', '스프린트 마감이 11월 25일로 바뀌었어'],
+      ['프로젝트 코드명은 은하호다', '코드명은 은하호로 바꿨어'],
+      ['은하호 프로젝트의 출시일은 12월 5일이다', '아니, 출시는 12월 5일이야'],
+      ['할 일: 민호가 API 문서를 12월 3일까지 작업합니다', '민호 API 문서 마감은 12월 3일이야'],
+      ['사용자메모 파일은 workspace 폴더에 둔다', '사용자메모 파일은 항상 workspace 폴더에 둬'],
+      ['Prefers totals in EUR', '합계는 유로로 보여 줘'],
+    ]
+    for (const [fact, said] of told) expect(scopeFacts(`- everyone: ${fact}`, [], said).shared).toEqual([fact])
   })
 
   it('qa146: a one-off request and the comet reporting its own work are not facts about the person', () => {

@@ -1,4 +1,5 @@
-import { installSkill, keepHowToTool, keepInMindTool, loadBots, readBotTranscript, readSkillsLedger, recordFacts, searchChatsTool, skillContentHash, skillSlug, syncPersonNote, withoutSecrets, type AgentTool, type VaultPaths } from 'core'
+import { forgetFactText, installSkill, keepHowToTool, keepInMindTool, loadBotMemory, loadBots, PERSON_MEMORY, readBotTranscript, readSkillsLedger, recordFacts, searchChatsTool, skillContentHash, skillSlug, syncPersonNote, withoutSecrets, type AgentTool, type VaultPaths } from 'core'
+import { replacedLines } from 'core/src/bot-memory'
 import { broadcast } from './engine-health.js'
 
 // The comet's own keeping: facts go to the person note every conversation
@@ -9,10 +10,14 @@ export function learningTools(paths: VaultPaths, channel: string, said: () => st
   const botId = channel.startsWith('bot-') ? channel.slice('bot-'.length) : ''
   return [
     keepInMindTool({
-      keep: async (facts, scope) => {
+      keep: async (facts, scope, replaces = []) => {
         const clean = facts.map(fact => withoutSecrets(fact, said()))
-        if (scope === 'this bot' && botId) await recordFacts(paths, botId, clean)
-        else await syncPersonNote(paths, new Date(), clean)
+        const own = scope === 'this bot' && !!botId
+        const gone = replaces.length ? replacedLines((await loadBotMemory(paths, own ? botId : PERSON_MEMORY)).facts.map(fact => fact.text), clean, replaces) : []
+        if (own) {
+          for (const line of gone) await forgetFactText(paths, botId, line)
+          await recordFacts(paths, botId, clean)
+        } else await syncPersonNote(paths, new Date(), clean, gone)
         if (botId) broadcast({ type: 'comet:remembered', channel, botId, added: facts.length, touched: 0 })
       },
     }),

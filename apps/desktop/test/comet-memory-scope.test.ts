@@ -21,7 +21,8 @@ async function tempPaths(): Promise<VaultPaths> {
   return paths
 }
 const engineSaying = (text: string) => ({ id: 'claude', async *run() { yield { type: 'result', text } } }) as unknown as Engine
-const remember = (paths: VaultPaths, text: string) => rememberTurn({ engine: engineSaying(text), workdir: paths.workspace as never, paths, botId: 'atlas', channel: 'bot-atlas', message: '배포 절차가 어떻게 되나요?', answer: '목요일 오후입니다.' })
+// The person said what the extractor wrote down, unless a test gives another message.
+const remember = (paths: VaultPaths, text: string, message = text) => rememberTurn({ engine: engineSaying(text), workdir: paths.workspace as never, paths, botId: 'atlas', channel: 'bot-atlas', message, answer: '목요일 오후입니다.' })
 const texts = async (paths: VaultPaths, id: string) => (await loadBotMemory(paths, id)).facts.map((f) => f.text)
 const noteLines = async (paths: VaultPaths) => profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8'))
 const KOREAN = ['보고서는 표로 받는 걸 좋아한다', '결정: 배포는 목요일 오후에만 한다', '진행 중인 프로젝트: Falcon 이전, 12월 말 완료 목표']
@@ -76,6 +77,22 @@ it('forgetting a shared fact removes it from both layers and the profile note', 
   expect(await texts(paths, PERSON_MEMORY)).toEqual([])
   expect(await texts(paths, 'atlas')).toEqual([])
   expect(await noteLines(paths)).not.toContain(KOREAN[0])
+})
+
+it('qa146 r2: a line the person never said is not shared as a fact about them', async () => {
+  const paths = await tempPaths()
+  await remember(paths, '- everyone: 앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다\n- everyone: 팀 코드명은 은하수다', '파일을 만들어 줘. 우리 팀 코드명은 은하수야.')
+  expect(await texts(paths, PERSON_MEMORY)).toEqual(['팀 코드명은 은하수다'])
+})
+
+it('qa146 r2: keep_in_mind with "replaces" takes the old line out of memory and the profile note', async () => {
+  const paths = await tempPaths()
+  const keep = learningTools(paths, 'bot-atlas', () => '').find((tool) => tool.name === 'keep_in_mind')!
+  await keep.run({ facts: ['은하호 프로젝트의 새 출시 목표는 12월 2일이다', '은하호 프로젝트의 킥오프 일정은 12월 2일이다'] }, { task: '' })
+  await keep.run({ facts: ['은하호 프로젝트의 출시일은 12월 5일이다'], replaces: ['12월 2일'] }, { task: '' })
+  const left = ['은하호 프로젝트의 킥오프 일정은 12월 2일이다', '은하호 프로젝트의 출시일은 12월 5일이다']
+  expect(await texts(paths, PERSON_MEMORY)).toEqual(left)
+  expect(await noteLines(paths)).toEqual(left)
 })
 
 // qa142 p2b-r1 #3: a saved error card is never handed to a model as something the bot said.

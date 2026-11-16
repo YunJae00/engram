@@ -133,11 +133,39 @@ export function normalizeFact(text: string): string {
 // value it names takes the older line about the same subject with it. Markers are kept narrow on purpose:
 // a plain negation ("Slack은 쓰지 않는다") or "이전 직장" is an ordinary fact.
 // shortcut: discarded values are read only when quoted, a date, or "X가 아니라"; subjects match by word stems, no synonyms.
+// The subject of a line is its property ("킥오프 일정", "출시일"), not the project or team that owns it:
+// two lines about one project are two subjects unless the property is the same.
 const RESIDUE = /오타\s*(이|임|였|라|입니)|읽기\s*오류|(예전|이전|옛)\s*(\S+\s+)?(값|목표|마감|코드명|날짜|표기)|이전(에|\s*\S+에)\s*(쓰던|써\s?둔|적힌|적어\s?둔|사용하던)|더\s*이상\s*(쓰지|사용하지|유효하지)\s*않|[을를]\s*대체(함|됨|했\S*|합니다|한다)?$|\b(typo|misspell\w*|misread|(old|previous) value|no longer (used|valid|correct)|supersed\w+)\b/i
 const NOT_BUT = /((?:\d+월\s*)?\S+)[이가]\s+아니라,?\s+/g
 const STOP = new Set(['사용', '입니', '합니', '있습', '있어', '이다', '프로', 'the', 'is', 'are', 'of', 'to', 'in', 'on', 'for', 'and'])
 const subject = (text: string) => new Set(stems(text.replace(/["“‘'][^"”’']*["”’']/g, ' ')).filter((stem) => !/^\d/.test(stem) && !STOP.has(stem)))
-const sameSubject = (a: string, b: string) => { const theirs = subject(b); return [...subject(a)].some((stem) => theirs.has(stem)) }
+const unquoted = (text: string) => text.replace(/["“‘'][^"”’']*["”’']/g, ' ').trim()
+// "은하호 프로젝트의 출시일은 …" -> owner ["은하호", "프로젝트의"], property ["출시일"]. A verb form ("진행하는 …") is not a topic.
+function topicOf(text: string): { owner: string[]; property: string[]; rest: string } | null {
+  const plain = unquoted(text)
+  const topic = /^(.+?)(?<![하있없되\s])[은는]\s/.exec(plain)
+  if (!topic?.[1]) return null
+  const words = topic[1].trim().split(/\s+/)
+  let cut = -1
+  for (let i = 0; i < words.length - 1; i++) if (/(의|프로젝트|제품|팀)$/.test(words[i] ?? '')) cut = i
+  return { owner: words.slice(0, cut + 1), property: words.slice(cut + 1), rest: plain.slice(plain.indexOf(words[cut + 1] ?? '')) }
+}
+function sameSubject(a: string, b: string): boolean {
+  const [one, other] = [topicOf(a), topicOf(b)]
+  if (one && other) return one.property.join(' ') === other.property.join(' ') || stems(one.property.join(' ')).some((stem) => stems(other.property.join(' ')).includes(stem))
+  const theirs = subject(other?.rest ?? b)
+  return [...subject(one?.rest ?? a)].some((stem) => theirs.has(stem))
+}
+// A property that holds one value at a time: a newer line for the same property of the same owner replaces the older
+// one even when nothing says so. Anything else needs the value named ("replaces", "outdated:", a line carrying it).
+// shortcut: a fixed list of property nouns and exact wording of the rest; "행사 일정", visits and the like are never merged.
+const SINGLE_VALUED = /(코드명|출시일|마감일?|담당자?)$/
+function valueKey(text: string): string | null {
+  const topic = topicOf(text)
+  if (!topic || !SINGLE_VALUED.test(topic.property.join(' '))) return null
+  const owner = topic.owner.map((word) => word.replace(/의$/, '').replace(/^제품$/, '프로젝트')).filter((word) => !/^(출시|우리|저희|사용자)$/.test(word))
+  return `${owner.join(' ')}|${topic.property.filter((word) => !/^(새|정식|현재|최종)$/.test(word)).join(' ')}`
+}
 // Dates as month/day; a line that lost its month to the old list-marker bug ("월 28일 …") matches any month.
 const datesIn = (text: string) => [...text.matchAll(/(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})\/(\d{1,2})(?!\d)|^()월\s*(\d{1,2})일/g)].map((m) => `${Number(m[1] ?? m[3]) || '*'}/${Number(m[2] ?? m[4] ?? m[6])}`)
 const quotedIn = (text: string) => [...text.matchAll(/["“‘']([^"”’']{2,40})["”’']/g)].map((m) => (m[1] ?? '').toLowerCase())
@@ -171,7 +199,24 @@ function settleInto<T extends { text: string }>(kept: T[], raw: string): string 
     }
     if (kept.some((one) => loose(one.text) === loose(text))) return ''
   }
+  const key = valueKey(text)
+  if (key) for (let i = kept.length - 1; i >= 0; i--) {
+    const old = kept[i]?.text ?? ''
+    if (valueKey(old) === key && loose(old) !== loose(text)) kept.splice(i, 1)
+  }
   return text
+}
+
+// keep_in_mind's "replaces": the kept lines a new fact takes the place of, named whole or by the old value alone.
+// A value alone only takes a line about the same subject as one of the new facts.
+export function replacedLines(known: readonly string[], facts: readonly string[], replaces: readonly string[]): string[] {
+  const fresh = facts.map((fact) => withoutResidue(normalizeFact(fact)).text).filter(Boolean)
+  return known.filter((line) => !fresh.some((fact) => loose(fact) === loose(line)) && replaces.some((named) => {
+    const value = named.replace(/["“”‘’']/g, '').trim().toLowerCase()
+    if (loose(named) === loose(line)) return true
+    const holds = (value.length >= 2 && line.toLowerCase().includes(value)) || datesIn(named).some((date) => datesIn(line).includes(date))
+    return holds && fresh.some((fact) => sameSubject(fact, line))
+  }))
 }
 
 export function settleFacts<T extends { text: string }>(facts: readonly T[]): T[] {
@@ -212,7 +257,8 @@ export interface MemoryChange {
 }
 
 // A fact said again is the same fact with a fresh clock, never a second line.
-// A changed value is a new line; the old one leaves through the extractor's "outdated:" line or when the new line names what it replaces.
+// A changed value is a new line; the old one leaves through the extractor's "outdated:" line, keep_in_mind's "replaces",
+// when the new line names what it replaces, or when both give the same single-valued property (a code name, a deadline).
 export function recordFacts(paths: VaultPaths, botId: string, lines: string[], now = new Date()): Promise<MemoryChange> {
   return serialized(memoryPath(paths, botId), async () => {
     const file = await loadBotMemory(paths, botId)
@@ -282,7 +328,19 @@ const FACT_LINES_MAX = 6
 
 // A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
 // A reply that is not a list of facts (the model answered the chat instead) keeps nothing.
-// `said` is the person's message: a line worded as an order is dropped unless they set that rule in it.
+// `said` is the person's message: a line worded as an order is dropped unless they set that rule in it, and a
+// fact about the person is kept only when it shares words with what they said. A line about the app, a folder
+// or a file must be mostly their words: what the comet found out while working is not a fact about them.
+// shortcut: words are compared by stems, so a fact worded in another language than the message is not checked.
+const TOOLING = /앱|폴더|파일|경로|디렉터리|workspace|\b(app|folder|file|path|directory)\b|[\w-]+\.[a-z]{2,4}\b|[~.]?\/[\w.-]+\//i
+const hangul = (text: string) => /[가-힣]/.test(text)
+function personSaid(line: string, said: string): boolean {
+  if (!said.trim() || hangul(line) !== hangul(said)) return true
+  const theirs = new Set(stems(said))
+  const mine = stems(line).filter((stem) => !STOP.has(stem))
+  const shared = mine.filter((stem) => theirs.has(stem)).length
+  return TOOLING.test(line) ? shared * 2 > mine.length : shared > 0
+}
 export function scopeFacts(raw: string, known: readonly string[], said = ''): { shared: string[]; own: string[]; outdated?: string[] } {
   const written = raw.split('\n').filter((line) => line.trim())
   if (written.length > FACT_LINES_MAX || written.some((line) => !FACT_LINE.test(line) && !SCOPE_MARK.test(line) && !OUTDATED_MARK.test(line))) return { shared: [], own: [] }
@@ -293,7 +351,7 @@ export function scopeFacts(raw: string, known: readonly string[], said = ''): { 
     const mark = SCOPE_MARK.exec(line)
     const text = mark ? line.slice(mark[0].length) : line
     return { text, shared: mark ? mark[1]?.toLowerCase() === 'everyone' : isIdentityFact(text) }
-  }).filter((line) => !unaskedRule(line.text, said))
+  }).filter((line) => !unaskedRule(line.text, said) && (!line.shared || personSaid(line.text, said)))
   const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
   const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
   const outdated = candidates.filter((line) => [...shared, ...own].some((fresh) => sameSubject(withoutResidue(fresh).text, line)))

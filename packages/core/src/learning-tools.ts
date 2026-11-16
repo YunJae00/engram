@@ -11,13 +11,14 @@ import { safeAddress } from './work-map.js'
 const FACT_CAP = 300
 const FACTS_PER_CALL = 3
 
-export function keepInMindTool(deps: { keep(lines: string[], scope: 'everyone' | 'this bot'): Promise<void> }): AgentTool {
+export function keepInMindTool(deps: { keep(lines: string[], scope: 'everyone' | 'this bot', replaces?: string[]): Promise<void> }): AgentTool {
   return {
     name: 'keep_in_mind',
-    description: 'keep a short fact for later conversations: where something of theirs lives (with its address), how they want a kind of thing done, a standing decision or a date - not this request alone, never a password or key. When a kept fact changes, give only the new fact; never write the old or wrong value in it. Facts about the person are for every assistant; add "scope": "this bot" only for this assistant\'s own job (its site, its routine). Args: {"facts": ["one complete sentence in their language"], "scope": "everyone"}',
-    argsSchema: { type: 'object', additionalProperties: false, required: ['facts'], properties: { facts: { type: 'array', minItems: 1, maxItems: FACTS_PER_CALL, items: { type: 'string', minLength: 1, maxLength: FACT_CAP } }, scope: { type: 'string', enum: ['everyone', 'this bot'] } } },
+    description: 'keep a short fact for later conversations: where something of theirs lives (with its address), how they want a kind of thing done, a standing decision or a date - not this request alone, never a password or key. When a kept fact changes, give only the new fact and put the old value or the old kept line in "replaces"; never write the old or wrong value in the fact itself. Facts about the person are for every assistant; add "scope": "this bot" only for this assistant\'s own job (its site, its routine). Args: {"facts": ["one complete sentence in their language"], "scope": "everyone", "replaces": ["the old value or kept line, only when a fact changed"]}',
+    argsSchema: { type: 'object', additionalProperties: false, required: ['facts'], properties: { facts: { type: 'array', minItems: 1, maxItems: FACTS_PER_CALL, items: { type: 'string', minLength: 1, maxLength: FACT_CAP } }, scope: { type: 'string', enum: ['everyone', 'this bot'] }, replaces: { type: 'array', maxItems: FACTS_PER_CALL, items: { type: 'string', minLength: 1, maxLength: FACT_CAP } } } },
     async run(args, context) {
       context.signal?.throwIfAborted()
+      const replaces = (Array.isArray(args['replaces']) ? args['replaces'] : []).filter((one): one is string => typeof one === 'string' && one.trim().length > 0).slice(0, FACTS_PER_CALL)
       const facts = (Array.isArray(args['facts']) ? args['facts'] : [args['facts']])
         .filter((one): one is string => typeof one === 'string')
         // An address is kept without the session values a link can carry.
@@ -26,7 +27,7 @@ export function keepInMindTool(deps: { keep(lines: string[], scope: 'everyone' |
         .slice(0, FACTS_PER_CALL)
       if (!facts.length) throw new Error('Give one to three facts, each a complete sentence.')
       if (facts.some(one => !passesPrivacyLint(one))) throw new Error('That holds an address with a key, a password or a token; keep it without them.')
-      await deps.keep(facts, args['scope'] === 'this bot' ? 'this bot' : 'everyone')
+      await deps.keep(facts, args['scope'] === 'this bot' ? 'this bot' : 'everyone', ...(replaces.length ? [replaces] : []))
       return `Kept ${facts.length} for later conversations.`
     },
   }

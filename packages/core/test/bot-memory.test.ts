@@ -14,6 +14,7 @@ import {
   rememberPrompt,
   renderMemory,
   selectForPrompt,
+  replacedLines,
   settleFacts,
   type BotMemoryFile,
 } from '../src/bot-memory.js'
@@ -124,12 +125,12 @@ describe('ranking and rendering', () => {
     expect(prompt).not.toContain('스프린트 마감 바뀌면 알려줄게')
     expect(prompt).toContain('- outdated: ')
   })
-  it('qa145: a later value is kept beside the older one until the extractor calls it outdated, and junk already on disk is not read back', async () => {
+  it('qa146 r2: a later deadline replaces the older one, and junk already on disk is not read back', async () => {
     const paths = await tempPaths()
     await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 20일이다', '팀 코드명은 은하수다'], T1)
     const change = await recordFacts(paths, 'bot-q', ['다음 스프린트 마감은 11월 25일이다'], T2)
     expect(change).toEqual({ added: 1, touched: 0 })
-    const all = ['다음 스프린트 마감은 11월 20일이다', '팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다']
+    const all = ['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다']
     expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(all)
     await recordFacts(paths, 'bot-q', ['# 도구를 사용하겠습니다', '<execute>', '| 사과 | 1000 |', '## COMET-REMEMBER'], T2)
     expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(all)
@@ -220,6 +221,30 @@ describe('qa146: a correction replaces', () => {
   it('ordinary facts that only look like corrections are left alone', () => {
     const plain = ['Slack은 쓰지 않는다', '이전 직장은 삼성이다', '앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다', '대체로 아침에 일한다', '오타 검수는 수아가 맡는다', '행사 일정은 11월 20일이다', '행사 일정은 12월 4일이다', '팀 할 일: 유진 랜딩(11/18), 태호 결제(11/17), 리스크 리뷰(담당 미정)']
     expect(settleFacts(plain.map((text) => ({ text }))).map((f) => f.text)).toEqual(plain)
+  })
+
+  it('qa146 r2: a correction given as only the new fact replaces the old value of the same property', () => {
+    const settle = (lines: string[]) => settleFacts(lines.map((text) => ({ text }))).map((f) => f.text)
+    expect(settle(['출시 제품의 코드명은 북극성이다', '프로젝트 코드명은 은하호다'])).toEqual(['프로젝트 코드명은 은하호다'])
+    // Another owner's code name, and properties that hold several values, are left alone.
+    const apart = ['팀 코드명은 은하수다', '프로젝트 코드명은 은하호다', 'API 문서 담당은 민호다', '디자인 담당은 수아다', '이름은 윤재다', '팀 이름은 은하수다']
+    expect(settle(apart)).toEqual(apart)
+  })
+
+  it('qa146 r2: a corrected launch date leaves the kickoff of the same project on the old date', () => {
+    const lines = ['은하호 프로젝트의 킥오프 일정은 11월 28일이다', '은하호 프로젝트의 출시일은 12월 5일입니다(이전 11월 28일을 대체)']
+    expect(settleFacts(lines.map((text) => ({ text }))).map((f) => f.text)).toEqual(['은하호 프로젝트의 킥오프 일정은 11월 28일이다', '은하호 프로젝트의 출시일은 12월 5일입니다'])
+    const bare = ['은하호 프로젝트 킥오프 일정은 11월 28일이다', '은하호 프로젝트 출시일은 12월 5일입니다(이전 11월 28일을 대체)']
+    expect(settleFacts(bare.map((text) => ({ text })))).toHaveLength(2)
+  })
+
+  it('qa146 r2: keep_in_mind "replaces" names the kept line by its old value or whole', () => {
+    const known = ['은하호 프로젝트의 새 출시 목표는 12월 2일입니다', '은하호 프로젝트의 킥오프 일정은 12월 2일이다', '팀 코드명은 은하수다']
+    expect(replacedLines(known, ['은하호 프로젝트의 출시일은 12월 5일이다'], ['12월 2일'])).toEqual([known[0]])
+    expect(replacedLines(known, ['팀 코드명은 노을이다'], ['은하수'])).toEqual([known[2]])
+    expect(replacedLines(known, ['사무실은 4층이다'], ['팀 코드명은 은하수다.'])).toEqual([known[2]])
+    expect(replacedLines(known, ['사무실은 4층이다'], ['은하수', '12월 2일'])).toEqual([])
+    expect(replacedLines(known, ['팀 코드명은 은하수다'], ['은하수'])).toEqual([])
   })
 
   it('the polluted v0.8.146 memory is read back clean', () => {
