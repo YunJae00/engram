@@ -6,7 +6,7 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_TOOLS, SMALL_TALK_NOTE } from './fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -2730,7 +2730,7 @@ export function registerIpc(ctx: VaultContext): void {
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && !turn?.context && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
         const lane = fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
-        const laneNote = lane ? LANE_NOTE : plainAsk && plainReply(request.message) ? SMALL_TALK_NOTE : ''
+        const laneNote = lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []

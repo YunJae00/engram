@@ -121,6 +121,12 @@ describe('instant first line', () => {
     expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
   })
 
+  // grokbar: measured 4.6 s or more per line with thinking on, 0.6-1.1 s with it off; the budget is 1.5 s.
+  it('asks the first-line voice for its sentence without thinking', () => {
+    expect(source('engine-claude-voice.ts')).toContain("thinking: { type: 'disabled' }")
+    expect(FIRST_LINE_BUDGET_MS).toBe(1500)
+  })
+
   it('holds a line that comes before the request is saved, and shows it right after', async () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 100)))
     await vi.advanceTimersByTimeAsync(100)

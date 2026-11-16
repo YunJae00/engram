@@ -165,12 +165,15 @@ const text = (value: unknown, max: number): string => typeof value === 'string' 
 export function teamHireTools(host: TeamHost): AgentTool[] {
   // Members this caller hired in this turn and has not been handed back finished: an early return leaves some working.
   const open = new Map<string, Promise<void>>()
+  // One early return per turn: words the turn does not take with the result (a check turn takes none) must not end every wait at once.
+  let steerable = host.self === null && !!host.steered
   // Waits for the open members, or for the person's words to the lead, and hands back what there is.
   const collect = async (): Promise<string> => {
     const heard = new AbortController()
     const all = Promise.all([...new Set(open.values())])
     let steered = false
-    try { steered = await Promise.race([all.then(() => false), host.self === null && host.steered ? host.steered(heard.signal).then(() => true) : new Promise<never>(() => undefined)]) } catch (error) { open.clear(); throw error } finally { heard.abort() }
+    try { steered = await Promise.race([all.then(() => false), steerable ? host.steered!(heard.signal).then(() => true) : new Promise<never>(() => undefined)]) } catch (error) { open.clear(); throw error } finally { heard.abort() }
+    if (steered) steerable = false
     const team = (await host.load())?.team
     const mine = (team?.members ?? []).filter(m => open.has(m.id))
     const working = (m: TeamMember): boolean => steered && (host.live(m.id) || m.state === 'hired' || m.state === 'working')
@@ -251,6 +254,8 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       const plan = await host.change((task): { refuse: string } | { act: 'accept' | 'spent' | 'redo' | 'answer'; role: string } => {
         const team = task.team, member = team?.members.find(m => m.id === id && m.parentId === host.self)
         if (!team || !member) return { refuse: `No member "${id}" hired by you.` }
+        // Already accepted when it reported: a second accept is the same answer, not an error.
+        if (ok && member.state === 'released' && member.review?.ok) return { act: 'accept', role: member.role }
         if (busy || !['done', 'failed', 'waiting'].includes(member.state)) return { refuse: `${member.role} is ${busy ? 'working' : member.state}; it can be reviewed once it has reported.` }
         if (ok) { member.review = { ok: true, note }; return { act: 'accept', role: member.role } }
         const answer = member.state === 'waiting'

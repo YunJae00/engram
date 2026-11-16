@@ -95,6 +95,9 @@ describe('team hire tools', () => {
     const sourced = JSON.parse(await all.call(null, 'hire_members', { members: three.map(one => ({ ...one, lookup: true })) }))
     expect(sourced.note).not.toContain('Review each member')
     expect(teamReviewIssue(all.state.task)).toBe('')
+    // A lead that reviews an accepted member anyway is told it is released, not refused.
+    expect(JSON.parse(await all.call(null, 'review_member', { id: 'm1', ok: true, note: 'ok' }))).toEqual({ id: 'm1', state: 'released' })
+    expect(all.state.task.team!.members[0]!.review).toEqual({ ok: true, note: AUTO_REVIEW })
   })
 
   // grokbar T1: "아 대구도 추가해" said while the lead waits on three members belongs in the same answer.
@@ -112,7 +115,8 @@ describe('team hire tools', () => {
     expect(early.members.map((one: { id: string; state: string }) => [one.id, one.state])).toEqual([['m1', 'working'], ['m2', 'working'], ['m3', 'working']])
     expect(early.note).toContain('The person wrote to you while the team worked')
     // The added part is hired; the same call waits for the three still working and returns all four.
-    state.steer = new Promise(() => undefined)
+    // Words still waiting (a turn that takes none) do not end the next wait: one early return per turn.
+    state.steer = Promise.resolve()
     const second = hire.run({ members: [{ role: '대구 조사', brief: 'Daegu weather', lookup: true }] }, { task: '' })
     await new Promise(resolve => setTimeout(resolve, 5))
     finish()

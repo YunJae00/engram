@@ -12,6 +12,10 @@ const ASK_MAX = 400
 
 export const LANE_NOTE = 'Fast lookup turn: you have reading tools and a hidden team, nothing else. For one lookup, go to the most direct source (search_web, or read_pages on a page that holds the answer), use at most two tool calls, then answer in a few lines with the address it came from. When the person asks for bots, members or separate research of several items: one hire_members call with one lookup member per item, each brief one line (what to find, for where and when) and each deliverable one line, no notes. Then answer once: one lead-in line, one table when there are several items, the source address in every row; no extra sections, no offers, nothing they did not ask for.'
 export const SMALL_TALK_NOTE = 'This message is small talk: reply in one or two short sentences, with no tools.'
+// grokbar Q2: "1년은 몇 초야?" got six lines (leap year, Julian year, a memory trick) and took 8-10 s on the work model.
+export const SHORT_QUESTION_NOTE = 'This is a short question: give the answer first, in one to three sentences, with exact figures written out in digits. No other variants, background or tips unless they ask.'
+// One short line that ends as a question; a short job ("메일 써줘") is not one.
+export const shortQuestion = (message: string): boolean => { const text = message.trim(); return [...text].length <= 40 && !text.includes('\n') && /[?？]$/.test(text) }
 
 // plain: an ordinary first turn by the person on a Claude brain - no attachment, no resumed or scheduled work, no check turn.
 export function fastLane(message: string, plain: boolean): boolean {

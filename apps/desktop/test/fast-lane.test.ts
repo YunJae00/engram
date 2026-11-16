@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_TOOLS, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -39,6 +39,12 @@ it('keeps the lane menu small enough to be preloaded, with the team and reading 
   expect(LANE_NOTE).toContain('one table')
   expect(LANE_NOTE).toContain('source address in every row')
   expect(SMALL_TALK_NOTE).toContain('one or two short sentences')
+})
+
+it('tells a short question from a short job, so only the question is asked to be brief', () => {
+  for (const message of ['1년은 몇 초야?', '정리한 폴더에 PDF 몇 개야?', '나 누구랑 일하지?', 'How many seconds in a year?']) expect(shortQuestion(message), message).toBe(true)
+  for (const message of ['메일 써줘', '방금 말한 거 더 짧게', '소설 써줘', '이 계약서의 위험 요소를 전부 찾아서 표로 정리하고 각 항목마다 근거 조항을 달아줄 수 있어?', '첫 줄\n둘째 줄?']) expect(shortQuestion(message), message).toBe(false)
+  expect(SHORT_QUESTION_NOTE).toContain('exact figures written out in digits')
 })
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {

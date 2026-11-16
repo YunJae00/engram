@@ -32,6 +32,9 @@ export class VoiceSession {
       options: {
         cwd: spec.workdir, env: spec.env, pathToClaudeCodeExecutable: spec.binary, spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort, tools: [], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model, effort: 'low',
+        // One sentence needs no thinking. grokbar: with it on, every first line took 4.6 s or more against a 1.5 s budget and none was ever shown;
+        // off, the same asks answer in 0.6-1.1 s (tmp/grokbar/b1-probe/voice-probe.mjs).
+        thinking: { type: 'disabled' },
       },
     })
     void (async () => {
