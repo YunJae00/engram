@@ -149,23 +149,9 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }
 
-// A file made again in a later turn under the same name is the same deliverable (file-work.ts placeInTask replaces it in place and keeps the
-// earlier version in the saved outputs). Lines of `id\tearlier id`: for each such file, the version an earlier question's answer carded.
-// shortcut: same name in a later turn of one chat stands for "same file", when a different file reuses a name across turns, read the placements on record instead.
-export function previousFiles(messages: readonly { role: string; text: string }[]): string {
-  const out: string[] = [], before = new Map<string, string>(), now = new Map<string, string>()
-  const turn = () => { for (const [name, id] of now) before.set(name, id); now.clear() }
-  for (const { role, text } of messages) {
-    if (role !== 'assistant') { turn(); continue }
-    if (!text.includes('engram-artifact:')) continue
-    for (const { id, name } of answerFiles(answerText(text)).files) {
-      const earlier = before.get(name)
-      if (earlier && earlier !== id && !out.some(line => line.startsWith(`${id}\t`))) out.push(`${id}\t${earlier}`)
-      now.set(name, id)
-    }
-  }
-  return out.join('\n')
-}
+// The ids of every file the chat's answers link, one per line. A card's "(이전)" link opens an earlier version only when it is one of these.
+export const linkedFiles = (messages: readonly { role: string; text: string }[]): string =>
+  messages.flatMap(({ role, text }) => role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []).join('\n')
 
 // A file made in a turn gets one card, under the last answer that links it. For each message: the
 // ids (one per line) that a later answer to the same question cards, so this one does not.

@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools, placeInTask, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { cometFileTools as hostFileTools, placeInTask, previousVersions, taskOutputs, twinsFile } from '../src/main/file-work.js'
 
 // Every chat has its in-chat approval card; state.confirm answers it.
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
@@ -330,4 +330,22 @@ it('a later-turn remake replaces the copy made from its own source, not another 
   expect(await place('second, again', 'book 2', 't3')).toBe(join(real, 'a (3).xlsx'))
   expect(await readFile(join(real, 'a.xlsx'), 'utf8')).toBe('first')
   expect((await readdir(real)).sort()).toEqual(['a (2).xlsx', 'a (3).xlsx', 'a.xlsx'])
+})
+
+// qa146 2a: the "(이전)" link was guessed from a repeated file name in the chat, so two tasks that each made plan.md were linked.
+it('records the earlier version only where a task file is replaced in place, and offers it only while it still exists', async () => {
+  const paths = vaultPaths(root)
+  const save = (lane: string, turn: string, text: string) => taskOutputs(paths, async () => join(root, 'workspace', 'tasks', lane), undefined, turn).save('plan.md', Buffer.from(text)) as Promise<{ artifact: string; path: string; taskPath: string }>
+  const a = await save('task-a', 't1', 'plan of task A'), b = await save('task-b', 't2', 'plan of task B')
+  expect(b.taskPath).not.toBe(a.taskPath)
+  expect(await previousVersions(paths, b.artifact)).toEqual([])
+  // Task A's plan made again in later turns: each replaces the task file in place, and the versions before it are on record, nearest first.
+  const a2 = await save('task-a', 't3', 'plan of task A, fixed'), a3 = await save('task-a', 't4', 'plan of task A, fixed again')
+  expect(a3.taskPath).toBe(a.taskPath)
+  expect(await previousVersions(paths, a3.artifact)).toEqual([a2.artifact, a.artifact])
+  expect(await previousVersions(paths, a.artifact)).toEqual([])
+  expect(await previousVersions(paths, b.artifact)).toEqual([])
+  // A version whose saved output is gone is not offered.
+  await rm(a2.path)
+  expect(await previousVersions(paths, a3.artifact)).toEqual([a.artifact])
 })

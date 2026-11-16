@@ -1,8 +1,8 @@
 import { Clock } from 'lucide-react'
 import { memo, useCallback, useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { CometMessage } from '../lib/cometThreads.js'
-import { answerWhole, laterFiles, previousFiles, restatedAnswers } from '../markdown.js'
-import { PreviousFiles } from './AnswerFiles.js'
+import { answerWhole, laterFiles, linkedFiles, restatedAnswers } from '../markdown.js'
+import { ChatFiles } from './AnswerFiles.js'
 import { CometWork } from './CometWork.js'
 import { StreamingAnswer } from './StreamingAnswer.js'
 import { CheckEvidence } from './CheckEvidence.js'
@@ -66,7 +66,7 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
   useLayoutEffect(() => { resend.current = onResend }, [onResend])
   const retry = useCallback(() => resend.current?.(), [])
   const resendable = !busy && !!onResend && messages.at(-1)?.error && messages.at(-2)?.role === 'user' && !messages.at(-2)?.attachments?.length
-  return <PreviousFiles.Provider value={previousFiles(messages)}>
+  return <ChatFiles.Provider value={linkedFiles(messages)}>
     {messages.map((m, i) => {
       const live = i === lastAssistant && busy
       return <MessageTurn key={firstKey + i} message={m} live={live} divider={dividers[i] ? dividerLabel(m.at!, lang, now) : null} lang={lang} anchor={`${anchorBase}-${i}`}
@@ -75,5 +75,5 @@ export function CometMessages({ firstKey = 0, messages, busy, status, since, wor
     {busy && <div className="chat-status-line" data-testid="bots-typing"><Thinking label={status} since={since} testId="bots-thinking" total={threadWords(lang).total} /></div>}
     {children}
     {onReply && settled?.role === 'assistant' && !settled.streaming && !settled.progress && !failed(settled) && <ReplyChips key={`chips-${firstKey + settledIndex}-${settled.text}`} text={settled.text} lang={lang} hidden={busy || offerOpen} onPick={onReply} />}
-  </PreviousFiles.Provider>
+  </ChatFiles.Provider>
 }

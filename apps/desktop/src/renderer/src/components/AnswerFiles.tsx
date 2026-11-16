@@ -4,10 +4,14 @@ import { uiLanguage } from '../i18n.js'
 import { FILE_CARD_KO } from '../lib/threadLangKo.js'
 import type { AnswerFile } from '../markdown.js'
 
-// previousFiles() of the conversation the cards are in: a remade file's card links the version before it.
-export const PreviousFiles = createContext('')
+// linkedFiles() of the conversation the cards are in.
+export const ChatFiles = createContext('')
+// The version a remade file's card links: the nearest earlier one on record (main: previousVersions, written where the task-folder file was
+// replaced in place) that this chat also linked. A draft the chat never showed is passed over; a file of another chat is never linked.
+// shortcut: a remake back to the exact bytes of an earlier version shares that version's id, so the earlier card links forward; rare, upgrade by recording the turn with the id.
+export const previousOf = (versions: readonly string[], chat: string): string | undefined => versions.find(id => chat.split('\n').includes(id))
 
-declare global { interface Window { engramOutputs: { info(id: string): Promise<{ size: number; thumb?: { data: Uint8Array; mime: string } }> } } }
+declare global { interface Window { engramOutputs: { info(id: string): Promise<{ size: number; previous?: string[]; thumb?: { data: Uint8Array; mime: string } }> } } }
 
 const KINDS: [RegExp, LucideIcon][] = [
   [/\.(xlsx|xls|csv|tsv)$/i, FileSpreadsheet],
@@ -22,11 +26,13 @@ const sizeLabel = (bytes: number) => bytes < 1_000_000 ? `${Math.max(1, Math.rou
 function AnswerFileCard({ file }: { file: AnswerFile }) {
   const [size, setSize] = useState<number>()
   const [url, setUrl] = useState('')
+  const [versions, setVersions] = useState<string[]>([])
   useEffect(() => {
     let active = true, objectUrl = ''
     void window.engramOutputs?.info(file.id).then(info => {
       if (!active) return
       setSize(info.size)
+      setVersions(info.previous ?? [])
       if (info.thumb) setUrl(objectUrl = URL.createObjectURL(new Blob([new Uint8Array(info.thumb.data)], { type: info.thumb.mime })))
     }).catch(() => undefined)
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
@@ -37,7 +43,7 @@ function AnswerFileCard({ file }: { file: AnswerFile }) {
   // The app's language: the page's lang attribute is never set to it (qa146 S03: "Show in Finder" in Korean).
   const ko = uiLanguage() === 'ko'
   const reveal = ko ? (windows ? FILE_CARD_KO.revealWin : FILE_CARD_KO.reveal) : windows ? 'Show in Explorer' : 'Show in Finder'
-  const previous = useContext(PreviousFiles).split('\n').find(line => line.startsWith(`${file.id}\t`))?.slice(file.id.length + 1)
+  const previous = previousOf(versions, useContext(ChatFiles))
   const previousTitle = ko ? FILE_CARD_KO.previousTitle : 'Open the previous version'
   return <div style={{ position: 'relative', maxWidth: '100%' }}>
     <button type="button" className={`chat-file-card answer-file${url ? ' media' : ''}`} title={file.name} data-testid="answer-file"

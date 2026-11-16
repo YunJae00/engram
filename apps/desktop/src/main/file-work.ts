@@ -57,13 +57,29 @@ export async function taskFile(paths: VaultPaths, folder: string, requested: unk
   return real
 }
 
-// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path\0turn\0source` per line (the last two only
+// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path\0turn\0source\0artifact` per line (the last three only
 // when the caller named them), kept outside the folder the comet writes in.
 export const twinsFile = (paths: VaultPaths, folder: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(folder).digest('hex').slice(0, 32)}.twins`)
 const sha = (data: Buffer | string) => createHash('sha256').update(data).digest('hex')
 
 // What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
-export interface Placement { source: string; turn?: string }
+// artifact: the saved output (its id) these bytes are linked by in the chat.
+export interface Placement { source: string; turn?: string; artifact?: string }
+// Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
+const versionsFile = (handIns: string) => join(handIns, 'previous')
+// The earlier versions of a saved output that are still there, nearest first: the "(이전)" link's only source (qa146 2a: a repeated file
+// name in the chat is not a version; two tasks that each made plan.md were linked).
+export async function previousVersions(paths: VaultPaths, id: string): Promise<string[]> {
+  const rows = (await readFile(versionsFile(join(paths.cache, 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
+  const chain: string[] = []
+  for (let at = id; chain.length < 20;) {
+    const before = rows.filter(row => row[0] === at).at(-1)?.[1]
+    if (!before || before === id || chain.includes(before)) break
+    chain.push(at = before)
+  }
+  const found = await Promise.all(chain.map(earlier => findArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
+  return found.filter(Boolean)
+}
 // A copy's task file; content (one source per name); any other tool and the file it names, else its own input.
 const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): string => {
   if (tool === 'file_create_copy' && typeof args.fromPath === 'string') return `path\0${resolve(cwd, args.fromPath)}`
@@ -88,7 +104,7 @@ const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): str
 export async function placeInTask(folder: string, name: string, data: Buffer, record?: string, made?: Placement): Promise<string> {
   outputName(name)
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.'), source = JSON.stringify(made?.source ?? null)
-  const note = async (path: string) => { if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${sha(data)}\0${path}\0${made?.turn ?? ''}\0${source}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`)) }
+  const note = async (path: string) => { if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${sha(data)}\0${path}\0${made?.turn ?? ''}\0${source}\0${made?.artifact ?? ''}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`)) }
   const spot = (count: number) => join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
   await writeFile(tmp, data, { flag: 'wx' })
   try {
@@ -107,13 +123,14 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         if (!record || !made) continue
         const rows = (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
         const last = (at: string) => rows.filter(line => line[1] === at).at(-1)
-        const [hash, , turn, from] = last(path) ?? []
+        const [hash, , turn, from, was] = last(path) ?? []
         if (hash !== sha(held) || !from) continue
         const copies = (value: string) => value.startsWith('"path\\u0000')
         if (from !== source && !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source)))) continue
         if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
+        if (was && made.artifact && was !== made.artifact) await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
         return path
       }
     }
@@ -232,7 +249,7 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
       made?.add(receipt.path)
       const task = await folder?.()
       if (!task) return receipt
-      try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data, { source: 'composed', turn }) } }
+      try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data, { source: 'composed', turn, artifact: receipt.artifact }) } }
       catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return receipt }
     },
   }
@@ -253,7 +270,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
   const save = async (name: string, data: Buffer, made: Placement) => {
     const receipt = await saveOutput(directory, name, data)
     approved.add(receipt.path)
-    return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data, made) }
+    return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data, { ...made, artifact: receipt.artifact }) }
   }
   // Kinds core does not hold (scripts, HTML, images, PDF, ZIP) are saved by the host.
   const createWide = async (args: Record<string, unknown>): Promise<string> => {
@@ -328,7 +345,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     approved.add(output.path)
     if (!folder) return result
     // The linked copy is the verified output; the task-folder twin is for combining work.
-    try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path), placement(tool.name, args)) }) }
+    try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path), { ...placement(tool.name, args), artifact: basename(output.path) }) }) }
     catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return result }
   } }))
 }
@@ -368,14 +385,14 @@ export function registerArtifactIpc(paths: VaultPaths): void {
     if (failed) throw new Error(failed)
   })
   ipcMain.removeHandler('artifact:info')
-  ipcMain.handle('artifact:info', async (_event, id: unknown): Promise<{ size: number; thumb?: { data: Uint8Array; mime: string } }> => {
+  ipcMain.handle('artifact:info', async (_event, id: unknown): Promise<{ size: number; previous: string[]; thumb?: { data: Uint8Array; mime: string } }> => {
     const path = await findArtifact(artifactDirectory(paths), id)
-    const { size } = await stat(path)
+    const { size } = await stat(path), previous = await previousVersions(paths, basename(path))
     try {
-      if (THUMBS.has(kindOf(path))) return { size, thumb: { data: (await nativeImage.createThumbnailFromPath(path, { width: 480, height: 320 })).toPNG(), mime: 'image/png' } }
+      if (THUMBS.has(kindOf(path))) return { size, previous, thumb: { data: (await nativeImage.createThumbnailFromPath(path, { width: 480, height: 320 })).toPNG(), mime: 'image/png' } }
       // Shown through an img element, where SVG script is inert.
-      if (kindOf(path) === '.svg' && size <= 1_000_000) return { size, thumb: { data: await readFile(path), mime: 'image/svg+xml' } }
+      if (kindOf(path) === '.svg' && size <= 1_000_000) return { size, previous, thumb: { data: await readFile(path), mime: 'image/svg+xml' } }
     } catch { /* A card without a picture still shows its size. */ }
-    return { size }
+    return { size, previous }
   })
 }
