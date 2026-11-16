@@ -23,15 +23,18 @@ export const DESK_NOTE = 'Do exactly what was asked in as few steps as it takes:
 // kind is plain gets only the tools that kind uses, few enough to be given whole. The model's own file tools and shell are apart from this menu.
 export type DeskKind = 'keep' | 'tidy' | 'deck' | 'note' | 'ask' | 'question'
 const MEMORY_TOOLS = ['keep_in_mind', 'search_memory', 'read_note', 'search_chats']
+// c3c r2: "…발표 자료 만들고 숫자 검증까지 해줘" took the deck menu, which had no report_result_check, so the check they asked for could not run.
+// The host offers that tool only when a check was asked for (ipc.ts, result-check.ts asksForCheck); every menu keeps it, and still fits the preload limit.
+const CHECK = 'report_result_check'
 export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
-  keep: new Set(MEMORY_TOOLS),
-  tidy: new Set(['find_files', 'file_move', 'file_read']),
+  keep: new Set([...MEMORY_TOOLS, CHECK]),
+  tidy: new Set(['find_files', 'file_move', 'file_read', CHECK]),
   // Every tool the document rows used (D2-D5: word_write, ppt_build, file_read, file_read_package, file_edit_package, file_create_workbook,
-  // file_read_workbook) plus search and memory. open_page is left out: it alone turns on the browser rules and their receipt tool.
-  deck: new Set(['ppt_build', 'word_write', 'file_read', 'file_read_package', 'file_edit_package', 'file_read_workbook', 'file_create_workbook', 'file_create_copy', 'find_files', 'render_file', 'search_web', 'read_pages', 'search_memory', 'read_note', 'search_chats', 'ask_person']),
-  note: new Set([...MEMORY_TOOLS, 'file_read', 'find_files', 'ask_person']),
+  // file_read_workbook) plus search and memory (search_chats left out to keep the 16: the thread itself is in view). open_page is left out: it alone turns on the browser rules and their receipt tool.
+  deck: new Set(['ppt_build', 'word_write', 'file_read', 'file_read_package', 'file_edit_package', 'file_read_workbook', 'file_create_workbook', 'file_create_copy', 'find_files', 'render_file', 'search_web', 'read_pages', 'search_memory', 'read_note', 'ask_person', CHECK]),
+  note: new Set([...MEMORY_TOOLS, 'file_read', 'find_files', 'ask_person', CHECK]),
   // A short ask is answered from the conversation and what the model knows: no browser.
-  ask: new Set([...MEMORY_TOOLS, 'file_read', 'find_files', 'ask_person']),
+  ask: new Set([...MEMORY_TOOLS, 'file_read', 'find_files', 'ask_person', CHECK]),
 }
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()

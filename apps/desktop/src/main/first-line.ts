@@ -189,6 +189,11 @@ export function firstLineReady(channel: string): void {
 // Words for the person are about to be shown (the answer, or a host-made reply): a line still on its way is dropped, and a line on
 // screen that no tool call has frozen into a bubble gives way to them. grokbar cycle 3 cause A: the canned line was glued onto instant
 // answers ("바로 처리할게요.\n\nI apologize…", seven judge quotes). A line stays only as the acknowledgement of work that followed it.
+// c3c r2: a general turn under a host line was held like a lookup (fast-lane.ts quietRounds), which lets a round through once it passes 200
+// characters: a long English note before a tool call reached a Korean thread. Here no round is shown as it comes, whatever its length: the
+// answer lands whole when the turn ends (deliverAnswer). Only a reply to words the person said mid-turn is shown at once.
+export const heldRounds = (show: (text: string) => void): { token(text: string, aloud: boolean): void; reset(): void } => ({ token: (text, aloud) => { if (aloud) show(text) }, reset: () => {} })
+
 export function firstLineSpoke(channel: string): void {
   const turn = turns.get(channel)
   if (turn?.shown && turn.carried) { turn.carried = false; log({ channel, outcome: 'replaced', canned: !!turn.canned }); turn.hide?.() }

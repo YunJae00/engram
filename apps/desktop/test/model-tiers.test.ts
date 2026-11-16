@@ -213,7 +213,7 @@ describe('instant first line', () => {
     expect(ipc).toMatch(/attachmentContext: \[[^\n]*firstSaid\]/)
     // A line on screen gives way only to words that are shown: a held round does not take it down.
     expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
-    expect(ipc).toContain('quietRounds(text => { firstLineSpoke(channel); broadcast({ type: \'chat:token\', channel, text }) })')
+    expect(ipc).toContain('const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: \'chat:token\', channel, text }) }')
     expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
   })
 

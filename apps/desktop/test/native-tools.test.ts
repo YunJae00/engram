@@ -70,6 +70,19 @@ describe('native tool policy', () => {
     // 2. A file they did not name, and a turn with no words of theirs at all.
     expect(await edit(asked('fixtures/meeting-notes.md 오타 고쳐줘'), join(workspace, 'fixtures', 'budget.md'))).toBe('deny')
     expect(await edit(asked(), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('deny')
+    // c3c r2 (Codex): a folder they wrote names that folder's file only; the same name in another folder is a file they did not name.
+    await Promise.all(['a', 'b'].map(folder => mkdir(join(workspace, 'fixtures', folder), { recursive: true })))
+    await Promise.all([join(workspace, 'fixtures', 'a', 'report.md'), join(workspace, 'fixtures', 'b', 'report.md'), join(workspace, 'fixtures', 'report.md.bak'), join(workspace, 'fixtures', 'myreport.md')].map(path => writeFile(path, 'x')))
+    expect(await edit(asked('fixtures/a/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('allow')
+    expect(await edit(asked('fixtures/a/report.md 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('deny')
+    expect(await edit(asked('"./fixtures/b/report.md"를 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('allow')
+    expect(await edit(asked('a/report.md랑 b/notes.md 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('deny')
+    expect(await edit(asked('xa/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
+    expect(await edit(asked('report.md 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('allow')
+    // A longer name that only contains theirs is another file.
+    expect(await edit(asked('report.md 고쳐줘'), join(workspace, 'fixtures', 'myreport.md'))).toBe('deny')
+    expect(await edit(asked('report.md.bak은 그대로 둬'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
+    expect(await edit(asked('myreport.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
     // 3. Outside the workspace, named or not.
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(outside, 'meeting-notes.md'))).toBe('deny')
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(workspace, 'fixtures', '..', '..', 'elsewhere', 'meeting-notes.md'))).toBe('deny')

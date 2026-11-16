@@ -9,11 +9,11 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: string }) => { bus.sent.push(event) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
-import { fastLane, quietRounds, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
+import { fastLane, NARRATION_MAX, quietRounds, SHORT_QUESTION_NOTE, shortAsk, shortQuestion } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { answerOnly, asksForCheck } from '../src/main/result-check.js'
 import { createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
@@ -167,7 +167,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
 describe('nothing is said before or between tool calls once the host has spoken', () => {
   it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', () => {
     const ipc = source('ipc.ts')
-    expect(ipc).toContain('const quiet = lane || firstSaid ? quietRounds(text => { firstLineSpoke(channel); broadcast({ type: \'chat:token\', channel, text }) }) : undefined')
+    expect(ipc).toContain('const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined')
     // A desk turn and a general turn alike: the words before the tool call never reach the thread.
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
       const shown: string[] = [], quiet = quietRounds(text => shown.push(text))
@@ -176,6 +176,24 @@ describe('nothing is said before or between tool calls once the host has spoken'
       quiet.token('3번 슬라이드 제목을 "핵심 지표"로 바꿨어요.', false)
       expect(shown, narration).toEqual([])
     }
+  })
+
+  // c3c r2 (Codex): past 200 characters the lookup hold lets a round through, so a long English note before a tool call reached a Korean thread.
+  it('shows no round of a general turn as it comes, however long, and still shows a reply to words said mid-turn', () => {
+    for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
+      expect([...narration].length).toBeGreaterThan(NARRATION_MAX)
+      const shown: string[] = [], held = heldRounds(text => shown.push(text))
+      for (const piece of narration.match(/.{1,40}/g)!) held.token(piece, false)
+      held.reset()
+      expect(shown, narration.slice(0, 30)).toEqual([])
+      // The same words on the lookup hold do get through: that is why a general turn has its own.
+      const leaked: string[] = [], lookup = quietRounds(text => leaked.push(text))
+      lookup.token(narration, false)
+      expect(leaked.join('')).toBe(narration)
+    }
+    const shown: string[] = [], held = heldRounds(text => shown.push(text))
+    held.token('대구도 넣을게요.', true)
+    expect(shown).toEqual(['대구도 넣을게요.'])
   })
 
   it('does not keep an English progress line in a Korean thread, on screen or on disk', async () => {
@@ -270,6 +288,24 @@ describe('short asks, statements and corrections', () => {
 
 // grokbar cycle 3 M1, M2, F1, D3: above the preload limit the model spent a round finding each tool.
 describe('desk tool menus', () => {
+  // c3c r2 (Codex): a deck ask that asks for a check took the deck menu, which filtered the check tool out.
+  it('keeps the check tool on every menu, so a check the person asked for can run on a desk turn', () => {
+    const offered = (message: string): string[] => {
+      // The host's own two steps (ipc.ts): the check tool is among the tools only when asked for, then the kind's menu filters them.
+      const every = ['ppt_build', 'file_read', 'file_move', 'keep_in_mind', 'open_page', ...(asksForCheck(message) ? ['report_result_check'] : [])]
+      const menu = DESK_TOOLS[deskKind(message) as keyof typeof DESK_TOOLS]!
+      return every.filter(tool => menu.has(tool))
+    }
+    for (const [message, kind] of [['3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘', 'deck'], ['Build the Q3 deck and double-check the numbers', 'deck'], ['fixtures/inbox-dump 폴더 파일들 종류별로 정리하고 빠진 거 없는지 검증까지 해줘', 'tidy'], ['fixtures/meeting-notes.md 요약하고 한 번 더 확인해줘', 'note']] as const) {
+      expect(deskKind(message), message).toBe(kind)
+      expect(offered(message), message).toContain('report_result_check')
+    }
+    // Not asked for, not offered: the menu does not bring it back.
+    expect(offered('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).not.toContain('report_result_check')
+    for (const menu of Object.values(DESK_TOOLS)) { expect(menu.has('report_result_check')).toBe(true); expect(menu.size).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX) }
+    expect(source('ipc.ts')).toContain("...(!turn?.verification && !asksForCheck(turnGoals.get(channel) ?? '') ? [] : [resultCheckTool(")
+  })
+
   it('gives a remember, tidy, note, short-ask and deck turn only its own tools, few enough to be preloaded', () => {
     const kinds: [string, string, string[]][] = [
       ['내 이름은 권윤재고 지민호랑 같이 일해. 기억해', 'keep', ['keep_in_mind']], ['아 지민호 말고 민호야', 'keep', ['keep_in_mind']], ['Remember that I work with Minho', 'keep', ['keep_in_mind']],
@@ -284,8 +320,8 @@ describe('desk tool menus', () => {
       expect(menu.size, kind).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX)
       for (const tool of needs) expect(menu.has(tool), `${kind}: ${tool}`).toBe(true)
     }
-    expect([...DESK_TOOLS.keep!].sort()).toEqual(['keep_in_mind', 'read_note', 'search_chats', 'search_memory'])
-    expect([...DESK_TOOLS.tidy!].sort()).toEqual(['file_move', 'file_read', 'find_files'])
+    expect([...DESK_TOOLS.keep!].sort()).toEqual(['keep_in_mind', 'read_note', 'report_result_check', 'search_chats', 'search_memory'])
+    expect([...DESK_TOOLS.tidy!].sort()).toEqual(['file_move', 'file_read', 'find_files', 'report_result_check'])
     // Every tool the document rows used (audit of stack2-d469cddf, D2-D5) is still there; open_page, which turns on the browser rules, is not.
     for (const tool of ['word_write', 'ppt_build', 'file_read', 'file_read_package', 'file_edit_package', 'file_create_workbook', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)

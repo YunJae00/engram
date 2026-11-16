@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, plainReply, smallTalkAnswer } from './first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2824,8 +2824,9 @@ export function registerIpc(ctx: VaultContext): void {
         let replying = false
         const read = new Set<string>()
         // grokbar D4, H3, H4, D5: with the host's first line up, the model's words before and between tool calls ("I'll read the file first.",
-        // "3번 슬라이드 제목이 … 그 부분만 바꿔요.") were shown under it. Such a turn is held the way a lookup is; what is shown replaces a line still waiting.
-        const quiet = lane || firstSaid ? quietRounds(text => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }) : undefined
+        // "3번 슬라이드 제목이 … 그 부분만 바꿔요.") were shown under it. Such a turn shows no round as it comes (first-line.ts heldRounds); what is shown replaces a line still waiting.
+        const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }
+        const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),

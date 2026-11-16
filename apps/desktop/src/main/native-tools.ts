@@ -18,8 +18,20 @@ const within = (root: string, path: string): boolean => {
   const rel = relative(root, path)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..\\`) && !rel.startsWith('../') && !isAbsolute(rel))
 }
-// The person's words name the file: its own name appears in them, whatever folder they wrote before it.
-const namedBy = (said: string | undefined, path: string): boolean => !!said && said.normalize('NFC').toLowerCase().includes(basename(path).normalize('NFC').toLowerCase())
+// The person's words name the file: its whole name appears in them, and a folder they wrote before it is this file's own folder.
+// c3c r2: the name alone was matched, so "fixtures/a/report.md 고쳐줘" also opened fixtures/b/report.md. "report.md" with no folder names either.
+const fold = (text: string): string => text.normalize('NFC').toLowerCase().replaceAll('\\', '/')
+export function namedBy(said: string | undefined, path: string): boolean {
+  if (!said) return false
+  const words = fold(said), file = fold(path), name = file.slice(file.lastIndexOf('/') + 1)
+  for (let at = words.indexOf(name); at >= 0; at = words.indexOf(name, at + 1)) {
+    // "report.md.bak" and "report.mdx" are other files; a Korean particle after the name ("report.md를") is not part of it.
+    if (/^([\w/-]|\.\w)/.test(words.slice(at + name.length))) continue
+    const written = /[^\s"'`“”‘’()[\]<>,:]*$/.exec(words.slice(0, at))![0].replace(/^[.~]*\/+/, '') + name
+    if (file.endsWith(`/${written}`)) return true
+  }
+  return false
+}
 const deny = (message: string): NativeDecision => ({ behavior: 'deny', message })
 const PLAN_ONLY = 'Plan mode: commands and file changes are off. Read what you need, then reply with the plan.'
 const allow: NativeDecision = { behavior: 'allow' }
