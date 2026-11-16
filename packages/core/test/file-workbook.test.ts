@@ -55,6 +55,9 @@ it('adds charts to a new workbook as package parts, with no application, and sti
       const source = await text(part)
       expect(() => new DOMParser({ onError: (level, message) => { throw new Error(`${level}: ${message}`) } }).parseFromString(source, 'text/xml')).not.toThrow()
     }
+    // The package checks the file tools run on every document still accept it with its chart parts.
+    const inspect = fileWorkTools({ directory: root, approveRead: async () => true }).find(one => one.name === 'file_read_package')!
+    expect(JSON.parse(await inspect.run({ path: output.path }, context)).parts.map((part: { name: string }) => part.name)).toContain('xl/charts/chart1.xml')
     const reader = fileWorkTools({ directory: root, approveRead: async () => true }).find(one => one.name === 'file_read_workbook')!
     const read = JSON.parse(await reader.run({ path: output.path, sheet: "월별 '합'계" }, context))
     expect(read.rows[1].map((cell: { value: unknown }) => cell.value)).toEqual(['1월', 3529000, 4])

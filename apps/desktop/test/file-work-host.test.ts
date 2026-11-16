@@ -414,3 +414,22 @@ it.skipIf(process.platform === 'win32')('does not move through a link that leads
   await expect(move.run({ moves: [{ from: 'fixtures/door', to: 'fixtures/door2' }] }, { task: 'Move it.' })).rejects.toThrow('Not a file or folder')
   expect(await readFile(join(root, 'outside', 'o.txt'), 'utf8')).toBe('out')
 })
+
+// grokbar D5: "방금 만든 PPT 3번 슬라이드 제목 바꿔줘" asked whether to make a copy. A composed file (ppt_build, word_write) changed in a later
+// turn under its own name is the same file in the task folder, with no question and no numbered twin.
+it('a later turn changes a composed file in place in the task folder, under its own name, without asking', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  // Composed files are handed in through taskOutputs, as ppt_build and word_write do; the bytes here are a workbook the file tools can open.
+  const draft = JSON.parse(await hostFileTools(paths, 'lane', [], [join(paths.workspace, 'tasks', 'bot-0')], { ask: state.confirm, turn: 't0' }).find(tool => tool.name === 'file_create_workbook')!.run({ name: 'deck.xlsx', sheet: 'S', rows: [['title'], [41]] }, { task: 'Make it.' })) as { path: string }
+  const first = await taskOutputs(paths, async () => task, new Set<string>(), 't1').save('deck.xlsx', await readFile(draft.path)) as { path: string; taskPath: string }
+  const tools = hostFileTools(paths, 'lane', [first.path], [task], { ask: state.confirm, turn: 't2' })
+  const use = async (name: string, args: Record<string, unknown>) => JSON.parse(await tools.find(tool => tool.name === name)!.run(args, { task: 'Change the number to 42.' }))
+  const part = await use('file_read_package', { path: first.taskPath, part: 'xl/worksheets/sheet1.xml' })
+  const edited = await use('file_edit_package', { sourcePath: first.taskPath, expectedSha256: part.sha256, name: 'deck.xlsx', edits: [{ part: part.part, expectedSha256: part.partSha256, before: '<v>41</v>', after: '<v>42</v>' }] })
+  expect(edited.taskPath).toBe(first.taskPath)
+  expect(await readdir(task)).toEqual(['deck.xlsx'])
+  expect((await use('file_read_package', { path: first.taskPath, part: 'xl/worksheets/sheet1.xml' })).xml).toContain('<v>42</v>')
+  // The earlier version is kept with the saved outputs, where the chat's "(이전)" link points.
+  expect(await previousVersions(paths, edited.artifact)).toEqual([first.path.split('/').at(-1)])
+  expect(state.confirm).not.toHaveBeenCalled()
+})
