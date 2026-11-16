@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, routeAsk, onlyTells, TOLD_NOTE } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, namedText, routeAsk, onlyTells, TOLD_NOTE } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -185,8 +185,8 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
-import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
+import { answerAlone, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
@@ -2827,7 +2827,10 @@ export function registerIpc(ctx: VaultContext): void {
         const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
-        const deskNote = desk && !short ? DESK_NOTE : ''
+        // A small text file the person named in the ask (or in the ask this one corrects) is read here, so the turn has no read round (desk-lane.ts namedText).
+        const given = kind === 'note' || kind === 'file' ? await namedText(routed, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(routed, path)) : undefined
+        const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\n\n') : ''
+        if (given) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-preread', bytes: given.text.length }))
         if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane', kind }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
@@ -2907,6 +2910,8 @@ export function registerIpc(ctx: VaultContext): void {
         // The thread gets the answer alone: why the host counts it unverified is for the log.
         const answered = answerOnly(result.answer)
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
+        // A short ask answered with no tool call shows the answer alone, without a line that only announces it (first-line.ts answerAlone).
+        if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)

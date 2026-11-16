@@ -39,9 +39,12 @@ it('gives one fact as one sentence, adds nothing the source lacks, answers a sho
   expect(COLLEAGUE_RULE).toContain('A one-fact ask ("12월 매출 합계 알려줘") gets that fact in one sentence, also when it comes from a file: no breakdown, table or working unless they ask for it.')
   expect(COLLEAGUE_RULE).toContain('holds only what is in it: add no item, number, owner, date or open question that is not there')
   expect(COLLEAGUE_RULE).toContain('A summary or tidy-up of a short note is answered in the chat itself; make a file only when they asked for a file or the result is long.')
-  expect(COLLEAGUE_RULE).toContain('say in a few words what you chose and end with ONE short offer line')
+  expect(COLLEAGUE_RULE).toContain('After a file job say in a few words what you chose.')
+  expect(COLLEAGUE_RULE).toContain('ends with exactly ONE short offer line')
   expect(COLLEAGUE_RULE).toContain('never a menu or a list of offers')
-  expect(COLLEAGUE_RULE).toContain('Give no offer after a correction, a simple fact, small talk or a short ask, and never repeat an offer you made in your previous reply.')
+  // c4c: no offer on every document turn (D5 chain: "원하시면 …" under each file).
+  expect(COLLEAGUE_RULE).toContain('Give no offer after a correction, a simple fact, small talk or a short ask.')
+  expect(COLLEAGUE_RULE).toContain('document turns in a row carry at most one offer between them')
   // The check tool is offered only on request (desktop result-check.ts asksForCheck): the team rule does not ask for a tool that is not there.
   expect(TEAM_LEAD_RULE).toContain('call report_result_check on it when that tool is offered')
   // Item 7: editing in place is for a file the person named.

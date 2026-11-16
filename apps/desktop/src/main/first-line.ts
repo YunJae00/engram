@@ -198,6 +198,14 @@ export function firstLineReady(channel: string): void {
 // answer lands whole when the turn ends (deliverAnswer). Only a reply to words the person said mid-turn is shown at once.
 export const heldRounds = (show: (text: string) => void): { token(text: string, aloud: boolean): void; reset(): void } => ({ token: (text, aloud) => { if (aloud) show(text) }, reset: () => {} })
 
+// grokbar Q3 (c3c-37bc057e): the host's waiting line was up ("바로 써 볼게요."), and the answer itself still opened with "회의에 늦어 죄송하다는
+// 정중한 영어 이메일 한 줄 써드릴게요." above the one line that was asked for. On a short ask answered with no tool call, a first paragraph that
+// only says what is about to be written is a second waiting line: the answer is what follows it. A reply that is nothing but such a line stays.
+export function answerAlone(answer: string): string {
+  const said = /^\s*([^\n]{1,80}게요[.!~]*)[ \t]*\n(?:\s*---[ \t]*\n)?\s*([^]+)$/.exec(answer)
+  return said && said[2]!.replace(/```replies[^]*?(```|$)/g, '').trim() ? said[2]! : answer
+}
+
 export function firstLineSpoke(channel: string): void {
   const turn = turns.get(channel)
   if (turn?.shown && turn.carried) { turn.carried = false; log({ channel, outcome: 'replaced', canned: !!turn.canned }); turn.hide?.() }
