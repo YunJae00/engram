@@ -116,6 +116,10 @@ describe('team hire tools', () => {
     const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
     expect(citeOwn(linked, naver, true)).toBe(linked)
     expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
+    // stack-3 (c3a run L1, L2, T2): the model's one link on a line of its own joins the last sentence; under a table or a list it stays where it is.
+    expect(citeOwn('오늘 서울은 오후부터 비가 와요.\n\n퇴근길 우산 챙기세요.\n\n[네이버 날씨](https://weather.naver.com/today)', naver, true)).toBe('오늘 서울은 오후부터 비가 와요.\n\n퇴근길 우산 챙기세요. [네이버 날씨](https://weather.naver.com/today)')
+    expect(citeOwn('애플은 352.34달러예요.\n[네이버 증권](https://finance.naver.com/aapl)\n', [], true)).toBe('애플은 352.34달러예요. [네이버 증권](https://finance.naver.com/aapl)')
+    for (const kept of ['| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)', '- 첫째\n- 둘째\n\n[네이버 검색](https://search.naver.com/x)', '[네이버 날씨](https://weather.naver.com/today)']) expect(citeOwn(kept, naver, true)).toBe(kept)
     expect(citeOwn('', naver, true)).toBe('')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
@@ -329,6 +333,12 @@ describe('team hire tools', () => {
     expect(citeMembers(missing, members.slice(3), true)).toBe(missing)
     expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [Naver](https://weather.naver.com/today/09)')
     expect(citeMembers('', members, true)).toBe('')
+    // stack-3 (c3a run R1, R2): a member that only searched and named the result's page in its own result is cited by the row that links
+    // that page: no closing "출처: 네이버 검색 · 네이버 검색" under a table that links every row. A member with no link in the answer still gets one.
+    const searched = members.slice(0, 2).map((m, i) => ({ ...(m as object), sources: [`https://search.naver.com/search.naver?query=${i}`], result: `맑아요. https://news.example/${i}.` }) as never)
+    const linkedRows = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 가 | 맑음 | [뉴스](https://news.example/0) |\n| 나 | 비 | [뉴스](https://news.example/1) |'
+    expect(citeMembers(linkedRows, searched, true)).toBe(linkedRows)
+    expect(citeMembers(linkedRows.replace('[뉴스](https://news.example/1)', '뉴스'), searched, true)).toContain('\n\n출처: [네이버 검색](https://search.naver.com/search.naver?query=1)')
   })
 
   // grokbar B6 T1: the lead re-ran the member that was cut at its time limit; 10.7 s for the same page.

@@ -134,16 +134,19 @@ const BUSY = ['hired', 'working', 'reviewing']
 // grokbar C4/C9: the brief was shown as written, an order ("…정리해줘.") where the person asked what someone did.
 const VERB_NOUNS: [RegExp, string][] = [[/찾아\s*(봐|보고)?$/u, '찾기'], [/알아\s*(봐|보고)$|알려$/u, '알아보기'], [/(써|쓰고)$/u, '쓰기'], [/(뽑아|뽑고)$/u, '뽑기'], [/(만들어|만들고)$/u, '만들기'], [/(골라|고르고)$/u, '고르기']]
 export function jobTitle(brief: string): string {
-  let line = (handedFrom(brief)?.brief ?? brief).split('\n')[0]!.replace(/^[#|<`\s-]+/, '').replace(/[\s.!?~。]+$/u, '')
+  // stack-3 (c3b run C4): "노션(Notion)의 이번 주(최근 7일 내) 신기능 발표나 업데이트를 조사해서 핵심 내용 정리해줘." was cut at 40 characters and read
+  // "…업데이트를 …를 했어요." in six rows. A gloss in brackets is no part of what the job was, and "조사해서 핵심 내용 정리해줘" is the job "조사".
+  let line = (handedFrom(brief)?.brief ?? brief).split('\n')[0]!.replace(/^[#|<`\s-]+/, '').replace(/\s*\([^()]*\)/g, '').replace(/[\s.!?~。]+$/u, '')
   // "뽑게 해" (have them pick) is the job "뽑기".
   line = line.replace(/(\S+?)게\s*(?:해|시켜)(?:\s*(?:줘요?|주세요))?$/u, '$1기')
-  const asked = line.replace(/\s*(?:줘요?|주세요|줄래요?|주라)$/u, '').replace(/해서\s*(?:정리|알려|전달|말|보여)(?:해)?$/u, '해')
+  const asked = line.replace(/\s*(?:줘요?|주세요|줄래요?|주라)$/u, '').replace(/해서\s*(?:\S+\s+){0,2}(?:정리|알려|전달|말|보여)(?:해)?$/u, '해')
   if (asked !== line || /(하고|해서|하기)$/u.test(line)) line = asked.replace(/([가-힣])\s*(?:해|하고|해서|하기)$/u, '$1')
   for (const [verb, noun] of VERB_NOUNS) line = line.replace(verb, noun)
   // "신기능을 조사" reads "신기능 조사"; two-syllable words that end in 을/를 themselves (가을, 마을) are left alone.
   return clip(line.replace(/([가-힣]{2,})[을를]\s+(\S+)$/u, '$1 $2'), 40)
 }
-const jobOf = (member: TeamMember): string => member.title?.trim() || jobTitle(member.brief)
+// A title that was still cut short is not said as a job ("…를 했어요"): the part's own short name stands in when there is one.
+const jobOf = (member: TeamMember): string => { const title = member.title?.trim() || jobTitle(member.brief); return title.endsWith('…') && member.topic?.trim() ? member.topic.trim() : title }
 // "A랑 B", "A, B랑 C".
 const listed = (items: readonly string[]): string => items.length < 2 ? items.join('') : `${items.slice(0, -2).map(one => `${one}, `).join('')}${josa(items.at(-2)!, '이랑', '랑')} ${items.at(-1)!}`
 

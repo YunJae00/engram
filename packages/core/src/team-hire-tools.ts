@@ -167,7 +167,10 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
     lines[i] = `| ${cells.join(' | ')} |`
   }
   const fixed = lines.join('\n')
-  const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)))
+  // stack-3 (c3a run, R1/R2): a row that linked the page its member's own result named still counted as uncited, because that member had
+  // only searched; the answer closed with "출처: 네이버 검색 · 네이버 검색" under a table that already linked every row.
+  const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
+  const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)) && !named(m).some(url => fixed.includes(url)))
   if (!missing.length) return fixed
   // grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11" - the link text is the site's name, never a member's role.
   return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${[...new Map(missing.map(m => [href(m), `[${siteName(m.sources![0]!, korean)}](${href(m)})`])).values()].join(' · ')}`
@@ -184,6 +187,10 @@ export function siteName(url: string, korean = false): string {
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
 // c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.
 export function citeOwn(answer: string, read: readonly string[], korean = false): string {
+  // stack-3 (c3a run, L1/L2/T2): the model put its one link on a line of its own under the answer ("네이버 날씨"), which read as a stray label.
+  // A lone closing link under a sentence joins that sentence, as in "…1,385원이에요. [네이버 금융](…)"; under a table or a list it stays.
+  const lone = /^([^]*\S)\s*\n\s*(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))\s*$/.exec(answer)
+  if (lone && !/^\s*([|>#*+-]|\d+[.)]\s|```)/.test(lone[1]!.split('\n').at(-1)!)) return `${lone[1]} ${lone[2]}`
   if (!answer.trim() || !read.length || /https?:\/\//.test(answer)) return answer
   const url = sourcesOf(read)[0]!, link = `[${siteName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
   const text = answer.trimEnd(), last = text.split('\n').at(-1)!

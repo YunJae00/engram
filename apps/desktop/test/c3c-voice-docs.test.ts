@@ -393,8 +393,13 @@ describe('desk tool menus', () => {
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {
-    expect(DESK_NOTE).toContain('how many files of each kind were moved')
-    expect(DESK_NOTE).toContain('no table and no list of file names unless they ask')
+    // stack-3 (c3c run): F1 "정리했어요. PDF 6개, 이미지 4개, …" failed BAR's "summary list" and the judge could not tell where the files went;
+    // H4 closed on "(참고: …)" with no offer; Q3 opened with "회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요."
+    expect(DESK_NOTE).toContain('one line per folder and how many files went into it')
+    expect(DESK_NOTE).toContain('no table and no file names unless they ask')
+    expect(DESK_NOTE).toContain('ends with ONE short offer line of a next step')
+    expect(SHORT_QUESTION_NOTE).toContain('never a sentence that restates the ask or says what you are about to write')
+    expect(DESK_NOTE).toContain('no table and no file names unless they ask')
     expect(DESK_NOTE).toContain('answered in the chat itself')
     expect(DESK_NOTE).toContain('with only what is in that file')
   })

@@ -29,7 +29,7 @@ describe('desk lane', () => {
     expect(DESK_NOTE).toContain('ONE keep_in_mind call (a correction replaces the old fact)')
     expect(DESK_NOTE).toContain('never that it was saved')
     // grokbar cycle 3 F1: a table of all 20 file names cost ~8 s; the answer is the count per kind (rule 6's own example).
-    expect(DESK_NOTE).toContain('how many files of each kind were moved')
+    expect(DESK_NOTE).toContain('one line per folder and how many files went into it')
   })
 
   it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {

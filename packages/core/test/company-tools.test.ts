@@ -687,6 +687,8 @@ test('what a job was, from the words it was asked in', () => {
     ['노션의 이번 주 신기능을 조사해서 정리해줘.', '노션의 이번 주 신기능 조사'], ['다음 달 서울 IT 행사 일정 정리', '다음 달 서울 IT 행사 일정 정리'], ['홍보 문구 3개 뽑게 해', '홍보 문구 3개 뽑기'],
     ['이번 주말 서울 날씨 찾아보고', '이번 주말 서울 날씨 찾기'], ['주말 나들이 추천 문구 한 줄 써줘', '주말 나들이 추천 문구 한 줄 쓰기'], ['경쟁사 가격을 조사해 주세요', '경쟁사 가격 조사'], ['회의록 요약해줘', '회의록 요약'], ['가을 축제 피해', '가을 축제 피해'],
     [handoffBrief('홍보 문구 3개 뽑기', '지민', '결과'), '홍보 문구 3개 뽑기'],
+    // stack-3 (c3b run C4): the lead's own brief, with glosses in brackets and "…조사해서 핵심 내용 정리해줘", read "…업데이트를 …를 했어요."
+    ['노션(Notion)의 이번 주(최근 7일 내) 신기능 발표나 업데이트를 조사해서 핵심 내용 정리해줘.', '노션의 이번 주 신기능 발표나 업데이트 조사'],
   ] as const) expect(jobTitle(brief), brief).toBe(title)
 })
 
@@ -770,6 +772,9 @@ test('who someone is and what everyone is doing, on the tasks as they were store
     '도윤은 쉬고 있어요. 마지막으로 리니어의 이번 주 신기능 조사를 했어요.',
   ])
   expect(`${aboutEmployee('지우 무슨 일 하는 사람이야?', bots, tasks)}${companyStatus(bots, tasks)}`).not.toMatch(/해줘|최근에 한 일:|^- |—/m)
+  // stack-3 (c3b run C4): a title stored cut short is never said as a job ("…업데이트를 …를 했어요."): the part's short name stands in.
+  const cut = [{ ...tasks[0]!, team: { ...tasks[0]!.team, members: tasks[0]!.team.members.map((m, i) => i === 1 ? { ...m, title: '슬랙(Slack)의 이번 주(최근 7일 내) 신기능 발표나 업데이트를 조…', topic: '슬랙 신기능 조사' } : m) } }, tasks[1]!]
+  expect(companyStatus(bots, cut).split('\n')[1]).toBe('서연은 쉬고 있어요. 마지막으로 슬랙 신기능 조사를 했어요.')
   // What the host answers by itself, so the turn shows no first line before it.
   for (const ask of ['다들 뭐 하고 있어?', '지우 무슨 일 하는 사람이야?', '하린 하나 추가해줘. 디자인 담당이야', '이거 지우한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '지우 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', '매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘'])
     expect(answersItself(ask, bots), ask).toBe(true)
