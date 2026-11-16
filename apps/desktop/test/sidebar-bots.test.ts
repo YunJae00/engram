@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { BotDto } from '../src/shared/types.js'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { botMenuItems, groupSidebarBots, markParts, matchesSidebarSearch, searchExcerpt, sidebarSearchEmpty } from '../src/renderer/src/lib/sidebarBots.js'
 
 const bot = (id: string, extra: Partial<BotDto> = {}): BotDto => ({ id, name: `Bot ${id}`, purpose: `purpose ${id}`, createdAt: '2026-01-01T00:00:00.000Z', ...extra })
