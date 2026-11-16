@@ -74,7 +74,10 @@ describe('three tiers', () => {
       { purpose: 'librarian', hint: 'fast', model: 'haiku' },
       { purpose: 'first-line', hint: 'fast', model: 'haiku' },
     ])
-    expect(source('engine-claude.ts')).toContain("tier('work', chosenModel())")
+    // perf146: a tool session runs on the work model unless the job names a tier (a lookup team member runs on the smart tier).
+    expect(source('engine-claude.ts')).toContain("tier('work', chosenModel(job.modelHint), job.modelHint)")
+    expect(chosenModel(undefined)).toBe(chosenModel())
+    expect(chosenModel('smart')).toBe('sonnet')
     expect(source('ipc.ts')).toContain("tierPurpose.run('memory', () => rememberTurn(")
   })
 

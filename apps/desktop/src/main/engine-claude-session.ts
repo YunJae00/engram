@@ -27,7 +27,7 @@ export interface SessionSdk {
     interrupt(): Promise<unknown>
     supportedModels(): Promise<{ value: string; displayName: string; description: string; resolvedModel?: string; supportsEffort?: boolean; supportedEffortLevels?: import('core').ReasoningEffort[] }[]>
   }
-  createSdkMcpServer(options: { name: string; tools: unknown[] }): unknown
+  createSdkMcpServer(options: { name: string; tools: unknown[]; alwaysLoad?: boolean }): unknown
   tool(
     name: string,
     description: string,
@@ -45,6 +45,7 @@ export interface SessionSpec {
 }
 
 const IDLE_MS = 60 * 60_000
+export const PRELOADED_TOOLS_MAX = 16
 
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content
@@ -113,6 +114,8 @@ export class WarmSession {
     this.runtime = JSON.stringify([spec.binary, spec.model, spec.env])
     const server = spec.sdk.createSdkMcpServer({
       name: TOOL_SERVER,
+      // A small menu is put in the prompt whole: finding it through ToolSearch cost a model round per look (perf146: 8 rounds, 3-8 s each).
+      ...(job.tools.length <= PRELOADED_TOOLS_MAX ? { alwaysLoad: true } : {}),
       tools: job.tools.map((one) =>
         spec.sdk.tool(one.name, one.description, shapeOf(one.argsSchema), async (args) => {
           // The tool of the turn under way: the same name may run against a

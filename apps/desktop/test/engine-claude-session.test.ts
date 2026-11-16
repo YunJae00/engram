@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const timingLog = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
-import { SessionPool, type SdkUserMessage, type SessionSdk } from '../src/main/engine-claude-session.js'
+import { SessionPool, type SdkUserMessage, type SessionSdk, PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // A stand-in runtime: one process per query, answering every user message
 // it is fed with a call to the first tool and then an answer that names
@@ -56,6 +56,18 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
+  // perf146: the members' tools sat behind ToolSearch, a model round per lookup (8 rounds, 3-8 s each).
+  it('puts a small tool menu in the prompt whole and leaves a large one to be searched', async () => {
+    const { sdk, optionsSeen } = fakeSdk([])
+    const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
+    const many = Array.from({ length: PRELOADED_TOOLS_MAX + 1 }, (_, i) => ({ ...job('x').tools[0]!, name: `tool_${i}` }))
+    try {
+      await pool.run(job('Small', { sessionKey: 'a:small' }), base)
+      await pool.run(job('Large', { sessionKey: 'a:large', tools: many }), base)
+      const servers = optionsSeen.map(options => (options['mcpServers'] as Record<string, { alwaysLoad?: boolean }>)['engram']!)
+      expect(servers.map(server => server.alwaysLoad)).toEqual([true, undefined])
+    } finally { pool.closeAll() }
+  })
   it('keeps account sessions separate and closes every account copy of a conversation', async () => {
     const { sdk, processes, optionsSeen } = fakeSdk([])
     const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }

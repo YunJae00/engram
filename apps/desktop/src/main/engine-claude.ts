@@ -304,7 +304,7 @@ export class ClaudeEngine implements CloudEngine {
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }
-    return Promise.all([sdkModule(), tier('work', chosenModel()), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); trimWarm(); metric.end() })
+    return Promise.all([sdkModule(), tier('work', chosenModel(job.modelHint), job.modelHint), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); trimWarm(); metric.end() })
   }
 
   // A session opened ahead for the next comet, so its first turn starts at once.
