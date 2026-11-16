@@ -259,10 +259,10 @@ test('first-run login states, filing retry, and a welcome with no direct browser
   expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(settingsBox!.x)
   expect(Math.abs(retryBox!.y + retryBox!.height / 2 - settingsBox!.y - settingsBox!.height / 2)).toBeLessThan(2)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
-  await expect(page.getByRole('region', { name: 'Filing model', exact: true }).getByTestId('model-picker')).toHaveCount(0)
+  await expect(page.getByTestId('ai-check-filing')).toBeVisible()
+  await expect(page.getByTestId('settings-view').getByTestId('model-picker')).toHaveCount(0)
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => ({ filing: settings.aiSelections?.filing?.engine, chat: settings.defaultEngine })))).toEqual({ filing: 'claude', chat: 'claude' })
-  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
   await app.evaluate(({ BrowserWindow }) => {
     const engines = ['claude', 'codex'].map(id => ({ id, installed: true, loggedIn: true, healthy: true }))
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:changed', engines })

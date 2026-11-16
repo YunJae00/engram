@@ -8,7 +8,7 @@ import { cometOfChannel } from '../lib/cometThreads.js'
 import { useCometActivity } from '../lib/useCometActivity.js'
 import { useShellState } from '../state-slices.js'
 import { SidebarStatus } from './SidebarStatus.js'
-import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
+import { SidebarMenu } from './SidebarMenu.js'
 import { SidebarCollection } from './SidebarCollection.js'
 import { SidebarBotTeam, SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
@@ -80,7 +80,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings }: Props)
   const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: shown(bot), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={shown(bot)} />, below: <SidebarBotTeam bot={bot} /> })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
-    <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
+    <div className="app-sidebar-head"><SidebarMenu activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
     {developer ? <div id="developer-sidebar" className="developer-sidebar-content" /> : <>
     <div className="sidebar-library-tools"><button className="sidebar-icon-button sidebar-create bots-top-button" data-testid="sidebar-create" aria-label={t('sidebar.create')} title={t('sidebar.create')} disabled={!vaultReady} onClick={() => setCreatingBot(true)}><Plus size={18} aria-hidden /></button></div>
     <div className="sidebar-scroll">

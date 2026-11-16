@@ -39,9 +39,11 @@ test('remaining weekly usage does not hide a limited request and the chosen mode
     await expect(page.getByTestId('unhealthy-banner')).toContainText('ChatGPT limited a request')
     await expect(page.getByTestId('unhealthy-banner')).not.toContainText('once it resets')
     await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Check', exact: true }).click()
-    await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByTestId('settings-view')).toBeVisible()
     await expect(page.getByTestId('brain-codex-status')).toHaveText('Request limited · Retry check')
-    await expect(page.getByText('66% remaining', { exact: true })).toBeVisible()
+    // The account still has weekly usage left (34% used); Settings itself no longer lists limits.
+    expect(await page.evaluate(() => window.engram.devUsage('codex', 'system'))).toMatchObject({ windows: [{ name: 'codex · 7d', used: 34 }] })
+    await expect(page.getByTestId('settings-view').locator('.account-usage')).toHaveCount(0)
     const check = page.getByTestId('ai-check-filing')
     await check.click()
     await expect(check).toBeDisabled()
@@ -50,7 +52,7 @@ test('remaining weekly usage does not hide a limited request and the chosen mode
     await check.click()
     await expect(page.getByText('The selected model answered.', { exact: true })).toBeVisible()
     await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
-    await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+    await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
     await expect(page.getByTestId('unhealthy-banner')).toHaveCount(0)
   } finally { await app.close() }
 })

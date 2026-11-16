@@ -171,7 +171,6 @@ test('cream+ink screen finish and empty state', async () => {
       ipcMain.removeHandler('accounts:states')
       ipcMain.handle('accounts:states', () => [{ id: 'system', provider: 'codex', name: 'System account', selected: true, installed: true, loggedIn: true, conclusive: true, healthy: true }])
     })
-    await page.getByTestId('settings-nav-ai').click()
     await settings.locator('button[aria-label*="ChatGPT"]').first().click()
     const accounts = page.locator('.account-profile-dialog')
     await expect(accounts).toBeVisible()

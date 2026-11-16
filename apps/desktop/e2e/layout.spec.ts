@@ -190,35 +190,31 @@ test('the conversation shows animated pending status and elapsed time without an
   await expect(page.locator('.bots-write .bubble-stop')).toHaveCount(0)
 })
 
-test('settings header, rows and footer share an inset without nested modal padding', async () => {
+test('settings rows share an inset without nested modal padding or a footer', async () => {
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })
     await navigate('settings')
-    await page.getByTestId('settings-nav-ai').click()
-    // In-app work runs on Claude only with no model picker (one engine), so the empty 'New conversation model' row is hidden
-    // and the filing row leads the defaults.
-    await expect(page.getByRole('region', { name: 'Filing model', exact: true })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toBeHidden()
+    // One page with no model rows: the only AI default left is the Test row.
+    await expect(page.getByTestId('ai-check-filing')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Filing model', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toHaveCount(0)
+    await expect(page.locator('.settings-box .dialog-actions')).toHaveCount(0)
     const box = page.locator('.brief-box.settings-box')
     await expect(box).toHaveCSS('padding', '0px')
     await expect(box).toHaveCSS('gap', '0px')
     await expect.poll(() => box.evaluate((node) => {
-      const head = node.querySelector('.dialog-head')!
       const scroll = node.querySelector('.settings-scroll')!
-      const foot = node.querySelector('.dialog-actions')!
       const inset = (element: Element) => element.getBoundingClientRect().left + parseFloat(getComputedStyle(element).paddingLeft)
-      const model = node.querySelector('[aria-label="Filing model"]')!.getBoundingClientRect()
-      const select = node.querySelector('[aria-label="Decision model connection"] .settings-card')!.getBoundingClientRect()
-      const valueColumns = [...node.querySelectorAll('.settings-panel:not([hidden]) .settings-fact-value')].map((value) => value.getBoundingClientRect().left)
+      const groups = ['settings-theme', 'settings-shortcut', 'settings-start-fresh', 'settings-about'].map((id) => node.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect())
+      const test = node.querySelector('[data-testid="ai-check-filing"]')!.closest('.settings-section')!.getBoundingClientRect()
       return {
-        contentAligned: Math.abs(inset(scroll) - node.querySelector('.settings-panel:not([hidden]) h2')!.getBoundingClientRect().left) <= 1,
-        footerAligned: Math.abs(inset(head) - inset(foot)) <= 1,
-        fieldsAligned: Math.abs(model.width - select.width) <= 1,
-        columnsAligned: valueColumns.every((left) => Math.abs(left - select.left) <= 1),
-        fitsWidth: model.right <= node.getBoundingClientRect().right,
+        contentAligned: Math.abs(inset(scroll) - groups[0]!.left) <= 1,
+        fieldsAligned: groups.every((group) => Math.abs(group.width - test.width) <= 1),
+        columnsAligned: groups.every((group) => Math.abs(group.left - test.left) <= 1),
+        fitsWidth: test.right <= node.getBoundingClientRect().right,
         fitsHeight: node.getBoundingClientRect().bottom <= innerHeight,
       }
-    })).toEqual({ contentAligned: true, footerAligned: true, fieldsAligned: true, columnsAligned: true, fitsWidth: true, fitsHeight: true })
+    })).toEqual({ contentAligned: true, fieldsAligned: true, columnsAligned: true, fitsWidth: true, fitsHeight: true })
     await page.keyboard.press('Escape')
   }
 })

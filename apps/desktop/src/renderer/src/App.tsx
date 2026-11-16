@@ -4,7 +4,6 @@ import { AppNotices, Toast, useToastDismiss } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
-import { TOUR_DONE_KEY } from './lib/tour.js'
 import { dismissSidebar, useSidebarEscape } from './lib/sidebarOverlay.js'
 import { isNewBotShortcut } from './lib/newBotShortcut.js'
 import { BotsView } from './views/BotsView.js'
@@ -13,7 +12,6 @@ import { useShellState } from './state-slices.js'
 import { t } from './i18n.js'
 import { threadLang, threadWords } from './lib/threadLang.js'
 import { cometThreads, selectComet } from './lib/cometThreadsLive.js'
-import type { SettingsSection } from './components/SettingsNavigation.js'
 import { ArtifactSheet } from './components/ArtifactSheet.js'
 import type { FirstSetupDto, UpdateCheckDto } from '../../shared/types.js'
 import { FirstSetup } from './components/FirstSetup.js'
@@ -24,10 +22,8 @@ import { FirstSetup } from './components/FirstSetup.js'
 // first asked for, they cost nothing until then. Each is a local file, so
 // the wait is a frame, not a download.
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
-const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
-const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
 const DiagnosticsView = lazy(() => import('./views/DiagnosticsView.js').then((m) => ({ default: m.DiagnosticsView })))
 const InboxOverlay = lazy(() => import('./views/InboxOverlay.js').then((m) => ({ default: m.InboxOverlay })))
 const ListView = lazy(() => import('./views/ListView.js').then((m) => ({ default: m.ListView })))
@@ -40,7 +36,7 @@ const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: 
 const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) => ({ default: m.DevelopersView })))
 
 // A language switch remounts the whole app (main.tsx keys it by language); Settings, where the switch is, stays open through it.
-let settingsHeld: { open: boolean; section: SettingsSection } = { open: false, section: 'general' }
+let settingsHeld = { open: false }
 
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
@@ -49,19 +45,16 @@ function Shell() {
   const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (activity !== 'bots' && workspace === 'developers'))
   useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (activity === 'bots') setWorkspace('bots') }, [activity])
   const [settingsOpen, setSettingsOpen] = useState(settingsHeld.open)
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>(settingsHeld.section)
-  useEffect(() => { settingsHeld = { open: settingsOpen, section: settingsSection } }, [settingsOpen, settingsSection])
+  useEffect(() => { settingsHeld = { open: settingsOpen } }, [settingsOpen])
   useEffect(() => {
     if (!api.developerUiEnabled) return
     const open = () => { setSettingsOpen(false); setActivity('developers') }
-    const settings = () => { setSettingsSection('developers'); setSettingsOpen(true) }
+    const settings = () => setSettingsOpen(true)
     window.addEventListener('engram:open-developers', open)
     window.addEventListener('engram:open-developer-settings', settings)
     return () => { window.removeEventListener('engram:open-developers', open); window.removeEventListener('engram:open-developer-settings', settings) }
   }, [setActivity])
   const [diagOpen, setDiagOpen] = useState(false)
-  // "Back up to GitHub" — reachable from the workspace switcher and settings.
-  const [githubOpen, setGithubOpen] = useState(false)
   const [devLayout, setDevLayout] = useState<1 | 2 | 4>(1)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
@@ -89,7 +82,7 @@ function Shell() {
       // surfaced this window; land on the note itself.
       else if (e.type === 'note:open') openNote(e.id)
       else if (e.type === 'task:notice') showToast(e.foreground ? threadWords(threadLang(cometThreads.thread(e.foreground.lane.replace(/^bot-/, '')).messages)).foregroundTaken(e.foreground.app) : e.message)
-      else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
+      else if (e.type === 'brain:setup') setSettingsOpen(true)
       else if (e.type === 'routine:chat' || e.type === 'comet:open' || e.type === 'comet:quick') {
         if (e.type === 'comet:quick') setSettingsOpen(false)
         selectComet(e.botId); setActivity('bots')
@@ -100,7 +93,6 @@ function Shell() {
 
   // An output file a comet linked, opened in the thread rather than in a folder.
   const [artifactId, setArtifactId] = useState<string | null>(null)
-  const [tourOpen, setTourOpen] = useState(false)
   // A vault just made by setup waits for its first filing before the shell
   // opens. Nothing is drawn until that is known, so the shell never flashes
   // first; once it is done, "ready" holds a moment and the shell fades in.
@@ -126,27 +118,6 @@ function Shell() {
     return () => window.clearTimeout(timer)
   }, [leaving])
   const settingUp = !!setup?.waiting || leaving || (vaultReady && setup === undefined)
-  useEffect(() => {
-    if (!vaultReady || settingUp || localStorage.getItem(TOUR_DONE_KEY)) return
-    let cancelled = false
-    let timer: number | undefined
-    const cancel = () => { cancelled = true; window.clearTimeout(timer) }
-    window.addEventListener('pointerdown', cancel, { capture: true, once: true })
-    window.addEventListener('keydown', cancel, { capture: true, once: true })
-    void api.tourEligible().then((ok) => {
-      if (!ok || cancelled) return
-      // let the shell settle so every anchor exists and has its real position
-      timer = window.setTimeout(() => {
-        if (!cancelled) setTourOpen(true)
-      }, 900)
-    })
-    return () => {
-      cancel()
-      window.removeEventListener('pointerdown', cancel, true)
-      window.removeEventListener('keydown', cancel, true)
-    }
-  }, [vaultReady, settingUp])
-
   // useLayoutEffect, not useEffect: the shell paints (and advertises Cmd+L on
   // a button title) before passive effects commit, so a keypress in that gap
   // would be silently dropped. Layout effects attach before the first paint.
@@ -173,7 +144,6 @@ function Shell() {
   // as window events so leaf components can drive the shell without prop drilling.
   useEffect(() => {
     const openDiag = () => setDiagOpen(true)
-    const openGithub = () => setGithubOpen(true)
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -185,8 +155,8 @@ function Shell() {
       const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids
       if (ids && ids.length > 0) setSkyFocus({ ids })
     }
-    const openBrainSetup = () => { setSettingsSection('ai'); setSettingsOpen(true) }
-    const openHelp = () => { setSettingsSection('help'); setSettingsOpen(true) }
+    const openBrainSetup = () => setSettingsOpen(true)
+    const openHelp = () => setSettingsOpen(true)
     window.addEventListener('engram:open-help', openHelp)
     window.addEventListener('engram:open-brain-setup', openBrainSetup)
     window.addEventListener('engram:open-diagnostics', openDiag)
@@ -197,7 +167,6 @@ function Shell() {
       else void window.engram.artifactOpen(id).catch(() => setArtifactId(id))
     }
     window.addEventListener('engram:open-artifact', openArtifact)
-    window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:focus-capture', focusCapture)
     window.addEventListener('engram:sky-focus', focusSky)
     return () => {
@@ -205,7 +174,6 @@ function Shell() {
       window.removeEventListener('engram:open-help', openHelp)
       window.removeEventListener('engram:open-diagnostics', openDiag)
       window.removeEventListener('engram:open-artifact', openArtifact)
-      window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:focus-capture', focusCapture)
       window.removeEventListener('engram:sky-focus', focusSky)
     }
@@ -225,7 +193,7 @@ function Shell() {
         developer={developerSidebar}
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
-        onOpenSettings={() => { setSettingsSection(developerSidebar ? 'developers' : 'general'); setSettingsOpen(true) }}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => dismissSidebar(closeSidebar)} />}
       <main className="app-main">
@@ -236,7 +204,7 @@ function Shell() {
           pendingWork={pendingWork}
           update={update}
           vaultReady={vaultReady}
-          onOpenSettings={() => { setSettingsSection('ai'); setSettingsOpen(true) }}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <div className="canvas">
         {/* While a big vault is still being read the views would all claim
@@ -291,11 +259,9 @@ function Shell() {
         <NoteSheet />
         <ReviewOverlay />
         <InboxOverlay />
-        {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
         {artifactId && <ArtifactSheet id={artifactId} onClose={() => setArtifactId(null)} />}
-        {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}
-        {tourOpen && <TourOverlay onClose={() => setTourOpen(false)} />}
       </Suspense>
       {toast && <Toast key={toast.id} message={toast.message} onDone={hideToast} />}
       <ComputerStatus />

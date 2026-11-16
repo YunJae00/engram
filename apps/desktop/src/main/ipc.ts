@@ -157,7 +157,8 @@ import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList 
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
-import { approvalsStore, reviewRuleInput } from './approvals.js'
+import { approvalsStore } from './approvals.js'
+import { isPersonSentence, preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -1448,6 +1449,8 @@ export function registerIpc(ctx: VaultContext): void {
   const ROUTINE_MIN_FREE = 1.5e9
 
   const approvals = approvalsStore(app.getPath('userData'))
+  // What the Settings page no longer shows, said in chat (preferences-chat.ts).
+  const settingsChat = preferencesChat(ctx, approvals)
   registerArtifactIpc(ctx.paths)
   registerChatAttachmentIpc(ctx.paths)
   ipcMain.handle('routines:list', () => listRoutines(paths))
@@ -1740,8 +1743,9 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:lane', (_e, lane: string) => lookAtLane(String(lane)))
   // The page is reset: the lane's tab goes, and the next ask starts clean.
   ipcMain.handle('agent:reset', (_e, lane: string) => resetLaneView(String(lane)))
-  // The log itself, opened as a folder: plain files a person can read or
-  // hand to whoever asks what the comets did.
+
+  // shortcut: no renderer calls this any more (preload entry removed with the Settings row); the handler stays so this branch
+  // does not touch the shared import lines B6/B7 edit. Delete it with its two imports (auditDir, mkdir) after those merge.
   ipcMain.handle('audit:open', async () => {
     const dir = auditDir(paths)
     await mkdir(dir, { recursive: true })
@@ -1754,8 +1758,6 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('approvals:list', () => approvals.list())
   ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
   ipcMain.handle('reviewRules:list', () => approvals.reviewRules())
-  ipcMain.handle('reviewRules:add', (_e, input: unknown) => approvals.addReviewRule(reviewRuleInput(input)))
-  ipcMain.handle('reviewRules:remove', (_e, input: unknown) => approvals.removeReviewRule(reviewRuleInput(input)))
   // Standing tasks go through the same door as a press of Run.
   startStanding({
     paths,
@@ -2449,6 +2451,8 @@ export function registerIpc(ctx: VaultContext): void {
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
     ...(channel.startsWith('bot-') && !isHelperLane(channel) ? [teammateSettingsTool(paths, channel.slice('bot-'.length), () => broadcast({ type: 'bots:changed' }))] : []),
+    // Preferences have no screen: the person's own conversation with a bot changes them, a member's lane never does.
+    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => /[가-힣]/.test(turnGoals.get(channel) ?? ''))] : []),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
     // Separate questions looked into at once, each on a tab of its own.
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
@@ -2479,6 +2483,27 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'bots:changed' })
     }
     await rememberSelections([channel])
+    const recordAsk = async (): Promise<void> => {
+      if (!bot || recovery || turn?.quiet || recordedRequests.has(request) || savedFollowUp(channel, request.message)) return
+      await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
+      recordedRequests.add(request)
+    }
+    // A plain sentence about a preference ("컴퓨터 켜면 자동으로 실행 꺼줘"), or the yes to its one question, is answered here: no model round,
+    // so it stands before the check that an AI is connected.
+    if (bot && isPersonSentence(request, turn, recovery, savedRoutine)) {
+      const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
+      if (said) {
+        await recordAsk()
+        // Its one line is the whole answer: a quick first line still on its way would be a second one.
+        firstLineSpoke(channel)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
+        // Not a waiting task: the yes is the person's next message, which comes back here (preferences-tools.ts keeps the question).
+        turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
+        answering.delete(channel)
+        broadcast({ type: 'chat:done', channel, text: said })
+        return
+      }
+    }
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
     const settings = await loadSettings()
@@ -2501,10 +2526,7 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error)
-    if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request) && !savedFollowUp(channel, request.message)) {
-      await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
-      recordedRequests.add(request)
-    }
+    await recordAsk()
     firstLineReady(channel)
     // Claude at its usage limit: the reply above is kept; say when it can pick up again.
     if (isLimited('claude', channel)) {

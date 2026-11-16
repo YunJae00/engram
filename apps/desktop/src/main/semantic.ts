@@ -12,7 +12,7 @@ import {
   type SemanticHit,
   type VectorIndex,
 } from 'core'
-import { app, ipcMain, powerMonitor } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SemanticStatusDto } from '../shared/types.js'
@@ -389,9 +389,4 @@ export async function semanticQueryIfLive(query: string, k: number): Promise<Sem
 // Vectors for texts while the model is already up, or null; this never loads it.
 export const embedLive = (texts: string[]): Promise<Float32Array[] | null> => state.status === 'ready' && state.extractor ? embedBatch(texts).catch(() => null) : Promise.resolve(null)
 
-export function registerSemanticIpc(): void {
-  ipcMain.handle(
-    'semantic:status',
-    (): SemanticStatusDto => ({ status: state.status, detail: state.detail, model: state.model }),
-  )
-}
+

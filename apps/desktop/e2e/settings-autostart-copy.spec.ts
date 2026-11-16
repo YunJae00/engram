@@ -6,11 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-const COPY: Record<string, { own: RegExp; others: RegExp }> = {
-  win32: { own: /sign in to Windows/, others: /Mac|macOS|Linux/ },
-  darwin: { own: /log in to your Mac/, others: /Windows|Linux/ },
-  linux: { own: /when you sign in\./, others: /Windows|Mac|macOS/ },
-}
 let app: ElectronApplication
 let page: Page
 
@@ -25,10 +20,11 @@ test.beforeEach(async () => {
 })
 test.afterEach(async () => { await closeTestApp(app) })
 
-test('auto-start description names only the current platform', async () => {
-  const copy = COPY[process.platform] ?? COPY['linux']!
+test('auto-start has no Settings row and is on by default', async () => {
   await openActivity(page, 'settings')
-  const item = page.locator('.settings-item', { has: page.getByTestId('setting-autostart') })
-  await expect(item).toContainText(copy.own)
-  expect(await item.innerText()).not.toMatch(copy.others)
+  const settings = page.getByTestId('settings-view')
+  await expect(settings.getByTestId('settings-theme')).toBeVisible()
+  await expect(settings.getByTestId('setting-autostart')).toHaveCount(0)
+  await expect(settings).not.toContainText(/sign in to Windows|log in to your Mac|when you sign in\./)
+  expect(await page.evaluate(() => window.engram.settingsGet().then(value => value.autoStart))).toBe(true)
 })

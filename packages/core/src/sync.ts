@@ -56,6 +56,11 @@ export class TeamSync {
     return origin?.refs?.push ?? origin?.refs?.fetch ?? null
   }
 
+  // The remote is forgotten; local history and whatever was pushed are untouched.
+  async disconnect(): Promise<void> {
+    if (await this.hasRemote()) await this.git.removeRemote('origin')
+  }
+
   async createTeam(remoteUrl: string): Promise<void> {
     await this.git.addRemote('origin', remoteUrl)
     await this.git.push(['-u', 'origin', 'main'])

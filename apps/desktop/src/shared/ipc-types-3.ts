@@ -1,5 +1,5 @@
 import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -33,16 +33,10 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   agentReset(lane: string): Promise<void>
   browserTabs(lane: string): Promise<BrowserTabDto[]>
   browserTab(lane: string, action: 'add' | 'select' | 'close', id?: string): Promise<BrowserTabDto[]>
-  auditOpen(): Promise<void>
   chatFresh(botId: string): Promise<void>
   modelsList(id?: 'claude' | 'codex', profile?: string): Promise<ModelChoiceDto[]>
   aiCheck(): Promise<void>
   agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
-  workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
-  workspaceCreate(name: string): Promise<void>
-  workspaceJoin(name: string, url: string): Promise<void>
-  workspaceSwitch(id: string): Promise<void>
-  workspaceDelete(id: string): Promise<boolean>
   listNotes(): Promise<NoteDto[]>
   readNote(id: string): Promise<{ note: NoteDto; body: string }>
   saveNoteBody(id: string, body: string): Promise<void>
@@ -110,11 +104,8 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   workMapStatus(): Promise<WorkMapStatusDto>
   firstSetupStatus(): Promise<FirstSetupDto>
   firstSetupSkip(): Promise<void>
-  workMapRefresh(): Promise<WorkMapStatusDto>
   appsList(): Promise<AppUseDto[]>
-  appsSet(app: string, label: string, on: boolean): Promise<void>
   habitsList(): Promise<HabitDraftDto[]>
-  habitsScan(): Promise<HabitDraftDto[]>
   habitsAnswer(key: string, keep: boolean): Promise<HabitDraftDto[]>
   noticesList(): Promise<NoticesDto>
   noticesOpen(id: string): Promise<string>
@@ -137,8 +128,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   approvalsList(): Promise<ApprovalRuleDto[]>
   approvalForget(fingerprint: string): Promise<void>
   reviewRulesList(): Promise<ReviewRule[]>
-  reviewRuleAdd(input: { kind: ReviewRule['kind']; target: string }): Promise<ReviewRule[]>
-  reviewRuleRemove(input: { kind: ReviewRule['kind']; target: string }): Promise<ReviewRule[]>
   browsersList(): Promise<{ id: string; name: string; userData: string; running: boolean }[]>
   browserImport(id: string): Promise<{ ok: boolean; copied?: number; error?: string }>
   browserForget(): Promise<void>
@@ -192,9 +181,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   syncStatus(): Promise<SyncStatusDto>
   syncNow(): Promise<SyncStatusDto>
   syncBrief(): Promise<string>
-  teamJoin(url: string): Promise<void>
-  githubOpenNew(name: string): Promise<void>
-  githubConnect(url: string): Promise<GithubConnectResultDto>
   importPick(): Promise<string | null>
   importScan(folder: string): Promise<{ count: number; totalBytes: number }>
   importRun(folder: string): Promise<{ imported: number }>
@@ -204,7 +190,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   onboardDefaults(): Promise<{ defaultRoot: string }>
   onboardComplete(payload: OnboardPayload): Promise<void>
   enginesDetected(): Promise<boolean>
-  tourEligible(): Promise<boolean>
   appVersion(): Promise<string>
   vaultReady(): Promise<boolean>
   revealVaultRoot(root: string): Promise<void>
@@ -227,7 +212,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   mcpStatus(): Promise<{ enabled: boolean; active: boolean; connected: number }>
   mcpEnable(enabled: boolean): Promise<{ enabled: boolean; active: boolean; connected: number }>
   mcpStop(): Promise<void>
-  semanticStatus(): Promise<SemanticStatusDto>
   diagnostics(): Promise<DiagnosticsDto>
   exportLogs(): Promise<string | null>
   platform: string

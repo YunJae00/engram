@@ -45,25 +45,24 @@ test.afterAll(async () => { await app?.close() })
 
 test('settings stays usable while a runtime probe never answers', async () => {
   await openActivity(page, 'settings')
-  await expect(page.getByTestId('settings-nav-ai')).toBeEnabled({ timeout: 2000 })
-  await page.getByTestId('settings-nav-ai').click()
+  await expect(page.getByTestId('settings-view')).toBeVisible({ timeout: 2000 })
   await expect(page.getByTestId('brain-claude-status')).toContainText('Checking connection')
-  await page.getByTestId('settings-nav-general').click()
-  await expect(page.getByTestId('settings-nav-general')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('settings-theme').getByRole('radio')).toHaveCount(3)
+  await expect(page.getByTestId('settings-reset')).toBeEnabled()
   await page.keyboard.press('Escape')
 })
 
 test('memory settings and the app expose no browser video recording controls', async () => {
   for (let visit = 0; visit < 2; visit++) {
     await openActivity(page, 'settings')
-    await page.getByTestId('settings-nav-memory').click()
-    await expect(page.getByTestId('setting-work-map')).toBeVisible()
+    await expect(page.getByTestId('settings-about')).toBeVisible()
+    await expect(page.getByTestId('setting-work-map')).toHaveCount(0)
     await expect(page.getByTestId('task-recording-settings')).toHaveCount(0)
     await expect(page.getByTestId('setting-record-tasks')).toHaveCount(0)
     await expect(page.getByRole('complementary', { name: 'Browser recording' })).toHaveCount(0)
     expect(await page.evaluate(() => ['evidenceStatus' in window.engram, 'evidenceStop' in window.engram])).toEqual([false, false])
     expect(await page.evaluate(async () => 'recordTasks' in await window.engram.settingsGet())).toBe(false)
-    await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+    await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
     await expect(page.getByTestId('settings-view')).toHaveCount(0)
   }
 })
@@ -72,12 +71,10 @@ test('both sign-in cards survive reopening settings and offer cancel and browser
   await app.evaluate(() => { (globalThis as Global).engineFixture.delayed = false })
   for (const id of ['claude', 'codex']) {
     await openActivity(page, 'settings')
-    await page.getByTestId('settings-nav-ai').click()
     await page.getByTestId(`brain-${id}-connect`).click()
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Finish signing in')
     await page.keyboard.press('Escape')
     await openActivity(page, 'settings')
-    await page.getByTestId('settings-nav-ai').click()
     await expect(page.getByTestId(`brain-${id}-status`)).toContainText('Finish signing in')
     await page.getByRole('button', { name: 'Open browser' }).click()
     await page.getByTestId(`brain-${id}-cancel`).click()
@@ -97,7 +94,6 @@ test('the composer offers no model picker and new conversations stay on Claude',
   await expect(page.getByTestId('model-picker')).toHaveCount(0)
   expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!
     await window.webContents.capturePage()
@@ -138,7 +134,6 @@ test('the main banner and filing status recover alongside the connected settings
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('engine-status')).toHaveCount(0)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-codex-status')).toHaveText('Connected')
   await page.keyboard.press('Escape')
   await app.evaluate(({ BrowserWindow }) => {
@@ -146,7 +141,7 @@ test('the main banner and filing status recover alongside the connected settings
   })
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Log in', exact: true }).click()
-  await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('settings-view').getByTestId('brain-codex-status')).toBeVisible()
   await expect(page.getByTestId('diagnostics-view')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await app.evaluate(({ BrowserWindow }) => {
@@ -159,11 +154,10 @@ test('composer and AI defaults show no provider picker while the filing test sta
   await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.getByTestId('engine-status')).toHaveCount(0)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
-  await expect(page.getByRole('region', { name: 'New conversation model', exact: true }).getByTestId('model-picker')).toHaveCount(0)
-  const filing = page.getByRole('region', { name: 'Filing model', exact: true })
-  await expect(filing.getByTestId('model-picker')).toHaveCount(0)
-  await expect(filing.getByTestId('ai-check-filing')).toBeEnabled()
+  await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Filing model', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('settings-view').getByTestId('model-picker')).toHaveCount(0)
+  await expect(page.getByTestId('ai-check-filing')).toBeEnabled()
   await page.keyboard.press('Escape')
   expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
 })
@@ -190,7 +184,6 @@ test('no provider menu appears in wide or compact windows', async () => {
 test('a disconnected Claude account shows in AI settings without changing accounts or engine', async () => {
   await app.evaluate(() => { (globalThis as Global).engineFixture.signed.claude = false })
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   await expect(page.getByTestId('brain-claude-connect')).toBeEnabled()
   expect(await page.evaluate(async () => (await window.engram.settingsGet()).defaultEngine)).toBe('claude')
   expect(await app.evaluate(() => { const state = (globalThis as Global).engineFixture; return { signed: state.signed, login: state.login } })).toEqual({ signed: { claude: false, codex: true }, login: [{ id: 'codex', phase: 'connected', canOpen: false }] })
@@ -325,7 +318,6 @@ test('the composer shows no model menu after reload while the catalog request is
 
 test('Claude keeps its brand color on the sign-in card in both themes', async () => {
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-ai').click()
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
     const icon = page.locator('.engine-identity > .provider-icon[data-provider="claude"]')
@@ -357,7 +349,6 @@ test('a newer update replaces stale restart actions in the banner and settings',
   await expect(banner.getByRole('button')).toBeDisabled()
   await expect(banner.getByText('Restart now')).toHaveCount(0)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-help').click()
   await expect(page.getByTestId('settings-update')).toContainText('9.0.2')
   await expect(page.getByTestId('settings-update').getByRole('progressbar')).toHaveAttribute('value', '12')
   await app.evaluate(({ BrowserWindow }) => {

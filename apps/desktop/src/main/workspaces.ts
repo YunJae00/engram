@@ -1,16 +1,12 @@
-import { initVault, joinTeam, renameWithRetry } from 'core'
-import { app, dialog, ipcMain, shell } from 'electron'
+import { renameWithRetry } from 'core'
+import { app, dialog, shell } from 'electron'
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import { lstat, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
-import type { WorkspaceInfoDto } from '../shared/types.js'
-import { binaryProvider } from './vault.js'
 
-// App-level registry of vaults ("workspaces"): personal or team roots the user
-// can switch between. Lives in Electron userData as vaults.json and is the
-// single source of truth for which vault boots. Registered BEFORE any vault is
-// open so the switcher and onboarding both work.
+// There is one workspace. This registry (userData/vaults.json) still says where it is, and still lists the
+// others a person made when there could be several: nothing here creates, switches to or deletes one any
+// more. Their contents are copied into the one that opens (core workspace-merge.ts); the folders stay on disk.
 interface WorkspaceInfo {
   id: string
   name: string
@@ -167,95 +163,11 @@ export async function currentWorkspaceRoot(): Promise<string | null> {
   return reg.vaults.find((v) => v.id === reg.current)?.root ?? null
 }
 
-function toDto(v: WorkspaceInfo): WorkspaceInfoDto {
-  return { id: v.id, name: v.name, root: v.root, kind: v.kind }
-}
-
-// Filesystem-safe slug for a new vault directory name.
-function slugify(name: string): string {
-  const s = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return s || 'workspace'
-}
-
-// New vault dir under ~/EngramVaults/<slug>, suffixed -2, -3 … to stay unique.
-// (Pre-rename vaults keep living wherever the registry points — full paths.)
-function newVaultDir(name: string): string {
-  const base = join(app.getPath('home'), 'EngramVaults')
-  const slug = slugify(name)
-  let candidate = join(base, slug)
-  let n = 2
-  while (existsSync(candidate)) {
-    candidate = join(base, `${slug}-${n}`)
-    n += 1
-  }
-  return candidate
-}
-
-function gitEnabled(): boolean {
-  return process.env['ENGRAM_NO_GIT'] !== '1'
-}
-
-// ipcMain handlers. Must be registered in registerBaseIpc() so the switcher and
-// onboarding work before any vault is booted.
-export function registerWorkspaceIpc(): void {
-  let deleting = false
-  ipcMain.handle('workspace:delete', async (_event, id: string) => {
-    if (deleting) throw new Error('A workspace deletion is already in progress.')
-    deleting = true
-    try {
-      const reg = await loadRegistry()
-      const vault = reg.vaults.find(value => value.id === id)
-      if (!vault) throw new Error('Unknown workspace.')
-      await deletionRoot(vault, reg)
-      const choice = await dialog.showMessageBox({ type: 'warning', title: 'Delete workspace?', message: `Delete “${vault.name}”?`, detail: `Engram will restart and move this local workspace, including conversations, memories and saved files, to the Recycle Bin or Trash. Running tasks will stop. External project folders and remote team repositories are not deleted.\n\n${vault.root}`, buttons: ['Cancel', 'Delete workspace'], defaultId: 0, cancelId: 0, noLink: true })
-      if (choice.response !== 1) return false
-      reg.pendingDelete = id
-      await saveRegistry(reg)
-      app.relaunch()
-      app.quit()
-      return true
-    } finally { deleting = false }
-  })
-  ipcMain.handle('workspace:list', async () => {
-    const reg = await loadRegistry()
-    return { current: reg.current, vaults: reg.vaults.map(toDto) }
-  })
-
-  ipcMain.handle('workspace:create', async (_e, payload: { name: string }) => {
-    if (deleting) throw new Error('Finish the workspace deletion first.')
-    const root = newVaultDir(payload.name)
-    await initVault(root, { git: gitEnabled(), provider: binaryProvider() })
-    const info = await registerWorkspace({ name: payload.name, root, kind: 'personal' })
-    // Relaunch into the new vault. Return value is moot (the app dies).
-    app.relaunch()
-    app.exit(0)
-    return toDto(info)
-  })
-
-  ipcMain.handle('workspace:join', async (_e, payload: { name: string; url: string }) => {
-    if (deleting) throw new Error('Finish the workspace deletion first.')
-    const root = newVaultDir(payload.name)
-    await joinTeam(root, payload.url, binaryProvider())
-    // joinTeam already lays out the vault; initVault is an idempotent ensure.
-    await initVault(root, { git: gitEnabled(), provider: binaryProvider() })
-    const info = await registerWorkspace({ name: payload.name, root, kind: 'team' })
-    app.relaunch()
-    app.exit(0)
-    return toDto(info)
-  })
-
-  ipcMain.handle('workspace:switch', async (_e, id: string) => {
-    if (deleting) throw new Error('Finish the workspace deletion first.')
-    const reg = await loadRegistry()
-    if (!reg.vaults.some((v) => v.id === id)) throw new Error('unknown workspace')
-    reg.current = id
-    await saveRegistry(reg)
-    app.relaunch()
-    app.exit(0)
-  })
-
+// Every other workspace on record, for the one-time merge into the one that opens.
+// shared: the open one is a team's repository, so a person's other notes stay out of what it tracks.
+export async function workspacesToMerge(): Promise<{ sources: { root: string; name: string }[]; shared: boolean }> {
+  const reg = await loadRegistry()
+  const current = reg.vaults.find(vault => vault.id === reg.current)
+  if (!current) return { sources: [], shared: false }
+  return { sources: reg.vaults.filter(vault => vault.id !== current.id && vault.id !== reg.pendingDelete && resolve(vault.root) !== resolve(current.root)).map(vault => ({ root: vault.root, name: vault.name })), shared: current.kind === 'team' }
 }

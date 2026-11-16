@@ -1,18 +1,15 @@
 import {
   collectResult,
   engineCwd,
-  joinTeam,
   loadAbsorbState,
   resolveConflicts,
   runImport,
   TeamSync,
 } from 'core'
-import { ipcMain, shell } from 'electron'
-import { access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { loadSettings } from './settings.js'
+import { ipcMain } from 'electron'
 import type { GithubConnectResultDto, SyncStatusDto } from '../shared/types.js'
 import { broadcast, drainAbsorbQueue } from './ipc.js'
-import { isAllowedExternalUrl } from './security.js'
 import type { VaultContext } from './vault.js'
 import { vaultGit } from './vault-git.js'
 
@@ -68,7 +65,7 @@ async function statusDto(ctx: VaultContext): Promise<SyncStatusDto> {
   }
 }
 
-async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
+export async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
   statusCache = null // a real sync changes what status() should report
   if (!ctx.git) return { state: 'no-remote', ahead: 0, behind: 0 }
   const sync = syncOf(ctx)
@@ -88,6 +85,43 @@ async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
 export function getSyncStatus(ctx: VaultContext): Promise<SyncStatusDto> {
   return statusDto(ctx)
 }
+
+// Point the vault repo at a GitHub repository and push. Idempotent and retry-safe: a prior push that failed
+// on auth left the remote in place, so it pushes again rather than trap the person behind "already connected".
+export async function connectGithub(ctx: VaultContext, url: string): Promise<GithubConnectResultDto> {
+  const sync = syncOf(ctx)
+
+  let normalized: string
+  try {
+    normalized = normalizeGithubUrl(url)
+  } catch (err) {
+    return { ok: false, detail: cleanDetail(err) }
+  }
+  const existing = await sync.remoteUrl()
+  // A remote to a *different* repo means this workspace is already backed up
+  // elsewhere — refuse rather than silently repoint it.
+  if (existing && normalizeGithubUrl(existing) !== normalized) {
+    throw new Error('already-connected')
+  }
+  try {
+    if (existing) await sync.push()
+    else await sync.createTeam(normalized)
+  } catch (err) {
+    return { ok: false, detail: cleanDetail(err) }
+  }
+  startAutoSync(ctx, true)
+  broadcast({ type: 'vault:changed' })
+  return { ok: true }
+}
+
+// Stop backing up: the remote is forgotten here; what was pushed stays where it is.
+export async function disconnectGithub(ctx: VaultContext): Promise<void> {
+  await syncOf(ctx).disconnect()
+  statusCache = null
+  broadcast({ type: 'vault:changed' })
+}
+
+export const hasBackup = (ctx: VaultContext): Promise<boolean> => ctx.git ? syncOf(ctx).hasRemote() : Promise.resolve(false)
 
 export function registerTeamIpc(ctx: VaultContext): void {
   ipcMain.handle('sync:status', () => statusDto(ctx))
@@ -113,58 +147,6 @@ export function registerTeamIpc(ctx: VaultContext): void {
     }
   })
 
-  ipcMain.handle('team:join', async (_e, url: string) => {
-    // joining replaces an EMPTY workspace only — never clobber notes.
-    try {
-      await access(join(ctx.paths.workspace, '.git'))
-      throw new Error('This vault already has team history — join from a fresh vault instead.')
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('team history')) throw err
-    }
-    await joinTeam(ctx.paths.root, url)
-    teamSync = null
-    broadcast({ type: 'vault:changed' })
-  })
-
-  // One-click GitHub backup (no pre-registered OAuth app needed). Step 1 opens
-  // GitHub's create-repo page prefilled private; the browser + bundled git's
-  // credential manager handle auth on the first push.
-  ipcMain.handle('github:openNew', (_e, name: string) => {
-    const suggested = encodeURIComponent(name.trim() || 'engram-vault')
-    const url = `https://github.com/new?name=${suggested}&visibility=private`
-    // Host is a literal here, but gate every openExternal through the allowlist
-    // so no code path can ever hand the OS browser an off-allowlist URL.
-    if (isAllowedExternalUrl(url)) void shell.openExternal(url)
-  })
-
-  // Step 2: point the existing vault repo at the pasted repo and push. Idempotent
-  // and retry-safe — a prior push that failed on auth left the remote in place,
-  // so we push again rather than trap the user behind an "already connected" wall.
-  ipcMain.handle('github:connect', async (_e, url: string): Promise<GithubConnectResultDto> => {
-    const sync = syncOf(ctx)
-    let normalized: string
-    try {
-      normalized = normalizeGithubUrl(url)
-    } catch (err) {
-      return { ok: false, detail: cleanDetail(err) }
-    }
-    const existing = await sync.remoteUrl()
-    // A remote to a *different* repo means this workspace is already backed up
-    // elsewhere — refuse rather than silently repoint it.
-    if (existing && normalizeGithubUrl(existing) !== normalized) {
-      throw new Error('already-connected')
-    }
-    try {
-      if (existing) await sync.push()
-      else await sync.createTeam(normalized)
-    } catch (err) {
-      return { ok: false, detail: cleanDetail(err) }
-    }
-    startAutoSync(ctx, true)
-    broadcast({ type: 'vault:changed' })
-    return { ok: true }
-  })
-
   ipcMain.handle('import:run', async (_e, folder: string) => {
     const report = await runImport(ctx.paths, folder, {
       onProgress: (done, total) => broadcast({ type: 'import:progress', done, total }),
@@ -187,7 +169,8 @@ export function startAutoSync(ctx: VaultContext, auto: boolean): void {
   autoSyncArmed = true
   const tick = async () => {
     try {
-      if (await syncOf(ctx).hasRemote()) await performSync(ctx)
+      // Turned off in chat ("자동 백업 꺼줘"): the timer stays, and does nothing until it is on again.
+      if ((await loadSettings()).teamSync === 'auto' && await syncOf(ctx).hasRemote()) await performSync(ctx)
     } catch (err) {
       console.error('auto sync failed:', err)
     }

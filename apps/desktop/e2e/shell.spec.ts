@@ -130,30 +130,28 @@ test('no engine → connect banner shows', async () => {
   await expect(page.getByTestId('settings-view')).toHaveCount(0)
 })
 
-test('workspace switcher shows the active workspace', async () => {
-  // Registry is empty here (launched with ENGRAM_VAULT) — currentName falls back
-  // to 'Engram' but the menu still renders the New/Join rows.
-  await page.getByTestId('workspace-switcher').click()
-  await expect(page.getByTestId('workspace-menu')).toBeVisible()
-  await expect(page.getByTestId('workspace-menu').getByRole('button', { name: /New workspace/ })).not.toBeVisible()
-  await page.getByTestId('workspace-menu').locator('summary').click()
-  await expect(page.getByTestId('workspace-menu').getByRole('button', { name: /New workspace/ })).toBeVisible()
-  await expect(page.getByTestId('workspace-menu')).toContainText('New workspace')
+test('the Engram menu only navigates', async () => {
+  await page.getByTestId('engram-menu-button').click()
+  await expect(page.getByTestId('engram-menu')).toBeVisible()
+  expect(await page.getByTestId('engram-menu').getByRole('button').evaluateAll(rows => rows.map(row => row.getAttribute('data-testid')))).toEqual(['activity-bots', 'activity-sky', 'activity-list'])
+  await expect(page.getByTestId('engram-menu').locator('summary')).toHaveCount(0)
+  await expect(page.getByTestId('engram-menu')).not.toContainText(/workspace/i)
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('workspace-menu')).toHaveCount(0)
+  await expect(page.getByTestId('engram-menu')).toHaveCount(0)
 })
 
 test('help lives in Settings without duplicate quick actions', async () => {
   await expect(page.getByTestId('help-button')).toHaveCount(0)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-help').click()
-  const panel = page.getByTestId('help-panel')
+  await expect(page.getByTestId('help-panel')).toHaveCount(0)
+  const panel = page.getByTestId('settings-about')
   await expect(panel).toBeVisible()
-  await expect(panel.getByRole('heading', { name: 'About', exact: true })).toBeVisible()
+  await expect(panel.getByRole('heading', { name: 'Engram', exact: true })).toBeVisible()
   await expect(panel).not.toContainText('Keyboard shortcuts')
-  await expect(panel.getByTestId('settings-export-logs')).toBeVisible()
+  await expect(panel.getByTestId('settings-version')).toBeVisible()
+  await expect(page.getByTestId('settings-export-logs')).toHaveCount(0)
   await expect(panel.getByRole('button', { name: 'Remember' })).toHaveCount(0)
-  await page.getByTestId('settings-view').getByRole('button', { name: 'Done', exact: true }).click()
+  await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
 })
 
 
@@ -268,10 +266,9 @@ test('help is reachable through Settings on every view', async () => {
   for (const view of ['bots', 'sky']) {
     await openActivity(page, view)
     await openActivity(page, 'settings')
-    await page.getByTestId('settings-nav-help').click()
-    await expect(page.getByTestId('help-panel')).toBeVisible()
+    await expect(page.getByTestId('settings-about')).toBeVisible()
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('help-panel')).toHaveCount(0)
+    await expect(page.getByTestId('settings-about')).toHaveCount(0)
   }
 })
 
@@ -280,8 +277,7 @@ test('the command shortcut opens no palette; Help is reached through Settings', 
   await expect(palette()).toHaveCount(0)
   await expect(page.getByRole('option', { name: 'Read the weekly digest' })).toHaveCount(0)
   await openActivity(page, 'settings')
-  await page.getByTestId('settings-nav-help').click()
-  await expect(page.getByTestId('help-panel')).toBeVisible()
+  await expect(page.getByTestId('settings-about')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('help-panel')).toHaveCount(0)
 })

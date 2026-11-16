@@ -6,6 +6,15 @@ export function aliasesPath(paths: VaultPaths): string {
   return join(paths.workspace, 'aliases.md')
 }
 
+// Alias lines that stay on this computer: the ones that came from a person's other workspace into one a team shares.
+// Read with aliases.md, never written into it.
+export function localAliasesPath(paths: VaultPaths): string {
+  return join(paths.cache, 'aliases.local.md')
+}
+
+const both = async (paths: VaultPaths): Promise<string[]> =>
+  Promise.all([aliasesPath(paths), localAliasesPath(paths)].map(file => readFile(file, 'utf8').catch(() => '')))
+
 const HEADER = [
   '# Aliases',
   '',
@@ -50,11 +59,7 @@ export function parseUmbrellaTerms(text: string): string[] {
 }
 
 export async function loadUmbrellaTerms(paths: VaultPaths): Promise<string[]> {
-  try {
-    return parseUmbrellaTerms(await readFile(aliasesPath(paths), 'utf8'))
-  } catch {
-    return []
-  }
+  return [...new Set((await both(paths)).flatMap(parseUmbrellaTerms))]
 }
 
 function dedupeTerms(raw: string[]): string[] {
@@ -70,11 +75,7 @@ function dedupeTerms(raw: string[]): string[] {
 }
 
 export async function loadAliasGroups(paths: VaultPaths): Promise<string[][]> {
-  try {
-    return parseAliasGroups(await readFile(aliasesPath(paths), 'utf8'))
-  } catch {
-    return []
-  }
+  return (await both(paths)).flatMap(parseAliasGroups)
 }
 
 async function saveAliasGroups(paths: VaultPaths, groups: string[][]): Promise<void> {
@@ -89,7 +90,8 @@ async function saveAliasGroups(paths: VaultPaths, groups: string[][]): Promise<v
 export async function addAliasGroup(paths: VaultPaths, terms: string[]): Promise<string[] | null> {
   const fresh = dedupeTerms(terms)
   if (fresh.length < 2) return null
-  const groups = await loadAliasGroups(paths)
+  // Only the shared file's own groups are rewritten into it.
+  const groups = parseAliasGroups(await readFile(aliasesPath(paths), 'utf8').catch(() => ''))
   const freshKeys = new Set(fresh.map((t) => t.toLowerCase()))
   const merged: string[] = []
   const rest: string[][] = []

@@ -1,6 +1,6 @@
 import { createEngine, ENGINE_ORDER, PERMISSION_MODES, REASONING_EFFORTS, type PermissionMode, type ReasoningEffort } from 'core'
 import { app, dialog, ipcMain, nativeTheme, shell } from 'electron'
-import { cp, writeFile } from 'node:fs/promises'
+import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import os from 'node:os'
 import type { AppSettingsDto, DiagnosticsDto } from '../shared/types.js'
@@ -108,7 +108,16 @@ export function registerConfigIpc(ctx: VaultContext): void {
   ipcMain.handle('logs:export', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     if (result.canceled || !result.filePaths[0]) return null
-    const target = join(result.filePaths[0], `engram-logs-${Date.now()}`)
+    const target = await writeLogs(ctx, result.filePaths[0])
+    void shell.openPath(target)
+    return target
+  })
+}
+
+// The logs a person hands to whoever is helping them, written as one new folder inside `into`.
+export async function writeLogs(ctx: VaultContext, into: string): Promise<string> {
+    const target = join(into, `engram-logs-${Date.now()}`)
+    await mkdir(target, { recursive: true })
     await cp(join(ctx.paths.views, 'logs'), join(target, 'librarian'), { recursive: true }).catch(() => undefined)
     await cp(join(app.getPath('userData'), 'logs'), join(target, 'field'), { recursive: true }).catch(() => undefined)
     await cp(join(app.getPath('userData'), 'engine-pids.json'), join(target, 'engine-pids.json')).catch(() => undefined)
@@ -121,7 +130,5 @@ export function registerConfigIpc(ctx: VaultContext): void {
       `crash dumps: ${app.getPath('crashDumps')}`,
     ].join('\n')
     await writeFile(join(target, 'versions.txt'), versions).catch(() => undefined)
-    void shell.openPath(target)
     return target
-  })
 }

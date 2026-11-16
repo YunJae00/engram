@@ -54,30 +54,24 @@ async function savedLanguage(profile: string): Promise<unknown> {
 async function layout(page: Page): Promise<Layout> {
   await openSettings(page)
   const widths: number[] = [], overflow: Overflow[] = []
-  const ids = await page.locator('[data-testid^="settings-nav-"]').evaluateAll(nodes => nodes
-    .filter(node => (node as HTMLElement).checkVisibility()).map(node => node.getAttribute('data-testid')!))
-  for (const id of ids) {
-    await page.getByTestId(id).click()
-    await expect(page.getByTestId(id)).toHaveAttribute('aria-current', 'page')
-    await page.evaluate(() => document.fonts.ready.then(() => undefined))
-    widths.push(await page.getByTestId('settings-view').evaluate(node => node.getBoundingClientRect().width))
-    overflow.push(...await page.getByTestId('settings-view').evaluate(root => [...root.querySelectorAll<HTMLElement>('*')]
-      .filter(el => el.checkVisibility({ checkVisibilityCSS: true }) && el.scrollWidth > el.clientWidth)
-      .map(el => {
-        const cs = getComputedStyle(el)
-        return { key: `${el.tagName}.${[...el.classList].sort().join('.')}`, ellipsized: cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible' }
-      })))
-  }
+  // Settings is one page now, so one pass measures every group.
+  await page.evaluate(() => document.fonts.ready.then(() => undefined))
+  widths.push(await page.getByTestId('settings-view').evaluate(node => node.getBoundingClientRect().width))
+  overflow.push(...await page.getByTestId('settings-view').evaluate(root => [...root.querySelectorAll<HTMLElement>('*')]
+    .filter(el => el.checkVisibility({ checkVisibilityCSS: true }) && el.scrollWidth > el.clientWidth)
+    .map(el => {
+      const cs = getComputedStyle(el)
+      return { key: `${el.tagName}.${[...el.classList].sort().join('.')}`, ellipsized: cs.textOverflow === 'ellipsis' && cs.overflowX !== 'visible' }
+    })))
   return { widths, overflow }
 }
 
 async function pick(page: Page, language: 'system' | 'ko' | 'en'): Promise<void> {
   await openSettings(page)
-  await page.getByTestId('settings-nav-general').click()
-  await page.getByTestId(`setting-ui-language-${language}`).click()
+  await page.evaluate(value => window.engram.settingsSet({ uiLanguage: value }), language)
 }
 
-test('Settings language picker switches the UI live, keeps the draft and the Korean layout', async () => {
+test('a language change switches the UI live, keeps the draft and the Korean layout', async () => {
   const { app, chatId, profile, dirs } = await launch()
   try {
     const page = await prepare(app)
@@ -89,8 +83,9 @@ test('Settings language picker switches the UI live, keeps the draft and the Kor
     await expect(page.getByTestId('activity-settings')).toHaveAttribute('aria-label', '설정')
     // qa146 S25: picking a language keeps Settings open, now in that language.
     await expect(page.getByTestId('settings-view'), 'settings stay open').toBeVisible()
-    await expect(page.getByTestId('setting-ui-language-ko')).toBeVisible()
-    await expect(page.getByTestId('settings-view').getByRole('button', { name: '완료', exact: true })).toBeVisible()
+    await expect(page.locator('[data-testid^="setting-ui-language-"]')).toHaveCount(0)
+    await expect(page.getByTestId('settings-view').getByRole('button', { name: '설정 닫기', exact: true })).toBeVisible()
+    for (const [id, text] of [['settings-theme', '모양'], ['settings-shortcut', '어디서나 새 봇'], ['ai-check-filing', '테스트'], ['settings-start-fresh', '처음부터 시작'], ['settings-about', '버전']] as const) await expect(page.getByTestId(id)).toContainText(text)
     expect(await page.evaluate(() => (window as unknown as { __langMarker?: number }).__langMarker)).toBe(1)
     expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
     await expect.poll(() => savedLanguage(profile)).toBe('ko')
@@ -101,13 +96,13 @@ test('Settings language picker switches the UI live, keeps the draft and the Kor
     await expect.poll(() => savedLanguage(profile)).toBe('en')
     const en = await layout(page)
 
-    expect(ko.widths.length).toBeGreaterThanOrEqual(4)
+    expect(ko.widths.length).toBe(1)
     expect(ko.widths.length).toBe(en.widths.length)
     ko.widths.forEach((width, index) => expect(Math.abs(width - en.widths[index]!), `section ${index} width`).toBeLessThanOrEqual(2))
     const enKeys = new Set(en.overflow.map(one => one.key))
     expect(ko.overflow.filter(one => !one.ellipsized && !enKeys.has(one.key)), 'new Korean settings overflow').toEqual([])
 
-    if (await page.getByTestId('settings-view').isVisible()) await page.getByRole('button', { name: 'Done' }).click()
+    if (await page.getByTestId('settings-view').isVisible()) await page.getByRole('button', { name: 'Close settings', exact: true }).click()
     await expect(page.getByTestId('settings-view')).toBeHidden()
     await openChat(page, chatId)
     await expect(page.locator('[data-testid="bots-input"]')).toHaveValue(DRAFT)

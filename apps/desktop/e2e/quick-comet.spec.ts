@@ -54,9 +54,8 @@ test('Developers entry points are hidden without removing stored preferences', a
     await page.screenshot({ path: join(tmp, `settings-safe-controls-${size.width}.png`) })
   }
   await page.setViewportSize({ width: 1000, height: 740 })
-  await expect(page.getByTestId('settings-nav-developers')).toHaveCount(0)
+  await expect(page.getByTestId('settings-developers')).toHaveCount(0)
   await expect(page.getByRole('checkbox', { name: 'Developers', exact: true })).toHaveCount(0)
-  await page.getByTestId('settings-nav-general').click()
   await expect(page.getByText('New bot anywhere')).toBeVisible()
   await page.keyboard.press('Escape')
   await page.evaluate(() => window.dispatchEvent(new Event('engram:open-developers')))

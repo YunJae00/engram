@@ -181,37 +181,37 @@ test.describe('visual', () => {
 
   test('settings-review', async () => {
     const contrast: { theme: Theme; text: number | null; headings: (number | null)[]; ring: number | null }[] = []
-    await capture('settings-review', async (page, theme) => {
+    await capture('settings-review', async (page, theme, app) => {
+      // Settings no longer lists review rules (they are changed in chat); the stored rules are still read.
       const openAi = async () => {
         await page.getByTestId('activity-settings').click()
-        await page.getByTestId('settings-nav-ai').click()
-        await expect(page.getByTestId('review-rules')).toBeVisible()
+        await expect(page.getByTestId('settings-about')).toBeVisible()
+        await expect(page.getByTestId('review-rules')).toHaveCount(0)
+        await expect(page.getByTestId('review-rule-row')).toHaveCount(0)
       }
       await openAi()
-      for (const [kind, host] of [['ask-first', 'example.com'], ['allow', 'docs.example.org']] as const) {
-        await page.getByTestId(`review-rule-input-${kind}`).fill(host)
-        await page.getByTestId(`review-rule-add-${kind}`).click()
-        await expect(page.getByTestId(`review-rules-${kind}`).getByTestId('review-rule-row')).toHaveText([new RegExp(host.replace('.', '\\.'))])
-      }
+      expect(await page.evaluate(() => window.engram.reviewRulesList())).toEqual([])
+      expect(await page.evaluate(() => ['reviewRuleAdd' in window.engram, 'reviewRuleRemove' in window.engram])).toEqual([false, false])
+      const rules = [
+        { kind: 'ask-first', operation: 'submit', target: 'example.com' },
+        { kind: 'allow', operation: 'submit', target: 'docs.example.org' },
+      ]
+      await writeFile(join(await app.evaluate(({ app }) => app.getPath('userData')), 'approvals.json'), JSON.stringify({ rules: [], reviewRules: rules }))
       await page.reload()
       await expect(page.getByTestId('shell')).toBeVisible()
       await openAi()
-      await expect(page.getByTestId('review-rule-row')).toHaveCount(2)
-      expect(await page.evaluate(() => window.engram.reviewRulesList())).toEqual([
-        { kind: 'ask-first', operation: 'submit', target: 'example.com' },
-        { kind: 'allow', operation: 'submit', target: 'docs.example.org' },
-      ])
-      const input = page.getByTestId('review-rule-input-ask-first')
-      await page.getByTestId('review-rules').scrollIntoViewIfNeeded()
+      expect(await page.evaluate(() => window.engram.reviewRulesList())).toEqual(rules)
+      const input = page.getByTestId('settings-reset')
+      await input.scrollIntoViewIfNeeded()
       await input.focus()
       await page.keyboard.press('Shift+Tab')
       await page.keyboard.press('Tab')
       await expect(input).toBeFocused()
       const colors = await page.evaluate(() => {
         const layers = (el: Element | null) => { const out: string[] = []; for (; el; el = el.parentElement) out.push(getComputedStyle(el).backgroundColor); return out }
-        const host = document.querySelector('[data-testid="review-rule-row"] > span')!
-        const heads = [...document.querySelectorAll('[data-testid="review-rules"] h4')]
-        const field = document.querySelector<HTMLElement>('[data-testid="review-rule-input-ask-first"]')!
+        const host = document.querySelector('[data-testid="settings-about"] .settings-item-title')!
+        const heads = [...document.querySelectorAll('[data-testid="settings-view"] h3.settings-section-title')]
+        const field = document.querySelector<HTMLElement>('[data-testid="settings-reset"]')!
         const cs = getComputedStyle(field)
         const ring = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 ? cs.outlineColor : cs.boxShadow.match(/rgba?\([^)]*\)/)?.[0] ?? ''
         return { text: [getComputedStyle(host).color, ...layers(host)], heads: heads.map(h => [getComputedStyle(h).color, ...layers(h)]), ring: [ring, ...layers(field.parentElement)] }
@@ -237,8 +237,8 @@ test.describe('visual', () => {
     }
     expect(contrast.map(c => c.theme)).toEqual([...THEMES])
     for (const c of contrast) {
-      expect(c.text, `${c.theme} host text`).toBeGreaterThanOrEqual(4.5)
-      expect(c.headings, `${c.theme} headings`).toHaveLength(2)
+      expect(c.text, `${c.theme} row text`).toBeGreaterThanOrEqual(4.5)
+      expect(c.headings, `${c.theme} headings`).toHaveLength(4)
       for (const h of c.headings) expect(h, `${c.theme} heading`).toBeGreaterThanOrEqual(4.5)
       expect(c.ring, `${c.theme} focus ring`).toBeGreaterThanOrEqual(3)
     }

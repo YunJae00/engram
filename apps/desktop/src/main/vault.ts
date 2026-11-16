@@ -8,13 +8,14 @@ import {
   type BinaryProvider,
   type Engine,
   type EngineId,
-  type VaultPaths, ENGINE_ORDER, keepsEngine, resetBotsToV2 } from 'core'
+  type VaultPaths, ENGINE_ORDER, keepsEngine, mergeWorkspace, resetBotsToV2 } from 'core'
 import { loadSettings } from './settings.js'
 import { aiSelection, withModel } from './ai-selection.js'
 import { app } from 'electron'
 import { join } from 'node:path'
-import { currentWorkspaceRoot, registerWorkspace } from './workspaces.js'
+import { currentWorkspaceRoot, registerWorkspace, workspacesToMerge } from './workspaces.js'
 import { vaultGit } from './vault-git.js'
+import { flog } from './flog.js'
 import { connectionProbe } from './connection-probe.js'
 import { engineHealthOf, markEngineOk, revalidateEngines } from './engine-health.js'
 
@@ -146,18 +147,36 @@ export async function refreshEngines(ctx: VaultContext, selectionOnly = false): 
   return ctx.engines
 }
 
+// Never stops the app from opening: a source that fails is logged and tried again on the next launch.
+async function mergeOtherWorkspaces(paths: VaultPaths): Promise<void> {
+  const { sources, shared } = await workspacesToMerge().catch(() => ({ sources: [], shared: false }))
+  for (const source of sources) {
+    try {
+      const report = await mergeWorkspace(paths, source, { tracked: !shared })
+      if (report) flog('workspace-merge', JSON.stringify(report))
+    } catch (error) {
+      flog('workspace-merge', `${source.root}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
 export async function openVaultContext(root: string): Promise<VaultContext> {
   if (context) return context
   const provider = binaryProvider()
   const useGit = process.env['ENGRAM_NO_GIT'] !== '1'
   const paths = useGit ? await vaultGit('init', root) : await initVault(root, { git: false, provider })
   const git = useGit ? { autoCommit: (message: string) => vaultGit('commit', root, message) } : null
-  const store = await NoteStore.open(paths)
+  let botsReady = true
   try {
     await resetBotsToV2(paths)
   } catch (error) {
+    botsReady = false
     console.error(`[vault] bot list reset failed, retrying on next open: ${error instanceof Error ? error.message : String(error)}`)
   }
+  // One workspace: what the others hold is copied in before the notes are read, so it is all there on this launch.
+  // A vault named by ENGRAM_VAULT (dev, tests) is not the registry's, and takes nothing from it.
+  if (botsReady && !process.env['ENGRAM_VAULT']) await mergeOtherWorkspaces(paths)
+  const store = await NoteStore.open(paths)
   // Engines start EMPTY and are detected in the background (bootVault kicks it
   // off). Detection spawns `claude --version` and `claude auth status` — two
   // subprocesses measured at 3.6s together on an idle machine, against 88ms for

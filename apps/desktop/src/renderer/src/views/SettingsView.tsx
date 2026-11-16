@@ -1,49 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, CloudUpload, ScrollText, LoaderCircle, Activity, Check, FileDown, Power, Sparkles } from 'lucide-react'
-import type { AppSettingsDto, SemanticStatusDto, UpdateCheckDto } from '../../../shared/types.js'
+import { useEffect, useState } from 'react'
+import { Sparkles } from 'lucide-react'
+import type { AppSettingsDto, UpdateCheckDto } from '../../../shared/types.js'
 import { api } from '../api.js'
 import { useEscape } from '../lib/useEscape.js'
 import { useApp } from '../state.js'
 import { EngineSettings } from '../components/EngineSettings.js'
-import { ReviewRulesSettings } from '../components/ReviewRulesSettings.js'
 import { SettingsStatus } from '../components/SettingsStatus.js'
 import { DialogHeader } from '../components/DialogHeader.js'
 import { SettingsLoading } from '../components/SettingsLoading.js'
-import { ComputerSettings } from '../components/ComputerSettings.js'
-import { WorkMapSettings } from '../components/WorkMapSettings.js'
-import { WorkHabitsSettings } from '../components/WorkHabitsSettings.js'
-import { LEARNING_SOURCES } from '../components/LearningSources.js'
 import { AppearanceSettings } from '../components/AppearanceSettings.js'
 import { Keys, SettingsGroup, SettingsItem } from '../components/SettingsLayout.js'
-import { AUTO_START_KEY, MOD_LABEL } from '../i18n.js'
+import { MOD_LABEL } from '../i18n.js'
 import { DeveloperSettings } from '../components/DeveloperSettings.js'
-import { SettingsNavigation, type SettingsSection } from '../components/SettingsNavigation.js'
 import { ResetSettings } from '../components/ResetSettings.js'
 
-const ACTIVITY = LEARNING_SOURCES.find(source => source.key === 'activity')!
-
 // Only local settings gate the sheet. Network and runtime probes fill their
-// own sections without blocking navigation.
+// own rows without blocking it.
 const READY_WAIT_MS = 8_000
 
-export function SettingsView({ onClose, initialSection = 'general' }: { onClose(): void; initialSection?: SettingsSection }) {
+// One page, five things: theme, the shortcut, the AI account, start fresh, and the version.
+// Everything else is asked for in chat (main/preferences-chat.ts).
+export function SettingsView({ onClose }: { onClose(): void }) {
   const { showToast, t } = useApp()
-  const [section, setSection] = useState<SettingsSection>(initialSection)
-  useEffect(() => setSection(initialSection), [initialSection])
-  const scroll = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (scroll.current) scroll.current.scrollTop = 0 }, [section])
   const [settings, setSettings] = useState<AppSettingsDto | null>(null)
-  const [deskJournal, setDeskJournal] = useState<boolean | null>(null)
-  const [exporting, setExporting] = useState(false)
-  const [semantic, setSemantic] = useState<SemanticStatusDto | null>(null)
   const [version, setVersion] = useState<string | null>(null)
   const [update, setUpdate] = useState<UpdateCheckDto | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const savingRef = useRef(false)
-  const [saved, setSaved] = useState(false)
-  const [saveError, setSaveError] = useState('')
-  const [journalSaving, setJournalSaving] = useState(false)
   const [ready, setReady] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -53,20 +35,16 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     const loads = [
       api.settingsGet().then((value) => { if (alive) { setSettings(value); setReady(true) } }).catch(() => { if (alive) setReady(true) }),
       api.appVersion().then(setVersion),
-      api.activityGet().then(setDeskJournal),
       // Refresh the feed even when an older release is already downloaded.
       api.updateCheck().then(value => { if (alive) setUpdate(value) })
         .catch(() => { if (alive) setUpdate({ state: 'error', message: t('settingsUi.updateCheckFailed'), selfInstalls: false }) })
         .finally(() => { if (alive) setCheckingUpdate(false) }),
-      api.semanticStatus().then(setSemantic).catch(() => setSemantic({ status: 'error', detail: t('settingsUi.statusRetrying'), model: '' })),
     ]
     void Promise.allSettled(loads).then(() => { if (alive) setReady(true) })
     const fallback = setTimeout(() => setReady(true), READY_WAIT_MS)
     const off = api.onEvent((event) => {
       if (event.type === 'settings:changed') setSettings(event.settings)
-      if (event.type === 'update:changed') {
-        setUpdate(event.update)
-      }
+      if (event.type === 'update:changed') setUpdate(event.update)
     })
     return () => {
       alive = false
@@ -83,127 +61,37 @@ export function SettingsView({ onClose, initialSection = 'general' }: { onClose(
     return () => clearInterval(timer)
   }, [update?.state])
 
-  // Semantic layer status refreshes while the sheet is open — model
-  // download/indexing progress is worth watching live.
-  useEffect(() => {
-    const timer = setInterval(() => void api.semanticStatus().then(setSemantic).catch(() => {}), 2000)
-    return () => clearInterval(timer)
-  }, [])
-
-  useEscape(onClose, !saving)
+  useEscape(onClose)
 
   if (!settings || !ready)
     return <SettingsLoading failed={ready && !settings} onClose={onClose} onRetry={() => { setReady(false); setAttempt((value) => value + 1) }} />
-  const patch = async (change: Partial<AppSettingsDto>) => {
-    if (savingRef.current) return
-    savingRef.current = true
-    setSaving(true)
-    setSaved(false)
-    setSaveError('')
-    const previous = Object.fromEntries(Object.keys(change).map(key => [key, settings[key as keyof AppSettingsDto]]))
-    setSettings(value => value && { ...value, ...change })
-    try {
-      await api.settingsSet(change)
-      setSettings(value => value && { ...value, ...change })
-      setSaved(true)
-    } catch (err) {
-      setSettings(value => value && { ...value, ...previous })
-      const message = t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) })
-      setSaveError(message)
-      showToast(message)
-    } finally {
-      savingRef.current = false
-      setSaving(false)
-    }
-  }
-
-  const exportLogs = async () => {
-    setExporting(true)
-    try { const path = await api.exportLogs(); showToast(path ? t('toast.logsExported', { path }) : t('toast.logsEmpty')) }
-    catch (err) { showToast(t('toast.actionFailed', { reason: String((err as Error).message ?? err).slice(0, 120) })) }
-    finally { setExporting(false) }
+  const setTheme = (theme: NonNullable<AppSettingsDto['theme']>) => {
+    const previous = settings.theme
+    setSettings(value => value && { ...value, theme })
+    void api.settingsSet({ theme }).catch((err: unknown) => {
+      setSettings(value => value && { ...value, theme: previous })
+      showToast(t('toast.settingsFailed', { reason: String((err as Error).message ?? err).slice(0, 120) }))
+    })
   }
 
   return (
-    <div className="brief-overlay settings-overlay" onClick={() => { if (!saving) onClose() }}>
+    <div className="brief-overlay settings-overlay" onClick={onClose}>
       {/* settings-loaded: the skeleton gives way with a short rise instead
           of the rows swapping between two frames. */}
       <div className="brief-box settings-box settings-loaded" onClick={(e) => e.stopPropagation()} data-testid="settings-view" role="dialog" aria-label={t('settings.title')} aria-modal="true">
-        <DialogHeader closeLabel={t('settingsUi.close')} disabled={saving} onClose={onClose}>{t('settings.title')}</DialogHeader>
-
-        <div className="settings-body">
-        <SettingsNavigation selected={section} onSelect={setSection} />
-        <div className="settings-scroll" ref={scroll}>
-        <section className="settings-panel" hidden={section !== 'general'} aria-label={t('settingsUi.general')}>
-        <h2>{t('settingsUi.general')}</h2>
-        <SettingsGroup title={t('settingsUi.appearance')}><div className="settings-item"><AppearanceSettings value={settings.theme} disabled={saving} onChange={(theme) => void patch({ theme })} language={settings.uiLanguage} onLanguage={(uiLanguage) => void patch({ uiLanguage })} /></div></SettingsGroup>
-        <SettingsGroup title={t('settingsUi.app')}>
-          <SettingsItem icon={<Power size={18} />} title={t('settings.autoStart')} description={t(AUTO_START_KEY)} htmlFor="setting-autostart">
-            <input id="setting-autostart" type="checkbox" className="switch" data-testid="setting-autostart" checked={settings.autoStart} disabled={saving} onChange={(e) => void patch({ autoStart: e.target.checked })} />
-          </SettingsItem>
-          <SettingsItem icon={<Sparkles size={18} />} title={t('settingsUi.newComet')} description={t('settingsUi.newCometHint')}><Keys keys={[MOD_LABEL, 'Shift', t('settingsUi.keySpace')]} /></SettingsItem>
-        </SettingsGroup>
-        {section === 'general' && <ComputerSettings />}
-        </section>
-        <section className="settings-panel" hidden={section !== 'ai'} aria-label={t('settingsUi.aiSection')}>
-        <h2>{t('settingsUi.ai')}</h2>
-        {section === 'ai' && <EngineSettings />}
-        {section === 'ai' && <ReviewRulesSettings />}
-        </section>
-        <section className="settings-panel" hidden={section !== 'memory'} aria-label={t('settingsUi.memorySection')}>
-        <h2>{t('settingsUi.memory')}</h2>
-        <SettingsGroup title={t('settingsUi.learnTitle')} note={t('settingsUi.learnNote')}>
-          <SettingsItem icon={<Activity size={18} />} title={t(ACTIVITY.nameKey)} description={t(ACTIVITY.detailKey)} htmlFor="setting-desk-journal">
-            <input
-              id="setting-desk-journal"
-              type="checkbox"
-              className="switch"
-              data-testid="setting-desk-journal"
-              checked={deskJournal ?? false}
-              disabled={deskJournal === null || journalSaving}
-              aria-busy={journalSaving}
-              onChange={(e) => {
-                setJournalSaving(true)
-                void api
-                  .activitySet(e.target.checked)
-                  .then(setDeskJournal)
-                  .catch(() => showToast(t('settingsUi.activityFailed')))
-                  .finally(() => setJournalSaving(false))
-              }}
-            />
-          </SettingsItem>
-          {section === 'memory' && <WorkMapSettings />}
-        </SettingsGroup>
-        {section === 'memory' && <WorkHabitsSettings />}
-        <SettingsGroup title={t('settingsUi.yourData')}>
-          <SettingsItem icon={<ScrollText size={18} />} title={t('settings.auditTitle')} description={t('settingsUi.auditHint')} testId="setting-audit">
-            <button className="secondary" data-testid="audit-open" onClick={() => void api.auditOpen().catch(() => showToast(t('settingsUi.auditFailed')))}><FolderOpen size={15} aria-hidden />{t('settingsUi.open')}</button>
-          </SettingsItem>
-          <SettingsItem icon={<CloudUpload size={18} />} title={t('settings.githubTitle')} description={t('settingsUi.githubHint')}>
-            <button className="secondary" data-testid="settings-github-backup" onClick={() => { onClose(); window.dispatchEvent(new Event('engram:open-github')) }}>{t('settingsUi.setUp')}</button>
-          </SettingsItem>
-          {section === 'memory' && <ResetSettings />}
-        </SettingsGroup>
-        </section>
-        {api.developerUiEnabled && <section className="settings-panel" hidden={section !== 'developers'} aria-label={t('settingsUi.advanced')}><h2>{t('settingsUi.advanced')}</h2>{section === 'developers' && <DeveloperSettings />}</section>}
-        <section className="settings-panel" hidden={section !== 'help'} aria-label={t('settingsUi.about')} data-testid="help-panel">
-        <h2>{t('settingsUi.about')}</h2>
-        <SettingsGroup title="Engram">
-          <SettingsStatus checkingUpdate={checkingUpdate} semantic={semantic} update={update} version={version} onCheckingUpdate={setCheckingUpdate} onUpdate={setUpdate} />
-        </SettingsGroup>
-        <SettingsGroup title={t('settingsUi.support')}>
-          <SettingsItem icon={<FileDown size={18} />} title={t('settingsUi.logs')} description={t('settingsUi.logsHint')}>
-            <button className="secondary" data-testid="settings-export-logs" disabled={exporting} onClick={() => void exportLogs()}>{exporting ? <><LoaderCircle size={14} className="spin" aria-hidden />{t('settingsUi.saving')}</> : t('settingsUi.exportLogs')}</button>
-          </SettingsItem>
-        </SettingsGroup>
-        </section>
-        </div>
-        </div>
-
-        <div className="dialog-actions">
-          {saveError ? <span className="settings-save-status" role="alert">{saveError}</span> : <span className="settings-save-status" role="status">{saving ? <><LoaderCircle size={14} className="spin" aria-hidden />{t('settingsUi.saving')}</> : saved ? <><Check size={14} aria-hidden />{t('settingsUi.saved')}</> : null}</span>}
-          <button className="primary" disabled={saving} onClick={onClose}>{t('settingsUi.done')}</button>
-        </div>
+        <DialogHeader closeLabel={t('settingsUi.close')} onClose={onClose}>{t('settings.title')}</DialogHeader>
+        <div className="settings-body"><div className="settings-scroll"><section className="settings-panel" aria-label={t('settings.title')}>
+          <SettingsGroup title={t('settingsUi.appearance')} testId="settings-theme"><div className="settings-item"><AppearanceSettings value={settings.theme} onChange={setTheme} /></div></SettingsGroup>
+          <SettingsGroup testId="settings-shortcut">
+            <SettingsItem icon={<Sparkles size={18} />} title={t('settingsUi.newComet')} description={t('settingsUi.newCometHint')}><Keys keys={[MOD_LABEL, 'Shift', t('settingsUi.keySpace')]} /></SettingsItem>
+          </SettingsGroup>
+          <EngineSettings />
+          <SettingsGroup testId="settings-start-fresh"><ResetSettings /></SettingsGroup>
+          <SettingsGroup title="Engram" testId="settings-about">
+            <SettingsStatus checkingUpdate={checkingUpdate} update={update} version={version} onCheckingUpdate={setCheckingUpdate} onUpdate={setUpdate} />
+          </SettingsGroup>
+          {api.developerUiEnabled && <section className="settings-section" aria-label={t('settingsUi.advanced')} data-testid="settings-developers"><h3 className="settings-section-title">{t('settingsUi.advanced')}</h3><DeveloperSettings /></section>}
+        </section></div></div>
       </div>
     </div>
   )

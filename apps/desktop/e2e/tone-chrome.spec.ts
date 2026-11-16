@@ -163,10 +163,9 @@ test('cream+ink tokens and chrome on key screens', async () => {
     await openActivity(page, 'bots')
 
     await openActivity(page, 'settings')
-    await expect(page.locator('.settings-page, [data-testid^="settings-nav"]').first()).toBeVisible()
+    await expect(page.getByTestId('settings-view')).toBeVisible()
     await page.waitForTimeout(300)
     await page.screenshot({ path: join(SHOTS, 'settings-light.png') })
-    await page.getByTestId('settings-nav-ai').click()
     await page.getByTestId('key-connection-codex-open').click()
     const url = page.getByTestId('key-connection-codex-url')
     await expect(url).toBeVisible()
