@@ -8,6 +8,7 @@ import { avatarState, BotAvatar, useAvatarTheme } from './BotAvatar.js'
 import { CometActivityIndicator, cometActivityLabel } from './CometActivityIndicator.js'
 import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
+import { FoundText } from './FoundText.js'
 import { markUnread, rowStatus } from '../lib/botRowStatus.js'
 import { t, uiLocale } from '../i18n.js'
 import { threadLang } from '../lib/threadLang.js'
@@ -15,7 +16,7 @@ import { useTeam } from '../lib/teamLive.js'
 import { lastPreview, lineLang } from '../lib/teamView.js'
 import { SidebarTeam } from './TeamSummary.js'
 
-export const SidebarConversation = memo(function SidebarConversation({ bot, state, active, found }: { bot: BotDto; state: CometActivity; active: boolean; found?: string | undefined }) {
+export const SidebarConversation = memo(function SidebarConversation({ bot, state, active, found, search }: { bot: BotDto; state: CometActivity; active: boolean; found?: string | undefined; search?: string | undefined }) {
   const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
   const preview = useMemo(() => {
@@ -45,7 +46,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     <span className="sidebar-conversation-avatar"><BotAvatar id={bot.id} override={bot.avatar} primary={bot.primary === true} size={36} state={avatarState(state)} theme={theme} /><CometActivityIndicator state={state} /></span>
     <span className="sidebar-conversation-content" title={valid ? date.toLocaleString(uiLocale()) : undefined}>
       <span className="sidebar-conversation-top"><span className="sidebar-conversation-name" data-unread={unread || undefined}>{bot.name}</span>{bot.notify === 'off' && <BellOff className="sidebar-bell-off" size={12} role="img" aria-label={`${t('botInfo.notify')}: ${t('botInfo.notifyOff')}`} />}</span>
-      <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{preview}</span></span>
+      <span className="sidebar-conversation-preview" data-active={state !== 'ready'}>{bot.webSites?.[0] && <SiteIcon origin={bot.webSites[0].origin} />}<span>{found && search ? <FoundText text={preview} search={search} /> : preview}</span></span>
     </span>
     {status && <span className="sidebar-status-dot" data-status={status} role="img" aria-label={status === 'unread' ? t('sidebar.unread') : cometActivityLabel(status === 'working' ? 'running' : state)} />}
   </>

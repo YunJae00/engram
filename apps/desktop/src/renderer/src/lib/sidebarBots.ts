@@ -15,6 +15,21 @@ export function searchExcerpt(bot: BotDto, search: string, excerpts: ReadonlyMap
   return search && !bot.name.toLocaleLowerCase().includes(search) ? excerpts.get(bot.id) : undefined
 }
 
+/** The excerpt cut around each place the search words appear, so the row can mark them; the pieces are plain text, never markup. */
+export function markParts(text: string, search: string): { text: string; hit: boolean }[] {
+  const lower = text.toLocaleLowerCase()
+  if (!search || lower.length !== text.length) return [{ text, hit: false }]
+  const parts: { text: string; hit: boolean }[] = []
+  let from = 0
+  for (let at = lower.indexOf(search); at >= 0; at = lower.indexOf(search, from)) {
+    if (at > from) parts.push({ text: text.slice(from, at), hit: false })
+    parts.push({ text: text.slice(at, at + search.length), hit: true })
+    from = at + search.length
+  }
+  if (from < text.length) parts.push({ text: text.slice(from), hit: false })
+  return parts
+}
+
 export function matchesSidebarSearch(bot: BotDto, search: string, bodyHits: BodyHits): boolean {
   if (!search) return true
   return `${bot.name} ${bot.label ?? ''} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search) || bodyHits.has(bot.id)

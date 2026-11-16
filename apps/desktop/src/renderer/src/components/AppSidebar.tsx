@@ -116,7 +116,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} found={searchExcerpt(bot, search, hits)} />, below: <SidebarBotTeam bot={bot} />, bot })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} found={searchExcerpt(bot, search, hits)} search={search} />, below: <SidebarBotTeam bot={bot} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const focusComposer = () => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
   const newBot = async () => {
@@ -165,7 +165,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       event.preventDefault(); setSpaceMenu({ x: event.clientX, y: event.clientY })
     }}>
       {!library && <div className="sidebar-tree-head"><span>{t('sidebar.bots')}</span><button className="sidebar-icon-button" data-testid="sidebar-new-folder" aria-label={t('sidebar.newSection')} title={t('sidebar.newSection')} disabled={!vaultReady} onClick={() => newFolder('chat')}><FolderPlus size={15} aria-hidden /></button></div>}
-      {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && (activity === 'bots' || activity === 'mission')} onOpen={openBot} />}
+      {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && (activity === 'bots' || activity === 'mission')} onOpen={openBot} found={searchExcerpt(hero, search, hits)} search={search} />}
       {(layoutError || createError) && <p className="sidebar-empty" role="alert">{layoutError || createError}</p>}
       <section className="sidebar-section sidebar-conversations" aria-label={library ? t('sidebar.savedRoutines') : t('sidebar.conversations')}>
         {library && <h2 className="sidebar-library-title">{t('sidebar.routines')}</h2>}

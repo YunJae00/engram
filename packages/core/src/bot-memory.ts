@@ -143,7 +143,7 @@ const datesIn = (text: string) => [...text.matchAll(/(\d{1,2})월\s*(\d{1,2})일
 const quotedIn = (text: string) => [...text.matchAll(/["“‘']([^"”’']{2,40})["”’']/g)].map((m) => (m[1] ?? '').toLowerCase())
 const loose = (text: string) => normalizeFact(text).replace(/(입니다|이다|이에요|예요)$/, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase()
 
-function withoutResidue(raw: string): { text: string; gone: string[] } {
+export function withoutResidue(raw: string): { text: string; gone: string[] } {
   const gone: string[] = []
   let text = raw.replace(NOT_BUT, (_whole, value: string) => { gone.push(/\d/.test(value) ? value : `"${value.replace(/["“”‘’']/g, '')}"`); return '' })
   const tail = /^(.*?)\s*\(([^()]*)\)$/.exec(text)

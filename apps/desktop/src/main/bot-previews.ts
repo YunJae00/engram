@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readBotTranscript, type Bot, type VaultPaths } from 'core'
 import { withoutReplies } from 'core/src/agent-history'
+import { withoutResidue } from 'core/src/bot-memory'
 import { readLastBotTurn } from 'core/src/bot-transcript'
 import { updateBot, type BotPatch } from 'core/src/bots'
 import type { BotConversationDto, BotDto, BotSearchHit } from '../shared/types.js'
@@ -35,6 +36,7 @@ export async function botPreviews(paths: VaultPaths, bots: Bot[]): Promise<BotDt
 const texts = new Map<string, { stamp: string; value: Promise<{ plain: string; folded: string }[]> }>()
 const flat = (text: string) => text.replace(/\s+/g, ' ').trim()
 const fold = (text: string) => flat(text).toLocaleLowerCase()
+const SENTENCE_END = /(?<=[.!?。])\s+|\s(?:-{3,}|[-*]|```)\s/
 
 /** Conversations whose messages contain the query, each with the words around the first hit so the row can show why it is listed. */
 export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): Promise<BotSearchHit[]> {
@@ -56,14 +58,26 @@ export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): 
           if (texts.size >= 256) texts.delete(texts.keys().next().value!)
           texts.set(path, held)
         }
+        let bare: string | undefined
+        let excerpt: string | undefined
         for (const turn of await held.value) {
           const at = turn.folded.indexOf(needle)
           if (at < 0) continue
+          const end = at + needle.length
+          // The row shows why it is listed: the matched sentence alone, without a clause that only
+          // names a value the person has since replaced.
+          const before = turn.plain.slice(0, at).split(SENTENCE_END).pop() ?? ''
+          const after = turn.plain.slice(end, end + 120).split(SENTENCE_END)[0] ?? ''
+          const sentence = withoutResidue(before + turn.plain.slice(at, end) + after).text
+          const hit = sentence.toLocaleLowerCase().indexOf(needle)
           // A short lead keeps the matched words inside the narrow sidebar row.
-          const from = Math.max(0, at - 8)
-          hits.push({ id: bot.id, excerpt: (from ? '…' : '') + turn.plain.slice(from, at + needle.length + 120) })
+          if (hit < 0) { bare ??= (at > 8 ? '…' : '') + turn.plain.slice(Math.max(0, at - 8), end); continue }
+          const from = Math.max(0, hit - 8)
+          excerpt = (from ? '…' : '') + sentence.slice(from, hit + needle.length + 120)
           break
         }
+        excerpt ??= bare
+        if (excerpt !== undefined) hits.push({ id: bot.id, excerpt })
       } catch { texts.delete(path) }
     }))
   }

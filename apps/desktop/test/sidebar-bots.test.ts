@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { BotDto } from '../src/shared/types.js'
-import { botMenuItems, groupSidebarBots, matchesSidebarSearch, searchExcerpt, sidebarSearchEmpty } from '../src/renderer/src/lib/sidebarBots.js'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { FoundText } from '../src/renderer/src/components/FoundText.js'
+import { botMenuItems, groupSidebarBots, markParts, matchesSidebarSearch, searchExcerpt, sidebarSearchEmpty } from '../src/renderer/src/lib/sidebarBots.js'
 
 const bot = (id: string, extra: Partial<BotDto> = {}): BotDto => ({ id, name: `Bot ${id}`, purpose: `purpose ${id}`, createdAt: '2026-01-01T00:00:00.000Z', ...extra })
 
@@ -42,6 +45,16 @@ describe('sidebar bots', () => {
     expect(searchExcerpt(expense, '지출', excerpts)).toBeUndefined()
     expect(searchExcerpt(expense, '', excerpts)).toBeUndefined()
     expect(searchExcerpt(bot('y'), '워크숍', excerpts)).toBeUndefined()
+  })
+
+  it('qa146: the excerpt marks the search words and everything else stays text', () => {
+    expect(markParts('…팀 이름은 은하수, 은하수 팀', '은하수')).toEqual([{ text: '…팀 이름은 ', hit: false }, { text: '은하수', hit: true }, { text: ', ', hit: false }, { text: '은하수', hit: true }, { text: ' 팀', hit: false }])
+    expect(markParts('Agenda for QX-7731', 'qx-7731')).toEqual([{ text: 'Agenda for ', hit: false }, { text: 'QX-7731', hit: true }])
+    expect(markParts('no match here', '은하수')).toEqual([{ text: 'no match here', hit: false }])
+    const html = renderToStaticMarkup(createElement(FoundText, { text: '<img src=x onerror=alert(1)> 팀 이름은 은하수 <mark>x</mark>', search: '은하수' }))
+    expect(html).toBe('&lt;img src=x onerror=alert(1)&gt; 팀 이름은 <mark>은하수</mark> &lt;mark&gt;x&lt;/mark&gt;')
+    // The pinned bot shows its excerpt too: the search hands it the same found text as any row.
+    expect(searchExcerpt(bot('main', { primary: true, name: '비서' }), '은하수', new Map([['main', '팀 이름은 은하수']]))).toBe('팀 이름은 은하수')
   })
 
   it('primary bot match is not an empty search', () => {
