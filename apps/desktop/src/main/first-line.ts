@@ -154,9 +154,23 @@ export function smallTalkAnswer(channel: string): Promise<string | undefined> {
 
 // The company lane builds its prompt in milliseconds, so the small model's line can never arrive first (as-e1cf9bfd: dropped on
 // every lane turn, first text 2.5-25 s). Where a first line is wanted at all, the lane says a fixed one at once.
+// The line names the first step the way a colleague would ("바로 팀에 넣을게요."), read off the person's own verb; no filler, no echo of the request.
+const LANE_KO: [RegExp, string][] = [
+  [/내보내|해고|빼\s*줘/u, '바로 정리할게요.'],
+  [/뽑아|채용|고용|팀에\s*(추가|넣)|추가해/u, '바로 팀에 넣을게요.'],
+  [/이름.{0,12}바꿔|승진|(으로|로)\s*불러/u, '바로 바꿔 둘게요.'],
+  [/맡겨|맡기|시켜|시키|넘겨|넘기|나눠/u, '바로 맡길게요.'],
+  [/매주|매일|매달|매월|마다|요일.{0,8}\d{1,2}\s*시/u, '일정에 넣어 둘게요.'],
+  [/취소|없애|지워/u, '바로 뺄게요.'],
+  [/요약|정리/u, '지금 정리할게요.'],
+  [/조사|찾아|알아봐|검색/u, '지금 찾아볼게요.'],
+]
 export const laneLine = (message: string, korean: boolean): string => {
-  const asks = /[?？]\s*$|뭐|무슨|누구|어디|언제|어떻게|어때|몇|왜|\b(what|who|when|where|which|how|why)\b/i.test(message.trim())
-  return korean ? (asks ? '네, 확인해 볼게요.' : '네, 바로 할게요.') : (asks ? 'Let me check.' : 'On it.')
+  const said = message.trim()
+  const asks = /[?？]\s*$|뭐|무슨|누구|어디|언제|어떻게|어때|몇|왜|\b(what|who|when|where|which|how|why)\b/i.test(said)
+  if (!korean) return asks ? 'Let me check.' : 'On it.'
+  if (asks) return '지금 확인해 볼게요.'
+  return LANE_KO.find(([ask]) => ask.test(said))?.[1] ?? '지금 바로 할게요.'
 }
 export function firstLineNow(channel: string, message: string, korean: boolean): void {
   const turn = turns.get(channel)
