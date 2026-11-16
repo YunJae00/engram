@@ -77,8 +77,9 @@ test('finishing with the bot step renames the primary bot and keeps one bot', as
 test('re-running onboarding on the same vault keeps exactly one primary bot', async () => {
   await toStep4()
   await page.getByTestId('onboard-finish').click()
+  await expect(landed()).toBeVisible({ timeout: 60000 })
   // An empty name field keeps the default name.
-  await expect(landed()).toContainText('Engram', { timeout: 60000 })
+  await expect(landed()).toContainText('Engram')
   await closeTestApp(app)
   await launch()
   await toStep4()
