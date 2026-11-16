@@ -21,7 +21,7 @@ const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask
 export const AUTO_REVIEW = 'auto: sourced lookup'
 const ACCEPTED_NOTE = 'Members with accepted true are sourced lookups, already accepted and released: do not call review_member for them. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
-export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source), and nothing after the table. No status sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a fact that is not out yet is said as that ("아직 공식 가격은 안 나왔어요").'
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. No status sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
 const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s own name (네이버 날씨, Apple), never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
@@ -40,7 +40,7 @@ export const LOOKUP_HARD_MS = 15_000
 export const LOOKUP_MAX_CALLS = 4
 // grokbar c3 R2/R3: members spent their ten seconds thinking between a search and a page that was then refused, and reported "소스 접근 실패".
 // The search now hands over the results themselves (title, address, words, date), so one search is the normal case.
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search once, with the query in the person\'s language: the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from; open a page only for a number none of them shows. Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself, as with weather or a rate). When something is not out yet or could not be found, still give what there is (a reported or expected figure, named as that) and say what is missing in one plain clause ("아직 공식 가격은 안 나왔어요"); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search once, with the query in the person\'s language: the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A value that is not announced yet says so and still gives the figure a colleague would give, labeled: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"), and the expected month for a date ("미발표, 내년 2월 예상"); never a line with no figure when the results hold one; never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -182,7 +182,41 @@ export function siteName(url: string, korean = false): string {
   try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return url }
   const known = SITES.find(([hosts]) => hosts.test(host))
   if (!known) return host
-  return `${known[korean ? 1 : 2]}${SEARCH_PAGE.test(url) ? korean ? ' 검색' : ' search' : ''}`
+  if (!SEARCH_PAGE.test(url)) return known[korean ? 1 : 2]
+  // c4 R1/L1: a figure from the results page\'s own box is cited to the service that box is ("네이버 날씨"), not to "네이버 검색".
+  // shortcut: only Naver's boxes are named, by the words searched; another engine stays "… 검색".
+  let asked = ''
+  try { asked = known[2] === 'Naver' ? new URL(url).searchParams.get('query') ?? '' : '' } catch { /* stays a search */ }
+  const box = BOXES.find(([words]) => words.test(asked))
+  return `${known[korean ? 1 : 2]} ${box ? box[korean ? 1 : 2] : korean ? '검색' : 'search'}`
+}
+const BOXES: [RegExp, string, string][] = [[/날씨|기온|강수|미세\s?먼지|weather|forecast/i, '날씨', 'Weather'], [/주가|주식|시세|증시|stock|share price/i, '증권', 'Finance'], [/환율|exchange rate/i, '금융', 'Finance']]
+// c4 L3: the answer's only link was a result the turn never opened, on a host that does not answer. Each address shown that this turn did not
+// itself load is asked once, all together, inside one short budget and with no retry. One that does not answer gives way to the page the
+// turn read; with none (or with that page already linked) the link goes and its name stays as plain words. One still unanswered at the
+// budget is kept: the check never holds the answer longer, never fails it and never makes up an address.
+export const LINK_CHECK_MS = 1_500
+const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
+export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
+  // The same address reads differently once its spaces and Korean are escaped for a link.
+  const plain = (url: string): string => { try { return decodeURI(url) } catch { return url } }
+  const loaded = new Set(read.map(plain))
+  const shown = [...new Set((answer.match(ADDRESS) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')))].filter(url => !loaded.has(plain(url)))
+  if (!shown.length) return answer
+  const limit = new AbortController(), timer = setTimeout(() => limit.abort(), ms)
+  const late = new Promise<boolean>(resolve => limit.signal.addEventListener('abort', () => resolve(true), { once: true }))
+  // A check that throws at the budget was slow, not dead.
+  const dead = (await Promise.all(shown.map(async url => (await Promise.race([Promise.resolve().then(() => alive(url, limit.signal)).catch(() => limit.signal.aborted), late])) ? '' : url))).filter(Boolean)
+  clearTimeout(timer)
+  limit.abort()
+  const own = sourcesOf(read)[0], literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  let out = answer
+  for (const url of dead) {
+    const swap = own && !plain(out).includes(plain(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
+    out = out.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), (_whole, name: string) => swap ? `[${siteName(own!, korean)}](${swap})` : name)
+      .replace(new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g'), swap)
+  }
+  return out
 }
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
 // c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.

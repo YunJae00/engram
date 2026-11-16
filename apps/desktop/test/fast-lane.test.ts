@@ -101,14 +101,21 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(laneFirstLine('원달러 환율 지금 얼마야?', true)).toBe('지금 환율 확인할게요.')
   expect(laneFirstLine('오늘 AI 뉴스 5개 찾아줘', true)).toBe('최신 뉴스 검색할게요.')
   expect(laneFirstLine('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', true)).toBe('봇들한테 나눠 맡길게요.')
+  // c4 R2: 봇 is said only after the person; otherwise the line names the split, with the count when they gave one.
+  expect(laneFirstLine('아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜', true)).toBe('나눠서 알아볼게요.')
+  expect(laneFirstLine('경쟁사 3곳 신기능 각각 조사해줘', true)).toBe('셋으로 나눠 알아볼게요.')
+  expect(laneFirstLine('research these two phones separately', false)).toBe('Splitting this up to look into it now.')
   expect(laneFirstLine('아이폰 17 출시일 조사해줘', true)).toBe('웹에서 검색해 볼게요.')
   expect(laneFirstLine("what's the weather in Seoul?", false)).toBe('Checking the weather now.')
-  for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길)/) }
+  for (const message of LANE) { expect(laneFirstLine(message, true), message).not.toMatch(/[A-Za-z]|찾아볼게요|알겠|네,/); expect(laneFirstLine(message, true), message).toMatch(/(확인|검색|맡길|알아볼)/) }
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` :")
   // A lookup cut at its limit is delivered as the answer it wrote (no English wrapper, no auto-continue), then every member's link is added.
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
-  expect(ipc).toContain('result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))')
+  // c4 L3: the addresses the answer shows are checked before the citations are finished; c4 L1: the browser starts with the turn.
+  expect(ipc).toContain('const linked = await liveLinks(result.answer, [...read], (url, limit) => net.fetch(url, { signal: limit, credentials: \'omit\' })')
+  expect(ipc).toContain('result.answer = citeOwn(await team.cited(channel, linked), [...read], korean)')
+  expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
   expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
   // Beside it, something the person only told gets its one line from the same voice (desk-lane.ts onlyTells).
@@ -155,9 +162,26 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('open a page (read_pages) only when a number they asked for is in none of them')
   expect(LANE_NOTE).toContain('exactly as many items as they asked for')
   // How it reads.
-  expect(LANE_NOTE).toContain('lead with the answer in one sentence')
-  expect(LANE_NOTE).toContain('at most two short sentences')
-  expect(LANE_NOTE).toContain('leave out numbers they did not ask for')
+  // c4 L2/L1: a single lookup is short and says what its figure is as of.
+  expect(LANE_NOTE).toContain('A single lookup is the answer in one or two sentences plus at most one more line they would want')
+  expect(LANE_NOTE).toContain('no second paragraph')
+  expect(LANE_NOTE).toContain('no numbers they did not ask for')
+  expect(LANE_NOTE).toContain('A price, a rate or a score says what it is as of in that first sentence ("11월 16일 종가 기준 155.26달러예요"')
+  // c4 L3/R1: a figure from the results page's own box is cited to that service, at the address that was loaded.
+  expect(LANE_NOTE).toContain("is cited to that service by name with the results page's address")
+  expect(LANE_NOTE).toContain('never to a blog or any other result you did not take the figure from')
+  // c4 R2: a comparison has a fixed shape and every cell a figure.
+  expect(LANE_NOTE).toContain('the table has one row per thing and one column per point, in the order they said them, then the source column')
+  expect(LANE_NOTE).toContain('every cell is a short value, never a sentence, and never two points in one cell')
+  expect(LANE_NOTE).toContain('"미발표, 예상 130만 원대"')
+  expect(LANE_NOTE).toContain('"미발표, 전작 S26 115만 원"')
+  expect(LANE_NOTE).toContain('never a cell with no figure when the results hold one')
+  expect(LANE_NOTE).toContain('For a comparison every brief names the same points its row needs')
+  // c4 R3/H6: N items are N different events of the kind asked, each with a real date.
+  expect(LANE_NOTE).toContain('"N개" means N different events of the kind they asked for')
+  expect(LANE_NOTE).toContain('never two items about the same event')
+  expect(LANE_NOTE).toContain('a forum, a support programme or a partnership is not an investment')
+  expect(LANE_NOTE).toContain('never as an age ("1주 전")')
   expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')
   expect(LANE_NOTE).toContain('one friendly lead sentence that already gives the gist, with nothing after the table')
   // The merged answer of a team.
@@ -165,7 +189,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain("the link text the site's name, never a member's role")
   expect(LANE_NOTE).toContain('"못 찾았어요"')
   // What is missing is said plainly; the answer never ends on a question, an offer or a failure report.
-  expect(LANE_NOTE).toContain('"픽셀 11은 아직 공식 가격이 안 나왔어요"')
+  expect(LANE_NOTE).toContain('"픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요"')
   expect(LANE_NOTE).toContain('This note overrides any rule that allows a closing offer or question')
   expect(LANE_NOTE).toContain('never ends on a question or an offer ("다시 시도해볼까요?", "더 찾아드릴까요?"')
   expect(LANE_NOTE).toContain('never reports a failure of your own')

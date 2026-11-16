@@ -102,7 +102,23 @@ const NEW_WINDOW = /\s*(새\s?창\s?열림|opens? in (a )?new (window|tab))\s*/g
 const AD_HOST = /(^|\.)(ad|ads|ader|adcr|adclick|saedu|doubleclick|googleadservices|googlesyndication)\./i
 const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
 const RESULT_SNIPPET = 160
-export function searchResults(links: { text: string; url: string }[], text: string, query: string, from?: string, cap = 8): SearchResult[] {
+// grokbar c4 R3/H6: a news table's date column read "1주 전 / 1주 전 / 11시간 전": the results page's own age was passed through as written.
+// An age is turned into the calendar date it means, from the time the page was fetched, before the model sees it; a written date is left alone.
+// words: also "어제" / "yesterday" (a result's date label); in running page text those are left, where "어제보다 2° 높아요" is not a date.
+const AGO = /(\d+)\s*(분|시간|일|주|개월|달|년)\s*전|(\d+)\s*(minute|min|hour|day|week|month|year)s?\s+ago|(그저께|어제|\byesterday\b)/gi
+const AGO_MINUTES: Record<string, number> = { 분: 1, minute: 1, min: 1, 시간: 60, hour: 60, 일: 1440, day: 1440, 주: 10080, week: 10080 }
+export function calendarDates(text: string, now = new Date(), words = true): string {
+  return text.replace(AGO, (whole: string, n?: string, unit?: string, n2?: string, unit2?: string, word?: string) => {
+    if (word && !words) return whole
+    const at = new Date(now), count = Number(n ?? n2 ?? (word === '그저께' ? 2 : 1)), per = (unit ?? unit2 ?? '일').toLowerCase()
+    if (/개월|달|month/.test(per)) at.setMonth(at.getMonth() - count)
+    else if (/년|year/.test(per)) at.setFullYear(at.getFullYear() - count)
+    else at.setTime(at.getTime() - count * AGO_MINUTES[per]! * 60_000)
+    const sameYear = at.getFullYear() === now.getFullYear()
+    return /[가-힣]/.test(whole) ? `${sameYear ? '' : `${at.getFullYear()}년 `}${at.getMonth() + 1}월 ${at.getDate()}일` : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+  })
+}
+export function searchResults(links: { text: string; url: string }[], text: string, query: string, from?: string, cap = 8, now = new Date()): SearchResult[] {
   let page: URL | null = null
   try { page = from ? new URL(from) : null } catch { page = null }
   const groups = new Map<string, string[]>()
@@ -136,7 +152,7 @@ export function searchResults(links: { text: string; url: string }[], text: stri
     // Counted on the result's own words: the page text after a menu link is the next result's.
     const hay = `${title} ${own ?? ''} ${url}`.toLowerCase()
     const hits = words.filter(word => (isLatin(word) ? hay.includes(word) : gluedWord(word, hay))).length
-    return [{ result: { title: title.slice(0, 120), url, snippet, date }, hits, score: hits * 100 + Math.min(title.length, 60) - order / 100 }]
+    return [{ result: { title: title.slice(0, 120), url, snippet: calendarDates(snippet, now, false), date: calendarDates(date, now) }, hits, score: hits * 100 + Math.min(title.length, 60) - order / 100 }]
   })
   // When the page has results that echo the question, what echoes none of it is furniture that got through (an outlet's home, a promo).
   const echoing = scored.filter(one => one.hits > 0)

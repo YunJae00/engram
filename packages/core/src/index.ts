@@ -119,7 +119,7 @@ export {
   type BotFact,
   type BotMemoryFile,
 } from './bot-memory.js'
-export { deriveSearchTemplate, rankLinks, searchResults, searchUrlFor } from './search-template.js'
+export { calendarDates, deriveSearchTemplate, rankLinks, searchResults, searchUrlFor } from './search-template.js'
 export { answerLanguageLine, scriptLanguage, parseProposal, proposalPrompt, routineDraftTool, PROPOSAL_TOKENS, type TaskProposal } from './task-proposal.js'
 export { updateRoutineGoal } from './routine-store.js'
 export { evidenceRegion } from './work-evidence.js'
