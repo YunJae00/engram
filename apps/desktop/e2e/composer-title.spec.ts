@@ -113,6 +113,34 @@ for (const theme of ['light', 'dark'] as const) {
       const first = await box(page, `${VIEW} [data-testid="bots-thread"] .bubble-msg`)
       expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-title-pill"]`)).bottom)
 
+      // QA145 S24: mid-scroll in a long thread, no visible part of a message comes within 8px of the pill.
+      const overlap = await page.getByTestId('bots-thread').evaluate((thread) => {
+        for (let i = 0; i < 12; i++) {
+          const tall = document.createElement('div')
+          tall.className = 'bubble-msg assistant'
+          tall.style.cssText = 'min-height: 700px; flex-shrink: 0;'
+          tall.textContent = `filler ${i}`
+          thread.append(tall)
+        }
+        const pill = document.querySelector('[data-testid="bots-view"] [data-testid="bots-title-pill"]')!.getBoundingClientRect()
+        const worst: number[] = []
+        for (const top of [0, 350, thread.scrollHeight / 2, thread.scrollHeight]) {
+          thread.scrollTop = top
+          const clip = thread.getBoundingClientRect()
+          // What is on screen of each message: its box cut to the thread's own box.
+          const tops = [...thread.querySelectorAll('.bubble-msg')].map(node => node.getBoundingClientRect())
+            .filter(r => r.bottom > clip.top && r.top < clip.bottom && r.right > pill.left && r.left < pill.right)
+            .map(r => Math.max(r.top, clip.top))
+          worst.push(Math.min(...tops) - pill.bottom)
+        }
+        const at = document.elementFromPoint(pill.left + pill.width / 2, pill.top + pill.height / 2)
+        return { worst, scrolled: thread.scrollTop > 1000, onTop: !!at?.closest('[data-testid="bots-title-pill"]'), mask: getComputedStyle(thread).maskImage }
+      })
+      expect(overlap.scrolled).toBe(true)
+      expect(overlap.onTop).toBe(true)
+      for (const gap of overlap.worst) expect(gap).toBeGreaterThanOrEqual(8)
+      expect(overlap.mask).toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\), rgb\(0, 0, 0\) 12px/)
+
       await openWelcome(page)
       await expect(page.getByTestId('welcome-input')).toBeVisible()
       await expect(page.locator('.comet-welcome .chat-write')).toHaveCSS('border-radius', '22px')
