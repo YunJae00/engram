@@ -2,8 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
-import { ModelPicker } from './ModelPicker.js'
-import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 
 interface Props {
@@ -93,7 +91,6 @@ export function BotComposer({ botId, initialDraft, busy, locked, onSend, onStop 
         onChange={change}
         onSend={send}
         onStop={onStop}
-        tools={<ModelPicker scope={cometChannel(botId)} />}
       />
     </div>
   )

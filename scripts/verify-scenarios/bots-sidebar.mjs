@@ -1,9 +1,8 @@
-// Bots sidebar: seeds six bots, two sections, a pin, a label, a hidden bot and two transcripts through the running
-// app, then runs checks C1-C14 in order: hero, tree rows, row text, order, hidden group, old bot, arrow keys, F2,
-// Shift+F10 menu, search, and the Hide / Move / Make primary menu items read back through botsList and sidebarLayout.
-// Until rd-sidebar-bots, rd-sidebar-context-menu and rd-a11y-sidebar-keys land, the hero, role=tree / treeitem rows
-// and menu items do not exist and this scenario returns ok:false with evidence naming each failed check; that is the
-// expected result on current code.
+// Bots sidebar: seeds six bots, two sections, an old pin, a label, a hidden bot and two transcripts through the running
+// app, then runs checks C1-C14 in order: hero, tree rows, row text, order (sections, then loose rows by latest activity;
+// the old pin is ignored), hidden group, old bot, arrow keys, then that F2, Shift+F10 and search open nothing, and that
+// Hide / Move / Make primary done through the app API (botUpdate, sidebarChange) show in the list. The sidebar has no
+// row menu, rename field or search any more: those changes are asked for in chat.
 import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -82,9 +81,7 @@ export async function run(page, { paths }) {
   const GROUP = TREE.getByText(/^Hidden bots \(\d+\)$/).first()
   const HERO = page.locator('.sidebar-primary').first()
   const SEARCH = SIDEBAR.getByRole('textbox', { name: /^Search/ }).first()
-  const MENU = (name) => page.locator(`[role="menu"][aria-label="Options for ${name}"], [role="dialog"][aria-label="Options for ${name}"]`)
   const MENU_BUTTON = (name) => SIDEBAR.locator(`button[aria-label="Options for ${name}"]`).first()
-  const ITEM = (menu, label) => menu.locator('[role="menuitem"], button').filter({ hasText: new RegExp(`^\\s*${label}\\s*$`) }).first()
   const top = (locator) => locator.evaluate((node) => node.getBoundingClientRect().top, null, { timeout: WAIT_MS })
   const noTree = async () => (await TREE.count()) === 0 ? 'no role=tree' : ''
   const inPage = (fn, arg) => page.evaluate(fn, arg)
@@ -144,7 +141,8 @@ export async function run(page, { paths }) {
   // C4
   await check('order', async () => {
     if (await noTree()) return 'no role=tree'
-    const chain = [['Pin row', ROW('Pin Bot')], ['Section A', HEADER('Section A')], ['Alpha row', ROW('Alpha Bot')], ['Section B', HEADER('Section B')], ['Beta row', ROW('Beta Bot')], ['Loose row', ROW('Loose Bot')], ['Old row', ROW('Old Bot')], ['Hidden group', GROUP]]
+    // Sections first, then loose rows by latest activity: Pin Bot was just made, Loose Bot spoke 10 minutes ago, Old Bot 3 days ago.
+    const chain = [['Section A', HEADER('Section A')], ['Alpha row', ROW('Alpha Bot')], ['Section B', HEADER('Section B')], ['Beta row', ROW('Beta Bot')], ['Pin row', ROW('Pin Bot')], ['Loose row', ROW('Loose Bot')], ['Old row', ROW('Old Bot')], ['Hidden group', GROUP]]
     const tops = []
     for (const [label, locator] of chain) tops.push([label, await top(locator)])
     for (let i = 1; i < tops.length; i++) if (!(tops[i - 1][1] < tops[i][1])) return `${tops[i - 1][0]} is not above ${tops[i][0]}`
@@ -191,15 +189,10 @@ export async function run(page, { paths }) {
     if (await noTree()) return 'no role=tree'
     if (!await focusPin()) return 'Pin Bot row is not inside a treeitem'
     await page.keyboard.press('F2')
-    const editing = await until(async () => await inPage(() => {
-      const el = globalThis.document.activeElement
-      return el?.tagName === 'INPUT' && !!globalThis.__botsSidebar.tree()?.contains(el) && el.value === 'Pin Bot'
-    }) ? '' : 'F2 did not focus a tree input holding "Pin Bot"')
-    if (editing) return editing
-    await page.keyboard.press('Escape')
-    const closed = await until(async () => await inPage(() => !!globalThis.__botsSidebar.tree()?.querySelector('input')) ? 'an input remains in the tree after Escape' : '')
-    if (closed) return closed
-    if ((await bots()).find((b) => b.id === ids['Pin Bot'])?.name !== 'Pin Bot') return 'Escape changed the stored name of Pin Bot'
+    await pause(300)
+    if (await inPage(() => !!globalThis.__botsSidebar.tree()?.querySelector('input'))) return 'F2 opened an input in the tree; there is no rename field'
+    if (!await activeIsPin()) return 'F2 moved focus away from Pin Bot'
+    if ((await bots()).find((b) => b.id === ids['Pin Bot'])?.name !== 'Pin Bot') return 'F2 changed the stored name of Pin Bot'
   })
 
   // C9
@@ -207,41 +200,24 @@ export async function run(page, { paths }) {
     if (await noTree()) return 'no role=tree'
     if (!await focusPin()) return 'Pin Bot row is not inside a treeitem'
     await page.keyboard.press('Shift+F10')
-    const opened = await until(async () => await MENU('Pin Bot').first().isVisible() ? '' : 'Shift+F10 did not open the Pin Bot menu')
-    if (opened) return opened
-    await page.keyboard.press('Escape')
-    return until(async () => {
-      if (await MENU('Pin Bot').count()) return 'menu still open after Escape'
-      return await activeIsPin() ? '' : 'focus did not return to Pin Bot after Escape'
-    })
+    await pause(300)
+    if (await page.locator('[role="menu"], [role="menuitem"]').count()) return 'Shift+F10 opened a menu; rows have no menu'
+    if (await MENU_BUTTON('Pin Bot').count()) return 'Pin Bot row has an options button'
+    return await activeIsPin() ? '' : 'Shift+F10 moved focus away from Pin Bot'
   })
 
   // C10
   await check('search', async () => {
-    const queries = [['zqlabel', 'Alpha Bot'], ['zqpurpose', 'Beta Bot'], ['zqchat', 'Loose Bot'], ['Alpha', 'Alpha Bot'], ['zqnone', null]]
-    try {
-      for (const [query, expected] of queries) {
-        await SIDEBAR.getByTestId('sidebar-search-toggle').click({ timeout: WAIT_MS })
-        await SEARCH.fill(query, { timeout: WAIT_MS })
-        let shown = []
-        const reason = await until(async () => {
-          shown = []
-          for (const name of NAMES) if (await ROW(name).isVisible()) shown.push(name)
-          return shown.length === (expected ? 1 : 0) && (!expected || shown[0] === expected) ? '' : 'mismatch'
-        })
-        if (reason) return `search "${query}" shows ${JSON.stringify(shown)}, expected ${JSON.stringify(expected ? [expected] : [])}`
-        await SEARCH.fill('', { timeout: WAIT_MS })
-      }
-    } finally {
-      await SEARCH.fill('', { timeout: WAIT_MS }).catch(() => undefined)
-    }
+    if (await SIDEBAR.getByTestId('sidebar-search-toggle').count()) return 'sidebar-search-toggle is rendered; the sidebar has no search'
+    if (await SEARCH.count()) return 'a Search textbox is rendered in the sidebar'
+    if (await SIDEBAR.locator('input').count()) return 'the sidebar holds an input'
+    for (const name of VISIBLE) if (!await ROW(name).isVisible()) return `${name} row not visible`
   })
 
   // C11
-  await check('menu-hide', async () => {
+  await check('api-hide', async () => {
     if (await noTree()) return 'no role=tree'
-    await MENU_BUTTON('Loose Bot').click({ timeout: WAIT_MS })
-    await ITEM(MENU('Loose Bot'), 'Hide from sidebar').click({ timeout: WAIT_MS })
+    await inPage((id) => globalThis.engram.botUpdate(id, { hidden: true }), ids['Loose Bot'])
     const stored = await until(async () => {
       if ((await bots()).find((b) => b.id === ids['Loose Bot'])?.hidden !== true) return 'botsList does not mark Loose Bot hidden'
       const text = await groupText()
@@ -253,10 +229,16 @@ export async function run(page, { paths }) {
   })
 
   // C12
-  await check('menu-move', async () => {
+  await check('api-move', async () => {
     if (await noTree()) return 'no role=tree'
-    await MENU_BUTTON('Beta Bot').click({ timeout: WAIT_MS })
-    await ITEM(MENU('Beta Bot'), 'Move to Section A').click({ timeout: WAIT_MS })
+    const moved = await inPage(async (id) => {
+      const layout = await globalThis.engram.sidebarLayout('chat')
+      const folder = (layout.chat ?? layout).folders.find((f) => f.name === 'Section A')?.id
+      if (!folder) return 'no Section A in sidebarLayout'
+      await globalThis.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id, folder } })
+      return ''
+    }, ids['Beta Bot'])
+    if (moved) return moved
     const stored = await until(async () => {
       const layout = await page.evaluate(() => globalThis.engram.sidebarLayout('chat'))
       const chat = layout.chat ?? layout
@@ -264,16 +246,18 @@ export async function run(page, { paths }) {
       return folder && chat.items.find((item) => item.id === ids['Beta Bot'])?.folder === folder ? '' : 'sidebarLayout does not put Beta Bot in Section A'
     })
     if (stored) return stored
-    const beta = await top(ROW('Beta Bot'))
-    if (!(beta > await top(HEADER('Section A')))) return 'Beta Bot row is not below Section A'
-    if (await HEADER('Section B').isVisible() && !(beta < await top(HEADER('Section B')))) return 'Beta Bot row is not above Section B'
+    return until(async () => {
+      const beta = await top(ROW('Beta Bot'))
+      if (!(beta > await top(HEADER('Section A')))) return 'Beta Bot row is not below Section A'
+      if (await HEADER('Section B').isVisible() && !(beta < await top(HEADER('Section B')))) return 'Beta Bot row is not above Section B'
+      return ''
+    })
   })
 
   // C13
-  await check('menu-primary', async () => {
+  await check('api-primary', async () => {
     if (await noTree()) return 'no role=tree'
-    await MENU_BUTTON('Pin Bot').click({ timeout: WAIT_MS })
-    await ITEM(MENU('Pin Bot'), 'Make primary').click({ timeout: WAIT_MS })
+    await inPage((id) => globalThis.engram.botUpdate(id, { primary: true }), ids['Pin Bot'])
     return until(async () => {
       const primary = (await bots()).filter((b) => b.primary).map((b) => b.id)
       if (primary.length !== 1 || primary[0] !== ids['Pin Bot']) return `botsList primary is ${JSON.stringify(primary)}, expected only Pin Bot`

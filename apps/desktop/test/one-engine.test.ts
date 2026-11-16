@@ -98,7 +98,7 @@ describe('one engine, no knobs', () => {
   it('renders no engine, model or effort picker in chat, the top bar or onboarding', () => {
     expect(renderToStaticMarkup(createElement(ModelPicker, { scope: 'cosmos' }))).toBe('')
     expect(renderToStaticMarkup(createElement(ModelPicker, {}))).toBe('')
-    const bar = renderToStaticMarkup(createElement(TopBar, { sidebarOpen: true, developer: false, onToggleSidebar: vi.fn(), splitLayout: 1, onSplit: vi.fn(), onMode: vi.fn() }))
+    const bar = renderToStaticMarkup(createElement(TopBar, { sidebarOpen: true, developer: false, onToggleSidebar: vi.fn(), devLayout: 1, onDevLayout: vi.fn(), onMode: vi.fn() }))
     expect(bar).toContain('connect-banner')
     expect(bar).toContain('Claude')
     expect(bar).not.toMatch(PICKERS)

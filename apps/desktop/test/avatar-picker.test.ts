@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -88,8 +88,8 @@ describe('avatar picker logic', () => {
     await tick()
     expect(done).toEqual([])
     expect(saver.idle()).toBe(true)
-    const pane = readFileSync(join(__dirname, '../src/renderer/src/components/BotInfoPane.tsx'), 'utf8')
-    expect(pane).toContain('if (avatarWrites.current?.id !== bot.id) {')
-    expect(pane).toContain('avatarWrites.current?.stop()')
+    // The info pane that held one saver per bot is gone; the icon is picked once, when the bot is made.
+    expect(existsSync(join(__dirname, '../src/renderer/src/components/BotInfoPane.tsx'))).toBe(false)
+    expect(readFileSync(join(__dirname, '../src/renderer/src/components/CreateBotDialog.tsx'), 'utf8')).toContain('AvatarPicker')
   })
 })

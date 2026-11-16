@@ -55,7 +55,7 @@ async function ring(page: Page): Promise<{ width: string; style: string; offset:
   return { ...read, ratio: contrastRatio(rgba(read.color), read.layers.map(rgba)) }
 }
 
-test('sidebar tree: one tab stop, arrows, F2, Shift+F10 and a 2px focus ring at 3:1 in light and dark', async () => {
+test('sidebar tree: one tab stop, arrows, a 2px focus ring at 3:1, and F2, Shift+F10 and right-click open nothing, in light and dark', async () => {
   test.setTimeout(180_000)
   for (const theme of ['light', 'dark'] as const) {
     const { app, dirs } = await launch(theme)
@@ -120,52 +120,34 @@ test('sidebar tree: one tab stop, arrows, F2, Shift+F10 and a 2px focus ring at 
       expect(head.offset).toBeLessThanOrEqual(-2)
       expect(head.ratio ?? 0, `${theme}: section ring contrast`).toBeGreaterThanOrEqual(3)
 
-      await page.keyboard.press('Shift+F10')
-      await expect(page.getByRole('dialog', { name: 'Options for Home' })).toBeVisible()
-      await page.keyboard.press('Escape')
-      await expect(page.getByRole('dialog', { name: 'Options for Home' })).toHaveCount(0)
-      expect(await focused(page)).toBe('folder:vis-folder-home')
-      await page.keyboard.press('F2')
-      await expect(page.locator('.app-sidebar [role="tree"] input')).toHaveValue('Home')
-      await page.keyboard.press('Escape')
-      await expect(page.locator('.app-sidebar [role="tree"] input')).toHaveCount(0)
-      expect(await focused(page)).toBe('folder:vis-folder-home')
+      // No menu and no rename field: the keys and the right button leave the tree as it was.
+      const menus = page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
+      const field = page.locator('.app-sidebar [role="tree"] input')
+      for (const key of ['Shift+F10', 'ContextMenu', 'F2']) {
+        await page.keyboard.press(key)
+        await expect(menus).toHaveCount(0)
+        await expect(field).toHaveCount(0)
+        expect(await focused(page)).toBe('folder:vis-folder-home')
+      }
+      await expect(home).toHaveAttribute('aria-expanded', 'true')
       await item('folder:vis-folder-home').locator(':scope > .sidebar-folder-head').click({ button: 'right' })
-      await expect(page.getByRole('dialog', { name: 'Options for Home' })).toBeVisible()
-      await page.keyboard.press('Escape')
-      await expect(page.getByRole('dialog', { name: 'Options for Home' })).toHaveCount(0)
-      expect(await focused(page)).toBe('folder:vis-folder-home')
+      await expect(menus).toHaveCount(0)
       await item('item:vis-chat').click({ button: 'right' })
-      await expect(page.getByRole('dialog', { name: 'Options for Garden planner' })).toBeVisible()
-      await expect(page.getByRole('dialog', { name: 'Options for Home' })).toHaveCount(0)
-      await page.keyboard.press('Escape')
-      expect(await focused(page)).toBe('item:vis-chat')
+      await expect(menus).toHaveCount(0)
 
       await item('item:vis-new').focus()
-      await page.keyboard.press('F2')
-      const rename = page.locator('.app-sidebar [role="tree"] input')
-      await expect(rename).toBeFocused()
-      await expect(rename).toHaveValue('New helper')
-      await page.keyboard.press('Escape')
-      await expect(rename).toHaveCount(0)
-      expect(await focused(page)).toBe('item:vis-new')
-      await expect(page.getByTestId('bot-vis-new')).toHaveText(/New helper/)
-
-      const menu = page.getByRole('dialog', { name: 'Options for New helper' })
-      for (const key of ['Shift+F10', 'ContextMenu']) {
+      for (const key of ['F2', 'Shift+F10', 'ContextMenu']) {
         await page.keyboard.press(key)
-        await expect(menu).toBeVisible()
-        await page.keyboard.press('ArrowDown')
-        expect(await focused(page), 'menu arrows do not move the tree').toBe(null)
-        await page.keyboard.press('Escape')
-        await expect(menu).toHaveCount(0)
+        await expect(menus).toHaveCount(0)
+        await expect(field).toHaveCount(0)
         expect(await focused(page)).toBe('item:vis-new')
       }
-      await page.keyboard.press('Shift+F10')
-      await expect(menu).toBeVisible()
-      await page.keyboard.press('Tab')
-      await expect(menu).toHaveCount(0)
-      expect(await focused(page), 'Tab closes the menu and keeps focus on its treeitem').toBe('item:vis-new')
+      await expect(page.getByTestId('bot-vis-new')).toHaveText(/New helper/)
+      await expect(item('item:vis-new')).not.toHaveAttribute('draggable')
+      await page.keyboard.press('ArrowDown')
+      expect(await focused(page), 'arrows still move the tree').not.toBe('item:vis-new')
+      await page.keyboard.press('ArrowUp')
+      expect(await focused(page)).toBe('item:vis-new')
 
       await page.keyboard.press('Enter')
       await expect(page.getByTestId('bot-vis-new')).toHaveClass(/active/)

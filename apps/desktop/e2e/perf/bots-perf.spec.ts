@@ -213,8 +213,9 @@ test('P2 bot switch latency', async () => {
     const sizes = await page.evaluate((ids) => Promise.all(ids.map(id => window.engram.botTranscript(id).then(t => t.length))), SEEDED.firstOpen)
     expect(sizes, 'first open renders the 400-turn transcript cap').toEqual(SEEDED.firstOpen.map(() => 400))
     for (const id of SEEDED.cached) await openBot(page, id)
-    await page.locator('[data-testid="bots-title-pill"]').click()
-    await expect(page.getByTestId('bot-info-pane')).toBeVisible()
+    // There is no info pane to keep open while switching: the chat is the whole view.
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+    await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
     const cachedMs: number[] = [], firstOpenMs: number[] = []
     for (let r = 0; r < REPS; r++) {
       firstOpenMs.push(await openBot(page, SEEDED.firstOpen[r]!))
@@ -222,7 +223,8 @@ test('P2 bot switch latency', async () => {
       for (let i = 0; i < 20; i++) switches.push(await openBot(page, SEEDED.cached[i % SEEDED.cached.length]!))
       cachedMs.push(stats(switches).p95)
     }
-    await expect(page.getByTestId('bot-info-pane')).toBeVisible()
+    await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+    await expect(page.getByTestId('bots-thread')).toBeVisible()
     record('P2', { cachedMs, firstOpenMs })
   })
 })

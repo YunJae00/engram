@@ -45,18 +45,18 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
 
     await expect(view.getByTestId('model-picker')).toHaveCount(0)
 
-    await view.getByTestId('bots-title-pill').click()
+    // No title pill or details pane: the chat itself (thread, composer, sidebar rows) is what is measured.
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     const pane = page.getByTestId('bot-info-pane')
-    await expect(pane).toBeVisible()
-    // The details pane is one simple panel with no tab row, so its whole content is measured at once.
-    await expect(pane.getByRole('tab')).toHaveCount(0)
-    await expect(pane.getByRole('tablist')).toHaveCount(0)
+    await expect(pane).toHaveCount(0)
+    await expect(view.getByRole('tab')).toHaveCount(0)
+    await expect(view.getByRole('tablist')).toHaveCount(0)
+    await expect(view.getByTestId('bots-input')).toHaveAttribute('placeholder', lang === 'en' ? 'Message your bot…' : '봇에게 메시지 보내기…')
     overflow.push(...await overflowUnder(page))
-    const paneWidth = (await pane.boundingBox())?.width ?? 0
-    // Esc closes the pane from inside it; with no tab row to click, put focus in the pane first as the tab clicks used to.
-    await pane.locator('button, input, textarea, [tabindex]:not([tabindex="-1"])').first().focus()
+    const paneCount = await pane.count()
+    await view.getByTestId('bots-input').focus()
     await page.keyboard.press('Escape')
-    await expect(pane).toBeHidden()
+    await expect(view.getByTestId('bots-input')).toBeVisible()
 
     await openCreateBotDialog(page)
     const dialog = page.getByTestId('create-bot-dialog')
@@ -65,19 +65,19 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     await expect(dialog.getByTestId('create-bot-avatar-change')).toHaveAttribute('aria-expanded', 'true')
     overflow.push(...await overflowUnder(page))
     const dialogWidth = (await dialog.boundingBox())?.width ?? 0
-    return { pane: paneWidth, dialog: dialogWidth, overflow }
+    return { pane: paneCount, dialog: dialogWidth, overflow }
   } finally {
     await closeTestApp(app)
     for (const dir of [vault, profile]) await rm(dir, { recursive: true, force: true })
   }
 }
 
-test('Korean bot surfaces keep the layout: info pane 320, dialog 440, no new overflow', async () => {
+test('Korean bot surfaces keep the layout: no info pane, dialog 440, no new overflow', async () => {
   test.setTimeout(300_000)
   for (const theme of THEMES) {
     const en = await measure(theme, 'en')
     const ko = await measure(theme, 'ko')
-    expect(Math.abs(ko.pane - 320), `${theme} info pane width ${ko.pane}`).toBeLessThanOrEqual(2)
+    expect(ko.pane, `${theme} info pane count ${ko.pane}`).toBe(0)
     expect(Math.abs(ko.dialog - 440), `${theme} dialog width ${ko.dialog}`).toBeLessThanOrEqual(4)
     const enKeys = new Set(en.overflow.map(one => one.key))
     const fresh = ko.overflow.filter(one => !one.ellipsized && !enKeys.has(one.key))

@@ -28,9 +28,9 @@ export const CHECKLIST: ChecklistRow[] = [
   { row: 10, target: '시각 구분선', assertion: '본문 가운데 ±4, 13px', states: ['chat'] },
   { row: 11, target: '질문 카드', assertion: '폭 560±4, 모서리 22, 배지 24, 버튼 높이 36±2', states: ['chat'] },
   { row: 12, target: '입력창', assertion: '높이 44±2, 모서리 ≥22, 보내기 30±1, 열과 왼쪽 끝 일치 ±2', states: ['chat'] },
-  { row: 13, target: '제목 알약', assertion: '높이 36±2, 아바타 20±1, 본문 가운데 ±4', states: ['chat'] },
+  { row: 13, target: '제목 알약', assertion: '없음 (0개)', states: ['chat'] },
   { row: 14, target: '토스트', assertion: '폭 340±8, 위·오른쪽 16±2, 모서리 18', states: ['toast'] },
-  { row: 15, target: '정보 창', assertion: '폭 320±2, 개요 아바타 96±1, 열고 닫을 때 대화 열 넘침 없음', states: ['info-overview'] },
+  { row: 15, target: '정보 창', assertion: '없음: 정보 창·제목 알약·탭 0개, 대화 열 폭 `min(960, main−48)`±2, 넘침 없음', states: ['info-overview'] },
   { row: 16, target: '대비', assertion: '본문·미리보기·시각 ≥4.5:1, 포커스 링 ≥3:1 (light/dark)', states: SIDE },
   { row: 17, target: '넘침', assertion: '보이는 요소 중 말줄임이 아닌데 `scrollWidth > clientWidth`인 것 0개', states: ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-picker'] },
   { row: 18, target: '아바타', assertion: '갤러리의 모든 칸이 20/36/64/96 ±1. 구체 대비 리본 색 ≥3:1. 작업 중 애니메이션 속성은 `opacity`·`transform`만. 모션 줄이기 설정이면 `getAnimations()`가 0개', states: ['avatar-gallery'] },
@@ -184,7 +184,7 @@ const SIDEBAR = '.app-sidebar', MAIN = '[data-testid="bots-view"]', COLUMN = `${
 const ROW = '.sidebar-conversations .bots-row', ACTIVE = `${ROW}.active`, PREVIEW = `${ROW} .sidebar-conversation-preview`
 const ASSISTANT = `${MAIN} .bots-thread .bubble-msg.assistant`, USER = `${MAIN} .bots-thread .bubble-msg.user`
 const DIVIDER = `${MAIN} .bubble-time-divider`, CARD = `${MAIN} .bots-thread .decision-card`, COMPOSER = `${MAIN} .bots-write .chat-write`
-const PILL = `${MAIN} .bots-title-pill`, PRIMARY = '.sidebar-primary'
+const PILL = '[data-testid="bots-title-pill"], .bots-title-pill', PRIMARY = '.sidebar-primary'
 
 type P = Probe | null
 const w = (p: P) => p?.width ?? null, h = (p: P) => p?.height ?? null
@@ -292,11 +292,8 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
       return [near('composer height', COMPOSER, h(c), 44, 2), atLeast('composer radius', COMPOSER, radius(c), 22, '≥22'),
         ...size('send button', `${MAIN} .bots-write .chat-send-btn`, send, 30, 1), near('composer left offset', COMPOSER, c && col ? c.left - col.left : null, 0, 2, 'column left ±2')]
     }
-    case 13: {
-      const main = await q(MAIN), pill = await q(PILL), av = await q(`${PILL} .bot-avatar`)
-      return [near('title pill height', PILL, h(pill), 36, 2), ...size('title pill avatar', `${PILL} .bot-avatar`, av, 20, 1),
-        near('title pill center offset', PILL, main && pill ? pill.centerX - main.centerX : null, 0, 4, 'body center ±4')]
-    }
+    // The title pill was removed with the info pane it opened.
+    case 13: return [near('title pill count', PILL, await page.locator(PILL).count(), 0, 0)]
     case 14: {
       const T = '.toast', ICON = '.toast .toast-icon', TITLE = '.toast .toast-title', CLOSE = '.toast .toast-close'
       const toast = await q(T), icon = await q(ICON), title = await q(TITLE)

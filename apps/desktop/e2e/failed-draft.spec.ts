@@ -38,6 +38,11 @@ test('a message typed after a failed send replaces the put-back draft instead of
   await input.fill('이대로 진행')
   await input.press('Enter')
   await expect(input).toHaveValue('이대로 진행')
+  // The failure is one plain line in the thread's language: no raw error, no retry, details or copy to press.
+  const failed = page.locator('.bubble-msg.error')
+  await expect(failed).toHaveText(['문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.'])
+  await expect(failed).not.toContainText('Connection failed')
+  await expect(failed.locator('button, details, summary, pre')).toHaveCount(0)
   // The put-back draft arrives selected: the next message typed replaces it.
   await expect(input).toBeFocused()
   await page.keyboard.type('이어서 해줘')

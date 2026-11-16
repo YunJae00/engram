@@ -1,8 +1,4 @@
-.orbit-surface {
-  display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
-  background: var(--panel-bg);
-}
-.orbit-surface > .mission-preview { flex: 1; }
+
 .computer-surface-tabs { display: flex; align-items: center; gap: 3px; padding: 5px 10px; flex: none; min-height: 34px; }
 .computer-surface-tabs button {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px;
@@ -102,7 +98,6 @@
 .artifact-sheet-head button { flex: none; }
 .artifact-sheet-body { min-height: 0; overflow: auto; overflow-wrap: anywhere; }
 .artifact-sheet pre { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-small); }
-
 
 .computer-settings-description { margin: 8px 0 8px 26px; font-size: var(--fs-small); line-height: 1.6; color: var(--fg-dim); }
 .computer-settings-bindings { margin-top: 10px; }

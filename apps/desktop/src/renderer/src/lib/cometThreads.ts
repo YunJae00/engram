@@ -274,10 +274,6 @@ export function createCometThreads(initialSelected: string | null = null) {
     append(id: string, message: CometMessage): void {
       patch(id, { messages: [...thread(id).messages, message] })
     },
-    clearUnapplied(id: string, text: string): void { patch(id, { unapplied: thread(id).unapplied.filter(one => one !== text) }) },
-    clearOffer(id: string): void {
-      patch(id, { offer: null })
-    },
     forget(id: string): void {
       pageTokens.delete(id)
       const rest = Object.fromEntries(Object.entries(snapshot.threads).filter(([key]) => key !== id))

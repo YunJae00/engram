@@ -125,7 +125,7 @@ test('a floating mirror watches automatic work without changing the website view
   } finally { await browser.close() }
 })
 
-test('browser controls navigate history, reload the website and open imported bookmarks', async () => {
+test('browser controls navigate history and reload the website; the page pane has no tabs or bookmarks', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
@@ -145,26 +145,10 @@ test('browser controls navigate history, reload the website and open imported bo
   await pane.getByRole('button', { name: 'Reload page', exact: true }).click()
   await expect.poll(() => requests.get('/clicked') ?? 0).toBeGreaterThan(before)
   await expect(pane.getByTestId('live-reset')).toHaveCount(0)
-  await app.evaluate(({ ipcMain }, url) => {
-    let imported = false
-    const items = [{ title: 'Fixture bookmark', url, folder: 'Work', folderPath: ['Work'], sourceId: 'fixture', sourceName: 'Chrome · Test profile' }]
-    ipcMain.removeHandler('bookmarks:sources'); ipcMain.removeHandler('bookmarks:list'); ipcMain.removeHandler('bookmarks:import')
-    ipcMain.handle('bookmarks:sources', () => [{ id: 'fixture', name: 'Chrome · Test profile' }])
-    ipcMain.handle('bookmarks:list', () => imported ? items : [])
-    ipcMain.handle('bookmarks:import', () => { imported = true; return items })
-  }, siteUrl)
-  await pane.getByRole('button', { name: 'Bookmarks', exact: true }).click()
-  const bookmarks = page.getByRole('dialog', { name: 'Bookmarks', exact: true })
-  await bookmarks.getByRole('button', { name: 'Import bookmarks…' }).click()
-  const importer = page.getByRole('dialog', { name: 'Import bookmarks', exact: true })
-  await expect(importer.getByLabel('Browser profile')).toHaveValue('fixture')
-  await importer.getByRole('button', { name: 'Import', exact: true }).click()
-  await expect(importer).toHaveCount(0)
-  await expect(bookmarks).toBeVisible()
-  await bookmarks.locator('summary').filter({ hasText: 'Work' }).click()
-  await bookmarks.getByRole('button', { name: /Fixture bookmark/ }).click()
-  await expect(bookmarks).toHaveCount(0)
-  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
+  await expect(pane.getByRole('button', { name: /bookmark/i })).toHaveCount(0)
+  await expect(pane.getByRole('tab')).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: /new tab/i })).toHaveCount(0)
+  await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`)
 })
 
 test('the mirror is watchable and acted in: the address, the keys and the clicks all reach the window', async () => {
@@ -207,7 +191,7 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
 })
 
-test('mission control previews independent lanes and opens the chosen chat', async () => {
+test('each bot keeps its own page in the one chat view and its sidebar row opens the chosen chat', async () => {
   await checkMissionLiveView(app, page, siteUrl, browserPort, REPO_TMP)
 })
 
@@ -298,10 +282,10 @@ test('window and chat handoffs preserve independent input, composition and monit
     await firstPage.evaluate(() => window.scrollTo(0, 360))
     await secondPage.evaluate(() => window.scrollTo(0, 720))
     for (let turn = 0; turn < 3; turn++) {
-      await openActivity(page, 'mission')
-      await page.getByTestId('mission-layout-2').click()
-      await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2)
-      await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
+      await page.locator('.bots-row', { hasText: 'Watching' }).click()
+      await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
+      await page.locator('.bots-row', { hasText: 'Parallel watch' }).click()
+      await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
       await expect(page.getByTestId('web-pane').locator('canvas[data-painted]')).toBeVisible()
     }
     await clickInput()
@@ -347,7 +331,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveAttribute('data-work', 'working')
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
   await step(first, 'aside')
-  await expect(pane.getByTestId('web-work-status')).toContainText('You have the page')
+  await expect(pane.getByTestId('web-work-status')).toContainText('The page is yours')
   await step(first, 'resume')
   await page.getByTestId('web-pane-fold').click()
   await expect(pane).toHaveCount(0)
@@ -358,7 +342,7 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(page.getByTestId('preview-card')).toBeVisible()
   await page.getByTestId('preview-card').getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=second`)
-  await expect(pane.getByTestId('web-work-status')).toContainText('Comets at work')
+  await expect(pane.getByTestId('web-work-status')).toContainText('Working on this page')
   await page.screenshot({ path: join(REPO_TMP, 'web-work-visibility.png') })
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await expect(pane).toHaveCount(0)
@@ -377,18 +361,11 @@ test('web phases auto-open only their own conversation and folds never leak acro
   try {
     const web = browser.contexts()[0]!.pages().find(one => one.url() === `${siteUrl}?lane=first`)!
     await web.goto('about:blank')
-    await openActivity(page, 'mission')
-    const tile = page.getByTestId('mission-tile-0')
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-    await expandPreview(tile)
-    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
-    const modal = page.getByTestId('mission-browser-dialog')
-    await expect(modal).toBeVisible()
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-    await expect(modal.locator('.browser-start')).toBeVisible()
-    await expect(modal.locator('.mission-preview canvas')).toBeHidden()
+    // A blank page shows the start surface in the same pane, and the picture returns with the page.
+    await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
+    await expect(pane.locator('.browser-start')).toBeVisible()
+    await expect(pane.locator('canvas')).toHaveCount(0)
     await web.goto(`${siteUrl}?lane=first`)
-    await expect(modal.locator('.mission-preview canvas[data-painted]')).toBeVisible()
-    await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
+    await expect(pane.locator('canvas[data-painted]')).toBeVisible()
   } finally { await browser.close() }
 })

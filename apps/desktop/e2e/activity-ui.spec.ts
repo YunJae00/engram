@@ -65,11 +65,10 @@ test('low memory rejects a new embedded browser without blocking the app', async
 test('Engram keeps navigation in its menu with aligned icons and leaves status in the sidebar footer', async () => {
   const sidebar = page.getByTestId('app-sidebar')
   await expect(sidebar.locator('.sidebar-nav-row')).toHaveCount(0)
-  await sidebar.getByTestId('sidebar-search-toggle').click()
-  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
-  const searchBox = await sidebar.getByRole('textbox', { name: 'Search conversations' }).boundingBox()
-  const newBox = await sidebar.getByTestId('sidebar-create').boundingBox()
-  expect(Math.abs(newBox!.y + newBox!.height / 2 - searchBox!.y - searchBox!.height / 2)).toBeLessThanOrEqual(1)
+  // The sidebar has no search: one "+" above the bot list.
+  await expect(sidebar.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toHaveCount(0)
+  await expect(sidebar.getByTestId('sidebar-create')).toBeVisible()
   await page.getByTestId('workspace-switcher').click()
   const menu = page.getByTestId('workspace-menu')
   await expect(menu.getByTestId('activity-mission')).toHaveCount(0)
@@ -136,27 +135,26 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   await writeFile(join(TMP, 'sidebar-filing-done.png'), Buffer.from(png, 'base64'))
 })
 
-test('each chat and mission border tracks running, input needed, error and completion independently', async () => {
-  await openActivity(page, 'mission')
-  await expect(page.locator('.mission-tile .mini-chat')).toHaveCount(4)
-  for (const id of ids.slice(0, 3)) {
-    const input = page.getByTestId(`mini-chat-${id}`).locator('textarea')
+test('each chat row tracks running, input needed, error and completion independently in the one chat view', async () => {
+  await openActivity(page, 'bots')
+  await expect(page.getByTestId('mission-control')).toHaveCount(0)
+  await expect(page.getByTestId('mission-layout-4')).toHaveCount(0)
+  const send = async (id: string, text: string) => {
+    await page.getByTestId(`bot-${id}`).click()
+    const input = page.getByTestId('bots-input')
     await expect(input).toBeEnabled()
-    await input.fill('Review the current task')
+    await input.fill(text)
     await input.press('Enter')
     await expect(page.getByTestId(`bot-${id}`).locator('.comet-activity-icon')).toHaveAttribute('data-state', 'running')
   }
+  for (const id of ids.slice(0, 3)) await send(id, 'Review the current task')
   await emit({ type: 'press:ask', channel: `bot-${ids[1]}`, words: 'Submit this review?', host: 'example.com' })
   await emit({ type: 'chat:error', channel: `bot-${ids[2]}`, message: 'Connection interrupted' })
   for (const [index, state, label] of [[0, 'running', 'Running'], [1, 'waiting', 'Needs input'], [2, 'error', 'Needs attention'], [3, 'ready', 'Ready']] as const) {
-    const tile = page.getByTestId(`mission-tile-${index}`)
-    await expect(tile).toHaveAttribute('data-state', state)
-    await expect(tile.locator('.mission-status')).toHaveText(label)
     const icon = page.getByTestId(`bot-${ids[index]}`).locator('.comet-activity-icon')
     if (state === 'ready') await expect(icon).toHaveCount(0)
-    else await expect(icon).toHaveAttribute('aria-label', label)
+    else { await expect(icon).toHaveAttribute('data-state', state); await expect(icon).toHaveAttribute('aria-label', label) }
   }
-  await expect.poll(() => page.locator('.mission-tile').evaluateAll((tiles) => new Set(tiles.map((tile) => getComputedStyle(tile).borderTopColor)).size)).toBe(4)
   await page.screenshot({ path: join(TMP, 'activity-light.png') })
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
   await page.screenshot({ path: join(TMP, 'activity-dark.png') })
@@ -164,17 +162,10 @@ test('each chat and mission border tracks running, input needed, error and compl
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId(`bot-${ids[0]}`).locator('.comet-activity-icon')).toHaveCSS('animation-name', 'none')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  const retry = page.getByTestId(`mini-chat-${ids[2]}`).locator('textarea')
-  await retry.fill('Try again')
-  await retry.press('Enter')
-  await expect(page.getByTestId('mission-tile-2')).toHaveAttribute('data-state', 'running')
+  await send(ids[2]!, 'Try again')
   for (const id of ids.slice(0, 3)) await emit({ type: 'chat:done', channel: `bot-${id}`, text: 'Complete' })
-  await expect(page.locator('.mission-tile[data-state="ready"]')).toHaveCount(4)
   await expect(page.locator('.sidebar-item-main .comet-activity-icon')).toHaveCount(0)
-  const next = page.getByTestId(`mini-chat-${ids[1]}`).locator('textarea')
-  await next.fill('A new task')
-  await next.press('Enter')
-  await expect(page.getByTestId('mission-tile-1')).toHaveAttribute('data-state', 'running')
+  await send(ids[1]!, 'A new task')
   await emit({ type: 'chat:done', channel: `bot-${ids[1]}`, text: 'Complete' })
 })
 

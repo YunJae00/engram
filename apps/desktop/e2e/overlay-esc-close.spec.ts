@@ -58,9 +58,9 @@ test('keyboard open, Esc closes and typing lands in the composer', async () => {
   await page.keyboard.press('ControlOrMeta+B')
   await expectOpen()
   await screenshot('overlay-esc-before.png')
-  await page.getByTestId('sidebar-search-toggle').focus(); await page.keyboard.press('Enter')
-  await expect(page.getByRole('textbox', { name: 'Search conversations' })).toBeFocused()
-  await page.keyboard.press('Escape'); await expect(page.getByTestId('sidebar-search-toggle')).toBeFocused()
+  // The sidebar has no search field to take an Esc first.
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Search conversations' })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expectClosed()
   await typesInto(composer(), 'hello')
@@ -81,39 +81,40 @@ test('pointer open then Esc closes', async () => {
   await typesInto(composer(), 'esc')
 })
 
-test('a dialog above the sidebar takes the first Esc', async () => {
+test('the old palette shortcut opens nothing, and the new-bot dialog above the sidebar takes the first Esc', async () => {
   await openByPointer()
   await page.keyboard.press('ControlOrMeta+Shift+P')
-  const palette = page.getByTestId('palette-input')
-  await expect(palette).toBeVisible()
+  await expect(page.getByTestId('palette-input')).toHaveCount(0)
+  await expectOpen()
+  await page.getByTestId('sidebar-create').click()
+  const dialog = page.getByTestId('create-bot-dialog')
+  await expect(dialog).toBeVisible()
   await page.keyboard.press('Escape')
-  await expect(palette).toHaveCount(0)
+  await expect(dialog).toHaveCount(0)
   await expectOpen()
   await page.keyboard.press('Escape')
   await expectClosed()
 })
 
-test('a sidebar row menu takes the first Esc', async () => {
+test('right-clicking a sidebar row opens no menu, and Esc closes the sidebar', async () => {
   await openByPointer()
   const trigger = page.getByTestId(`bot-${botId}`)
   await trigger.click({ button: 'right' })
-  await expect(page.locator('.sidebar-menu')).toBeVisible()
-  await page.keyboard.press('Escape')
   await expect(page.locator('.sidebar-menu')).toHaveCount(0)
   await expectOpen()
-  // The bot list is a keyboard tree since the sidebar tree change: closing a row menu returns focus to that row's tree item.
-  await expect(trigger.locator('xpath=ancestor::*[@role="treeitem"][1]')).toBeFocused()
+  // The row is still a plain way into its chat.
+  await expect(trigger).toBeVisible()
   await page.keyboard.press('Escape')
   await expectClosed()
+  await typesInto(composer(), 'row')
 })
 
-test('the create popover takes the first Esc', async () => {
+test('right-clicking empty sidebar space opens no create menu, and Esc closes the sidebar', async () => {
   await openByPointer()
   const scroll = page.locator('.sidebar-scroll')
   const box = (await scroll.boundingBox())!
   await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
-  await expect(page.getByTestId('sidebar-space-new-folder')).toBeFocused()
-  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('sidebar-space-new-folder')).toHaveCount(0)
   await expect(page.locator('.sidebar-menu')).toHaveCount(0)
   await expectOpen()
   await page.keyboard.press('Escape')
@@ -122,14 +123,14 @@ test('the create popover takes the first Esc', async () => {
 
 test('IME composition Esc is ignored', async () => {
   await openByPointer()
-  await page.getByTestId('sidebar-search-toggle').click(); await page.getByRole('textbox', { name: 'Search conversations' }).evaluate(input => {
+  // The search field is gone; the composing Esc is sent from the sidebar's "+" button instead.
+  await page.getByTestId('sidebar-create').evaluate(input => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }))
     const legacy = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     Object.defineProperty(legacy, 'keyCode', { value: 229 })
     input.dispatchEvent(legacy)
   })
   await expectOpen()
-  await page.keyboard.press('Escape'); await expectOpen()
   await page.keyboard.press('Escape')
   await expectClosed()
 })
@@ -166,20 +167,23 @@ test('wide window and a resize while open keep the sidebar', async () => {
   await expectOpen()
 })
 
-test('Mission Control mini composers receive focus after dismissal', async () => {
-  await openActivity(page, 'mission')
-  await expect(page.locator('.mission-tile .mini-chat textarea').first()).toBeVisible()
+test('the single chat composer receives focus after dismissal', async () => {
+  await openActivity(page, 'bots')
+  await expect(page.locator('.mission-tile')).toHaveCount(0)
   await page.setViewportSize(NARROW)
   await openByPointer()
+  await page.getByTestId(`bot-${botId}`).click()
+  const input = page.getByTestId('bots-input')
+  await expect(input).toBeVisible()
+  if (await sidebar().getAttribute('aria-hidden') === 'true') await openByPointer()
   await page.keyboard.press('Escape')
   await expectClosed()
-  const mini = page.locator('[data-testid^="mini-input-"]:focus')
-  await typesInto(mini, 'mission')
+  await typesInto(input, 'single')
   await openByPointer()
   await scrim().click({ position: { x: 700, y: 300 } })
   await expectClosed()
-  await expect(page.locator('[data-testid^="mini-input-"]:focus')).toHaveCount(1)
-  await screenshot('overlay-esc-mission.png')
+  await expect(input).toBeFocused()
+  await screenshot('overlay-esc-single.png')
 })
 
 test('the Development message composer receives focus after dismissal', async () => {

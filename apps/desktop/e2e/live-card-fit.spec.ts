@@ -8,7 +8,8 @@ import { closeTestApp, openActivity } from './navigation.js'
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const LONG = 'The agent opened the report, compared the quarterly numbers with last year, and wrote down where the totals drift. It then checked each source link, noted which pages were behind a login, and listed what still needs a person to confirm before anything is sent. '
 type Box = { left: number; top: number; right: number; bottom: number }
-type View = 'single' | 'two' | 'four'
+// One chat view: the cases that used two and four panes now look at a second bot and come back to the first.
+type View = 'single' | 'second' | 'return'
 type Frame = { id: string; lane: string; title: string; at: number; captureState: 'ready'; current: false; data: string }
 
 async function launch(name: string) {
@@ -32,9 +33,6 @@ async function launch(name: string) {
     env: { ...process.env, ENGRAM_VAULT: paths.root, ENGRAM_USERDATA: userData, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' },
   })
   const page = await app.firstWindow({ timeout: 60_000 })
-  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map(bot => bot.id))
-  await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   const close = async () => {
     await closeTestApp(app)
@@ -62,18 +60,13 @@ async function push(app: ElectronApplication, frames: Frame[]) {
   }, frames)
 }
 
-async function show(page: Page, view: View, bot: Bot) {
-  if (view === 'single') {
-    await openActivity(page, 'bots')
-    await page.getByTestId('mission-layout-1').click()
-    // A narrow window folds the sidebar away, so the row is clicked without a pointer.
-    await page.getByTestId(`bot-${bot.id}`).dispatchEvent('click')
-    await expect(page.locator('.bots-thread')).toBeVisible()
-    return
-  }
-  await openActivity(page, 'mission')
-  await page.getByTestId(view === 'two' ? 'mission-layout-2' : 'mission-layout-4').click()
-  await expect(page.locator('.mini-chat-thread')).toHaveCount(view === 'two' ? 2 : 4)
+async function show(page: Page, bot: Bot) {
+  await openActivity(page, 'bots')
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  // A narrow window folds the sidebar away, so the row is clicked without a pointer.
+  await page.getByTestId(`bot-${bot.id}`).dispatchEvent('click')
+  await expect(page.locator('.bots-thread')).toBeVisible()
+  await expect(page.locator('.bots-chat')).toHaveCount(1)
 }
 
 const settle = (page: Page) => page.evaluate(async () => {
@@ -84,7 +77,7 @@ const settle = (page: Page) => page.evaluate(async () => {
 const scene = (page: Page) => page.evaluate(() => {
   const rect = (node: Element): Box => { const one = node.getBoundingClientRect(); return { left: one.left, top: one.top, right: one.right, bottom: one.bottom } }
   const visible = (node: Element) => { const box = node.getBoundingClientRect(); return getComputedStyle(node).visibility !== 'hidden' && box.width > 0 && box.height > 0 }
-  return [...document.querySelectorAll('.bots-chat, .mini-chat')].filter(visible).map(chat => ({
+  return [...document.querySelectorAll('.bots-chat')].filter(visible).map(chat => ({
     cards: [...chat.querySelectorAll('.preview-card, .preview-deck-card')].filter(visible).map(rect),
     bubbles: [...chat.querySelectorAll('.bubble-msg')].filter(visible).map(node => ({ text: (node.textContent ?? '').trim().slice(0, 30), box: rect(node) })),
   }))
@@ -98,12 +91,12 @@ test('a live card never covers chat bubbles', async () => {
   try {
     await resize(app, page, 1280)
     await push(app, [await frame(app, `bot-${bots[0]!.id}`, 1280, 800), await frame(app, `bot-${bots[1]!.id}`, 1280, 800)])
-    for (const view of ['single', 'two', 'four'] as const) {
-      await show(page, view, bots[0]!)
+    for (const [view, bot] of [['single', bots[0]!], ['second', bots[1]!], ['return', bots[0]!]] as Array<[View, Bot]>) {
+      await show(page, bot)
       await expect(page.locator('.preview-card:visible').first()).toBeVisible({ timeout: 20_000 })
       let banded = false
       for (const at of ['top', 'middle', 'bottom'] as const) {
-        await page.locator('.bots-thread, .mini-chat-thread').evaluateAll((nodes, at) => {
+        await page.locator('.bots-thread').evaluateAll((nodes, at) => {
           for (const node of nodes) node.scrollTop = at === 'top' ? 0 : at === 'middle' ? (node.scrollHeight - node.clientHeight) / 2 : node.scrollHeight
         }, at)
         await settle(page)
@@ -139,51 +132,47 @@ test('each live card has its window aspect with no letterbox', async () => {
       const stage = card?.querySelector('.preview-card-stage'), img = stage?.querySelector('img')
       if (!card || !stage || !img) return undefined
       const rect = (node: Element) => { const one = node.getBoundingClientRect(); return { left: one.left, top: one.top, width: one.width, height: one.height } }
-      return { natural: [img.naturalWidth, img.naturalHeight], card: rect(card), stage: rect(stage), img: rect(img), chat: card.closest('.bots-chat, .mini-chat')!.getBoundingClientRect().height }
+      return { natural: [img.naturalWidth, img.naturalHeight], card: rect(card), stage: rect(stage), img: rect(img), chat: card.closest('.bots-chat')!.getBoundingClientRect().height }
     }, lane)
     const near = (x: { left: number; top: number; width: number; height: number }, y: typeof x) => Math.max(Math.abs(x.left - y.left), Math.abs(x.top - y.top), Math.abs(x.width - y.width), Math.abs(x.height - y.height)) <= 2
     for (const width of [1280, 720]) {
       await resize(app, page, width)
-      for (const view of ['single', 'two'] as const) {
-        await show(page, view, bots[0]!)
-        const lanes = view === 'single' ? [a] : [a, b]
-        for (const lane of lanes) {
-          for (const [w, h] of sizes[lane]!) {
-            const id = `${lane}:window:w${w}x${h}`
-            const deck = page.locator(`.preview-deck:visible:has(.preview-card[data-lane="${lane}"])`)
-            await expect(deck).toBeVisible({ timeout: 20_000 })
-            if (await deck.locator('.preview-deck-card[data-position="0"]').getAttribute('data-frame') !== id) await deck.locator(`.preview-deck-card[data-frame="${id}"] .preview-deck-back`).dispatchEvent('click')
-            await expect(deck.locator('.preview-deck-card[data-position="0"]')).toHaveAttribute('data-frame', id)
-            await expect.poll(async () => (await measure(lane))?.natural, { timeout: 10_000 }).toEqual([w, h])
-            await settle(page)
-            const marker = `LIVE-CARD-ASPECT ${view} ${width} w${w}x${h}`
-            const problems = async () => {
-              const box = await measure(lane)
-              if (!box) return [`${marker}: card missing`]
-              const issues: string[] = []
-              const ratio = box.stage.width / box.stage.height / (w / h)
-              if (Math.abs(ratio - 1) > 0.02) issues.push(`${marker}: stage ${Math.round(box.stage.width)}x${Math.round(box.stage.height)} is off the frame ratio by ${Math.round((ratio - 1) * 100)}%`)
-              if (!near(box.img, box.stage)) issues.push(`${marker}: image box ${JSON.stringify(box.img)} differs from stage ${JSON.stringify(box.stage)}`)
-              if (!near(box.card, box.stage)) issues.push(`${marker}: card ${JSON.stringify(box.card)} has blank area around stage ${JSON.stringify(box.stage)}`)
-              if (box.stage.height > box.chat / 2 + 1) issues.push(`${marker}: stage ${Math.round(box.stage.height)}px is taller than half the chat ${Math.round(box.chat)}px`)
-              return issues
-            }
-            await expect.poll(problems, { message: marker, timeout: 5_000 }).toEqual([])
+      const front = async (lane: string, id: string) => {
+        const deck = page.locator(`.preview-deck:visible:has(.preview-card[data-lane="${lane}"])`)
+        await expect(deck).toBeVisible({ timeout: 20_000 })
+        if (await deck.locator('.preview-deck-card[data-position="0"]').getAttribute('data-frame') !== id) await deck.locator(`.preview-deck-card[data-frame="${id}"] .preview-deck-back`).dispatchEvent('click')
+        await expect(deck.locator('.preview-deck-card[data-position="0"]')).toHaveAttribute('data-frame', id)
+      }
+      for (const [view, bot, lane] of [['single', bots[0]!, a], ['second', bots[1]!, b]] as Array<[View, Bot, string]>) {
+        await show(page, bot)
+        for (const [w, h] of sizes[lane]!) {
+          const id = `${lane}:window:w${w}x${h}`
+          await front(lane, id)
+          await expect.poll(async () => (await measure(lane))?.natural, { timeout: 10_000 }).toEqual([w, h])
+          await settle(page)
+          const marker = `LIVE-CARD-ASPECT ${view} ${width} w${w}x${h}`
+          const problems = async () => {
+            const box = await measure(lane)
+            if (!box) return [`${marker}: card missing`]
+            const issues: string[] = []
+            const ratio = box.stage.width / box.stage.height / (w / h)
+            if (Math.abs(ratio - 1) > 0.02) issues.push(`${marker}: stage ${Math.round(box.stage.width)}x${Math.round(box.stage.height)} is off the frame ratio by ${Math.round((ratio - 1) * 100)}%`)
+            if (!near(box.img, box.stage)) issues.push(`${marker}: image box ${JSON.stringify(box.img)} differs from stage ${JSON.stringify(box.stage)}`)
+            if (!near(box.card, box.stage)) issues.push(`${marker}: card ${JSON.stringify(box.card)} has blank area around stage ${JSON.stringify(box.stage)}`)
+            if (box.stage.height > box.chat / 2 + 1) issues.push(`${marker}: stage ${Math.round(box.stage.height)}px is taller than half the chat ${Math.round(box.chat)}px`)
+            return issues
           }
-        }
-        if (view === 'two') {
-          for (const [lane, id] of [[a, `${a}:window:w600x800`], [b, `${b}:window:w800x600`]] as const) {
-            const deck = page.locator(`.preview-deck:visible:has(.preview-card[data-lane="${lane}"])`)
-            await deck.locator(`.preview-deck-card[data-frame="${id}"] .preview-deck-back`).dispatchEvent('click')
-            await expect(deck.locator('.preview-deck-card[data-position="0"]')).toHaveAttribute('data-frame', id)
-          }
-          await expect.poll(async () => {
-            const [one, two] = [await measure(a), await measure(b)]
-            if (!one || !two) return 0
-            return Math.abs((one.stage.width / one.stage.height) / (two.stage.width / two.stage.height) - 1)
-          }, { message: `LIVE-CARD-ASPECT two ${width}: cards of different windows share a shape`, timeout: 5_000 }).toBeGreaterThan(0.1)
+          await expect.poll(problems, { message: marker, timeout: 5_000 }).toEqual([])
         }
       }
+      // Each bot's card keeps its own window's shape when the person goes from one bot to the other.
+      const shape = async (lane: string) => { const box = await measure(lane); return box ? box.stage.width / box.stage.height : 0 }
+      await front(b, `${b}:window:w800x600`)
+      await expect.poll(() => shape(b), { timeout: 5_000 }).toBeCloseTo(800 / 600, 1)
+      const second = await shape(b)
+      await show(page, bots[0]!)
+      await front(a, `${a}:window:w600x800`)
+      await expect.poll(async () => { const first = await shape(a); return first ? Math.abs(first / second - 1) : 0 }, { message: `LIVE-CARD-ASPECT ${width}: cards of different windows share a shape`, timeout: 5_000 }).toBeGreaterThan(0.1)
     }
   } finally {
     await close()

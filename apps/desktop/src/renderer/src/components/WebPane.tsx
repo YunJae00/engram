@@ -179,8 +179,8 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           </button>
           <BrowserAddress key={`address-${channel}`} channel={channel} url={mine ? url : ''} />
           <BrowserActions key={`actions-${channel}`} lane={channel} url={mine ? url : undefined} live={liveHere} />
-          <button className="live-dock-act" aria-label="Return to small preview" title="Return to small preview" onClick={() => webPane.preview(channel)}><PictureInPicture2 size={15} aria-hidden /></button>
-          <button className="live-dock-act" data-testid="web-pane-expand" aria-label={expanded ? 'Show chat beside browser' : 'Expand browser'} title={expanded ? 'Show chat beside browser' : 'Expand browser'} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
+          <button className="live-dock-act" aria-label={t('live.small')} title={t('live.small')} onClick={() => webPane.preview(channel)}><PictureInPicture2 size={15} aria-hidden /></button>
+          <button className="live-dock-act" data-testid="web-pane-expand" aria-label={t(expanded ? 'live.beside' : 'live.bigger')} title={t(expanded ? 'live.beside' : 'live.bigger')} onClick={() => webPane.expand(channel, !expanded)}>{expanded ? <PanelLeft size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}</button>
           {busy && (
             <button className="web-pane-stop" data-testid="web-pane-stop" onClick={onStop}>
               <Square size={10} strokeWidth={2.5} aria-hidden /> {t('bubble.stop')}
@@ -188,7 +188,7 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
           )}
         </div>
         <div className="web-work-status" data-testid="web-work-status" role="status" aria-live="polite" aria-hidden={!busy || phase === 'idle'}>
-          <div><Comet size={15} /><strong>{phase === 'aside' ? 'You have the page' : 'Comets at work'}</strong><span>{phase === 'aside' ? 'Comets will wait for you' : 'Click or type to take over'}</span></div>
+          <div><Comet size={15} /><strong>{t(phase === 'aside' ? 'live.yours' : 'live.working')}</strong><span>{t(phase === 'aside' ? 'live.yoursHint' : 'live.takeOverHint')}</span></div>
         </div>
         {/* The picture keeps the page's own shape: the stage is exactly as
             tall as the frame is wide, so nothing is letterboxed inside a

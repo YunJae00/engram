@@ -70,13 +70,9 @@ test('apple white chrome and larger faces', async () => {
     expect(await page.evaluate(() => getComputedStyle(document.body).color), `${M} body color`).toBe('rgb(28, 28, 30)')
 
     await face('sidebar row', page.locator(`[data-testid="bot-${chat.id}"] .sidebar-conversation-avatar > .bot-avatar`), 32)
-    await face('title pill', page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar'), 36)
-    await page.getByTestId('bots-title-pill').click()
-    const pane = page.getByTestId('bot-info-pane')
-    await expect(pane, `${M} info pane opens`).toBeVisible()
-    await face('info pane', pane.locator('.bot-info-avatar .bot-avatar').first(), 64)
-    await page.getByTestId('bots-title-pill').click()
-    await expect(pane, `${M} info pane closes`).toHaveCount(0)
+    // No title pill and no info pane: the faces are the sidebar row, the empty thread and the new-bot dialog.
+    await expect(page.getByTestId('bots-title-pill'), `${M} no title pill`).toHaveCount(0)
+    await expect(page.getByTestId('bot-info-pane'), `${M} no info pane`).toHaveCount(0)
 
     await open(empty.id)
     await face('empty state', page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"] .bot-avatar'), 80)

@@ -1,5 +1,6 @@
-// Korean UI: sets uiLanguage 'ko' through settingsSet and reloads, then scans the sidebar and its + menu, the primary
-// bot's chat, the info pane, the New bot dialog and Settings for visible text and aria-label/title/placeholder/alt
+// Korean UI: sets uiLanguage 'ko' through settingsSet and reloads, then scans the sidebar, the primary bot's chat
+// (there is no info pane or title pill any more: the 'info' region checks that), the New bot dialog the + opens, and
+// Settings for visible text and aria-label/title/placeholder/alt
 // values that still hold English (3+ ASCII letters outside a short allowlist, the vault's own bot names, labels,
 // purposes and note titles, URLs and paths). It then sets uiLanguage 'en', reloads and requires an English sidebar.
 // UI_KOREAN_REGIONS (comma list of sidebar, chat, info, create, settings) limits the scanned regions. Many surfaces are
@@ -137,14 +138,10 @@ export async function run(page) {
   await check('ko-applied', null, () => settingsLabel('설정'))
 
   await check('ko-sidebar', 'sidebar', async () => {
+    // The + opens the New bot dialog directly (scanned as 'create'); the sidebar has no + menu to scan.
     const reasons = [await scan('sidebar', SIDEBAR_SEL)]
-    await page.locator(CREATE_SEL).click({ timeout: WAIT_MS })
-    try {
-      const menu = await visibleOf('[data-testid="bots-new"]', 'bots-new')
-      reasons.push(menu || await scan('sidebar', '.sidebar-create-menu'))
-    } finally {
-      await page.keyboard.press('Escape')
-    }
+    const menus = await page.locator('.sidebar-create-menu, [data-testid="bots-new"], [data-testid="sidebar-menu"]').count()
+    if (menus) reasons.push(`${menus} sidebar menu element(s), expected none`)
     return reasons.filter(Boolean).join('; ')
   })
 
@@ -163,21 +160,22 @@ export async function run(page) {
 
   await check('ko-info', 'info', async () => {
     if (!opened) return 'chat did not open'
-    await page.locator(`${VIEW_SEL} [data-testid="bots-title-pill"]`).click({ timeout: WAIT_MS })
-    const shown = await visibleOf(PANE_SEL, 'bot-info-pane')
-    if (shown) return shown
-    const count = await page.locator(`${PANE_SEL} [role="tab"], ${PANE_SEL} [role="tablist"]`).count()
-    const reasons = count === 0 ? [] : [`${count} info pane tab elements, expected none`]
-    reasons.push(await scan('info', PANE_SEL))
-    await page.locator(`${PANE_SEL} textarea`).focus({ timeout: WAIT_MS })
+    // No title pill and no info pane in either language; Escape leaves the chat as it is.
+    const reasons = []
+    const pills = await page.locator('[data-testid="bots-title-pill"]').count()
+    if (pills) reasons.push(`${pills} bots-title-pill element(s), expected none`)
+    const panes = await page.locator(PANE_SEL).count()
+    if (panes) reasons.push(`${panes} bot-info-pane element(s), expected none`)
+    const count = await page.locator(`${VIEW_SEL} [role="tab"], ${VIEW_SEL} [role="tablist"]`).count()
+    if (count) reasons.push(`${count} tab elements in the chat, expected none`)
+    await page.locator(`${VIEW_SEL} [data-testid="bots-input"]`).focus({ timeout: WAIT_MS })
     await page.keyboard.press('Escape')
-    reasons.push(await goneOf(PANE_SEL, 'bot-info-pane'))
+    reasons.push(await visibleOf(`${VIEW_SEL} [data-testid="bots-input"]`, 'bots-input'))
     return reasons.filter(Boolean).join('; ')
   })
 
   await check('ko-create', 'create', async () => {
     await page.locator(CREATE_SEL).click({ timeout: WAIT_MS })
-    await page.locator('[data-testid="bots-new"]').first().click({ timeout: WAIT_MS })
     const shown = await visibleOf(DIALOG_SEL, 'create-bot-dialog')
     if (shown) return shown
     const reason = await scan('create', DIALOG_SEL)

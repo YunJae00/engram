@@ -1,17 +1,8 @@
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
-  if (activity === 'routines') {
-    await page.keyboard.press('ControlOrMeta+Shift+P')
-    await page.getByRole('option', { name: 'Run a routine…', exact: true }).click()
-    return
-  }
-  if (activity === 'mission') {
-    if (!await page.getByTestId('mission-layout-4').isVisible()) await openActivity(page, 'bots')
-    if (await page.evaluate(() => innerWidth <= 900) && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
-    await page.getByTestId('mission-layout-4').click()
-    return
-  }
+  // Split view and the routines library were removed: there is one chat view, and routines are asked for in chat.
+  if (activity === 'mission' || activity === 'routines') throw new Error(`openActivity('${activity}') no longer exists: one chat view`)
   const sidebar = page.getByTestId('app-sidebar')
   if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   await expect(sidebar).toBeVisible()

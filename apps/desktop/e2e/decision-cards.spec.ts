@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
-test('split panes show localized approval and choice cards without overflow', async () => {
+test('the chat shows localized approval and choice cards without overflow', async () => {
   const root = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(root, { recursive: true })
   const paths = await initVault(await mkdtemp(join(root, 'decision-cards-')), { git: false })
@@ -24,11 +24,10 @@ test('split panes show localized approval and choice cards without overflow', as
     const page = await app.firstWindow()
     await page.getByTestId('shell').waitFor({ timeout: 60_000 })
     await expect.poll(() => page.evaluate(() => window.engram.vaultReady()), { timeout: 60_000 }).toBe(true)
-    await page.evaluate(id => localStorage.setItem('engram.mission.slots', JSON.stringify([id, null, null, null])), bot.id)
-    await page.reload()
     await page.setViewportSize({ width: 950, height: 900 })
-    await page.getByTestId('mission-layout-2').click()
-    const tile = page.getByTestId('mission-tile-0')
+    await expect(page.getByTestId('mission-layout-2')).toHaveCount(0)
+    await page.getByTestId(`bot-${bot.id}`).click()
+    const tile = page.getByTestId('bots-view')
     const approval = tile.getByTestId('task-approvals')
     await expect(approval).toContainText('진행하기 전에')
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
@@ -47,21 +46,20 @@ test('split panes show localized approval and choice cards without overflow', as
     }, await listTasks(paths))
     // The card asks once in the conversation's language and shows the whole command below it.
     await expect(approval.locator('.approval-command')).toHaveText(shown)
-    await expect(approval.locator('.decision-card-title')).toHaveText('샌드박스 밖에서 이 명령을 실행할까요?')
+    await expect(approval.locator('.decision-card-title')).toHaveText('제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?')
     await expect(approval.getByText('진행하기 전에')).toHaveCount(1)
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeEnabled()
-    expect(await approval.evaluate(node => !!node.closest('.mini-chat-thread'))).toBe(true)
+    expect(await approval.evaluate(node => !!node.closest('.bots-thread'))).toBe(true)
     await app.evaluate(({ BrowserWindow }, id) => {
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which one?', options: ['먼저 확인해줘', '나중에 할게'] } })
     }, bot.id)
-    const choices = tile.getByTestId('bots-choices')
-    await expect(choices).toContainText('어떻게 할까요?')
-    await expect(choices.getByTestId('bots-choice-0')).toBeVisible()
+    // A question's options are never buttons: the person answers by typing.
+    await expect(tile.getByTestId('bots-choices')).toHaveCount(0)
+    await expect(tile.getByRole('button', { name: /먼저 확인해줘|나중에 할게/ })).toHaveCount(0)
     for (const width of [950, 620]) {
       await page.setViewportSize({ width, height: 900 })
       if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
       await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeVisible()
-      expect(await choices.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       expect(await approval.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
       await approval.getByRole('button', { name: '진행해 주세요' }).scrollIntoViewIfNeeded()
       expect(await approval.getByRole('button', { name: '진행해 주세요' }).evaluate(node => {

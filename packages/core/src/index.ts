@@ -92,7 +92,7 @@ export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type Sideba
 export { recordBotSites } from './bots.js'
 export { isUntitledBotName, UNTITLED_BOT_NAMES } from './untitled-bot.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
-export { choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
+export { askText, choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
 export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_CARD_TTL_MS, routineCardExpired, serializeReviewRules, type ReviewAction, type ReviewDecision, type ReviewRule, type ReviewRuleKind } from './review-rules.js'
 export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'

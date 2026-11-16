@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp } from './navigation.js'
 import { appendBotTurn, initVault, type Bot } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -33,9 +33,6 @@ test.beforeAll(async () => {
       await appendBotTurn(paths, bot.id, { role: 'assistant', text: `${bot.name} answer ${turn}: a short reply that reads like a normal chat turn.`, at })
     }
   }
-  await page.evaluate((ids) => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map((bot) => bot.id))
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
 })
 
 test.afterAll(async () => { await closeTestApp(app) })
@@ -67,20 +64,20 @@ async function settle(): Promise<void> {
 
 type Geometry = { cover: { w: number; h: number }; dark: string[]; card: { inside: boolean; overlaps: boolean } | null }
 
-function geometry(index: number): Promise<Geometry> {
-  return page.getByTestId(`mission-tile-${index}`).evaluate((tile) => {
-    const body = tile.querySelector('.mission-tile-body')!.getBoundingClientRect()
-    const thread = tile.querySelector('.mini-chat-thread')!.getBoundingClientRect()
-    const write = tile.querySelector('.mini-chat-write')!.getBoundingClientRect()
+function geometry(): Promise<Geometry> {
+  return page.locator('[data-testid="bots-view"] .bots-chat').evaluate((chat) => {
+    const body = chat.getBoundingClientRect()
+    const thread = chat.querySelector('[data-testid=bots-thread]')!.getBoundingClientRect()
+    const write = chat.querySelector('.bots-write')!.getBoundingClientRect()
     const top = Math.min(thread.top, write.top), bottom = Math.max(thread.bottom, write.bottom)
     const left = Math.min(thread.left, write.left), right = Math.max(thread.right, write.right)
     const probe = document.createElement('div')
     probe.style.background = 'var(--canvas-bg)'
-    tile.append(probe)
+    chat.append(probe)
     const canvasBg = getComputedStyle(probe).backgroundColor
     probe.remove()
     const dark: string[] = []
-    for (const node of tile.querySelectorAll<HTMLElement>('.mission-tile-body *')) {
+    for (const node of chat.querySelectorAll<HTMLElement>('*')) {
       const box = node.getBoundingClientRect()
       if (box.width * box.height <= body.width * body.height * 0.25) continue
       const style = getComputedStyle(node)
@@ -92,30 +89,35 @@ function geometry(index: number): Promise<Geometry> {
       const painted = node.querySelector('canvas[data-painted], img, .bubble-msg, button, textarea')
       if (!painted) dark.push(`${node.className} ${Math.round(box.width)}x${Math.round(box.height)} ${style.backgroundColor}`)
     }
-    const deck = tile.querySelector('[data-testid=preview-deck]')?.getBoundingClientRect()
-    const outer = tile.getBoundingClientRect()
+    const deck = chat.querySelector('[data-testid=preview-deck]')?.getBoundingClientRect()
     const hits = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
     return {
       cover: { w: (right - left) / body.width, h: (bottom - top) / body.height },
       dark,
       card: deck ? {
-        inside: deck.left >= outer.left - 0.5 && deck.right <= outer.right + 0.5 && deck.top >= outer.top - 0.5 && deck.bottom <= outer.bottom + 0.5,
-        // Split-view cards dock over the thread's top corner since live-card-fit, so they must clear every bubble and the composer.
-        overlaps: [...tile.querySelectorAll('.mini-chat-thread .bubble-msg')].map((node) => node.getBoundingClientRect())
+        inside: deck.left >= body.left - 0.5 && deck.right <= body.right + 0.5 && deck.top >= body.top - 0.5 && deck.bottom <= body.bottom + 0.5,
+        // The card docks over the thread's top corner since live-card-fit, so it must clear every bubble and the composer.
+        overlaps: [...chat.querySelectorAll('[data-testid=bots-thread] .bubble-msg')].map((node) => node.getBoundingClientRect())
           .filter((box) => box.bottom > thread.top && box.top < thread.bottom).some((box) => hits(deck, box)) || hits(deck, write),
       } : null,
     }
   })
 }
 
-async function expectFullChat(index: number, withCard: boolean): Promise<void> {
-  const tile = page.getByTestId(`mission-tile-${index}`)
-  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-  await expect(tile.locator('.mission-name')).toHaveText(bots[index]!.name)
-  await expect(tile.locator('.bubble-msg', { hasText: `${bots[index]!.name} answer 3` })).toBeVisible()
-  await expect(tile.locator('.mini-chat-write textarea')).toBeEditable()
+// One chat view: each bot is opened with its sidebar row and must fill the chat column on its own.
+// Preview frames are kept per open chat, so a bot's frame is sent again once its chat is the one on screen.
+async function expectFullChat(index: number, card?: () => unknown): Promise<void> {
+  const withCard = !!card
+  const row = page.getByTestId(`bot-${bots[index]!.id}`)
+  await row.click()
+  await expect(row).toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread').locator('.bubble-msg', { hasText: `${bots[index]!.name} answer 3` })).toBeVisible()
+  await expect(page.getByTestId('bots-input')).toBeEditable()
+  if (card) await emit([card()])
+  if (withCard) await expect(page.getByTestId('preview-card').locator('canvas[data-painted], img').first()).toBeVisible({ timeout: 20_000 })
+  else await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await settle()
-  const result = await geometry(index)
+  const result = await geometry()
   const report = JSON.stringify(result)
   expect(result.cover.h, report).toBeGreaterThanOrEqual(0.85)
   expect(result.cover.w, report).toBeGreaterThanOrEqual(0.85)
@@ -126,11 +128,9 @@ async function expectFullChat(index: number, withCard: boolean): Promise<void> {
   expect(result.card!.overlaps, report).toBe(false)
 }
 
-test('two running chats in split view fill their panes with conversation, not black space', async () => {
-  await openActivity(page, 'mission')
-  await page.getByTestId('mission-layout-2').click()
-  await expect(page.locator('.mission-tile')).toHaveCount(2)
-  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText(bots[1]!.name)
+test('two running chats each fill the single chat view with conversation, not black space, and no split-view control exists', async () => {
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  await expect(page.getByTestId('mission-control')).toHaveCount(0)
   const lanes = bots.map((bot) => `bot-${bot.id}`)
   const size = { width: 640, height: 400 }
   const frame = await app.evaluate(({ nativeImage }, size) => {
@@ -139,54 +139,26 @@ test('two running chats in split view fill their panes with conversation, not bl
     return nativeImage.createFromBuffer(pixels, size).toDataURL()
   }, size)
   const appFrame = () => ({ type: 'desktop:preview', frames: [{ id: `${lanes[0]}:window:1`, lane: lanes[0], title: 'Split page', at: Date.now(), captureState: 'ready', current: true, data: frame }] })
-  await emit([...lanes.map((lane) => ({ type: 'comet:working', channel: lane, working: true })), appFrame()])
-  for (const index of [0, 1]) await expect(page.getByTestId(`mission-tile-${index}`)).toHaveAttribute('data-state', /running|waiting/)
-  const card = page.getByTestId('mission-tile-0').getByTestId('preview-card')
-  await expect(card.locator('canvas[data-painted], img').first()).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByTestId('mission-tile-1').getByTestId('preview-card')).toHaveCount(0)
+  await emit(lanes.map((lane) => ({ type: 'comet:working', channel: lane, working: true })))
 
   for (const theme of ['dark', 'light']) {
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme)
-    await expectFullChat(0, true)
-    await expectFullChat(1, false)
-    await shot(`split-view-${theme}`)
+    await expectFullChat(0, appFrame)
+    await expectFullChat(1)
+    await shot(`single-view-${theme}`)
   }
 
-  // A second frame while the other tile keeps its conversation.
+  // A frame for the first bot while the other bot's conversation is open stays out of that conversation.
+  await expectFullChat(1)
   await emit([appFrame()])
-  await expectFullChat(1, false)
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expectFullChat(0, appFrame)
 
-  const web = (index: number) => page.getByTestId(`mission-tile-${index}`).locator('.mini-chat-write .composer-web')
-  const addMenu = page.getByTestId('mission-tile-0').getByRole('button', { name: 'Add to conversation', exact: true })
-  await addMenu.click()
-  await web(0).click()
-  const modal = page.getByTestId('mission-browser-dialog')
-  await expect(modal).toBeVisible()
-  await shot('split-view-compact-browser')
-  await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
-  await expect(modal).toHaveCount(0)
-  await expectFullChat(0, true)
-
+  // The old split-view page dialog has nothing to open; a very wide window still gives each bot a full chat column.
+  await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
   await page.setViewportSize({ width: 2600, height: 1400 })
-  await expect.poll(() => page.getByTestId('mission-tile-0').evaluate((node) => node.getBoundingClientRect().width)).toBeGreaterThanOrEqual(960)
-  await addMenu.click()
-  await web(0).click()
-  const body = page.getByTestId('mission-tile-0').locator('.mission-tile-body')
-  await expect(body).toHaveAttribute('data-web-open', 'true')
-  await settle()
-  const opened = await body.evaluate((node) => {
-    const own = node.getBoundingClientRect()
-    const surface = node.querySelector('.orbit-surface')!.getBoundingClientRect()
-    const chat = node.querySelector('.mini-chat-write')!.getBoundingClientRect()
-    return { surface: surface.width * surface.height / (own.width * own.height), chat: chat.width > 200 && chat.bottom <= own.bottom + 0.5 }
-  })
-  expect(opened.surface, JSON.stringify(opened)).toBeGreaterThan(0.3)
-  expect(opened.chat, JSON.stringify(opened)).toBe(true)
-  await expect(page.getByTestId('mission-tile-0').getByTestId('orbit-surface')).toBeVisible()
-  await shot('split-view-inline-page')
-  await addMenu.click()
-  await web(0).click()
-  await expectFullChat(0, true)
-  await expectFullChat(1, false)
+  await expectFullChat(0, appFrame)
+  await expectFullChat(1)
+  await shot('single-view-wide')
   await page.setViewportSize({ width: 1440, height: 900 })
 })

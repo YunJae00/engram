@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp } from './navigation.js'
 import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -14,6 +14,7 @@ type Fixture = typeof globalThis & { sent: { botId: string; channel: string; mes
 let app: ElectronApplication
 let page: Page
 let server: Server
+let siteUrl: string
 let bots: Bot[]
 
 test.beforeEach(async () => {
@@ -32,6 +33,7 @@ test.beforeEach(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('the local site did not start')
+  siteUrl = `http://127.0.0.1:${address.port}/`
   const probe = createServer()
   await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
   const probeAddress = probe.address()
@@ -58,14 +60,7 @@ test.beforeEach(async () => {
       fixture.pending.push(resolve)
     }))
   })
-  await page.evaluate((ids) => localStorage.setItem('engram.mission.slots', JSON.stringify([...ids, null])), bots.map((bot) => bot.id))
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  // The reported grid had live web previews in its panes.
-  await page.evaluate(({ url, lanes }) => Promise.all(lanes.map((lane) => window.engram.agentGo(url, lane))), { url: `http://127.0.0.1:${address.port}/`, lanes: bots.map((bot) => `bot-${bot.id}`) })
-  await expect.poll(async () => (await page.evaluate((lanes) => window.engram.missionFrames(lanes), bots.map((bot) => `bot-${bot.id}`))).every((frame) => Boolean(frame.data)), { timeout: 30_000 }).toBe(true)
-  await openActivity(page, 'mission')
-  await expectGrid(4)
+  await expectSingleView()
 })
 
 test.afterEach(async () => {
@@ -79,77 +74,86 @@ test.afterEach(async () => {
 })
 
 const sent = () => app.evaluate(() => (globalThis as Fixture).sent)
-const pane = (index: number) => page.getByTestId(`mini-chat-${bots[index]!.id}`)
+const thread = () => page.getByTestId('bots-thread')
 
-async function expectGrid(count: number): Promise<void> {
-  await expect(page.getByTestId(`mission-layout-${count}`)).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.mission-tile')).toHaveCount(count)
-  for (const index of [0, 1, 2].slice(0, count)) await expect(page.getByTestId(`mission-tile-${index}`).locator('.mission-name')).toHaveText(NAMES[index]!)
+// One chat view: no pane grid, and a suggested reply is never a button.
+async function expectSingleView(): Promise<void> {
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  await expect(page.locator('.mission-tile')).toHaveCount(0)
+  await expect(page.getByTestId('reply-chips')).toHaveCount(0)
+  await expect(page.getByTestId('reply-chip-0')).toHaveCount(0)
 }
 
-async function clickChip(index: number, layout: number): Promise<void> {
-  const chat = pane(index)
-  await expect(chat.getByTestId('preview-card')).toBeVisible({ timeout: 20_000 })
-  const chip = chat.getByTestId('reply-chip-0')
-  await expect(chip).toHaveText(CHIPS[index]![0]!)
-  await chip.scrollIntoViewIfNeeded()
-  const box = (await chip.boundingBox())!
-  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-testid="reply-chip-0"]')?.textContent ?? null, { x: box.x + box.width / 2, y: box.y + box.height / 2 })
-  expect(hit).toBe(CHIPS[index]![0])
+// Opens the bot with its sidebar row and gives it a live web preview, as the reported chats had.
+async function openChat(index: number): Promise<void> {
+  const row = page.getByTestId(`bot-${bots[index]!.id}`)
+  await row.click()
+  await expect(row).toHaveClass(/active/)
+  await expect(thread().locator('.bubble-msg.assistant').filter({ hasText: `${NAMES[index]!} 혜성은 단주기 혜성입니다.` })).toBeVisible()
+  const lane = `bot-${bots[index]!.id}`
+  await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'read_open_page: Comet' }), lane)
+  await page.evaluate(({ url, lane }) => window.engram.agentGo(url, lane), { url: siteUrl, lane })
+  await expect(page.getByTestId('preview-card')).toBeVisible({ timeout: 20_000 })
+}
+
+// The reply the answer suggested is typed by the person: it sends once, for the open bot only.
+async function typeReply(index: number): Promise<void> {
+  await expectSingleView()
   const before = (await sent()).length
-  await chip.click()
+  const input = page.getByTestId('bots-input')
+  await input.fill(CHIPS[index]![0]!); await input.press('Enter')
   await expect.poll(async () => (await sent()).slice(before)).toEqual([{ botId: bots[index]!.id, channel: `bot-${bots[index]!.id}`, message: CHIPS[index]![0] }])
-  await expect(chat.locator('.bubble-msg.user').filter({ hasText: CHIPS[index]![0]! })).toHaveCount(1)
-  await expectGrid(layout)
+  await expect(thread().locator('.bubble-msg.user').filter({ hasText: CHIPS[index]![0]! })).toHaveCount(1)
   await page.waitForTimeout(500)
   expect((await sent()).length).toBe(before + 1)
-  await expect(chat.locator('.bubble-msg.user').filter({ hasText: CHIPS[index]![0]! })).toHaveCount(1)
-  await expectGrid(layout)
+  await expect(thread().locator('.bubble-msg.user').filter({ hasText: CHIPS[index]![0]! })).toHaveCount(1)
+  await expectSingleView()
 }
 
-test('a reply chip in the top-left pane with a live preview sends there and keeps the 4-pane grid', async () => {
-  await clickChip(0, 4)
-  for (const other of [1, 2]) await expect(pane(other).locator('.bubble-msg.user').filter({ hasText: CHIPS[0]![0]! })).toHaveCount(0)
+test('a suggested reply typed in a chat with a live preview sends there; no reply chip or pane grid exists', async () => {
+  await openChat(0)
+  await typeReply(0)
+  for (const other of [1, 2]) {
+    await page.getByTestId(`bot-${bots[other]!.id}`).click()
+    await expect(thread().locator('.bubble-msg.assistant').filter({ hasText: `${NAMES[other]!} 혜성은 단주기 혜성입니다.` })).toBeVisible()
+    await expect(thread().locator('.bubble-msg.user').filter({ hasText: CHIPS[0]![0]! })).toHaveCount(0)
+  }
 })
 
-test('a reply chip in a non-first pane sends only for that pane', async () => {
-  await clickChip(1, 4)
+test('a typed reply in another bot\'s chat sends only for that bot', async () => {
+  await openChat(1)
+  await typeReply(1)
   expect((await sent()).map((one) => one.botId)).toEqual([bots[1]!.id])
-  await clickChip(2, 4)
+  await openChat(2)
+  await typeReply(2)
   expect((await sent()).map((one) => one.botId)).toEqual([bots[1]!.id, bots[2]!.id])
 })
 
-test('a reply chip in a pane showing its full browser still sends in that pane', async () => {
-  // A tile too small for a page keeps only its card, so give the grid room as the live-view fixture does.
+test('a typed reply beside the open page pane still sends for that bot', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
-  const tile = page.getByTestId('mission-tile-0')
-  await expect(tile.getByTestId('preview-card')).toBeVisible({ timeout: 20_000 })
-  // The first card action opens the page in the tile; its label follows the thread's language.
-  await tile.getByTestId('preview-card').locator('.preview-card-actions button').first().click()
-  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-  const chip = pane(0).getByTestId('reply-chip-0')
-  await chip.scrollIntoViewIfNeeded()
-  const box = (await chip.boundingBox())!
-  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-testid="reply-chip-0"]') !== null, { x: box.x + box.width / 2, y: box.y + box.height / 2 })).toBe(true)
-  await chip.click()
-  await expect.poll(sent).toEqual([{ botId: bots[0]!.id, channel: `bot-${bots[0]!.id}`, message: CHIPS[0]![0] }])
-  await expect(pane(0).locator('.bubble-msg.user').filter({ hasText: CHIPS[0]![0]! })).toHaveCount(1)
-  await expectGrid(4)
+  await openChat(0)
+  // The first card action opens the page beside the chat; its label follows the thread's language.
+  await page.getByTestId('preview-card').locator('.preview-card-actions button').first().click()
+  await expect(page.getByTestId('web-pane')).toBeVisible()
+  await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)
+  await typeReply(0)
+  await expect(page.getByTestId('web-pane')).toBeVisible()
 })
 
-test('two panes, typed sends, a queued chip and the explicit open button keep their paths', async () => {
-  await page.getByTestId('mission-layout-2').click()
-  await expectGrid(2)
-  await clickChip(1, 2)
-  const input = page.getByTestId(`mini-input-${bots[1]!.id}`)
+test('typed sends and a message typed while the bot works keep their order, and a sidebar row opens the chosen chat', async () => {
+  await openChat(1)
+  await typeReply(1)
+  const input = page.getByTestId('bots-input')
   await input.fill('직접 입력'); await input.press('Enter')
-  await expect(pane(1).locator('.bubble-msg.user').filter({ hasText: '직접 입력' })).toHaveCount(1)
+  await expect(thread().locator('.bubble-msg.user').filter({ hasText: '직접 입력' })).toHaveCount(1)
   expect((await sent()).map((one) => one.message)).toEqual([CHIPS[1]![0]])
   await app.evaluate(({ BrowserWindow }, channel) => { for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'chat:done', channel, text: 'Done.' }) }, `bot-${bots[1]!.id}`)
   await app.evaluate(() => (globalThis as Fixture).pending.shift()!())
   await expect.poll(async () => (await sent()).map((one) => `${one.botId}:${one.message}`)).toEqual([`${bots[1]!.id}:${CHIPS[1]![0]}`, `${bots[1]!.id}:직접 입력`])
-  await expectGrid(2)
-  await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
-  await expect(page.getByTestId('mission-layout-1')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('[data-testid="bots-view"] .bots-title-pill-name')).toHaveText(NAMES[0]!)
+  await expectSingleView()
+  const first = page.getByTestId(`bot-${bots[0]!.id}`)
+  await first.click()
+  await expect(first).toHaveClass(/active/)
+  await expect(thread().locator('.bubble-msg.assistant').filter({ hasText: `${NAMES[0]!} 혜성은 단주기 혜성입니다.` })).toBeVisible()
+  await expect(thread().locator('.bubble-msg.user').filter({ hasText: '직접 입력' })).toHaveCount(0)
 })

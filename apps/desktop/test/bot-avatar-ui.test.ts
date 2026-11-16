@@ -33,10 +33,11 @@ describe('bot avatar ui', () => {
     expect(sidebar).toContain(":root:not([data-window-focused='true']) .sidebar-conversation-avatar > .comet-activity-icon { animation-play-state: paused; }")
     const css = read('renderer/src/bot-avatar.css')
     expect(css).toContain(".sidebar-conversation-avatar > .bot-avatar[data-size='36'] { width: 32px; height: 32px; }")
-    expect(css).toContain('.bots-title-pill > .bot-avatar[data-size] { width: 36px; height: 36px; }')
+    // The title pill and its info pane are gone: nothing styles or renders them any more.
+    expect(css).not.toContain('.bots-title-pill')
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.bot-avatar, \.bot-avatar \* \{ animation: none !important; \}/)
     expect(css).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-avatar,[^{]*\{ animation-play-state: paused; \}/)
-    expect(read('renderer/src/components/BotInfoPane.tsx')).toMatch(/<BotAvatar [^>]*size=\{48\}/)
+    expect(read('renderer/src/views/BotsView.tsx')).not.toMatch(/BotInfoPane|BotTitlePill/)
   })
 
   it('gallery and notices wiring', () => {

@@ -149,9 +149,9 @@ test('the conversation survives leaving and re-entering the tab', async () => {
   const answer = page.locator('[data-testid="bots-view"] .bubble-msg.assistant').last()
   await expect(answer).toContainText('Record this if you want it kept', { timeout: 15_000 })
 })
-test('composer tools stay in the chat surface and open away from the sidebar', async () => {
+test('the composer + only attaches files, and the chat has no title pill, info pane, memory panel or model picker', async () => {
   await expect(page.locator('.bots-head button')).toHaveCount(0)
-  // The composer's + only attaches files: memory is in the bot's info pane, behind the title pill.
+  // The composer's + only attaches files.
   await expect(page.getByTestId('bots-memory-toggle')).toHaveCount(0)
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
   await expect(page.getByTestId('composer-web')).toHaveCount(0)
@@ -161,23 +161,17 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   await page.getByTestId('bots-input-add').click()
   await chooser
   await expect(page.locator(':popover-open')).toHaveCount(0)
-  const pill = (await page.getByTestId('bots-title-pill').innerText()).trim()
-  const bot = (await page.evaluate(() => window.engram.botsList())).find(one => one.name === pill)!
-  await recordFacts(paths, bot.id, ['Prefers deploys on Tuesday mornings'])
-  await page.getByTestId('bots-title-pill').click()
-  const memoryPanel = page.getByTestId('bot-info-pane').locator('.bots-memory')
-  await expect(memoryPanel).toBeVisible()
-  // The pane is where memory is read and forgotten now: the bot's own lines, each with its forget.
-  await expect(memoryPanel.locator('.bots-memory-title')).toHaveText(`What ${bot.name} remembers about you`)
-  const fact = memoryPanel.locator('.bots-memory-fact', { hasText: 'Prefers deploys on Tuesday mornings' })
-  await expect(fact).toBeVisible()
-  await fact.locator('.bots-memory-forget').click()
-  await expect(fact).toHaveCount(0)
-  await expect.poll(async () => (await page.evaluate(id => window.engram.botMemory(id), bot.id)).map(one => one.text)).not.toContain('Prefers deploys on Tuesday mornings')
-  const [memoryBox, sidebarBox] = await Promise.all([memoryPanel.boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
-  expect(memoryBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
-  await page.getByTestId('bots-title-pill').click()
-  await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+  // No title pill, info pane or memory panel: what the bot remembers is its own data, read and forgotten through the app.
+  for (const id of ['bots-title-pill', 'bot-info-pane', 'bots-memory']) await expect(page.getByTestId(id)).toHaveCount(0)
+  await expect(page.locator('.bots-memory')).toHaveCount(0)
+  const botId = (await page.locator('.bots-row.active').getAttribute('data-testid'))!.slice('bot-'.length)
+  await recordFacts(paths, botId, ['Prefers deploys on Tuesday mornings'])
+  const fact = (await page.evaluate(id => window.engram.botMemory(id), botId)).find(one => one.text === 'Prefers deploys on Tuesday mornings')
+  expect(fact).toBeTruthy()
+  await page.evaluate(([bot, id]) => window.engram.botMemoryForget(bot!, id!), [botId, fact!.id])
+  await expect.poll(async () => (await page.evaluate(id => window.engram.botMemory(id), botId)).map(one => one.text)).not.toContain('Prefers deploys on Tuesday mornings')
+  const [chatBox, sidebarBox] = await Promise.all([page.locator('.bots-write').boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
+  expect(chatBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
   await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.locator('.bots-write').getByRole('button', { name: 'Permissions' })).toHaveCount(0)
 })
@@ -279,7 +273,7 @@ test('conversation keeps narration between compact activity groups and shows vis
   expect(await page.locator('.bots-thread').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
   await screenshot('ui-conversation-activity-compact.png')
 })
-test('request errors keep readable padding, expandable details and working copy in both themes', async () => {
+test('request errors keep readable padding and show one plain line with no details, copy or retry in both themes', async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
   await expect.poll(() => page.evaluate(() => window.engram.botsList()).then(() => true, () => false)).toBe(true)
@@ -302,13 +296,14 @@ test('request errors keep readable padding, expandable details and working copy 
   const raw = '[codex] {"type":"error","error":{"code":"invalid_json_schema","message":"Invalid schema for response_format: Missing text."},"status":400}'
   await app.evaluate(({ BrowserWindow }, { id, message }) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'chat:error', channel: `bot-${id}`, message }), { id: bot.id, message: raw })
   const error = page.locator('.bubble-msg.error')
-  await expect(error).toContainText('not a usage limit')
-  await expect(error.locator('pre')).toBeHidden()
-  await error.getByText('Error details', { exact: true }).click()
-  await expect(error.locator('pre')).toHaveText(raw)
-  await error.getByRole('button', { name: 'Copy error', exact: true }).click()
-  await expect(error.getByRole('button', { name: 'Copied', exact: true })).toBeVisible()
-  expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(raw)
+  const line = 'Something went wrong and this one did not finish. Say it once more and I will try again.'
+  const plain = async () => {
+    await expect(error).toHaveText(line)
+    await expect(error).not.toContainText(/invalid_json_schema|response_format|codex|400/)
+    await expect(error.locator('pre, details, summary, button')).toHaveCount(0)
+    await expect(page.getByTestId('answer-outage-retry')).toHaveCount(0)
+  }
+  await plain()
   for (const theme of ['light', 'dark']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme }, theme)
     expect(await error.evaluate(node => ({ padding: parseFloat(getComputedStyle(node).paddingLeft), fits: node.scrollWidth <= node.clientWidth }))).toEqual({ padding: 18, fits: true })
@@ -321,10 +316,9 @@ test('request errors keep readable padding, expandable details and working copy 
   await app.evaluate(async ({ BrowserWindow }) => { await BrowserWindow.getAllWindows()[0]!.webContents.capturePage() })
   if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
-  await expect(error).toContainText('not a usage limit')
-  await expect(error.locator('pre')).toBeHidden()
+  await plain()
 })
-test('"@" offers only the apps turned on in settings and puts the chosen one in the message', async () => {
+test('"@" opens no app menu: the words stay as typed and are sent as written', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('apps:list')
     ipcMain.handle('apps:list', () => [
@@ -344,40 +338,23 @@ test('"@" offers only the apps turned on in settings and puts the chosen one in 
   if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()
   const composer = page.getByTestId('bots-input')
-  const menu = page.getByTestId('bots-input-mentions')
+  const menu = page.getByTestId('bots-input-mentions'), named = page.getByTestId('bots-input-named')
+  const none = async () => {
+    await expect(menu).toHaveCount(0)
+    await expect(named).toHaveCount(0)
+    await expect(page.locator('.bots-write').getByRole('option')).toHaveCount(0)
+    await expect(page.locator('.chat-mention-menu, .chat-mention-chip, .chat-add-menu')).toHaveCount(0)
+  }
   await composer.fill('')
   await composer.pressSequentially('sort it @o')
-  await expect(menu.getByRole('option')).toHaveText(['@Outlook'])
-  await expect(menu.getByRole('option').locator('img.app-icon')).toHaveCount(1)
-  await composer.press('Enter')
-  await expect(composer).toHaveValue('sort it @Outlook ')
-  await expect(menu).toBeHidden()
-  // The named app shows above the box with its icon, so the person sees it was taken.
-  const named = page.getByTestId('bots-input-named')
-  await expect(named).toHaveText('Outlook')
-  await expect(named.locator('img.app-icon')).toHaveCount(1)
-  await composer.pressSequentially('and @')
-  await expect(menu.getByRole('option')).toHaveText(['@Outlook', '@Excel'])
+  await none()
   await composer.press('ArrowDown')
-  await composer.press('Tab')
-  await expect(composer).toHaveValue('sort it @Outlook and @Excel ')
-  await expect(named.locator('.chat-mention-chip')).toHaveText(['Outlook', 'Excel'])
-  await composer.pressSequentially('@zz')
-  await expect(menu).toBeHidden()
-  await composer.fill('nothing named')
-  await expect(named).toBeHidden()
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('apps:list')
-    ipcMain.handle('apps:list', () => Array.from({ length: 12 }, (_, i) => ({ app: `app${i}`, label: `App ${i}`, on: true, hours: 0, days: 1 })))
-  })
-  await page.evaluate(() => window.engram.settingsSet({}))
-  await composer.fill('')
-  await composer.pressSequentially('@')
-  await expect(menu.getByRole('option')).toHaveCount(12)
-  // Chromium transforms can round a CSS pixel boundary by a tiny fraction.
-  expect((await menu.boundingBox())!.height).toBeLessThanOrEqual(320.01)
-  for (let i = 0; i < 11; i++) await composer.press('ArrowDown')
-  await expect(menu.getByRole('option').last()).toBeInViewport()
-  await composer.press('Tab')
-  await expect(composer).toHaveValue('@App 11 ')
+  await expect(composer).toHaveValue('sort it @o')
+  await composer.pressSequentially('utlook and @')
+  await none()
+  await expect(composer).toHaveValue('sort it @outlook and @')
+  await composer.press('Enter')
+  await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').last()).toHaveText('sort it @outlook and @')
+  await expect(composer).toHaveValue('')
+  await none()
 })

@@ -9,7 +9,7 @@ let app: ElectronApplication | undefined
 test.afterEach(async () => { await app?.close(); app = undefined })
 
 // qa142 B2 follow-up: a provider error that is not an outage left nothing in the saved thread.
-test('a failed answer is still an error card after a reload, in the thread language, with no continue chip', async () => {
+test('a failed answer is still one plain error line after a reload, in the thread language, with no raw error, buttons or continue chip', async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-error-reload-'))
   const paths = await initVault(root, { git: false })
@@ -24,6 +24,8 @@ test('a failed answer is still an error card after a reload, in the thread langu
   await input.fill('회의록을 정리해 주세요'); await input.press('Enter')
   const card = page.locator('.bots-view .bubble-msg.assistant.error')
   await expect(card, 'ERROR-RELOAD shown live').toHaveCount(1, { timeout: 30_000 })
+  const line = '문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.'
+  await expect(card, 'ERROR-RELOAD live line').toHaveText(line)
   await expect.poll(async () => (await readBotTranscript(paths, botId)).map(turn => [turn.role, !!turn.error]), { message: 'ERROR-RELOAD saved once' }).toEqual([['user', false], ['assistant', true]])
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
@@ -31,6 +33,9 @@ test('a failed answer is still an error card after a reload, in the thread langu
   await page.getByTestId(`bot-${botId}`).click()
   await expect(page.locator('.bots-view .bubble-msg.user')).toHaveText(['회의록을 정리해 주세요'])
   await expect(card, 'ERROR-RELOAD still there').toHaveCount(1)
-  await expect(card, 'ERROR-RELOAD localized').toContainText('요청을 끝내지 못했어요')
+  await expect(card, 'ERROR-RELOAD localized').toHaveText(line)
+  await expect(card, 'ERROR-RELOAD no raw error').not.toContainText(/mock|canned|job kind/)
+  await expect(card.locator('button, details, summary, pre'), 'ERROR-RELOAD no retry, details or copy').toHaveCount(0)
+  await expect(page.getByTestId('answer-outage-retry')).toHaveCount(0)
   await expect(page.locator('.bots-view'), 'ERROR-RELOAD no continue note or chip').not.toContainText('이어서 해줘')
 })

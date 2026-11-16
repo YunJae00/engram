@@ -24,11 +24,9 @@ test.beforeAll(async () => {
   await expect(page.getByTestId('shell')).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
   await page.evaluate(async () => {
-    const ids: string[] = []
     for (const name of ['Research scout', 'Release planning', 'Product review', '팀 리서치와 제품 디자인 상세 검토']) {
-      ids.push((await window.engram.botCreate({ name, purpose: 'A detailed project description that must stay on one line' })).id)
+      await window.engram.botCreate({ name, purpose: 'A detailed project description that must stay on one line' })
     }
-    localStorage.setItem('engram.mission.slots', JSON.stringify(ids))
   })
   await page.locator('.bots-row', { hasText: 'Research scout' }).click()
 })
@@ -56,6 +54,32 @@ async function navigate(view: string) {
   await expect.poll(() => page.locator('.topbar').evaluate((node) => {
     return node.getBoundingClientRect().right <= node.closest('.app-main')!.getBoundingClientRect().right + 1
   })).toBe(true)
+}
+
+// Page work in the open chat brings its preview card; a card hidden earlier is shown again.
+async function pageWork() {
+  const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
+  await app.evaluate(({ BrowserWindow }, channel) => {
+    for (const line of ['excel_write: sheet', 'open_page: page']) for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'comet:step', channel, line })
+  }, lane)
+  const reopen = page.getByTestId('preview-card-reopen')
+  await expect(page.getByTestId('preview-card').or(reopen)).toBeVisible()
+  if (await reopen.isVisible()) await reopen.click()
+  await expect(page.getByTestId('preview-card')).toBeVisible()
+}
+
+// Wide windows open the page beside the chat; compact ones open it full and return to the card.
+async function openAndPutAwayPage(width: number) {
+  const pane = page.getByTestId('web-pane')
+  await page.getByTestId('preview-card').getByRole('button', { name: width > 1180 ? 'Open browser beside chat' : 'Open full browser', exact: true }).click()
+  await expect(pane).toBeVisible()
+  if (width > 1180) await page.getByTestId('web-pane-fold').click()
+  else {
+    await expect(pane).toHaveClass(/expanded/)
+    await page.getByTestId('web-pane-expand').click()
+    await expect(page.getByTestId('preview-card')).toBeVisible()
+  }
+  await expect(pane).toHaveCount(0)
 }
 
 test('shared headers and composers keep their rhythm at wide and compact sizes', async () => {
@@ -124,56 +148,46 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
   }
 })
 
-test('two conversations stack in narrow panes and open compact browsers in a modal', async () => {
+test('one conversation fills the window at every width and its page opens beside it or full, never in a split pane', async () => {
   for (const width of [2600, 1600, 620]) {
     await page.setViewportSize({ width, height: 920 })
-    await navigate('mission')
-    await page.getByTestId('mission-layout-2').click()
-    await expect.poll(() => page.locator('.mission-tile').evaluateAll(tiles => {
-      const first = tiles[0]!.getBoundingClientRect(), second = tiles[1]!.getBoundingClientRect()
-      return Math.abs(first.top - second.top) < 2 ? 'horizontal' : 'vertical'
-    })).toBe(width > 1000 ? 'horizontal' : 'vertical')
-    const tile = page.getByTestId('mission-tile-0')
-    await expect(tile.locator('.mission-tile-head .mission-web-toggle')).toHaveCount(0)
-    const button = tile.locator('.mini-chat-write .composer-web')
-    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-    await expect(button).toBeVisible()
-    if (await button.getAttribute('aria-pressed') !== 'true') await button.click()
-    if (width < 2600) {
-      const modal = page.getByTestId('mission-browser-dialog')
-      await expect(modal).toBeVisible()
-      await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-      await screenshot(`split-two-${width}.png`)
-      await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
-      await expect(tile.locator('textarea')).toBeVisible()
-      continue
-    }
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-    await screenshot(`split-two-${width}.png`)
-    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-    await button.click()
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
+    await navigate('bots')
+    for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+    await expect(page.locator('.mission-tile, .mini-chat')).toHaveCount(0)
+    await expect(page.locator('.bots-chat')).toHaveCount(1)
+    await expect(page.getByTestId('composer-web')).toHaveCount(0)
+    await expect.poll(() => page.locator('.bots-chat').evaluate((node) => {
+      const chat = node.getBoundingClientRect(), main = node.closest('.bots-main')!.getBoundingClientRect()
+      const write = node.querySelector('.bots-write')!.getBoundingClientRect()
+      return chat.left >= main.left && chat.right <= main.right + 1 && main.right <= innerWidth + 1 && write.left >= chat.left && write.right <= chat.right && write.bottom <= innerHeight + 1
+    })).toBe(true)
+    await pageWork()
+    await screenshot(`single-chat-${width}.png`)
+    await openAndPutAwayPage(width)
+    await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
+    await expect(page.getByTestId('bots-input')).toBeVisible()
   }
 })
 
-test('split conversations show animated pending status and elapsed time without an empty answer', async () => {
+test('the conversation shows animated pending status and elapsed time without an empty answer', async () => {
   await page.setViewportSize({ width: 1600, height: 920 })
-  await navigate('mission')
-  await page.getByTestId('mission-layout-2').click()
+  await navigate('bots')
   await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('chat:send'); ipcMain.handle('chat:send', () => undefined) })
-  const tile = page.getByTestId('mission-tile-0')
-  await tile.locator('textarea').fill('Review the project')
-  await tile.locator('textarea').press('Enter')
-  const status = tile.getByTestId('bots-thinking')
+  const thread = page.getByTestId('bots-thread')
+  await page.getByTestId('bots-input').fill('Review the project')
+  await page.getByTestId('bots-input').press('Enter')
+  const status = thread.getByTestId('bots-thinking')
   await expect(status).toBeVisible()
   await expect(status.locator('.thinking-elapsed')).toHaveText(/^Total [1-9]\d*s$/)
+  await expect(status.locator('.thinking-elapsed')).not.toHaveAttribute('title', /./)
   await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'thinking-shimmer')
-  await expect(tile.locator('.answer-actions')).toHaveCount(0)
-  await screenshot('split-thinking.png')
+  await expect(thread.locator('.answer-actions')).toHaveCount(0)
+  await screenshot('chat-thinking.png')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(status.locator('.bubble-thinking-label')).toHaveCSS('animation-name', 'none')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await tile.locator('.bubble-stop').click()
+  await page.locator('.bots-write .bubble-stop').click()
+  await expect(page.locator('.bots-write .bubble-stop')).toHaveCount(0)
 })
 
 test('settings header, rows and footer share an inset without nested modal padding', async () => {
@@ -209,68 +223,51 @@ test('settings header, rows and footer share an inset without nested modal paddi
   }
 })
 
-test('mission tiles preserve usable previews and inputs instead of clipping at narrow widths', async () => {
+test('the chat keeps a usable preview card and input instead of clipping at narrow widths', async () => {
   for (const [width, height] of [[1600, 840], [948, 760], [620, 720]]) {
     await page.setViewportSize({ width: width!, height: height! })
-    await navigate('mission')
-    await expect(page.locator('.mission-tile .mini-chat')).toHaveCount(4)
-    await expect.poll(() => page.locator('.mission-tile').evaluateAll((tiles) => tiles.every((tile) => {
-      const bounds = tile.getBoundingClientRect()
-      const preview = tile.querySelector('.mission-preview')!.getBoundingClientRect()
-      const input = tile.querySelector('.mini-chat-write textarea')!.getBoundingClientRect()
-      const webOpen = tile.querySelector('.mission-tile-body')!.getAttribute('data-web-open') === 'true'
-      return (!webOpen || preview.width >= 140) && input.width >= 120 && input.left >= bounds.left && input.right <= bounds.right
+    await navigate('bots')
+    await expect(page.locator('.mission-tile, .mini-chat')).toHaveCount(0)
+    await pageWork()
+    await expect.poll(() => page.locator('.bots-chat').evaluate((chat) => {
+      const bounds = chat.getBoundingClientRect()
+      const preview = chat.querySelector('[data-testid="preview-card"]')!.getBoundingClientRect()
+      const input = chat.querySelector('[data-testid="bots-input"]')!.getBoundingClientRect()
+      return preview.width >= 140 && preview.left >= bounds.left && preview.right <= bounds.right && preview.bottom <= input.top
+        && input.width >= 120 && input.left >= bounds.left && input.right <= bounds.right
         && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight + 1
-    }))).toBe(true)
-    await screenshot(`orbit-layout-${width}.png`)
+    })).toBe(true)
+    await screenshot(`chat-layout-${width}.png`)
   }
 })
 
-test('tile browsers and chat pickers keep the draft through folding or modal dismissal', async () => {
+test('the draft survives opening and putting away the page and switching chats', async () => {
   for (const width of [2600, 1600, 948, 620]) {
     await page.setViewportSize({ width, height: 840 })
-    await navigate('mission')
-    await page.getByTestId('mission-layout-2').click()
-    const tile = page.getByTestId('mission-tile-0')
-    const toggle = page.getByTestId('mission-chat-toggle-0')
-    const input = tile.locator('.mini-chat-write textarea')
-    if (width < 2600) await expect(toggle).toBeDisabled()
-    else await expect.poll(async () => { const box = await tile.boundingBox(); return !!box && box.width >= 960 && box.height >= 560 }).toBe(true)
+    await navigate('bots')
+    for (const index of [0, 1]) await expect(page.getByTestId(`mission-chat-toggle-${index}`)).toHaveCount(0)
+    const input = page.getByTestId('bots-input')
     await input.fill('Keep this draft 한글')
-    if (await toggle.isDisabled()) {
-      await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-      await tile.getByRole('button', { name: 'Show website', exact: true }).click()
-    }
-    if (width < 2600) {
-      const modal = page.getByTestId('mission-browser-dialog')
-      await expect(modal).toBeVisible()
-      await expect(toggle).toBeDisabled()
-      await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
-    } else {
-      await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-      await toggle.click()
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-      await expect(tile.locator('.mission-chat-slot')).toBeHidden()
-      expect(await tile.locator('.mission-chat-slot').evaluate((node) => (node as HTMLElement).inert)).toBe(true)
-      await toggle.click()
-    }
+    await pageWork()
+    await openAndPutAwayPage(width)
     await expect(input).toBeVisible()
     await expect(input).toHaveValue('Keep this draft 한글')
-    const choose = tile.locator('.mission-change')
-    await choose.click()
-    await expect(page.getByTestId('mission-add-menu')).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(choose).toBeFocused()
-    await expect(tile.locator('.mission-add-menu')).toBeHidden()
-    await choose.click()
-    await page.locator('[data-testid="topbar"] .topbar-spacer').click()
-    await expect(tile.locator('.mission-add-menu')).toBeHidden()
-    await expect(input).toHaveValue('Keep this draft 한글')
-    await input.fill('')
+    // There is no chat picker: another chat is opened from its sidebar row, and each chat keeps its own draft.
+    await expect(page.getByTestId('mission-add-menu')).toHaveCount(0)
+    if (await page.getByTestId('app-sidebar').isVisible()) {
+      await page.locator('.bots-row', { hasText: 'Release planning' }).click()
+      await expect(page.getByTestId('bots-input')).toHaveValue('')
+      await page.locator('.bots-row', { hasText: 'Research scout' }).click()
+      await expect(page.getByTestId('bots-input')).toHaveValue('Keep this draft 한글')
+    }
+    await page.getByTestId('bots-input').fill('')
   }
+  await pageWork()
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(page.getByTestId('mission-tile-0').locator('.mission-tile-body')).toHaveCSS('transition-duration', '0s')
+  await expect(page.locator('.preview-deck-card').first()).toHaveCSS('transition-duration', '0s')
   await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.getByTestId('preview-card').getByRole('button', { name: 'Hide preview', exact: true }).click()
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
 })
 
 test('the last answer stays above the composer and its soft scroll edge as the draft grows', async () => {
@@ -280,8 +277,7 @@ test('the last answer stays above the composer and its soft scroll edge as the d
   })
   await page.setViewportSize({ width: 620, height: 720 })
   await navigate('bots')
-  const title = await page.locator('[data-testid="bots-view"] .bots-title-pill-name').textContent()
-  const id = await page.evaluate(async (name) => (await window.engram.botsList()).find((bot) => bot.name === name)!.id, title)
+  const id = (await page.locator('.bots-row.active').getAttribute('data-testid'))!.replace(/^bot-/, '')
   const input = page.getByTestId('bots-input')
   await input.fill('Show a detailed review')
   await input.press('Enter')
@@ -351,21 +347,23 @@ test('tool activity follows smoothly, readers keep their place, and sending retu
   await thread.evaluate(node => node.querySelector('[data-scroll-fixture]')?.remove())
 })
 
-test('long chat pickers scroll inside the tile and leave the last choice reachable', async () => {
+test('a long bot list scrolls inside the sidebar and leaves the last bot reachable', async () => {
   await page.evaluate(async () => {
     for (let i = 1; i <= 12; i++) await window.engram.botCreate({ name: `Extra project ${i}`, purpose: '' })
   })
   await page.setViewportSize({ width: 948, height: 720 })
-  await navigate('mission')
-  const tile = page.getByTestId('mission-tile-0')
-  await tile.locator('.mission-change').click()
-  const menu = page.getByTestId('mission-add-menu')
-  await expect(menu.getByRole('button', { name: 'Extra project 12', exact: true })).toHaveCount(1)
-  await expect.poll(() => menu.evaluate((node) => {
-    const tile = node.closest('.mission-tile')!.getBoundingClientRect()
+  await navigate('bots')
+  await expect(page.getByTestId('mission-add-menu')).toHaveCount(0)
+  const sidebar = page.getByTestId('app-sidebar')
+  await expect(sidebar.locator('.bots-row[title^="Extra project "]')).toHaveCount(12)
+  await expect.poll(() => sidebar.locator('.sidebar-scroll').evaluate((node) => {
     const box = node.getBoundingClientRect()
-    return node.scrollHeight > node.clientHeight && box.bottom <= tile.bottom - 8 && box.left >= tile.left
+    return node.scrollHeight > node.clientHeight && box.bottom <= innerHeight && box.left >= 0
   })).toBe(true)
-  await menu.getByRole('button', { name: 'Extra project 12', exact: true }).click()
-  await expect(tile.locator('.mission-name')).toHaveText('Extra project 12')
+  const [id, name] = await sidebar.locator('.bots-row').last().evaluate((node) => [node.getAttribute('data-testid')!, node.getAttribute('title')!])
+  const last = page.getByTestId(id!)
+  await last.click()
+  await expect(last).toHaveClass(/active/)
+  await expect(page.getByTestId('bot-empty')).toContainText(name)
+  await expect(page.getByTestId('bots-input')).toBeEditable()
 })

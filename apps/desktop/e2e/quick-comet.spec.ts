@@ -180,10 +180,11 @@ test('missing AI keeps the draft, and composition Enter never submits', async ()
   await popup.getByTestId('quick-input').press('Escape')
 })
 
-test('split chats keep spoken progress after a tool starts and show one final result', async () => {
+test('the chat keeps spoken progress after a tool starts and shows one final result', async () => {
   const bot = await page.evaluate(() => window.engram.botsList().then(bots => bots.at(-1)!))
-  await openActivity(page, 'mission')
-  const tile = page.getByTestId(`mini-chat-${bot.id}`)
+  await openActivity(page, 'bots')
+  await page.getByTestId(`bot-${bot.id}`).click()
+  const tile = page.getByTestId('bots-thread')
   await expect(tile).toBeVisible()
   await app.evaluate(({ BrowserWindow }, id) => {
     const channel = `bot-${id}`, window = BrowserWindow.getAllWindows().find(window => !window.webContents.getURL().endsWith('#quick'))!

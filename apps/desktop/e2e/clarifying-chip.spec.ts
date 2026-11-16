@@ -8,7 +8,6 @@ const FIRST = '내 건도 마감일 정해줘'
 const SAME = '박과장이랑 같은 날로'
 const NEXT = '이걸 문서로 저장해줘'
 const QUESTION = '마감일을 언제로 할까요? 박과장님과 같은 날로 할지, 다른 날로 할지 알려주세요.'
-const FAILED = 'Cannot send this choice. Enter a message instead.'
 type Fixture = typeof globalThis & { pending: { resolve(): void }[]; requests: string[]; rejectNext: boolean }
 
 let app: ElectronApplication, page: Page, botId: string
@@ -56,65 +55,74 @@ async function openFull(): Promise<Locator> {
   await page.getByTestId(`bot-${botId}`).click()
   return page.getByTestId('bots-thread')
 }
-async function openTile(): Promise<Locator> {
+// The split-view tile is gone: the same conversation in a window as narrow as a tile was.
+async function openNarrow(): Promise<Locator> {
   await expect.poll(() => page.evaluate(() => window.engram.vaultReady()), { timeout: 60_000 }).toBe(true)
-  await page.evaluate(id => localStorage.setItem('engram.mission.slots', JSON.stringify([id, null, null, null])), botId)
-  await page.reload()
+  const scope = await openFull()
   await page.setViewportSize({ width: 950, height: 900 })
-  await page.getByTestId('mission-layout-2').click()
-  return page.getByTestId(`mini-chat-${botId}`)
+  await expect(page.getByTestId('mission-layout-2')).toHaveCount(0)
+  await expect(page.locator('.mini-chat')).toHaveCount(0)
+  return scope
 }
 
-async function clarifyThenAnswer(scope: Locator, kind: 'replies' | 'asked', input?: Locator) {
-  await expect(scope.getByTestId('reply-chip-0')).toHaveText(FIRST)
-  await scope.getByTestId('reply-chip-0').click()
+// Suggested replies are never buttons: the person types the words instead.
+async function say(scope: Locator, text: string) {
+  await expect(scope.getByTestId('reply-chips')).toHaveCount(0)
+  await expect(scope.getByTestId('reply-chip-0')).toHaveCount(0)
+  await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
+  await expect(scope.getByTestId('bots-choice-0')).toHaveCount(0)
+  const input = page.getByTestId('bots-input')
+  await input.fill(text); await input.press('Enter')
+}
+
+async function clarifyThenAnswer(scope: Locator, kind: 'replies' | 'asked') {
+  const input = page.getByTestId('bots-input')
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('금요일 마감이에요.')
+  await say(scope, FIRST)
   await expect.poll(requests).toEqual([FIRST])
   await done(kind === 'replies' ? `${QUESTION}\n\n\`\`\`replies\n${SAME}\n다른 날로\n\`\`\`` : QUESTION)
   if (kind === 'asked') await offer([SAME, '다른 날로'])
   await resolveAll()
-  const chip = scope.getByTestId(kind === 'replies' ? 'reply-chip-0' : 'bots-choice-0')
-  await expect(chip).toContainText(SAME)
-  if (input) await input.fill('composer draft')
-  await chip.click()
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('다른 날로 할지')
+  await expect(scope.getByRole('button', { name: SAME })).toHaveCount(0)
+  await say(scope, SAME)
+  await expect(input).toHaveValue('')
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await expect.poll(requests).toEqual([FIRST, SAME])
-  if (kind === 'asked') await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
-  if (input) await expect(input).toHaveValue('composer draft')
-  if (await chip.count()) await chip.dispatchEvent('click')
   await page.waitForTimeout(400)
   expect(await requests()).toEqual([FIRST, SAME])
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await done(`금요일로 맞췄어요.\n\n\`\`\`replies\n${NEXT}\n\`\`\``)
   await resolveAll()
-  await expect(scope.getByTestId('reply-chip-0')).toHaveText(NEXT)
-  await scope.getByTestId('reply-chip-0').click()
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('금요일로 맞췄어요.')
+  await say(scope, NEXT)
   await expect.poll(requests).toEqual([FIRST, SAME, NEXT])
   await expect(bubbles(scope, NEXT)).toHaveCount(1)
 }
 
-test('full view: a reply chip on a clarifying answer after a chip sends once', async () => {
-  await clarifyThenAnswer(await openFull(), 'replies', page.getByTestId('bots-input'))
+test('full view: a typed reply to a clarifying answer sends once; no reply chip exists', async () => {
+  await clarifyThenAnswer(await openFull(), 'replies')
 })
 
-test('full view: an asked choice after a chip sends once and leaves the composer alone', async () => {
-  await clarifyThenAnswer(await openFull(), 'asked', page.getByTestId('bots-input'))
+test('full view: an asked question draws no choice button and its typed answer sends once', async () => {
+  await clarifyThenAnswer(await openFull(), 'asked')
 })
 
-test('tile: a reply chip on a clarifying answer after a chip sends once', async () => {
-  await clarifyThenAnswer(await openTile(), 'replies', page.getByTestId(`mini-input-${botId}`))
+test('narrow window: a typed reply to a clarifying answer sends once; no tile or reply chip exists', async () => {
+  await clarifyThenAnswer(await openNarrow(), 'replies')
 })
 
-test('tile: an asked choice after a chip sends once', async () => {
-  await clarifyThenAnswer(await openTile(), 'asked')
+test('narrow window: an asked question draws no choice button and its typed answer sends once', async () => {
+  await clarifyThenAnswer(await openNarrow(), 'asked')
 })
 
-test('a choice behind an unresolved send, a repeated label, invalid options and a failed send are never silent', async () => {
+test('offered options never become buttons: a typed answer behind an unresolved send, a repeated answer and a failed send are never silent', async () => {
   const scope = await openFull()
-  await scope.getByTestId('reply-chip-0').click()
+  await say(scope, FIRST)
   await expect.poll(requests).toEqual([FIRST])
   await done(QUESTION)
   await offer([SAME, '다른 날로'])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, SAME)
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await page.waitForTimeout(300)
   expect(await requests()).toEqual([FIRST])
@@ -124,7 +132,7 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
   await resolveAll()
 
   await offer([SAME])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, SAME)
   await expect(bubbles(scope, SAME)).toHaveCount(2)
   await expect.poll(requests).toEqual([FIRST, SAME, SAME])
   await done('다시 금요일로 맞췄어요.')
@@ -133,11 +141,8 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
   const users = await scope.locator('.bubble-msg.user').count()
   for (const invalid of ['   ', `${'가 '.repeat(1000)}다`]) {
     await offer([invalid])
-    for (const attempt of [1, 2]) {
-      await scope.getByTestId('bots-choice-0').click()
-      await expect(page.locator('.toast'), `attempt ${attempt}`).toHaveText(FAILED)
-      await expect(scope.getByTestId('bots-choice-0')).toBeVisible()
-    }
+    await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
+    await expect(scope.locator('button.bots-choice')).toHaveCount(0)
   }
   await page.waitForTimeout(300)
   await expect(scope.locator('.bubble-msg.user')).toHaveCount(users)
@@ -145,7 +150,7 @@ test('a choice behind an unresolved send, a repeated label, invalid options and 
 
   await app.evaluate(() => { (globalThis as Fixture).rejectNext = true })
   await offer(['실패해도 보여줘'])
-  await scope.getByTestId('bots-choice-0').click()
+  await say(scope, '실패해도 보여줘')
   await expect.poll(requests).toEqual([FIRST, SAME, SAME, '실패해도 보여줘'])
   await expect(scope.locator('.bubble-msg.assistant.error')).toHaveCount(1)
   await expect(bubbles(scope, '실패해도 보여줘')).toHaveCount(1)

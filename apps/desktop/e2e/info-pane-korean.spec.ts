@@ -16,7 +16,7 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('the details pane uses the right Korean particle for the bot name', async () => {
+test('no details pane: the bot name shows in its row and empty thread, and neither uses a parenthesised Korean particle', async () => {
   await mkdir(TMP, { recursive: true })
   const vault = await mkdtemp(join(TMP, 'e2e-info-pane-ko-')), profile = await mkdtemp(join(TMP, 'e2e-info-pane-ko-profile-'))
   dirs.push(vault, profile)
@@ -39,14 +39,16 @@ test('the details pane uses the right Korean particle for the bot name', async (
     const row = page.getByTestId(`bot-${ids[i]}`), earlier = page.getByTestId('sidebar-earlier')
     if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
     await row.click()
-    const pane = page.getByTestId('bot-info-pane')
-    if (!await pane.isVisible()) await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-    await expect(pane.locator('h2')).toHaveText(name)
-    await expect(pane.getByTestId('bots-memory')).toBeVisible()
-    const text = await pane.innerText()
-    expect(text, `PARTICLE ${name}: ${text}`).toContain(`${name}가 나에 대해 기억하는 것`)
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+    await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+    await expect(page.getByTestId('bots-memory')).toHaveCount(0)
+    await expect(page.locator('[data-testid="bot-empty"] h2')).toHaveText(name)
+    await expect(row.locator('.sidebar-conversation-name')).toHaveText(name)
+    await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-input"]')).toHaveAttribute('placeholder', /[\uac00-\ud7a3]/)
+    const text = `${await page.getByTestId('bot-empty').innerText()}\n${await row.innerText()}`
+    expect(text, `PARTICLE ${name}: ${text}`).toContain(name)
     for (const form of PARENTHESISED) expect(text, `PARTICLE ${name}: '${form}' in ${text}`).not.toContain(form)
     const png = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))
-    await test.info().attach(`details-pane-${i}.png`, { body: Buffer.from(png, 'base64'), contentType: 'image/png' })
+    await test.info().attach(`empty-thread-${i}.png`, { body: Buffer.from(png, 'base64'), contentType: 'image/png' })
   }
 })

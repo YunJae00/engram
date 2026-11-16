@@ -35,19 +35,19 @@ function ConnectBanner({ waiting }: { waiting: number }) {
 
 // The title strip keeps the current view visible without competing with its
 // content header. Ongoing work is grouped with the engine in the sidebar.
-export function TopBar({ sidebarOpen, developer, onToggleSidebar, splitLayout, onSplit, onMode }: {
+export function TopBar({ sidebarOpen, developer, onToggleSidebar, devLayout, onDevLayout, onMode }: {
   sidebarOpen: boolean
   developer: boolean
   onToggleSidebar(): void
-  splitLayout: 1 | 2 | 4
-  onSplit(count: 1 | 2 | 4): void
+  devLayout: 1 | 2 | 4
+  onDevLayout(count: 1 | 2 | 4): void
   onMode(mode: 'bots' | 'developers'): void
 }) {
   const { activity, errandWall, answerErrandWall, showToast, vaultReady } = useTopBarState()
   const { engines, enginesDetected, pendingWork } = useShellState()
   const showConnect = vaultReady && enginesDetected && engines.length === 0
-  const botView = activity === 'bots' || activity === 'mission'
-  const label = botView ? null : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : activity === 'developers' ? 'Developers' : t('activity.list')
+  const botView = activity === 'bots'
+  const label = botView ? null : activity === 'sky' ? t('topbar.tabSky') : activity === 'developers' ? 'Developers' : t('activity.list')
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   useEffect(() => {
@@ -117,11 +117,12 @@ export function TopBar({ sidebarOpen, developer, onToggleSidebar, splitLayout, o
       ) : label && <span className="topbar-title">{label}</span>}
 
       <div className="topbar-spacer" />
-      {(activity === 'bots' || activity === 'mission' || activity === 'developers') && <div className="mission-layout" aria-label="Split conversation view">
+      {/* Chats are one view; only the flagged development workspace still tiles its panes. */}
+      {activity === 'developers' && <div className="mission-layout" aria-label="Split conversation view">
         {([1, 2, 4] as const).map(count => {
           const Icon = count === 1 ? Square : count === 2 ? Columns2 : Grid2X2
           const label = count === 1 ? 'Single conversation' : `${count} panes`
-          return <button key={count} aria-label={label} title={label} aria-pressed={splitLayout === count} data-testid={`mission-layout-${count}`} disabled={!vaultReady} onClick={() => onSplit(count)}><Icon size={15} aria-hidden /></button>
+          return <button key={count} aria-label={label} title={label} aria-pressed={devLayout === count} data-testid={`dev-layout-${count}`} disabled={!vaultReady} onClick={() => onDevLayout(count)}><Icon size={15} aria-hidden /></button>
         })}
       </div>}
 

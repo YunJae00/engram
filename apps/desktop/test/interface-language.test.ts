@@ -54,11 +54,14 @@ it('shows the error card in the language of the conversation', async () => {
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { ErrorAnswer } = await import('../src/renderer/src/components/ErrorAnswer.js')
   const ko = renderToStaticMarkup(createElement(ErrorAnswer, { text: 'API Error: 400 does not support this model', lang: 'ko' }))
-  expect(ko).toContain('요청을 끝내지 못했어요')
-  expect(ko).toContain('오류 내용')
-  expect(ko).toContain('오류 복사')
-  for (const english of ['Could not complete this request', 'Error details', 'Copy error']) expect(ko).not.toContain(english)
-  expect(renderToStaticMarkup(createElement(ErrorAnswer, { text: 'Boom', lang: 'en' }))).toContain('Could not complete this request')
+  // One human line that says what to do next: no raw error, no details to open, no buttons.
+  expect(ko).toContain('문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.')
+  for (const leaked of ['API Error', '400', 'model', '<button', '<details', 'Could not', 'Something went wrong']) expect(ko).not.toContain(leaked)
+  const en = renderToStaticMarkup(createElement(ErrorAnswer, { text: '[claude] {"type":"error","error":{"message":"overloaded_error"}}', kind: 'outage', lang: 'en' }))
+  expect(en).toContain('Send the same message again in a minute.')
+  for (const leaked of ['overloaded_error', '{', '<button', '<details']) expect(en).not.toContain(leaked)
+  // A sentence the app itself wrote for the person, in their language, is shown as written.
+  expect(renderToStaticMarkup(createElement(ErrorAnswer, { text: '지금은 로그인이 풀려 있어요. 설정에서 다시 로그인해 주세요.', lang: 'ko' }))).toContain('다시 로그인해 주세요.')
 })
 
 it('does not show the verifier\'s model-facing reason to the person; the unverified mark itself stays', async () => {

@@ -29,19 +29,16 @@ async function launch(): Promise<Page> {
   return page
 }
 
-async function openRoutines(page: Page, botId: string) {
-  const row = page.getByTestId(`bot-${botId}`)
-  const earlier = page.getByTestId('sidebar-earlier')
-  if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
-  await row.click()
+// A bot's routines have no tab: opening the bot shows its chat and nothing to manage them with.
+async function openBot(page: Page, botId: string): Promise<void> {
+  await page.getByTestId(`bot-${botId}`).click()
   await expect(page.getByTestId('bots-view')).toBeVisible()
-  if (!await page.getByTestId('bot-info-pane').isVisible()) await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-  await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-  const tab = page.getByTestId('bot-info-pane').getByTestId('bot-routines')
-  await expect(tab).toBeVisible()
-  return tab
+  await expect(page.getByTestId(`bot-${botId}`)).toHaveClass(/active/)
+  for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-routines']) await expect(page.getByTestId(id)).toHaveCount(0)
+  await expect(page.locator('[data-testid^="bot-routine-"]')).toHaveCount(0)
 }
 
+const tasks = (page: Page, botId: string) => page.evaluate(async id => (await window.engram.botsList()).find(bot => bot.id === id)?.tasks ?? [], botId)
 const taskIds = (page: Page, botId: string) => page.evaluate(async id => (await window.engram.botsList()).find(bot => bot.id === id)?.tasks?.map(task => task.id) ?? [], botId)
 
 test.afterEach(async () => {
@@ -49,54 +46,42 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test.describe('bot routines in the info pane', () => {
-  test('Routines tab lists the seeded tasks with paused and unscheduled lines', async () => {
+test.describe('bot routines without an info pane', () => {
+  test('no Routines tab; the seeded tasks keep their paused and unscheduled state', async () => {
     const page = await launch()
-    let tab = await openRoutines(page, 'vis-paused')
-    const paused = tab.getByTestId('bot-routine-vis-paused-task')
-    await expect(paused.getByTestId('bot-routine-paused')).toHaveText('Paused')
-    await expect(paused.getByRole('button', { name: 'Test' })).toHaveCount(0)
-    await expect(paused.getByRole('button', { name: 'Edit' })).toHaveCount(0)
-    tab = await openRoutines(page, 'vis-routine')
-    await expect(tab.getByTestId('bot-routine-vis-task')).toContainText('No run scheduled')
+    await openBot(page, 'vis-paused')
+    expect(await tasks(page, 'vis-paused')).toMatchObject([{ id: 'vis-paused-task', name: 'Morning digest', paused: true }])
+    await openBot(page, 'vis-routine')
+    const [task] = await tasks(page, 'vis-routine')
+    expect(task).toMatchObject({ id: 'vis-task', name: 'Friday report' })
+    expect(task?.schedule).toBeUndefined()
   })
 
-  test('A scheduled task shows its next run, Test and Edit', async () => {
+  test('A scheduled task is stored on its bot, with no routines row for it', async () => {
     const page = await launch()
-    await page.evaluate(() => window.engram.botTaskAdd('vis-new', { name: 'Daily check', goal: 'Check the list.', schedule: { days: [0, 1, 2, 3, 4, 5, 6], hour: 9, minute: 0 } }))
-    const tab = await openRoutines(page, 'vis-new')
-    const row = tab.locator('li', { hasText: 'Daily check' })
-    await expect(row.locator('span').first()).toHaveText(/^Next run /)
-    await expect(row.getByRole('button', { name: 'Test' })).toBeVisible()
-    await expect(row.getByRole('button', { name: 'Edit' })).toBeVisible()
+    const schedule = { days: [0, 1, 2, 3, 4, 5, 6], hour: 9, minute: 0 }
+    await page.evaluate(schedule => window.engram.botTaskAdd('vis-new', { name: 'Daily check', goal: 'Check the list.', schedule }), schedule)
+    await openBot(page, 'vis-new')
+    expect(await tasks(page, 'vis-new')).toMatchObject([{ name: 'Daily check', goal: 'Check the list.', schedule }])
   })
 
-  test('Delete asks for a second press, then removes the task', async () => {
+  test('Removing a task through the app takes it off the bot and keeps the bot', async () => {
     const page = await launch()
-    const tab = await openRoutines(page, 'vis-routine')
-    const row = tab.getByTestId('bot-routine-vis-task')
-    await row.getByRole('button', { name: 'Delete' }).click()
-    await expect(row.getByRole('button', { name: 'Press again to delete' })).toBeVisible()
+    await openBot(page, 'vis-routine')
     expect(await taskIds(page, 'vis-routine')).toContain('vis-task')
-    await row.getByRole('button', { name: 'Press again to delete' }).click()
+    await page.evaluate(() => window.engram.botTaskRemove('vis-routine', 'vis-task'))
     await expect.poll(() => taskIds(page, 'vis-routine')).not.toContain('vis-task')
-    await expect(row).toHaveCount(0)
+    await expect(page.getByTestId('bot-vis-routine')).toBeVisible()
   })
 
-  test('Pause stores paused, Resume removes it, and the row follows', async () => {
+  test('Pause stores paused, Resume removes it, and the last run time is kept', async () => {
     const page = await launch()
-    const tab = await openRoutines(page, 'vis-routine')
-    const row = tab.getByTestId('bot-routine-vis-task')
-    const button = row.getByTestId('bot-routine-pause-vis-task')
+    await openBot(page, 'vis-routine')
     const task = () => page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-routine')?.tasks?.find(t => t.id === 'vis-task'))
-    await expect(button).toHaveText('Pause')
-    await button.click()
+    await page.evaluate(() => window.engram.botTaskPause('vis-routine', 'vis-task', true))
     await expect.poll(async () => { const t = await task(); return [(t as { paused?: unknown } | undefined)?.paused, t?.lastRunAt] }).toEqual([true, '2026-01-09T17:00:00.000Z'])
-    await expect(row.getByTestId('bot-routine-paused')).toHaveText('Paused')
-    await expect(button).toHaveText('Resume')
-    await button.click()
+    await page.evaluate(() => window.engram.botTaskPause('vis-routine', 'vis-task', false))
     await expect.poll(async () => { const t = await task(); return [Object.hasOwn(t ?? {}, 'paused'), t?.lastRunAt] }).toEqual([false, '2026-01-09T17:00:00.000Z'])
-    await expect(button).toHaveText('Pause')
-    await expect(row.getByTestId('bot-routine-paused')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="bot-routine-"]')).toHaveCount(0)
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { t } from '../src/renderer/src/i18n.js'
+import { threadT } from '../src/renderer/src/lib/threadLang.js'
 import { pendingStatus, stepLabel, workBlocks, workLabel } from '../src/renderer/src/lib/pendingStatus.js'
 
 describe('pendingStatus', () => {
@@ -14,11 +15,10 @@ describe('pendingStatus', () => {
     expect(workLabel('  <- app_read: internal snapshot')).toBe('Working with an app')
     expect(workLabel('some_new_tool: details')).toBe('Some new tool')
   })
-  it('says the step the work is on', () => {
-    expect(pendingStatus(t, 'search_web: lunch hours')).toBe('Searching the web for “lunch hours”')
-  })
-  it('falls back to the plain word before the first step', () => {
-    expect(pendingStatus(t, undefined)).toBe('Thinking')
+  it('is one fixed word for the whole wait and takes no step, so the waiting line cannot stream steps', () => {
+    expect(pendingStatus(t)).toBe('Thinking')
+    expect(pendingStatus(threadT('ko'))).toBe('생각하는 중')
+    expect(pendingStatus.length).toBe(1)
   })
 })
 
@@ -49,7 +49,7 @@ describe('plain words for the runtime and file tools', () => {
     expect(workLabel('report_result_check: ')).toBe('Checking the result')
     expect(workLabel('note: Checking the result against your request')).toBe('Checking the result')
   })
-  it('shows the step in the waiting line too', () => {
-    expect(pendingStatus(t, 'Glob: *agent*')).toBe('Looking for files (*agent*)')
+  it('keeps the step out of the waiting line', () => {
+    expect((pendingStatus as (...args: unknown[]) => string)(t, 'Glob: *agent*')).toBe('Thinking')
   })
 })

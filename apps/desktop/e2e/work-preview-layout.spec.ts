@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, openActivity } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
-test('app previews stack, promote back cards and stay inside full, split, minimized and expanded conversations', async () => {
+test('app previews stack, promote back cards and stay inside the chat of each bot, minimized and expanded', async () => {
   await mkdir(join(TMP, 'preview-captures-109'), { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-layout-')), { git: false })
   await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
@@ -35,7 +35,6 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       ipcMain.removeHandler('native:enabled')
       ipcMain.handle('native:enabled', () => false)
     }, frames)
-    await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map(bot => bot.id))
     await page.reload()
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900))
     await openActivity(page, 'bots')
@@ -197,25 +196,27 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       await expect(preview).toBeVisible()
       await expect(preview).toContainText('Last snapshot')
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
-      await openActivity(page, 'mission')
-      await page.getByTestId('mission-layout-2').click()
-      const mini = page.getByTestId(`mini-chat-${bots[0]!.id}`)
-      await expect(mini.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
-      await expect(mini.getByTestId('task-approvals')).toBeVisible()
+      for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+      // One chat view: the other bot's chat shows only its own app, and the first bot's comes back with it.
+      await page.getByTestId(`bot-${bots[1]!.id}`).click()
+      await expect(full.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
+      await expect(full.getByTestId('task-approvals')).toBeVisible()
+      await expect(full).toContainText('Owned app 2')
+      await expect(full).not.toContainText('Owned app 1')
+      await check(full, `${theme}-split`)
+      await page.getByTestId(`bot-${bots[0]!.id}`).click()
       await emit([{ type: 'comet:working', channel: lane, working: true }])
-      const button = mini.getByTestId('preview-card-collapsed')
-      if (await button.isVisible()) await button.click()
-      await expect(mini).toContainText('Owned app 1')
-      await expect(mini).not.toContainText('Owned app 2')
-      await check(mini, `${theme}-split`)
+      await expand()
+      await expect(full).toContainText('Owned app 1')
+      await expect(full).not.toContainText('Owned app 2')
       await emit([{ type: 'press:ask', channel: lane, words: 'Confirm local action', host: 'example.test' }])
-      await expect(mini.getByTestId('preview-card')).toBeVisible()
+      await expect(full.getByTestId('preview-card')).toBeVisible()
       for (const width of [620, 948, 1400]) {
         await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 600), width)
         await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
         await expect.poll(() => page.evaluate(() => innerHeight)).toBe(600)
         if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
-        await check(mini, `${theme}-split-width-${width}`)
+        await check(full, `${theme}-split-width-${width}`)
       }
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       await openActivity(page, 'bots')
@@ -231,7 +232,7 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
   } finally { await closeTestApp(app) }
 })
 
-test('a finished web card at pane width keeps its label and snapshot age apart', async () => {
+test('a finished web card in the chat view keeps its label and snapshot age apart', async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-caption-')), { git: false })
   await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
@@ -245,12 +246,12 @@ test('a finished web card at pane width keeps its label and snapshot age apart',
     const page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
     await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler('native:enabled'); ipcMain.handle('native:enabled', () => false) })
-    await page.evaluate(ids => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), [bot.id])
     await page.reload()
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900))
-    await openActivity(page, 'mission')
-    await page.getByTestId('mission-layout-4').click()
-    const mini = page.getByTestId(`mini-chat-${bot.id}`)
+    await openActivity(page, 'bots')
+    await page.getByTestId(`bot-${bot.id}`).click()
+    for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+    const mini = page.locator('.bots-chat')
     await expect(mini).toBeVisible()
     const size = { width: 1280, height: 720 }
     const data = await app.evaluate(({ nativeImage }, size) => nativeImage.createFromBuffer(Buffer.alloc(size.width * size.height * 4, 0xf0), size).toDataURL(), size)
@@ -259,8 +260,9 @@ test('a finished web card at pane width keeps its label and snapshot age apart',
     await app.evaluate(({ BrowserWindow }, events) => {
       const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
       for (const event of events) window.webContents.send('engram:event', event)
-    }, [{ type: 'comet:working', channel: lane, working: true }, { type: 'agent:tabs', lane, tabs: [{ id: 'tab-1', url, active: true }] },
-      { type: 'mission:frame', frame: { lane, on: true, url, data: data.split(',')[1], at: Date.now() } }])
+    // Page work keeps the page as the small card over the chat; the frame is the page's own picture.
+    }, [{ type: 'comet:working', channel: lane, working: true }, { type: 'comet:step', channel: lane, line: 'read_open_page: Page' },
+      { type: 'agent:frame', lane, url, data: data.split(',')[1], ...size }])
     const card = mini.getByTestId('preview-card')
     const collapsed = mini.getByTestId('preview-card-collapsed')
     await expect(card.or(collapsed)).toBeVisible()
@@ -271,7 +273,7 @@ test('a finished web card at pane width keeps its label and snapshot age apart',
       window.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false })
     }, lane)
     await expect(card.locator('.preview-card-stale')).toBeVisible()
-    await expect.poll(() => card.evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(264)
+    await expect.poll(() => card.evaluate(element => Math.round(element.getBoundingClientRect().width))).toBe(320)
     const boxes = await card.evaluate(element => {
       const [caption, label, stale] = ['.preview-card-caption', '.preview-card-label', '.preview-card-stale'].map(selector => element.querySelector(selector)!.getBoundingClientRect())
       return { caption: caption!.toJSON(), label: label!.toJSON(), stale: stale!.toJSON() } as Record<string, DOMRect>

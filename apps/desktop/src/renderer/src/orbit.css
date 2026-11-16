@@ -7,103 +7,13 @@
 .mission-layout { gap: 2px; padding: 3px; background: var(--hover-bg); border-radius: 11px; }
 .mission-layout button { display: grid; place-items: center; width: 30px; height: 28px; border-radius: 8px; color: var(--fg-faint); }
 .mission-layout button[aria-pressed='true'] { color: var(--fg); background: var(--panel-bg); box-shadow: var(--shadow-card-rest); }
-.mission-grid { flex: 1; min-height: 0; display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(240px, 1fr); }
-.mission-tile {
-  container: tile / size;
-  position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column;
-  overflow: hidden; background: var(--panel-bg); border: 1px solid var(--border-soft);
-  border-radius: 18px; box-shadow: var(--shadow-card-rest);
-}
-.mission-tile-head { height: 42px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 10px; }
-.mission-name { flex: 1; min-width: 0; font-size: var(--fs-small); font-weight: 550; color: var(--fg); }
-.mission-change { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 8px; text-align: left; }
-.mission-change:hover { background: var(--hover-bg); }
-.mission-change span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mission-change svg { flex: none; color: var(--fg-faint); transition: transform 180ms ease; }
-.mission-change[aria-expanded='true'] svg { transform: rotate(180deg); }
-.mission-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--fg-faint); white-space: nowrap; margin-right: 4px; }
-.mission-tile[data-state='ready'] .mission-status { display: none; }
-.mission-web-toggle, .mission-chat-toggle, .mission-tile-head .mission-enter {
-  display: grid; place-items: center; flex: none; width: 28px; height: 28px;
-  color: var(--fg-faint); border-radius: 8px; padding: 0;
-}
-.mission-web-toggle:hover, .mission-chat-toggle:hover, .mission-enter:hover { color: var(--fg); background: var(--hover-bg); }
-.mission-chat-toggle:disabled { display: none; }
-.mission-chat-toggle[aria-expanded='false'] { color: var(--fg); background: var(--hover-bg); }
-.mission-tile-body {
-  position: relative; flex: 1; min-height: 0; display: grid; background: var(--canvas-bg);
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  grid-template-rows: minmax(0, 1fr);
-  transition: grid-template-columns 180ms ease, grid-template-rows 180ms ease;
-}
-.mission-tile-body[data-chat-open='false'] { grid-template-columns: minmax(0, 1fr) minmax(0, 0fr); }
-/* Layout and paint containment keep the anchored, position: fixed copy controls (comet-chat.css) inside the slot: re-laying them
-   out against the viewport while the slot folds or unfolds (grid + opacity/visibility transitions) crashed the renderer. */
-.mission-chat-slot { min-width: 0; min-height: 0; overflow: hidden; display: flex; opacity: 1; contain: layout paint; transition: opacity 180ms ease, visibility 0s; }
-.mission-chat-slot[aria-hidden='true'] { opacity: 0; visibility: hidden; transition: opacity 160ms ease, visibility 0s 180ms; }
-.mission-preview { position: relative; min-width: 0; min-height: 0; width: 100%; padding: 0; overflow: hidden; border-radius: 0; color: var(--fg); background: var(--panel-bg); }
-.mission-preview canvas { position: absolute; width: 100%; height: 100%; inset: 0; object-fit: contain; visibility: hidden; }
-.mission-preview canvas[data-painted] { visibility: visible; }
-.mission-preview[data-live='false'] canvas { visibility: hidden; }
-.mission-text { display: flex; height: 100%; flex-direction: column; justify-content: center; align-items: center; padding: 16px; gap: 10px; color: var(--fg-faint); }
-.mission-text p { margin: 0; font-size: var(--fs-small); line-height: 1.6; }
-.mission-open-seat { align-items: center; justify-content: center; }
-.mission-add { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; color: var(--fg-faint); font-size: var(--fs-small); border-radius: 16px; }
-.mission-add:hover { color: var(--fg); background: var(--hover-bg); }
 /* Above a tile's floating page preview. */
 .mission-chooser { position: absolute; inset: 42px 8px auto; z-index: 40; }
 .mission-chooser .sidebar-disclosure-content { border-radius: 12px; }
 .mission-add-menu { display: flex; flex-direction: column; gap: 2px; padding: 6px; max-height: min(320px, calc(100cqh - 52px)); overflow-y: auto; background: var(--widget-bg); border: 1px solid var(--border-soft); border-radius: 12px; }
 .mission-add-menu button { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 8px; font-size: var(--fs-small); color: var(--fg-dim); text-align: left; overflow-wrap: anywhere; }
 .mission-add-menu button:hover { background: var(--hover-bg); color: var(--fg); }
-.mission-add-menu .mission-add-new { font-weight: 550; color: var(--fg); }
-.mission-add-menu .mission-add-cancel { color: var(--fg-faint); }
 .mini-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--canvas-bg); }
 .mini-chat-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 14px; }
-.mini-chat-empty { margin: auto; text-align: center; font-size: var(--fs-small); color: var(--fg-faint); }
-.mini-chat-status { margin: 0; font-size: var(--fs-micro); color: var(--fg-faint); }
 .mini-msg { font-size: 13px; line-height: 1.65; max-width: 100%; overflow-wrap: anywhere; }
 .mini-msg.user { align-self: flex-end; background: var(--hover-bg); border-radius: 14px; padding: 6px 11px; max-width: 90%; }
-.mini-chat-write { flex: none; min-width: 0; margin: 0 10px 10px; position: relative; }
-/* A masked scroller inside a tile paints its mask as solid black, so the mini thread fades under an overlay instead. */
-.mini-chat-write::before { content: ''; position: absolute; left: -10px; right: -10px; bottom: 100%; height: 18px; background: linear-gradient(to bottom, transparent, var(--canvas-bg)); pointer-events: none; }
-.mini-chat-write .chat-write { padding: 10px; border-radius: 16px; }
-.mini-chat-write textarea { font-size: var(--fs-small); max-height: 100px; }
-.mission-error { font-size: var(--fs-small); color: var(--fg-dim); margin: 0; }
-@media (max-width: 700px) {
-  .mission-grid { gap: 8px; }
-  .mission-tile-head { padding: 0 6px; gap: 2px; }
-  .mission-status { font-size: 0; gap: 0; margin-right: 0; }
-}
-@container mission (max-width: 960px) {
-  .mission-grid-4 { grid-auto-rows: minmax(264px, 1fr); }
-}
-@container mission (max-width: 760px) {
-  .mission-grid-2 { grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(280px, 1fr); }
-}
-@container tile (max-width: 820px) {
-  .mission-tile-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
-  .mission-tile-body[data-chat-open='false'] { grid-template-rows: minmax(0, 1fr) minmax(0, 0fr); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .mission-tile-body, .mission-chat-slot, .mission-chat-slot[aria-hidden='true'], .mission-change svg { transition: none; }
-}
-.mission-grid .mission-tile-body[data-web-open='false'] { grid-template-columns: minmax(0, 0fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.mission-tile-body[data-web-open='false'] .orbit-surface { visibility: hidden; }
-
-.mission-tile-body[data-web-open='true'] .orbit-surface { border-bottom: 1px solid var(--border-soft); background: var(--canvas-bg); }
-.delete-conversation-dialog { width: min(440px, calc(100vw - 40px)); max-height: calc(100vh - 40px); margin: auto; box-sizing: border-box; padding: 24px; border: 1px solid var(--border-soft); border-radius: 20px; color: var(--fg); background: var(--panel-bg); box-shadow: var(--shadow-card-rest); }
-.delete-conversation-dialog::backdrop { background: #0006; }
-.delete-conversation-dialog h2 { margin: 0 0 16px; font-size: 20px; line-height: 1.3; }
-.delete-conversation-dialog p { font-size: var(--fs-body); line-height: 1.6; color: var(--fg-dim); }
-.delete-conversation-dialog .delete-conversation-name { margin: 0 0 6px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
-.delete-conversation-actions { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 10px; margin-top: 24px; }
-.delete-conversation-dialog .delete-conversation-actions button { display: flex; align-items: center; justify-content: center; min-height: 42px; margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.4; box-sizing: border-box; }
-.delete-conversation-dialog[data-folder='true'] .danger { grid-column: 1 / -1; }
-.delete-conversation-actions .danger { color: #fff; background: #b83232; }
-.delete-conversation-dialog[open] { opacity: 1; transform: translateY(0); transition: opacity 160ms ease, transform 160ms ease; }
-.delete-conversation-dialog[open]::backdrop { transition: background-color 160ms ease; }
-@starting-style { .delete-conversation-dialog[open] { opacity: 0; transform: translateY(6px); } .delete-conversation-dialog[open]::backdrop { background: transparent; } }
-.delete-conversation-dialog[data-closing='true'] { opacity: 0; transform: translateY(6px); }
-.delete-conversation-dialog[data-closing='true']::backdrop { background: transparent; }
-@media (prefers-reduced-motion: reduce) { .delete-conversation-dialog[open], .delete-conversation-dialog[open]::backdrop { transition: none; transform: none; } }

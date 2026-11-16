@@ -127,7 +127,7 @@ test('deferred decisions stay in the conversation and remain readable in narrow 
   await expect.poll(async () => (await listTasks(paths)).find(t => t.id === task.id)?.approvals[0]?.answer).toBe('decline')
 })
 
-test('questions offer readable keyboard choices and completion notices without exposing task contents', async () => {
+test('a question draws no choice buttons, is answered by typing, and completion notices do not expose task contents', async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Question fixture' }))
@@ -145,18 +145,18 @@ test('questions offer readable keyboard choices and completion notices without e
   await expect(page.locator('.toast')).toHaveText('Task done')
   await expect(page.locator('.toast')).toHaveCSS('pointer-events', 'none')
   const card = page.getByTestId('bots-choices')
-  await expect(card).toContainText('Your answer')
+  await expect(card).toHaveCount(0)
+  await expect(page.getByTestId('bots-thread').getByRole('button', { name: /Keep the existing workflow|Allow editing/ })).toHaveCount(0)
   await expect(page.locator('.bots-view .chat-approval')).toHaveCount(0)
-  await page.getByTestId('bots-choice-0').focus()
-  await page.keyboard.press('Tab')
-  await expect(page.getByTestId('bots-choice-1')).toBeFocused()
+  const question = page.locator('.bots-view .bubble-msg.assistant').last()
+  await expect(question).toContainText('Which approach?')
   for (const [width, scheme] of [[1280, 'light'], [600, 'dark']] as const) {
     await page.setViewportSize({ width, height: 900 })
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
     if (width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'false') await page.getByTestId('app-sidebar-close').click()
-    await expect(card).toBeVisible()
+    await expect(question).toBeVisible()
     await expect(page.locator('.bots-chat')).toHaveCSS('animation-name', 'none')
-    expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    expect(await question.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
     // Hidden windows can pause color transitions between compositor frames.
     await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
     const png = await app.evaluate(async ({ BrowserWindow }) => {
@@ -167,7 +167,8 @@ test('questions offer readable keyboard choices and completion notices without e
     })
     await writeFile(join(REPO_TMP, `comet-question-${width}-${scheme}.png`), Buffer.from(png, 'base64'))
   }
-  await page.getByTestId('bots-choice-0').click()
+  await page.getByTestId('bots-input').fill('Keep the existing workflow')
+  await page.getByTestId('bots-input').press('Enter')
   await expect(card).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg.user').last()).toContainText('Keep the existing workflow')
 })

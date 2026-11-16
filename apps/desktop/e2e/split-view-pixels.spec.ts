@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp } from './navigation.js'
 import { appendBotTurn, initVault, type Bot } from 'core'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -48,9 +48,6 @@ test.beforeAll(async () => {
       await appendBotTurn(paths, bot.id, { role: 'assistant', text: answer, at })
     }
   }
-  await page.evaluate((ids) => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map((bot) => bot.id))
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
 })
 
 test.afterAll(async () => {
@@ -90,10 +87,10 @@ async function capture(): Promise<Capture> {
 type Box = { left: number; top: number; right: number; bottom: number }
 type Probe = { thread: Box; bubbles: (Box & { bg: number[] })[]; bubbleBg: number[]; width: number }
 
-function probe(index: number): Promise<Probe> {
-  return page.getByTestId(`mission-tile-${index}`).evaluate((tile) => {
+function probe(): Promise<Probe> {
+  return page.locator('[data-testid="bots-view"] .bots-chat').evaluate((tile) => {
     const rect = (node: Element): Box => { const box = node.getBoundingClientRect(); return { left: box.left, top: box.top, right: box.right, bottom: box.bottom } }
-    const thread = rect(tile.querySelector('.mini-chat-thread')!)
+    const thread = rect(tile.querySelector('[data-testid=bots-thread]')!)
     thread.bottom -= 24
     const sample = document.createElement('div')
     sample.style.background = 'var(--bubble-bg)'
@@ -109,7 +106,7 @@ function probe(index: number): Promise<Probe> {
       }
       return [255, 255, 255]
     }
-    const bubbles = [...tile.querySelectorAll('.mini-chat-thread .bubble-msg')].map((node) => ({ ...rect(node), bg: painted(node) }))
+    const bubbles = [...tile.querySelectorAll('[data-testid=bots-thread] .bubble-msg')].map((node) => ({ ...rect(node), bg: painted(node) }))
       .filter((box) => box.left >= thread.left && box.right <= thread.right && box.top >= thread.top && box.bottom <= thread.bottom)
     return { thread, bubbles, bubbleBg, width: innerWidth }
   })
@@ -147,36 +144,38 @@ function judge(shot: Capture, spot: Probe, label: string): void {
   })
 }
 
-test('split view panes show their messages, not black voids', async () => {
-  await openActivity(page, 'mission')
-  await page.getByTestId('mission-layout-2').click()
-  await expect(page.locator('.mission-tile')).toHaveCount(2)
-  for (const index of [0, 1]) await expect(page.getByTestId(`mission-tile-${index}`).locator('.mission-name')).toHaveText(bots[index]!.name)
+test('each chat in the single view shows its messages, not black voids, and no split-view control exists', async () => {
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  const lane = `bot-${bots[0]!.id}`
+  const size = { width: 640, height: 400 }
+  const frame = await app.evaluate(({ nativeImage }, size) => {
+    const pixels = Buffer.alloc(size.width * size.height * 4)
+    for (let i = 0; i < pixels.length; i += 4) pixels.set(i < pixels.length / 3 ? [72, 40, 24, 255] : [252, 250, 248, 255], i)
+    return nativeImage.createFromBuffer(pixels, size).toDataURL()
+  }, size)
 
   for (const card of [false, true]) {
-    if (card) {
-      const lane = `bot-${bots[0]!.id}`
-      const size = { width: 640, height: 400 }
-      const frame = await app.evaluate(({ nativeImage }, size) => {
-        const pixels = Buffer.alloc(size.width * size.height * 4)
-        for (let i = 0; i < pixels.length; i += 4) pixels.set(i < pixels.length / 3 ? [72, 40, 24, 255] : [252, 250, 248, 255], i)
-        return nativeImage.createFromBuffer(pixels, size).toDataURL()
-      }, size)
-      await emit([
-        { type: 'comet:working', channel: lane, working: true },
-        { type: 'desktop:preview', frames: [{ id: `${lane}:window:1`, lane, title: 'Split page', at: Date.now(), captureState: 'ready', current: true, data: frame }] },
-      ])
-      await expect(page.getByTestId('mission-tile-0').getByTestId('preview-card').locator('canvas[data-painted], img').first()).toBeVisible({ timeout: 20_000 })
-    }
     for (const theme of ['light', 'dark']) {
       await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme)
-      await settle()
-      const spots = [await probe(0), await probe(1)]
-      const shot = await capture()
-      await test.info().attach(`split-${theme}-${card ? 'card' : 'nocard'}`, { body: shot.png, contentType: 'image/png' })
       for (const index of [0, 1]) {
-        judge(shot, spots[index]!, `tile ${index} ${theme} card=${card}`)
-        const textarea = page.getByTestId(`mission-tile-${index}`).locator('.mini-chat-write textarea')
+        const row = page.getByTestId(`bot-${bots[index]!.id}`)
+        await row.click()
+        await expect(row).toHaveClass(/active/)
+        await expect(page.getByTestId('bots-thread').locator('.bubble-msg').first()).toBeVisible()
+        // Preview frames are kept per open chat, so the frame is sent once the first bot's chat is on screen.
+        if (card && index === 0) {
+          await emit([
+            { type: 'comet:working', channel: lane, working: true },
+            { type: 'desktop:preview', frames: [{ id: `${lane}:window:1`, lane, title: 'Split page', at: Date.now(), captureState: 'ready', current: true, data: frame }] },
+          ])
+          await expect(page.getByTestId('preview-card').locator('canvas[data-painted], img').first()).toBeVisible({ timeout: 20_000 })
+        } else await expect(page.getByTestId('preview-card')).toHaveCount(0)
+        await settle()
+        const spot = await probe()
+        const shot = await capture()
+        await test.info().attach(`single-${index}-${theme}-${card ? 'card' : 'nocard'}`, { body: shot.png, contentType: 'image/png' })
+        judge(shot, spot, `chat ${index} ${theme} card=${card}`)
+        const textarea = page.getByTestId('bots-input')
         await expect(textarea).toBeVisible()
         await expect(textarea).toBeEditable()
       }

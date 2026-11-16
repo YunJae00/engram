@@ -1,16 +1,16 @@
-// Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the name-only New bot dialog (name and a
-// 96px avatar preview, no first-task, label or More options); an empty or blank name creates nothing; Create adds exactly
-// one bot, opens its chat with the composer focused and keeps the previewed character; Cmd/Ctrl+N opens the dialog; the
-// avatar picker has no Photo tab and no file input.
+// Bot create: forces the English UI, then runs checks N1-N6 in order: + opens the name-only New bot dialog directly (name
+// and an 80px avatar preview, no first-task, label or More options); an empty or blank name creates nothing; Create adds
+// exactly one bot and opens its chat with the composer focused, its name in the empty thread (there is no title pill);
+// the stored character shows on its sidebar row and in the empty thread; Cmd/Ctrl+N opens the dialog; the avatar picker
+// has no Photo tab and no file input.
 
 const WAIT_MS = 5_000
 const PLUS_SEL = '.app-sidebar [data-testid="sidebar-create"]'
-const NEW_ITEM_SEL = '[data-testid="bots-new"]'
 const DIALOG_SEL = '[role="dialog"][data-testid="create-bot-dialog"]'
 const PREVIEW_SEL = '[data-testid="create-bot-preview"] .bot-avatar'
 const PICKER_SEL = '[data-testid="avatar-picker"]'
 const INPUT_SEL = '[data-testid="bots-input"]'
-const PILL_NAME_SEL = '[data-testid="bots-view"] [data-testid="bots-title-pill"] .bots-title-pill-name'
+const EMPTY_SEL = '[data-testid="bots-thread"] [data-testid="bot-empty"]'
 const ROW_SEL = (id) => `.app-sidebar [data-testid="bot-${id}"]`
 
 const short = (error) => String(error?.message ?? error).split('\n')[0].slice(0, 200)
@@ -35,7 +35,6 @@ export async function run(page) {
   const checks = {}
   const failures = []
   const PLUS = page.locator(PLUS_SEL)
-  const NEW_ITEM = page.locator(NEW_ITEM_SEL)
   const DIALOG = page.locator(DIALOG_SEL)
   const NAME = DIALOG.locator('[data-testid="create-bot-name"]')
   const SUBMIT = DIALOG.locator('[data-testid="create-bot-submit"]')
@@ -52,13 +51,10 @@ export async function run(page) {
     await page.keyboard.press('Escape')
     return await until(closed) ? 'dialog stuck open' : ''
   }
-  const fillOf = (loc) => loc.getAttribute('fill', { timeout: WAIT_MS })
+  const characterOf = (loc) => loc.getAttribute('data-character', { timeout: WAIT_MS })
   const focusedTestId = () => page.evaluate(() => globalThis.document.activeElement?.getAttribute('data-testid') ?? null)
   const openFromPlus = async () => {
     await PLUS.click({ timeout: WAIT_MS })
-    const item = await until(visible(NEW_ITEM, 'bots-new'))
-    if (item) return item
-    await NEW_ITEM.click({ timeout: WAIT_MS })
     return until(visible(DIALOG, 'create-bot-dialog'))
   }
 
@@ -69,7 +65,6 @@ export async function run(page) {
   }
 
   const B = (await listBots()).map((bot) => bot.id)
-  let FILL = null
   let C = null
 
   // N1
@@ -85,11 +80,10 @@ export async function run(page) {
     if (!await PREVIEW.isVisible()) return 'create-bot-preview avatar not visible'
     const box = await PREVIEW.boundingBox()
     if (!box) return 'create-bot-preview avatar has no box'
-    if (Math.abs(box.width - 96) > 1 || Math.abs(box.height - 96) > 1) return `preview ${box.width}x${box.height}, expected 96±1`
+    if (Math.abs(box.width - 80) > 1 || Math.abs(box.height - 80) > 1) return `preview ${box.width}x${box.height}, expected 80±1`
     if ((await PREVIEW.locator('svg').count()) < 1) return 'preview has no svg'
-    const fill = await fillOf(PREVIEW.locator('.bot-avatar-body').first())
-    if (!fill?.trim()) return 'preview .bot-avatar-body has no fill'
-    FILL = fill
+    if (!/^orb-/.test(await characterOf(PREVIEW) ?? '')) return 'preview avatar has no orb character'
+    if (await page.locator('.sidebar-create-menu, [data-testid="bots-new"]').count()) return 'the + still shows a menu'
     return ''
   })
 
@@ -125,21 +119,23 @@ export async function run(page) {
     const row = page.locator(ROW_SEL(C.id))
     if ((await row.count()) !== 1) return `${await row.count()} sidebar rows for the new bot, expected 1`
     if (!await row.isVisible()) return 'new bot row not visible'
-    const pill = await until(async () => (await page.locator(PILL_NAME_SEL).innerText({ timeout: WAIT_MS })).includes('Created Bot') ? '' : 'title pill lacks Created Bot')
-    if (pill) return pill
+    if (await page.locator('[data-testid="bots-title-pill"]').count()) return 'a title pill is rendered, expected none'
+    const named = await until(async () => (await page.locator(`${EMPTY_SEL} h2`).innerText({ timeout: WAIT_MS })).includes('Created Bot') ? '' : 'empty thread lacks Created Bot')
+    if (named) return named
     return until(async () => await focusedTestId() === 'bots-input' ? '' : 'focus is not on bots-input')
   }, opened)
 
   // N4
-  await check('kept-character', async () => {
+  await check('stored-character', async () => {
     if (!C) return 'no created bot'
     const a = C.avatar
     if (a === null || typeof a !== 'object' || Array.isArray(a)) return `avatar ${JSON.stringify(a)} is not a plain object`
-    if (JSON.stringify(Object.keys(a).sort()) !== '["accessory","body","face","palette"]') return `avatar keys ${JSON.stringify(Object.keys(a))}`
-    if (!Object.values(a).every(Number.isInteger)) return `avatar values ${JSON.stringify(a)} are not all integers`
-    if (FILL === null) return 'no preview'
-    const fill = await fillOf(page.locator(`${ROW_SEL(C.id)} .bot-avatar-body`).first())
-    return fill === FILL ? '' : `row fill ${fill}, preview fill ${FILL}`
+    if (JSON.stringify(Object.keys(a)) !== '["character"]' || !/^orb-/.test(a.character)) return `avatar ${JSON.stringify(a)}, expected one orb character`
+    // An unpicked Create takes the face of the bot's real id; the row and the empty thread show that stored face.
+    const row = await characterOf(page.locator(`${ROW_SEL(C.id)} .bot-avatar`).first())
+    if (row !== a.character) return `row character ${row}, stored ${a.character}`
+    const empty = await characterOf(page.locator(`${EMPTY_SEL} .bot-avatar`).first())
+    return empty === a.character ? '' : `empty thread character ${empty}, stored ${a.character}`
   }, opened)
 
   const shortcutOpens = async () => {

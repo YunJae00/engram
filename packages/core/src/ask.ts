@@ -94,3 +94,11 @@ export function choiceQuestion(text: string): Ask | null {
   if (options.length < OPTIONS_MIN) return null
   return { question: last, options }
 }
+
+// The question as the person reads it in the thread: the ways forward follow it as plain lines to answer by typing, never as buttons.
+// One the question already names is not said twice.
+export function askText(question: string, options: string[] = []): string {
+  const said = question.toLowerCase()
+  const rest = options.filter(one => !said.includes(one.toLowerCase()))
+  return rest.length ? `${question}\n\n${rest.map(one => `- ${one}`).join('\n')}` : question
+}

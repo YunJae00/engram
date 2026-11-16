@@ -1,14 +1,12 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
-import { CHIP_FAILED, resendFailedCometMessage, sendCometMessage, sendCometReply } from '../lib/attachments.js'
+import { sendCometMessage } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
-import { ThreadOffers } from '../components/ThreadOffers.js'
-import { pendingStatus } from '../lib/pendingStatus.js'
+import { isSaidLine, isYouLine, pendingStatus, stepLabel } from '../lib/pendingStatus.js'
 import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { useLoadEarlier } from '../lib/useLoadEarlier.js'
-import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { ThinkingDots } from '../components/Thinking.js'
@@ -19,10 +17,6 @@ import { CometSurface } from '../components/CometSurface.js'
 import { ThreadAsks } from '../components/ThreadAsks.js'
 import { PermissionCard } from '../components/PermissionCard.js'
 import { BotComposer } from '../components/BotComposer.js'
-import { BotTitlePill } from '../components/CometTitle.js'
-import { BotInfoPane } from '../components/BotInfoPane.js'
-import { useCometState, useShellState } from '../state-slices.js'
-import { t } from '../i18n.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 import { BotEmpty } from '../components/BotEmpty.js'
 import { takeOnboardBot } from '../lib/onboardBot.js'
@@ -34,52 +28,16 @@ import { takeOnboardBot } from '../lib/onboardBot.js'
 // not a lecture. The conversations themselves live in cometThreads, outside
 // this component: the tab unmounts on every switch and they must not.
 
-const PHASE_LABEL: Record<string, StringKey> = {
-  plan: 'topbar.errandPlan',
-  gather: 'topbar.errandGather',
-  web: 'topbar.errandWeb',
-  distill: 'topbar.errandDistill',
-  compose: 'topbar.errandCompose',
-}
-
 
 export const BotsView = memo(function BotsView({ active }: { active: boolean }) {
-  const { errand } = useCometState()
-  const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
-  const [info, setInfo] = useState<'closed' | 'open' | 'closing'>('closed')
-  // Only the bot the pill opened the pane on plays the open animation; a bot switch does not.
-  const [infoEnter, setInfoEnter] = useState<string | null>(null)
-  const infoTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const clearInfoTimer = () => { if (infoTimer.current) clearTimeout(infoTimer.current); infoTimer.current = null }
-  const finishInfoClose = () => { clearInfoTimer(); setInfo((prior) => (prior === 'closing' ? 'closed' : prior)) }
-  const closeInfo = () => {
-    clearInfoTimer()
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return setInfo('closed')
-    setInfo('closing')
-    infoTimer.current = setTimeout(finishInfoClose, 180)
-  }
-  const toggleInfo = () => {
-    if (info === 'open') return closeInfo()
-    clearInfoTimer()
-    setInfoEnter(selectedId)
-    setInfo('open')
-  }
-  useEffect(() => clearInfoTimer, [])
-  // The sidebar's "Change icon" selects the bot, then asks for its pane with the picker open.
-  const [iconFor, setIconFor] = useState<{ id: string } | null>(null)
-  useEffect(() => {
-    const edit = (event: Event) => { const id = (event as CustomEvent<string>).detail; clearInfoTimer(); setIconFor({ id }); setInfoEnter(id); setInfo('open') }
-    window.addEventListener('engram:edit-bot-icon', edit)
-    return () => window.removeEventListener('engram:edit-bot-icon', edit)
-  }, [])
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
   const listRef = useRef<HTMLDivElement | null>(null)
   const selectedId = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.getSnapshot().selectedId)
   const selected = bots.find((b) => b.id === selectedId) ?? null
-  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt, awaitingModel } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
+  const { messages, loaded: threadLoaded, busy, workLines, keptWork, offer, draft, startedAt } = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(selected?.id ?? null))
   // One local model answers one comet at a time: while another comet holds
   // it, the box says so instead of swallowing a send in silence.
   // Each comet works on its own tab with its own brain session: only this
@@ -88,9 +46,8 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const { compact } = useCompactBrowser()
   const locked = false
 
-  // The wait, said from evidence - see pendingStatus for the order it trusts.
   const latestStep = workLines[workLines.length - 1]
-  const status = pendingStatus(threadT(threadLang(messages)), awaitingModel ? undefined : latestStep)
+  const status = pendingStatus(threadT(threadLang(messages)))
 
   // Until the first read comes back, an empty list means "not read yet",
   // and the screen says nothing rather than "no comets" - a claim it cannot
@@ -130,8 +87,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   // Selecting a comet shows what the store already holds and refreshes it
   // from disk underneath; a turn still streaming stays on top of the reload.
   useEffect(() => {
-    clearInfoTimer()
-    setInfo((prior) => (!selectedId || prior === 'closing' ? 'closed' : prior))
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
   }, [selectedId])
 
@@ -140,64 +95,34 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   useLoadEarlier(listRef, selected?.id ?? null, older)
   // The bubble the current work belongs to: the last one the comet wrote.
 
-  // A tapped choice goes the same way as typed words: through the thread,
-  // so the comet hears it with the conversation behind it.
   const sendText = async (message: string, attachments: ChatAttachmentDto[] = []) => {
     if ((!message && !attachments.length) || !selected) return
     await sendCometMessage(api, cometThreads, selected.id, message, attachments)
   }
 
-  const sendChip = (label: string): boolean => {
-    if (selected && sendCometReply(api, cometThreads, selected.id, label)) return true
-    showToast(CHIP_FAILED)
-    return false
-  }
-
   const stop = async () => {
     if (!selected) return
     const tt = threadT(threadLang(messages))
-    const said = cometThreads.stop(selected.id, stoppedText(messages, latestStep ? pendingStatus(tt, latestStep) : undefined), tt('bubble.stopped'))
+    const said = cometThreads.stop(selected.id, stoppedText(messages, !latestStep ? undefined : isSaidLine(latestStep) || isYouLine(latestStep) ? pendingStatus(tt) : stepLabel(tt, latestStep)), tt('bubble.stopped'))
     await api.chatAbort(cometChannel(selected.id), said).catch(() => undefined)
   }
 
   return (
-    <div className={`bots-view${selected && info !== 'closed' ? ' info-open' : ''}`} data-testid="bots-view">
+    <div className="bots-view" data-testid="bots-view">
       <section className="bots-main">
         {selected ? (
           <>
           {/* Keyed by the comet: looking at another one brings its thread
               in with a short rise, the way a page turns, not a swap. */}
           <div className="bots-chat" key={selected.id}>
-            <BotTitlePill bot={selected} open={info === 'open'} onToggle={toggleInfo} />
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
-              {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} onPick={sendChip} />}
-              <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
-                <ThreadOffers botId={selected.id} onSend={sendChip} />
+              {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} />}
+              <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork}> 
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
                 <PermissionCard lane={cometChannel(selected.id)} />
               </CometMessages>
-              {errand.running && (
-                <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
-                  <ThinkingDots />
-                  <span className="bots-working-body">
-                    <span className="bots-working-line">
-                      {t('bots.errandRunning', {
-                        phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
-                      })}
-                    </span>
-                    {errand.pages && errand.pages.length > 0 ? (
-                      <span className="bots-working-detail">{errand.pages.map((x) => x.title || x.url).join(' · ')}</span>
-                    ) : errand.queries ? (
-                      <span className="bots-working-detail">{errand.queries.join(' · ')}</span>
-                    ) : null}
-                  </span>
-                  <button className="secondary bots-working-stop" onClick={() => void api.errandAbort()}>
-                    {t('errands.stop')}
-                  </button>
-                </div>
-              )}
             </div>
             <BotComposer
               key={selected.id}
@@ -221,7 +146,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
           </div>
         )}
       </section>
-      {selected && info !== 'closed' && <BotInfoPane key={selected.id} bot={selected} pickAvatar={iconFor?.id === selected.id ? iconFor : null} entering={infoEnter === selected.id} closing={info === 'closing'} onClose={closeInfo} onClosed={finishInfoClose} onEntered={() => setInfoEnter(null)} />}
     </div>
   )
 })

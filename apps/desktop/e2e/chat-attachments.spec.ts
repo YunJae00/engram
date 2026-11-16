@@ -141,26 +141,29 @@ test('rejects unsupported inputs visibly and accepts an image', async () => {
   await expect(page.getByTestId('bots-input-send')).toBeEnabled()
 })
 
-test('splitting a conversation preserves and sends its multiline draft and attachments', async () => {
+test('leaving a conversation and coming back preserves and sends its multiline draft and attachments', async () => {
   const id = await page.evaluate(() => localStorage.getItem('engram.comets.selected'))
   expect(id).toBeTruthy()
   const draft = 'Review the attached image.\nKeep this second line separate.'
   await page.getByTestId('bots-input').fill(draft)
-  await page.getByTestId('mission-layout-2').click()
-  const mini = page.getByTestId(`mini-chat-${id}`)
-  await expect(mini.getByRole('textbox')).toHaveValue(draft)
-  await expect(mini.getByLabel('Attached files')).toContainText('pixel.png')
-  await mini.getByTestId(`mini-input-${id}-send`).click()
-  await expect(mini.getByRole('textbox')).toHaveValue('')
-  await expect(mini.getByLabel('Attached files')).toHaveCount(0)
-  await expect(mini.locator('.bubble-msg.user').last()).toContainText('Keep this second line separate.')
-  await expect(mini.locator('.bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
+  await expect(page.getByTestId('mission-layout-2')).toHaveCount(0)
+  // There is no split view: the draft and its files wait in the same chat while another one is open.
+  const other = await page.evaluate(async id => { const bots = await window.engram.botsList(); return (bots.find(bot => bot.id !== id) ?? await window.engram.botCreate({ name: 'Other chat' })).id }, id)
+  await page.getByTestId(`bot-${other}`).click()
+  await expect(page.getByTestId(`bot-${other}`)).toHaveClass(/active/)
+  await page.getByTestId(`bot-${id}`).click()
+  await expect(page.getByTestId('bots-input')).toHaveValue(draft)
+  await expect(page.getByLabel('Attached files')).toContainText('pixel.png')
+  await page.getByTestId('bots-input-send').click()
+  await expect(page.getByTestId('bots-input')).toHaveValue('')
+  await expect(page.getByLabel('Attached files')).toHaveCount(0)
+  await expect(page.locator('.bots-view .bubble-msg.user').last()).toContainText('Keep this second line separate.')
+  await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
   // The empty seat of a reply in progress draws no bubble, so wait for the turn itself to be saved.
   await expect.poll(async () => (await page.evaluate(id => window.engram.botTranscript(id!), id)).filter(turn => turn.role === 'user').at(-1)?.text, { timeout: 30_000 }).toBe(`${draft}\n\nAttached: pixel.png`)
   const turns = await page.evaluate(id => window.engram.botTranscript(id!), id)
   const sent = turns.filter(turn => turn.role === 'user').at(-1)!
   expect(sent.attachments).toHaveLength(1)
-  await page.getByTestId('mission-layout-1').click()
   await expect(page.getByTestId('bots-input')).toHaveValue('')
   await expect(page.locator('.bots-view .bubble-msg.user').last().locator('.chat-user-text')).toHaveText(draft)
   await expect(page.locator('.bots-view .bubble-msg.user').last().getByRole('img', { name: 'pixel.png' })).toBeVisible()

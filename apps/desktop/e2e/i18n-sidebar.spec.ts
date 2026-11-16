@@ -36,7 +36,7 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
     await app.evaluate(({ BrowserWindow }, id) => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which vegetables should go in the patch?', options: ['Lettuce and radish', 'Beans and peas'] } })
     }, chatId)
-    await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-choices"] .decision-card')).toBeVisible()
+    await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-choices"]')).toHaveCount(0)
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const rows = await measureChat(page)
     const overflow = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.app-sidebar *')]

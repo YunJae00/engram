@@ -9,10 +9,10 @@ const fileName = (arg: string): string => {
   return arg.trim().split(/[\\/]/).pop() || 'a file'
 }
 
-export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
+export const KO: Partial<Record<StringKey, string>> = {
   'bots.thinking': '생각하는 중',
   'bots.stepFindProcedure': '전에 배운 방법이 있는지 보는 중',
-  'bots.stepSearchMemory': '기억에서 “{arg}” 찾는 중',
+  'bots.stepSearchMemory': '전에 나눈 얘기 살펴보는 중',
   'bots.stepReadNote': '메모 읽는 중',
   'bots.stepSearchWeb': '“{arg}” 검색하는 중',
   'bots.stepOpenPage': '페이지 여는 중',
@@ -39,13 +39,10 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'card.continue': '진행해 주세요',
   'card.answerNeeded': '답이 필요해요',
   'card.paused': '작업이 멈췄어요',
-  'outage.title': '{name}가 지금 응답하지 않아요',
-  'outage.body': 'Engram이나 설정 문제가 아니라 {name} 쪽 문제예요. 메시지는 그대로 있으니 잠시 뒤 다시 보내 주세요.',
-  'outage.again': '다시 보내기',
-  'outage.details': '자세히',
+  'outage.body': '잠깐 연결이 끊겨서 답을 못 받았어요. 조금 뒤에 같은 말을 한 번 더 보내 주세요.',
+  'error.stopped': '문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.',
   'card.replyBelow': '아래 입력창에 답해 주시면 이어서 할게요.',
   'aside.passed': '대화 기록에 넣었어요.',
-  'aside.unapplied': '대화 기록에 저장된 말이에요.',
   'aside.next': '알겠어요. 지금 하던 거 끝나면 바로 할게요.',
   'habit.label': '일하는 방식',
   'study.offerLabel': '다른 방법을 찾아볼까요?',
@@ -64,7 +61,6 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'habit.answerBelow': '아래 질문에 답해 주시면 채워서 저장할게요.',
   'habit.kept': '저장했어요. 다음에 이 일이 오면 이 순서로 할게요.',
   'habit.dismissed': '넘겼어요. 다시 묻지 않을게요.',
-  'card.choose': '어떻게 할까요?',
   'card.post': '이대로 올릴까요?',
   'card.signIn': '로그인이 필요해요',
   'card.check': '직접 확인이 필요해요',
@@ -86,7 +82,6 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'routines.wallStop': '그만하기',
   'routines.running': '실행 중…',
   'routines.run': '실행',
-  'bots.offerAsked': '하나 고르거나 직접 적어 주세요.',
   'bots.offerRun': '“{name}”로 바로 할 수 있어요. 실행할까요?',
   'bots.offerStanding': '“{name}”을 {times} 부탁하셨어요. {when}에 알아서 할까요?',
   'bots.offerStandingGo': '네, {when}',
@@ -101,7 +96,7 @@ export const KO: Partial<Record<StringKey | 'aside.unapplied', string>> = {
   'schedule.dayNames': '일요일,월요일,화요일,수요일,목요일,금요일,토요일',
 }
 
-export const KO_WORDS = { workPreview: { showApp: '앱 보기', runningHidden: '뒤에서 실행 중', live: '실시간', stoppedFrame: '멈춘 화면', reconnecting: '다시 연결 중…', title: "미리보기", show: "미리보기 보기", hide: "미리보기 숨기기", expand: "미리보기 펼치기", collapse: "미리보기 접기", choose: "미리보기 선택", browser: "브라우저", noSite: "열린 웹사이트가 없어요", openBeside: "채팅 옆에서 브라우저 열기", openFull: "전체 브라우저 열기", description: "미리보기 · 실제 앱과 페이지는 별도로 열려 있어요", working: "작업 중", recorded: "작업 기록", stopped: "멈춤", waiting: "확인 필요", lastSnapshot: "마지막 화면", snapshotAge: (n: number) => n >= 60 ? `${Math.floor(n / 60)}분 전` : `${n}초 전`, unavailable: "미리보기 없음", noSnapshot: "이번 작업의 화면 없음", screenPermission: "화면 기록 권한이 필요해요. 목록에 Engram이 있으면 −로 지우고 +로 다시 추가해 주세요.", captureUnsafe: "안전하게 캡처할 수 없음", officeActivity: "창 없이 Office에서 읽는 중", firstFrame: "연결 중…", delayed: "새 화면 지연 · 마지막 화면" }, controlTitle: '컴퓨터 제어를 허용할까요?', runOutside: '샌드박스 밖에서 이 명령을 실행할까요?', runCommand: '이 명령을 실행할까요?', allowCommands: '이 봇이 명령을 실행해도 될까요?', commandsSandboxed: '파일을 읽을 수 있어요. 쓰기는 작업 폴더 안에서만 하고 네트워크는 막혀 있어요.', commandsOpen: '접근할 수 있는 모든 파일을 읽거나 바꿀 수 있고 네트워크도 써요. 샌드박스 없이 실행돼요.', thisApp: '이 앱', appGate: (app: string, control: string, sending?: string) => `${app}에서 ${control === 'Send' ? '보내기(Enter)를' : `“${control === 'Unnamed control' ? '이름 없는 버튼' : control}”을(를)`} 진행할까요?${sending ? ` 보낼 내용: “${sending}”` : ' 내용이 전송되거나 바뀔 수 있어요.'}`, controlHint: '이번 차례에 마우스와 키보드를 사용해요. Esc나 중지로 끝낼 수 있어요. 승인 뒤에도 클릭하거나 키를 누르면 제어가 멈춰요. 마우스 이동은 괜찮아요.', approveTask: '이 작업 동안 허용', foregroundTaken: (app: string) => `${app}가 창을 앞으로 가져왔어요 · 계속 진행 중`, computerAccessChecking: '컴퓨터 접근 권한을 확인하고 있어요…', computerAccessUnavailable: '컴퓨터에 접근할 수 없어요', computerAccessFallback: '현재 세션에서 앱에 접근할 수 없어요. 브라우저 작업은 계속할 수 있어요.', tryAgain: '다시 시도', unverifiedAction: '마지막 앱 또는 파일 작업의 결과를 확인하지 못했어요.', unfinishedWork: '아직 마치지 못한 부분이 있어요. 어떻게 이어갈지 알려주세요.', officeUnread: '파일을 쓴 뒤에 다시 읽어 확인하지 못했어요. 사용하기 전에 파일을 열어 확인해 주세요.', evidenceUnconfirmed: '요청하신 캡처·페이지 확인·업로드 중 확인하지 못한 것이 있어요.', checksRemain: '결과는 나왔지만 일부를 확인하지 못했어요. 어떻게 이어갈지 알려주세요.', declinedStop: '진행하지 않기로 하셔서 여기서 멈췄어요. 어떻게 이어갈지 알려주세요.', checkMissing: '결과 확인을 끝내지 못했어요. 어떻게 이어갈지 알려주세요.', turnLimit: '이번 작업의 처리 한도에 도달해 멈췄어요.', noAnswer: '답을 받지 못하고 끝났어요.', partialResult: '확인하지 못한 항목이 있어요.', resultsSoFar: '현재까지 확인한 내용:', budgetStop: '이번 작업의 처리 한도에 도달해 멈췄어요. 진행 내용은 저장되어 있어요. 아래 결과를 확인한 뒤 이어서 요청해 주세요.', stopped: '작업이 멈췄어요', computerControls: '컴퓨터 제어', closeComputer: '컴퓨터 제어 닫기', checkStatus: { pass: '확인됨', fail: '실패', unknown: '확인 안 됨', not_applicable: '해당 없음' }, checkSummary: (pending: number, total: number) => pending ? `${total}개 중 ${pending}개 확인 안 됨` : `${total}개 모두 확인됨`, sourceGrounding: '주장의 출처 근거', sources: '읽은 자료', done: (count: number) => `작업 기록 · ${count}단계`, total: (seconds: number) => `${seconds}초`, scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개`, today: '오늘', stoppedAt: (line: string) => `여기까지 했어요: ${line}` } as const
+export const KO_WORDS = { workPreview: { showApp: '앱 보기', runningHidden: '뒤에서 실행 중', live: '실시간', stoppedFrame: '멈춘 화면', reconnecting: '다시 연결 중…', title: "미리보기", show: "미리보기 보기", hide: "미리보기 숨기기", expand: "미리보기 펼치기", collapse: "미리보기 접기", choose: "미리보기 선택", browser: "브라우저", noSite: "열린 웹사이트가 없어요", openBeside: "채팅 옆에서 브라우저 열기", openFull: "전체 브라우저 열기", description: "미리보기 · 실제 앱과 페이지는 별도로 열려 있어요", working: "작업 중", recorded: "작업 기록", stopped: "멈춤", waiting: "확인 필요", lastSnapshot: "마지막 화면", snapshotAge: (n: number) => n >= 60 ? `${Math.floor(n / 60)}분 전` : `${n}초 전`, unavailable: "미리보기 없음", noSnapshot: "이번 작업의 화면 없음", screenPermission: "화면 기록 권한이 필요해요. 목록에 Engram이 있으면 −로 지우고 +로 다시 추가해 주세요.", captureUnsafe: "안전하게 캡처할 수 없음", officeActivity: "창 없이 Office에서 읽는 중", firstFrame: "연결 중…", delayed: "새 화면 지연 · 마지막 화면" }, controlTitle: '컴퓨터 제어를 허용할까요?', runOutside: '제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?', runCommand: '이 명령을 실행할까요?', allowCommands: '이 봇이 명령을 실행해도 될까요?', commandsSandboxed: '파일을 읽을 수 있어요. 고치는 건 작업 폴더 안에서만 하고 인터넷은 쓰지 않아요.', commandsOpen: '이 컴퓨터에서 열 수 있는 파일을 모두 읽거나 바꿀 수 있고 인터넷도 써요. 보호 장치 없이 실행돼요.', thisApp: '이 앱', appGate: (app: string, control: string, sending?: string) => `${app}에서 ${control === 'Send' ? '보내기(Enter)를' : `“${control === 'Unnamed control' ? '이름 없는 버튼' : control}”을(를)`} 진행할까요?${sending ? ` 보낼 내용: “${sending}”` : ' 내용이 전송되거나 바뀔 수 있어요.'}`, controlHint: '이번 차례에 마우스와 키보드를 사용해요. Esc나 중지로 끝낼 수 있어요. 승인 뒤에도 클릭하거나 키를 누르면 제어가 멈춰요. 마우스 이동은 괜찮아요.', approveTask: '이 작업 동안 허용', foregroundTaken: (app: string) => `${app}가 창을 앞으로 가져왔어요 · 계속 진행 중`, computerAccessChecking: '컴퓨터 접근 권한을 확인하고 있어요…', computerAccessUnavailable: '컴퓨터에 접근할 수 없어요', computerAccessFallback: '지금은 앱을 다룰 수 없어요. 웹에서 하는 일은 계속할 수 있어요.', tryAgain: '다시 시도', unverifiedAction: '마지막 앱 또는 파일 작업의 결과를 확인하지 못했어요.', unfinishedWork: '아직 마치지 못한 부분이 있어요. 어떻게 이어갈지 알려주세요.', officeUnread: '파일을 쓴 뒤에 다시 읽어 확인하지 못했어요. 사용하기 전에 파일을 열어 확인해 주세요.', evidenceUnconfirmed: '요청하신 캡처·페이지 확인·업로드 중 확인하지 못한 것이 있어요.', checksRemain: '결과는 나왔지만 일부를 확인하지 못했어요. 어떻게 이어갈지 알려주세요.', declinedStop: '진행하지 않기로 하셔서 여기서 멈췄어요. 어떻게 이어갈지 알려주세요.', checkMissing: '결과 확인을 끝내지 못했어요. 어떻게 이어갈지 알려주세요.', turnLimit: '이번 작업의 처리 한도에 도달해 멈췄어요.', noAnswer: '답을 받지 못하고 끝났어요.', readsUnfinished: '몇 군데는 끝까지 읽지 못했어요.', partialResult: '확인하지 못한 항목이 있어요.', resultsSoFar: '현재까지 확인한 내용:', budgetStop: '이번 작업의 처리 한도에 도달해 멈췄어요. 진행 내용은 저장되어 있어요. 아래 결과를 확인한 뒤 이어서 요청해 주세요.', stopped: '작업이 멈췄어요', computerControls: '컴퓨터 제어', closeComputer: '컴퓨터 제어 닫기', checkStatus: { pass: '확인됨', fail: '실패', unknown: '확인 안 됨', not_applicable: '해당 없음' }, checkSummary: (pending: number, total: number) => pending ? `${total}개 중 ${pending}개 확인 안 됨` : `${total}개 모두 확인됨`, sourceGrounding: '주장의 출처 근거', sources: '읽은 자료', done: (count: number) => `작업 기록 · ${count}단계`, total: (seconds: number) => `${seconds}초`, scheduled: '예약해 둔 요청', kept: (count: number) => `예약 ${count}개`, today: '오늘', stoppedAt: (line: string) => `여기까지 했어요: ${line}` } as const
 
 // The same, for a conversation held in Korean.
 const name = (arg: string): string => { const file = fileName(arg); return file === 'a saved file' ? '저장된 파일' : file === 'a file' ? '파일' : file }
@@ -111,9 +106,9 @@ export const WORK_KO: Record<string, string | ((arg: string) => string)> = {
   excel_write: 'Excel 통합 문서 고치는 중', excel_read: '통합 문서 확인하는 중', excel_workbooks: '통합 문서 찾는 중',
   outlook_mail: '메일 살펴보는 중', outlook_read: '메일 읽는 중', outlook_draft: '메일 초안 쓰는 중', outlook_calendar: '일정 확인하는 중', schedule: '예약 정리하는 중',
   Read: arg => `${name(arg)} 읽는 중`, NotebookRead: arg => `${name(arg)} 읽는 중`,
-  Glob: arg => `파일 찾는 중 (${arg})`, Grep: arg => `파일에서 “${arg}” 찾는 중`, LS: '폴더 살펴보는 중',
+  Glob: '파일 찾는 중', Grep: '파일 내용 살펴보는 중', LS: '폴더 살펴보는 중',
   Write: arg => `${name(arg)} 쓰는 중`, Edit: arg => `${name(arg)} 고치는 중`, MultiEdit: arg => `${name(arg)} 고치는 중`, NotebookEdit: arg => `${name(arg)} 고치는 중`,
-  Bash: '명령 실행하는 중', PowerShell: '명령 실행하는 중', Shell: '명령 실행하는 중',
+  Bash: '필요한 작업 하는 중', PowerShell: '필요한 작업 하는 중', Shell: '필요한 작업 하는 중',
   file_read: arg => `${name(arg)} 읽는 중`, file_read_workbook: arg => `${name(arg)} 읽는 중`, file_read_package: arg => `${name(arg)} 읽는 중`,
   render_file: 'PDF/이미지 만드는 중', file_create_copy: arg => `${name(arg)} 저장하는 중`, file_create_workbook: arg => `${name(arg)} 저장하는 중`, file_edit_package: arg => `${name(arg)} 고치는 중`,
   find_files: arg => `“${arg}” 파일 찾는 중`, file_move: '파일 옮기는 중', open_skill: '배운 방법 읽는 중',
@@ -121,11 +116,18 @@ export const WORK_KO: Record<string, string | ((arg: string) => string)> = {
   outage: arg => `${arg} 쪽에서 응답이 없어 잠시 뒤 다시 보내요`,
   page_do: '페이지에서 하나씩 해보는 중', app_do: '앱에서 하나씩 해보는 중', task_plan: '할 일 순서 정하는 중', report_result_check: '확인 결과 정리하는 중', collect_results: '모은 내용을 확인하는 중',
   artifact_read: arg => `${name(arg)} 읽는 중`,
+  search_chats: '전에 나눈 얘기 살펴보는 중', keep_in_mind: '적어 두는 중', keep_how_to: '방법 적어 두는 중', desk_activity: '오늘 한 일 살펴보는 중', notifications: '알림 확인하는 중',
+  staff: '팀 정리하는 중', new_bot: '팀 정리하는 중', assign: '일 나눠 맡기는 중', hire_members: '일 나눠 맡기는 중', review_member: '가져온 내용 살펴보는 중', team_status: '다들 뭐 하는지 보는 중', company_status: '다들 뭐 하는지 보는 중',
+  standing_approvals: '허용해 둔 곳 확인하는 중', list_windows: '열린 창 살펴보는 중', list_apps: '앱 살펴보는 중', look_desktop: '화면 보는 중', read_desktop: '화면 읽는 중', desktop_action: '앱 다루는 중', desktop_sequence: '앱 다루는 중',
+  read_live_document: '열린 문서 읽는 중', edit_live_document: '열린 문서 고치는 중', compose_live_document: '열린 문서 쓰는 중', verify: '결과 확인하는 중', capture_evidence: '화면 남기는 중', wait_for: '기다리는 중', upload_file: '파일 올리는 중',
   app_read: '앱 화면 읽는 중', app_text: '앱의 글 읽는 중', app_set: '앱에 입력하는 중', app_press: '앱에서 누르는 중', open_app: '앱 여는 중', page_steps: '페이지에서 누르고 입력하는 중', read_pages: '페이지 몇 개 읽는 중',
 }
+// A step nobody wrote a line for is still said in plain words, never by its internal name.
+export const WORK_KO_OTHER = '일하는 중'
+export const GROUP_KO_OTHER = '작업'
 export const GROUP_KO: Record<string, string> = {
   'Browsing the web': '웹 살펴보기', 'Working with an app': '앱 다루기', 'Using the computer': '컴퓨터 사용', 'Checking your mail': '메일 확인', 'Checking your calendar': '일정 확인', 'Working with documents': '문서 작업',
-  'Using your memory': '기억 찾아보기', 'Planning the work': '순서 정하기', 'Running commands': '명령 실행', 'Checking the result': '결과 확인', 'Working with files': '파일 작업',
+  'Using your memory': '전에 한 얘기 살펴보기', 'Planning the work': '순서 정하기', 'Running commands': '필요한 작업', 'Checking the result': '결과 확인', 'Working with files': '파일 작업',
 }
 export const KO_STOP = { starts: ['중지했어요.', '멈췄어요.', '여기까지 했어요: '], ended: '답을 마치지 못하고 끝났어요.', retry: '이어서 해줘' } as const
 export const FILE_CARD_KO = { open: '열기', reveal: 'Finder에서 보기', revealWin: '탐색기에서 보기', previous: '(이전)', previousTitle: '이전 버전 열기' } as const

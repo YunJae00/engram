@@ -11,11 +11,3 @@
   height: min(65vh, 720px);
   min-height: 180px;
 }
-.mission-preview.native-mission-preview {
-  cursor: auto;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  box-sizing: border-box;
-}

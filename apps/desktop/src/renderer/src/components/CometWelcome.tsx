@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, selectComet } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
-import { ModelPicker } from './ModelPicker.js'
 import { t } from '../i18n.js'
 import { CometFace } from './Icon.js'
-import { Globe } from 'lucide-react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
 import { BotAvatar, useAvatarTheme } from './BotAvatar.js'
 import { chatMessage, sendCometMessage } from '../lib/attachments.js'
-import { webPane } from '../lib/webPane.js'
-import { selectDesktopSurface } from '../lib/desktopSession.js'
 
 export function CometWelcome() {
   const [draft, setDraft] = useState('')
@@ -48,23 +43,10 @@ export function CometWelcome() {
     } catch (cause) { setError(String(cause)) }
     finally { pending.current = false; setCreating(false) }
   }
-  const openWeb = async () => {
-    if (pending.current || attaching) return
-    pending.current = true; setCreating(true); setError('')
-    try {
-      const bot = await api.botCreate({ name: t('bots.untitled'), purpose: '' })
-      cometThreads.setDraft(bot.id, draft)
-      cometThreads.setAttachments(bot.id, attachments)
-      const lane = cometChannel(bot.id)
-      selectDesktopSurface(lane, 'browser'); webPane.open(lane); selectComet(bot.id)
-    } catch (cause) { setError(String(cause)) }
-    finally { pending.current = false; setCreating(false) }
-  }
   return <section className="comet-welcome" data-testid="comet-welcome">
     <div className="comet-welcome-space"><div className="comet-welcome-mark" aria-hidden><span />{primary ? <div><BotAvatar id={primary.id} override={primary.avatar} primary size={64} state="idle" theme={theme} /></div> : <CometFace size={38} />}</div></div>
     <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} onStop={() => undefined}
-      placeholder={t('welcome.placeholder')} maxLength={2000} busy={false} disabled={creating} testId="welcome-input" autoFocus attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching}
-      actions={<button className="composer-web" data-testid="welcome-web" aria-label={t('welcome.openWeb')} title={t('welcome.openWeb')} disabled={creating || attaching} onClick={() => void openWeb()}><Globe size={15} strokeWidth={1.9} aria-hidden /><span>{t('welcome.openWeb')}</span></button>} tools={<ModelPicker />} />
+      placeholder={t('welcome.placeholder')} maxLength={2000} busy={false} disabled={creating} testId="welcome-input" autoFocus attachments={attachments} onAttachmentsChange={setAttachments} onAttachingChange={setAttaching} />
     {error && <p role="alert">{error}</p>}
   </section>
 }

@@ -44,7 +44,7 @@ export function Thinking({
       <span className="bubble-thinking-label" key={text.replace(/\d+/g, '')}>
         {text}
       </span>
-      <span className="thinking-elapsed" title="Total response time, not the duration of the current step" aria-hidden>{total(seconds)}</span>
+      <span className="thinking-elapsed" aria-hidden>{total(seconds)}</span>
     </span>
   )
 }

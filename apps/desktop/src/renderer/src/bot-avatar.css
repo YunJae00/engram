@@ -11,9 +11,7 @@
 .bot-avatar[data-size='64'] { width: 64px; height: 64px; }
 .bot-avatar[data-size='96'] { width: 96px; height: 96px; }
 .sidebar-conversation-avatar > .bot-avatar[data-size='36'] { width: 32px; height: 32px; }
-.bots-title-pill > .bot-avatar[data-size] { width: 36px; height: 36px; }
 .bot-empty > .bot-avatar[data-size='64'], .comet-welcome-mark .bot-avatar[data-size='64'], .create-bot-preview > .bot-avatar[data-size='64'] { width: 80px; height: 80px; }
-.bot-info-avatar > .bot-avatar[data-size='48'] { width: 64px; height: 64px; }
 
 .bot-avatar-art { display: block; width: 100%; height: 100%; }
 
@@ -48,4 +46,3 @@
 .avatar-picker-cell[aria-checked="true"] { outline: 2px solid var(--ink, #1C1C1E); outline-offset: -2px; }
 .avatar-picker-cell:focus-visible { outline: 2px solid var(--ink, #1C1C1E); outline-offset: 1px; box-shadow: 0 0 0 4px rgba(28, 28, 30, 0.20); }
 .avatar-picker-cell > .bot-avatar { width: 52px; height: 52px; pointer-events: none; }
-.bot-info-avatar { padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; line-height: 0; }

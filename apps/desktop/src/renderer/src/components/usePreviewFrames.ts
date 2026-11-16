@@ -32,7 +32,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
   const { bindings } = useDesktopSession()
   const binding = bindings.find(item => item.lane === lane && item.readable)
   const { activity } = useShellState()
-  const active = tile ? activity === 'mission' : activity === 'bots'
+  const active = activity === 'bots'
   const [visible, setVisible] = useState(document.visibilityState === 'visible')
   useEffect(() => { setVisible(document.visibilityState === 'visible') }, [active])
   useEffect(() => {

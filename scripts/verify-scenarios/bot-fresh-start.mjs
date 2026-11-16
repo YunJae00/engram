@@ -1,7 +1,7 @@
 // Bot fresh start: forces the English UI, creates one bot ('Fresh Bot') through the running app, writes two transcript
 // turns as a file, reloads, then runs checks F1-F2: the chat shows the seeded turns, and in light and dark the chat has
-// no start-over button (no bots-fresh, no 'New chat' button) and no bots-fresh-confirm dialog, while the title pill and
-// composer are still visible.
+// no start-over button (no bots-fresh, no 'New chat' button), no bots-fresh-confirm dialog and no title pill, while the
+// composer is still visible.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -44,7 +44,7 @@ export async function run(page, { paths }) {
   const failures = []
   const ROW = page.locator(`[data-testid="bot-${id}"]`).first()
   const CHAT = page.locator(CHAT_SEL)
-  const PILL = CHAT.locator('[data-testid="bots-title-pill"]')
+  const PILL = page.locator('[data-testid="bots-title-pill"]')
   const INPUT = CHAT.locator('[data-testid="bots-input"]')
   let opened = false
   const check = async (checkId, body) => {
@@ -59,7 +59,8 @@ export async function run(page, { paths }) {
     if (row) return row
     await ROW.click({ timeout: WAIT_MS })
     return until(async () => {
-      if (!(await PILL.innerText({ timeout: WAIT_MS })).includes(BOT)) return `title pill text lacks ${BOT}`
+      if (await PILL.count()) return 'a title pill is rendered, expected none'
+      if (!(await ROW.innerText({ timeout: WAIT_MS })).includes(BOT)) return `sidebar row text lacks ${BOT}`
       const text = await page.locator('[data-testid="bots-thread"]').innerText({ timeout: WAIT_MS })
       const missing = TURNS.find((turn) => !text.includes(turn.text))
       return missing ? `bots-thread lacks '${missing.text}'` : ''
@@ -75,7 +76,7 @@ export async function run(page, { paths }) {
       }, theme)
       const themed = await until(async () => await page.locator('html').getAttribute('data-theme') === theme ? '' : `html data-theme is not ${theme}`)
       if (themed) return themed
-      if (!await PILL.isVisible()) return `${theme}: title pill not visible`
+      if (await PILL.count()) return `${theme}: a title pill is rendered, expected none`
       if (!await INPUT.isVisible()) return `${theme}: composer not visible`
       const found = {
         fresh: await page.locator('[data-testid="bots-fresh"]').count(),

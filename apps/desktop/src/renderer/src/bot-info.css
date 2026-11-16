@@ -1,11 +1,4 @@
-button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
-.bot-info-pane {
-  flex: none; width: var(--info-pane-width); max-width: 100%; box-sizing: border-box; min-height: 0;
-  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
-  border-left: 1px solid var(--border-soft); background: var(--panel-bg);
-}
-.bot-info-pane.entering { animation: bot-info-in 180ms ease; }
-.bot-info-pane.closing { pointer-events: none; animation: bot-info-out 180ms ease forwards; }
+
 .bots-view.info-open .bots-chat { min-width: 0; --page-gutter: 24px; }
 @keyframes bot-info-in {
   from { opacity: 0; transform: translateX(16px); }
@@ -15,26 +8,3 @@ button.bots-title-pill { border: 0; font: inherit; cursor: pointer; }
   from { opacity: 1; transform: none; }
   to { opacity: 0; transform: translateX(16px); }
 }
-.bot-info-panel { padding: 24px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.bot-info-panel h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
-.bot-info-panel > p { margin: 0; font-size: var(--fs-small); color: var(--fg-dim); overflow-wrap: anywhere; }
-.bot-info-panel > label, .bot-info-panel [role="radiogroup"] { display: flex; flex-direction: column; gap: 6px; align-self: stretch; min-width: 0; }
-.bot-info-panel > label > span, .bot-info-panel [role="radiogroup"] > span { font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim); }
-.bot-info-panel textarea { box-sizing: border-box; width: 100%; resize: vertical; font: inherit; font-size: var(--fs-small); }
-.bot-info-panel [role="radiogroup"] label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-small); color: var(--fg); }
-.bot-info-pane .bots-memory {
-  position: static; align-self: stretch; max-height: none; overflow: visible; box-shadow: none;
-  backdrop-filter: none; -webkit-backdrop-filter: none; animation: none; z-index: auto;
-}
-@media (prefers-reduced-motion: reduce) {
-  .bot-info-pane.entering, .bot-info-pane.closing { animation: none; }
-}
-.bot-info-panel > [data-testid="bot-routines"] { align-self: stretch; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] ul, .bot-info-panel [data-testid="bot-routines"] ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] ul > li { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] strong { font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] li > span { font-size: var(--fs-small); color: var(--fg-dim); overflow-wrap: anywhere; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] li > div { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] section h3 { margin: 0 0 6px; font-size: var(--fs-small); font-weight: 600; color: var(--fg-dim); }
-.bot-info-panel [data-testid="bot-routines"] ol > li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: var(--fs-small); color: var(--fg); overflow-wrap: anywhere; min-width: 0; }
-.bot-info-panel [data-testid="bot-routines"] ol time { color: var(--fg-faint); }

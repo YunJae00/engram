@@ -3,7 +3,7 @@ import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot, type Vaul
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { openActivity, openWelcome } from './navigation.js'
+import { createBotFromPlus, openActivity, openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -61,61 +61,65 @@ async function capture(name: string): Promise<void> {
   await writeFile(join(screenshots, name), Buffer.from(png, 'base64'))
 }
 
-test('folder deletion offers cancellation and includes conversations hidden by search', async () => {
+// The sidebar lists and opens; it has no search field, no menus and no drag. Organizing is asked for in chat.
+const menus = () => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
+const chatLayout = async () => (await page.evaluate(() => window.engram.sidebarLayout())).chat
+const found = (query: string) => page.evaluate(q => window.engram.botsSearch(q).then(hits => hits.map(hit => hit.id)), query)
+const listed = () => page.getByTestId('sidebar-chat-collection').locator('.bots-row').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')))
+const refresh = () => app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
+async function expectNoSearch(): Promise<void> {
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('app-sidebar').locator('.sidebar-search, input, textarea')).toHaveCount(0)
+  await expect(page.getByText('No matches found', { exact: true })).toHaveCount(0)
+}
+
+test('a section has no menu or delete dialog; removing it through the app keeps its conversations', async () => {
   await openActivity(page, 'bots')
-  const ids = await page.evaluate(async () => {
+  const { ids, folder } = await page.evaluate(async () => {
     const first = await window.engram.botCreate({ name: 'Visible deletion fixture' })
     const second = await window.engram.botCreate({ name: 'Hidden deletion fixture' })
     const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Deletion fixture' } })
     const folder = layout.chat.folders.find(item => item.name === 'Deletion fixture')!
     for (const id of [first.id, second.id]) await window.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id, folder: folder.id } })
-    return [first.id, second.id]
+    return { ids: [first.id, second.id], folder: folder.id }
   })
-  await page.getByTestId('sidebar-search-toggle').click(); await page.getByRole('textbox', { name: 'Search conversations', exact: true }).fill('Visible deletion')
+  await expectNoSearch()
+  const box = page.getByTestId(`sidebar-folder-${folder}`)
+  for (const id of ids) await expect(box.getByTestId(`bot-${id}`)).toBeVisible()
   await page.locator('.sidebar-folder-head', { hasText: 'Deletion fixture' }).click({ button: 'right' })
-  await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Delete section?', exact: true })
-  await expect(dialog).toContainText('2 conversations')
-  await expect.poll(() => dialog.evaluate(node => { const rect = node.getBoundingClientRect(); return Math.abs(rect.left + rect.width / 2 - innerWidth / 2) < 2 && Math.abs(rect.top + rect.height / 2 - innerHeight / 2) < 2 })).toBe(true)
-  expect(await dialog.locator('button').evaluateAll(buttons => new Set(buttons.map(button => Math.round(button.getBoundingClientRect().height))).size)).toBe(1)
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
-  await capture('delete-folder-confirmation.png')
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
-  const refresh = await app.evaluate(({ BrowserWindow }) => Number(setInterval(() => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) }, 30)))
-  try {
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await expect(dialog).toHaveCount(0, { timeout: 2000 })
-  } finally {
-    await app.evaluate((_electron, timer) => clearInterval(timer), refresh)
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-  }
+  await expect(menus()).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Delete section?', exact: true })).toHaveCount(0)
+  await capture('section-without-menu.png')
+  await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'remove-folder', id } }), folder)
+  await expect(box).toHaveCount(0)
+  for (const id of ids) await expect(page.getByTestId('sidebar-chats').getByTestId(`bot-${id}`)).toBeVisible()
   expect(await page.evaluate(async ids => (await window.engram.botsList()).filter(bot => ids.includes(bot.id)).length, ids)).toBe(2)
-  await page.locator('.sidebar-folder-head', { hasText: 'Deletion fixture' }).click({ button: 'right' })
-  await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Delete section and 2 conversations', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
+  await page.evaluate(async ids => { for (const id of ids) await window.engram.botDelete(id) }, ids)
+  for (const id of ids) await expect(page.getByTestId(`bot-${id}`)).toHaveCount(0)
   expect(await page.evaluate(async ids => (await window.engram.botsList()).some(bot => ids.includes(bot.id)), ids)).toBe(false)
-  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
 })
 
-test('dragging previews an insertion gap and saves the displayed order', async () => {
+test('rows are not draggable: a drag gesture previews no insertion gap and leaves the order alone', async () => {
   const source = page.getByTestId(`bot-${bots[2]!.id}`).locator('..')
   const target = page.getByTestId(`bot-${bots[0]!.id}`).locator('..')
   await target.scrollIntoViewIfNeeded()
+  await expect(source).not.toHaveAttribute('draggable')
+  await expect(target).not.toHaveAttribute('draggable')
+  const order = await listed(), layout = await chatLayout()
   const transfer = await page.evaluateHandle(() => new DataTransfer())
   await source.dispatchEvent('dragstart', { dataTransfer: transfer })
   const box = (await target.boundingBox())!
   await target.dispatchEvent('dragover', { dataTransfer: transfer, clientY: box.y + 4 })
-  await expect(target).toHaveAttribute('data-insert', 'before')
-  await expect(target).toHaveAttribute('data-shift', 'down')
-  await expect(source).toHaveAttribute('data-drag-source', 'true')
-  expect(await target.locator('.sidebar-item-main').evaluate(node => getComputedStyle(node).translate)).toBe('0px 12px')
-  await capture('sidebar-insertion.png')
+  await expect(page.locator('.sidebar-item[data-insert], .sidebar-item[data-shift], .sidebar-item[data-drag-source], .sidebar-drop-target')).toHaveCount(0)
+  expect(await target.locator('.sidebar-item-main').evaluate(node => getComputedStyle(node).translate)).toBe('none')
+  await capture('sidebar-no-insertion.png')
   await target.dispatchEvent('drop', { dataTransfer: transfer, clientY: box.y + 4 })
   await source.dispatchEvent('dragend', { dataTransfer: transfer })
-  await expect(page.locator('.sidebar-item[data-insert]')).toHaveCount(0)
-  await expect.poll(() => page.getByTestId('sidebar-chats').locator('.sidebar-item-main').evaluateAll(nodes => nodes.slice(0, 2).map(node => node.getAttribute('data-testid')))).toEqual([`bot-${bots[2]!.id}`, `bot-${bots[0]!.id}`])
   await transfer.dispose()
+  await refresh()
+  await page.waitForTimeout(300)
+  expect(await listed()).toEqual(order)
+  expect(await chatLayout()).toEqual(layout)
 })
 
 test('conversation rows show persisted previews, timestamps and avatars after reload', async () => {
@@ -164,30 +168,29 @@ test('Engram navigation is inside its menu and the menu stays within the window'
   await page.getByTestId('app-sidebar-open').click()
 })
 
-test('one create menu is keyboard accessible, dismissible, and compact in both themes', async () => {
+test('the one + opens the new-bot dialog from the keyboard and dismisses, and empty space opens no menu, in both themes', async () => {
   for (const [width, theme] of [[1280, 'light'], [620, 'dark']] as const) {
     await page.setViewportSize({ width, height: 840 })
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await showSidebar()
-    const menu = page.locator('.sidebar-menu')
     await expect(page.locator('.sidebar-create-menu')).toHaveCount(0); await expect(page.getByTestId('bots-new')).toHaveCount(0)
-    // The header's new-section button is gone: the right-click menu on empty space is the one way in.
     await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
     const scroll = page.locator('.sidebar-scroll')
     await scroll.evaluate(node => { node.scrollTop = node.scrollHeight })
     const box = (await scroll.boundingBox())!
     await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
-    await expect(menu.getByTestId('sidebar-space-new-folder')).toBeFocused()
+    await expect(menus()).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-space-new-folder')).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-chat-folder-name')).toHaveCount(0)
+    await page.getByTestId('sidebar-create').focus()
     await page.keyboard.press('Enter')
-    const name = page.getByTestId('sidebar-chat-folder-name')
-    await expect(name).toBeFocused()
+    const dialog = page.getByTestId('create-bot-dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page.getByTestId('create-bot-name')).toBeFocused()
+    await expect.poll(() => dialog.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
     await capture(`minimal-create-${theme}.png`)
-    await page.keyboard.press('Escape'); await expect(name).toHaveCount(0)
-    await scroll.evaluate(node => { node.scrollTop = node.scrollHeight })
-    await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
-    await expect(menu.getByTestId('sidebar-space-new-folder')).toBeFocused()
-    await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
-    await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0)
+    await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0)
+    await showSidebar()
     await scroll.evaluate(node => { node.scrollTop = 0 })
   }
   await page.setViewportSize({ width: 1280, height: 940 })
@@ -214,7 +217,7 @@ test('Create stays visible while long conversations scroll', async () => {
   expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(bots.length + 1)
 })
 
-test('search finds long titles and previews inside collapsed folders without changing organization', async () => {
+test('a long-titled conversation in a collapsed folder is reached by opening the folder, without search and without changing organization', async () => {
   const folderIds = await page.evaluate(async ({ first, other }) => {
     let layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Release decisions' } })
     const matching = layout.chat.folders.find(folder => folder.name === 'Release decisions')!.id
@@ -226,68 +229,61 @@ test('search finds long titles and previews inside collapsed folders without cha
     return { matching, unrelated }
   }, { first: bots[0]!.id, other: bots[2]!.id })
   const before = await page.evaluate(() => window.engram.sidebarLayout())
-  await expect(page.getByTestId(`sidebar-folder-${folderIds.matching}`).getByRole('button', { name: /Release decisions/ }).first()).toHaveAttribute('aria-expanded', 'false')
-  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
-  await page.getByTestId('sidebar-search-toggle').click(); await input.fill('COBALT')
+  const head = page.getByTestId(`sidebar-folder-${folderIds.matching}`).getByRole('button', { name: /Release decisions/ }).first()
+  await expect(head).toHaveAttribute('aria-expanded', 'false')
   const first = page.getByTestId(`bot-${bots[0]!.id}`)
-  await expect(first).toBeVisible()
-  await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
-  await expect(page.getByTestId(`sidebar-folder-${folderIds.unrelated}`)).toHaveCount(0)
-  expect(await first.locator('.sidebar-conversation-name').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
-  await page.getByTestId('sidebar-search-toggle').click(); await input.fill('handoff checklist')
-  await expect(page.getByTestId(`bot-${bots[1]!.id}`)).toBeVisible()
-  await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
-  await page.getByTestId('sidebar-search-toggle').click(); await input.fill('no matching conversation')
-  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
   await expect(first).not.toBeVisible()
-  expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
+  await expectNoSearch()
+  // Message words are still findable where the chat looks them up.
+  expect(await found('handoff checklist')).toEqual([bots[1]!.id])
+  expect(await found('no matching conversation')).toEqual([])
+  await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByTestId(`sidebar-folder-${folderIds.matching}`).getByTestId(`bot-${bots[0]!.id}`)).toBeVisible()
+  expect(await first.locator('.sidebar-conversation-name').evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
+  await expect(page.getByTestId(`sidebar-folder-${folderIds.unrelated}`).getByTestId(`bot-${bots[2]!.id}`)).toBeVisible()
+  await expect(page.getByTestId(`bot-${bots[1]!.id}`)).toBeVisible()
+  await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'false')
+  await expect(first).not.toBeVisible()
+  await expect.poll(chatLayout).toEqual(before.chat)
 })
 
-test('search finds words that appear only in earlier message bodies', async () => {
+test('words that appear only in earlier message bodies are still findable in the store, and that conversation opens from its row', async () => {
   const weekly = bots.at(-1)!
   const row = page.getByTestId(`bot-${weekly.id}`)
-  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
-  for (const query of ['법무팀', '11/16', '주간회의']) {
-    await page.getByTestId('sidebar-search-toggle').click(); await input.fill(query)
-    await expect(row).toBeVisible()
-    await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
-  }
-  await page.getByTestId('sidebar-search-toggle').click(); await input.fill('존재하지않는단어')
-  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+  await expectNoSearch()
+  for (const query of ['법무팀', '11/16']) expect(await found(query)).toEqual([weekly.id])
+  expect(await found('존재하지않는단어')).toEqual([])
   await expect(row).toBeVisible()
+  await row.click()
+  await expect(row).toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread')).toContainText('법무팀 검토 일정 잡아 주세요')
 })
 
-test('search hides the open and pinned conversation when it does not match', async () => {
+test('the open conversation stays listed and active, with or without an old pin', async () => {
   await showSidebar()
   const open = page.getByTestId(`bot-${bots[2]!.id}`), other = page.getByTestId(`bot-${bots[1]!.id}`)
-  const rows = page.locator('.sidebar-conversations .bots-row')
-  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
-  const pin = async (label: 'Pin' | 'Unpin') => { await page.getByTestId(`bot-${bots[2]!.id}`).click({ button: 'right' }); await page.locator('.sidebar-organize-menu').getByRole('button', { name: label, exact: true }).click() }
+  const pin = (pinned: boolean) => page.evaluate(({ id, pinned }) => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned } }), { id: bots[2]!.id, pinned })
   await open.click()
   await expect(open).toHaveClass(/active/)
   expect(await page.evaluate(q => window.engram.botsSearch(q), 'zzqx-없는토큰')).toEqual([])
+  const order = await listed()
   for (const pinned of [false, true]) {
-    if (pinned) await pin('Pin')
-    if (pinned) await expect(open.locator('..')).toHaveAttribute('data-pinned', 'true')
-    const before = await page.evaluate(() => window.engram.sidebarLayout())
-    await page.getByTestId('sidebar-search-toggle').click(); await input.fill('handoff checklist')
-    await expect(other).toBeVisible()
-    await expect(rows).toHaveCount(1)
-    await expect(open).toHaveCount(0)
-    await page.getByTestId('sidebar-search-toggle').click(); await input.fill('zzqx-없는토큰')
-    await expect(rows).toHaveCount(0)
-    await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+    if (pinned) await pin(true)
+    const before = await chatLayout()
+    await refresh()
+    await page.waitForTimeout(300)
+    await expectNoSearch()
+    expect(await listed()).toEqual(order)
     await expect(open).toBeVisible()
     await expect(other).toBeVisible()
     await expect(open).toHaveClass(/active/)
-    if (pinned) await expect(open.locator('..')).toHaveAttribute('data-pinned', 'true')
-    expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
+    await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)
+    expect(await chatLayout()).toEqual(before)
   }
-  await pin('Unpin')
-  await expect(open.locator('..')).not.toHaveAttribute('data-pinned', 'true')
+  await pin(false)
+  await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)
 })
 
 test('sidebar fits light, dark and narrow layouts with captured examples', async () => {
@@ -308,7 +304,7 @@ test('sidebar fits light, dark and narrow layouts with captured examples', async
   await page.setViewportSize({ width: 1280, height: 840 })
 })
 
-test('conversation menus replace dates on interaction and pin without losing folders', async () => {
+test('rows have no menu and draw no date; an old pin keeps its row in place and folders intact across reload', async () => {
   await showSidebar()
   await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routine-collection')).toHaveCount(0)
@@ -318,46 +314,45 @@ test('conversation menus replace dates on interaction and pin without losing fol
   await row.scrollIntoViewIfNeeded()
   await expect(row.locator('xpath=..').locator('.sidebar-more')).toHaveCount(0)
   await row.click({ button: 'right' })
-  const menu = page.locator('.sidebar-organize-menu')
-  // Since 1367c699 the row menu also moves to each other section, hides and sets primary (botMenuItems).
-  await expect(menu.getByRole('button')).toHaveText(['Rename', 'Change icon', 'Pin', 'Move to Release decisions', 'Move to Unrelated work', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
-  for (const label of ['Rename', 'Pin', 'Delete']) await expect(menu.getByRole('button', { name: label, exact: true }).locator('svg')).toBeVisible()
-  const menuBox = await menu.boundingBox()
+  await expect(menus()).toHaveCount(0)
   const rowBox = await row.boundingBox()
   // The time shows only as a tooltip since the bot sidebar (rd-sidebar-bots, b8646f58), so no date is drawn in the row.
   await expect(row.locator('time')).toHaveCount(0)
-  // The menu opens at the pointer, which is on the row.
-  expect(menuBox!.x).toBeGreaterThanOrEqual(rowBox!.x); expect(menuBox!.x).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
   const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
   expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)
-  await menu.getByRole('button', { name: 'Pin', exact: true }).click()
-  // The bot list is a tree since 8d78e3b8: loose pinned rows render in their own list ahead of sections and the unpinned list (sidebar-chats).
-  await expect(page.getByTestId('sidebar-chat-collection').locator('.bots-row').first()).toHaveAttribute('data-testid', `bot-${id}`)
-  await expect(page.getByTestId('sidebar-chats').getByTestId(`bot-${id}`)).toHaveCount(0)
-  await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
-  const before = (await page.evaluate(() => window.engram.sidebarLayout())).chat
+  const order = await listed()
+  await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), id)
+  const before = await chatLayout()
+  await refresh()
+  await page.waitForTimeout(300)
+  // The pin stays in the data; the row stays where latest activity puts it, with no pin mark.
+  expect(await listed()).toEqual(order)
+  await expect(page.getByTestId('sidebar-chats').getByTestId(`bot-${id}`)).toHaveCount(1)
+  await expect(row.locator('..').getByLabel('Pinned conversation')).toHaveCount(0)
   await page.reload()
   await expect(page.getByTestId('sidebar-create')).toBeEnabled()
-  await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
-  expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before)
-  await row.click({ button: 'right' })
-  await menu.getByRole('button', { name: 'Unpin', exact: true }).click()
+  await expect(row).toBeVisible()
+  expect(await listed()).toEqual(order)
   await expect(row.locator('..').getByLabel('Pinned conversation')).toHaveCount(0)
-  await capture('conversation-folders-and-menus.png')
+  expect(await chatLayout()).toEqual(before)
+  await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: false } }), id)
+  await expect(row.locator('..').getByLabel('Pinned conversation')).toHaveCount(0)
+  await capture('conversation-folders-without-menus.png')
 })
 
-test('welcome Web opens a new selected chat and transfers its draft without sending', async () => {
+test('the welcome has no Web button; a bot made from + opens selected with nothing sent', async () => {
   await showSidebar()
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   const draft = 'Check the release checklist on the project website.'
   await page.getByTestId('welcome-input').fill(draft)
+  await expect(page.getByTestId('welcome-web')).toHaveCount(0)
+  await expect(page.getByTestId('chat-add-menu')).toHaveCount(0)
+  await expect(page.getByTestId('welcome-input')).toHaveValue(draft)
   const before = await page.evaluate(() => window.engram.botsList())
-  await page.getByTestId('welcome-input-add').click()
-  await page.getByTestId('welcome-web').click()
+  await createBotFromPlus(page, 'Release checklist')
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
-  await expect(page.getByTestId('bots-input')).toHaveValue(draft)
-  await expect(page.getByTestId('web-pane')).toBeVisible()
+  await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-input"]')).toBeFocused()
   const after = await page.evaluate(() => window.engram.botsList())
   expect(after).toHaveLength(before.length + 1)
   const created = after.find(bot => !before.some(old => old.id === bot.id))!
@@ -365,49 +360,44 @@ test('welcome Web opens a new selected chat and transfers its draft without send
   expect(await page.evaluate(id => localStorage.getItem('engram.comets.selected') === id, created.id)).toBe(true)
   expect(await page.evaluate(id => window.engram.botTranscript(id), created.id)).toEqual([])
   expect(await page.evaluate(() => window.engram.chatActive())).toEqual([])
-  await page.getByTestId('web-pane-fold').click()
-  await expect(page.getByTestId('web-pane')).toHaveCount(0)
-  await expect(page.getByTestId('bots-input')).toHaveValue(draft)
-  await capture('welcome-web-chat.png')
+  await capture('new-bot-from-plus.png')
 })
 
-test('split controls keep the current conversation and add independent chats', async () => {
+test('there are no split controls; each conversation keeps its own draft in the single view', async () => {
   const current = await page.evaluate(() => localStorage.getItem('engram.comets.selected'))
   expect(current).toBeTruthy()
-  await page.getByTestId('mission-layout-2').click()
-  await expect(page.getByTestId('mission-control')).toBeVisible()
-  await expect(page.getByTestId('mission-tile-0').getByTestId(`mini-chat-${current}`)).toBeVisible()
-  await expect(page.locator('.mission-tile')).toHaveCount(2)
-  await page.getByTestId('mission-add-1').click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: bots[1]!.name, exact: true }).click()
-  const first = page.getByTestId(`mini-chat-${current}`).getByRole('textbox')
-  const second = page.getByTestId(`mini-chat-${bots[1]!.id}`).getByRole('textbox')
-  await first.fill('')
-  await first.pressSequentially('First conversation draft')
-  await expect(first).toHaveValue('First conversation draft')
-  await second.fill('Second conversation draft')
-  await expect(page.getByTestId('mission-tile-1').locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-  expect(await page.getByTestId('mission-tile-1').evaluate(node => node.querySelector('.mini-chat')!.getBoundingClientRect().width / node.getBoundingClientRect().width)).toBeGreaterThan(0.95)
-  await page.getByTestId('mission-layout-1').click()
-  await expect(page.getByTestId('mission-control')).toHaveCount(0)
-  await expect(page.getByTestId('bots-input')).toHaveValue('First conversation draft')
-  await page.getByTestId('mission-layout-4').click()
-  await expect(page.locator('.mission-tile')).toHaveCount(4)
-  await expect(first).toHaveValue('First conversation draft')
-  await expect(second).toHaveValue('Second conversation draft')
-  await capture('split-conversations.png')
+  for (const id of ['mission-layout-1', 'mission-layout-2', 'mission-layout-4', 'mission-control', 'mission-add-menu']) await expect(page.getByTestId(id)).toHaveCount(0)
+  await expect(page.locator('.mission-tile, .mini-chat')).toHaveCount(0)
+  await showSidebar()
+  const input = page.locator('[data-testid="bots-view"] [data-testid="bots-input"]')
+  const mine = page.getByTestId(`bot-${current}`), second = page.getByTestId(`bot-${bots[1]!.id}`)
+  await input.fill('')
+  await input.pressSequentially('First conversation draft')
+  await expect(input).toHaveValue('First conversation draft')
+  await second.click()
+  await expect(second).toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread')).toContainText('Please verify the handoff checklist.')
+  await expect(input).not.toHaveValue('First conversation draft')
+  await input.fill('Second conversation draft')
+  await mine.click()
+  await expect(mine).toHaveClass(/active/)
+  await expect(input).toHaveValue('First conversation draft')
+  await second.click()
+  await expect(second).toHaveClass(/active/)
+  await expect(input).toHaveValue('Second conversation draft')
+  await capture('single-view-drafts.png')
 })
 
-test('unpinned conversations follow the latest activity, live and after relaunch', async () => {
+test('conversations follow the latest activity whatever their old pins, live and after relaunch', async () => {
   const at = (minutes: number) => new Date(Date.now() - minutes * 60_000)
   const [pinned, a, b] = [await createBot(paths, { name: 'Pinned older conversation' }, at(50)), await createBot(paths, { name: 'Pasta conversation' }, at(30)), await createBot(paths, { name: 'Airpods conversation' }, at(18))]
   await appendBotTurn(paths, a.id, { role: 'user', text: 'Pasta?', at: at(20).toISOString() }); await appendBotTurn(paths, b.id, { role: 'assistant', text: 'Airpods.', at: at(16).toISOString() })
   await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), pinned.id)
-  const refresh = () => app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
-  // Pinned rows render in their own list ahead of sections and sidebar-chats in the bot tree (8d78e3b8), so order is read across the whole collection.
+  // The pin is ignored: the pinned bot was last touched longest ago, so it sorts after the other two.
   const order = () => page.getByTestId('sidebar-chat-collection').locator('.bots-row').evaluateAll((nodes, ids) => nodes.map(node => node.getAttribute('data-testid')!.slice(4)).filter(id => ids.includes(id)), [pinned.id, a.id, b.id])
-  await openActivity(page, 'bots'); await showSidebar(); await refresh(); await expect.poll(order).toEqual([pinned.id, b.id, a.id])
-  await expect.poll(() => page.getByTestId('sidebar-chat-collection').locator('.sidebar-item').first().getAttribute('data-pinned')).toBe('true')
-  await appendBotTurn(paths, a.id, { role: 'assistant', text: 'Fresh pasta.', at: at(1).toISOString() }); await refresh(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
-  await app.close(); await launch(); await openActivity(page, 'bots'); await showSidebar(); await expect.poll(order).toEqual([pinned.id, a.id, b.id])
+  await openActivity(page, 'bots'); await showSidebar(); await refresh(); await expect.poll(order).toEqual([b.id, a.id, pinned.id])
+  await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)
+  await appendBotTurn(paths, a.id, { role: 'assistant', text: 'Fresh pasta.', at: at(1).toISOString() }); await refresh(); await expect.poll(order).toEqual([a.id, b.id, pinned.id])
+  await app.close(); await launch(); await openActivity(page, 'bots'); await showSidebar(); await expect.poll(order).toEqual([a.id, b.id, pinned.id])
+  await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)
 })

@@ -28,7 +28,7 @@ const css = (page: Page, selector: string, prop: string) => page.locator(selecto
 const box = (page: Page, selector: string) => page.locator(selector).first().evaluate(node => node.getBoundingClientRect().toJSON() as DOMRect)
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`bot composer pill and title pill (${theme})`, async () => {
+  test(`bot composer pill, and no title pill over the thread (${theme})`, async () => {
     await mkdir(TMP, { recursive: true })
     const vault = await mkdtemp(join(TMP, 'e2e-composer-title-vault-'))
     const profile = await mkdtemp(join(TMP, 'e2e-composer-title-profile-'))
@@ -98,22 +98,17 @@ for (const theme of ['light', 'dark'] as const) {
       expect(Math.abs(add.height - 28)).toBeLessThanOrEqual(1)
       expect(await page.locator(`${VIEW} .bots-column`).evaluateAll(nodes => nodes.map(node => node.classList.contains('bots-write')))).toEqual([true])
 
-      const pill = page.locator(`${VIEW} [data-testid="bots-title-pill"]`)
-      await expect(pill).toHaveCount(1)
-      await expect(pill).toContainText(BOT_NAME)
-      const name = pill.locator('.bots-title-pill-name')
-      await expect(name).toHaveCSS('font-size', '15px')
-      await expect(name).toHaveCSS('font-weight', '500')
-      await expect(pill.locator(".bot-avatar[data-size='20']")).toHaveCount(1)
-      for (const attr of ['role', 'tabindex', 'onclick']) await expect(pill).not.toHaveAttribute(attr)
-      if (theme === 'light') await expect(pill).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+      // No title pill over the thread: the bot's name is on its sidebar row.
+      await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+      await expect(page.locator('.bots-title-pill-name')).toHaveCount(0)
+      await expect(row.locator('.sidebar-conversation-name')).toHaveText(BOT_NAME)
       await expect(page.locator('.topbar .bots-head-name')).toHaveCount(0)
 
       await page.getByTestId('bots-thread').evaluate(node => { node.scrollTop = 0 })
       const first = await box(page, `${VIEW} [data-testid="bots-thread"] .bubble-msg`)
-      expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-title-pill"]`)).bottom)
+      expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-thread"]`)).top)
 
-      // QA145 S24: mid-scroll in a long thread, no visible part of a message comes within 8px of the pill.
+      // Mid-scroll in a long thread nothing floats over the messages, and the thread no longer fades under a pill at its top.
       const overlap = await page.getByTestId('bots-thread').evaluate((thread) => {
         for (let i = 0; i < 12; i++) {
           const tall = document.createElement('div')
@@ -122,24 +117,17 @@ for (const theme of ['light', 'dark'] as const) {
           tall.textContent = `filler ${i}`
           thread.append(tall)
         }
-        const pill = document.querySelector('[data-testid="bots-view"] [data-testid="bots-title-pill"]')!.getBoundingClientRect()
-        const worst: number[] = []
+        const covered: boolean[] = []
         for (const top of [0, 350, thread.scrollHeight / 2, thread.scrollHeight]) {
           thread.scrollTop = top
           const clip = thread.getBoundingClientRect()
-          // What is on screen of each message: its box cut to the thread's own box.
-          const tops = [...thread.querySelectorAll('.bubble-msg')].map(node => node.getBoundingClientRect())
-            .filter(r => r.bottom > clip.top && r.top < clip.bottom && r.right > pill.left && r.left < pill.right)
-            .map(r => Math.max(r.top, clip.top))
-          worst.push(Math.min(...tops) - pill.bottom)
+          covered.push(!document.elementFromPoint(clip.left + clip.width / 2, clip.top + clip.height / 2)?.closest('[data-testid="bots-thread"]'))
         }
-        const at = document.elementFromPoint(pill.left + pill.width / 2, pill.top + pill.height / 2)
-        return { worst, scrolled: thread.scrollTop > 1000, onTop: !!at?.closest('[data-testid="bots-title-pill"]'), mask: getComputedStyle(thread).maskImage }
+        return { covered, scrolled: thread.scrollTop > 1000, mask: getComputedStyle(thread).maskImage }
       })
       expect(overlap.scrolled).toBe(true)
-      expect(overlap.onTop).toBe(true)
-      for (const gap of overlap.worst) expect(gap).toBeGreaterThanOrEqual(8)
-      expect(overlap.mask).toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\), rgb\(0, 0, 0\) 12px/)
+      expect(overlap.covered).toEqual([false, false, false, false])
+      expect(overlap.mask).not.toMatch(/^linear-gradient\(rgba\(0, 0, 0, 0\)/)
 
       await openWelcome(page)
       await expect(page.getByTestId('welcome-input')).toBeVisible()

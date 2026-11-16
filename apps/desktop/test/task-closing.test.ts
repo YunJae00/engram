@@ -46,8 +46,14 @@ describe('closingMessage', () => {
 
   it('shows the first line of an error and cuts long ones and long file lists', () => {
     const one = closingMessage({ goal: '정리', transcript: [], detail: 'Provider unavailable\nstack at x' }, 'error', 'ko')
-    expect(one).toContain('(Provider unavailable)')
+    // A Korean thread gets no raw English error; the line still says it stopped and what to do next.
+    expect(one).not.toContain('Provider unavailable')
+    expect(one).toContain('“정리” 작업이 오류로 중단됐어요.')
     expect(one).not.toContain('stack')
+    expect(closingMessage({ goal: '정리', transcript: [], detail: '로그인이 풀려 있어요\nstack at x' }, 'error', 'ko')).toContain('(로그인이 풀려 있어요)')
+    const english = closingMessage({ goal: 'Tidy', transcript: [], detail: 'Provider unavailable\nstack at x' }, 'error', 'en')
+    expect(english).toContain('(Provider unavailable)')
+    expect(english).not.toContain('stack')
     const long = closingMessage({ goal: 'g'.repeat(200), transcript: [], detail: 'e'.repeat(500) }, 'error', 'en')
     expect(long.length).toBeLessThan(400)
     const files = closingMessage({ goal: 'Tidy', transcript: [], result: ['a', 'b', 'c', 'd', 'e'].map(n => `[${n}.md](engram-artifact:${n})`).join(' ') }, 'budget', 'en')
@@ -102,7 +108,10 @@ describe('task runner end paths', () => {
     const errors = texts(t.events, 'chat:error')
     expect(errors).toHaveLength(1)
     expect(errors[0]).toMatch(hangul)
-    expect(errors[0]).toContain('Provider unavailable')
+    // The closing is all Korean: the raw error stays in the log, not in the thread.
+    expect(errors[0]).not.toContain('Provider unavailable')
+    expect(errors[0]).toContain('오류로 중단됐어요.')
+    expect(errors[0]).toContain('다음: 잠시 뒤 같은 요청을 다시 보내 주세요.')
     expect((await listTasks(t.paths)).at(-1)!.state).toBe('failed')
   })
 

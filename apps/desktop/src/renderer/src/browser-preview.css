@@ -2,6 +2,5 @@
 .mission-browser-dialog[open] { display: flex; flex-direction: column; animation: browser-preview-in 160ms var(--ease-out); }
 .mission-browser-dialog::backdrop { background: #0005; backdrop-filter: blur(3px); }
 .mission-browser-dialog .dialog-title { font-size: var(--fs-body); }
-.mission-browser-dialog > .orbit-surface { flex: 1; min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .mission-browser-dialog[open] { animation: none; } }
 @keyframes browser-preview-in { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: none; } }

@@ -16,7 +16,7 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('details pane content has normal inner padding', async () => {
+test('no details pane: the chat fills the window to its right edge and its content keeps normal inner padding', async () => {
   for (const theme of ['light', 'dark'] as const) {
     await mkdir(TMP, { recursive: true })
     const vault = await mkdtemp(join(TMP, 'e2e-info-pad-')), profile = await mkdtemp(join(TMP, 'e2e-info-pad-profile-'))
@@ -33,26 +33,25 @@ test('details pane content has normal inner padding', async () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(page.getByTestId('shell')).toBeVisible()
     await page.getByTestId('bot-vis-routine').click()
-    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
+    await expect(page.getByTestId('bots-thread')).toBeVisible()
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     const pane = page.getByTestId('bot-info-pane')
-    await expect(pane.locator('textarea')).toBeVisible()
+    await expect(pane).toHaveCount(0)
     await page.evaluate(() => Promise.all(document.getAnimations().map(one => one.finished.catch(() => undefined))))
 
-    const m = await pane.evaluate(node => {
-      const panel = node.querySelector('.bot-info-panel')!
-      const items = [...panel.children, panel.querySelector('textarea'), panel.querySelector('.bots-memory')]
-        .filter((el): el is Element => !!el && el.checkVisibility())
-        .map(el => { const r = el.getBoundingClientRect(); return { name: `${el.tagName}.${el.className}${el.getAttribute('data-testid') ? `#${el.getAttribute('data-testid')}` : ''}`, left: r.left, right: r.right } })
-      const pane = node.getBoundingClientRect()
-      const radios = [...panel.querySelectorAll('input[type="radio"]')].at(-1)!.closest('label')!.getBoundingClientRect()
-      const avatar = panel.querySelector('[data-testid="bot-info-avatar"]')!.getBoundingClientRect()
-      return { pane: { left: pane.left, right: pane.right }, items, width: innerWidth, top: avatar.top, bottom: radios.bottom, bg: getComputedStyle(node).backgroundColor }
+    // With no pane beside it, the chat reaches the window's right edge and its thread and composer keep their inner gutter.
+    const m = await page.locator('[data-testid="bots-view"] .bots-main').evaluate(node => {
+      const items = [...node.querySelectorAll('.bubble-msg, .chat-write')]
+        .filter(el => el.checkVisibility())
+        .map(el => { const r = el.getBoundingClientRect(); return { name: `${el.tagName}.${el.className}`, left: r.left, right: r.right } })
+      const pane = node.getBoundingClientRect(), thread = node.querySelector('[data-testid="bots-thread"]')!.getBoundingClientRect()
+      return { pane: { left: pane.left, right: pane.right }, items, width: innerWidth, top: thread.top, bottom: thread.bottom, bg: getComputedStyle(node).backgroundColor }
     })
-    expect(Math.abs(m.pane.right - m.width), `PANE-PADDING ${theme}: pane right ${m.pane.right} vs window ${m.width}`).toBeLessThanOrEqual(1)
-    expect(m.items.length).toBeGreaterThan(5)
+    expect(Math.abs(m.pane.right - m.width), `PANE-PADDING ${theme}: chat right ${m.pane.right} vs window ${m.width}`).toBeLessThanOrEqual(1)
+    expect(m.items.length).toBeGreaterThan(1)
     for (const item of m.items) {
-      expect(item.right, `PANE-PADDING ${theme}: ${item.name} right ${item.right} vs pane right ${m.pane.right}`).toBeLessThanOrEqual(m.pane.right - GUTTER + TOLERANCE)
-      expect(item.left, `PANE-PADDING ${theme}: ${item.name} left ${item.left} vs pane left ${m.pane.left}`).toBeGreaterThanOrEqual(m.pane.left + GUTTER - TOLERANCE)
+      expect(item.right, `PANE-PADDING ${theme}: ${item.name} right ${item.right} vs chat right ${m.pane.right}`).toBeLessThanOrEqual(m.pane.right - GUTTER + TOLERANCE)
+      expect(item.left, `PANE-PADDING ${theme}: ${item.name} left ${item.left} vs chat left ${m.pane.left}`).toBeGreaterThanOrEqual(m.pane.left + GUTTER - TOLERANCE)
     }
 
     const bg = (m.bg.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number)

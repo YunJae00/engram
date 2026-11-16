@@ -55,7 +55,6 @@ test.beforeAll(async () => {
   const ids = await page.evaluate(async () => {
     const ids: string[] = []
     for (const name of ['Computer review', 'Planning review']) ids.push((await window.engram.botCreate({ name, purpose: 'Review the spreadsheet' })).id)
-    localStorage.setItem('engram.mission.slots', JSON.stringify(ids))
     return ids
   })
   expect(ids).toHaveLength(2)
@@ -150,37 +149,32 @@ async function openComputerControls() {
   await page.getByTestId('computer-settings').getByTestId('computer-controls-open').click()
   return page.getByTestId('computer-dialog')
 }
-async function orbit() {
+// One chat view: the first bot's conversation, opened from its sidebar row.
+async function openChat() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
-  await openActivity(page, 'mission')
-  await page.getByTestId('mission-layout-2').click()
+  await openActivity(page, 'bots')
+  const bots = await page.evaluate(() => window.engram.botsList())
+  await page.getByTestId(`bot-${bots.find(bot => bot.name === 'Computer review')!.id}`).click()
+  await expect(page.getByTestId('bots-input')).toBeVisible()
 }
 
-test('tiles show requested pages without adding a computer picker', async () => {
-  await orbit()
-  for (const index of [0, 1]) {
-    const tile = page.getByTestId(`mission-tile-${index}`)
-    await expect(tile.getByTestId('orbit-surface')).toBeHidden()
-    await tile.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-    await tile.getByRole('button', { name: 'Show website', exact: true }).click()
-    const modal = page.getByTestId('mission-browser-dialog')
-    await expect(modal).toBeVisible()
-    await expect(modal.getByTestId('orbit-surface')).toBeVisible()
-    await expect(tile.getByTestId('orbit-surface')).toBeHidden()
-    await expect(tile.getByRole('button', { name: 'Computer', exact: true })).toHaveCount(0)
-    await expect(tile.getByRole('button', { name: 'Choose an app window', exact: true })).toHaveCount(0)
-    await expect(modal.getByRole('button', { name: 'Computer', exact: true })).toHaveCount(0)
-    await modal.getByRole('button', { name: 'Close browser', exact: true }).click()
-    await expect(tile.locator('.mini-chat')).toBeVisible()
-  }
-  await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
+test('the chat has no split panes, page dialog or computer picker: its + only attaches files', async () => {
+  await openChat()
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  await expect(page.getByTestId('mission-control')).toHaveCount(0)
+  await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
+  await expect(page.getByTestId('orbit-surface')).toHaveCount(0)
+  const chat = page.getByTestId('bots-view')
+  await expect(chat.getByTestId('bots-input-add')).toHaveAttribute('aria-label', 'Attach files')
+  for (const name of ['Add to conversation', 'Show website', 'Computer', 'Choose an app window']) await expect(chat.getByRole('button', { name, exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('chat-add-menu')).toHaveCount(0)
   await expect(page.getByTestId('composer-computer')).toHaveCount(0)
   await expect(page.getByTestId('desktop-chat-pane')).toHaveCount(0)
   await expect(page.getByTestId('computer-control-status')).toHaveCount(0)
 })
 
 test('control stays out of the app even after Esc takes it back', async () => {
-  await orbit()
+  await openChat()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   const banner = page.getByTestId('computer-control-status')
   await expect(banner).toHaveCount(0)
@@ -193,7 +187,7 @@ test('control stays out of the app even after Esc takes it back', async () => {
 })
 
 test('terminal errors never add an in-app banner or bottom space at any width', async () => {
-  await orbit()
+  await openChat()
   await control({ state: 'paused', lane: 'bot-one', engine: 'claude', engineLabel: 'Claude', resumable: true })
   const banner = page.getByTestId('computer-control-status')
   await expect(banner).toHaveCount(0)
@@ -218,7 +212,7 @@ test('terminal errors never add an in-app banner or bottom space at any width', 
 })
 
 test('settings show computer use state without a permission switch', async () => {
-  await orbit()
+  await openChat()
   await control({ state: 'running', lane: 'bot-one', name: 'Excel', engine: 'claude', engineLabel: 'Claude' })
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'settings')
@@ -238,8 +232,7 @@ test('settings show computer use state without a permission switch', async () =>
 
 
 test('session app previews stay inside the conversation and preserve drafts', async () => {
-  await orbit()
-  await page.getByTestId('mission-tile-0').locator('.mission-enter').click()
+  await openChat()
   const bots = await page.evaluate(() => window.engram.botsList())
   const one = bots.find(bot => bot.name === 'Computer review')!
   const two = bots.find(bot => bot.name === 'Planning review')!

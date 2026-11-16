@@ -55,6 +55,8 @@ test('a message sent mid-stream never shows the earlier answer suggestion tail',
     call.resolve()
   })
   await expect(page.locator('.bubble-stop')).toHaveCount(0)
+  await expect(page.locator('[data-testid="reply-chips"], [data-testid^="reply-chip-"]'), 'SUGGESTION-LEAK suggestions never show as chips').toHaveCount(0)
+  await expect(page.getByTestId('bots-thread'), 'SUGGESTION-LEAK suggestion words on screen').not.toContainText(/up to 50|Use themes|that is all/)
   const texts = await page.locator('.bubble-msg.assistant').allInnerTexts()
   for (const text of texts) {
     expect(text, `SUGGESTION-LEAK assistant bubble shows suggestion text: ${JSON.stringify(text)}`).not.toMatch(/up to 50|Use themes|that is all|```/)
@@ -66,7 +68,7 @@ test('a message sent mid-stream never shows the earlier answer suggestion tail',
   expect(preview, `SUGGESTION-LEAK sidebar preview: ${JSON.stringify(preview)}`).not.toMatch(/```|replies|up to 50|Use themes|that is all/)
 })
 
-test('sidebar preview shows the last reply without suggestion chips', async () => {
+test('sidebar preview and the thread show the last reply without suggestion chips', async () => {
   const { root, paths } = await vault()
   const botId = (await createBot(paths, { name: 'Order fixture' })).id
   await appendBotTurn(paths, botId, { role: 'user', text: '순서테스트 3번, 숫자만 답해줘', at: new Date().toISOString() })
@@ -76,5 +78,7 @@ test('sidebar preview shows the last reply without suggestion chips', async () =
   await expect(row.locator('.sidebar-conversation-preview'), 'PREVIEW-CHIPS before open').toHaveText('3')
   await row.click()
   await expect(page.locator('.bubble-msg.assistant')).toHaveText(['3'])
+  await expect(page.locator('[data-testid="reply-chips"], [data-testid^="reply-chip-"]'), 'PREVIEW-CHIPS no chips under the answer').toHaveCount(0)
+  await expect(page.getByTestId('bots-thread')).not.toContainText('4번도 해줘')
   await expect(row.locator('.sidebar-conversation-preview'), 'PREVIEW-CHIPS after open').toHaveText('3')
 })

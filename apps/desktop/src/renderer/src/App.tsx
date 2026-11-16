@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } fro
 import { api } from './api.js'
 import { AppNotices, Toast, useToastDismiss } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
-import { type PaletteAction, type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
 import { TOUR_DONE_KEY } from './lib/tour.js'
@@ -10,7 +9,7 @@ import { dismissSidebar, useSidebarEscape } from './lib/sidebarOverlay.js'
 import { isNewBotShortcut } from './lib/newBotShortcut.js'
 import { BotsView } from './views/BotsView.js'
 import { AppProvider } from './state.js'
-import { useCometState, useShellState } from './state-slices.js'
+import { useShellState } from './state-slices.js'
 import { t } from './i18n.js'
 import { threadLang, threadWords } from './lib/threadLang.js'
 import { cometThreads, selectComet } from './lib/cometThreadsLive.js'
@@ -24,16 +23,10 @@ import { FirstSetup } from './components/FirstSetup.js'
 // none of them is on screen when the window opens - fetched when they are
 // first asked for, they cost nothing until then. Each is a local file, so
 // the wait is a frame, not a download.
-const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) => ({ default: m.DigestSheet })))
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
-const MissionControl = lazy(() => import('./views/MissionControl.js').then((m) => ({ default: m.MissionControl })))
-const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
-const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
-const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
-const RoutinesView = lazy(() => import('./views/RoutinesView.js').then((m) => ({ default: m.RoutinesView })))
 const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
 const DiagnosticsView = lazy(() => import('./views/DiagnosticsView.js').then((m) => ({ default: m.DiagnosticsView })))
 const InboxOverlay = lazy(() => import('./views/InboxOverlay.js').then((m) => ({ default: m.InboxOverlay })))
@@ -52,15 +45,9 @@ let settingsHeld: { open: boolean; section: SettingsSection } = { open: false, s
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
   const hideToast = useToastDismiss()
-  const { startRoutine } = useCometState()
   const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
-  const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers'))
-  useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (['bots', 'mission', 'routines'].includes(activity)) setWorkspace('bots') }, [activity])
-  const [palette, setPalette] = useState<PaletteMode>(null)
-  // What the panel should open with — a question to send outright, or a
-  // scaffold to write into. Held here because the panel is unmounted while it
-  // rests: a window event fired at a closed panel has nobody listening.
-  const [action, setAction] = useState<PaletteAction | null>(null)
+  const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (activity !== 'bots' && workspace === 'developers'))
+  useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (activity === 'bots') setWorkspace('bots') }, [activity])
   const [settingsOpen, setSettingsOpen] = useState(settingsHeld.open)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(settingsHeld.section)
   useEffect(() => { settingsHeld = { open: settingsOpen, section: settingsSection } }, [settingsOpen, settingsSection])
@@ -73,16 +60,8 @@ function Shell() {
     return () => { window.removeEventListener('engram:open-developers', open); window.removeEventListener('engram:open-developer-settings', settings) }
   }, [setActivity])
   const [diagOpen, setDiagOpen] = useState(false)
-  // "Back up to GitHub" — reachable from the workspace switcher, settings, and
-  // the command palette; they all raise this one window intent.
+  // "Back up to GitHub" — reachable from the workspace switcher and settings.
   const [githubOpen, setGithubOpen] = useState(false)
-  // The weekly digest reads on demand from the command palette — it is not
-  // part of the morning, so it is not mounted with Today.
-  const [digestOpen, setDigestOpen] = useState(false)
-  // "Delegate an errand…" from the command palette raises this one window intent.
-  const [errandOpen, setErrandOpen] = useState(false)
-  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null)
-  const [splitLayout, setSplitLayout] = useState<2 | 4>(2)
   const [devLayout, setDevLayout] = useState<1 | 2 | 4>(1)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
@@ -112,7 +91,7 @@ function Shell() {
       else if (e.type === 'task:notice') showToast(e.foreground ? threadWords(threadLang(cometThreads.thread(e.foreground.lane.replace(/^bot-/, '')).messages)).foregroundTaken(e.foreground.app) : e.message)
       else if (e.type === 'brain:setup') { setSettingsSection('ai'); setSettingsOpen(true) }
       else if (e.type === 'routine:chat' || e.type === 'comet:open' || e.type === 'comet:quick') {
-        if (e.type === 'comet:quick') { setSettingsOpen(false); setPalette(null); setAction(null) }
+        if (e.type === 'comet:quick') setSettingsOpen(false)
         selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }
@@ -181,16 +160,7 @@ function Shell() {
         window.dispatchEvent(new Event('engram:open-create-bot'))
         return
       }
-      if (key === 'p' && e.shiftKey) {
-        e.preventDefault()
-        setPalette('commands')
-      } else if (key === 'p' || (key === 'f' && e.shiftKey)) {
-        e.preventDefault()
-        setPalette('search')
-      } else if (key === 'l') {
-        e.preventDefault()
-        setActivity('bots')
-      } else if (key === 'b') {
+      if (key === 'b') {
         e.preventDefault()
         setSidebarOpen((open) => !open)
       }
@@ -202,18 +172,8 @@ function Shell() {
   // Cross-component intents from the help panel (and future affordances) arrive
   // as window events so leaf components can drive the shell without prop drilling.
   useEffect(() => {
-    const toggleChat = () => setActivity('bots')
-    const openPalette = () => setPalette('search')
     const openDiag = () => setDiagOpen(true)
     const openGithub = () => setGithubOpen(true)
-    const openDigest = () => setDigestOpen(true)
-    const openErrand = () => setErrandOpen(true)
-    const openRoutines = () => setActivity('routines')
-    const runRoutine = (event: Event) => {
-      const request = (event as CustomEvent<{ routineId?: string; name?: string }>).detail
-      if (!request?.routineId) return
-      void startRoutine(request.routineId, request.name ?? 'Routine')
-    }
     // The help panel's Remember action and the
     // empty-sky starter chips (which carry a scaffold like "Decided today: ").
     const focusCapture = () => {
@@ -225,8 +185,6 @@ function Shell() {
       const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids
       if (ids && ids.length > 0) setSkyFocus({ ids })
     }
-    window.addEventListener('engram:toggle-chat', toggleChat)
-    window.addEventListener('engram:open-palette', openPalette)
     const openBrainSetup = () => { setSettingsSection('ai'); setSettingsOpen(true) }
     const openHelp = () => { setSettingsSection('help'); setSettingsOpen(true) }
     window.addEventListener('engram:open-help', openHelp)
@@ -240,24 +198,14 @@ function Shell() {
     }
     window.addEventListener('engram:open-artifact', openArtifact)
     window.addEventListener('engram:open-github', openGithub)
-    window.addEventListener('engram:open-digest', openDigest)
-    window.addEventListener('engram:open-errand', openErrand)
-    window.addEventListener('engram:open-routines', openRoutines)
-    window.addEventListener('engram:run-routine', runRoutine)
     window.addEventListener('engram:focus-capture', focusCapture)
     window.addEventListener('engram:sky-focus', focusSky)
     return () => {
-      window.removeEventListener('engram:toggle-chat', toggleChat)
-      window.removeEventListener('engram:open-palette', openPalette)
       window.removeEventListener('engram:open-brain-setup', openBrainSetup)
       window.removeEventListener('engram:open-help', openHelp)
       window.removeEventListener('engram:open-diagnostics', openDiag)
       window.removeEventListener('engram:open-artifact', openArtifact)
       window.removeEventListener('engram:open-github', openGithub)
-      window.removeEventListener('engram:open-digest', openDigest)
-      window.removeEventListener('engram:open-errand', openErrand)
-      window.removeEventListener('engram:open-routines', openRoutines)
-      window.removeEventListener('engram:run-routine', runRoutine)
       window.removeEventListener('engram:focus-capture', focusCapture)
       window.removeEventListener('engram:sky-focus', focusSky)
     }
@@ -278,12 +226,10 @@ function Shell() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((value) => !value)}
         onOpenSettings={() => { setSettingsSection(developerSidebar ? 'developers' : 'general'); setSettingsOpen(true) }}
-        selectedRoutineId={selectedRoutineId}
-        onSelectRoutine={setSelectedRoutineId}
       />
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => dismissSidebar(closeSidebar)} />}
       <main className="app-main">
-        <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
+        <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} devLayout={devLayout} onDevLayout={setDevLayout} />
         <AppNotices
           engines={engines}
           enginesDetected={enginesDetected}
@@ -323,8 +269,6 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView active={activity === 'bots'} />
             </div>
-            {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
-            {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
             {developerSidebar && <div className="canvas-slot" hidden={activity !== 'developers'}><Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} onLayout={setDevLayout} onActivate={() => setActivity('developers')} /></Suspense></div>}
             {activity === 'sky' && (
               <Suspense fallback={<div className="empty-view" />}>
@@ -345,12 +289,8 @@ function Shell() {
           chunk still on its way shows nothing rather than a spinner. */}
       <Suspense fallback={null}>
         <NoteSheet />
-        {digestOpen && <DigestSheet onClose={() => setDigestOpen(false)} />}
-        {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
         <ReviewOverlay />
         <InboxOverlay />
-        {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}
-        {action && <ActionDialog action={action} onClose={() => setAction(null)} />}
         {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
         {artifactId && <ArtifactSheet id={artifactId} onClose={() => setArtifactId(null)} />}
         {settingsOpen && <SettingsView initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}

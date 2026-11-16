@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { choiceQuestion, cleanOptions, formatAsk, parseAsk } from '../src/ask.js'
+import { askText, choiceQuestion, cleanOptions, formatAsk, parseAsk } from '../src/ask.js'
 
 // Choices are ways forward the person taps; anything that hands the work back
 // is dropped, and a question with fewer than two real ways forward is free text.
@@ -57,5 +57,17 @@ describe('choiceQuestion', () => {
     expect(choiceQuestion('The deploy is on Thursday.')).toBeNull()
     expect(choiceQuestion('What would you like me to check?')).toBeNull()
     expect(choiceQuestion('Shall I go ahead or not?')).toBeNull()
+  })
+})
+
+// The thread has no choice buttons: the ways forward are read in the question itself and answered by typing.
+describe('askText', () => {
+  it('puts the ways forward under the question as plain lines', () => {
+    expect(askText('어느 쪽으로 할까요?', ['포털', '메일'])).toBe('어느 쪽으로 할까요?\n\n- 포털\n- 메일')
+  })
+  it('does not repeat a way forward the question already names, and leaves a plain question alone', () => {
+    expect(askText('Staging or Production?', ['staging', 'Production'])).toBe('Staging or Production?')
+    expect(askText('포털로 할까요?', ['포털', '메일'])).toBe('포털로 할까요?\n\n- 메일')
+    expect(askText('언제로 할까요?')).toBe('언제로 할까요?')
   })
 })

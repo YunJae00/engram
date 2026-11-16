@@ -54,10 +54,11 @@ export function startRoutineChat(
     deps.active(channel, true)
     deps.broadcast({ type: 'bots:changed' })
     deps.broadcast({ type: 'routine:chat', botId: bot.id, routineId: id, name: saved.name, message })
-    const finish = async (text: string, offer?: Extract<EngramEvent, { type: 'chat:done' }>['offer']) => {
+    // A guarded re-run is asked for in chat (run_procedure with "again"), never offered as a button.
+    const finish = async (text: string) => {
       await appendBotTurn(paths, bot.id, { role: 'assistant', text, at: new Date().toISOString() })
       deps.active(channel, false)
-      deps.broadcast({ type: 'chat:done', channel, text, ...(offer ? { offer } : {}) })
+      deps.broadcast({ type: 'chat:done', channel, text })
     }
     const fail = (error: unknown) => {
       deps.active(channel, false)
@@ -67,7 +68,7 @@ export function startRoutineChat(
       if (saved.task) {
         const blocked = options.force ? null : routineBlock(saved)
         if (blocked) {
-          await finish(blocked === 'unfinished-write' ? 'Check the previous submission on the website before running this task again.' : 'This task already ran today and may post to a website. Confirm before running it again.', { kind: 'run', routineId: id, name: saved.name, force: true })
+          await finish(blocked === 'unfinished-write' ? 'Check the previous submission on the website before running this task again.' : 'This task already ran today and may post to a website. Say so here if you want it run again.')
           clear()
           return { ok: false, blocked, botId: bot.id }
         }
@@ -93,7 +94,7 @@ export function startRoutineChat(
           : reply.blocked === 'unfinished-write'
             ? `${saved.name} stopped during its last submission. Check the website before running it again.`
             : reply.error ?? 'The routine could not start.'
-        await finish(text, reply.blocked ? { kind: 'run', routineId: id, name: saved.name, force: true, ...(options.slots ? { slots: options.slots } : {}) } : undefined)
+        await finish(text)
         clear()
       }
       return { ...reply, botId: bot.id }

@@ -83,7 +83,9 @@ export async function run(page, { app, paths, expect, openActivity }) {
   await expectFlow('after width changes')
 
   // A press on the card dismisses open popovers without starting a placement.
-  for (const [trigger, menu] of [[page.getByTestId('workspace-switcher'), 'workspace-menu'], [page.locator('.bots-chat').getByTestId('model-picker'), 'model-picker-menu']]) {
+  // The composer has no model picker any more; the workspace menu is the popover left to dismiss.
+  await expect(page.locator('.bots-chat').getByTestId('model-picker')).toHaveCount(0)
+  for (const [trigger, menu] of [[page.getByTestId('workspace-switcher'), 'workspace-menu']]) {
     await trigger.click()
     await expect(page.getByTestId(menu)).toBeVisible()
     await expectPacked(page, expect, `${menu} open`)
