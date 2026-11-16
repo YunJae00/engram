@@ -51,6 +51,14 @@ describe('native tool policy', () => {
     expect((await nativeDecision(policy(), 'Bash', { command: ' ' })).behavior).toBe('deny')
   })
 
+  // perf146: members met a busy browser with `sleep 45` and a vm_stat loop.
+  it('refuses a team member that waits in a shell, and no one else', async () => {
+    const member = { ...policy(), commands: { allowed: true }, member: true }
+    for (const command of ['sleep 45', 'for i in 1 2 3; do vm_stat | head -3; sleep 5; done', 'cd x && sleep 10; ls']) expect((await nativeDecision(member, 'Bash', { command })).message).toContain('Do not wait in a shell')
+    expect((await nativeDecision(member, 'Bash', { command: 'python parse.py --sleep 3' })).behavior).toBe('allow')
+    expect((await nativeDecision({ ...policy(), commands: { allowed: true } }, 'Bash', { command: 'sleep 2 && python serve.py' })).behavior).toBe('allow')
+  })
+
   it('leaves questions to ask_person and refuses unknown tools', async () => {
     expect((await nativeDecision(policy(), 'AskUserQuestion', {})).message).toContain('ask_person')
     expect((await nativeDecision(policy(), 'WebFetch', { url: 'http://127.0.0.1/admin' })).behavior).toBe('deny')

@@ -42,7 +42,12 @@ export interface NativePolicy {
   declined?: boolean
   // Per turn: command cards are asked one at a time, so one answer covers the calls queued behind it.
   asking?: Promise<unknown>
+  // A hired team member: it may not sit waiting in a shell.
+  member?: boolean
 }
+// perf146: members answered a busy browser with `sleep 45` and a vm_stat loop, each a full model round the lead waited on.
+const WAITS = /(^|[;&|(]\s*)sleep\s+\d|\bvm_stat\b|\bmemory_pressure\b/
+const NO_WAITING = 'Do not wait in a shell: no sleep, no memory polling. Tools take their own turn in line. Call the tool again now, use another source, or report what you have.'
 
 export function nativeSummary(name: string, input: Record<string, unknown>): string {
   const value = SHELLS.has(name) ? input['command'] : name === 'Grep' || name === 'Glob' ? input['pattern'] : name === 'WebFetch' || name === 'WebSearch' ? input['url'] ?? input['query'] : input['file_path'] ?? input['path'] ?? input['notebook_path'] ?? input['description']
@@ -88,6 +93,7 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
     if (!command) return deny('Supply a command.')
     if (policy.mode === 'plan') return deny(PLAN_ONLY)
     if (policy.declined) return deny(DECLINED)
+    if (policy.member && WAITS.test(command)) return deny(NO_WAITING)
     // A command that asks to leave the sandbox is never covered by the sandbox allowance or a one-time grant.
     const escaping = input['dangerouslyDisableSandbox'] === true
     const sandboxed = policy.sandboxed === true && !escaping
@@ -348,7 +354,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
   const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)
   if (!commands) consent.set(consentKey, commands = { allowed: false })
-  const policy: NativePolicy = { cwd, roots, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}) }
+  const policy: NativePolicy = { cwd, roots, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}), ...(options.member ? { member: true } : {}) }
   return {
     cwd,
     readRoots: roots,

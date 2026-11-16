@@ -8,6 +8,7 @@ import { maskSecrets } from './page-mask.js'
 import { touchedAt } from './agent-view.js'
 import { readWhenReady } from './page-ready.js'
 import { flog } from './flog.js'
+import { fetchPlainPage, tabOrPlain } from './plain-page.js'
 
 const SLOW_OPEN_MS = 5_000
 
@@ -212,7 +213,10 @@ export function agentCourier(
       })
     },
     async fetchPage(url, signal) {
-      const page = await withAbort(ensurePage(), signal)
+      // No room for another tab: a read still answers, from a plain fetch, or after its turn in line for a tab.
+      const got = await withAbort(tabOrPlain(ensurePage, /^https?:\/\//i.test(url) ? () => fetchPlainPage(url, signal, (to, init) => net.fetch(to, init)) : undefined, signal), signal)
+      if ('read' in got) { flog('browser', `read without a tab: ${new URL(url).host}`); return got.read }
+      const page = got.tab
       armIdleClose()
       // A slow open is logged with where the time went: a page can answer at once and still
       // hold its loaded event behind a third-party script that never responds.

@@ -520,7 +520,7 @@ async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
     // that every lane gets a tab of its own, if the machine has room for one.
     const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
     if (!spare && lanes.size > 0 && availableMemory() < LANE_MIN_FREE)
-      throw new Error(`not enough free memory for another page while other work is open (${(availableMemory() / 1e9).toFixed(1)}GB free) - wait for it to finish`)
+      throw new Error(`not enough free memory for another browser tab right now (${(availableMemory() / 1e9).toFixed(1)}GB free). Do not wait, sleep or poll for memory: open_page, read_pages and search_web read pages without a tab, so use those, another source, or report what you have.`)
     let page = spare
     if (!page) {
       allocatingPages++
