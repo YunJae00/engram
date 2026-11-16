@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { openActivity, openWelcome, createBotFromPlus } from './navigation.js'
-import { appendBotTurn, createBot, createNote, initVault, recordBotSites, type VaultPaths } from 'core'
+import { appendBotTurn, createBot, createNote, initVault, recordBotSites, recordFacts, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -161,9 +161,19 @@ test('composer tools stay in the chat surface and open away from the sidebar', a
   await page.getByTestId('bots-input-add').click()
   await chooser
   await expect(page.locator(':popover-open')).toHaveCount(0)
+  const pill = (await page.getByTestId('bots-title-pill').innerText()).trim()
+  const bot = (await page.evaluate(() => window.engram.botsList())).find(one => one.name === pill)!
+  await recordFacts(paths, bot.id, ['Prefers deploys on Tuesday mornings'])
   await page.getByTestId('bots-title-pill').click()
   const memoryPanel = page.getByTestId('bot-info-pane').locator('.bots-memory')
   await expect(memoryPanel).toBeVisible()
+  // The pane is where memory is read and forgotten now: the bot's own lines, each with its forget.
+  await expect(memoryPanel.locator('.bots-memory-title')).toHaveText(`What ${bot.name} remembers about you`)
+  const fact = memoryPanel.locator('.bots-memory-fact', { hasText: 'Prefers deploys on Tuesday mornings' })
+  await expect(fact).toBeVisible()
+  await fact.locator('.bots-memory-forget').click()
+  await expect(fact).toHaveCount(0)
+  await expect.poll(async () => (await page.evaluate(id => window.engram.botMemory(id), bot.id)).map(one => one.text)).not.toContain('Prefers deploys on Tuesday mornings')
   const [memoryBox, sidebarBox] = await Promise.all([memoryPanel.boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
   expect(memoryBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
   await page.getByTestId('bots-title-pill').click()

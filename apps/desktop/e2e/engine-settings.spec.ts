@@ -1,6 +1,6 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { openActivity, openWelcome } from './navigation.js'
-import { initVault } from 'core'
+import { initVault, recordFacts, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,12 +10,13 @@ test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
+let paths: VaultPaths
 type Fixture = { delayed: boolean; signed: Record<string, boolean>; login: EngineLoginDto[]; opened: number; finish?: () => void; modelReplies?: Array<() => void> }
 type Global = typeof globalThis & { engineFixture: Fixture }
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const vault = await mkdtemp(join(TMP, 'e2e-engines-vault-'))
-  await initVault(vault, { git: false })
+  paths = await initVault(vault, { git: false })
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
     ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(TMP, 'e2e-engines-userdata-')),
     ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1',
@@ -199,11 +200,14 @@ test('a disconnected Claude account shows in AI settings without changing accoun
 test('welcome and conversation footer controls align inside narrow composers without a model picker', async () => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await openWelcome(page)
+  let botId = ''
   for (const surface of ['welcome', 'conversation']) {
     if (surface === 'conversation') {
       await page.setViewportSize({ width: 1280, height: 880 })
       if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
       const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Composer alignment', purpose: '' }))
+      botId = bot.id
+      await recordFacts(paths, bot.id, ['Likes the composer footer aligned'])
       await page.getByTestId(`bot-${bot.id}`).click()
     }
     const input = page.getByTestId(surface === 'welcome' ? 'welcome-input' : 'bots-input')
@@ -223,7 +227,16 @@ test('welcome and conversation footer controls align inside narrow composers wit
         await expect(add).not.toHaveAttribute('popovertarget')
         if (width === 1280) {
           await page.getByTestId('bots-title-pill').click()
-          await expect(page.getByTestId('bot-info-pane').getByTestId('bots-memory')).toBeVisible()
+          const memory = page.getByTestId('bot-info-pane').getByTestId('bots-memory')
+          await expect(memory).toBeVisible()
+          // What the toggle used to open is here: the remembered line, and forgetting it empties the list.
+          await expect(memory.locator('.bots-memory-title')).toHaveText('What Composer alignment remembers about you')
+          const fact = memory.locator('.bots-memory-fact', { hasText: 'Likes the composer footer aligned' })
+          await expect(fact).toBeVisible()
+          await fact.getByRole('button', { name: /\S/ }).click()
+          await expect(memory.locator('.bots-memory-fact')).toHaveCount(0)
+          await expect(memory.locator('.bots-memory-empty')).toBeVisible()
+          await expect.poll(() => page.evaluate(id => window.engram.botMemory(id), botId)).toEqual([])
           await page.getByTestId('bots-title-pill').click()
           await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
         }
