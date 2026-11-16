@@ -2059,29 +2059,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
   font-size: var(--fs-body); color: var(--fg);
   animation: fade-in 120ms ease-out;
 }
-.workspace-row {
-  display: flex; align-items: center; gap: 9px;
-  width: 100%; padding: 7px 12px; text-align: left;
-  border-radius: var(--radius-s); color: var(--fg);
-  transition: background 100ms ease;
-}
-.workspace-row:hover { background: var(--hover-bg); }
-.workspace-row svg { color: var(--fg-dim); flex-shrink: 0; }
-.workspace-row-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.workspace-row .workspace-check { color: var(--accent); }
-.workspace-divider { height: 1px; margin: 5px 6px; background: var(--border); }
-/* Full-screen restart notice: shown from the moment a switch/create/join is
-   committed until the main process tears the window down and relaunches. */
-.workspace-switching {
-  position: fixed; inset: 0; z-index: 300;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  background: var(--panel-bg);
-  animation: fade-in 140ms ease-out;
-  cursor: wait;
-}
-.workspace-switching-title { font-size: var(--fs-lead); font-weight: 600; color: var(--fg); margin-top: 6px; }
-.workspace-switching-sub { font-size: var(--fs-small); color: var(--fg-dim); }
-
 
 /* ── Web errand: the human-wall strip in the top bar ────────────────────── */
 /* The errand is parked in main until one of these buttons answers. */

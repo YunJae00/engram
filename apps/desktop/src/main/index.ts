@@ -40,7 +40,7 @@ import { registerTeamIpc, startAutoSync } from './team.js'
 import { createTray, type TrayHandle } from './tray.js'
 import { checkForUpdatesNow, installUpdateNow, startUpdater, updateStateNow } from './updater.js'
 import { configuredVaultRoot, openVaultContext, resolveEngines, saveVaultRoot, type VaultContext } from './vault.js'
-import { finishWorkspaceDeletion, registerWorkspaceIpc } from './workspaces.js'
+import { finishWorkspaceDeletion } from './workspaces.js'
 import { closeDesktopAccess, desktopRestoring, setDesktopOwner } from './desktop-access.js'
 import { allowDesktopCapture, registerDesktopIpc } from './desktop-ipc.js'
 import { overlayPointer, showControlOverlay } from './desktop-overlay.js'
@@ -507,9 +507,6 @@ function registerBaseIpc(): void {
     app.quit()
   })
 
-  // First-run tour gate: real installs only (ENGRAM_TOUR=1 for dev probes) —
-  // the coach marks must never intercept e2e clicks.
-  ipcMain.handle('app:tourEligible', () => app.isPackaged || process.env['ENGRAM_TOUR'] === '1')
   // Shown in Settings — the first thing to ask when a report comes in is
   // "which version?", and until now nothing in the UI could answer it.
   ipcMain.handle('app:version', () => app.getVersion())
@@ -527,8 +524,6 @@ function registerBaseIpc(): void {
     await shell.openExternal(url)
   })
 
-  // Workspace registry/switcher — must work before a vault is booted (onboarding).
-  registerWorkspaceIpc()
 
   // App-level settings likewise: onboarding/quick-capture read them at load,
   // which used to log "No handler registered for 'settings:get'" on machines

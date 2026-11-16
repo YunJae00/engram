@@ -11,11 +11,13 @@ vi.mock('electron', () => ({
   ipcMain: { handle: (name: string, handler: (_event: unknown, id: string) => Promise<boolean>) => fixture.handlers.set(name, handler) },
 }))
 vi.mock('../src/main/vault.js', () => ({ binaryProvider: () => undefined }))
-import { currentWorkspaceRoot, finishWorkspaceDeletion, registerWorkspace, registerWorkspaceIpc } from '../src/main/workspaces.js'
+import * as workspaces from '../src/main/workspaces.js'
+import { currentWorkspaceRoot, finishWorkspaceDeletion, registerWorkspace, validatedWorkspaceRoots, workspacesToMerge } from '../src/main/workspaces.js'
 
 const registry = () => join(fixture.base, 'userData/vaults.json')
 const readRegistry = async () => JSON.parse(await readFile(registry(), 'utf8'))
-const remove = (id: string) => fixture.handlers.get('workspace:delete')!(undefined, id)
+// A deletion the person confirmed in a version that still had the switcher: the mark it left in the registry.
+const remove = async (id: string) => { await writeFile(registry(), JSON.stringify({ ...await readRegistry(), pendingDelete: id })) }
 async function vault(name: string) {
   const root = join(fixture.base, name)
   await initVault(root, { git: false })
@@ -28,20 +30,36 @@ beforeEach(async () => {
   await mkdir(join(fixture.base, 'userData'))
   fixture.confirm.mockResolvedValue({ response: 1 })
   fixture.trash.mockImplementation((root: string) => rename(root, `${root}-recycled`))
-  registerWorkspaceIpc()
+  fixture.handlers.clear()
 })
 
-it('cancels safely, then deletes only after restart and returns the last workspace to onboarding', async () => {
+it('offers no way to create, switch to, join or delete a workspace', async () => {
   const first = await vault('first'), second = await vault('second')
-  fixture.confirm.mockResolvedValueOnce({ response: 0 })
-  expect(await remove(second.id)).toBe(false)
+  expect(Object.keys(workspaces).filter(name => /ipc|create|switch|join|delete(?!.*Deletion)/i.test(name))).toEqual([])
+  expect(fixture.handlers.size).toBe(0)
+  // The one that was open stays the one that opens; the other is still on record and on disk.
+  expect(await currentWorkspaceRoot()).toBe(second.root)
+  expect((await readRegistry()).vaults.map((one: { id: string }) => one.id)).toEqual([first.id, second.id])
   expect(fixture.trash).not.toHaveBeenCalled()
   expect(fixture.quit).not.toHaveBeenCalled()
-  expect(await remove(second.id)).toBe(true)
-  expect(fixture.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ defaultId: 0, cancelId: 0, detail: expect.stringContaining(second.root) }))
-  expect(fixture.quit).toHaveBeenCalledOnce()
+})
+
+it('lists every other workspace for the merge, and says when the open one is a team\'s', async () => {
+  const first = await vault('first'), second = await vault('second'), third = await vault('third')
+  expect(await workspacesToMerge()).toEqual({ sources: [{ root: first.root, name: 'first' }, { root: second.root, name: 'second' }], shared: false })
+  // One the person had already asked to delete is not brought back.
+  await remove(first.id)
+  expect((await workspacesToMerge()).sources).toEqual([{ root: second.root, name: 'second' }])
+  const team = await registerWorkspace({ name: 'team', root: join(fixture.base, 'team'), kind: 'team' })
+  expect(await workspacesToMerge()).toMatchObject({ shared: true })
+  expect((await workspacesToMerge()).sources.map(one => one.root)).not.toContain(team.root)
+  expect(third.root).not.toBe(team.root)
+})
+
+it('finishes a deletion confirmed before the update, and returns the last workspace to onboarding', async () => {
+  const first = await vault('first'), second = await vault('second')
+  await remove(second.id)
   expect(fixture.trash).not.toHaveBeenCalled()
-  expect((await readRegistry()).pendingDelete).toBe(second.id)
   await finishWorkspaceDeletion()
   expect(fixture.trash).toHaveBeenCalledWith(second.root)
   expect(await currentWorkspaceRoot()).toBe(first.root)
@@ -62,21 +80,32 @@ it('keeps the registry and reports a failed trash operation instead of pretendin
   expect(fixture.error).toHaveBeenCalledWith('Workspace deletion did not finish', expect.stringContaining('Folder is in use'))
 })
 
-it('rejects unknown ids, broad folders, mixed folders, and linked vaults', async () => {
-  await expect(remove('unknown')).rejects.toThrow('Unknown workspace')
+it('never recycles an unknown id, a broad folder, a mixed folder or a linked vault', async () => {
+  const kept = await vault('kept')
+  await remove('unknown')
+  await finishWorkspaceDeletion()
+  expect(fixture.error).toHaveBeenLastCalledWith('Workspace deletion did not finish', expect.stringContaining('no longer exists'))
   const broad = await registerWorkspace({ name: 'Home', root: fixture.base, kind: 'personal' })
-  await expect(remove(broad.id)).rejects.toThrow('protected app data')
+  await remove(broad.id)
+  await finishWorkspaceDeletion()
+  expect(fixture.error).toHaveBeenLastCalledWith('Workspace deletion did not finish', expect.stringContaining('protected app data'))
+  // Start fresh checks every folder the same way before it names one.
+  await expect(validatedWorkspaceRoots()).rejects.toThrow('protected app data')
+  await writeFile(registry(), JSON.stringify({ ...await readRegistry(), vaults: (await readRegistry()).vaults.filter((one: { id: string }) => one.id !== broad.id), current: kept.id }))
   const mixed = await vault('mixed')
   await writeFile(join(mixed.root, 'keep.txt'), 'unrelated')
-  await expect(remove(mixed.id)).rejects.toThrow('outside Engram')
+  await remove(mixed.id)
+  await finishWorkspaceDeletion()
+  expect(fixture.error).toHaveBeenLastCalledWith('Workspace deletion did not finish', expect.stringContaining('outside Engram'))
   const linked = await vault('source')
   const alias = join(fixture.base, 'alias')
   await symlink(linked.root, alias, 'junction')
   const aliasInfo = await registerWorkspace({ name: 'Alias', root: alias, kind: 'personal' })
-  await expect(remove(aliasInfo.id)).rejects.toThrow('Linked workspace')
-  await expect(remove(linked.id)).rejects.toThrow('Another workspace points inside')
-  expect(fixture.confirm).not.toHaveBeenCalled()
+  await remove(aliasInfo.id)
+  await finishWorkspaceDeletion()
+  expect(fixture.error).toHaveBeenLastCalledWith('Workspace deletion did not finish', expect.stringContaining('Linked workspace'))
   expect(fixture.trash).not.toHaveBeenCalled()
+  expect(await readFile(join(mixed.root, 'keep.txt'), 'utf8')).toBe('unrelated')
 })
 
 it('revalidates the path at startup and leaves unexpected new files untouched', async () => {

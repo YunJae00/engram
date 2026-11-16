@@ -9,17 +9,9 @@ import { DialogHeader } from './DialogHeader.js'
 // One-click GitHub backup (browser-assisted, no OAuth app). Two steps in one
 // modal: (1) open GitHub's prefilled create-repo page, (2) paste the repo URL
 // and connect. The bundled git's credential manager handles auth on first push.
-function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug ? `engram-${slug}` : 'engram-vault'
-}
-
 export function GithubConnect({ onClose }: { onClose(): void }) {
   const { showToast, refresh, t } = useApp()
-  const [suggested, setSuggested] = useState('engram-vault')
+  const suggested = 'engram-vault'
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<{ text: string; retry: boolean } | null>(null)
@@ -49,18 +41,6 @@ export function GithubConnect({ onClose }: { onClose(): void }) {
     }
     setBusy(false)
   }
-
-  // Derive a friendly default repo name from the current workspace ("Engram"
-  // → "engram-personal"). Empty registry (onboarding/e2e) falls back sensibly.
-  useEffect(() => {
-    void api
-      .workspaceList()
-      .then((reg) => {
-        const current = reg.vaults.find((v) => v.id === reg.current)
-        setSuggested(slugify(current?.name ?? ''))
-      })
-      .catch(() => setSuggested('engram-vault'))
-  }, [])
 
   const openRepo = () => void api.githubOpenNew(suggested)
 

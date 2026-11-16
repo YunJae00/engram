@@ -9,7 +9,7 @@ import { cometOfChannel } from '../lib/cometThreads.js'
 import { useCometActivity } from '../lib/useCometActivity.js'
 import { useShellState } from '../state-slices.js'
 import { SidebarStatus } from './SidebarStatus.js'
-import { WorkspaceSwitcher } from './WorkspaceSwitcher.js'
+import { SidebarMenu } from './SidebarMenu.js'
 import { SidebarCollection } from './SidebarCollection.js'
 import { SidebarBotTeam, SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
@@ -128,7 +128,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     onChange={async changeValue => { await change(kind, changeValue) }} onRename={(id, name) => rename(kind, id, name)} onRemove={id => remove(kind, id)} onError={showToast}
     onOpen={id => { if (kind === 'chat') openBot(id); else { onSelectRoutine(id); if (window.innerWidth <= 900) onToggle() } }} />
   return <aside className={`app-sidebar${open ? ' open' : ''}`} data-testid="app-sidebar" aria-hidden={!open}>
-    <div className="app-sidebar-head"><WorkspaceSwitcher activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
+    <div className="app-sidebar-head"><SidebarMenu activity={activity} onNavigate={navigate} /><WorkspaceMode developer={developer} onChange={navigate} /><button className="sidebar-icon-button" data-testid="app-sidebar-close" title={t('rail.hide')} aria-label={t('rail.hide')} onClick={onToggle}><PanelLeftClose size={17} strokeWidth={1.8} aria-hidden /></button></div>
     {developer ? <div id="developer-sidebar" className="developer-sidebar-content" /> : <>
     <div className={`sidebar-library-tools${searchOpen ? ' searching' : ''}`}><button ref={searchToggle} className="sidebar-icon-button bots-top-button sidebar-search-toggle" data-testid="sidebar-search-toggle" aria-label={t('sidebar.searchButton')} title={t('sidebar.searchButton')} aria-expanded={searchOpen} aria-controls={searchId} onClick={() => { flushSync(() => setSearchOpen(true)); searchInput.current?.focus() }}><Search size={17} aria-hidden /></button>
     <div id={searchId} className={`sidebar-search${searchOpen ? ' open' : ''}`} {...searchOpen ? {} : { inert: '', 'aria-hidden': true }} onBlur={event => { if (!query && !composing.current && !event.currentTarget.contains(event.relatedTarget as Node | null)) setSearchOpen(false) }}><Search size={14} aria-hidden /><input ref={searchInput} aria-label={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} placeholder={library ? t('sidebar.searchRoutines') : t('sidebar.searchConversations')} value={query} onChange={event => setQuery(event.target.value)} onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={event => {

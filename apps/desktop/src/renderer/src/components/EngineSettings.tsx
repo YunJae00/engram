@@ -1,12 +1,10 @@
-import { Archive, ExternalLink, LoaderCircle, LogIn, MessageSquare, Users } from 'lucide-react'
+import { ExternalLink, LoaderCircle, LogIn, PlugZap, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EngineLoginDto, EngineStatusDto } from '../../../shared/types.js'
 import { api, apiErrorText } from '../api.js'
-import { ModelPicker } from './ModelPicker.js'
 import { ProviderIcon } from './ProviderIcon.js'
 import { InstallClaude } from './InstallClaude.js'
 import { AccountProfiles } from './AccountProfiles.js'
-import { AccountUsage } from './AccountUsage.js'
 import type { AccountProfiles as Profiles } from '../../../shared/account-profiles.js'
 import { useAccountProfiles } from '../lib/accountProfiles.js'
 import { connectionConfirmed, connectionLabel, visibleLoginMessage } from '../lib/connectionStatus.js'
@@ -90,19 +88,15 @@ export function EngineSettings() {
                 </span>
               </SettingsItem>
               {!pending && <KeyConnection key={`${id}:${profiles?.selected[id]}:${attempt}`} provider={id} onChanged={() => setAttempt(value => value + 1)} />}
-              {connected && <div className="settings-item settings-item-block"><AccountUsage provider={id} verified={connected} /></div>}
             </div>
           </section>
         )
       })}
-      <SettingsGroup title={t('settingsUi.defaults')}>
-        <section aria-label={t('settingsUi.newConvModel')}><SettingsItem icon={<MessageSquare size={18} />} title={t('model.headingNew')} description={t('settingsUi.newConvHint')}><ModelPicker showAccounts={false} /></SettingsItem></section>
-        <section aria-label={t('settingsUi.filingModel')}><SettingsItem icon={<Archive size={18} />} title={t('settingsUi.filing')} description={checked ? t('settingsUi.filingAnswered') : t('settingsUi.filingHint')}>
-          <ModelPicker scope="filing" showAccounts={false} />
+      <SettingsGroup label={t('settingsUi.test')}>
+        <SettingsItem icon={<PlugZap size={18} />} title={t('settingsUi.test')} description={checked ? t('settingsUi.filingAnswered') : undefined}>
           <button type="button" className="secondary" disabled={checking} data-testid="ai-check-filing" onClick={() => void check()}>{checking ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />{t('settingsUi.checking')}</> : t('settingsUi.test')}</button>
-        </SettingsItem></section>
+        </SettingsItem>
       </SettingsGroup>
-      <section className="settings-section" aria-label={t('settingsUi.decisionConnection')}><h3 className="settings-section-title">{t('settingsUi.advanced')}</h3><div className="settings-card"><KeyConnection provider="decision" /></div></section>
       {error && <div role="alert" className="engine-message">{error} <button className="secondary" onClick={() => { setError(''); setAttempt((value) => value + 1) }}>{t('settingsUi.retry')}</button></div>}
     </div>
   )

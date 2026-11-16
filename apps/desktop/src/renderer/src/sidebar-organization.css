@@ -187,15 +187,6 @@
 .sidebar-footer > button[data-testid='activity-settings'] { grid-column: 2; width: 32px; min-height: 32px; padding: 8px; align-self: center; }
 .sidebar-footer > button[data-testid='activity-settings'] > span { display: none; }
 .workspace-menu .sidebar-nav { padding: 0; gap: 1px; }
-.workspace-management > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 9px 10px; color: var(--fg-dim); cursor: pointer; border-radius: 8px; }
-.workspace-management > summary::-webkit-details-marker { display: none; }
-.workspace-management > summary:hover { background: var(--hover-bg); }
-.workspace-management[open] > summary > svg { transform: rotate(180deg); }
-.workspace-management .workspace-row { padding-left: 10px; }
-.workspace-entry { display: flex; align-items: center; min-width: 0; }
-.workspace-entry .workspace-row { flex: 1; min-width: 0; }
-.workspace-delete { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 8px; color: var(--fg-dim); }
-.workspace-delete:hover { background: var(--hover-bg); color: var(--fg); }
 .chat-attachment-error { margin: 6px 0; color: var(--danger); font-size: var(--fs-small); }
 .chat-attachment-status { margin: 6px 0; color: var(--fg-dim); font-size: var(--fs-small); }
 

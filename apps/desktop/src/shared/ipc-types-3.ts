@@ -1,5 +1,5 @@
 import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -38,11 +38,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   modelsList(id?: 'claude' | 'codex', profile?: string): Promise<ModelChoiceDto[]>
   aiCheck(): Promise<void>
   agentState(): Promise<{ on: boolean; url?: string; lane?: string }>
-  workspaceList(): Promise<{ current: string | null; vaults: WorkspaceInfoDto[] }>
-  workspaceCreate(name: string): Promise<void>
-  workspaceJoin(name: string, url: string): Promise<void>
-  workspaceSwitch(id: string): Promise<void>
-  workspaceDelete(id: string): Promise<boolean>
   listNotes(): Promise<NoteDto[]>
   readNote(id: string): Promise<{ note: NoteDto; body: string }>
   saveNoteBody(id: string, body: string): Promise<void>
@@ -204,7 +199,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   onboardDefaults(): Promise<{ defaultRoot: string }>
   onboardComplete(payload: OnboardPayload): Promise<void>
   enginesDetected(): Promise<boolean>
-  tourEligible(): Promise<boolean>
   appVersion(): Promise<string>
   vaultReady(): Promise<boolean>
   revealVaultRoot(root: string): Promise<void>

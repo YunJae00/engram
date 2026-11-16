@@ -128,13 +128,6 @@ export type EngramEvent =
   | { type: 'vault:ready' }
   | { type: 'vault:error'; message: string; root: string }
 
-export interface WorkspaceInfoDto {
-  id: string
-  name: string
-  root: string
-  kind: 'personal' | 'team'
-}
-
 export type AgentInputDto =
   | {
       kind: 'mouse'
