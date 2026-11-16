@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { extractChatCaptures } from '../src/main/ipc.js'
+import { readFile } from 'node:fs/promises'
+import { captureReceipt, extractChatCaptures } from '../src/main/ipc.js'
 
 describe('extractChatCaptures', () => {
   it('lifts the marked item out and leaves clean prose', () => {
@@ -22,5 +23,24 @@ describe('extractChatCaptures', () => {
     const { text, captures } = extractChatCaptures('그건 어제 이미 해결했어.')
     expect(captures).toEqual([])
     expect(text).toBe('그건 어제 이미 해결했어.')
+  })
+})
+
+// Codex cap (hux r3): a Korean answer ended "✓ Remembered — the librarian is filing it", and a failed save showed the raw error.
+describe('what the answer says about a thing it was asked to keep', () => {
+  it('says nothing in a Korean thread when it was kept, and one plain Korean line when it was not', () => {
+    expect(captureReceipt(0, 0, null, true)).toBe('')
+    expect(captureReceipt(1, 1, null, true)).toBe('')
+    expect(captureReceipt(3, 3, null, true)).toBe('')
+    const failed = captureReceipt(1, 0, new Error('EACCES: permission denied, open /Users/x/inbox/a.md'), true)
+    expect(failed).toBe('\n\n이건 적어 두지 못했어요. 한 번만 다시 말씀해 주세요.')
+    expect(captureReceipt(3, 1, new Error('ENOSPC'), true)).toBe('\n\n3개 중 2개는 적어 두지 못했어요. 한 번만 다시 말씀해 주세요.')
+    for (const line of [failed, captureReceipt(3, 1, new Error('ENOSPC'), true)]) expect(line).not.toMatch(/[A-Za-z]|기억|메모리|저장/)
+  })
+
+  it('keeps the receipt an English thread already had, and the handler asks by the thread\'s language', async () => {
+    expect(captureReceipt(1, 1, null, false)).toBe('\n\n✓ Remembered — the librarian is filing it')
+    expect(captureReceipt(2, 1, null, false)).toContain('Could not save 1 of 2 items')
+    expect(await readFile('apps/desktop/src/main/ipc.ts', 'utf8')).toContain('captureReceipt(captures.length, saved, saveError, threadKorean(request.message, request.history ?? []))')
   })
 })

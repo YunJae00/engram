@@ -769,6 +769,15 @@ export function abortAllChat(channel?: string): void {
 // in <engram:capture>…</engram:capture> (see the rules block); this strips the
 // markers from the visible answer and hands each item to the same inbox path
 // quick capture uses. Pure and exported for its unit test.
+// What the answer says about what it was asked to keep. A Korean thread hears nothing when it is kept (GROKBOT rule 11: memory is silent)
+// and one plain line when it is not; the raw error goes to the log, never the thread.
+export function captureReceipt(asked: number, saved: number, error: unknown, korean: boolean): string {
+  if (asked === 0) return ''
+  if (saved === asked) return korean ? '' : `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
+  if (korean) return `\n\n${saved > 0 ? `${asked}개 중 ${asked - saved}개는` : '이건'} 적어 두지 못했어요. 한 번만 다시 말씀해 주세요.`
+  return `\n\n⚠ Could not save ${saved > 0 ? `${asked - saved} of ${asked} items` : 'this'} — ${error instanceof Error ? error.message : 'the vault folder rejected the write'}. Please try again.`
+}
+
 export function extractChatCaptures(text: string): { text: string; captures: string[] } {
   const captures: string[] = []
   const cleaned = text
@@ -2669,12 +2678,7 @@ export function registerIpc(ctx: VaultContext): void {
         broadcast({ type: 'vault:changed' })
         runPipelineSoon(ctx, 'librarian: chat capture')
       }
-      const receipt =
-        captures.length === 0
-          ? ''
-          : saved === captures.length
-            ? `\n\n✓ Remembered${saved > 1 ? ` ${saved} items` : ''} — the librarian is filing ${saved > 1 ? 'them' : 'it'}`
-            : `\n\n⚠ Could not save ${saved > 0 ? `${captures.length - saved} of ${captures.length} items` : 'this'} — ${saveError instanceof Error ? saveError.message : 'the vault folder rejected the write'}. Please try again.`
+      const receipt = captureReceipt(captures.length, saved, saveError, threadKorean(request.message, request.history ?? []))
       // The transcript must be whole before anyone hears the answer is done:
       // a surface that reads the thread back from disk on that signal would
       // otherwise miss its last exchange.
