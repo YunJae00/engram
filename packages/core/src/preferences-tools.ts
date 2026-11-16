@@ -158,7 +158,7 @@ async function apply(host: PreferenceHost, ask: PreferenceAsk, now: Date): Promi
     case 'backup_connect': case 'backup_disconnect': case 'backup_now': case 'backup_auto': {
       if (!host.backup.available()) return '이 컴퓨터에서는 백업을 쓸 수 없어요.'
       if (ask.do === 'backup_connect') {
-        if (!/github\.com[/:][\w.-]+\/[\w.-]+/i.test(name)) return '백업할 깃허브 저장소 주소를 알려 주세요.'
+        if (!/github\.com[/:][\w.-]+\/[\w.-]+/i.test(name)) return '백업할 깃허브 저장소 주소를 알려 주세요. 아직 없으면 [깃허브](https://github.com/new?visibility=private)에서 비공개로 하나 만들면 돼요.'
         const result = await host.backup.connect(name)
         return result.ok ? '깃허브 백업을 연결했어요.' : '깃허브에 연결하지 못했어요. 저장소 주소와 로그인을 확인해 주세요.'
       }

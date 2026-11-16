@@ -166,6 +166,42 @@ describe('mergeWorkspace', () => {
     expect(after).toEqual(whole)
   })
 
+  // Review round 2: a copied workspace has the same folder ids; the arriving folder was dropped and its bots put in the folder here.
+  it('keeps both folders when a copied workspace has the same folder id', async () => {
+    const main = await mainVault()
+    const copy = await vault('copy', {
+      [`${C}/bots.json`]: { version: 2, bots: [bot('bot-c-1', '최주임', {}), bot('bot-c-2', '한사원', {})], dismissed: [] },
+      [`${C}/bot-memory/_team-fold-1.json`]: { facts: [{ id: 't1', text: 'copy team fact', at: 't', touchedAt: 't' }], turns: 0 },
+      [`${C}/sidebar-layout.json`]: { chat: { folders: [{ id: 'fold-1', name: '기획팀' }, { id: 'fold-2', name: '마케팅팀' }], items: [{ id: 'bot-c-1', folder: 'fold-1' }, { id: 'bot-c-2', folder: 'fold-2' }] }, routine: { folders: [{ id: 'fold-1', name: '아침' }], items: [{ id: 'r-1', folder: 'fold-1' }] } },
+    })
+    const before = await snapshot(copy.root)
+    const merge = () => mergeWorkspace(main, { root: copy.root, name: '사본' })
+    await merge()
+    const check = async () => {
+      const layout = JSON.parse(await text(main, `${C}/sidebar-layout.json`)) as Record<'chat' | 'routine', { folders: { id: string; name: string }[]; items: { id: string; folder: string | null }[] }>
+      const arrived = layout.chat.folders[1]!.id
+      expect(arrived).toMatch(/^fold-1-[0-9a-f]{6}$/)
+      expect(layout.chat.folders).toEqual([{ id: 'fold-1', name: '마케팅팀' }, { id: arrived, name: '기획팀' }, { id: 'fold-2', name: '마케팅팀 (사본)' }])
+      // Each bot stays in its own folder: the one here is not handed the arriving folder's bot.
+      expect(layout.chat.items).toEqual([{ id: 'bot-a-2', folder: 'fold-1' }, { id: 'bot-c-1', folder: arrived }, { id: 'bot-c-2', folder: 'fold-2' }])
+      // One id per source folder, whichever list it is in; the team's memory follows its folder.
+      expect(layout.routine).toEqual({ folders: [{ id: arrived, name: '아침' }], items: [{ id: 'r-1', folder: arrived }] })
+      expect(await text(main, `${C}/bot-memory/_team-${arrived}.json`)).toContain('copy team fact')
+      expect((await readdir(join(main.cache, 'bot-memory'))).filter(name => name.startsWith('_team-'))).toEqual([`_team-${arrived}.json`])
+      return layout
+    }
+    const first = await check()
+    expect(await snapshot(copy.root)).toEqual(before)
+    // Cut short after the layout was written: the same ids are chosen again and no folder arrives twice.
+    const ledgerPath = join(main.cache, 'merged-workspaces.json')
+    const ledger = JSON.parse(await readFile(ledgerPath, 'utf8')) as Record<string, { done: boolean; report?: unknown }>
+    for (const entry of Object.values(ledger)) { entry.done = false; delete entry.report }
+    await writeFile(ledgerPath, JSON.stringify(ledger))
+    await merge()
+    expect(await check()).toEqual(first)
+    expect(await merge()).toBeNull()
+  })
+
   it('takes three workspaces in turn, each name still its own', async () => {
     const main = await mainVault(), work = await workVault()
     const third = await vault('third', { [`${C}/bots.json`]: { version: 2, bots: [bot('bot-a-1', '비서실장', { primary: true }), bot('bot-c-1', '김대리', { label: '재무' })], dismissed: [] } })

@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState } fro
 import { api } from './api.js'
 import { AppNotices, Toast, useToastDismiss } from './components/AppNotices.js'
 import { AppSidebar } from './components/AppSidebar.js'
-import { type PaletteAction, type PaletteMode } from './components/Palette.js'
+import { type PaletteMode } from './components/Palette.js'
 import { TopBar } from './components/TopBar.js'
 import { ComputerStatus } from './components/ComputerStatus.js'
 import { dismissSidebar, useSidebarEscape } from './lib/sidebarOverlay.js'
@@ -26,12 +26,10 @@ const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) =>
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
 const MissionControl = lazy(() => import('./views/MissionControl.js').then((m) => ({ default: m.MissionControl })))
 const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
-const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
 const ControlOverlay = lazy(() => import('./views/ControlOverlay.js').then((m) => ({ default: m.ControlOverlay })))
 const ControlPill = lazy(() => import('./views/ControlPill.js').then((m) => ({ default: m.ControlPill })))
 const ErrandsSheet = lazy(() => import('./components/ErrandsSheet.js').then((m) => ({ default: m.ErrandsSheet })))
 const RoutinesView = lazy(() => import('./views/RoutinesView.js').then((m) => ({ default: m.RoutinesView })))
-const GithubConnect = lazy(() => import('./components/GithubConnect.js').then((m) => ({ default: m.GithubConnect })))
 const DiagnosticsView = lazy(() => import('./views/DiagnosticsView.js').then((m) => ({ default: m.DiagnosticsView })))
 const InboxOverlay = lazy(() => import('./views/InboxOverlay.js').then((m) => ({ default: m.InboxOverlay })))
 const ListView = lazy(() => import('./views/ListView.js').then((m) => ({ default: m.ListView })))
@@ -57,7 +55,6 @@ function Shell() {
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
   // rests: a window event fired at a closed panel has nobody listening.
-  const [action, setAction] = useState<PaletteAction | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(settingsHeld.open)
   useEffect(() => { settingsHeld = { open: settingsOpen } }, [settingsOpen])
   useEffect(() => {
@@ -71,7 +68,6 @@ function Shell() {
   const [diagOpen, setDiagOpen] = useState(false)
   // "Back up to GitHub" — reachable from the workspace switcher, settings, and
   // the command palette; they all raise this one window intent.
-  const [githubOpen, setGithubOpen] = useState(false)
   // The weekly digest reads on demand from the command palette — it is not
   // part of the morning, so it is not mounted with Today.
   const [digestOpen, setDigestOpen] = useState(false)
@@ -108,7 +104,7 @@ function Shell() {
       else if (e.type === 'task:notice') showToast(e.foreground ? threadWords(threadLang(cometThreads.thread(e.foreground.lane.replace(/^bot-/, '')).messages)).foregroundTaken(e.foreground.app) : e.message)
       else if (e.type === 'brain:setup') setSettingsOpen(true)
       else if (e.type === 'routine:chat' || e.type === 'comet:open' || e.type === 'comet:quick') {
-        if (e.type === 'comet:quick') { setSettingsOpen(false); setPalette(null); setAction(null) }
+        if (e.type === 'comet:quick') { setSettingsOpen(false); setPalette(null) }
         selectComet(e.botId); setActivity('bots')
         if (window.innerWidth <= 900) setSidebarOpen(false)
       }
@@ -179,7 +175,6 @@ function Shell() {
     const toggleChat = () => setActivity('bots')
     const openPalette = () => setPalette('search')
     const openDiag = () => setDiagOpen(true)
-    const openGithub = () => setGithubOpen(true)
     const openDigest = () => setDigestOpen(true)
     const openErrand = () => setErrandOpen(true)
     const openRoutines = () => setActivity('routines')
@@ -213,7 +208,6 @@ function Shell() {
       else void window.engram.artifactOpen(id).catch(() => setArtifactId(id))
     }
     window.addEventListener('engram:open-artifact', openArtifact)
-    window.addEventListener('engram:open-github', openGithub)
     window.addEventListener('engram:open-digest', openDigest)
     window.addEventListener('engram:open-errand', openErrand)
     window.addEventListener('engram:open-routines', openRoutines)
@@ -227,7 +221,6 @@ function Shell() {
       window.removeEventListener('engram:open-help', openHelp)
       window.removeEventListener('engram:open-diagnostics', openDiag)
       window.removeEventListener('engram:open-artifact', openArtifact)
-      window.removeEventListener('engram:open-github', openGithub)
       window.removeEventListener('engram:open-digest', openDigest)
       window.removeEventListener('engram:open-errand', openErrand)
       window.removeEventListener('engram:open-routines', openRoutines)
@@ -323,9 +316,7 @@ function Shell() {
         {errandOpen && <ErrandsSheet onClose={() => setErrandOpen(false)} />}
         <ReviewOverlay />
         <InboxOverlay />
-        {palette && <Palette mode={palette} onClose={() => setPalette(null)} onAction={setAction} />}
-        {action && <ActionDialog action={action} onClose={() => setAction(null)} />}
-        {githubOpen && <GithubConnect onClose={() => setGithubOpen(false)} />}
+        {palette && <Palette mode={palette} onClose={() => setPalette(null)} />}
         {artifactId && <ArtifactSheet id={artifactId} onClose={() => setArtifactId(null)} />}
         {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
         {diagOpen && <DiagnosticsView onClose={() => setDiagOpen(false)} />}

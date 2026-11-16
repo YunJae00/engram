@@ -7,9 +7,8 @@ import { useApp } from '../state.js'
 import { freshTone } from '../lib/grouping.js'
 
 export type PaletteMode = 'search' | 'commands' | null
-export type PaletteAction = 'team-join'
 
-export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClose(): void; onAction(action: PaletteAction): void }) {
+export function Palette({ mode, onClose }: { mode: PaletteMode; onClose(): void }) {
   const { notes, openNote, openReview, openInbox, showToast, t } = useApp()
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHitDto[]>([])
@@ -129,12 +128,7 @@ export function Palette({ mode, onClose, onAction }: { mode: PaletteMode; onClos
             >
               {t('palette.copyPack')}
             </Command.Item>
-            {/* 'team-create' now routes to the browser-assisted GitHub backup —
-                the device-OAuth path threw without ENGRAM_GITHUB_CLIENT_ID set. */}
-            <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-github')))}>{t('palette.teamCreate')}</Command.Item>
-            <Command.Item onSelect={() => pick(() => onAction('team-join'))}>{t('palette.teamJoin')}</Command.Item>
-            {/* Delegate a goal to the on-device librarian — same window-intent
-                idiom as the digest/GitHub items above. */}
+            {/* Delegate a goal to the on-device librarian (a window intent). */}
             <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-errand')))}>{t('palette.errand')}</Command.Item>
             <Command.Item onSelect={() => pick(() => window.dispatchEvent(new Event('engram:open-routines')))}>{t('palette.routines')}</Command.Item>
           </>

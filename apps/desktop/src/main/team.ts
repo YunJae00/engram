@@ -1,19 +1,15 @@
 import {
   collectResult,
   engineCwd,
-  joinTeam,
   loadAbsorbState,
   resolveConflicts,
   runImport,
   TeamSync,
 } from 'core'
 import { loadSettings } from './settings.js'
-import { ipcMain, shell } from 'electron'
-import { access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { ipcMain } from 'electron'
 import type { GithubConnectResultDto, SyncStatusDto } from '../shared/types.js'
 import { broadcast, drainAbsorbQueue } from './ipc.js'
-import { isAllowedExternalUrl } from './security.js'
 import type { VaultContext } from './vault.js'
 import { vaultGit } from './vault-git.js'
 
@@ -150,35 +146,6 @@ export function registerTeamIpc(ctx: VaultContext): void {
       return `Incoming changes:\n\n${diff}`
     }
   })
-
-  ipcMain.handle('team:join', async (_e, url: string) => {
-    // joining replaces an EMPTY workspace only — never clobber notes.
-    try {
-      await access(join(ctx.paths.workspace, '.git'))
-      throw new Error('This vault already has team history — join from a fresh vault instead.')
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('team history')) throw err
-    }
-    await joinTeam(ctx.paths.root, url)
-    teamSync = null
-    broadcast({ type: 'vault:changed' })
-  })
-
-  // One-click GitHub backup (no pre-registered OAuth app needed). Step 1 opens
-  // GitHub's create-repo page prefilled private; the browser + bundled git's
-  // credential manager handle auth on the first push.
-  ipcMain.handle('github:openNew', (_e, name: string) => {
-    const suggested = encodeURIComponent(name.trim() || 'engram-vault')
-    const url = `https://github.com/new?name=${suggested}&visibility=private`
-    // Host is a literal here, but gate every openExternal through the allowlist
-    // so no code path can ever hand the OS browser an off-allowlist URL.
-    if (isAllowedExternalUrl(url)) void shell.openExternal(url)
-  })
-
-  // Step 2: point the existing vault repo at the pasted repo and push. Idempotent
-  // and retry-safe — a prior push that failed on auth left the remote in place,
-  // so we push again rather than trap the user behind an "already connected" wall.
-  ipcMain.handle('github:connect', (_e, url: string) => connectGithub(ctx, url))
 
   ipcMain.handle('import:run', async (_e, folder: string) => {
     const report = await runImport(ctx.paths, folder, {

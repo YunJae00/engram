@@ -32,6 +32,13 @@ it('nothing in the window creates, switches, joins or deletes a workspace, and t
   expect(components.filter(name => /WorkspaceSwitcher|TourOverlay|SettingsNavigation|ComputerSettings|ReviewRulesSettings|WorkMapSettings|WorkHabitsSettings/.test(name))).toEqual([])
   const preload = await src('preload/index.ts')
   expect(preload).not.toMatch(/workspace:|tourEligible|audit:open|semantic:status|reviewRules:(add|remove)|apps:set|habits:scan|workMap:refresh/)
+  // Review round 2: the command palette still opened the join-a-team form and the GitHub backup form; both are chat sentences.
+  expect(components.filter(name => /ActionDialog|GithubConnect/.test(name))).toEqual([])
+  expect(preload).not.toMatch(/team:join|github:(connect|openNew)/)
+  const palette = await src('renderer/src/components/Palette.tsx')
+  expect(palette).not.toMatch(/team|github|onAction/i)
+  expect(await src('renderer/src/App.tsx')).not.toMatch(/ActionDialog|GithubConnect|open-github/)
+  expect(await src('main/team.ts')).not.toMatch(/'team:join'|'github:(connect|openNew)'/)
   const menu = await src('renderer/src/components/SidebarMenu.tsx')
   expect(menu).not.toMatch(/\bapi\.|sidebar\.workspaces|'ws\./)
   expect([...menu.matchAll(/\['(\w+)', t\(/g)].map(match => match[1])).toEqual(['bots', 'sky', 'list'])

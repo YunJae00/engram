@@ -115,6 +115,15 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
       takenIds.add(next)
       ids[id] = next
     }
+    // Sidebar folders (teams) too: a copied workspace has the same folder ids, and both folders are kept.
+    const foldersOf = (layout: unknown): string[] => isObject(layout) ? ['chat', 'routine'].flatMap(kind => { const group = layout[kind]; return isObject(group) && Array.isArray(group['folders']) ? (group['folders'] as unknown[]).filter(isObject).map(folder => folder['id']).filter((id): id is string => typeof id === 'string') : [] }) : []
+    const takenFolders = new Set(foldersOf(await readJson(join(target.cache, 'sidebar-layout.json')).catch(() => undefined)))
+    if (current) for (const id of new Set(foldersOf(await readJson(join(from.cache, 'sidebar-layout.json')).catch(() => undefined)))) {
+      let next = id
+      for (let n = 1; takenFolders.has(next) || Object.hasOwn(ids, next); n++) next = `${id}-${tag}${n > 1 ? `-${n}` : ''}`
+      takenFolders.add(next)
+      if (!Object.hasOwn(ids, id)) ids[id] = next
+    }
     ledger[key] = { name: source.name, at: new Date().toISOString(), ids, done: false }
     await writeJson(ledgerPath, ledger)
   }
@@ -228,7 +237,7 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
       await writeJson(listPath, { ...held, bots: [...held['bots'] as unknown[], ...active], ...(gone.length || held['archived'] ? { archived: [...(Array.isArray(held['archived']) ? held['archived'] as unknown[] : []), ...gone] } : {}), dismissed })
     }
     report.bots = active.length + gone.length
-    await mergeSidebar(join(from.cache, 'sidebar-layout.json'), join(target.cache, 'sidebar-layout.json'), source.name, mapped, report)
+    await mergeSidebar(join(from.cache, 'sidebar-layout.json'), join(target.cache, 'sidebar-layout.json'), source.name, ids, mapped, report)
   }
 
   ledger[key] = { name: source.name, at: new Date().toISOString(), ids, done: true, report }
@@ -261,7 +270,7 @@ async function localOnly(workspace: string): Promise<((path: string) => Promise<
 }
 
 // Folders are teams, so two may not share a name; an item keeps its folder and its pin.
-async function mergeSidebar(fromPath: string, toPath: string, origin: string, mapped: (id: string) => string, report: MergeReport): Promise<void> {
+async function mergeSidebar(fromPath: string, toPath: string, origin: string, ids: Record<string, string>, mapped: (id: string) => string, report: MergeReport): Promise<void> {
   const theirs = await readJson(fromPath).catch(() => undefined)
   if (!isObject(theirs)) return
   const mine = await readJson(toPath).catch(() => null)
@@ -277,17 +286,25 @@ async function mergeSidebar(fromPath: string, toPath: string, origin: string, ma
     const items = (Array.isArray(held['items']) ? held['items'] as unknown[] : []).filter(isObject)
     const folderIds = new Set(folders.map(folder => folder['id'])), folderNames = new Set(folders.map(folder => String(folder['name']).trim()))
     const itemIds = new Set(items.map(item => item['id']))
+    const arrived = new Map<unknown, string>()
     for (const folder of (Array.isArray(group['folders']) ? group['folders'] as unknown[] : []).filter(isObject)) {
-      if (typeof folder['id'] !== 'string' || typeof folder['name'] !== 'string' || folderIds.has(folder['id']) || folders.length >= FOLDERS_MAX) continue
-      const name = freeName(folder['name'].slice(0, FOLDER_NAME_MAX), origin, folderNames, FOLDER_NAME_MAX)
-      if (name !== folder['name'].trim()) report.renamed.push(`${folder['name'].trim()} → ${name}`)
-      folders.push({ ...folder, name }); folderIds.add(folder['id']); folderNames.add(name); touched = true
+      if (typeof folder['id'] !== 'string' || typeof folder['name'] !== 'string') continue
+      // A copied workspace carries the same folder ids: the arriving folder comes under the id chosen for it before anything was written.
+      const id = ids[folder['id']] ?? folder['id']
+      // That id already here is this same folder from a run that was cut short.
+      if (!folderIds.has(id)) {
+        if (folders.length >= FOLDERS_MAX) continue
+        const name = freeName(folder['name'].slice(0, FOLDER_NAME_MAX), origin, folderNames, FOLDER_NAME_MAX)
+        if (name !== folder['name'].trim()) report.renamed.push(`${folder['name'].trim()} → ${name}`)
+        folders.push({ ...folder, id, name }); folderIds.add(id); folderNames.add(name); touched = true
+      }
+      arrived.set(folder['id'], id)
     }
     for (const item of (Array.isArray(group['items']) ? group['items'] as unknown[] : []).filter(isObject)) {
       if (typeof item['id'] !== 'string') continue
       const id = kind === 'chat' ? mapped(item['id']) : item['id']
       if (itemIds.has(id)) continue
-      items.push({ ...item, id, folder: folderIds.has(item['folder']) ? item['folder'] : null }); itemIds.add(id); touched = true
+      items.push({ ...item, id, folder: arrived.get(item['folder']) ?? null }); itemIds.add(id); touched = true
     }
     layout[kind] = { ...held, folders, items }
   }

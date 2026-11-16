@@ -55,7 +55,7 @@ describe('each removed setting is one plain Korean sentence', () => {
     ['항상 물어보는 곳 뭐 있어?', '따로 정해 둔 곳은 없어요. 보내거나 제출하기 전에는 늘 먼저 여쭤봐요.', []],
     ['오늘 뭐 했는지 보여줘', '오늘은 아직 한 일이 없어요.', []],
     ['로그 내보내줘', '로그를 다운로드 폴더에 내보냈어요. engram-logs-1', ['export']],
-    ['깃허브 백업 연결해줘', '백업할 깃허브 저장소 주소를 알려 주세요.', []],
+    ['깃허브 백업 연결해줘', '백업할 깃허브 저장소 주소를 알려 주세요. 아직 없으면 [깃허브](https://github.com/new?visibility=private)에서 비공개로 하나 만들면 돼요.', []],
     ['깃허브 백업 해제해줘', '아직 깃허브 백업이 연결되어 있지 않아요.', []],
     ['컴퓨터 제어 꺼줘', '컴퓨터 제어를 멈췄어요.', ['stop-control']],
     ['컴퓨터 제어 켜줘', '앱을 직접 다뤄야 할 때 그때 한 번 여쭤볼게요.', []],
@@ -68,7 +68,7 @@ describe('each removed setting is one plain Korean sentence', () => {
       expect(said).toBe(reply)
       expect(calls).toEqual(did)
       // One short answer, in Korean apart from a site or file name.
-      expect(said!.replace(/naver\.com|engram-logs-1/g, '')).toMatch(HANGUL_ONLY)
+      expect(said!.replace(/naver\.com|engram-logs-1|\(https:\/\/[^)]*\)/g, '')).toMatch(HANGUL_ONLY)
     })
   }
 

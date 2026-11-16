@@ -1,5 +1,5 @@
 import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, PendingWorkDto, BrowserTabDto, EngramEvent, AgentInputDto, NativeSurfaceDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -181,9 +181,6 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   syncStatus(): Promise<SyncStatusDto>
   syncNow(): Promise<SyncStatusDto>
   syncBrief(): Promise<string>
-  teamJoin(url: string): Promise<void>
-  githubOpenNew(name: string): Promise<void>
-  githubConnect(url: string): Promise<GithubConnectResultDto>
   importPick(): Promise<string | null>
   importScan(folder: string): Promise<{ count: number; totalBytes: number }>
   importRun(folder: string): Promise<{ imported: number }>
