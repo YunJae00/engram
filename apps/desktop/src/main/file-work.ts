@@ -80,6 +80,8 @@ const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): str
 // - the new file is that deliverable again: made from the same source, or made in a later turn under the name (the fix the person asked
 //   for, which the chat links as the file with its "(이전)" version). Two different inputs under one name in one turn are two files, and so
 //   are two different task files copied under one name in any turn (qa143 S19a, qa145 r2 #2). With no turn named, only the same source counts.
+//   The source comes first: while another copy of this name is on record as made from this source, that copy is the deliverable and the
+//   later-turn rule replaces no other (qa145 r3: remaking "a (2).xlsx" replaced the other workbook's "a.xlsx").
 // The earlier version stays in the saved outputs, where the "(이전)" link points.
 // record (a twinsFile) notes the file only when this call created or replaced it: one found already there with the same bytes came from
 // elsewhere, or is on record from the receipt that placed it (qa143 S19a r12).
@@ -87,10 +89,11 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
   outputName(name)
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.'), source = JSON.stringify(made?.source ?? null)
   const note = async (path: string) => { if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${sha(data)}\0${path}\0${made?.turn ?? ''}\0${source}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`)) }
+  const spot = (count: number) => join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
   await writeFile(tmp, data, { flag: 'wx' })
   try {
     for (let count = 1; count < 100; count += 1) {
-      const path = join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
+      const path = spot(count)
       try {
         await link(tmp, path)
         await note(path)
@@ -102,10 +105,13 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         const held = await readFile(path)
         if (held.equals(data)) return path
         if (!record || !made) continue
-        const [hash, , turn, from] = (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0')).filter(line => line[1] === path).at(-1) ?? []
+        const rows = (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
+        const last = (at: string) => rows.filter(line => line[1] === at).at(-1)
+        const [hash, , turn, from] = last(path) ?? []
         if (hash !== sha(held) || !from) continue
         const copies = (value: string) => value.startsWith('"path\\u0000')
         if (from !== source && !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source)))) continue
+        if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
         return path

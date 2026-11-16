@@ -313,3 +313,21 @@ it('keeps two different inputs under one name as two task files, and replaces on
   expect(await place('v3', 'rows 4')).toBe(join(real, 'a (3).xlsx'))
   expect(await place('v4', 'rows 3')).toBe(join(real, 'a.xlsx'))
 })
+
+// qa145 r3: two workbooks share a name; remaking the second in a later turn replaced the first one's "a.xlsx" before reaching its own "a (2).xlsx".
+it('a later-turn remake replaces the copy made from its own source, not another deliverable holding the plain name', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane')
+  await mkdir(task, { recursive: true })
+  const real = await (await import('node:fs/promises')).realpath(task), record = twinsFile(paths, real)
+  const place = (data: string, source: string, turn: string) => placeInTask(real, 'a.xlsx', Buffer.from(data), record, { source, turn })
+  expect(await place('first', 'book 1', 't1')).toBe(join(real, 'a.xlsx'))
+  expect(await place('second', 'book 2', 't1')).toBe(join(real, 'a (2).xlsx'))
+  expect(await place('second, fixed', 'book 2', 't2')).toBe(join(real, 'a (2).xlsx'))
+  expect(await readFile(join(real, 'a.xlsx'), 'utf8')).toBe('first')
+  expect(await readFile(join(real, 'a (2).xlsx'), 'utf8')).toBe('second, fixed')
+  // Its own copy changed by hand since: the remake is numbered, and still does not take the other deliverable's file.
+  await writeFile(join(real, 'a (2).xlsx'), 'edited by hand')
+  expect(await place('second, again', 'book 2', 't3')).toBe(join(real, 'a (3).xlsx'))
+  expect(await readFile(join(real, 'a.xlsx'), 'utf8')).toBe('first')
+  expect((await readdir(real)).sort()).toEqual(['a (2).xlsx', 'a (3).xlsx', 'a.xlsx'])
+})
