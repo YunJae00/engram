@@ -60,7 +60,11 @@ export function fileMoveTool(paths: VaultPaths, assertActive: () => void): Agent
           await mkdir(dirname(move.to), { recursive: true })
           // A hard link fails on a name that exists, where a rename would replace it.
           if (move.folder) { if (await lstat(move.to).catch(() => null)) throw new Error(`${relative(root, move.to)} already exists.`); await rename(move.from, move.to) }
-          else { await link(move.from, move.to); await unlink(move.from) }
+          else {
+            await link(move.from, move.to)
+            // A source that cannot be removed (a read-only folder) would leave the file in both places: the new name is taken back.
+            try { await unlink(move.from) } catch (error) { await unlink(move.to).catch(() => undefined); throw error }
+          }
           done.push(move)
         }
       } catch (error) {
@@ -68,6 +72,8 @@ export function fileMoveTool(paths: VaultPaths, assertActive: () => void): Agent
         for (const move of done.reverse()) await rename(move.to, move.from).catch(() => undefined)
         throw new Error(`Nothing was moved: ${error instanceof Error ? error.message : String(error)}`)
       }
+      // The receipt is what is on disk now: every file at its new place and gone from the old one, so nothing else has to read the folder back.
+      if ((await Promise.all(plan.map(async move => !!await lstat(move.to).catch(() => null) && !await lstat(move.from).catch(() => null)))).every(Boolean)) context.onObservedAfterAction?.()
       const folders = new Map<string, string[]>()
       for (const move of plan) {
         const folder = relative(root, dirname(move.to)).split(sep).join('/') || '.'

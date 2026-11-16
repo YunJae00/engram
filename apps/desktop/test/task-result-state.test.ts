@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import type { AgentLoopResult, TurnStep } from 'core'
 import { checkResult, resultCheckTool } from '../src/main/result-check.js'
-import { canLearnTurn, commandOnlyReads, freshResultReadback, holdTaskResult, needsResultCheck, nothingToReadBack } from '../src/main/task-result-state.js'
+import { canLearnTurn, changedResult, commandOnlyReads, freshResultReadback, holdTaskResult, needsResultCheck, nothingToReadBack } from '../src/main/task-result-state.js'
 import { done, pressed, readback, setup } from './task-runner-fixture.js'
 
 const read: TurnStep = { tool: 'read_open_page', args: {}, observation: 'Current saved state' }
@@ -145,4 +145,15 @@ it('has nothing to read back only for words, with no file linked and nothing cha
   // A failed command may have partly happened; a seeded step is not this task's work.
   expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'that did not work: exit 1' }])).toBe(false)
   expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'Native action completed.', seeded: true }])).toBe(true)
+})
+
+// grokbar b5 r1: file_move was in none of the lists, so a move counted as no change and a readback-only turn that moved files was accepted.
+it('counts a file move as a change to the result, read back by its own receipt', () => {
+  const moved = { tool: 'file_move', args: { moves: [{ from: 'a.pdf', to: 'PDF/a.pdf' }] }, observation: '{"moved":1}' }
+  expect(changedResult([moved])).toBe(true)
+  expect(needsResultCheck('Done', [moved])).toBe(true)
+  expect(nothingToReadBack('Done', [moved])).toBe(false)
+  expect(freshResultReadback([moved])).toBe(false)
+  expect(freshResultReadback([{ ...moved, observedAfterAction: true }])).toBe(true)
+  expect(changedResult([{ ...moved, observation: 'that did not work: Nothing was moved' }])).toBe(false)
 })

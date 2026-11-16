@@ -1,6 +1,6 @@
 import { app, ipcMain, nativeImage, shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { appendFile, link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { appendFile, link, lstat, mkdir, open, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
@@ -65,7 +65,8 @@ const sha = (data: Buffer | string) => createHash('sha256').update(data).digest(
 
 // What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
 // artifact: the saved output (its id) these bytes are linked by in the chat.
-export interface Placement { source: string; turn?: string; artifact?: string }
+// outputs: the saved-outputs folder, where the version a change to the file itself replaces is removed from.
+export interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
 // Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
 const versionsFile = (handIns: string) => join(handIns, 'previous')
 // The earlier versions of a saved output that are still there, nearest first: the "(이전)" link's only source (qa146 2a: a repeated file
@@ -131,7 +132,15 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
-        if (was && made.artifact && was !== made.artifact) await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        if (was && made.artifact && was !== made.artifact) {
+          // A change to the file itself (file_edit_package on this task file or on its saved output) leaves one file, not the file and its
+          // earlier bytes: the person asked for that file to be changed, and a second deck in the store is a duplicate (grokbar D5).
+          // A file made again from scratch keeps its earlier version, as does one another task folder also holds.
+          const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : ''
+          const others = edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
+          if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
+          else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        }
         return path
       }
     }
@@ -139,7 +148,7 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
   } finally { await unlink(tmp).catch(() => undefined) }
 }
 
-const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), made) }
+const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), { ...made, outputs: artifactDirectory(paths) }) }
 
 // The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
 export function freeName(base: string, held: (name: string) => boolean): string {
