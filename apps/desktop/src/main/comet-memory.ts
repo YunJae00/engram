@@ -117,7 +117,7 @@ export async function rememberTurn(deps: {
     flog('comet-memory', `remembering failed — ${errorText(err)}`)
     return
   }
-  const { shared, own, outdated = [] } = scopeFacts(raw, known)
+  const { shared, own, outdated = [] } = scopeFacts(raw, known, deps.message)
   for (const line of outdated) await forgetFactText(deps.paths, deps.botId, line).catch((err) => flog('comet-memory', `forgetting failed — ${errorText(err)}`))
   const change = { added: 0, touched: 0 }
   const replaced = [...outdated]

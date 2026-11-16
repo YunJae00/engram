@@ -132,6 +132,21 @@ describe('ranking and rendering', () => {
     await recordFacts(paths, 'bot-q', ['# 도구를 사용하겠습니다', '<execute>', '| 사과 | 1000 |', '## COMET-REMEMBER'], T2)
     expect((await loadBotMemory(paths, 'bot-q')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
   })
+  it('qa145 r2: two events with different dates both stay', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-e', ['행사 일정은 11월 20일이다'], T1)
+    const later = await recordFacts(paths, 'bot-e', ['행사 일정은 12월 4일이다'], T2)
+    expect(later.replaced).toEqual([])
+    // Said together, even a long shared subject is two facts.
+    const together = await recordFacts(paths, 'bot-e', ['다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'], T2)
+    expect(together.replaced).toEqual([])
+    expect((await loadBotMemory(paths, 'bot-e')).facts.map((f) => f.text)).toEqual(['행사 일정은 11월 20일이다', '행사 일정은 12월 4일이다', '다음 분기 고객 방문은 1월 8일이다', '다음 분기 고객 방문은 2월 3일이다'])
+  })
+  it('qa145 r2: a promise already on disk is not read back', async () => {
+    const paths = await tempPaths()
+    await recordFacts(paths, 'bot-p', ['스프린트 마감 바뀌면 알려줄게', '팀 코드명은 은하수다'], T1)
+    expect((await loadBotMemory(paths, 'bot-p')).facts.map((f) => f.text)).toEqual(['팀 코드명은 은하수다'])
+  })
 })
 
 describe('the profile every comet shares', () => {

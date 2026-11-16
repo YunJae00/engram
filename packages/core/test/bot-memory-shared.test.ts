@@ -81,6 +81,15 @@ describe('qa145 memory pollution', () => {
     expect(scopeFacts('- everyone: # 답변\n- this bot: | 사과 | 1000 |\n- this bot: 항목 더 추가할까요?\n- everyone: 팀 코드명은 은하수다', [])).toEqual({ shared: ['팀 코드명은 은하수다'], own: [] })
   })
 
+  it('r2: a promise, an offer or an order the person never gave is not a fact', () => {
+    for (const junk of ['스프린트 마감 바뀌면 알려줄게', '팀 코드명(은하수)을 문서에 포함시킬 것', '표로 정리해 드릴게요.', '초안을 다시 만들어 드리겠습니다', '코드명도 문서에 넣어 주세요', "I'll let you know when the deadline moves"])
+      expect(scopeFacts(`- everyone: ${junk}`, [], '기억해 줘. 우리 팀 코드명은 은하수야.')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: 스프린트 마감 바뀌면 알려줄게\n- everyone: 팀 코드명은 은하수다\n- everyone: 다음 스프린트 마감은 11월 25일이다', []).shared).toEqual(['팀 코드명은 은하수다', '다음 스프린트 마감은 11월 25일이다'])
+    // The same wording is kept when the person set it as a standing rule.
+    expect(scopeFacts('- everyone: 보고서에는 팀 코드명을 포함시킬 것', [], '앞으로 보고서에는 항상 팀 코드명을 넣어 줘').shared).toEqual(['보고서에는 팀 코드명을 포함시킬 것'])
+    expect(scopeFacts('- everyone: 보고서는 표로 받는 걸 좋아한다\n- everyone: 결정: 배포는 목요일 오후에만 한다', []).shared).toHaveLength(2)
+  })
+
   it('names a kept line outdated only when it is really kept', () => {
     expect(scopeFacts('- everyone: 팀 코드명은 노을이다\n- outdated: 팀 코드명은 은하수다\n- outdated: 없는 줄', ['팀 코드명은 은하수다'])).toEqual({ shared: ['팀 코드명은 노을이다'], own: [], outdated: ['팀 코드명은 은하수다'] })
   })

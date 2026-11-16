@@ -89,8 +89,21 @@ export function memorableTurn(message: string, answer: string): boolean {
 // Leftovers of an answer rather than a fact: headings, table rows, tool
 // markup, the job's own name, a question, a label with nothing after it.
 export function notAFact(text: string): boolean {
-  return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(text.trim())
+  const line = text.trim()
+  return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(line) || eitherForm(PROMISE, line)
 }
+
+// Hangul endings are matched decomposed (ㄹ받침 is its own code point), whole words composed.
+const eitherForm = (pattern: RegExp, line: string) => pattern.test(line) || pattern.test(line.normalize('NFD'))
+
+// Someone speaking in the chat, not a note about the person: a promise or an
+// offer ("알려줄게", "해 드릴게요", "I'll …") is a suggested reply or the comet's own voice.
+const PROMISE = /\u11AF\s?\u1100\u1166(\u110B\u116D)?[\s.!~]*$|드리겠습니다[\s.!~]*$|^(i['’]ll|i will|i can|let me)\b/i
+
+// An order ("…포함시킬 것", "…해 주세요") is a standing rule only when the person set one.
+const ORDER = /\u11AF\s?\u1100\u1165\u11BA[\s.!]*$|(하세요|주세요|하십시오)[\s.!]*$|^(make sure|be sure|do not|don['’]t|please)\b/i
+const STANDING = /앞으로|항상|매번|늘\s|언제나|다음부터|이제부터|지금부터|할 때마다|from now on|always|never|every time|whenever/i
+const unaskedRule = (line: string, said: string) => eitherForm(ORDER, normalizeFact(line)) && !STANDING.test(said)
 
 export function normalizeFact(text: string): string {
   return text
@@ -130,9 +143,15 @@ export interface MemoryChange {
   replaced: string[]
 }
 
-// The same sentence with other numbers is the same fact with a new value.
-// shortcut: only number changes are matched, a changed name needs the extractor's "outdated:" line.
-const valueKey = (text: string) => normalizeFact(text).toLowerCase().replace(/\d+/g, '#')
+// The same sentence with other numbers is the same fact with a new value, but only when the words
+// before the first number name one subject: "행사 일정은 …" fits two different events, so both stay.
+// shortcut: a short subject or a changed name is replaced only by the extractor's "outdated:" line.
+const SUBJECT_WORDS = 3
+function valueKey(text: string): string | null {
+  const fact = normalizeFact(text).toLowerCase()
+  const subject = fact.slice(0, fact.search(/\d/)).trim()
+  return subject.split(' ').length >= SUBJECT_WORDS ? fact.replace(/\d+/g, '#') : null
+}
 
 // A fact said again is the same fact with a fresh clock, never a second line.
 export function recordFacts(paths: VaultPaths, botId: string, lines: string[], now = new Date()): Promise<MemoryChange> {
@@ -151,10 +170,12 @@ export function recordFacts(paths: VaultPaths, botId: string, lines: string[], n
         touched++
       } else {
         // A later value wins: the older line leaves, so it is never recalled beside the new one.
+        // Lines written in this same call are separate facts, never each other's correction.
         const slot = valueKey(text)
-        if (slot.includes('#')) {
-          replaced.push(...file.facts.filter((f) => valueKey(f.text) === slot).map((f) => f.text))
-          file.facts = file.facts.filter((f) => valueKey(f.text) !== slot)
+        const older = slot ? file.facts.filter((f) => f.at !== stamp && valueKey(f.text) === slot) : []
+        if (older.length) {
+          replaced.push(...older.map((f) => f.text))
+          file.facts = file.facts.filter((f) => !older.includes(f))
         }
         file.facts.push({ id: `f-${now.getTime().toString(36)}-${randomBytes(3).toString('hex')}`, text, at: stamp, touchedAt: stamp })
         added++
@@ -211,7 +232,8 @@ const FACT_LINES_MAX = 6
 
 // A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
 // A reply that is not a list of facts (the model answered the chat instead) keeps nothing.
-export function scopeFacts(raw: string, known: readonly string[]): { shared: string[]; own: string[]; outdated?: string[] } {
+// `said` is the person's message: without a standing rule in it, a line worded as an order is dropped.
+export function scopeFacts(raw: string, known: readonly string[], said = ''): { shared: string[]; own: string[]; outdated?: string[] } {
   const written = raw.split('\n').filter((line) => line.trim())
   if (written.length > FACT_LINES_MAX || written.some((line) => !FACT_LINE.test(line) && !SCOPE_MARK.test(line) && !OUTDATED_MARK.test(line))) return { shared: [], own: [] }
   const knownKeys = new Set(known.map((k) => normalizeFact(k).toLowerCase()))
@@ -221,7 +243,7 @@ export function scopeFacts(raw: string, known: readonly string[]): { shared: str
     const mark = SCOPE_MARK.exec(line)
     const text = mark ? line.slice(mark[0].length) : line
     return { text, shared: mark ? mark[1]?.toLowerCase() === 'everyone' : isIdentityFact(text) }
-  })
+  }).filter((line) => !unaskedRule(line.text, said))
   const shared = parseFactLines(lines.filter((l) => l.shared).map((l) => l.text).join('\n'), known)
   const own = parseFactLines(lines.filter((l) => !l.shared).map((l) => l.text).join('\n'), [...known, ...shared])
   return { shared, own, ...(outdated.length ? { outdated } : {}) }
