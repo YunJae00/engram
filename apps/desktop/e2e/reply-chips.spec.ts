@@ -32,7 +32,11 @@ test('completed replies show suggestions, hide their markup and send only after 
     await page.getByTestId(`bot-${supplied.id}`).click()
     await expect(page.getByTestId('reply-chip-0')).toHaveText('Show more options')
     await expect(page.locator('.answer-card')).toHaveCount(1)
-    await expect(page.locator('.bubble-msg.assistant')).toHaveCount(2)
+    // One stored answer stays one bubble: the --- between the intro and the table is not a split.
+    await expect(page.locator('.bubble-msg.assistant')).toHaveCount(1)
+    await expect(page.locator('.bubble-msg.assistant')).toContainText('Here are the results.')
+    await expect(page.locator('.bubble-msg.assistant')).toContainText('Example')
+    await expect(page.locator('.bubble-msg.assistant').locator('h2, hr')).toHaveCount(0)
     await expect(page.getByTestId('bots-thread')).not.toContainText('```replies')
     expect(await app.evaluate(() => (globalThis as typeof globalThis & { replyMessages: string[] }).replyMessages)).toEqual([])
     await page.getByTestId('reply-chip-0').click()
