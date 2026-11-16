@@ -352,6 +352,58 @@ export function plainSplit(message: string, staff: readonly string[]): Split | u
   return { to: names.map((who, i) => ({ who, brief: [before, things[i]!, after].filter(Boolean).join(' '), topic: things[i]! })), wait: false }
 }
 
+// c4b r2 (GROKBOT rule 3): a host-made split ends its turn at once, so "아 피그마도 추가해" said while the teammates worked was a turn of its
+// own and the table came back without it. Words that add, swap or take off one part change the split under way: the part joins the same task
+// and the one merged answer.
+// shortcut: one single part per message, named the way the split named its parts; anything else is answered as its own turn.
+const PLEASE = '\\s*(?:줘요?|주세요)?'
+const ALSO = new RegExp(`^(\\S+(?:\\s\\S+)?)도\\s*(?:같이\\s*)?(?:추가해?|넣어|포함해|조사해|알아봐|찾아|봐|해)${PLEASE}$`, 'u')
+const OPEN = ['hired', 'working']
+export interface SplitSteer { taskId: string; /** The one line the person reads. */ said: string; /** The part taken off. */ stop?: string; /** The part that joins. */ add?: { role: string; botId: string; brief: string; topic: string } }
+/** Whether words could change a split under way: cheap, asked before the tasks are read. */
+export const steerShaped = (message: string): boolean => message.length <= 60 && !message.includes('\n') && /도\s|말고|대신|빼|제외|바꿔/u.test(message)
+/** Words said while a split's teammates work, as a change to that split ("아 피그마도 추가해", "노션 말고 피그마로 바꿔", "리니어는 빼줘"), or undefined. */
+export function plainSteer(message: string, tasks: readonly DelegatedTask[], botId: string): SplitSteer | undefined {
+  const line = message.trim().replace(/[.!~\s]+$/u, '').replace(/^(?:(?:아\s*참|아니|아|앗|참|그리고|그냥)[,\s]+)+/u, '')
+  // Going outside is not asked about here: every shape below ends on a word for looking, and the part it starts can only read.
+  if (!steerShaped(message) || plainHire(line)) return undefined
+  for (const task of tasks) {
+    const team = task.team
+    if (!team || task.botId !== botId || ['done', 'failed', 'stopped'].includes(task.state)) continue
+    // The parts of a split: looked up side by side in the background, each under its own name, none handed on.
+    const parts = team.members.filter(m => m.background && m.lookup && !!m.botId && !!m.topic && m.parentId === null && !m.then && m.state !== 'released' && m.brief.includes(m.topic))
+    if (parts.length < 2 || !parts.some(m => OPEN.includes(m.state))) continue
+    const part = (thing: string, like: TeamMember, by: TeamMember): NonNullable<SplitSteer['add']> | undefined =>
+      thing.length > 20 || parts.some(m => m.topic === thing) || team.hires >= team.maxHires ? undefined : { role: by.role, botId: by.botId!, brief: like.brief.replace(like.topic!, thing), topic: thing }
+    for (const old of parts) {
+      const name = `^${escaped(old.topic!)}(?:은|는|을|를)?`
+      if (parts.length > 2 && new RegExp(`${name}\\s*(?:빼|제외해)${PLEASE}$`, 'u').test(line)) return { taskId: task.id, said: `${josa(old.topic!, '은', '는')} 뺄게요.`, stop: old.id }
+      const swap = new RegExp(`${name}\\s*(?:말고|대신|빼고)[,\\s]+(\\S+?)(?:으로|로)?\\s*(?:바꿔|해|조사해|찾아|알아봐|넣어)?${PLEASE}$`, 'u').exec(line) ?? new RegExp(`${name}\\s+(\\S+?)(?:으로|로)\\s*바꿔${PLEASE}$`, 'u').exec(line)
+      const add = swap ? part(swap[1]!, old, old) : undefined
+      if (add) return { taskId: task.id, said: `${old.topic} 말고 ${ro(add.topic)} 바꿀게요.`, stop: old.id, add }
+    }
+    const also = ALSO.exec(line)?.[1]
+    // The added part goes to whoever holds the fewest.
+    const count = (m: TeamMember): number => parts.filter(one => one.botId === m.botId).length
+    const add = also && parts.length < ASSIGN_MAX ? part(also, parts[0]!, [...parts].sort((a, b) => count(a) - count(b))[0]!) : undefined
+    if (add) return { taskId: task.id, said: `${add.topic}도 넣을게요.`, add }
+  }
+  return undefined
+}
+/** Makes the change on the task: who to stop and who to start, or undefined when the split has ended meanwhile. */
+export function steerSplit(task: DelegatedTask, steer: SplitSteer, at = new Date().toISOString()): { ids: string[]; stop: string[] } | undefined {
+  const team = task.team, old = steer.stop ? team?.members.find(m => m.id === steer.stop) : undefined
+  if (!team || !team.members.some(m => m.background && OPEN.includes(m.state)) || (steer.stop && !old)) return undefined
+  // A part taken off leaves no row: released with no result (reportable).
+  if (old) { old.state = 'released'; old.finishedAt ??= at; delete old.result }
+  if (!steer.add) return { ids: [], stop: old ? [old.id] : [] }
+  const id = `m${team.members.length + 1}`
+  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+  team.hires++
+  logTask(task, `Changed while working: ${steer.said}`)
+  return { ids: [id], stop: old ? [old.id] : [] }
+}
+
 // grokbar c4 C8: "서연은 빼고 지민은 이름을 지우로 바꿔" took a model round (2.4 s) and a first line before two lines of answer.
 // shortcut: one teammate taken off, one renamed, or both in one sentence; roles, several people and bringing back stay the model's call.
 const TAKE_OFF = /^(\S+)\s+(?:팀에서\s*)?빼(?:고|\s*줘요?|\s*주세요)?[.!]?$/u
@@ -589,8 +641,8 @@ const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 // grokbar c3b r1: a quoted headline stayed in the fallback row ('"Agents, rebuilt to do more for less" – Notion Agent 대폭 개선').
 const ENGLISH_RUNS = new RegExp(`["'“‘]?${ENGLISH_RUN.source}[.!?]?["'”’]?\\s*(?:[–—:-]\\s+)?`, 'g')
 /** What an agent found, as lines a person can read: no notes on the looking, no headings, no sentence in another language in a Korean result. cut: it was stopped at its limit. links: addresses stay where they were written. */
-function findings(text: string, links = false, marks = false): { lines: string[]; cut: boolean } {
-  const cut = CUT_SHORT.test(text), korean = HANGUL.test(text)
+function findings(text: string, links = false, marks = false, korean = HANGUL.test(text)): { lines: string[]; cut: boolean } {
+  const cut = CUT_SHORT.test(text)
   const lines = text.replace(CUT_SHORT, '').replace(/\[([^\]]*)\]\([^)]*\)/g, links ? '$&' : '$1').replace(links ? /$^/ : ADDRESS, '').split('\n')
     .map(line => (marks ? line : line.replace(/^\s*(?:[-*•>#]+|\d+[.)])\s*/, '')).replace(/\*\*|`/g, '').replace(/\|/g, '/').replace(/\(\s*\)/g, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
@@ -606,6 +658,7 @@ function findings(text: string, links = false, marks = false): { lines: string[]
 // What an agent delivered; '' when they delivered nothing ("Failed: ..." is the host's own note, never shown).
 const delivered = (m: TeamMember): string => m.state === 'failed' || m.state === 'hired' || m.state === 'working' || !m.result?.trim() || m.result.startsWith('Failed: ') ? '' : m.result.trim()
 const NOTHING = '이번엔 못 찾았어요.'
+const FOREIGN = '영어로 된 자료만 찾았어요'
 // A result that was handed on is shown under the agent who finished it, not as a part of its own.
 const shownParts = (members: readonly TeamMember[]): TeamMember[] => members.filter(m => !(m.then && members.some(next => next !== m && handedFrom(next.brief)?.from === m.role && !!delivered(next))))
 // The pages a handed-over result stands on: the ones in the brief, or else the ones the handing agent is recorded to have read.
@@ -635,28 +688,32 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
   if (!parts.length) return hired.join(' ')
   const lead = (line: string): string => [...hired, line].join(' ')
   // c4 C5: a result cut short at its limit closed with "이번엔 여기까지 찾았어요." / "더 있을 수 있어요."; the person reads what was found and nothing about the cut.
-  const read = (text: string, marks = false): string[] => findings(text, false, marks).lines
+  // c4b r2: a result with no Hangul at all (search rows kept at a time-out) was read as an English answer and shown whole. The ask decides
+  // the language: under a Korean brief only Korean lines are shown, and a part that read only English pages says so and links them.
+  const read = (m: TeamMember, text: string, marks = false): string[] => findings(text, false, marks, HANGUL.test(text) || HANGUL.test(m.brief)).lines
+  const foreign = (m: TeamMember, said: string): string => said && !HANGUL.test(said) && HANGUL.test(m.brief) ? linksOf(pagesOf(said, m.sources), 2) : ''
   if (parts.length > 1 && !parts.some(m => handedFrom(m.brief))) {
     const rows = parts.map(m => {
-      const said = delivered(m), found = said ? clip(read(said).slice(0, 3).map(line => line.replace(/[,·\s]+$/, '')).join(' · '), 240) : ''
+      const said = delivered(m), found = said ? clip(read(m, said).slice(0, 3).map(line => line.replace(/[,·\s]+$/, '')).join(' · '), 240) : ''
       // Two columns on purpose: the thread shows a table of three or more columns as a stack of cards, not as a table.
-      return `| ${partName(m, topics)} (${m.role}) | ${found ? [found, linksOf(pagesOf(said, m.sources), 2)].filter(Boolean).join(' · ') : NOTHING} |`
+      return `| ${partName(m, topics)} (${m.role}) | ${found ? [found, linksOf(pagesOf(said, m.sources), 2)].filter(Boolean).join(' · ') : foreign(m, said) ? `${FOREIGN} · ${foreign(m, said)}` : NOTHING} |`
     })
     return `${lead(`${josa(parts.map(m => m.role).join(', '), '이', '가')} 정리해 왔어요.`)}\n\n| 맡은 일 (담당) | 내용과 출처 |\n|---|---|\n${rows.join('\n')}`
   }
   const blocks = parts.flatMap((m, i) => {
-    const said = delivered(m), from = handedFrom(m.brief), body = said ? numbered(read(said, true), askedCount(m.brief)).join('\n') : ''
-    const head = body ? resultLead(m) : nothingLine(m, topics)
+    const said = delivered(m), from = handedFrom(m.brief), body = said ? numbered(read(m, said, true), askedCount(m.brief)).join('\n') : ''
+    const other = body ? '' : foreign(m, said)
+    const head = body ? resultLead(m) : other ? `${josa(m.role, '이', '가')} ${FOREIGN}.` : nothingLine(m, topics)
     // The giver's facts in one line, unless the giver's own part is shown above.
-    const given = from && !parts.some(giver => giver !== m && giver.role === from.from) ? read(from.result).slice(0, 3).join(' · ') : ''
+    const given = from && !parts.some(giver => giver !== m && giver.role === from.from) ? read(m, from.result).slice(0, 3).join(' · ') : ''
     const facts = from && given ? `${josa(from.from, '이', '가')} 찾은 내용: ${[clip(given, 240), linksOf(handedPages(m, members), 2)].filter(Boolean).join(' · ')}` : ''
-    return [i ? head : lead(head), body, body ? linksOf(pagesOf(said, m.sources), 2) : '', facts].filter(Boolean)
+    return [i ? head : lead(head), body, body ? linksOf(pagesOf(said, m.sources), 2) : other, facts].filter(Boolean)
   })
   return blocks.join('\n\n')
 }
 
 const reportable = (task: DelegatedTask | undefined): TeamMember[] | undefined => {
-  const members = (task?.team?.members ?? []).filter(m => m.background && !!m.botId)
+  const members = (task?.team?.members ?? []).filter(m => m.background && !!m.botId && !(m.state === 'released' && !m.result))
   return !members.length || members.some(m => m.state === 'waiting' || !!m.files?.length || /\]\(engram-artifact:/.test(m.result ?? '')) ? undefined : members
 }
 /** What a task's background agents brought back, for the person's thread, with no model; undefined when one of them needs the person or handed in a file (the lead writes that report). */
@@ -700,6 +757,11 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
   ].join('\n')
 }
 
+// A day as a line gives it ("12월 2일", "12/2", "2026-12-02"), as month/day.
+const DAY = /(?:\d{4}\s*[년./-]\s*)?(\d{1,2})\s*(?:월\s*|[./-])(\d{1,2})/
+const daysIn = (text: string): string[] => [...text.matchAll(new RegExp(DAY.source, 'g'))].map(at => `${Number(at[1])}/${Number(at[2])}`)
+// The day a line starts with, or ''.
+const dayOf = (line: string): string => { const at = new RegExp(`^${DAY.source}`).exec(line.replace(LIST_MARK, '')); return at ? `${Number(at[1])}/${Number(at[2])}` : '' }
 const NOT_SAID = /이번 턴|턴\s*안|실패|\(여기까지|여기까지 찾|더 있을 수 있|시간\s*(?:한도|초과)|확인 불가|결과예요|보고(?:예요|입니다|드려요|드립니다)/u
 /** The writer's text when it may be shown: only addresses it was given, everyone named, a table when there are several parts, nothing the person should not read. Undefined sends the host's own table. */
 export function checkedReport(raw: string | undefined, members: readonly TeamMember[]): string | undefined {
@@ -715,12 +777,17 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // Every part that found something links a page it stands on, in its own row when there is a table (GROKBOT rule 7; c3b r1: a table with no link passed).
   if (parts.some(m => {
     const said = delivered(m), pages = findings(said).lines.length ? [...pagesOf(said, m.sources), ...handedPages(m, members)] : []
-    const where = table ? text.split('\n').find(row => row.startsWith('|') && row.includes(`(${m.role})`)) ?? '' : text
+    const where = table ? text.split('\n').filter(row => row.startsWith('|') && row.includes(`(${m.role})`)).join('\n') : text
     return pages.length > 0 && !pages.some(url => where.includes(`](${url})`))
   })) return undefined
   if (table && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
   // A run of English nobody asked for (GROKBOT rule 12), quoted or not; only a link's words (the page's own name) are not counted.
   if (ENGLISH_RUN.test(text.replace(/\[[^\]]*\]\([^)]*\)/g, ''))) return undefined
+  // c4b r2: one event of the three a teammate listed passed as the whole schedule. Every dated line a lone teammate wrote is still there by its day.
+  if (parts.length === 1 && !parts[0]!.read) {
+    const gave = findings(delivered(parts[0]!), false, true).lines.map(dayOf).filter(Boolean), kept = new Set(daysIn(text))
+    if (gave.length > 1 && gave.some(day => !kept.has(day))) return undefined
+  }
   // N short things asked for and N brought back are a numbered list of N (c4 C6).
   if (parts.some(m => { const n = askedCount(m.brief); return n > 0 && findings(delivered(m), false, true).lines.length === n && (text.match(/^\s*\d+[.)]\s+\S/gm)?.length ?? 0) < n })) return undefined
   // One teammate's result opens with the host's own sentence, which names the job (c4 C5: "지민이 정리해 왔어요." never said what it was).

@@ -59,6 +59,10 @@ export function teamRunner(deps: {
   const leads = new Map<string, { job: ToolSessionJob; spent: number }>()
   // Told when the background members of a task have all ended: the lead reports in a turn of its own (task-runner report).
   let report: ((channel: string, taskId: string) => void) | undefined
+  // What a task's background members were started with: a part added while they work starts the same way (steer).
+  const laterKits = new Map<string, TurnKit>()
+  // Tasks whose lead was told: two batches of one task that end together are one report (a part added mid-work is a batch of its own).
+  const told = new Set<string>()
   const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
@@ -188,11 +192,13 @@ export function teamRunner(deps: {
 
   // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.
   async function later(taskId: string, leadChannel: string, ids: string[], kit: TurnKit): Promise<void> {
+    laterKits.set(taskId, kit)
+    told.delete(taskId)
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
     const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
     void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).then(async () => {
       const task = await find(taskId)
-      if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task)) report?.(leadChannel, taskId)
+      if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task) && !told.has(taskId)) { told.add(taskId); report?.(leadChannel, taskId) }
     }).catch(error => flog('team', error))
   }
 
@@ -229,7 +235,7 @@ export function teamRunner(deps: {
   async function settle(task: DelegatedTask): Promise<void> {
     if (!task.team) return
     for (const m of task.team.members) deps.closeSession(m.sessionKey)
-    if (TERMINAL.includes(task.state)) { if (task.team.members.some(m => m.state !== 'released')) await change(task.id, t => { if (t.team) releaseAll(t.team, now()) }); notes.delete(channelOf(task)) }
+    if (TERMINAL.includes(task.state)) { laterKits.delete(task.id); told.delete(task.id); if (task.team.members.some(m => m.state !== 'released')) await change(task.id, t => { if (t.team) releaseAll(t.team, now()) }); notes.delete(channelOf(task)) }
   }
 
   return {
@@ -287,6 +293,17 @@ export function teamRunner(deps: {
       }) as Ask
     },
     reportTo(tell: (channel: string, taskId: string) => void): void { report = tell },
+    // c4b r2 (GROKBOT rule 3): words said while a task's background members work change that work. A part taken off is stopped and leaves
+    // nothing; a part added starts beside the others, and the one report waits for it (later). False: nothing was changed.
+    async steer(taskId: string, leadChannel: string, work: (task: DelegatedTask) => { ids: string[]; stop: string[] } | undefined): Promise<boolean> {
+      const kit = laterKits.get(taskId)
+      if (!kit) return false
+      const out = await change(taskId, work)
+      if (!out) return false
+      if (out.ids.length) await later(taskId, leadChannel, out.ids, kit)
+      for (const id of out.stop) live.get(`${taskId}/${id}`)?.control.abort()
+      return true
+    },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
     // The lead's answer with a link for every member whose pages it left out.

@@ -424,7 +424,7 @@ describe('instant first line', () => {
     expect(decided).toBeGreaterThan(0)
     expect(begun).toBeGreaterThan(decided)
     expect(ipc.slice(decided, begun)).toContain('answersItself(request.message, bots, lastReplyOf(request.history))')
-    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && answersItself/)
+    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && \(answersItself/)
     // It never throws out of the turn's setup: a team that cannot be read means an ordinary first line.
     expect(ipc.slice(decided, begun)).toContain('() => false)')
   })

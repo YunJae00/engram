@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2314,7 +2314,7 @@ export function registerIpc(ctx: VaultContext): void {
     // An ask the host answers itself on the person's own thread (the team's status, who someone is, a plain add, hand-off or schedule) is
     // decided here, before a first line can be shown: its answer is the first text (grokbar C9: a canned line at 0.6 s over an answer ready at 1 s).
     const hostAnswers = !!request.botId && !request.scheduled && !recovery && !savedRoutine && !turn?.report && !turn?.verification && !turn?.quiet && !request.attachments?.length && !studying.has(entry.channel)
-      && await loadBots(paths).then(bots => bots.find(bot => bot.id === request.botId)?.primary === true && answersItself(request.message, bots, lastReplyOf(request.history)), () => false)
+      && await loadBots(paths).then(async bots => bots.find(bot => bot.id === request.botId)?.primary === true && (answersItself(request.message, bots, lastReplyOf(request.history)) || (steerShaped(request.message) && !!plainSteer(request.message, await listTasks(paths), request.botId!))), () => false)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
     beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (request.botId ? await readBotTranscript(paths, request.botId, 8) : request.history ?? []).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })
     workSoFar.delete(entry.channel)
@@ -2555,6 +2555,21 @@ export function registerIpc(ctx: VaultContext): void {
       turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 })
       broadcast({ type: 'chat:done', channel, text: said })
       return
+    }
+    // c4b r2 (GROKBOT rule 3): words that add, swap or take off one part of a split whose teammates are still working change that split;
+    // the part joins the one merged answer. Anything the host cannot place (or a split that just ended) goes on as a turn of its own.
+    if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && !turn?.report && !turn?.quiet && !request.scheduled && !request.attachments?.length && steerShaped(request.message)) {
+      const steer = plainSteer(request.message, await listTasks(paths), bot.id)
+      if (steer && await team.steer(steer.taskId, channel, task => steerSplit(task, steer))) {
+        firstLineSpoke(channel)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: steer.said, at: new Date().toISOString() })
+        turnOutcomes.set(channel, { answer: steer.said, asked: false, unfinished: false, steps: 0 })
+        answering.delete(channel)
+        broadcast({ type: 'chat:done', channel, text: steer.said })
+        return
+      }
+      // The split ended in between: the turn goes on, and it was promised no first line (hostAnswers), so it gets one now.
+      if (steer) firstLineNow(channel, request.message, threadKorean(request.message, savedHistory))
     }
     // grokbar c4 C7: so is "내 일정 뭐 있어?", from the stored schedules, and "그거 취소해" right after the one schedule was said.
     if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && !turn?.report && !request.scheduled) {

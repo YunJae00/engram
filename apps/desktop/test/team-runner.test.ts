@@ -352,6 +352,32 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → Notion Agent 개선 https://www.notion.com/releases', '홍보 문구 3개 뽑기 (지민한테 받아서) → 1. 일은 에이전트에게 2. 하루를 맡기세요 3. 더 적은 비용으로']))
   })
 
+  // c4b r2 (GROKBOT rule 3): the host-made split ended its turn at once, and words said while its teammates worked never reached it.
+  it('words said while a split works change it: a part added joins the one report, a part swapped is stopped and leaves no row', async () => {
+    const { plainSplit, plainSteer, steerSplit, employeesReport, listTasks } = await import('core')
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve(`${/이번 주 (\S+) 신기능/.exec(turn.prompt)?.[1]} 새 기능이 나왔어요 https://example.com/${turn.role === '지민' ? 'a' : 'b'}`)) }))
+    expect(await w.assign(plainSplit('이번 주 노션, 슬랙 신기능 조사해서 알려줘. 지민, 서연한테 나눠서 시켜', ['지민', '서연'])!)).toBe('지민, 서연한테 나눠 맡겼어요.')
+    await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    await w.team.turnEnded('bot-b1')
+    const say = async (words: string) => { const steer = plainSteer(words, await listTasks(w.paths), 'b1'); return steer && await w.team.steer(steer.taskId, 'bot-b1', task => steerSplit(task, steer)) ? steer.said : undefined }
+    expect(await say('아 피그마도 추가해')).toBe('피그마도 넣을게요.')
+    expect(await say('슬랙 말고 리니어로 바꿔줘')).toBe('슬랙 말고 리니어로 바꿀게요.')
+    await vi.waitFor(async () => expect((await w.members()).map(m => [m.role, m.topic, m.state])).toEqual([['지민', '노션', 'working'], ['서연', '슬랙', 'released'], ['지민', '피그마', 'working'], ['서연', '리니어', 'working']]))
+    expect(w.reported).toEqual([])
+    go()
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(w.reported).toEqual([`bot-b1 ${w.id}`])
+    const table = employeesReport(await w.task())!
+    expect(table.split('\n').filter(row => row.startsWith('| ')).slice(1).map(row => row.split(' | ')[0])).toEqual(['| 노션 (지민)', '| 피그마 (지민)', '| 리니어 (서연)'])
+    expect(table).not.toContain('슬랙')
+    // Once everyone has ended there is no split to change: the words are a turn of their own.
+    expect(await say('아 지라도 추가해')).toBeUndefined()
+  })
+
   it('a stop aborts background agents and no report follows', async () => {
     const w = await staffed(turn => new Promise((_resolve, reject) => turn.signal.addEventListener('abort', () => reject(new Error('aborted')))))
     await w.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })

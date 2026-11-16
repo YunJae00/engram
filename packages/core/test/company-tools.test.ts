@@ -948,3 +948,70 @@ test('c4 C8/C2: taking one teammate off and renaming one is the agents call itse
   expect((await loadArchivedBots(o.paths)).map(bot => bot.name)).toEqual(['서연'])
   expect(await o.run({ remove: ['지우'] })).toBe('지우는 뺐어요. 다시 부르면 돌아와요.')
 })
+
+import { plainSteer, steerSplit } from '../src/company-tools.js'
+
+test('c4b r2: a teammate cut short with only English search rows shows no English run in the host table; the link stays and the writer is still asked', async () => {
+  const kim = part('m1', '지민', '노션 신기능 조사', { topic: '노션', read: true, result: 'Agents rebuilt to do more for less: New workspace controls https://www.notion.com/releases', sources: ['https://search.example/?q=notion'] })
+  const park = part('m2', '서연', '슬랙 신기능 조사', { topic: '슬랙', result: '슬랙이 캔버스 공유를 냈어요 https://slack.com/blog' })
+  const alone = mergedReport([kim])
+  expect(alone).toBe('지민이 영어로 된 자료만 찾았어요.\n\n[notion.com](https://www.notion.com/releases)')
+  const table = mergedReport([kim, park])
+  expect(table).toContain('| 노션 (지민) | 영어로 된 자료만 찾았어요 · [notion.com](https://www.notion.com/releases) |')
+  for (const text of [alone, table]) expect(text.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(/(?:[A-Za-z][A-Za-z'’-]*[\s,:]+){3,}[A-Za-z]/)
+  // The quick model can say it in Korean, so it is asked; an English ask keeps its English result.
+  const write = vi.fn(async () => '지민이 노션 신기능 조사해 왔어요.\n\n- 에이전트가 더 적은 비용으로 더 많이 해요. [Notion](https://www.notion.com/releases)')
+  expect(await writtenReport({ ask: '노션 신기능 조사해줘', members: [kim], write })).toContain('에이전트가 더 적은 비용으로')
+  expect(write).toHaveBeenCalledOnce()
+  expect(mergedReport([part('m1', 'Kim', 'Look up Notion news', { result: 'Agents rebuilt to do more for less https://www.notion.com/releases' })])).toContain('Agents rebuilt to do more for less')
+})
+
+test('c4b r2: a written answer that drops a dated item the teammate listed is refused, and the host lists them all', async () => {
+  const kim = part('m1', '지민', '다음 달 서울 IT 행사 일정 정리', { result: '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c', sources: ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'] })
+  const one = '지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)'
+  expect(checkedReport(one, [kim])).toBeUndefined()
+  const all = '지민이 정리했어요.\n\n- 12/2 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사\n- 2026-12-09 AI 행사'
+  expect(checkedReport(all, [kim])).toBe(all.replace('지민이 정리했어요.', '지민이 다음 달 서울 IT 행사 일정 정리해 왔어요.'))
+  const said = await writtenReport({ ask: kim.brief, members: [kim], write: async () => one })
+  for (const day of ['12월 2일', '12월 5일', '12월 9일']) expect(said).toContain(day)
+  // One dated line, or lines with no day, are not counted.
+  expect(checkedReport('지민이 정리했어요. 소프트웨이브가 열려요. [출처](https://example.com/a)', [{ ...kim, result: '12월 2일 소프트웨이브 https://example.com/a\n입장은 무료예요' }])).toBeDefined()
+})
+
+test('c4b r2: words said while a split works are read as a change to it: add, swap, take off; anything else is not', () => {
+  const brief = (thing: string) => `이번 주 ${thing} 신기능 조사해서 알려줘`
+  const split = (states: TeamMember['state'][] = ['working', 'working', 'working']): DelegatedTask => task({ id: 't1', botId: 'lead', state: 'waiting', team: { hires: 3, maxHires: 8, maxDepth: 2, big: false, members: [
+    part('m1', '지민', brief('노션'), { topic: '노션', background: true, state: states[0]! }), part('m2', '서연', brief('슬랙'), { topic: '슬랙', background: true, state: states[1]! }), part('m3', '도윤', brief('리니어'), { topic: '리니어', background: true, state: states[2]! }),
+  ] } })
+  const steer = (words: string, t = split()) => plainSteer(words, [t], 'lead')
+  expect(steer('아 피그마도 추가해')).toEqual({ taskId: 't1', said: '피그마도 넣을게요.', add: { role: '지민', botId: 'bot-m1', brief: brief('피그마'), topic: '피그마' } })
+  expect(steer('그리고 제주도도 같이 알아봐줘.')?.add?.topic).toBe('제주도')
+  expect(steer('그냥 슬랙 말고 지라로 바꿔')).toEqual({ taskId: 't1', said: '슬랙 말고 지라로 바꿀게요.', stop: 'm2', add: { role: '서연', botId: 'bot-m2', brief: brief('지라'), topic: '지라' } })
+  expect(steer('슬랙을 팀즈로 바꿔줘')?.said).toBe('슬랙 말고 팀즈로 바꿀게요.')
+  expect(steer('리니어 대신 지라')?.add).toMatchObject({ role: '도윤', topic: '지라' })
+  expect(steer('리니어는 빼줘')).toEqual({ taskId: 't1', said: '리니어는 뺄게요.', stop: 'm3' })
+  // Not a change to this split: another thread, nobody still working, a part it already has, a part it never had, a new teammate with a duty, an unrelated ask, going outside.
+  expect(plainSteer('피그마도 추가해', [split()], 'other')).toBeUndefined()
+  expect(steer('피그마도 추가해', split(['done', 'done', 'done']))).toBeUndefined()
+  for (const words of ['노션도 추가해', '지라 말고 피그마로 바꿔', '하준도 추가해줘. 디자인 담당이야', '1년은 몇 초야?', '고마워 수고했어', '피그마도 슬랙에 올려줘']) expect(steer(words), words).toBeUndefined()
+  // A fifth part, or the last two cut to one, is not the host's call.
+  const four = split(); steerSplit(four, steer('피그마도 추가해', four)!)
+  expect(steer('지라도 추가해', four)).toBeUndefined()
+  expect(steer('피그마는 빼줘', four)?.stop).toBe('m4')
+
+  // The change on the task: the part taken off leaves no row, the new one is a background lookup of the same shape.
+  const t = split(['working', 'done', 'working'])
+  t.team!.members[1]!.result = '슬랙이 캔버스를 냈어요 https://slack.com/blog'
+  expect(steerSplit(t, steer('슬랙 말고 지라로 바꿔', t)!, 'now')).toEqual({ ids: ['m4'], stop: ['m2'] })
+  expect(t.team!.members[1]).toMatchObject({ state: 'released' })
+  expect(t.team!.members[1]!.result).toBeUndefined()
+  expect(t.team!.members[3]).toMatchObject({ id: 'm4', role: '서연', botId: 'bot-m2', topic: '지라', brief: brief('지라'), lookup: true, background: true, state: 'hired', sessionKey: 'team-t1-m4' })
+  expect(t.team!.hires).toBe(4)
+  for (const m of t.team!.members) if (m.state !== 'released') { m.state = 'done'; m.result = `${m.topic} 새 기능이 나왔어요 https://example.com/${m.id}` }
+  const rows = employeesReport(t)!.split('\n').filter(row => row.startsWith('| ')).slice(1)
+  expect(rows.map(row => row.split(' | ')[0])).toEqual(['| 노션 (지민)', '| 리니어 (도윤)', '| 지라 (서연)'])
+  // A split that ended before the change could be made is left alone.
+  const ended = split(['done', 'done', 'done'])
+  expect(steerSplit(ended, { taskId: 't1', said: '', add: { role: '지민', botId: 'bot-m1', brief: brief('지라'), topic: '지라' } })).toBeUndefined()
+  expect(ended.team!.members).toHaveLength(3)
+})
