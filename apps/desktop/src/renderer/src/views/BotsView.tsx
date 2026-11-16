@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { BotDto, ChatAttachmentDto } from '../../../shared/types.js'
-import { CHIP_FAILED, resendFailedCometMessage, sendCometMessage, sendCometReply } from '../lib/attachments.js'
+import { CHIP_FAILED, sendCometMessage, sendCometReply } from '../lib/attachments.js'
 import { api } from '../api.js'
 import { CometMessages } from '../components/CometMessages.js'
 import { ThreadOffers } from '../components/ThreadOffers.js'
@@ -130,8 +130,8 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
             <PreviewDeck overlay active={active} frames={frames} compact={compact} key={selected.id} lane={cometChannel(selected.id)} busy={busy} lang={threadLang(messages)} state={messages.at(-1)?.error ? 'stopped' : offer?.kind === 'asked' ? 'waiting' : 'recorded'} />
             <div className="bots-thread conversation-thread" data-testid="bots-thread" ref={listRef}>
               {/* A thread not yet read says nothing; only one read and found empty invites the first question. */}
-              {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} onPick={sendChip} />}
-              <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork} offerOpen={!!offer} onReply={sendChip} onResend={() => void resendFailedCometMessage(api, cometThreads, selected.id)}>
+              {messages.length === 0 && threadLoaded && <BotEmpty bot={selected} />}
+              <CometMessages firstKey={-older} messages={messages} busy={busy} status={status} since={startedAt ?? undefined} workLines={workLines} keptWork={keptWork}> 
                 <ThreadOffers botId={selected.id} onSend={sendChip} />
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
                 <PermissionCard lane={cometChannel(selected.id)} />
