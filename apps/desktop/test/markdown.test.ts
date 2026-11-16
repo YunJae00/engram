@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, answerWhole, laterFiles, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, answerWhole, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
@@ -211,5 +211,30 @@ describe('qa143 one answer, one bubble, one card', () => {
       { role: 'assistant', text: `Checked.\n\n\`\`\`replies\nOk\n\`\`\`\n\n${link('deck.pptx')}` },
     ]
     expect(laterFiles(messages)).toEqual(['', '', 'deck.pptx', 'deck.pptx', ''])
+  })
+})
+
+describe('restatedAnswers (qa143 S32)', () => {
+  const table = '| Item | Draft | Ours |\n| --- | --- | --- |\n| Price | 12,000 | |\n| Units | 300 | |\n| Margin | 18% | |'
+  const answer = `Here are the draft numbers next to ours.\n\n${table}\n\nFill in the empty cells and I will redo the totals.`
+  const said = (...texts: string[]) => [{ role: 'user', text: 'Use our numbers' }, ...texts.map(text => ({ role: 'assistant', text }))]
+
+  it('hides an answer that its re-check says again as a second message', () => {
+    const recheck = `I checked the ten draft values and found no mismatch.\n\nHere are the draft numbers next to ours.\n\n${table.replace('| --- | --- | --- |', '|---|---|---|')}\n\n**Fill in the empty cells and I will redo the totals.**\n\n\`\`\`replies\nOk\n\`\`\``
+    expect(restatedAnswers(said(answer, recheck))).toEqual([false, true, false])
+    expect(restatedAnswers(said('Here are the draft numbers next to ours.', recheck))).toEqual([false, true, false])
+    expect(restatedAnswers(said(answer, answer, answer))).toEqual([false, true, true, false])
+  })
+
+  it('keeps a distinct later reply, a correction, another file, and another question', () => {
+    expect(restatedAnswers(said(answer, 'Stopped here.'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Reading the sheet first.', answer))).toEqual([false, false, false])
+    // A correction is the later message and stays; the earlier one stays too when most of it changed.
+    expect(restatedAnswers(said('The total is 12.', 'Correction: the total is 15, not 12.'))).toEqual([false, false, false])
+    const link = (name: string) => `[${name}](engram-artifact:${name})`
+    expect(restatedAnswers(said(`${answer}\n\n${link('a.xlsx')}`, `${answer}\n\n${link('b.xlsx')}`))).toEqual([false, false, false])
+    expect(restatedAnswers(said(`${answer}\n\n${link('a.xlsx')}`, `${answer}\n\n${link('a.xlsx')}`))).toEqual([false, true, false])
+    expect(restatedAnswers([...said(answer), ...said(answer)])).toEqual([false, false, false, false])
+    expect(restatedAnswers(said('', answer))).toEqual([false, false, false])
   })
 })

@@ -93,3 +93,20 @@ test('qa143 S04/S14: one answer is one bubble, and a file made in a turn is card
   await expect(answers.nth(2).getByTestId('answer-file')).toHaveCount(1)
 })
 
+test('qa143 S32: an answer its re-check says again is one bubble, and a distinct reply stays', async () => {
+  const bot = await page.evaluate(() => window.engram.botCreate({ name: 'Recheck Bot' }))
+  const at = new Date().toISOString()
+  const answer = 'Here are the draft numbers next to ours.\n\n| Item | Draft |\n| --- | --- |\n| Price | 12,000 |\n| Units | 300 |\n\nFill in the empty cells and I will redo the totals.'
+  await appendBotTurn(paths, bot.id, { role: 'user', text: 'Use our numbers', at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Reading the sheet first.', progress: true, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: answer, progress: true, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: `I checked the draft values and found no mismatch.\n\n${answer}`, at })
+  await page.reload()
+  await expect(page.getByTestId('shell')).toBeVisible()
+  await page.getByTestId(`bot-${bot.id}`).click()
+  const answers = page.locator('[data-testid="bots-view"] .bots-thread .bubble-msg.assistant')
+  await expect(answers).toHaveCount(2)
+  await expect(answers.nth(0)).toHaveText('Reading the sheet first.')
+  await expect(answers.nth(1)).toContainText('found no mismatch')
+  await expect(page.locator('[data-testid="bots-view"] .bots-thread').getByText('Fill in the empty cells')).toHaveCount(1)
+})

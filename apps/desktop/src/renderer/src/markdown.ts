@@ -162,6 +162,29 @@ export function laterFiles(messages: readonly { role: string; text: string }[]):
   return out
 }
 
+// The lines of an answer as said, without the marks and spacing a restatement may change.
+const saidLines = (text: string): string[] => answerText(text).split('\n').map(line => line.replace(/[\s|*_#>`:-]+/g, '').toLowerCase()).filter(Boolean)
+const RESTATED_SHARE = 0.8
+
+// A re-check often says the answer again as a second message. For each message: whether a later
+// answer to the same question already says nearly all of it (and links every file it links), so
+// this one is not shown as a bubble of its own. The later answer always stays, so a correction,
+// a different result or another file is never the one hidden.
+export function restatedAnswers(messages: readonly { role: string; text: string }[]): boolean[] {
+  const out: boolean[] = []
+  let later: Set<string>[] = []
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const { role, text } = messages[i]!
+    if (role !== 'assistant') { later = []; out[i] = false; continue }
+    const lines = saidLines(text), total = lines.reduce((sum, line) => sum + line.length, 0)
+    const files = lines.filter(line => line.includes('engramartifact'))
+    out[i] = total > 0 && later.some(said => files.every(line => said.has(line))
+      && lines.reduce((sum, line) => sum + (said.has(line) ? line.length : 0), 0) >= total * RESTATED_SHARE)
+    if (lines.length) later.push(new Set(lines))
+  }
+  return out
+}
+
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
   const visible = answerText(text)
   const renderer = new marked.Renderer()
