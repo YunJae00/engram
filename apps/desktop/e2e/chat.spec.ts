@@ -261,8 +261,9 @@ test('conversation keeps narration between compact activity groups and shows vis
   await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
   await expect(page.locator('.bubble-msg.assistant').last().locator('.answer-sites a')).toHaveAttribute('href', 'https://example.com/research')
   expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
-  await page.getByTestId('preview-card').getByRole('button', { name: 'Hide preview', exact: true }).click()
+  // No page was really opened, so there is no browser card to put away (grokbar c3a: no card when no page is open).
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expect(page.getByTestId('preview-card-collapsed')).toHaveCount(0)
   await expect(page.locator('.web-pane')).toBeHidden()
   await screenshot('ui-conversation-activity.png')
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')

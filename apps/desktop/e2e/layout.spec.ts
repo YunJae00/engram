@@ -1,6 +1,7 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { openActivity } from './navigation.js'
 import { createNote, initVault } from 'core'
+import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
+let server: Server
 
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
@@ -29,9 +31,18 @@ test.beforeAll(async () => {
     }
   })
   await page.locator('.bots-row', { hasText: 'Research scout' }).click()
+  // A preview card is drawn only for a page that is open (grokbar c3a), so the chat under test has one.
+  server = createServer((_request, response) => { response.setHeader('content-type', 'text/html'); response.end('<html><title>Layout fixture</title><h1>Layout fixture</h1></html>') })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
+  await page.evaluate(async ({ lane, url }) => window.engram.agentGo(url, lane), { lane, url: `http://127.0.0.1:${(server.address() as { port: number }).port}/` })
 })
 
-test.afterAll(async () => { await app?.close() })
+test.afterAll(async () => {
+  await app?.close()
+  server?.closeAllConnections()
+  await new Promise<void>(resolve => server ? server.close(() => resolve()) : resolve())
+})
 
 async function screenshot(name: string) {
   const png = await app.evaluate(async ({ BrowserWindow }) => {
