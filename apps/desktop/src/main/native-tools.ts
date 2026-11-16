@@ -153,7 +153,7 @@ async function recordOwnCopies(cwd: string, steps: TurnStep[], names: HandInName
     let made: Record<string, unknown>
     try { made = JSON.parse(step.observation) as Record<string, unknown> } catch { continue }
     if (!made || typeof made !== 'object' || made['error'] || typeof made['path'] !== 'string' || made['handedInFrom']) continue
-    const source = typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : made['taskPath']
+    const source = typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : typeof made['taskPath'] === 'string' ? resolve(cwd, made['taskPath']) : undefined
     const root = typeof source === 'string' ? roots.find(root => within(root, source)) : undefined
     if (!root) continue
     const key = sourceKey(root, source as string), name = basename(made['path']).replace(SAVED_ID, '')
@@ -203,7 +203,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   const file = namesFile(paths, cwd), names = await readNames(file), before = JSON.stringify(names)
   // Every receipt of the turn, not the last one per name: two sources copied under one name are two files. A later copy of the same source
   // (or of content, or of a content copy's task-folder twin) is a revision, and only the last revision counts.
-  const twins = new Set(result.steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [path] : [] } catch { return [] } }))
+  const twins = new Set(result.steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [resolve(cwd, path)] : [] } catch { return [] } }))
   // A receipt with no fromPath has no source it could be a revision of, whatever tool made it: it is its own source, known by its artifact, so two made under one name are two files.
   // Only content copies (and copies of their task-folder twins) share a source, CONTENT, where the last revision per name counts.
   const CONTENT = '\0content'

@@ -293,6 +293,11 @@ it('attaches only the last copy of one source when the answer links nothing, and
   const c1 = copy(5, { content: 'v1' }, { taskPath: '/task/report.md' }), c2 = copy(6, { content: 'v2' }, { taskPath: '/task/report.md' })
   expect(links([c1, c2])).toEqual([link(c2)])
   expect(links([c1, r3])).toEqual([link(r3)])
+  // taskPath is compared after the same resolve() as fromPath, so a relative twin path and an
+  // absolute fromPath of the same task file stay one source (on Windows, resolve() also adds a
+  // drive letter that the raw taskPath would not have).
+  const written = copy(7, { content: 'v1' }, { taskPath: 'report.md' })
+  expect(links([written, r3])).toEqual([link(r3)])
   // Other file tools: the same input again is a revision, another input is another file.
   const book = (id: number, rows: number[]) => ({ tool: 'file_create_workbook', args: { name: 'sales.xlsx', rows }, observation: JSON.stringify({ markdownLink: `[sales.xlsx](engram-artifact:11111111-2222-3333-4444-00000000001${id}-sales.xlsx)` }) })
   const b1 = book(1, [1]), b2 = book(2, [1]), b3 = book(3, [2])

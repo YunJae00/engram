@@ -8,10 +8,10 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
   const fileName = (id: string) => decodeURIComponent(id).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
   const COMPOSED = ['word_write', 'ppt_build']
   // What a receipt was made from, by the rule the host's native delivery uses (deliverOutputs): a copy's fromPath; content (and a content copy's
-  // task-folder twin), one source; any other tool and the file it names, else its own input. The same source made again under one name is a
+  // task-folder twin, compared after the same resolve() as fromPath so a Windows drive letter or a relative twin path still matches), one source; any other tool and the file it names, else its own input. The same source made again under one name is a
   // revision, where the last one counts, whether or not the answer links anything: a budget stop or an unfinished turn links nothing, and what
   // is attached here the host cannot take back (qa143 S19a: every copy of one report.md was attached). A receipt naming no source is its own.
-  const twins = new Set(steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [path] : [] } catch { return [] } }))
+  const twins = new Set(steps.flatMap(step => { try { const path = step.tool === 'file_create_copy' && typeof step.args['content'] === 'string' ? (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath : undefined; return typeof path === 'string' ? [resolve(cwd, path)] : [] } catch { return [] } }))
   const sourceOf = (step: AgentLoopStep, link: string): string => {
     if (step.tool === 'file_create_copy') {
       const from = typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : undefined
