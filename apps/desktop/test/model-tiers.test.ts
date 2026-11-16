@@ -178,6 +178,21 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toBe('')
   })
 
+  it('starts no first line for the staff status question, however fast the small model is', async () => {
+    for (const message of ['다들 뭐하고 있어?', '직원들 지금 뭐 하고 있어요?', '현황']) {
+      expect(wantsFirstLine(ask({ message })), message).toBe('status')
+      const live = voice(async () => '직원 현황을 알려드릴게요.')
+      const { show } = begin(live, { message })
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(live.quick).not.toHaveBeenCalled()
+      expect(show).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+    }
+    // A longer ask about the staff is a job and still gets its line.
+    expect(wantsFirstLine(ask({ message: '다들 뭐하고 있는지 표로 정리해서 메일로 보내줘' }))).toBeNull()
+  })
+
   it('skips chit-chat, one-line questions and ineligible turns without resolving the engine', async () => {
     const skipped: Partial<FirstLineAsk>[] = [
       { message: '안녕' }, { message: 'ㅇㅇ' }, { message: '??' }, { message: '👍' }, { message: 'ok' }, { message: '네!' }, { message: 'thanks!' }, { message: 'Thanks for your help' }, { message: '고마워요 잘 됐어요' }, { message: 'How are you?' }, { message: "what's up" }, { message: '잘 지냈어요?' }, { message: 'how are you doing today?' },

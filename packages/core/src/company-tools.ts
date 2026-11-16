@@ -167,12 +167,39 @@ export function isStatusAsk(message: string): boolean {
 // The company lane's whole menu: few enough that the session preloads it (no tool search round).
 export const COMPANY_LANE_TOOLS: ReadonlySet<string> = new Set(['staff', 'company_status', 'schedule', 'hire_members', 'review_member', 'team_status', 'search_web', 'read_pages', 'search_chats', 'search_memory', 'read_note', 'ask_person', 'keep_in_mind'])
 
-const STAFF_VERBS = /뽑아|뽑고|채용|고용|내보내|해고|승진|다시\s*불러|팀\s*(을|를)?\s*(하나\s*)?만들|직원/u
 export const COMPANY_ASK_CHARS = 200
-/** A short message about the staff: it names an employee or a team, or (for the chief of staff) asks to hire, let go, promote or make a team. */
+// The lane has no file, office or browser tools, so it takes only sentences it can finish: a roster change or a question about who someone is or
+// what they are doing. Anything that reads like work stays on the normal path, which is slower but has every tool (and the same staff tool).
+const WORK = /엑셀|excel|ppt|파워포인트|pdf|워드|파일|문서|자료|보고|메일|요약|정리|조사|검색|번역|작성|문구|고쳐|수정|맡겨|맡기|넘겨|한테|에게|매주|매일|마다/iu
+const HIRE = /뽑아|뽑고|채용|고용/u
+// A hire names a person to be: a head count, a duty, or a job title standing as a word ("박사원", not "과장된").
+const PERSON = /직원|사람|팀원|인턴|담당|[한두세네\d]\s*명|(사원|주임|대리|과장|차장|부장|팀장)(?=$|[\s,.!?]|[을를이가은는도랑과와]|하고|으로)/u
+const CHANGE = /내보내|해고|승진|다시\s*(불러|데려)|복직|(이름|직함|직급|호칭).{0,12}바꿔/u
+const NEW_TEAM = /팀\s*(을|를)?\s*(하나\s*)?(새로\s*)?만들/u
+// What is left of a question once the names are taken out, spaces removed. Whole-string matches only.
+const ABOUT = [
+  /^(지금|요즘|최근에?|이번주에?|오늘)?(뭐|뭘|무슨일|어떤일|무슨업무|어떤업무)(을|를)?(해|하니|하나|하고있어|하고있나|하는중이야|하는중이에|하는(사람|직원|팀|분)(이야|이에|인가|이니|입니까)?|했어|했나|맡고있어|맡았어|담당해|담당하고있어)요?$/u,
+  /^(누구|어떤(사람|직원|팀|분)|무슨(사람|팀))(야|이야|예요|이에요|인가요|니|입니까)?$/u,
+  /^(담당|역할|직함|직급|업무|하는일|맡은일)(이|은|는|가)?(뭐|뭔데|무엇)(야|예요|지|죠|인가요|니)?$/u,
+  /^(현황|상태|근황)(은|이)?(알려줘|보여줘|어때|뭐야)?요?$/u,
+  /^(누구누구|누가|누구)(있어|있나|있니|있지)요?$/u,
+]
+const MOVE = /^(옮겨|넣어|이동시켜|빼)(줘|줘요|주세요)?$/u
+const ROSTER = /^(우리|지금|현재|회사)*(직원|팀원|사원|팀)(들|이|은|는)*(누구누구|누가|누구|몇명|뭐|목록|명단|리스트)(있어|있나|있니|이야|야|보여줘|알려줘)?요?$/u
+const AFTER_NAME = '(님|씨)?(에서|으로|이랑|하고|랑|과|와|은|는|이|가|도|을|를|의|로|에)?'
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** A short roster or status sentence: hire, promote or rename, let go, bring back, make or change a team, or "who is X / what is X doing". A work request that only names staff is not one. When unsure, false. */
 export function isCompanyAsk(message: string, known: readonly string[], chief: boolean): boolean {
   if (message.length > COMPANY_ASK_CHARS) return false
-  return (chief && STAFF_VERBS.test(message)) || known.some(name => name.trim().length >= 2 && message.includes(name.trim()))
+  const names = [...new Set(known.map(name => name.trim()).filter(name => name.length >= 2))].sort((a, b) => b.length - a.length)
+  let rest = message, named = 0
+  for (const name of names) { const cut = rest.replace(new RegExp(escaped(name) + AFTER_NAME, 'gu'), ' '); if (cut !== rest) { named++; rest = cut } }
+  const left = rest.replace(/[\s,]+/g, '').replace(/[?？!.~]+$/u, '')
+  if (named && ABOUT.some(ask => ask.test(left))) return true
+  if (!chief) return false
+  if (ROSTER.test(left) || (named >= 2 && MOVE.test(left))) return true
+  if (WORK.test(message)) return false
+  return NEW_TEAM.test(message) || (HIRE.test(message) && PERSON.test(rest)) || (CHANGE.test(message) && (named > 0 || PERSON.test(rest)))
 }
 
 /** The roster for a prompt, with what each employee named in the message remembers and last did: "who is 김과장" needs no tool. */

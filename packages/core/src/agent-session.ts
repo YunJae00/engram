@@ -88,6 +88,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // A closing tool's reply is the answer (AgentTool.closes): the turn ends on it unless another kind of call ran this turn or one follows within the grace.
   let closed: string | undefined, composing = false, close: ((result: ToolSessionResult) => void) | undefined
   const closeLines: string[] = []
+  // Once a closing tool has succeeded the model's words are held, not shown: dropped if the turn closes, shown in order if it goes on.
+  let held: (() => void)[] | undefined
+  const release = (): void => { const kept = held; held = undefined; for (const show of kept ?? []) show() }
   let pageStepCalls = 0
   const decisionAvailable = deps.tools.some(tool => tool.name === 'page_do' || tool.name === 'app_do')
   const calls: ToolSessionCall[] = tools.map((tool) => ({
@@ -99,7 +102,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
       if (closed !== undefined) return 'The turn already ended with your last reply to the person. Call nothing more.'
-      if (!tool.closes) composing = true
+      if (!tool.closes) { composing = true; release() }
       if (options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs) {
         exhausted = true
         return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
@@ -172,9 +175,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const said = options.takeSteer?.() ?? []
       if (tool.closes && !composing && !said.length && !observation.startsWith('that did not work')) {
         closeLines.push(observation)
+        held ??= []
         const mark = startedCalls
         setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)
-      }
+      } else release()
       const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
       return image ? { text, image } : text
     },
@@ -266,9 +270,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     onContextReset: () => { compactPage() },
     onStart: () => { working = Date.now(); options.onStart?.() },
     maxCalls: options.maxCalls ?? (browser ? CALL_CEILING : planned ? 120 : SESSION_MAX_CALLS),
-    onToken: (text: string) => { if (text && closed === undefined) options.onToken?.(text) },
+    onToken: (text: string) => { if (!text || closed !== undefined) return; if (held) held.push(() => options.onToken?.(text)); else options.onToken?.(text) },
     onSteerable: (steer) => { liveSteer = steer; options.onSteerable?.(steer) },
-    ...(options.onReset ? { onReset: (...args: Parameters<NonNullable<typeof options.onReset>>) => { if (closed === undefined) options.onReset!(...args) } } : {}),
+    ...(options.onReset ? { onReset: (...args: Parameters<NonNullable<typeof options.onReset>>) => { if (closed !== undefined) return; if (held) held.push(() => options.onReset!(...args)); else options.onReset!(...args) } } : {}),
     signal,
   }
   let session: ToolSessionResult
@@ -288,7 +292,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onSteerable?.(null)
     clearInterval(watchdog)
     unfinishedCalls = queued > 0
-    if (closed === undefined) lifetime.abort(new Error('The tool session has ended.'))
+    if (closed === undefined) { if (!signal.aborted) release(); lifetime.abort(new Error('The tool session has ended.')) }
     signal.removeEventListener('abort', end)
     running.clear(); queued = 0
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })

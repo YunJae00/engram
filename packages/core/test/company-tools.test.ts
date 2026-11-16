@@ -123,6 +123,12 @@ test('only a bare status question skips the model; staff messages take the compa
   expect(isCompanyAsk('사람 하나 뽑아줘', [], false)).toBe(false)
   expect(isCompanyAsk('오늘 날씨 어때?', ['김과장'], true)).toBe(false)
   expect(isCompanyAsk(`김과장 ${'가'.repeat(200)}`, ['김과장'], true)).toBe(false)
+  const known = ['김대리', '박사원', '김과장', '마케팅팀']
+  for (const ask of ['마케팅팀 만들고 김대리랑 새로 박사원 뽑아서 넣어줘. 박사원은 카피 담당', '박사원 다시 불러와', '김대리 마케팅팀으로 옮겨줘', '김대리 뭐해?', '김대리 지금 뭐 하고 있어?', '마케팅팀 누구 있어?', '김과장 담당이 뭐야?', '직원 누구 있어?', '디자인팀 하나 만들어줘', '김대리 이름을 김프로로 바꿔줘'])
+    expect(isCompanyAsk(ask, known, true), ask).toBe(true)
+  // Work that only names an employee or a team needs the full tool set: it never takes the lane.
+  for (const ask of ['김대리가 만든 엑셀 고쳐줘', '마케팅팀 자료 PPT로 만들어줘', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해', '매주 월요일 아침 9시에 마케팅팀 주간보고 올려', '마케팅팀 이번 주 한 일 요약해', '홍보 문구 3개 뽑아줘', '김대리 로고 시안 뽑아줘', '과장된 표현만 뽑아줘', '이 표 마케팅팀에 넣어줘', '김대리가 쓴 글 좀 봐줘', '직원 교육 자료 만들어줘', '김대리 뭐해? 그리고 어제 그 파일도 열어줘'])
+    expect(isCompanyAsk(ask, known, true), ask).toBe(false)
 })
 
 test('the prompt note lists the roster and gives a named employee\'s memory and finished work', async () => {

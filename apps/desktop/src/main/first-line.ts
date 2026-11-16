@@ -1,4 +1,4 @@
-import type { Engine, EngineCwd } from 'core'
+import { isStatusAsk, type Engine, type EngineCwd } from 'core'
 import { flog } from './flog.js'
 
 export const FIRST_LINE_BUDGET_MS = 1500
@@ -45,6 +45,8 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
   if (ask.followUp) return 'follow-up'
   if (ask.secret) return 'secret'
   if (ask.message.trim().startsWith('/')) return 'command'
+  // The status question is answered whole from stored state: a first line beside it would be a second answer on screen.
+  if (isStatusAsk(ask.message)) return 'status'
   return plainReply(ask.message) ? 'chit-chat' : null
 }
 

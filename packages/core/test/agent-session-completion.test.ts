@@ -359,3 +359,33 @@ it('does not end on a closing tool when another call ran beside it or it failed'
   })
   expect((await runToolSession({ engine: failed, workdir: WORKDIR, tools: [{ ...closing, run: async () => { throw new Error('hire needs a name') } }] }, 'x')).answer).toBe('I could not do it')
 })
+
+it('holds the model\'s words after a closing tool succeeds: dropped when the turn closes, shown when another call follows', async () => {
+  const shown: string[] = []
+  const dropped = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'staff')!.run({})
+    await pause(20)
+    job.onToken?.('중복 답변')
+    await pause(300)
+    return { answer: 'model answer' }
+  })
+  expect((await runToolSession({ engine: dropped, workdir: WORKDIR, tools: [closing] }, '채용', { onToken: text => shown.push(text) })).answer).toBe('김대리를 리서치 담당으로 뽑았어요.')
+  expect(shown).toEqual([])
+  const kept = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'staff')!.run({})
+    await pause(20)
+    job.onToken?.('이어서 ')
+    expect(shown).toEqual([])
+    await job.tools.find(tool => tool.name === 'search_memory')!.run({ query: 'x' })
+    job.onToken?.('찾아볼게요.')
+    await pause(300)
+    return { answer: 'both done' }
+  })
+  expect((await runToolSession({ engine: kept, workdir: WORKDIR, tools: [...tools, closing] }, 'x', { onToken: text => shown.push(text) })).answer).toBe('both done')
+  expect(shown).toEqual(['이어서 ', '찾아볼게요.'])
+  // The model answers inside the grace: its words are its answer, so they are shown.
+  shown.length = 0
+  const quick = sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'staff')!.run({}); job.onToken?.('바로 답'); return { answer: '바로 답' } })
+  expect((await runToolSession({ engine: quick, workdir: WORKDIR, tools: [closing] }, 'x', { onToken: text => shown.push(text) })).answer).toBe('바로 답')
+  expect(shown).toEqual(['바로 답'])
+})

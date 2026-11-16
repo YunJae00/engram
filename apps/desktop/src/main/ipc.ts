@@ -2502,7 +2502,6 @@ export function registerIpc(ctx: VaultContext): void {
     }
     // "다들 뭐하고 있어?" to the chief of staff is answered from stored state: no model round.
     if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && isStatusAsk(request.message)) {
-      firstLineSpoke(channel)
       const said = companyStatus(await loadBots(paths), await listTasks(paths), staffDoing)
       await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
       turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
