@@ -72,9 +72,10 @@ describe('bot avatar', () => {
     for (const size of SIZES) {
       const html = render({ size, state: 'attention', primary: true })
       expect(html).not.toMatch(/<img|<image|url\(|<foreignObject|<text/)
-      expect(html.match(/<svg /g)).toHaveLength(3)
-      // The bloom, the two fringes and the core; each path holds the top arc and its twin at the bottom. No drawn disc, no glow span.
-      expect(html.match(/<path /g)).toHaveLength(4)
+      expect(html.match(/<svg /g)).toHaveLength(5)
+      // Five layers: the air and the bloom, the two fringes, the band, the filament, the bead. Each arc path holds the top arc and its twin at the bottom.
+      // The air is a faint blurred fill inside the circle, not a drawn disc: no circle element, no glow span.
+      expect(html.match(/<path /g)).toHaveLength(7)
       expect(html).not.toMatch(/<circle |bot-orb-core|bot-orb-glow/)
     }
     const batch = () => {
@@ -92,7 +93,8 @@ describe('bot avatar', () => {
     expect(avatar.startsWith("@import './bot-orb.css';")).toBe(true)
     const css = orb + avatar
     const keyframes = [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\n\}/g)]
-    expect(keyframes).toHaveLength(2)
+    // The turn, the bead that slides along the arcs, and the working swell.
+    expect(keyframes).toHaveLength(3)
     for (const [, body] of keyframes) {
       const props = [...body!.matchAll(/\{\s*([^}]*)\}/g)].flatMap(m => [...m[1]!.matchAll(/(?:^|;)\s*([\w-]+)\s*:/g)].map(p => p[1]!))
       expect(props.length).toBeGreaterThan(0)

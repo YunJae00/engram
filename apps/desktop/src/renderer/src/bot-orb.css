@@ -1,13 +1,17 @@
-/* The orb is light, not a ball: two identical arcs of one circle, top and bottom, each a soft core with a warm fringe outside it,
-   a cool one inside and a smoky bloom, tapering evenly to both ends. Nothing is filled and nothing is clipped, so the surface shows through.
-   The mark is unchanged by a half turn, so a slow linear half turn loops with no seam. Working: the same turn, and the bloom swells. */
+/* The orb is light, not a ball: two identical arcs of one circle, top and bottom, each built in layers like the app icon: a far bloom, a warm fringe
+   outside the circle and a cool one inside, a band (the body of the light), a hairline filament and a caustic bead, with a breath of air inside the circle.
+   Nothing is filled and nothing is clipped, so the surface shows through. The mark is unchanged by a half turn, so a slow linear half turn loops with no seam.
+   The bead slides along the arcs as they turn. Working: the same turn, and the bloom swells. */
 .bot-orb {
   --orb: #8B7CF6; position: relative; display: block; width: 100%; height: 100%;
   isolation: isolate; container-type: size;
-  /* The fringes keep the orb's color: the warm one leans it toward peach, the cool one toward blue. On a light surface the core is the color too. */
-  --warm: color-mix(in srgb, var(--orb) 50%, #FFB98A); --cool: color-mix(in srgb, var(--orb) 55%, #5E9BFF); --core: color-mix(in srgb, var(--orb) 55%, #FFFFFF);
+  /* The fringes keep the orb's color: the warm one leans it toward peach, the cool one toward blue. */
+  --warm: color-mix(in srgb, var(--orb) 50%, #FFB98A); --cool: color-mix(in srgb, var(--orb) 55%, #5E9BFF);
+  /* On a light surface a bloom is invisible, so the band carries the color at full strength (deepened a little) over a tight tinted under-glow,
+     and only the filament is white. */
+  --band: color-mix(in srgb, var(--orb) 86%, #1C1C4A); --core: #FFFFFF;
+  --air: 0.07; --bloom: 0.62; --bloom-blur: 3.4cqw; --fringe: 0.9; --bead: 0.7;
 }
-[data-theme='dark'] .bot-orb { --core: color-mix(in srgb, var(--orb) 6%, #FFFFFF); }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
 .bot-orb[data-orb='orb-teal'] { --orb: #3FB8AF; }
@@ -19,28 +23,44 @@
 /* Blue mixed into amber or silver goes grey, so those two take the app icon's own blue; silver has no hue, so it takes the peach as well. */
 .bot-orb[data-orb='orb-amber'], .bot-orb[data-orb='orb-silver'] { --cool: #6FA2F5; }
 .bot-orb[data-orb='orb-silver'] { --warm: #F2A474; }
+/* Lilac and silver are pale: on a light surface their band is deepened further, or it would wash out. */
+.bot-orb[data-orb='orb-lilac'] { --band: #B272E8; }
+.bot-orb[data-orb='orb-silver'] { --band: #7F869C; }
+/* On a dark surface the light can be light: a pale band, a white filament, a wide bloom. */
+[data-theme='dark'] .bot-orb[data-orb] {
+  --band: color-mix(in srgb, var(--orb) 34%, #FFFFFF); --core: color-mix(in srgb, var(--orb) 4%, #FFFFFF);
+  --air: 0.1; --bloom: 0.5; --bloom-blur: 6cqw; --fringe: 1; --bead: 1;
+}
 
 .bot-orb-ribbons { position: absolute; inset: 0; transform-origin: 50% 50%; }
 /* Each layer is drawn on a box half again as large as the orb, so its blur has room. */
-.bot-orb-ribbon { position: absolute; inset: -25%; width: 150%; height: 150%; overflow: visible; }
-.bot-orb-ribbon:nth-child(1) { filter: blur(5cqw); }
-.bot-orb-ribbon:nth-child(2) { filter: blur(1.6cqw); }
-.bot-orb-ribbon:nth-child(3) { filter: blur(0.8cqw) drop-shadow(0 0 2.6cqw color-mix(in srgb, var(--core) 50%, transparent)); }
-.bot-orb-bloom { fill: var(--orb); fill-opacity: 0.5; }
+.bot-orb-ribbon { position: absolute; inset: -25%; width: 150%; height: 150%; overflow: visible; transform-origin: 50% 50%; }
+.bot-orb-ribbon:nth-child(1) { filter: blur(var(--bloom-blur)); }
+.bot-orb-ribbon:nth-child(2) { filter: blur(1.5cqw); opacity: var(--fringe); }
+.bot-orb-ribbon:nth-child(3) { filter: blur(0.7cqw); }
+.bot-orb-ribbon:nth-child(4) { filter: blur(0.18cqw) drop-shadow(0 0 1.6cqw color-mix(in srgb, var(--band) 60%, transparent)); }
+.bot-orb-ribbon:nth-child(5) { filter: blur(1.8cqw); opacity: var(--bead); }
+.bot-orb-air { fill: var(--orb); fill-opacity: var(--air); }
+.bot-orb-bloom { fill: var(--orb); fill-opacity: var(--bloom); }
 .bot-orb-warm { fill: var(--warm); }
 .bot-orb-cool { fill: var(--cool); }
-.bot-orb-light { fill: var(--core); }
-/* Small orbs: a blur would eat the arcs, so the layers sharpen and a stroke in the same color gives them weight. */
+.bot-orb-band { fill: var(--band); }
+.bot-orb-light, .bot-orb-bead { fill: var(--core); }
+/* Small orbs: a blur would eat the arcs, so the layers sharpen and a stroke in the same color gives them weight. The bead is too small to read. */
 @container (max-width: 40px) {
   .bot-orb-ribbon:nth-child(1) { filter: blur(1.5px); }
-  .bot-orb-ribbon:nth-child(2), .bot-orb-ribbon:nth-child(3) { filter: none; }
+  .bot-orb-ribbon:nth-child(2), .bot-orb-ribbon:nth-child(3), .bot-orb-ribbon:nth-child(4) { filter: none; }
+  .bot-orb-ribbon:nth-child(5) { opacity: 0; }
   .bot-orb-warm { stroke: var(--warm); stroke-width: 2px; }
   .bot-orb-cool { stroke: var(--cool); stroke-width: 2px; }
-  .bot-orb-light { stroke: var(--core); stroke-width: 2.5px; }
+  .bot-orb-band { stroke: var(--band); stroke-width: 2.5px; }
+  .bot-orb-light { stroke: var(--core); stroke-width: 0.6px; }
 }
 
 .bot-orb[data-motion='idle'] .bot-orb-ribbons,
 .bot-orb[data-motion='working'] .bot-orb-ribbons { animation: bot-orb-turn 12s linear infinite; will-change: transform; }
+.bot-orb[data-motion='idle'] .bot-orb-ribbon:nth-child(5),
+.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(5) { animation: bot-orb-bead 12s ease-in-out infinite; will-change: transform, opacity; }
 .bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(1) { animation: bot-orb-pulse 12s ease-in-out infinite; will-change: transform, opacity; }
 
 /* Run linear, or the turn would lurch at each end of the loop. */
@@ -48,9 +68,16 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(180deg); }
 }
+/* The caustic: the bead crosses each arc once per turn and is gone at both ends, where the loop closes. */
+@keyframes bot-orb-bead {
+  0%, 100% { opacity: 0; }
+  0% { transform: rotate(-46deg); }
+  50% { opacity: var(--bead); }
+  100% { transform: rotate(46deg); }
+}
 /* Two swells per turn, so it still closes with the loop. */
 @keyframes bot-orb-pulse {
-  0%, 50%, 100% { transform: scale(1); opacity: 0.6; }
+  0%, 50%, 100% { transform: scale(1); opacity: 0.7; }
   25%, 75% { transform: scale(1.06); opacity: 1; }
 }
 

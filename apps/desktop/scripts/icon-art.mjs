@@ -1,5 +1,7 @@
-// The app icon artwork, computed per pixel: a charcoal plate and light, no sphere. Two identical arcs of one circle, top and bottom
-// (a soft white core, a peach fringe outside, a blue one inside, a smoky bloom). Plate, smoke and arcs are all unchanged by a half turn.
+// The app icon artwork, computed per pixel: a charcoal plate and light, no sphere. Two identical arcs of one circle, top and bottom.
+// Each arc is light in layers, not one blurred stroke: a hairline filament, a band (the body), a peach fringe outside the circle and a blue one inside,
+// a faint refracted echo, a caustic bead caught off-centre, and an atmosphere that falls off slowly. A breath of air fills the circle.
+// Plate, grain, smoke and arcs are all unchanged by a half turn.
 // Pure arithmetic, so every machine gets the same pixels. gen-icon.mjs resamples these 1024 masters to every shipped size.
 const SIZE = 1024
 const C = SIZE / 2
@@ -12,17 +14,16 @@ const clamp = (x) => (x < 0 ? 0 : x > 1 ? 1 : x)
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t) }
 const bell = (x, w) => Math.exp(-(x * x) / (w * w))
 const DEG = Math.PI / 180
-// Shortest angular distance, radians.
-const apart = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))
-
-// 1 at the middle of an arc centred at `mid` degrees, easing to 0 `half` degrees either side.
-const arcWin = (th, mid, half) => Math.cos(Math.min(1, apart(th, mid * DEG) / (half * DEG)) * Math.PI / 2) ** 2
+// Signed shortest angle from b to a, radians.
+const turn = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
 
 const WHITE = [1, 1, 1]
-const WARM = [1, 0.68, 0.42]
-const COOL = [0.45, 0.7, 1]
+const WARM = [1, 0.66, 0.4], COOL = [0.42, 0.68, 1]
+const AMBER = [1, 0.5, 0.26], DEEP = [0.26, 0.46, 1]
+const HAZE_OUT = [1, 0.86, 0.74], HAZE_IN = [0.72, 0.84, 1], AIR = [0.8, 0.88, 1], ECHO = [1, 0.93, 0.86]
 const KNEE = 0.7
 const tone = (c) => (c < KNEE ? Math.max(0, c) : KNEE + (1 - KNEE) * (1 - Math.exp(-(c - KNEE) / (1 - KNEE))))
+const hash = (x, y) => { let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296 }
 
 const out = [0, 0, 0]
 const add = (k, c) => { out[0] += k * c[0]; out[1] += k * c[1]; out[2] += k * c[2] }
@@ -32,29 +33,44 @@ function wisp(x, y) {
   return 0.5 * Math.sin(1.5 * u - 3.4 * v + 0.8) + 0.3 * Math.sin(-2.6 * u - 4.6 * v + 2 + 1.2 * Math.sin(2.4 * u)) + 0.2 * Math.sin(5.3 * u - 6.2 * v + 4.1)
 }
 
-// The premium light recipe along a curve. h is the signed distance from the curve (warm side negative, cool side positive),
-// w the core width, p the power. A soft white core dissolving into a peach fringe and a blue one, then a smoky bloom.
-function light(h, w, p, smoke) {
-  if (p < 0.002) return
-  add(0.42 * p * bell(h, w), WHITE)
-  add(0.3 * p * bell(h, 2.4 * w), WHITE)
-  add(0.5 * p * bell(h + 1.9 * w, 1.8 * w), WARM)
-  add(0.52 * p * bell(h - 2 * w, 1.9 * w), COOL)
-  add(0.1 * p * bell(h, 4.2 * w), WHITE)
-  add(0.15 * p * bell(h + 3.3 * w, 3.1 * w), [1, 0.8, 0.62])
-  add(0.115 * p * bell(h - 3.5 * w, 3.3 * w), [0.62, 0.8, 1])
-  add(0.028 * p * (1 + 0.7 * smoke) * bell(h, 9 * w), [0.9, 0.93, 1])
-}
-
-// Twin arcs of one circle: two identical arcs, top and bottom, peach outside the circle and blue inside it, each tapering evenly to both ends.
-function draw(r, th, small, smoke) {
-  for (const mid of [-90, 90]) {
-    const win = arcWin(th, mid, 72)
-    light(1 - r, (small ? 0.06 : 0.03) * (0.3 + 0.7 * win), (small ? 1.25 : 1) * win, smoke)
+// Light at (x, y) in circle radii. h is the distance outside the circle: peach where it is positive, blue where it is negative.
+// The small master draws heavier, longer arcs with less around them, so 16px still shows a broken ring and not two dashes.
+function light(x, y, small) {
+  const r = Math.hypot(x, y), th = Math.atan2(y, x), h = r - 1
+  const half = (small ? 80 : 69) * DEG
+  const smoke = small ? 0 : (wisp(1.3 * x, 1.3 * y) + wisp(-1.3 * x, -1.3 * y)) / 2
+  for (const mid of [-Math.PI / 2, Math.PI / 2]) {
+    const sd = turn(th, mid), s = sd / half
+    // The atmosphere outlasts the arc's ends, so they dissolve instead of stopping.
+    const wide = Math.cos(Math.min(1, Math.abs(sd) / (half + 16 * DEG)) * Math.PI / 2) ** 2
+    if (wide < 0.001) continue
+    const win = Math.abs(s) >= 1 ? 0 : Math.cos(Math.abs(s) ** (small ? 1.9 : 1.2) * Math.PI / 2) ** 2
+    const p = (small ? 1.25 : 1) * win
+    const w = (small ? 0.064 : 0.03) * (0.28 + 0.72 * win ** 0.7)
+    // The caustic: a brighter bead, frozen a little before the crest.
+    const bead = bell(sd + 0.3, 0.24)
+    const lift = 1 + 0.5 * bead
+    // A whisper of shift along the length: one end leans warm, the other cool.
+    const warm = 1 + 0.24 * s, cool = 1 - 0.24 * s
+    if (Math.abs(h) < 14 * w) {
+      add((small ? 0.75 : 0.85) * p * lift * bell(h, (small ? 0.8 : 0.22) * w), WHITE) // filament
+      add((small ? 0.6 : 0.26) * p * lift * bell(h, 1.3 * w), WHITE) // band
+      add((small ? 0.36 : 0.46) * p * warm * bell(h - (small ? 1.35 : 1.7) * w, (small ? 1.1 : 1.6) * w), WARM)
+      add((small ? 0.36 : 0.44) * p * cool * bell(h + (small ? 1.35 : 1.7) * w, (small ? 1.1 : 1.6) * w), COOL)
+      if (!small) add(0.09 * p * warm * bell(h - 3.3 * w, 2.2 * w), AMBER)
+      if (!small) add(0.07 * p * cool * bell(h + 3.3 * w, 2.2 * w), DEEP)
+      if (!small) add(0.1 * p * win * bell(h - 5.2 * w, 0.36 * w), ECHO) // a faint refracted echo of the filament
+      add(0.16 * p * bead * bell(h, 5 * w), WHITE) // the bead's own glow
+    }
+    const hz = h / (5.5 * w)
+    add((small ? 0.05 : 0.1) * wide * (1 + 0.6 * smoke) / (1 + hz * hz) ** 1.25, h > 0 ? HAZE_OUT : HAZE_IN)
+    // Light spilled into the circle, so the two arcs enclose something.
+    if (h < 0) add(0.05 * wide * Math.exp(h / 0.45), AIR)
   }
+  add(0.06 * (1 - smooth(0, 1.05, r)), AIR)
 }
 
-// Straight-alpha RGBA at 1024 x 1024. `small` thickens the arcs for sizes where they would vanish.
+// Straight-alpha RGBA at 1024 x 1024. `small` is the simplified drawing for sizes where the regular one would vanish.
 export function renderMaster({ small = false } = {}, ss = 2) {
   const data = Buffer.alloc(SIZE * SIZE * 4)
   const px = 1 / ss
@@ -65,17 +81,18 @@ export function renderMaster({ small = false } = {}, ss = 2) {
         for (let sx = 0; sx < ss; sx++) {
           const dx = ox + (sx + 0.5) * px - C, dy = oy + (sy + 0.5) * px - C
           if (outside(dx) ** CORNER_POWER + outside(dy) ** CORNER_POWER > 1) continue
-          const x = dx / R, y = dy / R, r = Math.hypot(x, y)
+          const far = Math.hypot(dx, dy) / C
           // Charcoal that lifts toward the edges and deepens, with no edge, behind the light.
-          const v = (0.1 + 0.075 * smooth(0.55, 1.3, Math.hypot(dx, dy) / C)) * (1 - 0.16 * bell(r, 1.3))
-          out[0] = out[1] = out[2] = v
-          draw(r, Math.atan2(y, x), small, small ? 0 : (wisp(1.3 * x, 1.3 * y) + wisp(-1.3 * x, -1.3 * y)) / 2)
+          out[0] = out[1] = out[2] = (0.086 + 0.085 * smooth(0.5, 1.35, far)) * (1 - 0.12 * bell(far, 0.9))
+          light(dx / R, dy / R, small)
           cr += tone(out[0]); cg += tone(out[1]); cb += tone(out[2]); n++
         }
       }
       if (n === 0) continue
+      // Fine grain, about one level, so the dark gradients never band. Each pixel shares its grain with its half-turn twin.
+      const grain = small ? 0 : (hash(ox, oy) + hash(SIZE - 1 - ox, SIZE - 1 - oy) - 1) * 0.005
       const o = (oy * SIZE + ox) * 4
-      data[o] = Math.round((cr / n) * 255); data[o + 1] = Math.round((cg / n) * 255); data[o + 2] = Math.round((cb / n) * 255)
+      data[o] = Math.round(clamp(cr / n + grain) * 255); data[o + 1] = Math.round(clamp(cg / n + grain) * 255); data[o + 2] = Math.round(clamp(cb / n + grain) * 255)
       data[o + 3] = Math.round((n * 255) / (ss * ss))
     }
   }
