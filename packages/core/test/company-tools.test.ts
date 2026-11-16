@@ -1293,3 +1293,18 @@ test('c5b r2 C5: an address written without its scheme is not a file and never r
   // Words with a dot and a slash that are no address, a named link and a workspace file stand.
   for (const fine of ['node.js/express 로 만들었어요.', '[coex.co.kr/sw](https://www.coex.co.kr/sw) 에 있어요.', 'reports/q3.docx 에 있어요.']) expect(teamAnswer(fine, teamTask([park]))).toBe(fine)
 })
+
+test('c5b r3 C5: an address on any ending is an address, a name that ends like a file or a library is not', () => {
+  // The reviewer's case: ".gg" was not in the list of known endings and reached the thread as written.
+  const kim = part('m1', '지민', '행사 조사', { state: 'done', background: true, result: '행사 안내 example.gg/report.html' })
+  const shown = teamAnswer('행사 안내 example.gg/report.html', teamTask([kim]))
+  expect(shown).toContain('[example.gg](https://example.gg/report.html)')
+  expect(shown.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(/example\.gg/)
+  const park = part('m2', '서연', '보고서 만들기', { state: 'working', background: true, lookup: false })
+  settleMember(park, { answer: '보고서를 만들었어요. reports/3분기.docx 에 있어요.' }, 'now', true)
+  for (const [raw, host] of [['events.seoul.museum/2026', 'events.seoul.museum'], ['luma.events/seoul-ai.', 'luma.events'], ['sub.example.co.nz/a/b', 'sub.example.co.nz']] as const) {
+    const at = raw.replace(/\.$/, '')
+    expect(teamAnswer(`[3분기.docx](engram-artifact:a.docx) 참고는 ${raw}`, teamTask([park]))).toBe(`[3분기.docx](engram-artifact:a.docx) 참고는 [${host}](https://${at})${raw.slice(at.length)}`)
+  }
+  for (const fine of ['node.js/express 로 만들었어요.', 'next.ts/app 폴더예요.', 'notes.old/a.md 에 있어요.', 'README.md/설명 참고요.', '버전 1.2/1.3 둘 다 돼요.']) expect(teamAnswer(fine, teamTask([park]))).toBe(fine)
+})

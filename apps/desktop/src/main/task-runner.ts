@@ -10,6 +10,7 @@ import {
   createTask,
   findPlaybook,
   hostOf,
+  lateOwed,
   listTasks,
   localDay,
   logTask,
@@ -302,7 +303,12 @@ export function taskRunner(deps: {
       // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
       else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
       // Employees are still on work handed off in the background (or their report is in line): the turn's words stand and the task waits for the report.
-      else if (backgroundOpen(t) || reports.has(id)) { t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }
+      // c5b r3: so does a part labeled "끝나면 이어서 올릴게요" whose own report is not up yet. It may have ended during this very turn, before
+      // team-runner asked for its report: closing here as done dropped that report (a done task is not restarted). Its report is put in line here.
+      else if (backgroundOpen(t) || (reports.has(id) && !t.team?.lateDone) || lateOwed(t)) {
+        t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG)
+        if (lateOwed(t) && !backgroundOpen(t)) reports.set(id, channelOf(t))
+      }
       else if (teamUnverified(t) && !extra?.report && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
@@ -403,7 +409,8 @@ export function taskRunner(deps: {
     try {
       reports.delete(id)
       if (stopped.has(channel)) return
-      const task = await edit(id, t => { if (t.state === 'waiting' && !t.question) t.state = 'queued' })
+      // A second request for a late part's report that is already in the thread (team-runner and the line above both ask) starts nothing.
+      const task = await edit(id, t => { if (t.state === 'waiting' && !t.question && !t.team?.lateDone) t.state = 'queued' })
       if (task?.state !== 'queued') return
       owners.set(channel, id)
       await carryOn(id, 'report', '', channel)

@@ -840,8 +840,15 @@ export function lateParts(task: DelegatedTask): string[] {
 }
 /** Marks them (team-runner, at the cap). */
 export function markLate(task: DelegatedTask): string[] { const ids = lateParts(task); for (const m of task.team?.members ?? []) if (ids.includes(m.id)) m.late = true; return ids }
-/** The report without the late parts was made: the next report is theirs. */
-export function lateShown(task: DelegatedTask): void { if (task.team?.members.some(m => m.late)) task.team.lateTold = true }
+/** A report was made: the first, without the late parts (the next one is theirs), or theirs once they have ended (nothing more is owed). */
+export function lateShown(task: DelegatedTask): void {
+  const team = task.team
+  if (!team?.members.some(m => m.late)) return
+  if (!team.lateTold) team.lateTold = true
+  else if (!team.members.some(m => m.late && atWork(m))) team.lateDone = true
+}
+/** c5b r3: a part was promised a line of its own and that line is not in the thread yet. The task stays open for it whoever ends first (task-runner). */
+export const lateOwed = (task: DelegatedTask): boolean => !!task.team?.members.some(m => m.late) && !task.team.lateDone
 
 // c5 C5: a hand-off's result was written by the main model (the host had given the report up) and reached the thread with a line that was
 // only "지민", raw percent-encoded addresses and bare host names. The refusal of those sat only in checkedReport. Every team result passes
@@ -850,8 +857,10 @@ const BARE_HOST = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i
 const spaced = (text: string): string => text.replace(/(\]\([^)\s]*\))[ \t]*(?=\[[^\]\n]+\]\()/g, '$1 · ')
 // c5b r2: "example.com/report.html", an address written without its scheme, passed as plain words. It is an address: it counts as a raw one,
 // and wherever one still stands in what is shown (a teammate's own result in the host's list) it becomes a named link.
-// shortcut: known endings only, so "node.js/express" stays words; an address on another ending is shown as written. Add the ending here.
-const HOST_PATH = /\[[^\]]*\]\([^)]*\)|https?:\/\/[^\s)\]>"'|]+|(?<![\w@/.-])((?:[a-z0-9-]+\.)+(?:com|net|org|io|kr|ai|dev|app|co|me|info|gov|edu|jp|us|uk|tv|so|xyz)\/[^\s)\]>"'|]*)/gi
+// c5b r3: any ending counts ("example.gg/report.html" passed a fixed list of endings); only a name that ends like a file or a code
+// library ("node.js/express", "notes.old/a.md") stays words.
+// shortcut: latin-letter endings only, an address on a non-latin ending (".한국") is shown as written; widen the ending class if one shows up.
+const HOST_PATH = /\[[^\]]*\]\([^)]*\)|https?:\/\/[^\s)\]>"'|]+|(?<![\w@/.-])((?:[a-z0-9-]+\.)+(?!(?:js|ts|jsx|tsx|mjs|cjs|md|json|py|rb|go|rs|sh|css|html?|txt|csv|pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|svg|zip|old|bak)\/)[a-z]{2,}\/[^\s)\]>"'|]*)/gi
 const hostLinked = (text: string): string => text.replace(HOST_PATH, (all: string, bare?: string) => { if (!bare) return all; const at = trimmed(bare); return named(at.split('/')[0]!.replace(/^www\./i, ''), `https://${at}`) + bare.slice(at.length) })
 /** A team answer as it may be shown: a raw address, a line that is only a teammate's name or only a host name sends the host's own list (named links only); with a file or a question in it, which that list cannot carry, the text is repaired in place. Links that follow each other are set apart. */
 export function teamAnswer(answer: string, task: DelegatedTask | undefined): string {
