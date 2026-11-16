@@ -181,11 +181,12 @@ export const ChatComposer = memo(
         {attachments.length > 0 && <div className="chat-file-list" aria-label={t('composer.attachedFiles')}>{attachments.map(one => <ChatAttachment key={one.id} id={one.id} disabled={attaching || (busy && !canQueue) || disabled} onRemove={() => onAttachmentsChange?.(attachments.filter(file => file.id !== one.id))} />)}</div>}
         {named.length > 0 && <div className="chat-mention-list" aria-label={t('composer.appsNamed')} data-testid={testId ? `${testId}-named` : undefined}>{named.map(app => <span key={app.label} className="chat-mention-chip">{appMark(app, 14)}<span>{app.label}</span></span>)}</div>}
         {(onAttachmentsChange || actions) && <>
-          <button type="button" ref={addRef} className="chat-add-button" aria-label={t('composer.add')} data-testid={testId ? `${testId}-add` : undefined} {...{ popovertarget: menuId }} onClick={placeMenu}><Plus size={18} aria-hidden /></button>
-          <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label={t('composer.actions')} onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
+          {/* Attaching alone needs no menu: the button is the file picker. */}
+          <button type="button" ref={addRef} className="chat-add-button" aria-label={actions ? t('composer.add') : t('composer.attach')} title={actions ? undefined : t('composer.attachHint')} data-testid={testId ? `${testId}-add` : undefined} {...actions ? { popovertarget: menuId, onClick: placeMenu } : { disabled: attaching || (busy && !canQueue) || disabled, onClick: () => fileRef.current?.click() }}><Plus size={18} aria-hidden /></button>
+          {actions && <div ref={menuRef} id={menuId} className="chat-add-menu" {...{ popover: 'auto' }} aria-label={t('composer.actions')} onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) menuRef.current?.hidePopover() }}>
             {onAttachmentsChange && <button type="button" className="chat-attach-button" aria-label={t('composer.attach')} title={t('composer.attachHint')} disabled={attaching || (busy && !canQueue) || disabled} onClick={() => fileRef.current?.click()}><Paperclip size={16} aria-hidden /><span>{t('composer.attach')}</span></button>}
             {actions}
-          </div>
+          </div>}
         </>}
         <textarea
           ref={inputRef}

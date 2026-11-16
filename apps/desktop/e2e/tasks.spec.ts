@@ -1,3 +1,4 @@
+import { createBotFromPlus } from './navigation.js'
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { appendBotTurn, createBot, createTask, updateTask, initVault, listTasks, localDay, loadBots, addBotTask, addNotice, writeHabits, readHabits, readNotices, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -58,7 +59,7 @@ test('a quiet conversation stays in the list', async () => {
 })
 
 test('a new conversation runs as a task to the end', async () => {
-  await page.getByTestId('sidebar-create').click()
+  await createBotFromPlus(page, 'Deploy summary')
   await page.getByTestId('bots-view').getByTestId('bots-input').fill('Summarize the deploy procedure for the team')
   await page.getByTestId('bots-view').getByTestId('bots-input-send').click()
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept', { timeout: 30_000 })

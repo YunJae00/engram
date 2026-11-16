@@ -47,7 +47,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   const { errand } = useCometState()
   const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
-  const [memoryOpen, setMemoryOpen] = useState(false)
   const [info, setInfo] = useState<'closed' | 'open' | 'closing'>('closed')
   // Only the bot the pill opened the pane on plays the open animation; a bot switch does not.
   const [infoEnter, setInfoEnter] = useState<string | null>(null)
@@ -67,6 +66,13 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
     setInfo('open')
   }
   useEffect(() => clearInfoTimer, [])
+  // The sidebar's "Change icon" selects the bot, then asks for its pane with the picker open.
+  const [iconFor, setIconFor] = useState<{ id: string } | null>(null)
+  useEffect(() => {
+    const edit = (event: Event) => { const id = (event as CustomEvent<string>).detail; clearInfoTimer(); setIconFor({ id }); setInfoEnter(id); setInfo('open') }
+    window.addEventListener('engram:edit-bot-icon', edit)
+    return () => window.removeEventListener('engram:edit-bot-icon', edit)
+  }, [])
   // What the model is doing, from main's own word. Only 'loading' changes
   // what the thread says, and 'loading' is only ever learned from a live
   // broadcast — a missed one degrades to the plain line, never to a claim.
@@ -124,7 +130,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
   // Selecting a comet shows what the store already holds and refreshes it
   // from disk underneath; a turn still streaming stays on top of the reload.
   useEffect(() => {
-    setMemoryOpen(false)
     clearInfoTimer()
     setInfo((prior) => (!selectedId || prior === 'closing' ? 'closed' : prior))
     if (selectedId) void loadCometThread(selectedId).catch(() => undefined)
@@ -197,12 +202,9 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
             <BotComposer
               key={selected.id}
               botId={selected.id}
-              botName={selected.name}
               initialDraft={active ? cometThreads.thread(selected.id).draft : draft}
               busy={busy}
               locked={locked}
-              memoryOpen={memoryOpen}
-              onToggleMemory={() => setMemoryOpen((value) => !value)}
               onSend={(message, attachments) => void sendText(message, attachments)}
               onStop={() => void stop()}
             />
@@ -219,7 +221,7 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
           </div>
         )}
       </section>
-      {selected && info !== 'closed' && <BotInfoPane key={selected.id} bot={selected} entering={infoEnter === selected.id} closing={info === 'closing'} onClose={closeInfo} onClosed={finishInfoClose} onEntered={() => setInfoEnter(null)} />}
+      {selected && info !== 'closed' && <BotInfoPane key={selected.id} bot={selected} pickAvatar={iconFor?.id === selected.id ? iconFor : null} entering={infoEnter === selected.id} closing={info === 'closing'} onClose={closeInfo} onClosed={finishInfoClose} onEntered={() => setInfoEnter(null)} />}
     </div>
   )
 })

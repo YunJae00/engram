@@ -57,3 +57,11 @@ export async function openWelcome(page: Page): Promise<void> {
   if (!await page.getByTestId('bots-view').isVisible()) await openActivity(page, 'bots')
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
 }
+
+// The sidebar "+" asks for a name (and icon) before it makes the bot, then opens it with the composer focused.
+export async function createBotFromPlus(page: Page, name: string): Promise<void> {
+  await page.getByTestId('sidebar-create').click()
+  await page.getByTestId('create-bot-name').fill(name)
+  await page.getByTestId('create-bot-submit').click()
+  await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
+}

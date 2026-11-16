@@ -1295,7 +1295,7 @@ body.bubble-host { background: transparent; }
 /* The page's own button, beside the composer: the one place the panel is
    summoned from and the one light that says a page is open or being worked.
    A quiet globe; a dot when a page is live; a pulse while hands are on it. */
-.chat-attach-button, .composer-cosmos, .composer-web {
+.chat-attach-button, .composer-web {
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
   width: var(--write-control, 32px); height: var(--write-control, 32px); border-radius: 999px; color: var(--fg-dim);
   flex: none;
@@ -1800,7 +1800,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .settings-more[open] > summary { margin-bottom: 8px; }
 .settings-more > summary::before { content: '›'; display: inline-block; margin-right: 6px; transition: transform 120ms ease; }
 .settings-more[open] > summary::before { transform: rotate(90deg); }
-.composer-cosmos:hover, .composer-cosmos.armed { background: var(--selected-soft); color: var(--fg); }
 .settings-app-section { padding: 0; }
 .settings-app-section .settings-facts { gap: 2px; }
 .settings-app-section .settings-fact { padding: 4px 0; }

@@ -35,11 +35,8 @@ it('keeps provider evidence and handles probe failures without inventing a logou
 })
 
 // qa146: the retry button sat in the sidebar all session, also when filing was fine.
-it('shows the filing retry button only when a filing stopped, cannot start, or is running', () => {
-  const idle = { working: false, paused: false, ready: true, enginesDetected: true }
-  expect(filingRetryShown(idle)).toBe(false)
-  expect(filingRetryShown({ ...idle, enginesDetected: false, ready: false })).toBe(false)
-  expect(filingRetryShown({ ...idle, paused: true })).toBe(true)
-  expect(filingRetryShown({ ...idle, ready: false })).toBe(true)
-  expect(filingRetryShown({ ...idle, working: true })).toBe(true)
+it('shows the filing retry button only when a filing stopped short or that retry is running', () => {
+  expect(filingRetryShown({ paused: false, retrying: false })).toBe(false)
+  expect(filingRetryShown({ paused: true, retrying: false })).toBe(true)
+  expect(filingRetryShown({ paused: false, retrying: true })).toBe(true)
 })

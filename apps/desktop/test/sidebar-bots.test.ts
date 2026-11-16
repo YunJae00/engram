@@ -74,9 +74,10 @@ describe('sidebar bots', () => {
   it('menu actions map to bots:update/sidebar:change', () => {
     const folders = [{ id: 'fa', name: 'Section A' }, { id: 'fb', name: 'Section B' }]
     const listed = botMenuItems(bot('b'), { folder: 'fb', pinned: false }, folders)
-    expect(listed.map(item => item.label)).toEqual(['Rename', 'Pin', 'Move to Section A', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+    expect(listed.map(item => item.label)).toEqual(['Rename', 'Change icon', 'Pin', 'Move to Section A', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
     expect(listed.map(item => item.run)).toEqual([
       { kind: 'rename' },
+      { kind: 'icon' },
       { kind: 'layout', change: { action: 'pin-item', id: 'b', pinned: true } },
       { kind: 'layout', change: { action: 'move-item', id: 'b', folder: 'fa' } },
       { kind: 'new-section' },
@@ -85,11 +86,11 @@ describe('sidebar bots', () => {
       { kind: 'delete' },
     ])
     const loose = botMenuItems(bot('p'), { folder: null, pinned: true }, folders)
-    expect(loose.map(item => item.label)).toEqual(['Rename', 'Unpin', 'Move to Section A', 'Move to Section B', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
-    expect(loose[1].run).toEqual({ kind: 'layout', change: { action: 'pin-item', id: 'p', pinned: false } })
+    expect(loose.map(item => item.label)).toEqual(['Rename', 'Change icon', 'Unpin', 'Move to Section A', 'Move to Section B', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+    expect(loose[2].run).toEqual({ kind: 'layout', change: { action: 'pin-item', id: 'p', pinned: false } })
     const hidden = botMenuItems(bot('h', { hidden: true }), { folder: null, pinned: false }, folders)
-    expect(hidden.map(item => item.label)).toEqual(['Rename', 'Show', 'Make primary', 'Delete'])
-    const show = hidden[1].run
+    expect(hidden.map(item => item.label)).toEqual(['Rename', 'Change icon', 'Show', 'Make primary', 'Delete'])
+    const show = hidden[2].run
     if (show.kind !== 'update') throw new Error('Show is not an update')
     expect(Object.keys(show.patch)).toEqual(['hidden'])
     expect(Object.hasOwn(show.patch, 'hidden') && show.patch.hidden === undefined).toBe(true)

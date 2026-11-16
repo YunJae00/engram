@@ -53,53 +53,62 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('one press on + creates and opens a new bot chat, and an empty one is reused', async () => {
+const dialog = () => page.getByTestId('create-bot-dialog')
+
+test('+ asks for a name and icon, then creates and opens the bot', async () => {
   const before = await botList()
   await plus().click()
+  await expect(dialog()).toBeVisible()
+  await expect(page.getByTestId('create-bot-name')).toBeFocused()
+  await expect(page.locator('.sidebar-create-menu')).toHaveCount(0)
+  // Nothing is made until the person names it.
+  expect((await botList()).length).toBe(before.length)
+  await page.keyboard.press('Escape')
+  await expect(dialog()).toHaveCount(0)
+  expect((await botList()).length).toBe(before.length)
+
+  await plus().click()
+  await page.getByTestId('create-bot-name').fill('Kept')
+  await page.getByTestId('create-bot-submit').click()
+  await expect(dialog()).toHaveCount(0)
   await expect.poll(async () => (await botList()).length).toBe(before.length + 1)
   const created = (await botList()).find(bot => !before.some(old => old.id === bot.id))!
-  expect(created.name).toBe('New bot')
+  expect(created.name).toBe('Kept')
   await expect(page.getByTestId(`bot-${created.id}`)).toHaveClass(/\bactive\b/)
   await expect(composer()).toBeFocused()
-  await expect(page.locator('.sidebar-create-menu')).toHaveCount(0)
-  await expect(page.locator(':popover-open')).toHaveCount(0)
-  await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
 
   await plus().click()
-  await plus().dblclick()
-  await expect(composer()).toBeFocused()
-  await expect(page.getByTestId(`bot-${created.id}`)).toHaveClass(/\bactive\b/)
-  expect((await botList()).length).toBe(before.length + 1)
-
-  await page.evaluate(id => window.engram.botRename(id, 'Kept'), created.id)
-  await expect(page.getByTestId(`bot-${created.id}`)).toContainText('Kept')
-  await plus().click()
+  await page.getByTestId('create-bot-name').fill('Second')
+  await page.getByTestId('create-bot-name').press('Enter')
   await expect.poll(async () => (await botList()).length).toBe(before.length + 2)
   await expect(composer()).toBeFocused()
 })
 
-test('rapid presses from a non-empty bot create exactly one bot', async () => {
+test('rapid presses from a non-empty bot open one dialog and create exactly one bot', async () => {
   const before = (await botList()).length
   await page.getByTestId('bot-vis-budget').click()
   await plus().dblclick()
-  await plus().click()
+  await expect(dialog()).toHaveCount(1)
+  await page.getByTestId('create-bot-name').fill('Once')
+  await page.getByTestId('create-bot-submit').dblclick()
   await expect(composer()).toBeFocused()
   await expect.poll(async () => (await botList()).length).toBe(before + 1)
   await page.waitForTimeout(400)
   expect((await botList()).length).toBe(before + 1)
 })
 
-test('folders are created from the header action and the right-click menu, and a bot moves into one', async () => {
-  const action = page.getByTestId('sidebar-new-folder')
-  await expect(action).toHaveAttribute('aria-label', 'New section')
-  await action.focus()
-  await page.keyboard.press('Enter')
-  const plusFolder = await nameFolder('Plus folder')
-
+test('folders are created only from the right-click menus, and a bot moves into one', async () => {
+  await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
+  await expect(page.locator('.sidebar-tree-head')).toHaveCount(0)
   await rightClickSpace()
   const item = page.getByTestId('sidebar-space-new-folder')
   await expect(item).toBeFocused()
   await expect(item).toHaveText('New folder')
+  await page.keyboard.press('Enter')
+  const plusFolder = await nameFolder('Plus folder')
+
+  await rightClickSpace()
+  await expect(item).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(item).toHaveCount(0)
   await rightClickSpace()
@@ -107,19 +116,22 @@ test('folders are created from the header action and the right-click menu, and a
   await expect(item).toHaveCount(0)
   await nameFolder('Menu folder')
 
-  await page.locator('button[aria-label="Options for New helper"]').click()
+  await page.getByTestId('bot-vis-new').click({ button: 'right' })
   await page.locator('[role="dialog"][aria-label="Options for New helper"]').getByRole('button', { name: 'Move to Plus folder' }).click()
   await expect.poll(() => page.evaluate(async () => (await window.engram.sidebarLayout('chat')).chat.items.find(one => one.id === 'vis-new')?.folder)).toBe(plusFolder)
   await expect(page.getByTestId(`sidebar-folder-${plusFolder}`).getByTestId('bot-vis-new')).toBeVisible()
-  expect(await page.getByTestId('create-bot-dialog').count()).toBe(0)
+  expect(await dialog().count()).toBe(0)
 })
 
-test('a failed create shows the sidebar error line', async () => {
+test('a failed create shows the error in the dialog', async () => {
   const before = (await botList()).length
   await app!.evaluate(({ ipcMain }) => { ipcMain.removeHandler('bots:create'); ipcMain.handle('bots:create', () => { throw new Error('no') }) })
   await page.getByTestId('bot-vis-budget').click()
   await plus().click()
-  await expect(page.locator('.app-sidebar [role="alert"]')).toHaveText('Could not create the bot.')
+  await page.getByTestId('create-bot-name').fill('Never')
+  await page.getByTestId('create-bot-submit').click()
+  await expect(dialog().getByRole('alert')).toHaveText('Could not create the bot.')
   expect((await botList()).length).toBe(before)
+  await page.keyboard.press('Escape')
   await expect(page.getByTestId('bot-vis-budget')).toHaveClass(/\bactive\b/)
 })

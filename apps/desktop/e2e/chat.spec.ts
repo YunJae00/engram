@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { openActivity, openWelcome } from './navigation.js'
+import { openActivity, openWelcome, createBotFromPlus } from './navigation.js'
 import { appendBotTurn, createBot, createNote, initVault, recordBotSites, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -58,7 +58,7 @@ test('create a comet, ask it, and watch the answer stream in', async () => {
     await page.keyboard.press('ControlOrMeta+l')
     await expect(page.getByTestId('bots-view')).toBeVisible({ timeout: 2_000 })
   }).toPass({ timeout: 30_000 })
-  await page.getByTestId('sidebar-create').click()
+  await createBotFromPlus(page, 'What is our deploy procedure')
   const composer = page.getByTestId('bots-view').getByTestId('bots-input')
   await expect(composer).toBeVisible()
   await composer.fill('What is our deploy procedure?')
@@ -151,20 +151,23 @@ test('the conversation survives leaving and re-entering the tab', async () => {
 })
 test('composer tools stay in the chat surface and open away from the sidebar', async () => {
   await expect(page.locator('.bots-head button')).toHaveCount(0)
-  const memory = page.getByTestId('bots-memory-toggle')
+  // The composer's + only attaches files: memory is in the bot's info pane, behind the title pill.
+  await expect(page.getByTestId('bots-memory-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
+  await expect(page.getByTestId('composer-web')).toHaveCount(0)
+  await expect(page.locator('.bots-write .chat-add-menu:not(.chat-mention-menu)')).toHaveCount(0)
+  await expect(page.getByTestId('bots-input-add')).toHaveAttribute('aria-label', 'Attach files')
+  const chooser = page.waitForEvent('filechooser')
   await page.getByTestId('bots-input-add').click()
-  await expect(memory).toBeVisible()
-  await expect(memory).toHaveText('Memory')
-  await expect(memory).toHaveAttribute('aria-label', 'Memory')
-  await expect(memory).toHaveAttribute('title', 'Memory')
-  await expect(memory.locator('svg')).toHaveAttribute('aria-hidden', 'true')
-  await memory.click()
-  const memoryPanel = page.locator('.bots-memory')
+  await chooser
+  await expect(page.locator(':popover-open')).toHaveCount(0)
+  await page.getByTestId('bots-title-pill').click()
+  const memoryPanel = page.getByTestId('bot-info-pane').locator('.bots-memory')
   await expect(memoryPanel).toBeVisible()
-  const [memoryBox, composerBox] = await Promise.all([memoryPanel.boundingBox(), page.locator('.bots-write > .chat-write').boundingBox()])
-  expect(memoryBox!.y + memoryBox!.height).toBeLessThanOrEqual(composerBox!.y)
-  await page.getByTestId('bots-input-add').click()
-  await memory.click()
+  const [memoryBox, sidebarBox] = await Promise.all([memoryPanel.boundingBox(), page.getByTestId('app-sidebar').boundingBox()])
+  expect(memoryBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width)
+  await page.getByTestId('bots-title-pill').click()
+  await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
   await expect(page.getByTestId('model-picker')).toHaveCount(0)
   await expect(page.locator('.bots-write').getByRole('button', { name: 'Permissions' })).toHaveCount(0)
 })
@@ -254,8 +257,8 @@ test('conversation keeps narration between compact activity groups and shows vis
   await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
   await expect(page.locator('.bubble-msg.assistant').last().locator('.answer-sites a')).toHaveAttribute('href', 'https://example.com/research')
   expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
-  await page.getByTestId('bots-input-add').click()
-  await page.getByRole('button', { name: 'Hide the page panel', exact: true }).click()
+  await page.getByTestId('preview-card').getByRole('button', { name: 'Hide preview', exact: true }).click()
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expect(page.locator('.web-pane')).toBeHidden()
   await screenshot('ui-conversation-activity.png')
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark')

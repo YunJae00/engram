@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, openWelcome } from './navigation.js'
 
 test.describe.configure({ mode: 'serial' })
 const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -44,8 +44,11 @@ test.afterAll(async () => {
 
 test('a manual empty browser offers address entry instead of indefinite loading', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  // A conversation's composer no longer opens the page panel; an empty browser starts from the welcome composer's Web action.
+  await openWelcome(page)
+  await page.getByTestId('welcome-input-add').click()
+  await page.getByTestId('welcome-web').click()
+  await expect(page.getByTestId('composer-web')).toHaveCount(0)
   const expandEmpty = page.getByRole('button', { name: 'Expand preview', exact: true })
   if (await expandEmpty.isVisible()) await expandEmpty.click()
   await expect(page.locator('.preview-card-state')).toHaveText('No website open')
@@ -55,6 +58,7 @@ test('a manual empty browser offers address entry instead of indefinite loading'
   await page.getByTestId('web-pane-fold').click()
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
+  await page.locator('.bots-row', { hasText: 'Browser preview' }).click()
 })
 
 test('automatic work keeps chat wide and switches between preview, split and full without navigation', async () => {
@@ -105,11 +109,11 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await page.getByTestId('preview-card-collapsed').click()
   await expect(preview.locator('canvas[data-painted]')).toBeVisible()
   await expect(preview.getByText('Open browser', { exact: true })).toHaveCount(0)
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  // The card's own controls put the preview away and bring the browser back.
+  await preview.getByRole('button', { name: 'Hide preview', exact: true }).click()
   await expect(preview).toHaveCount(0)
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  await page.getByTestId('preview-card-reopen').click()
+  await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
   await page.getByRole('button', { name: 'Return to small preview' }).click()
   await expect(preview.locator('canvas')).toHaveAttribute('data-painted', '')
   await preview.getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
@@ -121,18 +125,17 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await expect(page.getByTestId('preview-card')).toBeVisible()
 })
 
-test('small windows open from the composer as a preview and expand only on request', async () => {
+test('small windows show the page as a preview and expand only on request', async () => {
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: true }), lane)
   await app.evaluate(({ BrowserWindow }, lane) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:working', channel: lane, working: false }), lane)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
-  await expect(page.getByTestId('web-pane')).toHaveCount(0)
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
   const preview = page.locator('.preview-card')
   const collapsed = page.getByTestId('preview-card-collapsed')
   if (await collapsed.isVisible()) await collapsed.click()
+  await preview.getByRole('button', { name: 'Hide preview', exact: true }).click()
+  await expect(preview).toHaveCount(0)
+  await expect(page.getByTestId('web-pane')).toHaveCount(0)
+  await page.getByTestId('preview-card-reopen').click()
   await expect(preview).toBeVisible()
   await expect(preview).toHaveCSS('animation-name', 'preview-card-in')
   await expect(page.getByTestId('live-address')).toHaveCount(0)

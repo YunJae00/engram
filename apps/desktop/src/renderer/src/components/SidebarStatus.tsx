@@ -1,9 +1,9 @@
-import { Check, CircleAlert, LoaderCircle, RotateCw } from 'lucide-react'
+import { LoaderCircle, RotateCw } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { api, apiErrorText } from '../api.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
-import { useShellState, useTopBarState } from '../state-slices.js'
+import { useTopBarState } from '../state-slices.js'
 import { connectionConfirmed, filingRetryShown } from '../lib/connectionStatus.js'
 
 function sweepLabel(translate: Translate, status: SweepStatus): string {
@@ -25,7 +25,6 @@ function sweepLabel(translate: Translate, status: SweepStatus): string {
 
 export function SidebarStatus() {
   const { engines, sweepStatus, filing, absorb, sweepJob, errand, vaultReady, showToast } = useTopBarState()
-  const { enginesDetected } = useShellState()
   const [retrying, setRetrying] = useState(false)
   const pending = useRef(false)
   const retry = async () => {
@@ -57,17 +56,17 @@ export function SidebarStatus() {
     : ''
   const activityText = errandText || sweepText || absorbText
   const working = errand.running || sweepStatus.running || filingOnly || retrying
-  const ready = engines.some(engine => connectionConfirmed(engine) && engine.healthy !== false)
-  const idleLabel = !enginesDetected ? t('sidebar.checkingAi') : ready ? t('sidebar.filingReady') : t('sidebar.filingUnavailable')
   const paused = sweepStatus.kind === 'error' || sweepStatus.kind === 'done' && (!!sweepStatus.haltReason || sweepStatus.deferred > 0)
 
+  // Quiet at rest: the row is here only while something runs, the retry only when filing stopped short.
+  if (!working && !paused) return null
   return (
     <div className="sidebar-status-block">
-        <div className={`sidebar-status-row sidebar-work-status${working ? ' working' : ''}`} data-testid="sweep-status" role="status" title={activityText}>
-          <span className="sidebar-status-icon">{working || !enginesDetected ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused || !ready ? <CircleAlert size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
-          <span>{activityText || idleLabel}</span>
-        </div>
-      {filingRetryShown({ working, paused, ready, enginesDetected }) && <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label={t('sidebar.retryFiling')} title={t('sidebar.retryFilingHint')} disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>}
+      {working && <div className="sidebar-status-row sidebar-work-status working" data-testid="sweep-status" role="status" title={activityText}>
+        <span className="sidebar-status-icon"><LoaderCircle size={14} strokeWidth={1.8} aria-hidden /></span>
+        <span>{activityText}</span>
+      </div>}
+      {filingRetryShown({ paused, retrying }) && <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label={t('sidebar.retryFiling')} title={t('sidebar.retryFilingHint')} disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>}
     </div>
   )
 }

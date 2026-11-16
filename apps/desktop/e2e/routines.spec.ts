@@ -172,12 +172,10 @@ test('a login wall pauses the replay, and the run resumes from that step once th
     await expectRoutineControlReachable('routine-wall-done-live')
   }
   await capture('routine-login-compact.png')
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  await page.getByTestId('preview-card').getByRole('button', { name: 'Hide preview', exact: true }).click()
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expectRoutineControlReachable('routine-wall-done-live')
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  await page.getByTestId('preview-card-reopen').click()
   await expect(page.getByTestId('preview-card')).toBeVisible()
   await expectRoutineControlReachable('routine-wall-done-live')
 

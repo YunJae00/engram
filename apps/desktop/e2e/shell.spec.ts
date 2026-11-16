@@ -179,9 +179,12 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await expect(page.getByTestId('sidebar-routines-toggle')).toHaveCount(0)
   const engineStatus = sidebar.getByTestId('engine-status')
   await expect(engineStatus).toHaveCount(0)
+  // At rest the footer holds only the settings button; the filing status shows while work runs.
+  await expect(sidebar.getByTestId('sweep-status')).toHaveCount(0)
+  await expect(sidebar.getByTestId('filing-retry')).toHaveCount(0)
   const [scrollBox, engineBox, footerBox] = await Promise.all([
     sidebar.locator('.sidebar-scroll').boundingBox(),
-    sidebar.getByTestId('sweep-status').boundingBox(),
+    sidebar.getByTestId('activity-settings').boundingBox(),
     sidebar.locator('.sidebar-footer').boundingBox(),
   ])
   expect(footerBox!.y).toBeGreaterThanOrEqual(scrollBox!.y + scrollBox!.height - 1)
@@ -194,8 +197,9 @@ test('the app sidebar switches between chats and saved routines, renames them, a
     const head = node.querySelector('.app-sidebar-head')!.getBoundingClientRect()
     const tools = node.querySelector('.sidebar-library-tools')!.getBoundingClientRect()
     const row = node.querySelector('.sidebar-conversations .sidebar-item')!.getBoundingClientRect()
-    // The scroll area now opens with the 'Bots' section head (637f7201) and the primary hero (rd-sidebar-bots, b8646f58) above the list, so the 12px gap sits between the toolbar and that head.
-    const content = node.querySelector('.sidebar-scroll .sidebar-tree-head')!.getBoundingClientRect()
+    // The 'Bots' head row is gone: the scroll area opens straight on its first row, 12px under the toolbar.
+    if (node.querySelector('.sidebar-tree-head, [data-testid="sidebar-new-folder"]')) throw new Error('the Bots head row is back')
+    const content = node.querySelector('.sidebar-scroll')!.getBoundingClientRect()
     const search = node.querySelector('.sidebar-search')!.getBoundingClientRect()
     const add = node.querySelector('[data-testid="sidebar-create"]')!.getBoundingClientRect()
     const side = node.getBoundingClientRect()
@@ -211,8 +215,9 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   expect(alignment.below).toBeCloseTo(12, 1)
   expect(alignment.heights).toBeLessThan(1)
 
-  await page.getByTestId(`sidebar-chat-menu-${bot.id}`).click()
-  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+  await expect(page.getByTestId(`sidebar-chat-menu-${bot.id}`)).toHaveCount(0)
+  await page.getByTestId(`bot-${bot.id}`).click({ button: 'right' })
+  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Change icon', 'Pin', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
   await page.getByTestId(`sidebar-chat-rename-${bot.id}`).click()
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).fill('Field Scout')
   await page.getByTestId(`sidebar-chat-name-${bot.id}`).press('Enter')
@@ -293,7 +298,7 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
       return result
     }, kind)
-    if (kind === 'chat') await page.getByTestId('sidebar-new-folder').click(); else { await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: 'New routine folder' }).click() }
+    if (kind === 'chat') { const scroll = page.locator('.sidebar-scroll'); await scroll.click({ button: 'right', position: { x: 20, y: (await scroll.boundingBox())!.height - 6 } }); await page.getByTestId('sidebar-space-new-folder').click() } else { await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: 'New routine folder' }).click() }
     const input = page.getByTestId(`sidebar-${kind}-folder-name`)
     await input.fill(`${kind} Work`)
     await input.press('Enter')
@@ -345,12 +350,12 @@ test('folders support drag reordering, keyboard rename cancellation, persistence
     await expect(item(ids[0]!)).not.toBeVisible()
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
     await expect(item(ids[0]!)).toBeVisible()
-    await page.getByTestId(`sidebar-${kind}-menu-${ids[0]}`).click()
+    if (kind === 'chat') await item(ids[0]!).click({ button: 'right' }); else await page.getByTestId(`sidebar-${kind}-menu-${ids[0]}`).click()
     await page.getByTestId(`sidebar-${kind}-rename-${ids[0]}`).click()
     await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).fill('Do not save this')
     await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).press('Escape')
     await expect(item(ids[0]!)).toHaveAttribute('title', `${kind} Alpha`)
-    await box.getByRole('button', { name: `Options for ${kind} Work`, exact: true }).click()
+    if (kind === 'chat') await box.locator(':scope > .sidebar-folder-head').click({ button: 'right' }); else await box.getByRole('button', { name: `Options for ${kind} Work`, exact: true }).click()
     const menu = page.getByRole('dialog', { name: `Options for ${kind} Work`, exact: true })
     await menu.getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(box).toBeVisible()

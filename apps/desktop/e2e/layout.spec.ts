@@ -80,8 +80,16 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       const content = thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
       return node.querySelector('.bots-write')!.getBoundingClientRect().width - content
     })).toBeGreaterThanOrEqual(30)
-    await page.getByTestId('bots-input-add').click()
-    await page.getByTestId('composer-web').click()
+    // The composer has no page-panel button: the panel arrives with page work as a card, which opens beside the chat on wide windows.
+    await expect(page.getByTestId('composer-web')).toHaveCount(0)
+    const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
+    await app.evaluate(({ BrowserWindow }, channel) => {
+      for (const line of ['excel_write: sheet', 'open_page: page']) for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'comet:step', channel, line })
+    }, lane)
+    const reopen = page.getByTestId('preview-card-reopen')
+    await expect(page.getByTestId('preview-card').or(reopen)).toBeVisible()
+    if (await reopen.isVisible()) await reopen.click()
+    if (width > 1180) await page.getByTestId('preview-card').getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
     const pane = width > 1180 ? page.getByTestId('web-pane') : page.getByTestId('preview-card')
     await expect(pane).toBeVisible()
     if (width > 1180) {
@@ -105,8 +113,7 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
         return pane.top >= head.top && pane.right <= head.right && Math.abs(chat.width - head.width) < 2
       })).toBe(true)
     }
-    await page.getByTestId('bots-input-add').click()
-    await page.getByTestId('composer-web').click()
+    if (width > 1180) await page.getByTestId('web-pane-fold').click(); else await pane.getByRole('button', { name: 'Hide preview', exact: true }).click()
     await expect(pane).toHaveCount(0)
     await input.fill('')
     await navigate('sky')

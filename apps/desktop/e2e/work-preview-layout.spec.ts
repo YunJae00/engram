@@ -220,9 +220,13 @@ test('app previews stack, promote back cards and stay inside full, split, minimi
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       await openActivity(page, 'bots')
       await emit([{ type: 'chat:done', channel: lane, text: 'Preview complete.' }])
-      // A folded web lane makes the next theme start with app frames only.
-      await page.getByTestId('bots-input-add').click()
-      await page.getByTestId('composer-web').click()
+      // A folded web lane makes the next theme start with app frames only; the fold is in the browser the web card opens.
+      const webCard = page.locator('[data-testid="preview-card"][data-source="web"]')
+      if (theme === 'light') {
+        await webCard.getByRole('button', { name: /^Open (browser beside chat|full browser)$/ }).click()
+        await page.getByTestId('web-pane-fold').click()
+        await expect(webCard).toHaveCount(0)
+      }
     }
   } finally { await closeTestApp(app) }
 })

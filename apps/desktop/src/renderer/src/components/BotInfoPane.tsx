@@ -13,7 +13,7 @@ import { BotRoutinesTab } from './BotRoutinesTab.js'
 
 const NOTIFY: [NonNullable<BotDto['notify']>, StringKey][] = [['all', 'botInfo.notifyAll'], ['attention', 'botInfo.notifyAttention'], ['off', 'botInfo.notifyOff']]
 
-export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEntered }: { bot: BotDto; entering: boolean; closing: boolean; onClose: () => void; onClosed: () => void; onEntered: () => void }) {
+export function BotInfoPane({ bot, pickAvatar = null, entering, closing, onClose, onClosed, onEntered }: { bot: BotDto; pickAvatar?: object | null; entering: boolean; closing: boolean; onClose: () => void; onClosed: () => void; onEntered: () => void }) {
   const { theme } = useApp()
   const { showToast, openNote } = useShellState()
   const [text, setText] = useState(() => bot.purpose ?? '')
@@ -22,7 +22,9 @@ export function BotInfoPane({ bot, entering, closing, onClose, onClosed, onEnter
   const saver = useRef<ReturnType<typeof instructionsSaver> | null>(null)
   saver.current ??= instructionsSaver((id, purpose) => api.botUpdate(id, { purpose }), (error) => toast.current(String(error)))
 
-  const [picking, setPicking] = useState(false)
+  const [picking, setPicking] = useState(!!pickAvatar)
+  // A fresh request reopens the picker even when the pane is already up.
+  useEffect(() => { if (pickAvatar) setPicking(true) }, [pickAvatar])
   const [local, setLocal] = useState<{ avatar: unknown } | null>(null)
   const avatarWrites = useRef<ReturnType<typeof avatarSaver> | null>(null)
   if (avatarWrites.current?.id !== bot.id) {

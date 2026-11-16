@@ -114,7 +114,9 @@ test('the main banner and filing status recover alongside the connected settings
       window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
     }
   })
-  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
+  // At rest the sidebar footer says nothing about filing; the banner carries the news.
+  await expect(page.getByTestId('sweep-status')).toHaveCount(0)
+  await expect(page.getByTestId('filing-retry')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => {
     const fixture = (globalThis as Global).engineFixture
     fixture.delayed = false; fixture.signed['codex'] = true
@@ -125,12 +127,14 @@ test('the main banner and filing status recover alongside the connected settings
     }
   })
   await expect(page.getByTestId('connect-banner')).toBeVisible()
-  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
+  // A filing run that failed leaves only the retry.
+  await expect(page.getByTestId('sweep-status')).toHaveCount(0)
+  await expect(page.getByTestId('filing-retry')).toBeVisible()
   await app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engines:changed', engines: [{ id: 'codex', installed: true, loggedIn: true, healthy: true }] })
   })
   await expect(page.getByTestId('connect-banner')).toHaveCount(0)
-  await expect(page.getByTestId('sweep-status')).toHaveText('Filing ready')
+  await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('engine-status')).toHaveCount(0)
   await openActivity(page, 'settings')
   await page.getByTestId('settings-nav-ai').click()
@@ -139,7 +143,7 @@ test('the main banner and filing status recover alongside the connected settings
   await app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'engine:health', id: 'codex', healthy: false, reason: 'auth' })
   })
-  await expect(page.getByTestId('sweep-status')).toHaveText('Filing AI unavailable')
+  await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Log in', exact: true }).click()
   await expect(page.getByTestId('settings-nav-ai')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('diagnostics-view')).toHaveCount(0)
@@ -212,16 +216,17 @@ test('welcome and conversation footer controls align inside narrow composers wit
       const composer = page.locator('.chat-write').filter({ has: input })
       await expect(composer.getByTestId('model-picker')).toHaveCount(0)
       if (surface === 'conversation') {
-        const memory = composer.getByTestId('bots-memory-toggle')
-        await composer.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-        await expect(memory).toHaveText('Memory')
-        await expect(memory).toHaveAttribute('title', /\S/)
-        await expect(memory).toHaveAttribute('aria-label', /\S/)
-        await memory.click()
-        await expect(memory).toHaveAttribute('aria-pressed', 'true')
-        await composer.getByRole('button', { name: 'Add to conversation', exact: true }).click()
-        await memory.click()
-        await expect(memory).toHaveAttribute('aria-pressed', 'false')
+        // Memory left the composer for the bot's info pane; the + is the file picker itself.
+        await expect(composer.getByTestId('bots-memory-toggle')).toHaveCount(0)
+        const add = composer.getByRole('button', { name: 'Attach files', exact: true })
+        await expect(add).toHaveAttribute('title', /\S/)
+        await expect(add).not.toHaveAttribute('popovertarget')
+        if (width === 1280) {
+          await page.getByTestId('bots-title-pill').click()
+          await expect(page.getByTestId('bot-info-pane').getByTestId('bots-memory')).toBeVisible()
+          await page.getByTestId('bots-title-pill').click()
+          await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+        }
       }
       const geometry = await composer.evaluate(node => {
         const footer = node.querySelector('.chat-write-footer')!.getBoundingClientRect()

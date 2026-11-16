@@ -55,7 +55,11 @@ test.describe.serial('minimal sidebar', () => {
       await expect(head.locator('small')).toHaveText(/^\d+$/)
     }
     await expect(heads.locator('span')).toHaveText(['Home', 'Money'])
-    const newSection = page.getByTestId('sidebar-new-folder')
+    // No header button: a new section starts from a right-click on empty sidebar space.
+    await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
+    const scroll = page.locator('.sidebar-scroll')
+    await scroll.click({ button: 'right', position: { x: 20, y: (await scroll.boundingBox())!.height - 6 } })
+    const newSection = page.getByTestId('sidebar-space-new-folder')
     await expect(newSection).toBeVisible()
     await expect(newSection.locator('svg')).toHaveCount(1)
     await newSection.click()

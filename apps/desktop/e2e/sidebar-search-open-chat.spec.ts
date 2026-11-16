@@ -83,7 +83,7 @@ test('clearing the search restores both chats with the open one active', async (
 })
 
 test('a pinned open chat that does not match is hidden too', async () => {
-  await page.getByTestId(`sidebar-chat-menu-${beta.id}`).click()
+  await page.getByTestId(`bot-${beta.id}`).click({ button: 'right' })
   await page.locator('.sidebar-organize-menu').getByRole('button', { name: 'Pin', exact: true }).click()
   await expect(row(beta).locator('..')).toHaveAttribute('data-pinned', 'true')
   const before = (await page.evaluate(() => window.engram.sidebarLayout())).chat

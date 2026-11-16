@@ -3,7 +3,7 @@ import { initVault, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, openActivity, createBotFromPlus } from './navigation.js'
 
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication | undefined
@@ -35,7 +35,7 @@ async function ask(message: string, step: { tool: string; args: Record<string, u
   })
   // The sidebar lists bots that have a conversation, so the ask goes to a bot made with the sidebar plus.
   await openActivity(page, 'bots')
-  await page.getByTestId('sidebar-create').click()
+  await createBotFromPlus(page, 'File maker')
   const composer = page.getByTestId('bots-view').getByTestId('bots-input')
   await composer.fill(message)
   await composer.press('Enter')

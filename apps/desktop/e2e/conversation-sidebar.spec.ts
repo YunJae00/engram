@@ -72,7 +72,7 @@ test('folder deletion offers cancellation and includes conversations hidden by s
     return [first.id, second.id]
   })
   await page.getByTestId('sidebar-search-toggle').click(); await page.getByRole('textbox', { name: 'Search conversations', exact: true }).fill('Visible deletion')
-  await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
+  await page.locator('.sidebar-folder-head', { hasText: 'Deletion fixture' }).click({ button: 'right' })
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Delete section?', exact: true })
   await expect(dialog).toContainText('2 conversations')
@@ -90,7 +90,7 @@ test('folder deletion offers cancellation and includes conversations hidden by s
     await page.emulateMedia({ reducedMotion: 'reduce' })
   }
   expect(await page.evaluate(async ids => (await window.engram.botsList()).filter(bot => ids.includes(bot.id)).length, ids)).toBe(2)
-  await page.getByRole('button', { name: 'Options for Deletion fixture', exact: true }).click()
+  await page.locator('.sidebar-folder-head', { hasText: 'Deletion fixture' }).click({ button: 'right' })
   await page.getByRole('dialog', { name: 'Options for Deletion fixture', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click()
   await dialog.getByRole('button', { name: 'Delete section and 2 conversations', exact: true }).click()
   await expect(dialog).toHaveCount(0)
@@ -169,17 +169,21 @@ test('one create menu is keyboard accessible, dismissible, and compact in both t
     await page.setViewportSize({ width, height: 840 })
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await showSidebar()
-    const trigger = page.getByTestId('sidebar-new-folder')
     const menu = page.locator('.sidebar-menu')
     await expect(page.locator('.sidebar-create-menu')).toHaveCount(0); await expect(page.getByTestId('bots-new')).toHaveCount(0)
-    await trigger.focus(); await page.keyboard.press('Enter')
+    // The header's new-section button is gone: the right-click menu on empty space is the one way in.
+    await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
+    const scroll = page.locator('.sidebar-scroll')
+    await scroll.evaluate(node => { node.scrollTop = node.scrollHeight })
+    const box = (await scroll.boundingBox())!
+    await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
+    await expect(menu.getByTestId('sidebar-space-new-folder')).toBeFocused()
+    await page.keyboard.press('Enter')
     const name = page.getByTestId('sidebar-chat-folder-name')
     await expect(name).toBeFocused()
     await capture(`minimal-create-${theme}.png`)
     await page.keyboard.press('Escape'); await expect(name).toHaveCount(0)
-    const scroll = page.locator('.sidebar-scroll')
     await scroll.evaluate(node => { node.scrollTop = node.scrollHeight })
-    const box = (await scroll.boundingBox())!
     await scroll.click({ button: 'right', position: { x: 20, y: box.height - 4 } })
     await expect(menu.getByTestId('sidebar-space-new-folder')).toBeFocused()
     await expect.poll(() => menu.evaluate(node => { const box = node.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth })).toBe(true)
@@ -260,7 +264,7 @@ test('search hides the open and pinned conversation when it does not match', asy
   const open = page.getByTestId(`bot-${bots[2]!.id}`), other = page.getByTestId(`bot-${bots[1]!.id}`)
   const rows = page.locator('.sidebar-conversations .bots-row')
   const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
-  const pin = async (label: 'Pin' | 'Unpin') => { await page.getByTestId(`sidebar-chat-menu-${bots[2]!.id}`).click(); await page.locator('.sidebar-organize-menu').getByRole('button', { name: label, exact: true }).click() }
+  const pin = async (label: 'Pin' | 'Unpin') => { await page.getByTestId(`bot-${bots[2]!.id}`).click({ button: 'right' }); await page.locator('.sidebar-organize-menu').getByRole('button', { name: label, exact: true }).click() }
   await open.click()
   await expect(open).toHaveClass(/active/)
   expect(await page.evaluate(q => window.engram.botsSearch(q), 'zzqx-없는토큰')).toEqual([])
@@ -312,17 +316,18 @@ test('conversation menus replace dates on interaction and pin without losing fol
   const id = bots[1]!.id
   const row = page.getByTestId(`bot-${id}`)
   await row.scrollIntoViewIfNeeded()
-  const options = page.getByTestId(`sidebar-chat-menu-${id}`)
-  await options.click()
+  await expect(row.locator('xpath=..').locator('.sidebar-more')).toHaveCount(0)
+  await row.click({ button: 'right' })
   const menu = page.locator('.sidebar-organize-menu')
   // Since 1367c699 the row menu also moves to each other section, hides and sets primary (botMenuItems).
-  await expect(menu.getByRole('button')).toHaveText(['Rename', 'Pin', 'Move to Release decisions', 'Move to Unrelated work', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
+  await expect(menu.getByRole('button')).toHaveText(['Rename', 'Change icon', 'Pin', 'Move to Release decisions', 'Move to Unrelated work', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
   for (const label of ['Rename', 'Pin', 'Delete']) await expect(menu.getByRole('button', { name: label, exact: true }).locator('svg')).toBeVisible()
-  const optionsBox = await options.boundingBox()
+  const menuBox = await menu.boundingBox()
   const rowBox = await row.boundingBox()
   // The time shows only as a tooltip since the bot sidebar (rd-sidebar-bots, b8646f58), so no date is drawn in the row.
   await expect(row.locator('time')).toHaveCount(0)
-  expect(optionsBox!.x + optionsBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
+  // The menu opens at the pointer, which is on the row.
+  expect(menuBox!.x).toBeGreaterThanOrEqual(rowBox!.x); expect(menuBox!.x).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
   const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
   expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)
   await menu.getByRole('button', { name: 'Pin', exact: true }).click()
@@ -335,7 +340,7 @@ test('conversation menus replace dates on interaction and pin without losing fol
   await expect(page.getByTestId('sidebar-create')).toBeEnabled()
   await expect(row.locator('..').getByLabel('Pinned conversation')).toBeVisible()
   expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before)
-  await options.click()
+  await row.click({ button: 'right' })
   await menu.getByRole('button', { name: 'Unpin', exact: true }).click()
   await expect(row.locator('..').getByLabel('Pinned conversation')).toHaveCount(0)
   await capture('conversation-folders-and-menus.png')

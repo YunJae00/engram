@@ -151,8 +151,8 @@ export function WebPane({ channel, busy, onStop, children, toolbar }: { channel:
   useBrowserViewport(stage, channel, Boolean(paneShown) && !native && active && !preview)
   // Nothing live, nothing kept, and nobody asked: no panel. Asked for by
   // hand with nothing open, it stands with its address field - the way a
-  // browser opens on a blank tab - and folded it is simply gone; the globe
-  // by the composer is where it comes back.
+  // browser opens on a blank tab - and folded it is simply gone until the
+  // next page work brings its preview card back.
   if ((!liveHere && !frozen && !wanted) || (on && !mine && !wanted && !frozen)) return null
   if (preview) return null
   if (folded && !present) return null

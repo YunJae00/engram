@@ -1,32 +1,21 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Monitor, Orbit } from 'lucide-react'
 import { t } from '../i18n.js'
 import { cometThreads } from '../lib/cometThreadsLive.js'
 import { ChatComposer } from './ChatComposer.js'
-import { CometMemory } from './CometMemory.js'
 import { ModelPicker } from './ModelPicker.js'
-import { ComputerDialog } from './ComputerDialog.js'
-import { threadLang, threadWords } from '../lib/threadLang.js'
-import { WebPaneButton } from './WebPaneButton.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import type { ChatAttachmentDto } from '../../../shared/types.js'
 
 interface Props {
   botId: string
-  botName: string
   initialDraft: string
   busy: boolean
   locked: boolean
-  memoryOpen: boolean
-  onToggleMemory(): void
   onSend(message: string, attachments: ChatAttachmentDto[]): void
   onStop(): void
 }
 
-export function BotComposer({ botId, botName, initialDraft, busy, locked, memoryOpen, onToggleMemory, onSend, onStop }: Props) {
-  const [computerOpen, setComputerOpen] = useState(false)
-  const lang = threadLang(cometThreads.thread(botId).messages)
-  const words = threadWords(lang)
+export function BotComposer({ botId, initialDraft, busy, locked, onSend, onStop }: Props) {
   const [value, setValue] = useState(initialDraft)
   const attachments = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(botId).attachments)
   const valueRef = useRef(value)
@@ -73,22 +62,6 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
     return () => { offDraft(); off() }
   }, [botId])
 
-  useEffect(() => {
-    if (!memoryOpen) return
-    const closeOutside = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) onToggleMemory()
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onToggleMemory()
-    }
-    window.addEventListener('pointerdown', closeOutside)
-    window.addEventListener('keydown', closeOnEscape)
-    return () => {
-      window.removeEventListener('pointerdown', closeOutside)
-      window.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [memoryOpen, onToggleMemory])
-
   const putBack = useSyncExternalStore(cometThreads.subscribeDraft, () => !!cometThreads.thread(botId).restored)
 
   const change = (next: string) => {
@@ -105,8 +78,6 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
 
   return (
     <div className="bots-write conversation-dock bots-column" ref={rootRef}>
-      {computerOpen && <ComputerDialog lane={cometChannel(botId)} lang={lang} onClose={() => setComputerOpen(false)} />}
-      {memoryOpen && <CometMemory botId={botId} name={botName} />}
       <ChatComposer
         testId="bots-input"
         autoFocus
@@ -123,23 +94,6 @@ export function BotComposer({ botId, botName, initialDraft, busy, locked, memory
         onSend={send}
         onStop={onStop}
         tools={<ModelPicker scope={cometChannel(botId)} />}
-        actions={
-          <>
-            <button
-              className={`composer-cosmos${memoryOpen ? ' armed' : ''}`}
-              data-testid="bots-memory-toggle"
-              title={t('bots.memory')}
-              aria-label={t('bots.memory')}
-              aria-pressed={memoryOpen}
-              onClick={onToggleMemory}
-            >
-              <Orbit size={16} strokeWidth={1.8} aria-hidden />
-              <span>{t('bots.memory')}</span>
-            </button>
-            <button className="composer-web" data-testid="computer-controls-open" onClick={() => setComputerOpen(true)}><Monitor size={16} aria-hidden /><span>{words.computerControls}</span></button>
-            <WebPaneButton busy={busy} lane={cometChannel(botId)} />
-          </>
-        }
       />
     </div>
   )

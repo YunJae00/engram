@@ -95,8 +95,8 @@ test('a dialog above the sidebar takes the first Esc', async () => {
 
 test('a sidebar row menu takes the first Esc', async () => {
   await openByPointer()
-  const trigger = page.getByTestId(`sidebar-chat-menu-${botId}`)
-  await trigger.click()
+  const trigger = page.getByTestId(`bot-${botId}`)
+  await trigger.click({ button: 'right' })
   await expect(page.locator('.sidebar-menu')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('.sidebar-menu')).toHaveCount(0)

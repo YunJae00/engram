@@ -181,10 +181,11 @@ test.describe.serial('sidebar search expands in place', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
   })
 
-  test('the sidebar has no notifications bell; the footer keeps status and settings', async () => {
+  test('the sidebar has no notifications bell; at rest the footer keeps only settings', async () => {
     await showSidebar()
     await expect(page.locator('.app-sidebar [data-testid="notices-bell"]')).toHaveCount(0)
-    await expect(page.locator('.sidebar-footer > .sidebar-status-block')).toBeVisible()
+    await expect(page.locator('.sidebar-footer > .sidebar-status-block')).toHaveCount(0)
+    await expect(page.locator('.sidebar-footer > *')).toHaveCount(1)
     await expect(page.locator('.sidebar-footer [data-testid="activity-settings"]')).toBeVisible()
   })
 })

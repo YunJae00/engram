@@ -96,31 +96,37 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   const work = footer.getByTestId('sweep-status')
   const engine = footer.getByTestId('filing-retry')
   const settings = footer.getByTestId('activity-settings')
-  const expectFooterAlignment = async (withWork: boolean) => {
-    await expect(engine).toBeVisible()
-    await expect(settings).toBeVisible()
+  // The footer is quiet at rest: only settings. The status row is there while work runs, the retry only when filing stopped short.
+  const beside = async (left: typeof work) => {
+    await expect(left).toBeVisible()
     await expect.poll(async () => {
-      const [engineBox, settingsBox, workBox] = await Promise.all([engine.boundingBox(), settings.boundingBox(), withWork ? work.boundingBox() : Promise.resolve(null)])
-      return {
-        settingsAligned: Boolean(engineBox && settingsBox && Math.abs(engineBox.y + engineBox.height / 2 - settingsBox.y - settingsBox.height / 2) <= 1),
-        workBeside: withWork ? Boolean(engineBox && workBox && workBox.x + workBox.width <= engineBox.x + 1 && Math.abs(workBox.y + workBox.height / 2 - engineBox.y - engineBox.height / 2) <= 1) : workBox === null,
-      }
-    }).toEqual({ settingsAligned: true, workBeside: true })
+      const [leftBox, settingsBox] = await Promise.all([left.boundingBox(), settings.boundingBox()])
+      return Boolean(leftBox && settingsBox && leftBox.x + leftBox.width <= settingsBox.x + 1 && Math.abs(leftBox.y + leftBox.height / 2 - settingsBox.y - settingsBox.height / 2) <= 1)
+    }).toBe(true)
   }
-  await expect(work).toHaveText('Filing AI unavailable')
-  await expectFooterAlignment(true)
+  const expectAtRest = async () => {
+    await expect(work).toHaveCount(0)
+    await expect(engine).toHaveCount(0)
+    await expect(settings).toBeVisible()
+    const [footerBox, settingsBox] = await Promise.all([footer.boundingBox(), settings.boundingBox()])
+    expect(settingsBox!.x + settingsBox!.width / 2).toBeGreaterThan(footerBox!.x + footerBox!.width / 2)
+  }
+  await expectAtRest()
   await emit({ type: 'filing:start' })
   await expect(work).toHaveText('Filing your capture…')
-  await expectFooterAlignment(true)
+  await expect(engine).toHaveCount(0)
+  await beside(work)
   await emit({ type: 'filing:done' })
-  await expect(work).toHaveText('Filing AI unavailable')
-  await expectFooterAlignment(true)
+  await expectAtRest()
   await emit({ type: 'sweep:start' })
   await expect(work).toHaveText('Filing your notes…')
-  await expectFooterAlignment(true)
+  await expect(engine).toHaveCount(0)
+  await beside(work)
   await emit({ type: 'sweep:done', report: { executed: 2, skipped: 0, failed: 0, deferred: 0, briefWritten: false } })
-  await expect(work).toHaveText('Filing done')
-  await expectFooterAlignment(true)
+  await expectAtRest()
+  await emit({ type: 'sweep:done', report: { executed: 0, skipped: 0, failed: 0, deferred: 2, briefWritten: false } })
+  await expect(work).toHaveCount(0)
+  await beside(engine)
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
     await window.webContents.capturePage()

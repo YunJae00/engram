@@ -364,8 +364,10 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveCount(0)
   await step(first, 'scroll')
   await expect(pane).toHaveCount(0)
-  await page.getByTestId('bots-input-add').click()
-  await page.getByTestId('composer-web').click()
+  // A folded panel comes back with the next page work, as a card that opens beside the chat.
+  await step(first, 'excel_write')
+  await step(first, 'open_page')
+  await page.getByTestId('preview-card').getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
   await expect(pane).toBeVisible()
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}?lane=first`)
   await step(first, 'excel_write')
