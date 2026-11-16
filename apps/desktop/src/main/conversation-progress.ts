@@ -3,6 +3,8 @@ import type { EngramEvent } from '../shared/types.js'
 import { asides, turnGoals } from './turn-state.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
+import { firstLineWaiting } from './first-line.js'
+import { readsKorean } from '../shared/reads-korean.js'
 
 const work = new Map<string, string[]>()
 const secretSource = (channel: string): string => [turnGoals.get(channel) ?? '', ...(asides.get(channel) ?? []).map(turn => turn.text)].join('\n')
@@ -20,6 +22,8 @@ export function conversationProgress(paths: VaultPaths) {
     const text = pending.get(channel)
     pending.delete(channel)
     if (!text?.trim()) return Promise.resolve()
+    // Words written mid-work that do not read Korean are not kept in a Korean thread (rule 12; the renderer drops them the same way).
+    if (/[\uac00-\ud7a3]/.test(turnGoals.get(channel) ?? '') && !readsKorean(text)) return Promise.resolve()
     const lines = progressWork(channel)
     work.delete(channel)
     return appendBotTurn(paths, channel.slice(4), {
@@ -44,10 +48,11 @@ export function conversationProgress(paths: VaultPaths) {
           else void flush(channel)
         } else pending.set(channel, (pending.get(channel) ?? '') + event.text)
       } else if (event.type === 'comet:step') {
-        if (pending.get(channel)?.trim()) broadcast({ type: 'chat:token', channel, text: '', reset: true })
+        // The host's waiting line is not frozen into a bubble by a tool call: it stays live text until the first real words (first-line.ts).
+        if (pending.get(channel)?.trim() && !firstLineWaiting(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
         if (!/^\s*<- /.test(event.line)) work.set(channel, [...(work.get(channel) ?? []).slice(-63), event.line])
       } else if (event.type === 'chat:done' || event.type === 'chat:error') {
-        if (event.type === 'chat:error' || !event.text) void flush(channel)
+        if ((event.type === 'chat:error' || !event.text) && !firstLineWaiting(channel)) void flush(channel)
         pending.delete(channel); work.delete(channel)
       }
     },

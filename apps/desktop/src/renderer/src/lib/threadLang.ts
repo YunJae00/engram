@@ -13,11 +13,8 @@ export function threadLang(messages: { role: string; text: string }[]): ThreadLa
   return /[\uac00-\ud7a3]/.test(asked) ? 'ko' : 'en'
 }
 
-// Whether words written mid-work read as Korean: some Hangul, and no run of four or more English words outside code, links (a source's title is its name) and quotes.
-export function readsKorean(text: string): boolean {
-  const prose = text.replace(/`[^`]*`|\[[^\]]*\]\([^)]*\)|https?:\/\/\S+|"[^"]*"|“[^”]*”/g, ' ')
-  return /[\uac00-\ud7a3]/.test(text) && !/(?:[A-Za-z][A-Za-z'’-]*[\s,;:]+){3}[A-Za-z]/.test(prose)
-}
+// Shared with the main process, which keeps an English progress line out of a Korean thread's saved turns (conversation-progress.ts).
+export { readsKorean } from '../../../shared/reads-korean.js'
 
 export type ThreadTranslate = ((key: Parameters<Translate>[0], vars?: Parameters<Translate>[1]) => string) & { lang: ThreadLang }
 
@@ -48,6 +45,10 @@ export function stoppedText(messages: readonly { role: string; text: string; pro
 
 
 export function displayTaskAnswer(text: string, lang: ThreadLang): string {
+  // An answer saved under the host's "not verified" wrapper is shown alone: the reason above it is written for the model (grokbar H1 showed
+  // "Unverified collection items (2/6): …"). Only a wrapper with no answer under it gets the short note below.
+  const answer = /^Not verified as complete\.\n\n[^]*?\n\nUnverified response:\n([^]*)$/.exec(text)?.[1]?.trim()
+  if (answer) return answer
   // The reason under an unverified result is written for the model; the person reads a short note in their language.
   if (text.startsWith('Not verified as complete.')) text = text
     .replace('An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.', threadWords(lang).officeUnread)

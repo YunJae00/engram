@@ -48,9 +48,16 @@ export const laneFirstLine = (message: string, korean: boolean): string => { con
 export const laneToday = (now = new Date()): string => `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}). An answer about today, now or a coming day says the date it is for, written the way the person writes dates (in Korean: ${now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}); one about a weekend or several days goes day by day, each day named with its date.`
 export const SMALL_TALK_NOTE = 'This message is small talk: reply in one or two short sentences, with no tools.'
 // grokbar Q2: "1년은 몇 초야?" got six lines (leap year, Julian year, a memory trick) and took 8-10 s on the work model.
-export const SHORT_QUESTION_NOTE = 'This is a short question: give the answer first, in one to three sentences, with exact figures written out in digits. No other variants, background or tips unless they ask.'
+export const SHORT_QUESTION_NOTE = 'This is a short ask: give exactly what was asked, the answer first - a question gets one to three sentences with exact figures written out in digits, and a line, a name or a pick is given as just that. Asked for one thing, give exactly one; asked for three, give three, one short line each. No other variants, background or tips unless they ask. Answer from this conversation and what you know, fitting what they told you earlier; look something up only when they ask for current facts.'
 // One short line that ends as a question; a short job ("메일 써줘") is not one.
 export const shortQuestion = (message: string): boolean => { const text = message.trim(); return [...text].length <= 40 && !text.includes('\n') && /[?？]$/.test(text) }
+// grokbar cycle 3 Q3, Q4, H1: "…정중한 영어 이메일 한 줄로 써줘" ran on the work model with the general rules and came back with two variants
+// nobody asked for; "…세 개만 추천해줘" was folded into web research. A short ask to write, reword, pick, translate or recommend, with no
+// file, no lookup word and nobody to hand it to, is answered like a short question: from the conversation, with the short-answer note.
+const SHORT_ASK = /(써|적어|바꿔|골라|추천해|번역해|다듬어|줄여|지어|말해|설명해|알려|정해|뽑아)\s*(줘|줄래|주세요|줘요|봐)\s*[.!~]*$|더\s*(짧게|길게|간단히|간단하게|쉽게|정중하게|부드럽게|자연스럽게)|\b(write|rewrite|reword|translate|shorten|rephrase|recommend|suggest|pick|name)\b[^.\n]*$/i
+const SHORT_ASK_MAX = 60
+const SHORT_ASK_OUT = /파일|폴더|문서|워드|엑셀|피피티|슬라이드|보고서|회의록|\.(md|csv|pdf|docx?|xlsx?|pptx?|txt|hwp)(?![a-z])|[\w-]+\/[\w.-]+|한테|에게|보내|전송|올려|게시|저장|만들|예약|결제|구매|주문|삭제|지워|일정|매일|매주|매달|기억|팀원|봇|최신|요즘|오늘|지금|현재|\b(files?|folders?|documents?|word|excel|ppt|powerpoint|slides?|report|send|post|save|book|buy|order|delete|schedule|every (day|week|month)|remember|latest|current|today|now)\b/i
+export const shortAsk = (message: string): boolean => { const text = message.trim(); return [...text].length <= SHORT_ASK_MAX && !text.includes('\n') && SHORT_ASK.test(text) && !isOutsideAsk(text) && ![SHORT_ASK_OUT, LOOKUP, TEAM].some(words => words.test(text)) }
 
 // grokbar B6 r2 Q2: "1년은 몇 초야?" waited 2.7-4.3 s for the work model's first word. A short question that needs nothing about the person,
 // the thread, the company or the present is answered whole by the quick voice (first-line.ts), which still says NONE when unsure.

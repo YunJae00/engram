@@ -301,7 +301,6 @@ it('posts the report restored at a budget stop with its own file, not a same-nam
 
 it.each([
   ['its check left a requirement unresolved', { ...unreadCheck, report: { ...unreadReport, checks: [{ requirement: 'Leads merged', status: 'unknown' as const, basis: 'Not compared.' }] } }],
-  ['it had no check of its own', undefined],
   // qa143 p2 r2 #1: the model's pass labels alone do not finish a report the host rejected for an unread final file.
   ['the host rejected it for a missing readback and the re-check reported nothing', unreadCheck],
   ['the re-check\'s accepted check read nothing back', unreadCheck, { ...budgetStop, check: hostAccepted, trail: [] }],
@@ -317,6 +316,79 @@ it.each([
   expect(task).toMatchObject({ state: 'failed', result: budgetStop.answer })
   expect(task.verified).not.toBe(true)
   expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
+})
+
+// grokbar cycle 3 cause C (D3): the report was already in the thread when its check ran out of budget, and "한 일: 33단계 진행 … 작업이 처리 한도에
+// 닿아 끝나지 않았어요." was posted under it. An answer the person already has ends the task done, quietly, and stays the result; it is not
+// called verified. (This was a row of the table above, expecting failed.)
+it('ends done on the report already in the thread when its unasked check runs out of budget, with no closing message', async () => {
+  const t = await setup(async (_request, turn, extra) => {
+    if (turn === 1) { await hireLeads(t.paths); return { ...done(report, 1), tokensUsed: 240_000 } }
+    return extra?.verification ? budgetStop : done(report, 1)
+  }, false)
+  await t.chat('Merge the leads')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task).toMatchObject({ state: 'done', result: report })
+  expect(task.verified).not.toBe(true)
+  expect(task.log.at(-1)!.line).toBe('Done; the task token budget was reached after the answer.')
+  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|Done so far|한 일:/)
+})
+
+const doubt = 'An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.'
+const deck = 'PPT 5장 만들었어요.\n\n[3분기 실적 보고 (2026-11-23).pptx](engram-artifact:deck.pptx)'
+// grokbar stack2-d469cddf D3 (309 s, 33 steps, 306,088 tokens), D4 ("작업이 멈췄어요"), H1 (two auto-continuations): an answer in the thread is the end.
+it('ends a plain ask done on its delivered answer whatever the host still doubts: no continuation, no check turn, no closing message', async () => {
+  const t = await setup(async () => ({ ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt }))
+  await t.chat('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')
+  expect(t.sent).toHaveLength(1)
+  expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: deck, turns: 1 })
+  // The host's turn put the answer in the thread; the runner adds nothing under it.
+  expect(t.delivered).toEqual([])
+  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|chat:error|한 일:/)
+  // D5: the task is not left waiting, so the edit that follows is a new plain ask (no resumed context) and takes the desk lane.
+  await t.chat('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
+  expect(await listTasks(t.paths)).toHaveLength(2)
+  expect(t.sent[1]?.extra?.context).toBeUndefined()
+  const { deskLane } = await import('../src/main/desk-lane.js')
+  expect(deskLane('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', !t.sent[1]?.extra?.context)).toBe(true)
+})
+
+it('still runs the check when the person asked for one', async () => {
+  // Their words ask for it: unfinished work is continued as before...
+  const asked = await setup(async (_request, turn) => turn === 1 ? { ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt } : done(deck, 1))
+  await asked.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
+  expect(asked.sent).toHaveLength(2)
+  expect((await listTasks(asked.paths))[0]).toMatchObject({ state: 'done', turns: 2 })
+  // ...and a check that left something open gets its re-check turn.
+  const checked = await setup(async (_request, _turn, extra) => extra?.verification ? done(deck, 1) : { ...done(deck, 4), check: { accepted: false, issues: ['Slide 3 total: unknown'] } })
+  await checked.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
+  expect(checked.sent[1]?.extra?.verification).toMatchObject({ result: deck })
+  // Held for that re-check, the report was posted once, by the runner.
+  expect(checked.delivered).toEqual([deck])
+})
+
+it('keeps waiting at a barrier only the person can clear, and keeps continuing work that was cut short', async () => {
+  const barrier = await setup(async () => ({ ...done('로그인이 필요해서 여기까지만 봤어요.'), delivered: true, unfinished: true, unfinishedReason: 'Blocked by a permission or security screen' }))
+  await barrier.chat('사내 게시판 공지 읽어줘')
+  expect((await listTasks(barrier.paths))[0]).toMatchObject({ state: 'waiting', turns: 1 })
+  // Cut at a call or time limit: the host does not mark it delivered (ipc.ts), so it continues.
+  const cut = await setup(async (_request, turn) => ({ ...done(turn === 1 ? '두 개까지 읽었어요.' : '네 개 다 읽었어요.'), unfinished: turn === 1 }))
+  await cut.chat('공지 네 개 다 읽어줘')
+  expect((await listTasks(cut.paths))[0]).toMatchObject({ state: 'done', turns: 2 })
+  const ipc = (await import('node:fs')).readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).toContain("...(!held && !result.asked && !result.stopped && !result.budgetExhausted && result.answer.trim() && !result.answer.startsWith('Not verified as complete.') ? { delivered: true } : {})")
+})
+
+it('still says so when a task ends at its limit with nothing delivered, and says nothing when the answer is already there', async () => {
+  const nothing = await setup(async () => budgetStop, false)
+  await nothing.chat('리드 목록 합쳐줘')
+  expect((await listTasks(nothing.paths))[0]).toMatchObject({ state: 'failed' })
+  expect(JSON.stringify(nothing.events)).toMatch(/처리 한도에 닿아 끝나지 않았어요/)
+  // The person asked for a check, the answer was delivered, and the continuation ran out: the answer stands, with no limit message.
+  const answered = await setup(async (_request, turn) => turn === 1 ? { ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt, tokensUsed: 240_000 } : budgetStop, false)
+  await answered.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
+  expect((await listTasks(answered.paths))[0]).toMatchObject({ state: 'done', result: deck })
+  expect(JSON.stringify(answered.events)).not.toMatch(/처리 한도|한 일:/)
 })
 
 it('still stops a working turn at the budget', async () => {

@@ -64,17 +64,22 @@ it('shows the error card in the language of the conversation', async () => {
   expect(renderToStaticMarkup(createElement(ErrorAnswer, { text: '지금은 로그인이 풀려 있어요. 설정에서 다시 로그인해 주세요.', lang: 'ko' }))).toContain('다시 로그인해 주세요.')
 })
 
-it('does not show the verifier\'s model-facing reason to the person; the unverified mark itself stays', async () => {
+it('does not show the verifier\'s model-facing reason to the person; a delivered answer is shown alone', async () => {
   const { displayTaskAnswer } = await import('../src/renderer/src/lib/threadLang.js')
   const { checkOfficeResult } = await import('../../../packages/core/src/office-verification.js')
   // An Office write that was never read back: the host still marks the turn incomplete.
   const result = checkOfficeResult({ answer: '슬라이드 4장을 만들었어요.', steps: [{ tool: 'ppt_build', args: {}, observation: '{}' }], fellBack: false })
   expect(result.incomplete).toContain('Report incomplete or unverified work')
-  const shown = displayTaskAnswer(result.answer, 'ko')
-  expect(shown).toBe('확인하지 못한 항목이 있어요.\n\n파일을 쓴 뒤에 다시 읽어 확인하지 못했어요. 사용하기 전에 파일을 열어 확인해 주세요.\n\n현재까지 확인한 내용:\n슬라이드 4장을 만들었어요.')
-  // The write already happened: the note is about reading back after it, never "before writing".
+  // grokbar D3 (stack2-d469cddf): "확인하지 못한 항목이 있어요. … 사용하기 전에 파일을 열어 확인해 주세요." stood over a finished deck. The host's
+  // doubt is its own (the turn is still marked incomplete above); the person reads the answer.
+  expect(displayTaskAnswer(result.answer, 'ko')).toBe('슬라이드 4장을 만들었어요.')
+  expect(displayTaskAnswer(result.answer, 'en')).toBe('슬라이드 4장을 만들었어요.')
+  // With no answer under it the note is said in the person's language. The write already happened: it is about reading back after it, never "before writing".
+  const shown = displayTaskAnswer(`Not verified as complete.\n\n${result.incomplete}`, 'ko')
+  expect(shown).toBe('확인하지 못한 항목이 있어요.\n\n파일을 쓴 뒤에 다시 읽어 확인하지 못했어요. 사용하기 전에 파일을 열어 확인해 주세요.')
   expect(shown).not.toContain('쓰기 전')
-  expect(displayTaskAnswer(result.answer, 'en')).not.toMatch(/Report incomplete|read back of all changed targets/)
+  expect(displayTaskAnswer(`Not verified as complete.\n\n${result.incomplete}`, 'en')).not.toMatch(/Report incomplete|read back of all changed targets/)
   const evidence = 'A requested evidence capture, page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.'
-  expect(displayTaskAnswer(`Not verified as complete.\n\n${evidence}\n\nUnverified response:\n끝`, 'ko')).not.toMatch(/[A-Za-z]{4}/)
+  expect(displayTaskAnswer(`Not verified as complete.\n\n${evidence}\n\nUnverified response:\n끝`, 'ko')).toBe('끝')
+  expect(displayTaskAnswer(`Not verified as complete.\n\n${evidence}`, 'ko')).not.toMatch(/[A-Za-z]{4}/)
 })

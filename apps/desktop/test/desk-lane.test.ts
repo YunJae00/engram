@@ -28,16 +28,19 @@ describe('desk lane', () => {
     expect(DESK_NOTE).toContain('without searching memory or notes first')
     expect(DESK_NOTE).toContain('ONE keep_in_mind call (a correction replaces the old fact)')
     expect(DESK_NOTE).toContain('never that it was saved')
-    expect(DESK_NOTE).toContain('two-column table of what went where')
+    // grokbar cycle 3 F1: a table of all 20 file names cost ~8 s; the answer is the count per kind (rule 6's own example).
+    expect(DESK_NOTE).toContain('how many files of each kind were moved')
   })
 
-  it('runs on the smart tier with every tool and the shell kept', () => {
+  it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain('const desk = !company && !lane && deskLane(request.message, plainAsk)')
+    expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const } : {}),")
-    expect(ipc).toContain("const deskNote = desk && !shortQuestion(request.message) ? DESK_NOTE : ''")
-    // The menu and the shell are the normal lead's: only a lookup or a company turn gets a smaller one.
+    expect(ipc).toContain("const deskNote = desk && !short ? DESK_NOTE : ''")
+    // The shell is the normal lead's; the menu is the kind's own when it has one (c3c-voice-docs.test.ts), and every tool otherwise.
     expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
+    expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
     expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   })
 })

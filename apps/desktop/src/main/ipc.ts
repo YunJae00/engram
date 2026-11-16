@@ -8,10 +8,10 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, deskLane } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, routeAsk, onlyTells, TOLD_NOTE } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -172,7 +172,7 @@ import { cloudEngine } from './engine-cloud.js'
 import { startStanding } from './standing.js'
 import { peekWatch, WATCHABLE } from './task-watch.js'
 import { taskRunner, type TaskTurn, type TurnOutcome } from './task-runner.js'
-import { checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
+import { answerOnly, asksForCheck, checkReport, checkResult, latestResultOutputs, resultCheckTool } from './result-check.js'
 import { canLearnTurn, dropHeldDraft, holdTaskResult } from './task-result-state.js'; import { leadOf, teamRunner } from './team-runner.js'
 import { activeAccountProfile } from './account-profiles.js'
 import { taskNotices, surfaceComet } from './task-notify.js'
@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, smallTalkAnswer, withFirstLine } from './first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2314,7 +2314,7 @@ export function registerIpc(ctx: VaultContext): void {
     const hostAnswers = !!request.botId && !request.scheduled && !recovery && !savedRoutine && !turn?.report && !turn?.verification && !turn?.quiet && !request.attachments?.length && !studying.has(entry.channel)
       && await loadBots(paths).then(bots => bots.find(bot => bot.id === request.botId)?.primary === true && answersItself(request.message, bots), () => false)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
+    beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (request.botId ? await readBotTranscript(paths, request.botId, 8) : request.history ?? []).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2475,14 +2475,14 @@ export function registerIpc(ctx: VaultContext): void {
       }, question, index, lookSignal),
     })] : []),
     ...(channel.startsWith('bot-') ? [offerStudyTool({ offer: (input) => offerStudy(channel.slice('bot-'.length), input, turnGoals.get(channel) ?? '') }), studyFindingsTool({ found: (draft) => studyFound(channel.slice('bot-'.length), draft) })] : []),
-    // Offered every turn so a check runs in the same session as the work it checks.
-    resultCheckTool(turn?.verification ? {
+    // Offered only on a check turn or when the person asked for a check (result-check.ts asksForCheck), in the same session as the work it checks.
+    ...(!turn?.verification && !asksForCheck(turnGoals.get(channel) ?? '') ? [] : [resultCheckTool(turn?.verification ? {
       outputs: await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: turn.verification.result }]),
       sources: attachments.evidencePaths,
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
       standing: { guide: await workGuide(paths), request: turn.verification.goal ?? turnGoals.get(channel) ?? '' },
-    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
+    } : undefined)]), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed, turn: turnId }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {
@@ -2663,7 +2663,7 @@ export function registerIpc(ctx: VaultContext): void {
       rawText: string,
       offer?: Extract<EngramEvent, { type: 'chat:done' }>['offer'],
     ): Promise<void> => {
-      const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, withFirstLine(channel, rawText)))
+      const { text: cleaned, captures } = extractChatCaptures(finishProgress(channel, rawText))
       // The receipt must never claim more than the disk holds — a failed
       // inbox write is exactly when "remember this" must say it did not land.
       let saved = 0
@@ -2785,7 +2785,7 @@ export function registerIpc(ctx: VaultContext): void {
         takeTurnScripts(channel)
         const native = !studying.has(channel) && (engine.id === 'claude' || engine.id === 'codex') && settings.nativeTools !== false
           // An approved card is the whole consent for commands; there is no page to reconfirm on.
-          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: (() => { const ask = team.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
+          ? await cometNativeTools({ paths, channel, cwd: workFolder, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, named: [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\n'), ask: (() => { const ask = team.askFor(channel, async () => 'approve'); return ask && unlessStudying(channel, ask) })(), onStep: (line) => { toolStarted = true; broadcast({ type: 'comet:step', channel, line }) }, audit: (tool, detail) => audit('step', { tool, detail }) })
           : undefined
         const nativeSince = Date.now()
         const observedProgress: { tool: string; args: Record<string, unknown>; observation: string }[] = []
@@ -2814,25 +2814,32 @@ export function registerIpc(ctx: VaultContext): void {
         // A person's own plain ask: nothing attached, resumed, scheduled, studied or re-checked.
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
-        const lane = !company && fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
-        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
+        // A correction of the ask before it ("아 그거 말고 11월 걸로") takes that ask's route (desk-lane.ts routeAsk).
+        const routed = routeAsk(request.message, savedHistory)
+        const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
+        // Everyday desk work (remember, a short question or ask, tidy a folder, a slide deck): the smart tier, and for a plain kind only that kind's tools (desk-lane.ts).
+        const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined
+        const short = kind === 'ask' || kind === 'question'
+        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
-        // Everyday desk work (remember, a short question, tidy a folder, a slide deck): the smart tier with every tool kept (desk-lane.ts).
-        const desk = !company && !lane && deskLane(request.message, plainAsk)
-        const deskNote = desk && !shortQuestion(request.message) ? DESK_NOTE : ''
-        if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane' }))
+        const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
+        const deskNote = desk && !short ? DESK_NOTE : ''
+        if (desk) flog('chat-phase', JSON.stringify({ channel, phase: 'desk-lane', kind }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
         // A lookup turn shows its answer, never the notes it writes between calls.
         const read = new Set<string>()
-        const quiet = lane ? quietRounds(text => broadcast({ type: 'chat:token', channel, text })) : undefined
+        // grokbar D4, H3, H4, D5: with the host's first line up, the model's words before and between tool calls ("I'll read the file first.",
+        // "3번 슬라이드 제목이 … 그 부분만 바꿔요.") were shown under it. Such a turn shows no round as it comes (first-line.ts heldRounds); what is shown replaces a line still waiting.
+        const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }
+        const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
             // A page that wants a sign-in is left unread on a lookup, as for a member (grokbar T2: one such page ended the turn on a question).
-            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : everyTool,
+            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,
           },
           request.message,
           {
@@ -2870,8 +2877,9 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
-            onReset: (drop, tool) => { broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
+            onToken: (text) => { if (!quiet) firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
+            // A waiting line is not frozen into a bubble by a tool call: it stays live text until the first real words (first-line.ts).
+            onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
             onObservation: (tool: string, observation: string) => {
               observedProgress.push({ tool, args: {}, observation })
               if (observedProgress.length > 8) observedProgress.shift()
@@ -2892,6 +2900,9 @@ export function registerIpc(ctx: VaultContext): void {
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))
         }
+        // The thread gets the answer alone: why the host counts it unverified is for the log.
+        const answered = answerOnly(result.answer)
+        if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
@@ -2931,7 +2942,7 @@ export function registerIpc(ctx: VaultContext): void {
           broadcast({ type: 'bots:changed' })
         }
         signal.throwIfAborted()
-        turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}) })
+        turnOutcomes.set(channel, { tokensUsed, budgetExhausted: result.budgetExhausted, answer: result.answer, asked: !!result.asked, unfinished: !!(result.incomplete || result.stopped), unfinishedReason: result.incomplete || (result.stopped ? result.answer : undefined), steps: result.steps.length, trail: result.steps, ...(check ? { check } : {}), ...(held ? { held: true } : {}), ...(!held && !result.asked && !result.stopped && !result.budgetExhausted && result.answer.trim() && !result.answer.startsWith('Not verified as complete.') ? { delivered: true } : {}) })
         if (held) {
           await dropHeldDraft(turn, result.answer, () => broadcast({ type: 'chat:token', channel, text: '', reset: true, drop: true }))
         } else {

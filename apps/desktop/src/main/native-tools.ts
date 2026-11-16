@@ -18,6 +18,20 @@ const within = (root: string, path: string): boolean => {
   const rel = relative(root, path)
   return rel === '' || (rel !== '..' && !rel.startsWith(`..\\`) && !rel.startsWith('../') && !isAbsolute(rel))
 }
+// The person's words name the file: its whole name appears in them, and a folder they wrote before it is this file's own folder.
+// c3c r2: the name alone was matched, so "fixtures/a/report.md 고쳐줘" also opened fixtures/b/report.md. "report.md" with no folder names either.
+const fold = (text: string): string => text.normalize('NFC').toLowerCase().replaceAll('\\', '/')
+export function namedBy(said: string | undefined, path: string): boolean {
+  if (!said) return false
+  const words = fold(said), file = fold(path), name = file.slice(file.lastIndexOf('/') + 1)
+  for (let at = words.indexOf(name); at >= 0; at = words.indexOf(name, at + 1)) {
+    // "report.md.bak" and "report.mdx" are other files; a Korean particle after the name ("report.md를") is not part of it.
+    if (/^([\w/-]|\.\w)/.test(words.slice(at + name.length))) continue
+    const written = /[^\s"'`“”‘’()[\]<>,:]*$/.exec(words.slice(0, at))![0].replace(/^[.~]*\/+/, '') + name
+    if (file.endsWith(`/${written}`)) return true
+  }
+  return false
+}
 const deny = (message: string): NativeDecision => ({ behavior: 'deny', message })
 const PLAN_ONLY = 'Plan mode: commands and file changes are off. Read what you need, then reply with the plan.'
 const allow: NativeDecision = { behavior: 'allow' }
@@ -34,6 +48,8 @@ export interface NativePolicy {
   // The person's workspace: read like their Documents (a file they name there needs no card), except Engram's own store and the other
   // chats' task folders. It is no sandbox root: commands write in the task folder alone, and files there are moved with file_move.
   workspace?: string
+  // What the person said in this thread. A file of theirs in the workspace is changed in place only when they named it there (rule 6).
+  named?: string
   cacheDir?: string
   attachedPaths?: string[]
   commands: { allowed: boolean }
@@ -81,13 +97,14 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
       const privateDir = await actualPath(policy.privateDir)
       if (WRITES.has(name)) {
         // grokbar B5 r3: changing a file the person keeps in their workspace was refused here, so the model asked to leave the sandbox (a card).
-        // A file of theirs that is already there is changed in place, like reading it or moving it (file_move): Engram's store, the other chats'
-        // task folders and the private folder stay closed, and a new file is still made in the task folder alone.
+        // A file of theirs that is already there and that they named in this thread ("fixtures/meeting-notes.md 고쳐줘") is changed in place, like
+        // reading it or moving it (file_move): Engram's store, the other chats' task folders and the private folder stay closed, a file they did
+        // not name is left alone, and a new file is still made in the task folder alone. Deleting is no Write or Edit: it stays behind its card.
         const box = policy.workspace ? await actualPath(policy.workspace) : undefined, store = policy.cacheDir ? await actualPath(policy.cacheDir) : undefined
-        const theirs = !!box && within(box, path) && !(store && within(store, path)) && !within(join(box, 'tasks'), path) && !within(privateDir, path) && await lstat(path).then(info => info.isFile(), () => false)
+        const theirs = !!box && within(box, path) && !(store && within(store, path)) && !within(join(box, 'tasks'), path) && !within(privateDir, path) && namedBy(policy.named, path) && await lstat(path).then(info => info.isFile(), () => false)
         return within(cwd, path) || theirs
           ? { behavior: 'allow', updatedInput: { ...input, [key]: path } }
-          : deny(`Write and Edit make new files only inside the task folder ${policy.cwd}; a file the person already keeps in their workspace can be changed where it is. Save deliverables with file_create_copy, file_create_workbook or render_file so they are linked and checked.`)
+          : deny(`Write and Edit make new files only inside the task folder ${policy.cwd}; a file the person named that they already keep in their workspace can be changed where it is. Save deliverables with file_create_copy, file_create_workbook or render_file so they are linked and checked.`)
       }
       const roots = await Promise.all(policy.roots.map(actualPath))
       const cache = policy.cacheDir ? await actualPath(policy.cacheDir) : undefined
@@ -349,7 +366,7 @@ async function pruneSpares(paths: VaultPaths): Promise<void> {
   }
 }
 
-export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; member?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools & { sandbox?: Record<string, unknown> }> {
+export async function cometNativeTools(options: { paths: VaultPaths; channel: string; cwd?: string; member?: string; sandboxed?: boolean; mode?: PermissionMode; attachedPaths?: string[]; named?: string; ask?: Ask; onStep(line: string): void; audit(tool: string, detail: string): void }): Promise<NativeTools & { sandbox?: Record<string, unknown> }> {
   const lead = assignedFolder(options.paths, options.cwd ?? await workFolderFor(options.paths, options.channel))
   if (basename(lead).startsWith('spare-') && !spares.has(lead)) { await pruneSpares(options.paths); spares.add(lead) }
   await ensureTaskFolder(options.paths, lead)
@@ -366,7 +383,7 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
   const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)
   if (!commands) consent.set(consentKey, commands = { allowed: false })
-  const policy: NativePolicy = { cwd, roots, workspace: options.paths.workspace, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}), ...(options.member ? { member: true } : {}) }
+  const policy: NativePolicy = { cwd, roots, workspace: options.paths.workspace, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], ...(options.named ? { named: options.named } : {}), commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}), ...(options.member ? { member: true } : {}) }
   return {
     cwd,
     workspace: options.paths.workspace,

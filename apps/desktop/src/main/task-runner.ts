@@ -35,7 +35,7 @@ import type { TurnEvidence } from 'core'
 import type { Ask } from './page-actions.js'
 import { flog } from './flog.js'
 import { READ_CARD } from './read-card.js'
-import { commandChanged } from './result-check.js'
+import { asksForCheck, commandChanged } from './result-check.js'
 import { changedResult, freshResultReadback, nothingToReadBack, RESULT_CHANGES } from './task-result-state.js'
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
@@ -54,7 +54,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
   return plain(answer) === plain(report)
 }
 
-export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
+export interface TurnOutcome { /** The turn's own answer is in the thread and the turn was not cut short at a call or time limit. */ delivered?: boolean; tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
 export interface TaskTurn { /** The lead passing on what its background employees reported: a short turn of words, no team check. */ report?: true; tokenBudget?: number; context?: string; /** The context is only a route learned from an earlier run of the same ask, not resumed or answered work. */ learned?: boolean; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
@@ -66,6 +66,8 @@ const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string
   'Do no other work: do not edit, create, rerun or re-derive anything. If a readback shows the result is wrong, report that check as failed and say exactly what differs instead of fixing it.',
   '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
+// What only the person can clear: the task waits for them, whatever the turn said.
+const BARRIER = /_denied|requires manual control|Blocked by a permission or security screen|권한 또는 보안 화면|sign[ -]in|로그인/i
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 // The team check is one more full lead turn. It is skipped only for a words-only report whose members the lead all reviewed and that
 // names its sources (perf146: a weather lookup paid 20-60 s for it). Little budget left is no reason to skip: the check starts, and
@@ -135,6 +137,8 @@ export function taskRunner(deps: {
   const continuations = new Map<string, { count: number; reason: string }>()
   const verifyAttempts = new Set<string>()
   const verifyNext = new Set<string>()
+  // Tasks with an answer already in the thread: a limit reached after it ends the task done, with no closing message.
+  const answered = new Set<string>()
   // Tasks whose next verify turn is the team check of a report with no known issue: cut short by its time or token budget, that report stands.
   const teamChecks = new Set<string>()
   // A check turn that lacked only handed-in files' readbacks gets one readback-only turn; these are its files, and the tasks that already had theirs.
@@ -171,6 +175,7 @@ export function taskRunner(deps: {
     const draft = task && unshown.get(task.id)
     if (!task || draft === undefined) return
     await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), reportTrails.get(task.id) ?? trails.get(task.id) ?? [])
+    answered.add(task.id)
     await shown(task.id)
   }
   // Cleared only once something stands in the thread for it: a crash in between posts it twice rather than never.
@@ -180,6 +185,7 @@ export function taskRunner(deps: {
     const started = await edit(id, (t) => {
       if (stopped.has(channelOf(t)) || !['queued', 'running', 'waiting'].includes(t.state)) { t.state = 'stopped'; return }
       if ((t.tokensUsed ?? 0) >= TASK_TOKEN_BUDGET || t.turns >= TASK_MAX_TURNS) {
+        if (answered.has(id)) { t.state = 'done'; logTask(t, 'Done; the task limit was reached after the answer.'); return }
         t.state = 'failed'; logTask(t, 'Stopped at the task budget or fallback turn limit.'); return
       }
       t.state = 'running'; delete t.question; delete t.verified; delete t.verificationIssue; t.turns++
@@ -218,12 +224,20 @@ export function taskRunner(deps: {
     const reported = verdicts.get(id)
     // Set when a verification turn ran out of budget after the host had accepted its check of the report it re-checks: only then can that report stand.
     let recheckOf = ''
+    // grokbar D3, D4, H1 (cycle 3 cause C): an answer the ordinary turn put in the thread is the end of the task. The host's own doubts about it
+    // (an unread write, an open collection item, the call limit) continued a finished deck for 309 s on the work model, or left it "작업이 멈췄어요".
+    // What is truly missing is said by the answer itself. A check the person asked for, a re-check and a team report keep their own ways below;
+    // so do work cut short at a call or time limit (it continues) and a sign-in or permission barrier only the person can clear (it waits).
+    const spoke = !!outcome && !outcome.held && !outcome.asked && !outcome.errored && !outcome.budgetExhausted && !!outcome.answer.trim() && !outcome.answer.startsWith('Not verified as complete.')
+    const delivered = spoke && outcome.delivered === true && !extra?.verification && !extra?.report && !asksForCheck(started.goal) && !BARRIER.test(outcome.unfinishedReason || outcome.answer)
+    if (spoke) answered.add(id)
     const after = await edit(id, (t) => {
       if (t.state !== 'running') return
       if (stopped.has(channelOf(t))) { t.state = 'stopped'; logTask(t, 'Stopped by you'); return }
       t.tokensUsed = (t.tokensUsed ?? 0) + Math.max(0, outcome?.tokensUsed ?? 0)
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
       if (teamKept) { t.result = teamKept; t.state = 'done'; delete t.verificationPending; continuations.delete(id); logTask(t, 'Done; the team check stopped at its time or token budget.'); return }
+      const before = t.result
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
         // The host's own verdict on this turn's check. The budget text of a re-check that ran out is not the result: the report it re-checked is.
@@ -247,13 +261,15 @@ export function taskRunner(deps: {
       // is finished with it rather than failed at the limit (qa143 S19: a 9-page report ended "처리 한도에 닿아 끝나지 않았어요"). The model's own pass
       // labels are not enough: a report whose readback or requirement is still open stops failed at the limit.
       else if (outcome.budgetExhausted && recheckOf) { t.result = recheckOf; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the re-check stopped at the task token budget.') }
+      // The thread already has this task's answer: the limit ends it quietly, and that answer stays the result.
+      else if (outcome.budgetExhausted && answered.has(id) && before?.trim()) { t.result = before; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the task token budget was reached after the answer.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
       else if (refused && (outcome.unfinished || (outcome.check && !t.verified))) { t.state = 'waiting'; logTask(t, 'You declined a command, so this turn stopped. Waiting for your next instruction.') }
       else if (deps.offered?.(channelOf(t)) && !outcome.unfinished && !pending.length && (!outcome.check || t.verified) && !teamUnverified(t)) { handedBack.add(t.id); t.state = 'done'; logTask(t, 'Handed back with another way offered') }
       else if (pending.length) { t.state = 'waiting'; logTask(t, `Waiting for your approval (${pending.length})`) }
       else if (t.approvals.some(a => a.answer && !a.settled)) { logTask(t, 'Continuing with your approval decisions') }
-      else if (outcome.check && !t.verified && !outcome.unfinished) {
+      else if (outcome.check && !t.verified && !outcome.unfinished && !delivered) {
         const unread = outcome.check.readbacks ?? []
         if (!verifyAttempts.has(id) && !extra?.verification) {
           verifyAttempts.add(id); verifyNext.add(id)
@@ -268,10 +284,10 @@ export function taskRunner(deps: {
         t.state = 'waiting'; t.verified = false; t.verificationIssue = 'The verification turn ended without a result check.'
         logTask(t, t.verificationIssue)
       }
-      else if (outcome.unfinished) {
+      else if (outcome.unfinished && !delivered) {
         const reason = (outcome.unfinishedReason || outcome.answer).trim()
         const previous = continuations.get(id)
-        if (previous?.reason === reason || (previous?.count ?? 0) >= AUTO_CONTINUE_MAX || /_denied|requires manual control|Blocked by a permission or security screen|권한 또는 보안 화면|sign[ -]in|로그인/i.test(reason)) {
+        if (previous?.reason === reason || (previous?.count ?? 0) >= AUTO_CONTINUE_MAX || BARRIER.test(reason)) {
           t.state = 'waiting'
           logTask(t, 'The turn ended with unfinished work; waiting for your next instruction.')
         } else {
@@ -307,6 +323,7 @@ export function taskRunner(deps: {
         const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
         if (!replaced) await flush(after)
         await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+        answered.add(id)
         if (replaced) await shown(id)
       }
     } else if (after && after.state !== 'running') await flush(after)
@@ -328,7 +345,7 @@ export function taskRunner(deps: {
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
     await flush(task)
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); teamChecks.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); answered.delete(task.id); teamChecks.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') { trails.delete(task.id); reportTrails.delete(task.id) }
     if (['done', 'waiting', 'failed'].includes(task.state) && !parked(task)) {
