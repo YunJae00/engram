@@ -66,3 +66,9 @@ export function preferenceHost(ctx: VaultContext, approvals: Pick<ApprovalsStore
 }
 
 export const preferencesChat = (ctx: VaultContext, approvals: Parameters<typeof preferenceHost>[1]): Preferences => preferences(preferenceHost(ctx, approvals))
+
+// Whether a turn is the person's own typed message, the only thing read as a preference sentence.
+// The task runner hands over every message with a turn of its own (its hold and its budget), so a turn being
+// there says nothing: only its continuation, team report and re-check turns are the runner's own words.
+export const isPersonSentence = (request: { scheduled?: boolean; attachments?: readonly unknown[] }, turn?: { quiet?: boolean; report?: true; verification?: unknown }, recovery?: string, routine?: unknown): boolean =>
+  !recovery && !routine && !turn?.quiet && !turn?.report && !turn?.verification && !request.scheduled && !request.attachments?.length

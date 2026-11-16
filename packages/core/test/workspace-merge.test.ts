@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { execFileSync } from 'node:child_process'
 import { mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { addAliasGroup, loadAliasGroups } from '../src/aliases.js'
 import { loadBots, loadArchivedBots } from '../src/bots.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { initVault, vaultPaths, type VaultPaths } from '../src/vault.js'
@@ -175,7 +177,44 @@ describe('mergeWorkspace', () => {
     expect(bots.filter(one => one.primary)).toHaveLength(1)
   })
 
-  it('keeps a person\'s notes out of a workspace shared with a team', async () => {
+  // Review round 1: a team workspace as the open one was marked merged while its notes stayed in the closed folder.
+  it('brings notes into a workspace shared with a team as files git never stages', async () => {
+    const main = await mainVault(), work = await workVault()
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.quotepath=false', ...args], { cwd: main.workspace, encoding: 'utf8' })
+    await writeFile(join(work.notes, '회의 [초안] 메모.md'), '---\nid: 회의 [초안] 메모\n---\nprivate\n')
+    await writeFile(join(work.inbox, 'later.md'), 'inbox item\n')
+    git('init', '-q'); git('add', '-A'); git('commit', '-q', '-m', 'team')
+    const tracked = git('ls-files').trim().split('\n')
+    const before = await snapshot(work.root)
+
+    const report = await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })
+    // Everything the other workspace held is here now.
+    const here = (await readdir(main.notes)).map(name => name.normalize('NFC')).sort()
+    expect(here.filter(name => !/^n-person-profile-[0-9a-f]{6}\.md$/.test(name))).toEqual(['n-1.md', 'n-2.md', 'n-person-profile.md', '회의 [초안] 메모.md'])
+    expect(here).toHaveLength(5)
+    expect(await readdir(main.inbox)).toContain('later.md')
+    expect(await readdir(main.sources)).toContain('paper.pdf')
+    expect(report!.skipped.join(' ')).not.toContain('shared with a team')
+    // The alias lines are read, and the file the team shares is as it was.
+    expect(await text(main, 'workspace/aliases.md')).toBe('# Aliases\n\n- 민호 = Minho\n')
+    expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
+    // What the app's sync does: nothing of the person's other workspace is staged, and the team's own files still are.
+    await writeFile(join(main.notes, 'team-new.md'), '---\nid: team-new\n---\nteam\n')
+    git('add', '-A')
+    expect(git('status', '--porcelain', '--untracked-files=all').trim()).toBe('A  notes/team-new.md')
+    git('commit', '-q', '-m', 'sync')
+    expect(git('ls-files').trim().split('\n').sort()).toEqual([...tracked, 'notes/team-new.md'].sort())
+    // A teaching in chat rewrites the shared alias file with its own lines only.
+    await addAliasGroup(main, ['서연', 'Seoyeon'])
+    expect(await text(main, 'workspace/aliases.md')).toContain('서연 = Seoyeon')
+    expect(await text(main, 'workspace/aliases.md')).not.toContain('엔비디아')
+    expect(await loadAliasGroups(main)).toContainEqual(['엔비디아', 'NVDA'])
+    expect(await snapshot(work.root)).toEqual(before)
+    // A second run is a no-op.
+    expect(await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })).toBeNull()
+  })
+
+  it('a shared workspace with no repository folder keeps the notes out rather than risk sending them', async () => {
     const main = await mainVault(), work = await workVault()
     const report = await mergeWorkspace(main, { root: work.root, name: '회사' }, { tracked: false })
     expect((await readdir(main.notes)).sort()).toEqual(['n-1.md', 'n-person-profile.md'])

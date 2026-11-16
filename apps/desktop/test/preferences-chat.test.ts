@@ -102,3 +102,33 @@ it('says so in one Korean line when a connection fails', async () => {
   await c.say('b', '깃허브 백업 https://github.com/me/other 로 연결해줘')
   expect(await c.say('b', '응')).toBe('깃허브에 연결하지 못했어요. 저장소 주소와 로그인을 확인해 주세요.')
 })
+
+// Review round 1: every bot message arrives through the task runner with a turn object, and `!turn` kept all of them from the no-model path.
+it('a message the task runner hands over is still the person\'s sentence; its own continuation turns are not', async () => {
+  const { isPersonSentence } = await import('../src/main/preferences-chat.js')
+  const fromRunner = { holdIf: () => false, saveHeld: async () => undefined, tokenBudget: 1000 }
+  expect(isPersonSentence({}, fromRunner)).toBe(true)
+  expect(isPersonSentence({}, { ...fromRunner, context: 'This message answers your question in the task below' } as never)).toBe(true)
+  expect(isPersonSentence({}, undefined)).toBe(true)
+  for (const own of [{ quiet: true }, { report: true as const }, { verification: { result: '' } }]) expect(isPersonSentence({}, { ...fromRunner, ...own })).toBe(false)
+  expect(isPersonSentence({ scheduled: true }, fromRunner)).toBe(false)
+  expect(isPersonSentence({ attachments: [{}] }, fromRunner)).toBe(false)
+  expect(isPersonSentence({}, fromRunner, 'recover')).toBe(false)
+  expect(isPersonSentence({}, fromRunner, undefined, {})).toBe(false)
+})
+
+// With no AI connected the sentence must still be answered: the branch stands before the connection check, and the task runner is what calls it.
+it('the chat handler answers a preference sentence before it checks that an AI is connected', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const ipc = await readFile('apps/desktop/src/main/ipc.ts', 'utf8')
+  const handler = ipc.slice(ipc.indexOf('async function handleChatSend('))
+  const says = handler.indexOf('settingsChat.say(channel, request.message)')
+  expect(says).toBeGreaterThan(0)
+  expect(handler.slice(0, says)).toContain('isPersonSentence(request, turn, recovery, savedRoutine)')
+  expect(says).toBeLessThan(handler.indexOf('chatEngine(channel, ctx.engines)'))
+  expect(says).toBeLessThan(handler.indexOf("isLimited('claude', channel)"))
+  // The runner always passes a turn, so the old gate could never open.
+  expect(handler.slice(0, says)).not.toMatch(/&& !turn &&/)
+  const runner = await readFile('apps/desktop/src/main/task-runner.ts', 'utf8')
+  expect(runner).toMatch(/deps\.send\(request, \{ \.\.\.extra, holdIf/)
+})

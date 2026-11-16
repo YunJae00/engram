@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { copyFile, lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, extname, join, resolve } from 'node:path'
+import { appendFile, copyFile, lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import { renameWithRetry } from './rename-with-retry.js'
+import { localAliasesPath } from './aliases.js'
 import { vaultPaths, type VaultPaths } from './vault.js'
 
 // There is one workspace now. Everything a person kept in their other workspaces is copied into the one
@@ -18,8 +19,9 @@ import { vaultPaths, type VaultPaths } from './vault.js'
 
 export interface MergeSource { root: string; name: string }
 export interface MergeOptions {
-  // false: the target is shared with other people through git, so nothing is copied into what it tracks
-  // (notes, inbox, sources, aliases). A person's other workspaces must not reach a team's repository unasked.
+  // false: the target is shared with other people through git. Notes, inbox and sources still arrive, but each
+  // file is first named in the repository's own .git/info/exclude (never committed, never pushed), and alias
+  // lines go to a file git ignores. A person's other workspaces must not reach a team's repository unasked.
   tracked?: boolean
 }
 export interface MergeReport {
@@ -121,8 +123,12 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
   // An id is replaced only where it ends: bot-1a-2 is not the head of bot-1a-2f.
   const mapped = (name: string): string => changed.reduce((value, [old, next]) => value.includes(next) ? value : value.replace(new RegExp(`${old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9A-Za-z])`, 'g'), next), name)
 
+  // Set while copying into what a team's repository tracks: names a path as this computer's own before it is written.
+  let keepLocal: ((path: string) => Promise<void>) | null = null
   const copyNew = async (file: string, to: string): Promise<void> => {
     await mkdir(join(to, '..'), { recursive: true })
+    // A name already held is not ours to hide; the incoming file could then only land beside it.
+    if (keepLocal) await keepLocal(await lstat(to).catch(() => null) ? join(to, '..', tagged(basename(to), tag)) : to)
     try {
       await copyFile(file, to, constants.COPYFILE_EXCL)
       report.files++
@@ -171,13 +177,16 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
   for (const dir of ['artifacts', 'chat-attachments', 'skills']) await copyTree(join(from.cache, dir), join(target.cache, dir))
   await copyTree(join(from.views, 'cards'), join(target.views, 'cards'))
   await copyTree(from.privateDir, target.privateDir)
-  if (options.tracked === false) report.skipped.push('notes, inbox, sources, aliases: this workspace is shared with a team, so they were left in their folder')
+  keepLocal = options.tracked === false ? await localOnly(target.workspace) : null
+  // Without a repository folder to write the exclusion in, there is no way to keep them off the team's history.
+  if (options.tracked === false && !keepLocal) report.skipped.push('notes, inbox, sources, aliases: this workspace is shared with a team and has no .git folder to keep them local, so they were left in their folder')
   else {
     await copyTree(from.notes, target.notes)
     await copyTree(from.inbox, target.inbox)
     await copyTree(from.sources, target.sources)
-    await mergeAliases(join(from.workspace, 'aliases.md'), join(target.workspace, 'aliases.md'))
+    await mergeAliases(join(from.workspace, 'aliases.md'), keepLocal ? localAliasesPath(target) : join(target.workspace, 'aliases.md'))
   }
+  keepLocal = null
 
   // What the person told every bot: their lines join the ones already kept.
   const person = await readJson(join(from.cache, 'bot-memory', '_person.json')).catch(() => undefined)
@@ -225,6 +234,30 @@ export async function mergeWorkspace(target: VaultPaths, source: MergeSource, op
   ledger[key] = { name: source.name, at: new Date().toISOString(), ids, done: true, report }
   await writeJson(ledgerPath, ledger)
   return report
+}
+
+// The repository's own exclusion list: read by git on this computer only, so a path named in it is never staged by `git add -A`.
+// Returns null when the workspace has no .git folder of its own.
+async function localOnly(workspace: string): Promise<((path: string) => Promise<void>) | null> {
+  if (!(await lstat(join(workspace, '.git')).catch(() => null))?.isDirectory()) return null
+  const file = join(workspace, '.git', 'info', 'exclude')
+  await mkdir(join(file, '..'), { recursive: true })
+  const held = await readFile(file, 'utf8').catch(() => '')
+  const lines = new Set(held.split('\n'))
+  let open = held !== '' && !held.endsWith('\n')
+  const add = async (line: string): Promise<void> => {
+    if (lines.has(line)) return
+    await appendFile(file, `${open ? '\n' : ''}${line}\n`)
+    open = false
+    lines.add(line)
+  }
+  // Bot work folders ignore themselves only once the app has used them here.
+  await add('/tasks/')
+  return async (path) => {
+    const rel = relative(workspace, path).split(sep).join('/')
+    // Anchored and literal; both spellings of a Korean name, since git may read the folder in either.
+    for (const name of new Set([rel, rel.normalize('NFC')])) await add(`/${name.replace(/[\\*?[]/g, '\\$&').replace(/ +$/, spaces => '\\ '.repeat(spaces.length))}`)
+  }
 }
 
 // Folders are teams, so two may not share a name; an item keeps its folder and its pin.

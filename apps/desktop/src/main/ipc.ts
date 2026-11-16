@@ -155,7 +155,7 @@ import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-tran
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
-import { preferencesChat } from './preferences-chat.js'
+import { isPersonSentence, preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -2478,6 +2478,27 @@ export function registerIpc(ctx: VaultContext): void {
       broadcast({ type: 'bots:changed' })
     }
     await rememberSelections([channel])
+    const recordAsk = async (): Promise<void> => {
+      if (!bot || recovery || turn?.quiet || recordedRequests.has(request) || savedFollowUp(channel, request.message)) return
+      await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
+      recordedRequests.add(request)
+    }
+    // A plain sentence about a preference ("컴퓨터 켜면 자동으로 실행 꺼줘"), or the yes to its one question, is answered here: no model round,
+    // so it stands before the check that an AI is connected.
+    if (bot && isPersonSentence(request, turn, recovery, savedRoutine)) {
+      const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
+      if (said) {
+        await recordAsk()
+        // Its one line is the whole answer: a quick first line still on its way would be a second one.
+        firstLineSpoke(channel)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
+        // Not a waiting task: the yes is the person's next message, which comes back here (preferences-tools.ts keeps the question).
+        turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
+        answering.delete(channel)
+        broadcast({ type: 'chat:done', channel, text: said })
+        return
+      }
+    }
     // The brain the person chose, and no other: a cloud brain that is not
     // signed in is said so, never quietly swapped for the one on this disk.
     const settings = await loadSettings()
@@ -2500,10 +2521,7 @@ export function registerIpc(ctx: VaultContext): void {
     // is CLI-only), and a 4B model given a page of instructions follows the
     // last one it read. Every line below earns its tokens.
     const savedHistory = (bot ? await readBotTranscript(paths, bot.id) : request.history).filter(turn => !turn.progress && !turn.error)
-    if (bot && !recovery && !turn?.quiet && !recordedRequests.has(request) && !savedFollowUp(channel, request.message)) {
-      await appendBotTurn(paths, bot.id, { role: 'user', text: withoutSecrets(request.message, request.message), at: requestReceived.get(request) ?? new Date().toISOString(), ...(request.attachments?.length ? { attachments: request.attachments } : {}), ...(request.scheduled ? { scheduled: true } : {}) })
-      recordedRequests.add(request)
-    }
+    await recordAsk()
     firstLineReady(channel)
     // Claude at its usage limit: the reply above is kept; say when it can pick up again.
     if (isLimited('claude', channel)) {
@@ -2521,19 +2539,6 @@ export function registerIpc(ctx: VaultContext): void {
       answering.delete(channel)
       broadcast({ type: 'chat:done', channel, text: said })
       return
-    }
-    // A plain sentence about a preference ("컴퓨터 켜면 자동으로 실행 꺼줘"), or the yes to its one question, is answered here: no model round.
-    if (bot && !recovery && !savedRoutine && !turn && !request.scheduled && !request.attachments?.length) {
-      const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
-      if (said) {
-        // Its one line is the whole answer: a quick first line still on its way would be a second one.
-        firstLineSpoke(channel)
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
-        turnOutcomes.set(channel, { answer: said, asked: /[?？]$/.test(said), unfinished: false, steps: 0 })
-        answering.delete(channel)
-        broadcast({ type: 'chat:done', channel, text: said })
-        return
-      }
     }
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
