@@ -56,8 +56,10 @@ export function officeReadEvidence(step: AgentLoopStep): boolean {
 // This gate proves fresh readback coverage, not correctness of the model's assessment.
 export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefined {
   const pending = new Map<string, Set<string>>()
-  // Writes whose target is not known, by tool.
-  const unknown = new Set<string>()
+  // Writes with no receipt (the call threw, or was not read back), with what is known of the file: the path it reported, else the name asked for.
+  const unknown: { tool: string; file?: string }[] = []
+  const named = (step: AgentLoopStep, result?: Record<string, unknown>): string[] =>
+    [result?.['path'], step.args['saveAs']].filter((one): one is string => typeof one === 'string' && !!one.trim()).map(one => one.trim().normalize('NFC').toLowerCase())
   for (const step of steps) {
     if (!WRITES.has(step.tool) && !READS.has(step.tool)) continue
     const result = receipt(step)
@@ -65,13 +67,19 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
     if (WRITES.has(step.tool)) {
       // A composed file (word_write, ppt_build) is saved and compared byte for byte by the host, with no application involved: its receipt is the
       // readback. Counted as unread, every new document ended "Not verified as complete" and was continued for minutes (grokbar D2: 317 s).
-      // A later build the host read back replaces what an earlier call of the same builder left unknown: it is the same file, made again.
-      if (result?.['completeReadback'] === true && typeof result['artifact'] === 'string') { unknown.delete(step.tool); continue }
+      // A later build the host read back replaces what an earlier call of the same builder left unknown only when it is the same file, made again.
+      // c3c r3: it cleared every unknown write of that builder, so a ppt_build that may have left part of a.pptx passed on b.pptx's read-back.
+      // A write that names no file cannot be shown to be the same one, and stays unread.
+      if (result?.['completeReadback'] === true && typeof result['artifact'] === 'string') {
+        const files = named(step, result)
+        for (let at = unknown.length - 1; at >= 0; at--) if (unknown[at]!.tool === step.tool && unknown[at]!.file && files.includes(unknown[at]!.file!)) unknown.splice(at, 1)
+        continue
+      }
       if (step.observation.includes(OFFICE_CLOSED)) continue
       // grokbar D3: a deck the host refused to build ("does not read clean yet") wrote nothing, yet counted as an unread write; the good build
       // after it never cleared that, and a finished deck was re-read for 309 s.
       if (step.observation.startsWith(BUILD_REFUSED)) continue
-      if (!key) { unknown.add(step.tool); continue }
+      if (!key) { const file = named(step, result)[0]; unknown.push({ tool: step.tool, ...(file ? { file } : {}) }); continue }
       const needed = pending.get(key) ?? new Set<string>()
       if (step.tool === 'excel_write') {
         for (const [list, field] of [['cells', 'cell'], ['formats', 'range'], ['charts', 'data']] as const) {
@@ -91,7 +99,7 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
       } else if (step.tool !== 'excel_read' && typeof result['revision'] === 'string' && /^[a-f0-9]{32}$/.test(result['revision']) && Array.isArray(result['content'])) pending.delete(key)
     }
   }
-  return unknown.size || pending.size ? 'An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.' : undefined
+  return unknown.length || pending.size ? 'An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.' : undefined
 }
 
 export function checkOfficeResult(result: AgentLoopResult): AgentLoopResult {

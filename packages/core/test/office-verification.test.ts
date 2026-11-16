@@ -85,3 +85,21 @@ it('does not count a refused build as a write, and lets a later complete read-ba
   // A refused build does not hide a real unread write beside it.
   expect(officeWriteUnverified([write(), step('ppt_build', refused)])).toBeDefined()
 })
+
+// c3c r3 (Codex r2): a complete read-back cleared every unknown write of the same builder, whatever file it was for.
+it('clears an unknown write only by a complete read-back of the same file', () => {
+  const failed = (saveAs?: string) => step('ppt_build', 'that did not work: partial write', saveAs ? { slides: [], saveAs } : { slides: [] })
+  const good = (saveAs: string, path = `/out/${saveAs}`) => step('ppt_build', { ...built, path }, { slides: [], saveAs })
+  // The reproduction: a.pptx may be half written; b.pptx read back says nothing about it.
+  expect(officeWriteUnverified([failed('a.pptx'), good('b.pptx')])).toBeDefined()
+  expect(officeWriteUnverified([failed('a.pptx'), good('a.pptx')])).toBeUndefined()
+  expect(officeWriteUnverified([failed('A.pptx'), good('a.pptx')])).toBeUndefined()
+  expect(officeWriteUnverified([failed('a.pptx'), failed('b.pptx'), good('b.pptx')])).toBeDefined()
+  expect(officeWriteUnverified([failed('a.pptx'), failed('b.pptx'), good('b.pptx'), good('a.pptx')])).toBeUndefined()
+  // A reported path counts as the file; another path does not.
+  expect(officeWriteUnverified([step('ppt_build', { path: '/out/a.pptx' }), good('b.pptx')])).toBeDefined()
+  expect(officeWriteUnverified([step('ppt_build', { path: '/out/a.pptx' }), good('x.pptx', '/out/a.pptx')])).toBeUndefined()
+  // A write that names no file cannot be matched to any read-back.
+  expect(officeWriteUnverified([failed(), good('b.pptx')])).toBeDefined()
+  expect(officeWriteUnverified([failed(), step('ppt_build', built)])).toBeDefined()
+})

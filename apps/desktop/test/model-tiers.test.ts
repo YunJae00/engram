@@ -292,8 +292,8 @@ describe('instant first line', () => {
     // NONE: the line is up when the small model answers, not at the budget.
     let show = start(voice(later('NONE', 600)))
     await vi.advanceTimersByTimeAsync(600)
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 처리할게요.')
-    expect(firstLineNote('bot-1')).toContain('바로 처리할게요.')
+    expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
+    expect(firstLineNote('bot-1')).toContain('바로 적어 둘게요.')
     expect(firstLineWaiting('bot-1')).toBe(true)
     // Late: the host's line at 1.3 s, and the small model's own line is not shown over it.
     endFirstLine('bot-1')

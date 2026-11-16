@@ -232,9 +232,26 @@ export const laneLine = (message: string, korean: boolean): string => {
 }
 // The line said when the small model has none: the first step, from the words of the request alone.
 const FILE_WORK = /파일|폴더|문서|회의록|\.(md|csv|pdf|docx?|xlsx?|pptx?|txt|hwp)(?![a-z])|\b(files?|folders?|documents?)\b/i
+// c3c r3: with none of these words the line was "바로 처리할게요." (M1 "…기억해", Q3 "…써줘"), which names no step (GROKBOT rule 1).
+// The step is read off the person's own verb; a request with no known verb is read first, and the line says so.
+const STEPS: [RegExp, string, string][] = [
+  [FILE_WORK, '파일부터 확인할게요.', 'Checking the files first.'],
+  [/[?？]\s*$/, '바로 확인해 볼게요.', 'Checking now.'],
+  [/기억해|외워|잊지\s*마|적어\s*(둬|놔|줘)|\b(remember|note that|keep in mind)\b/i, '바로 적어 둘게요.', 'Noting that down now.'],
+  [/말고|아니라|아니고|고쳐|수정|바꿔|\b(instead|not .+ but|change|fix)\b/i, '바로 바꿀게요.', 'Changing that now.'],
+  [/번역|(영어|한국어|일본어|중국어)로\s*(옮|바꿔)|\btranslate\b/i, '바로 옮겨 볼게요.', 'Translating it now.'],
+  [/짧게|줄여|간단히|\b(shorter|shorten)\b/i, '바로 줄여 볼게요.', 'Shortening it now.'],
+  [/써\s*(줘|주세요|봐)|작성|초안|\b(write|draft)\b/i, '바로 써 볼게요.', 'Writing it now.'],
+  [/추천|골라|\b(recommend|pick|suggest)\b/i, '바로 골라 볼게요.', 'Picking some now.'],
+  [/맡겨|맡기|시켜|시키|넘겨|넘기|나눠|\bhand\b/i, '바로 맡길게요.', 'Handing it over now.'],
+  [/매주|매일|매달|매월|마다|\bevery\b/i, '일정에 넣어 둘게요.', 'Putting it on the schedule.'],
+  [/요약|정리|\b(summari[sz]e|tidy)\b/i, '지금 정리할게요.', 'Summarizing it now.'],
+  [/조사|찾아|알아봐|검색|\b(find|search|look up)\b/i, '지금 찾아볼게요.', 'Looking it up now.'],
+  [ASKS, '바로 확인해 볼게요.', 'Checking now.'],
+]
 export const fallbackLine = (message: string, korean: boolean): string => {
-  const step = FILE_WORK.test(message) ? ['파일부터 확인할게요.', 'Checking the files first.'] : ASKS.test(message.trim()) ? ['바로 확인해 볼게요.', 'Checking now.'] : ['바로 처리할게요.', 'On it now.']
-  return step[korean ? 0 : 1]!
+  const step = STEPS.find(([words]) => words.test(message.trim())) ?? [ASKS, '말씀하신 내용부터 읽어 볼게요.', 'Reading what you sent first.']
+  return step[korean ? 1 : 2]
 }
 // The host's waiting line is on screen and nothing has replaced it: a tool call must not freeze it into a bubble of its own
 // (conversation-progress.ts, ipc.ts onReset), so it stays live text until the first real words.

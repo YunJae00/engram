@@ -40,7 +40,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
   it('NONE and no tool call: the waiting line is taken down when the answer is shown, once', async () => {
     const { show, hide } = start('NONE')
     await vi.advanceTimersByTimeAsync(500)
-    expect(show).toHaveBeenCalledExactlyOnceWith('바로 처리할게요.')
+    expect(show).toHaveBeenCalledExactlyOnceWith('바로 써 볼게요.')
     expect(firstLineWaiting('bot-1')).toBe(true)
     firstLineSpoke('bot-1')
     expect(hide).toHaveBeenCalledOnce()
@@ -61,7 +61,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
       await appendBotTurn(paths, '1', { role: 'user', text: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', at: 'start' })
       start('NONE', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
       await vi.advanceTimersByTimeAsync(500)
-      progress.observe({ type: 'chat:token', channel, text: '바로 처리할게요.\n\n' })
+      progress.observe({ type: 'chat:token', channel, text: '바로 적어 둘게요.\n\n' })
       progress.observe({ type: 'comet:step', channel, line: 'keep_in_mind: 지민호' } as never)
       // No reset was sent for the step, so the renderer keeps the line as live text.
       expect(bus.sent.filter(event => event.type === 'chat:token' && event.reset)).toEqual([])
@@ -122,11 +122,38 @@ describe('the first line is a waiting line, not part of the answer', () => {
     start('NONE')
     expect(firstLineNote('bot-1')).toContain('Write nothing before your first tool call and nothing between tool calls')
     await vi.advanceTimersByTimeAsync(500)
-    expect(firstLineNote('bot-1')).toContain('"바로 처리할게요."')
+    expect(firstLineNote('bot-1')).toContain('"바로 써 볼게요."')
     expect(firstLineNote('bot-1')).toContain('Your next words to the person are the answer itself.')
   })
 
   // grokbar H6: "고마워 수고했어" got "바로 처리할게요." and five sentences from the work model.
+  // c3c r3 (Codex r2): M1 got NONE from the quick voice and the host said "바로 처리할게요.", which names no step (GROKBOT rule 1).
+  it('names a concrete first step in the host line for every bar ask, and for an ask with no known verb', async () => {
+    const lines: [string, string][] = [
+      ['내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '바로 적어 둘게요.'],
+      ['아 지민호 말고 민호야', '바로 바꿀게요.'],
+      ['아 그거 말고 11월 걸로', '바로 바꿀게요.'],
+      ['"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', '바로 써 볼게요.'],
+      ['방금 말한 거 더 짧게', '바로 줄여 볼게요.'],
+      ['나 누구랑 일하지?', '바로 확인해 볼게요.'],
+      ['정리한 폴더에 PDF 몇 개야?', '파일부터 확인할게요.'],
+      ['아 그 여행 가서 할 만한 거 세 개만 추천해줘', '바로 골라 볼게요.'],
+      ['이거 왜 기억 못해?', '바로 확인해 볼게요.'],
+      ['이걸로 해', '말씀하신 내용부터 읽어 볼게요.'],
+    ]
+    for (const [message, line] of lines) expect(fallbackLine(message, true), message).toBe(line)
+    // No line is the stepless one, in either language, and each is one short Korean sentence.
+    for (const message of [...lines.map(([message]) => message), '', 'ㅁㄴㅇㄹ', 'do the thing']) {
+      expect(fallbackLine(message, true), message).not.toMatch(/처리|알겠|[A-Za-z]/)
+      expect([...fallbackLine(message, true)].length).toBeLessThanOrEqual(60)
+      expect(fallbackLine(message, false), message).not.toMatch(/^On it|[가-힣]/)
+    }
+    // The reproduction: the quick voice says NONE on M1 and the first visible text names the step.
+    const { show } = start('NONE', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
+  })
+
   it('takes thanks, praise and goodbyes as small talk, and never a job that opens with them', () => {
     for (const message of ['고마워 수고했어', '수고했어요!', '고생했어', '고생 많았어요', '잘했어', '최고야', '고마워요 정말 최고예요', '수고 많았어요', '멋져요', '대박', '고마워 덕분에 잘 됐어', 'thanks!', '감사합니다 수고하셨어요']) {
       expect(plainReply(message), message).toBe(true)
