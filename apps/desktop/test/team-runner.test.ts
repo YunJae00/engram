@@ -15,7 +15,7 @@ const member = (id: string, state: TeamMember['state'], more: Partial<TeamMember
 const teamOf = (...members: TeamMember[]): TaskTeam => ({ members, hires: members.length, maxHires: 8, maxDepth: 3, big: false })
 const three = { members: [{ role: 'seoul', brief: 'Seoul weather' }, { role: 'jeju', brief: 'Jeju weather' }, { role: 'busan', brief: 'Busan weather' }] }
 
-async function world(base: number, script: (turn: Turn) => Promise<string | { answer: string; asked: true }>) {
+async function world(base: number, script: (turn: Turn) => Promise<string | { answer: string; asked: true }>, more: { reportCapMs?: number } = {}) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const root = await mkdtemp(join(temporary, 'engram-team-')), paths = { cache: join(root, '.engram') } as unknown as VaultPaths
@@ -38,7 +38,7 @@ async function world(base: number, script: (turn: Turn) => Promise<string | { an
       return typeof out === 'string' ? reply(out) : { ...reply(out.answer), asked: true }
     } finally { lease.end() }
   }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: key => closed.push(key), endLane: lane => ended.push(lane), step: () => undefined, changed: () => undefined, busy: channel => busy.has(channel), run })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: key => closed.push(key), endLane: lane => ended.push(lane), step: () => undefined, changed: () => undefined, busy: channel => busy.has(channel), run, ...more })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), { name: 'app_click', description: '', argsSchema: {}, run: async () => 'clicked' }, { name: 'new_bot', description: '', argsSchema: {}, run: async () => '' }] }
   // The lead's turn holds a pool slot, as a real turn's tools do.
   const lead = async (name: string, args: Record<string, unknown> = {}) => {
@@ -229,8 +229,8 @@ describe('team runner', () => {
 })
 
 describe('agents on the team handed work from the person\'s thread (assign)', () => {
-  const staffed = async (script: Parameters<typeof world>[1]) => {
-    const w = await world(2, script)
+  const staffed = async (script: Parameters<typeof world>[1], more: Parameters<typeof world>[2] = {}) => {
+    const w = await world(2, script, more)
     const { createBot } = await import('core'), { updateBot } = await import('../../../packages/core/src/bots.js')
     await createBot(w.paths, { name: '엔그램' })
     const kim = await updateBot(w.paths, (await createBot(w.paths, { name: '지민', purpose: '자료를 찾아 출처와 함께 정리한다' })).id, { label: '리서치 담당' })
@@ -376,6 +376,47 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(table).not.toContain('슬랙')
     // Once everyone has ended there is no split to change: the words are a turn of their own.
     expect(await say('아 지라도 추가해')).toBeUndefined()
+  })
+
+  // c5 (GROKBOT rule 7): the report waited for the slowest part however long it took.
+  it('at the cap what is back is reported with the slow part labeled, and that part is reported alone when it lands', async () => {
+    const { plainSplit, employeesReport, lateShown } = await import('core')
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => turn.role === '지민' ? Promise.resolve('노션이 AI 회의록을 냈어요 https://example.com/a') : new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve('슬랙이 캔버스 공유를 냈어요 https://example.com/b')) }), { reportCapMs: 60 })
+    await w.assign(plainSplit('이번 주 노션, 슬랙 신기능 조사해서 알려줘. 지민, 서연한테 나눠서 시켜', ['지민', '서연'])!)
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    await w.team.turnEnded('bot-b1')
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
+    expect((await w.members()).map(m => [m.role, m.state, m.late])).toEqual([['지민', 'done', undefined], ['서연', 'working', true]])
+    const first = employeesReport(await w.task())!
+    expect(first).toContain('| 노션 (지민) | 노션이 AI 회의록을 냈어요 · [example.com](https://example.com/a) |')
+    expect(first).toContain('| 슬랙 (서연) | 아직 찾는 중이에요. 끝나면 이어서 올릴게요. |')
+    // The lead's report turn marks it shown (ipc.ts), and the late part's own report follows when it ends.
+    await updateTask(w.paths, w.id, lateShown)
+    go()
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`, `bot-b1 ${w.id}`]))
+    const second = employeesReport(await w.task())!
+    expect(second).toBe('서연이 이번 주 슬랙 신기능 조사해 왔어요.\n\n슬랙이 캔버스 공유를 냈어요\n\n[example.com](https://example.com/b)')
+    await new Promise(resolve => setTimeout(resolve, 90))
+    expect(w.reported).toHaveLength(2)
+  })
+
+  it('nothing is reported early when everyone is back before the cap, when nothing is back, or for a hand-off under way', async () => {
+    const quick = await staffed(async turn => `${turn.role} 새 기능이 나왔어요 https://example.com/a`, { reportCapMs: 40 })
+    await quick.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
+    await updateTask(quick.paths, quick.id, t => { t.state = 'waiting' })
+    await vi.waitFor(() => expect(quick.reported).toHaveLength(1))
+    await new Promise(resolve => setTimeout(resolve, 80))
+    expect(quick.reported).toHaveLength(1)
+    expect((await quick.members()).some(m => m.late)).toBe(false)
+    const slow = await staffed(turn => new Promise((_resolve, reject) => turn.signal.addEventListener('abort', () => reject(new Error('aborted')))), { reportCapMs: 30 })
+    await slow.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
+    await updateTask(slow.paths, slow.id, t => { t.state = 'waiting' })
+    await new Promise(resolve => setTimeout(resolve, 90))
+    expect(slow.reported).toEqual([])
+    expect((await slow.members()).some(m => m.late)).toBe(false)
+    await slow.team.stop('bot-b1')
   })
 
   // stack-4 (c4b-381043c9 C3): the after-launch resume ran while a split's teammates were 0.35 s into their work and closed all three.

@@ -10,6 +10,7 @@ import {
   createTask,
   findPlaybook,
   hostOf,
+  lateOwed,
   listTasks,
   localDay,
   logTask,
@@ -105,6 +106,9 @@ export function taskRunner(deps: {
   const { paths } = deps
   const running = new Set<string>()
   const channels = new Set<string>()
+  // Tasks this run of the app has worked on. c5 (stack-4 risk 6): resume() runs 15 s after launch and reads the tasks once; one that a turn
+  // of this run started or ended while it worked through the list was closed as a leftover of the last run ("The app restarted…").
+  const thisRun = new Set<string>()
   const acquire = (channel: string) => {
     if (channels.has(channel)) return
     channels.add(channel)
@@ -299,7 +303,12 @@ export function taskRunner(deps: {
       // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
       else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
       // Employees are still on work handed off in the background (or their report is in line): the turn's words stand and the task waits for the report.
-      else if (backgroundOpen(t) || reports.has(id)) { t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }
+      // c5b r3: so does a part labeled "끝나면 이어서 올릴게요" whose own report is not up yet. It may have ended during this very turn, before
+      // team-runner asked for its report: closing here as done dropped that report (a done task is not restarted). Its report is put in line here.
+      else if (backgroundOpen(t) || (reports.has(id) && !t.team?.lateDone) || lateOwed(t)) {
+        t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG)
+        if (lateOwed(t) && !backgroundOpen(t)) reports.set(id, channelOf(t))
+      }
       else if (teamUnverified(t) && !extra?.report && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
@@ -374,6 +383,7 @@ export function taskRunner(deps: {
         if (channels.has(channel) && owners.get(channel) !== id) return
         acquire(channel)
         owners.set(channel, id)
+        thisRun.add(id)
         if (why === 'approved' && task.approvals.some(a => a.answer && !a.settled)) note = await takeDecisions(task)
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
@@ -399,7 +409,8 @@ export function taskRunner(deps: {
     try {
       reports.delete(id)
       if (stopped.has(channel)) return
-      const task = await edit(id, t => { if (t.state === 'waiting' && !t.question) t.state = 'queued' })
+      // A second request for a late part's report that is already in the thread (team-runner and the line above both ask) starts nothing.
+      const task = await edit(id, t => { if (t.state === 'waiting' && !t.question && !t.team?.lateDone) t.state = 'queued' })
       if (task?.state !== 'queued') return
       owners.set(channel, id)
       await carryOn(id, 'report', '', channel)
@@ -428,6 +439,7 @@ export function taskRunner(deps: {
         task ??= resumed ?? await createTask(paths, request.message, botId)
         if (task !== resumed && request.scheduled === true) routine.add(task.id)
         owners.set(channel, task.id)
+        thisRun.add(task.id)
         const playbook = asked ? undefined : await findPlaybook(paths, request.message, deps.meaning).catch((error) => { flog('tasks', error); return undefined })
         const extra = asked
           ? { context: `This message answers your question in the task below; continue that task with it.\nThe task, verbatim:\n${asked.goal}` }
@@ -468,9 +480,12 @@ export function taskRunner(deps: {
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
       // A report whose re-check an earlier run of the app never finished: this runner holds no draft of it, so it is posted from the task before the restart question.
       for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), []); await shown(task.id) }
-      for (const task of tasksToResume(tasks).filter(t => !channels.has(channelOf(t)))) {
+      for (const task of tasksToResume(tasks)) {
+        // Checked for each task as its turn comes, and again on the stored task: the list is as old as the awaits above it.
+        const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))
+        if (mine()) continue
         const question = await restartQuestion(paths, task)
-        await edit(task.id, t => { t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
+        await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
       }
     },
     waitingForPerson: (channel: string): boolean => (waiting.get(channel) ?? 0) > 0,

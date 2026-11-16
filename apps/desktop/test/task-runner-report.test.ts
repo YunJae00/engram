@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { listTasks, logTask, updateTask, type TaskTeam, type TeamMember } from 'core'
+import { lateShown, listTasks, logTask, markLate, updateTask, type TaskTeam, type TeamMember } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { awaitingEmployees } from '../src/shared/task-waits.js'
 
@@ -95,4 +95,45 @@ it('only a task waiting on its agents is cardless: a question, an open approval 
   expect(awaitingEmployees({ ...parked, approvals: [{ answer: 'approve' }] })).toBe(true)
   expect(awaitingEmployees({ state: 'waiting', approvals: [] })).toBe(false)
   expect(awaitingEmployees({ ...parked, state: 'failed' })).toBe(false)
+})
+
+// c5b r3 (GROKBOT rule 7): the report at the cap said "서연: 아직 찾는 중이에요. 끝나면 이어서 올릴게요." 서연 ended while that report was being
+// written, the turn closed the task as done, and the report team-runner then asked for could not restart it: her result never came.
+it('a part that ends while the report without it is being written still gets its own report, once', async () => {
+  let reports = 0, id = '', race = true
+  const s: World = await setup(async (_request, turn, extra, runner) => {
+    if (turn === 1) { await seed(s, teamOf(employee('working'), employee('working', { id: 'm2', role: '서연', brief: '슬랙 조사', botId: 'seo', sessionKey: 'team-x-m2' }))); return done('지민, 서연한테 나눠 맡겼어요.') }
+    if (!extra?.report) return done('답')
+    // What the chat handler does on a report turn (ipc.ts): the report is made, then marked shown.
+    await updateTask(s.paths, id, lateShown)
+    if (!race) return done('보고')
+    if (++reports === 1) await updateTask(s.paths, id, t => { Object.assign(t.team!.members[1]!, { state: 'done', result: '슬랙이 캔버스 공유를 냈어요 https://example.com/b' }) })
+    // team-runner's own request for her report lands only now, while her report's turn is already running: it must not make a third.
+    else await runner.report(id, 'bot-bot-1')
+    return done(reports === 1 ? '표: 서연은 아직 찾는 중이에요.' : '서연이 슬랙 조사해 왔어요.')
+  })
+  await s.chat('노션, 슬랙 조사해줘. 지민, 서연한테 나눠서 시켜')
+  id = (await first(s)).id
+  // The cap: 지민 is back, 서연 is not.
+  await finishMember(s)
+  await updateTask(s.paths, id, markLate)
+  expect((await first(s)).team!.members.map(m => m.late)).toEqual([undefined, true])
+  await s.runner.report(id, 'bot-bot-1')
+  await vi.waitFor(async () => expect(await first(s)).toMatchObject({ state: 'done', result: '서연이 슬랙 조사해 왔어요.' }))
+  await vi.waitFor(() => expect(s.runner.activeChannels()).toEqual([]))
+  expect(s.sent.map(one => !!one.extra?.report)).toEqual([false, true, true])
+  expect((await first(s)).team).toMatchObject({ lateTold: true, lateDone: true })
+  // And the usual order still gives two: she ends after the first report's turn has ended.
+  await s.chat('리니어, 지라 조사해줘. 지민, 서연한테 나눠서 시켜')
+  const again = id = (await listTasks(s.paths)).at(-1)!.id
+  race = false
+  await seed(s, teamOf(employee('done', { result: '리니어 소식 https://example.com/c' }), employee('working', { id: 'm2', role: '서연', brief: '지라 조사', botId: 'seo', sessionKey: 'team-y-m2' })))
+  await updateTask(s.paths, again, t => { t.state = 'waiting'; markLate(t) })
+  await s.runner.report(again, 'bot-bot-1')
+  expect((await listTasks(s.paths)).at(-1)).toMatchObject({ state: 'waiting', team: { lateTold: true } })
+  expect((await listTasks(s.paths)).at(-1)!.team!.lateDone).toBeUndefined()
+  await updateTask(s.paths, again, t => { Object.assign(t.team!.members[1]!, { state: 'done', result: '지라 소식 https://example.com/d' }) })
+  await s.runner.report(again, 'bot-bot-1')
+  await vi.waitFor(async () => expect((await listTasks(s.paths)).at(-1)).toMatchObject({ state: 'done', team: { lateDone: true } }))
+  expect(s.sent.filter(one => one.extra?.report)).toHaveLength(4)
 })

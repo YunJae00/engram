@@ -387,7 +387,7 @@ describe('instant first line', () => {
     expect(laneLine('이것 좀 해줘', true)).toBe('지금 바로 할게요.')
     for (const said of ['김대리 하나 뽑아줘', '내 일정 뭐 있어?', '이것 좀 해줘']) expect(laneLine(said, true)).not.toMatch(/^네[,.]|알겠습니다|습니다/)
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
-    expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    expect(source('ipc.ts')).toMatch(/if \(company && !handed && !summing\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
     // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
     // grokbar cycle 3 (C7): a plain weekly or daily ask is the schedule call made by the host under the same gates.
@@ -397,7 +397,11 @@ describe('instant first line', () => {
     // grokbar B7: adding one agent is the agents call made by the host under the same gates; who an agent is and a background result need no model either.
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
     // grokbar cycle 3: the background result is written by the quick model from the agents' texts (the host's own table is the fallback).
-    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\), writer\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    expect(source('ipc.ts')).toMatch(/const reporting = !direct && company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined/)
+    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(reporting, writer\)\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    // c5 C10: what the team did is written from the record by the quick model, behind the lane's waiting line; C5: every team result passes one refusal.
+    expect(source('ipc.ts')).toMatch(/const summing = !direct && !!company && chief && !turn\?\.report && isTeamWorkAsk\(request\.message\) && \(request\.scheduled === true \|\| !isDutyAsk\(request\.message\)\)\n\s*if \(summing\) firstLineNow\(/)
+    expect(source('ipc.ts')).toMatch(/if \(teamTask\) result\.answer = teamAnswer\(result\.answer, teamTask\)\n\s*if \(company && !result\.asked && \/https/)
     expect(source('ipc.ts')).toMatch(/const writer = engine\.id === 'claude' && engine\.quick \? \(prompt: string\) => engine\.quick!\(prompt, \{ workdir: engineCwd\(paths\), timeoutMs: REPORT_WRITER_MS \}\) : undefined/)
   })
 

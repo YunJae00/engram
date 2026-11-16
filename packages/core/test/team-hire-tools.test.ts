@@ -2,9 +2,9 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
+import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { liveLinks, liveCited, localAddress, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { foundNothing, liveLinks, liveCited, localAddress, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -727,4 +727,39 @@ it('c4: keepRead keeps what a search, an opened page and a batch read gave, and 
   await tool('open_page', 'page "릴리스" 본문').run({ url: 'https://a.example/r' }, { task: '' })
   await tool('read_pages', JSON.stringify({ pages: [{ url: 'https://b.example', ready: true, observation: '읽은 글' }, { url: 'https://c.example', ready: false, observation: '막힘' }] })).run({}, { task: '' })
   expect(kept.slice(1)).toEqual(['page "릴리스" 본문\nhttps://a.example/r', '읽은 글\nhttps://b.example'])
+})
+
+// grokbar c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made.
+it('c5: a web address is never a file a member made; a document in the workspace still is', () => {
+  const made = (answer: string, lookup = false): string[] | undefined => { const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', state: 'working', sessionKey: 's', hiredAt: '', ...(lookup ? { lookup: true } : {}) }; settleMember(m, { answer }, 'now'); return m.files }
+  for (const page of ['행사 안내 — https://itsight.zdnet.co.kr/acc2026/main.html', '[ACC 2026](https://itsight.zdnet.co.kr/acc2026/main.html) 참고', '자료: http://example.com/a/report.pdf.', 'www.example.com/index.html 에 있어요', 'https://example.com/x(1)/notes.md', 'example.com/report.html', '자료는 itsight.zdnet.co.kr/acc2026/main.html 에 있어요']) expect(made(page), page).toBeUndefined()
+  expect(made('보고서는 reports/q3.docx, 표는 ./out/sales.xlsx 에 있어요. 참고 https://example.com/guide.html')).toEqual(['reports/q3.docx', './out/sales.xlsx'])
+  expect(made('[q3.docx](engram-artifact:abc-q3.docx) 만들었어요')).toContain('q3.docx')
+})
+
+// grokbar c5 C3: a found-nothing answer stood alone and its row had no link.
+it('c5: a lookup member that says it found nothing keeps what it read, marked empty; a found answer and a member that read nothing do not', () => {
+  const lookup = (): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', state: 'working', lookup: true, sessionKey: 's', hiredAt: '' })
+  const rows = '리니어 10월 업데이트: 새 보기, 10월 28일 https://example.com/linear'
+  for (const said of ['관련 정보를 찾지 못했어요.', '이번 주 새 소식은 없어요.', '리니어 관련 신기능 소식이 전혀 없네요.', 'I could not find anything new this week.']) {
+    const m = lookup()
+    settleMember(m, { answer: said, read: rows, sources: ['https://search.example.com/?q=x'] }, 'now', true)
+    expect(m, said).toMatchObject({ state: 'done', read: true, empty: true, result: `${said}\n${rows}` })
+    expect(foundNothing(said), said).toBe(true)
+  }
+  const found = lookup()
+  settleMember(found, { answer: '이번 주 발표는 없고 10월 28일 새 보기가 나왔어요 https://example.com/linear', read: rows }, 'now', true)
+  expect(found.empty).toBeUndefined()
+  expect(found.result).toBe('이번 주 발표는 없고 10월 28일 새 보기가 나왔어요 https://example.com/linear')
+  const blind = lookup()
+  settleMember(blind, { answer: '관련 정보를 찾지 못했어요.' }, 'now', true)
+  expect(blind).toMatchObject({ state: 'done', result: '관련 정보를 찾지 못했어요.' })
+  expect(blind.empty).toBeUndefined()
+  // c5b r2 (the C3 record): nothing kept of what it read, only the page it searched on. That is still a part that looked.
+  const searched = lookup()
+  settleMember(searched, { answer: '관련 정보를 찾지 못했어요.', sources: ['https://search.naver.com/search.naver?query=linear'] }, 'now', true)
+  expect(searched).toMatchObject({ state: 'done', empty: true, result: '관련 정보를 찾지 못했어요.', sources: ['https://search.naver.com/search.naver?query=linear'] })
+  expect(searched.read).toBeUndefined()
+  // A long memo that mentions one thing it did not find is a memo.
+  expect(foundNothing(`${'노션이 새 기능을 냈어요. '.repeat(30)}가격은 찾지 못했어요.`)).toBe(false)
 })
