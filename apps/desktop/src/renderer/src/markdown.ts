@@ -112,9 +112,11 @@ export function answerText(text: string): string {
 
 // A table of found items reads as a stack of cards: the first column names the
 // item, the other columns become its labelled details. Two-column tables stay
-// tables - they are a list of values, not of items.
+// tables - they are a list of values, not of items. Three rows or more are a
+// comparison and stay one table too (grokbar B6: the merged table of three
+// cities was drawn as three cards, so the answer had no table to read across).
 const CARD_COLUMNS_MIN = 3
-const CARD_ROWS_MAX = 20
+const CARD_ROWS_MAX = 2
 
 function cardsHtml(token: Tokens.Table, inline: (tokens: Tokens.TableCell['tokens']) => string): string | null {
   if (token.header.length < CARD_COLUMNS_MIN || token.rows.length === 0 || token.rows.length > CARD_ROWS_MAX) return null

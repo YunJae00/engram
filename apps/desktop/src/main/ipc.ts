@@ -6,7 +6,7 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from './fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -142,7 +142,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -2295,7 +2295,7 @@ export function registerIpc(ctx: VaultContext): void {
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
+    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(!request.attachments?.length && !turn?.context && fastLane(request.message, true) ? { fallback: laneFirstLine(threadKorean(request.message, request.history ?? [])) } : {}), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2770,7 +2770,7 @@ export function registerIpc(ctx: VaultContext): void {
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
         const lane = !company && fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
-        const laneNote = company ? '' : lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
+        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
@@ -2779,7 +2779,8 @@ export function registerIpc(ctx: VaultContext): void {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)) : everyTool,
+            // A page that wants a sign-in is left unread on a lookup, as for a member (grokbar T2: one such page ended the turn on a question).
+            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(skipWalls) : everyTool,
           },
           request.message,
           {
@@ -2791,7 +2792,7 @@ export function registerIpc(ctx: VaultContext): void {
             // Index only; bodies and current staleness are checked on open_skill.
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             ...(company ? { modelHint: 'smart' as const } : {}),
-            ...(lane ? { modelHint: 'smart' as const } : {}),
+            ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),
             ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
@@ -2832,6 +2833,11 @@ export function registerIpc(ctx: VaultContext): void {
         )
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
+        if (lane && !result.asked) {
+          // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
+          if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
+          result.answer = await team.cited(channel, result.answer)
+        }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)

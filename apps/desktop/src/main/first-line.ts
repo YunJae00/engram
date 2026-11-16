@@ -88,7 +88,8 @@ export function cleanLine(raw: string): string | undefined {
 // once the request is in the thread and only until the main turn says its
 // first word. The main prompt is built long before the line can come (grokbar:
 // 10-57 ms against ~1 s), so it is told a line may be up (firstLineNote).
-export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | undefined>; workdir: EngineCwd; signal: AbortSignal; show(line: string): void }): void {
+// fallback: the line for a turn that will take a while whatever the small model says (a lookup): shown when the small model gives none in time.
+export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | undefined>; workdir: EngineCwd; signal: AbortSignal; show(line: string): void; fallback?: string }): void {
   endFirstLine(ask.channel)
   const skip = wantsFirstLine(ask)
   const talk = skip === 'chit-chat' && greeting(ask.message)
@@ -99,6 +100,8 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
   const started = Date.now()
   const close = (outcome: string, reason: string): void => {
     if (!turn.open) return
+    // grokbar B6: "오늘 서울 날씨 어때?" got NONE (one sentence answers it) and R2/R3 missed the budget, so the first text was the answer itself at 4-128 s.
+    if (outcome === 'silent' && ask.fallback && !turn.talk) { turn.line = ask.fallback; log({ channel: ask.channel, outcome: 'fallback', reason, ms: Date.now() - started }); return reveal(ask.channel, turn) }
     turn.open = false
     turn.line = undefined
     answer()

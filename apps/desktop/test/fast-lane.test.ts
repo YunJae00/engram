@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -60,8 +60,8 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)) : everyTool,')
-  expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const } : {}),")
+  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(skipWalls) : everyTool,')
+  expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),")
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
   expect(ipc).toContain('const lane = !company && fastLane(request.message, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
@@ -75,4 +75,27 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   // grokbar Q1: a greeting the quick voice answered ends the turn there; the main model is not asked for a second one.
   expect(ipc).toContain('const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)')
   expect(ipc).toContain('if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }')
+})
+
+// grokbar B6 R3: the lead alone ran 14 searches over 128 s and wrote its first word at 128.5 s; L1 had no date; R1-R3 had no links.
+it('bounds a lone lookup like a member, leaves a team turn to its members\' limits, and gives the turn today\'s date', () => {
+  for (const message of LANE.slice(0, 3)) expect(teamAsk(message), message).toBe(true)
+  for (const message of LANE.slice(3, 8)) expect(teamAsk(message), message).toBe(false)
+  // First search by ~9 s, no new call after 12 s, then the answer: inside the 20 s of a single lookup.
+  expect(LANE_SOLO_SOFT_MS).toBeLessThanOrEqual(12_000)
+  expect(LANE_SOLO_CALLS).toBeLessThanOrEqual(4)
+  // hire, a second hire for words said mid-turn, and a review for each of four members.
+  expect(LANE_TEAM_CALLS).toBeGreaterThanOrEqual(6)
+  expect(laneToday(new Date(2026, 10, 16, 21))).toContain('Today is 2026-11-16 (Monday).')
+  expect(LANE_NOTE).toContain('[site name](address)')
+  expect(LANE_NOTE).toContain('never a site name alone')
+  expect(laneFirstLine(true)).toBe('바로 찾아볼게요.')
+  expect(laneFirstLine(true)).not.toMatch(/[A-Za-z]/)
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).toContain('const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` :')
+  // A lookup cut at its limit is delivered as the answer it wrote (no English wrapper, no auto-continue), then every member's link is added.
+  expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
+  expect(ipc).toContain('result.answer = await team.cited(channel, result.answer)')
+  expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
+  expect(ipc).toContain('fastLane(request.message, true) ? { fallback: laneFirstLine(')
 })

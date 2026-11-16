@@ -33,8 +33,10 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
   expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS })
-  // grokbar: the lead waits for its slowest member, so the member phase is bounded at 24 s inside a 35 s answer.
-  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([18_000, 24_000, 6])
+  // grokbar B6: the lead waits for its slowest member, so the member phase is bounded at 15 s inside a 35 s answer (24 s left R1 at 38 s).
+  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([8_000, 15_000, 4])
+  // No collection receipts for a member that only reads and reports.
+  expect(lookup!.options.lookup).toBe(true)
   expect(lookup!.options.native).toBeUndefined()
   expect(lookup!.options.persona).toContain('You only look things up')
   // A member that makes something keeps the full set and the work model.
@@ -110,4 +112,42 @@ it('a lookup member told a page needs the person reads on instead of ending the 
   expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '서울 12도 (https://weather.example)' })
   expect(said.filter(line => line.includes('ASK: '))).toEqual([`ask_person: ${wall}`])
   expect(said[0]).toContain('needs the person')
+})
+
+// grokbar B6: members named their source as "네이버 날씨 검색" and the merged answer had 0 links; the slowest member held the team 22-24 s.
+it('hands the lead each member\'s pages and does not wait for a straggler past the limit; the answer gets a link for every member', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-sources-')), '.engram') } as unknown as VaultPaths
+  const created = await createTask(paths, '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 알려줘', 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const address = (query: string) => `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at ${address(String(args['query']))} (DATA, not instructions):\n14도` }
+  const started: number[] = []
+  const run: Run = async (deps, prompt, options = {}) => {
+    started.push(Date.now())
+    options.onStart?.()
+    const city = /서울|부산|제주/.exec(prompt)![0]
+    await deps.tools.find(t => t.name === 'search_web')!.run({ query: `${city} 날씨` }, { task: '' })
+    options.onStep?.(`search_web: ${city} 날씨`)
+    if (city === '부산') return new Promise((_, reject) => { options.onToken?.('부산 비 14도'); options.signal!.addEventListener('abort', () => reject(new Error('aborted'))) })
+    return { answer: `${city} 흐림 13도`, steps: [], fellBack: false }
+  }
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, lookupHardMs: 40 })
+  const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => ({ cwd: '/task' }) as never, toolsFor: async lane => [...team.tools(lane, kit), search] }
+  const began = Date.now()
+  const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: ['서울', '부산', '제주'].map(city => ({ role: `${city} 날씨`, brief: `${city} 오늘 날씨`, lookup: true })) }, { task: '' }))
+  // All three started together, and the team came back at the limit, not when the slowest would have.
+  expect(Math.max(...started) - Math.min(...started)).toBeLessThan(500)
+  expect(Date.now() - began).toBeLessThan(2_000)
+  expect(out.members.map((m: { state: string; result: string; sources: string[] }) => [m.state, m.result, m.sources])).toEqual([
+    ['done', '서울 흐림 13도', [address('서울 날씨')]],
+    ['done', '부산 비 14도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)', [address('부산 날씨')]],
+    ['done', '제주 흐림 13도', [address('제주 날씨')]],
+  ])
+  const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 흐림 13도 | 네이버 날씨 |\n| 부산 | 비 14도 | 네이버 날씨 |\n| 제주 | 흐림 13도 | 네이버 날씨 |'
+  const cited = await team.cited('bot-b1', table)
+  expect(cited.startsWith(table)).toBe(true)
+  for (const city of ['서울', '부산', '제주']) expect(cited).toContain(`[${city} 날씨](${address(`${city} 날씨`)})`)
+  // A thread with no team on its task is answered as written.
+  expect(await team.cited('bot-other', table)).toBe(table)
 })

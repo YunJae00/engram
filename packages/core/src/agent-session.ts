@@ -49,7 +49,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
-  const browser = deps.tools.some(tool => tool.name === 'open_page')
+  // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
+  const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)

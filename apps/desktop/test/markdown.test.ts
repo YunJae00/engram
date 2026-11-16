@@ -137,6 +137,16 @@ describe('found items and suggested replies', () => {
     expect(answerHtml('| Day | Hours |\n| --- | --- |\n| Mon | 8 |')).toContain('<table>')
   })
 
+  // grokbar B6: the merged table of three cities was drawn as three cards, so the answer had no table and no row to read across.
+  it('keeps a comparison of three or more rows as one table, with the source link of every row', () => {
+    const html = answerHtml('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨](https://weather.naver.com/today/08) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨](https://weather.naver.com/today/14) |')
+    expect(html.match(/<table>/g)).toHaveLength(1)
+    expect(html).not.toContain('answer-card')
+    expect(html.match(/<tr>/g)).toHaveLength(4)
+    for (const city of ['서울', '부산', '제주']) expect(html).toContain(`<td>${city}</td>`)
+    expect(html.match(/<a href="https:\/\/weather\.naver\.com\/today\/\d+"/g)).toHaveLength(3)
+  })
+
   it('takes suggested replies out of the text and offers at most three', () => {
     const text = 'Done.\n\n```replies\n- Show only open ones\n2. Add to my calendar\nApply to the first\nOne too many\n```'
     expect(answerReplies(text)).toEqual(['Show only open ones', 'Add to my calendar', 'Apply to the first'])

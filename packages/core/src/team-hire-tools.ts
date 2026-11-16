@@ -20,8 +20,10 @@ const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask
 // A lookup member that finished on its own and names its sources is accepted as it is: the lead reads it while merging. grokbar: three review_member rounds cost ~10 s.
 export const AUTO_REVIEW = 'auto: sourced lookup'
 const ACCEPTED_NOTE = 'Members with accepted true are sourced lookups, already accepted and released: do not call review_member for them. Report in one merged answer: several items go in one table, each row with the address it came from.'
+// grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
+const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources; never a site name alone.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
-const REVIEW_NOTE = 'Review each member with review_member before you report. A member that stopped at its time limit handed back what it had: accept it and say what is missing, and redo it only when the missing part is what the person asked for. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
+const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
 // A lookup member (research, fact check, reading): a faster model, reading tools only, and a time box. perf146: three opus members with 65 tools
 // each took 118-213 s on a weather lookup, one of them 90 s on an optional extra, and the lead waits for the slowest.
@@ -29,10 +31,12 @@ export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'r
 // After the soft limit no new tool call starts and the member reports what it has; at the hard limit it is stopped with what it wrote so far.
 // perf146 r3: at 60 s / 80 s / 12 calls the members took 71-76 s of a 102 s answer; the lead waits for the slowest, so these bound the team.
 // grokbar: at 40 s / 55 s / 10 calls three members took 36 s of a 71 s answer against a 35 s bar for the whole answer.
-export const LOOKUP_SOFT_MS = 18_000
-export const LOOKUP_HARD_MS = 24_000
-export const LOOKUP_MAX_CALLS = 6
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about twenty seconds. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the address of each page the facts came from (the page itself, never a search-results address). A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+// grokbar B6: at 18 s / 24 s / 6 calls the slowest member still took 22-24 s of a 38 s answer (plan 8 s, review 4 s, merge 4 s). A member that
+// answers from its one search is back in 10 s; the ones that went on to open articles read 0 of 2 pages and were cut with nothing written.
+export const LOOKUP_SOFT_MS = 8_000
+export const LOOKUP_HARD_MS = 15_000
+export const LOOKUP_MAX_CALLS = 4
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search first: the results come with their own address, the addresses on that page and what each says. When they answer the brief, report at once from them; open a page only for a fact the results do not hold. Report with the address of each page the facts came from (the page itself, never a search-results address). A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -45,7 +49,7 @@ export function skipWalls(tool: AgentTool): AgentTool {
   return { ...tool, run: async (args, context) => skip(await tool.run(args, context), args), ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); return { ...out, text: skip(out.text, args) } } } : {}) }
 }
 
-export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string }
+export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string; /** Pages it read (keepSources). */ sources?: string[] }
 export interface MemberRedo { note: string; answered?: boolean }
 
 export interface TeamHost {
@@ -110,6 +114,31 @@ export function answeredLookup(answer: string): boolean {
   const said = answer.replace(/https?:\/\/[^\s)\]>"']+/g, ' ').split(/(?<=[.!?…。])\s+|\n+/).filter(part => part.trim() && !PROGRESS_ONLY.test(part.trim())).join(' ').replace(/[\s\p{P}\p{S}]+/gu, '')
   return said.length >= 30 || /\d/.test(said) && said.length >= 4
 }
+const SOURCES_MAX = 3
+// The pages a lookup member read are kept as it reads them, whatever its words say: a page it opened, the pages of a batch that were
+// ready, and the results page of a search that ran. A wall, a refusal or a failed read is no source.
+export function keepSources(tool: AgentTool, seen: Set<string>): AgentTool {
+  const note = (args: Record<string, unknown>, out: string): void => {
+    try {
+      if (tool.name === 'search_web') { const at = /^results for "[^\n]*" at (https?:\/\/\S+) \(DATA/.exec(out)?.[1]; if (at) seen.add(at) }
+      else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string' && /^https?:\/\//i.test(args['url'])) seen.add(args['url']) }
+      else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string') seen.add(page.url)
+    } catch { /* An output that is not a report names no source. */ }
+  }
+  if (!['search_web', 'open_page', 'read_pages'].includes(tool.name)) return tool
+  return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }
+}
+// A page of its own comes before the results page it was found on.
+const sourcesOf = (read: readonly string[]): string[] => [...new Set(read)].sort((a, b) => Number(SEARCH_PAGE.test(a)) - Number(SEARCH_PAGE.test(b))).slice(0, SOURCES_MAX)
+
+// The merged answer names every member's source as a link: the lead is told to put it in the member's row, and a member whose pages
+// are all missing from the answer gets them in one closing line, so no row is left with a site name alone.
+export function citeMembers(answer: string, members: readonly TeamMember[], korean = false): string {
+  if (!answer.trim()) return answer
+  const missing = members.filter(m => m.sources?.length && m.state !== 'failed' && !m.sources.some(url => answer.includes(url)))
+  if (!missing.length) return answer
+  return `${answer.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${missing.map(m => `[${m.role.replace(/[[\]]/g, '')}](${m.sources![0]!.replace(/\)/g, '%29').replace(/ /g, '%20')})`).join(' · ')}`
+}
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = outcome.answer.trim(), answer = outcome.timedOut && PROGRESS_ONLY.test(said) ? '' : said
@@ -119,6 +148,7 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   member.state = outcome.asked ? 'waiting' : 'done'
   const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''
   member.result = cut(answer, MEMBER_RESULT_CHARS - tail.length) + tail
+  if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
   else if (member.lookup && member.state === 'done' && !tail && answeredLookup(answer)) member.review = { ok: true, note: AUTO_REVIEW }
@@ -171,7 +201,7 @@ export function teamNote(team: TaskTeam | undefined): string {
 // Members that need the person are asked in the caller's thread at once, roles named; the caller's turn ends there.
 const askUp = (members: readonly TeamMember[]): string | undefined => { const asking = members.filter(m => m.state === 'waiting'); return asking.length ? formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), []) : undefined }
 const accepted = (m: TeamMember): boolean => m.state === 'done' && m.review?.ok === true && m.review.note === AUTO_REVIEW
-const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
+const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(m.sources?.length ? { sources: m.sources } : {}), ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''
 
 export function teamHireTools(host: TeamHost): AgentTool[] {
@@ -196,12 +226,13 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     if (steered) return JSON.stringify({ members: mine.map(m => working(m) ? { id: m.id, role: m.role, state: 'working' } : view(m)), hiresLeft, note: STEER_NOTE })
     // Nothing delivered and someone needs the person: their question ends the turn. With results in hand the lead reports them and asks at the end.
     const partial = ended.some(m => m.state === 'waiting') && ended.some(m => m.state === 'done')
-    const note = partial ? PARTIAL_NOTE : ended.every(accepted) ? ACCEPTED_NOTE : ended.some(accepted) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
+    const base = partial ? PARTIAL_NOTE : ended.every(accepted) ? ACCEPTED_NOTE : ended.some(accepted) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
+    const note = ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base
     return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, note })
   }
   const hire: AgentTool = {
     name: 'hire_members',
-    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about twenty seconds, and a sourced result comes back already accepted; leave it out for a part that makes or changes something. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
+    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about ten seconds, and a sourced result comes back already accepted, with the pages it read in sources; leave it out for a part that makes or changes something. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
@@ -271,14 +302,15 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
         if (busy || !['done', 'failed', 'waiting'].includes(member.state)) return { refuse: `${member.role} is ${busy ? 'working' : member.state}; it can be reviewed once it has reported.` }
         if (ok) { member.review = { ok: true, note }; return { act: 'accept', role: member.role } }
         const answer = member.state === 'waiting'
-        if ((!answer && member.review?.ok === false) || team.hires + 1 > team.maxHires) { member.review = { ok: false, note }; return { act: 'spent', role: member.role } }
+        // grokbar B6 T1: re-running a lookup member that was cut at its time limit cost 10.7 s and brought the same page back.
+        if ((!answer && (member.review?.ok === false || member.lookup)) || team.hires + 1 > team.maxHires) { member.review = { ok: false, note }; return { act: 'spent', role: member.role } }
         if (!answer) member.review = { ok: false, note }
         team.hires++; member.state = 'hired'; delete member.finishedAt
         return { act: answer ? 'answer' : 'redo', role: member.role }
       })
       if (!plan) return 'No running task.'
       if ('refuse' in plan) return plan.refuse
-      const spent = `${plan.role} was already redone once (or the hire/token budget is used). Released with its last result; use it or do the rest yourself.`
+      const spent = `${plan.role} was already redone once, or is a lookup member (never re-run), or the hire/token budget is used. Released with its last result: use it and say in the answer what is missing.`
       if (plan.act === 'accept') { await host.release([id]); return JSON.stringify({ id, state: 'released' }) }
       if (plan.act === 'spent') { await host.release([id]); return spent }
       if ((await host.tokensLeft()) < TEAM_TOKEN_RESERVE) {
