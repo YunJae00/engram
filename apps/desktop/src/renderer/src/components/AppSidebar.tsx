@@ -89,7 +89,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
     return () => { reloadGeneration.current++; window.clearTimeout(debounce); off() }
   }, [vaultReady, library])
   useEffect(() => { setQuery(''); setSearchOpen(false) }, [library])
-  const navigate = (next: 'bots' | 'developers' | 'sky' | 'list' | 'mission') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
+  const navigate = (next: 'bots' | 'developers' | 'sky' | 'list') => { setActivity(next); if (window.innerWidth <= 900) onToggle() }
   const change = async (kind: SidebarKind, change: SidebarChange['change']) => { const next = await api.sidebarChange({ kind, change }); setLayout(next); return next }
   const updateBot = async (id: string, patch: { hidden?: true; primary?: true }) => { await api.botUpdate(id, patch); await reload() }
   // The new section is the one folder id the create call added; names can repeat, so never look it up by name.
@@ -114,7 +114,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} found={searchExcerpt(bot, search, hits)} search={search} />, below: <SidebarBotTeam bot={bot} />, bot })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && activity === 'bots', recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && activity === 'bots'} found={searchExcerpt(bot, search, hits)} search={search} />, below: <SidebarBotTeam bot={bot} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const matchingIds = new Set(matchingBots.map(bot => bot.id))
   const matchingLayout = search && layout ? { ...layout.chat, folders: layout.chat.folders.filter(folder => layout.chat.items.some(item => item.folder === folder.id && matchingIds.has(item.id))).map(folder => ({ ...folder, collapsed: false })) } : layout?.chat
@@ -146,7 +146,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
       if ((event.target as Element).closest('[role="treeitem"], button, input, a')) return
       event.preventDefault(); setSpaceMenu({ x: event.clientX, y: event.clientY })
     }}>
-      {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && (activity === 'bots' || activity === 'mission')} onOpen={openBot} found={searchExcerpt(hero, search, hits)} search={search} />}
+      {!library && hero && <SidebarPrimary bot={hero} activity={activityOf(hero)} active={hero.id === selectedId && activity === 'bots'} onOpen={openBot} found={searchExcerpt(hero, search, hits)} search={search} />}
       {layoutError && <p className="sidebar-empty" role="alert">{layoutError}</p>}
       <section className="sidebar-section sidebar-conversations" aria-label={library ? t('sidebar.savedRoutines') : t('sidebar.conversations')}>
         {library && <h2 className="sidebar-library-title">{t('sidebar.routines')}</h2>}

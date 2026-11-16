@@ -16,7 +16,7 @@ type Registry = { current: string | null; vaults: WorkspaceInfoDto[] }
 
 export function WorkspaceSwitcher({ activity, onNavigate }: {
   activity: string
-  onNavigate(activity: 'bots' | 'sky' | 'list' | 'mission'): void
+  onNavigate(activity: 'bots' | 'sky' | 'list'): void
 }) {
   const { showToast } = useShellState()
   // Empty registry is a valid state (e2e/onboarding run with ENGRAM_VAULT and no

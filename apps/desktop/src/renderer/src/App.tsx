@@ -26,7 +26,6 @@ import { FirstSetup } from './components/FirstSetup.js'
 // the wait is a frame, not a download.
 const DigestSheet = lazy(() => import('./components/DigestSheet.js').then((m) => ({ default: m.DigestSheet })))
 const CosmosChat = lazy(() => import('./components/CosmosChat.js').then((m) => ({ default: m.CosmosChat })))
-const MissionControl = lazy(() => import('./views/MissionControl.js').then((m) => ({ default: m.MissionControl })))
 const Palette = lazy(() => import('./components/Palette.js').then((m) => ({ default: m.Palette })))
 const TourOverlay = lazy(() => import('./components/TourOverlay.js').then((m) => ({ default: m.TourOverlay })))
 const ActionDialog = lazy(() => import('./components/ActionDialog.js').then((m) => ({ default: m.ActionDialog })))
@@ -54,8 +53,8 @@ function Shell() {
   const hideToast = useToastDismiss()
   const { startRoutine } = useCometState()
   const [workspace, setWorkspace] = useState<'developers' | 'bots'>('bots')
-  const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (!['bots', 'mission', 'routines'].includes(activity) && workspace === 'developers'))
-  useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (['bots', 'mission', 'routines'].includes(activity)) setWorkspace('bots') }, [activity])
+  const developerSidebar = api.developerUiEnabled && (activity === 'developers' || (!['bots', 'routines'].includes(activity) && workspace === 'developers'))
+  useEffect(() => { if (activity === 'developers') setWorkspace('developers'); else if (['bots', 'routines'].includes(activity)) setWorkspace('bots') }, [activity])
   const [palette, setPalette] = useState<PaletteMode>(null)
   // What the panel should open with — a question to send outright, or a
   // scaffold to write into. Held here because the panel is unmounted while it
@@ -82,7 +81,6 @@ function Shell() {
   // "Delegate an errand…" from the command palette raises this one window intent.
   const [errandOpen, setErrandOpen] = useState(false)
   const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null)
-  const [splitLayout, setSplitLayout] = useState<2 | 4>(2)
   const [devLayout, setDevLayout] = useState<1 | 2 | 4>(1)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('engram.sidebar.open') !== '0')
   useEffect(() => localStorage.setItem('engram.sidebar.open', sidebarOpen ? '1' : '0'), [sidebarOpen])
@@ -283,7 +281,7 @@ function Shell() {
       />
       {sidebarOpen && <button className="sidebar-scrim" aria-label={t('rail.hide')} onClick={() => dismissSidebar(closeSidebar)} />}
       <main className="app-main">
-        <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} splitLayout={activity === 'developers' ? devLayout : activity === 'mission' ? splitLayout : 1} onSplit={(count) => { if (activity === 'developers') setDevLayout(count); else if (count === 1) setActivity('bots'); else { setSplitLayout(count); setActivity('mission') } }} />
+        <TopBar sidebarOpen={sidebarOpen} developer={developerSidebar} onToggleSidebar={() => setSidebarOpen((value) => !value)} onMode={setActivity} devLayout={devLayout} onDevLayout={setDevLayout} />
         <AppNotices
           engines={engines}
           enginesDetected={enginesDetected}
@@ -323,7 +321,6 @@ function Shell() {
             <div className="canvas-slot" hidden={activity !== 'bots'}>
               <BotsView active={activity === 'bots'} />
             </div>
-            {activity === 'mission' && <Suspense fallback={<div className="empty-view" />}><MissionControl layout={splitLayout} /></Suspense>}
             {activity === 'routines' && <Suspense fallback={<div className="empty-view" />}><RoutinesView selectedId={selectedRoutineId} /></Suspense>}
             {developerSidebar && <div className="canvas-slot" hidden={activity !== 'developers'}><Suspense fallback={<div className="empty-view" role="status">Loading development workspace…</div>}><DevelopersView layout={devLayout} onLayout={setDevLayout} onActivate={() => setActivity('developers')} /></Suspense></div>}
             {activity === 'sky' && (
