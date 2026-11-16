@@ -190,6 +190,16 @@ describe('a line in another language is led by a few Korean words (Q3)', () => {
   })
 })
 
+// stack-5 (c5c run, D3 64.3 s of 60): the first ppt_build was refused for "내용 입력" blanks (deck-audit.ts) and the deck was written twice.
+describe('a marked blank is one the deck check lets through (D3)', () => {
+  it('names the wording that passes, and the check agrees', async () => {
+    const { auditDeck } = await import('../../../packages/core/src/deck-audit.js')
+    expect(DESK_NOTE).toContain('A blank is those plain words in a cell or after its label ("매출: 수치 입력"), never in square brackets and never "내용 입력", "TBD" or the like')
+    expect(auditDeck([{ title: '3분기 핵심 지표', bullets: ['매출: 수치 입력', '영업이익: 수치 입력'] }])).toEqual([])
+    for (const blank of ['주요 성과: 내용 입력', '[수치 입력]']) expect(auditDeck([{ title: '3분기 핵심 지표', bullets: [blank] }]), blank).toHaveLength(1)
+  })
+})
+
 describe('a follow-up names what it points at (H1)', () => {
   it('asks for the thing to be named, and for a reaction rather than a promise to keep track', () => {
     expect(SHORT_QUESTION_NOTE).toContain('When the ask points back at something said earlier ("그 여행", "그거", "아까 그"), the first words name it in the conversation\'s own words ("제주 가시면 이런 게 좋아요."')

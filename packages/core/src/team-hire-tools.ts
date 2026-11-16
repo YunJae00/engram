@@ -190,7 +190,8 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 // c5 R2 / c5a r3: where anyone posts is not a source's name ("네이버 블로그", "네이버 카페"). A post is named by its own title when a member
 // linked it by one; the host has only the address otherwise, so it says what it is ("블로그 글").
 // shortcut: the title comes from a member's own "[title](address)" only; keep each read page's title with its address (keepSources) if that proves too rare.
-const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)$|^(?:티스토리|브런치|tistory|brunch)$/i
+// stack-5 (c5a run, R2): "[네이버 블로그 lsmsh28](…)", the place with the writer's id after it, is still only the place.
+const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)(?:\s+[\w.-]+)?$|^(?:티스토리|브런치|tistory|brunch)$/i
 const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
 const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title]) => !PLACE.test(title!.trim())).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim().slice(0, 60)]))
 /** A link named only after where anyone posts ("[네이버 블로그](…)") takes the title a member gave that address, else what the address is. Also for a team result (company-tools teamAnswer). */

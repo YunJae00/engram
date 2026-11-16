@@ -1345,6 +1345,8 @@ test('stack-5: a team result never names a link "네이버 블로그", whoever w
   expect(shown).toContain('[주말 나들이 날씨 정리](https://blog.naver.com/traveltrap/1)')
   expect(shown).toContain('[커뮤니티 글](https://cafe.naver.com/busan/2)')
   for (const text of [shown, mergedReport([kim, lee])]) expect(text).not.toMatch(/네이버 (?:블로그|카페)/)
+  // stack-5 (c5a run, R2): the place with the writer's id after it is still only the place.
+  expect(teamAnswer(written.replace('[네이버 블로그]', '[네이버 블로그 traveltrap]'), teamTask([kim, lee]))).toContain('[주말 나들이 날씨 정리](https://blog.naver.com/traveltrap/1)')
   // A clean answer passes as it was.
   const clean = written.replace('네이버 블로그', '주말 나들이 날씨 정리').replace('네이버 카페', '부산 날씨')
   expect(teamAnswer(clean, teamTask([kim, lee]))).toBe(clean)
