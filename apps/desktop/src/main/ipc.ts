@@ -41,7 +41,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, aboutEmployee, employeesReport, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2761,7 +2761,12 @@ export function registerIpc(ctx: VaultContext): void {
         // A plain hand-off to one employee is the same assign call with the person's own words as the brief: made here, its reply is the answer
         // and no model is asked. A call that throws falls through to the model.
         const handoff = company && chief && !turn?.report && request.scheduled !== true ? plainHandoff(request.message, staff.map(one => one.name)) : undefined
-        const handed = handoff ? await everyTool.find(tool => tool.name === 'assign')?.run(handoff, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined }) : undefined
+        // grokbar B7: so is a plain hire of one named employee (C1), and two answers need no call at all: who an employee is (C9), and the
+        // report of employees who worked in the background (C5, C6: the merge is the host's, so it keeps every fact, name and address).
+        const hire = !handoff && company && chief && !turn?.report && request.scheduled !== true ? plainHire(request.message) : undefined
+        const direct = handoff ? { tool: 'assign', args: handoff } : hire ? { tool: 'staff', args: hire } : undefined
+        const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
+          : !company ? undefined : turn?.report ? employeesReport((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)) : aboutEmployee(request.message, everyone, await listTasks(paths), teams)
         // The hand-off's own line is the whole answer: a quick first line still on its way would be a second one.
         if (handed) firstLineSpoke(channel)
         if (company && !handed) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
@@ -2774,7 +2779,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
-        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: [{ tool: 'assign', args: handoff!, observation: handed }], fellBack: false } : await runComet(
+        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),

@@ -227,7 +227,7 @@ test('a team named in the message brings its memory, written by its members\' fi
 
 // --- assign: handing work to employees ---
 import { parseAsk } from '../src/ask.js'
-import { assignTool, employeeNote, employeeWriteBack, handoffBrief, teamMemoryId, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
+import { aboutEmployee, assignTool, employeeNote, employeeWriteBack, employeesReport, handedFrom, handoffBrief, mergedReport, plainHire, teamMemoryId, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
 import { changeSidebarLayout } from '../src/sidebar-layout.js'
 import { settleMember } from '../src/team-hire-tools.js'
 
@@ -252,16 +252,26 @@ async function office(work: (member: TeamMember) => { answer: string; asked?: bo
 
 test('assign runs each employee as a member of their own, hires an unknown name on the spot and hands back attributed reports', async () => {
   const o = await office()
-  const out = JSON.parse(await o.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능' }, { who: '박사원', brief: '슬랙 신기능' }, { who: '이과장', brief: '리니어 신기능', title: '리서치 담당' }] }))
+  // grokbar B7 (C3): parts that only look things up come back as the one merged answer, written by the host: one table, a row per
+  // employee with their part, their name and their link. No model merges it (the call closes the turn).
+  const said = await o.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능', topic: '노션' }, { who: '박사원', brief: '슬랙 신기능', topic: '슬랙' }, { who: '이과장', brief: '리니어 신기능', topic: '리니어', title: '리서치 담당' }] })
   const lee = (await o.named('이과장'))!
   expect(lee.label).toBe('리서치 담당')
-  expect(out.hired).toEqual(['이과장은 리서치 담당으로 새로 뽑았어요.'])
-  expect(out.reports.map((r: { who: string; state: string }) => [r.who, r.state])).toEqual([['김대리', 'done'], ['박사원', 'done'], ['이과장', 'done']])
-  expect(out.reports[2].result).toContain('https://example.com/m3')
+  expect(said).toBe([
+    '이과장은 리서치 담당으로 새로 뽑았어요.', '김대리, 박사원, 이과장 보고예요.', '', '| 맡은 일 (담당) | 내용 | 출처 |', '|---|---|---|',
+    '| 노션 (김대리) | 김대리 결과 | [example.com](https://example.com/m1) |', '| 슬랙 (박사원) | 박사원 결과 | [example.com](https://example.com/m2) |', '| 리니어 (이과장) | 이과장 결과 | [example.com](https://example.com/m3) |',
+  ].join('\n'))
   // Each is the employee (botId), a fast lookup, and already accepted: the chief of staff needs no review round.
   expect(o.task.team!.members.map(m => [m.botId === (m.role === '이과장' ? lee.id : m.botId), m.lookup, m.state, m.review?.ok, m.background])).toEqual([[true, true, 'released', true, undefined], [true, true, 'released', true, undefined], [true, true, 'released', true, undefined]])
   expect(o.task.team!.members[0]!.botId).toBe((await o.named('김대리'))!.id)
-  expect(typeof o.tool.closes === 'function' && [o.tool.closes({ wait: true }), o.tool.closes({ wait: false })]).toEqual([false, true])
+  expect(typeof o.tool.closes === 'function' && [o.tool.closes({ wait: true, to: [{ who: '김대리', brief: 'a' }] }), o.tool.closes({ wait: true, to: [{ who: '김대리', brief: 'a', make: true }] }), o.tool.closes({ wait: false })]).toEqual([true, false, true])
+  // A part that makes something still comes back as reports for the chief of staff to merge, with the pages each one read.
+  const making = await office()
+  const out = JSON.parse(await making.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능 표로 저장', make: true }, { who: '박사원', brief: '슬랙 신기능' }] }))
+  expect(out.reports.map((r: { who: string; state: string }) => [r.who, r.state])).toEqual([['김대리', 'done'], ['박사원', 'done']])
+  expect(out.reports[1].result).toContain('https://example.com/m2')
+  expect(out.note).toContain('ONE table')
+  expect(out.note).toContain('markdown link')
   expect(MEMBER_BLOCKED.test('assign')).toBe(true)
   expect(COMPANY_LANE_TOOLS.has('assign')).toBe(true)
   expect(COMPANY_LANE_TOOLS.size).toBeLessThanOrEqual(16)
@@ -283,8 +293,10 @@ test('assign without waiting answers in one Korean line and leaves the work runn
 
 test('a failed part is said as failed, and an employee who needs the person is asked up', async () => {
   const failing = await office(member => member.role === '박사원' ? { answer: '', error: 'no source' } : { answer: `${member.role} 결과` })
-  const out = JSON.parse(await failing.assign({ wait: true, to: [{ who: '김대리', brief: 'a' }, { who: '박사원', brief: 'b' }] }))
-  expect(out.reports.map((r: { state: string }) => r.state)).toEqual(['done', 'failed'])
+  const out = await failing.assign({ wait: true, to: [{ who: '김대리', brief: 'a' }, { who: '박사원', brief: 'b' }] })
+  // The missing part is said in its own row, never dropped and never the host's own failure note.
+  expect(out.split('\n').slice(-2)).toEqual(['| 김대리 | 김대리 결과 | - |', '| 박사원 | 조사하지 못했어요. | - |'])
+  expect(out).not.toMatch(/Failed|no source/)
   expect(failing.task.team!.members.every(m => m.state === 'released' && !!m.review)).toBe(true)
   const asking = await office(() => ({ answer: '어느 달인가요?', asked: true }))
   expect(parseAsk(await asking.assign({ wait: true, to: [{ who: '김대리', brief: 'a' }] }))?.question).toBe('김대리: 어느 달인가요?')
@@ -307,9 +319,12 @@ test('a handoff with no new brief joins the job the employee is on, or takes the
   const earlier = await createTask(o.paths, '행사 조사', o.chief.id)
   const kim = (await o.named('김대리'))!
   await updateTask(o.paths, earlier.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사', botId: kim.id, state: 'released', result: '11월 20일 서울 AI 서밋 https://example.com/summit', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
-  const out = JSON.parse(await o.assign(hand))
-  expect(out.reports.map((r: { who: string }) => r.who)).toEqual(['박사원'])
-  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '11월 20일 서울 AI 서밋 https://example.com/summit'))
+  // grokbar B7 (C6): the report is 박사원's own result, then the facts it was made from, under whose they were and what that job was.
+  expect(await o.assign(hand)).toBe('박사원 보고예요. 김대리한테 받은 내용으로 했어요.\n\n박사원 결과 https://example.com/m1\n\n김대리한테 받은 내용 (행사):\n11월 20일 서울 AI 서밋 https://example.com/summit')
+  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '11월 20일 서울 AI 서밋 https://example.com/summit', '행사'))
+  expect(handedFrom(o.task.team!.members[0]!.brief)).toEqual({ brief: '홍보 문구 3개', from: '김대리', job: '행사', result: '11월 20일 서울 AI 서밋 https://example.com/summit' })
+  expect(handedFrom(handoffBrief('문구', '김대리', '결과'))).toEqual({ brief: '문구', from: '김대리', job: '', result: '결과' })
+  expect(handedFrom('그냥 일')).toBeUndefined()
 })
 
 // B3 r2: the last result was taken from every stored task, so a result from another conversation could land in an employee's brief.
@@ -326,7 +341,7 @@ test('a handoff with no new brief never takes a result from another thread', asy
   const here = await createTask(o.paths, '행사 조사', o.chief.id)
   await updateTask(o.paths, here.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사', botId: kim.id, state: 'released', result: '이 대화의 결과', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
   await o.assign(hand)
-  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '이 대화의 결과'))
+  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '이 대화의 결과', '행사'))
   expect(JSON.stringify(o.task.team)).not.toContain('비공개')
 })
 
@@ -381,4 +396,71 @@ test('a finished job is written to the employee\'s own conversation, their memor
   await changeSidebarLayout(o.paths, { kind: 'chat', change: { action: 'move-item', id: kim.id, folder: null } }, { chat: (await loadBots(o.paths)).map(bot => bot.id) })
   await employeeWriteBack(o.paths, { botId: kim.id, brief: '리니어 조사', result: '결과' }, new Date('2026-11-16T06:00:00.000Z'))
   expect((await loadBotMemory(o.paths, teamMemoryId(folder))).facts).toHaveLength(2)
+})
+
+// grokbar B7 (stack1-f4f6844c): C3 took 131 s with no link (an 11 s merge round, then a 90 s check turn because the merge had no address);
+// C6's report was a model's rewrite; C1 and C9 spent a model round on two copied phrases or a question the roster answers.
+const part = (id: string, role: string, brief: string, rest: Partial<TeamMember> = {}): TeamMember => ({ id, parentId: null, depth: 1, role, brief, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: '', ...rest })
+
+test('the merged report is one table: a row per employee, their link, a missing part said in its row', () => {
+  const report = mergedReport([
+    part('m1', '김대리', '노션', { result: '- **Notion Agent** 업그레이드 (11/12)\n- 새 모델 라우터\n\n출처:\nhttps://www.notion.com/releases' }),
+    part('m2', '박사원', '슬랙', { result: 'Salesforce 스워밍 도입 | 채널 자동 생성\n(시간 한도에서 멈춤: 여기까지 찾은 내용)', sources: ['https://slack.com/blog/news', 'https://slack.com/intl/ko-kr/whats-new', 'https://search.naver.com/search.naver?query=slack'] }),
+    part('m3', '이과장', '리니어', { state: 'failed', result: 'Failed: it ran out of time before it reported anything.' }),
+  ], new Map([['m1', '노션'], ['m2', '슬랙'], ['m3', '리니어']]))
+  expect(report.split('\n')).toEqual([
+    '김대리, 박사원, 이과장 보고예요.', '', '| 맡은 일 (담당) | 내용 | 출처 |', '|---|---|---|',
+    '| 노션 (김대리) | Notion Agent 업그레이드 (11/12) · 새 모델 라우터 | [notion.com](https://www.notion.com/releases) |',
+    '| 슬랙 (박사원) | Salesforce 스워밍 도입 / 채널 자동 생성 · (시간 한도에서 멈춤: 여기까지 찾은 내용) | [slack.com](https://slack.com/blog/news) · [slack.com](https://slack.com/intl/ko-kr/whats-new) |',
+    '| 리니어 (이과장) | 조사하지 못했어요. | - |',
+  ])
+  // One table and nothing an internal note or a tool would say.
+  expect(report.match(/^\|---/gm)).toHaveLength(1)
+  expect(report).not.toMatch(/Failed|ran out of time/)
+})
+
+test('one employee\'s report stands as they wrote it, and a handoff keeps the facts it was made from', () => {
+  expect(mergedReport([part('m1', '김대리', '행사', { result: '12월 2일 소프트웨이브\nhttps://example.com/a' })])).toBe('김대리 보고예요.\n\n12월 2일 소프트웨이브\nhttps://example.com/a')
+  // Nothing written out as an address: the page they read is added as a link.
+  expect(mergedReport([part('m1', '김대리', '행사', { result: '12월 2일 소프트웨이브', sources: ['https://example.com/a'] })])).toBe('김대리 보고예요.\n\n12월 2일 소프트웨이브\n\n출처: [example.com](https://example.com/a)')
+  // C6 as it ran: 김대리 worked first, his result went on to 박사원 (TeamMember.then), and the task holds both.
+  const kim = part('m1', '김대리', '다음 달 서울 IT 행사 일정 정리', { background: true, then: { botId: 'bot-m2', who: '박사원', brief: '홍보 문구 3개' }, result: '소프트웨이브 2026: 12월 2일~4일, 코엑스 https://example.com/sw' })
+  const park = part('m2', '박사원', handoffBrief('홍보 문구 3개', '김대리', kim.result!, kim.brief), { background: true, result: '1. 12월, 코엑스에서 만나요\n2. 참가비 무료\n3. 지금 사전등록' })
+  const task = { id: 't', goal: 'g', botId: 'chief', state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [], team: { members: [kim, park], hires: 2, maxHires: 8, maxDepth: 3, big: false } } as DelegatedTask
+  expect(employeesReport(task)).toBe([
+    '박사원 보고예요. 김대리한테 받은 내용으로 했어요.', '', '1. 12월, 코엑스에서 만나요', '2. 참가비 무료', '3. 지금 사전등록', '',
+    '김대리한테 받은 내용 (다음 달 서울 IT 행사 일정 정리):', '소프트웨이브 2026: 12월 2일~4일, 코엑스 https://example.com/sw',
+  ].join('\n'))
+  // The first one failed, so nothing was handed on: his own part says so.
+  expect(employeesReport({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'failed', result: 'Failed: it was stopped.' }] } })).toBe('김대리 보고예요.\n\n김대리: 조사하지 못했어요.')
+  // Someone who needs the person, or a file handed in, is the chief of staff's to report.
+  expect(employeesReport({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'waiting' }] } })).toBeUndefined()
+  expect(employeesReport({ ...task, team: { ...task.team!, members: [{ ...kim, files: ['a.xlsx'] }] } })).toBeUndefined()
+  expect(employeesReport({ ...task, team: { ...task.team!, members: [{ ...kim, background: undefined }] } })).toBeUndefined()
+  expect(employeesReport(undefined)).toBeUndefined()
+})
+
+test('a plain hire of one named employee with one duty is the staff call itself', async () => {
+  expect(plainHire('김대리 하나 뽑아줘. 리서치 담당이야')).toEqual({ hire: [{ name: '김대리', title: '리서치 담당' }] })
+  expect(plainHire('박사원 뽑아줘, 카피 담당')).toEqual({ hire: [{ name: '박사원', title: '카피 담당' }] })
+  expect(plainHire('경쟁사 분석 담당으로 이과장 새로 뽑아주세요')).toEqual({ hire: [{ name: '이과장', title: '경쟁사 분석 담당' }] })
+  for (const ask of ['마케팅팀 만들고 김대리랑 새로 박사원 뽑아서 넣어줘. 박사원은 카피 담당', '김대리랑 박사원 뽑아줘. 리서치 담당이야', '김대리 하나 뽑아줘', '김대리 뽑아줘. 리서치 담당이고 꼼꼼하게 출처를 적어', '사람 사진 3장 뽑아줘. 디자인 담당이야', '김대리 내보내줘. 리서치 담당이야', `김대리 뽑아줘. ${'가'.repeat(200)} 담당이야`])
+    expect(plainHire(ask), ask).toBeUndefined()
+  // The arguments are the ones the staff tool takes: the same reply, the same roster.
+  const c = await company()
+  expect(await c.run(plainHire('김대리 하나 뽑아줘. 리서치 담당이야')!)).toBe('김대리를 리서치 담당으로 뽑았어요.')
+  expect((await c.named('김대리'))!.label).toBe('리서치 담당')
+})
+
+test('who one employee is and what they did is answered from the roster and stored work', async () => {
+  const o = await office()
+  await o.assign({ wait: true, to: [{ who: '김대리', brief: '다음 달 서울 IT 행사 일정 정리' }] })
+  await o.assign({ wait: true, to: [{ who: '김대리', brief: '노션 이번 주 신기능 조사' }] })
+  const bots = await (await import('../src/bots.js')).loadBots(o.paths), kim = (await o.named('김대리'))!
+  o.task.team!.members[0]!.finishedAt = '2026-11-16T01:00:00.000Z'; o.task.team!.members[1]!.finishedAt = '2026-11-16T02:00:00.000Z'
+  expect(aboutEmployee('김대리 무슨 일 하는 사람이야?', bots, [o.task], new Map([[kim.id, '마케팅팀']]))).toBe('김대리는 마케팅팀 리서치 담당이에요. 자료를 찾아 출처와 함께 정리한다\n지금은 쉬고 있어요. 최근에 한 일:\n- 노션 이번 주 신기능 조사\n- 다음 달 서울 IT 행사 일정 정리')
+  expect(aboutEmployee('박사원은 누구야?', bots, [o.task])).toBe('박사원은 카피 담당이에요.\n아직 맡은 일은 없어요.')
+  // Anything more than that one question, two people, or nobody on staff: the model's turn.
+  for (const ask of ['김대리랑 박사원 뭐 해?', '김대리 무슨 일 하는 사람인지 표로 정리해줘', '최부장 누구야?', '김대리한테 행사 조사 시켜', '다들 뭐하고 있어?'])
+    expect(aboutEmployee(ask, bots, [o.task]), ask).toBeUndefined()
 })

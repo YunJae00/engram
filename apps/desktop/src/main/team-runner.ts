@@ -166,7 +166,7 @@ export function teamRunner(deps: {
       const team = task.team, m = team?.members.find(one => one.id === id)
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? ''), botId: m.then.botId, lookup: true, ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, lookup: true, ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return to

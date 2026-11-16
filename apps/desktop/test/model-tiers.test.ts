@@ -218,7 +218,11 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
     // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
-    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: \[\{ tool: 'assign', args: handoff!, observation: handed \}\], fellBack: false \} : await runComet\(/)
+    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'staff', args: hire \} : undefined/)
+    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : await runComet\(/)
+    // grokbar B7: a plain hire is the staff call made by the host under the same gates; who an employee is and a background report need no model either.
+    expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
+    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? employeesReport\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\)\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\), teams\)/)
   })
 
   it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {
