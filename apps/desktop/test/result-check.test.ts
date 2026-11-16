@@ -54,6 +54,21 @@ describe('result check receipt', () => {
     expect(verifyResult([read(), verdict, read(source)], outputs, [], true).issues.join(' ')).toContain('No usable source evidence')
   })
 
+  // qa145 B14 (S31/S32): a finished team report stopped as "일부를 확인하지 못했어요" on a guide rule that had nothing to apply to, reported unknown.
+  it('does not hold a result back on a rule that has nothing to apply to, and does not show it', async () => {
+    const rule = { requirement: '합계는 SUM 수식으로 입력(작업 가이드 규칙)', status: 'not_applicable', basis: '합계나 스프레드시트가 없어 적용 대상이 없음.' }
+    const value = { ...payload(), checks: [...payload().checks, rule] }
+    const step = await recorded(value)
+    expect(checkResult([read(), step], outputs, [source])).toEqual({ accepted: true, verified: true, issues: [] })
+    expect(checkReport([read(), step])!.checks.map(check => check.requirement)).toEqual(['Complete proposal'])
+    // The same rule reported unknown, a missing outcome, an unsure grounding, and a report that set every requirement aside still stop the turn.
+    expect(checkResult([read(), await recorded({ ...value, checks: [payload().checks[0], { ...rule, status: 'unknown' }] })], outputs, [source]).verified).toBe(false)
+    expect(checkResult([read(), await recorded({ ...value, checks: [{ ...payload().checks[0], status: 'fail' }, rule] })], outputs, [source]).verified).toBe(false)
+    expect(checkResult([read(), await recorded({ ...value, checks: [rule] })], outputs, [source]).issues.join(' ')).toContain('No requirement was checked')
+    await expect(recorded({ ...value, grounding: { ...payload().grounding, status: 'not_applicable' } })).rejects.toThrow()
+    expect(resultCheckTool().description).toContain('a mismatch you corrected and confirmed is pass')
+  })
+
   it.each(['fail', 'unknown'])('keeps %s verdicts unresolved despite good readback', async status => {
     const value = payload(); value.grounding.status = status
     const result = checkResult([read(), await recorded(value)], outputs, [source])
