@@ -666,7 +666,7 @@ it('c4: keepRead keeps what a search, an opened page and a batch read gave, and 
 // grokbar c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made.
 it('c5: a web address is never a file a member made; a document in the workspace still is', () => {
   const made = (answer: string, lookup = false): string[] | undefined => { const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', state: 'working', sessionKey: 's', hiredAt: '', ...(lookup ? { lookup: true } : {}) }; settleMember(m, { answer }, 'now'); return m.files }
-  for (const page of ['행사 안내 — https://itsight.zdnet.co.kr/acc2026/main.html', '[ACC 2026](https://itsight.zdnet.co.kr/acc2026/main.html) 참고', '자료: http://example.com/a/report.pdf.', 'www.example.com/index.html 에 있어요', 'https://example.com/x(1)/notes.md']) expect(made(page), page).toBeUndefined()
+  for (const page of ['행사 안내 — https://itsight.zdnet.co.kr/acc2026/main.html', '[ACC 2026](https://itsight.zdnet.co.kr/acc2026/main.html) 참고', '자료: http://example.com/a/report.pdf.', 'www.example.com/index.html 에 있어요', 'https://example.com/x(1)/notes.md', 'example.com/report.html', '자료는 itsight.zdnet.co.kr/acc2026/main.html 에 있어요']) expect(made(page), page).toBeUndefined()
   expect(made('보고서는 reports/q3.docx, 표는 ./out/sales.xlsx 에 있어요. 참고 https://example.com/guide.html')).toEqual(['reports/q3.docx', './out/sales.xlsx'])
   expect(made('[q3.docx](engram-artifact:abc-q3.docx) 만들었어요')).toContain('q3.docx')
 })
@@ -689,6 +689,11 @@ it('c5: a lookup member that says it found nothing keeps what it read, marked em
   settleMember(blind, { answer: '관련 정보를 찾지 못했어요.' }, 'now', true)
   expect(blind).toMatchObject({ state: 'done', result: '관련 정보를 찾지 못했어요.' })
   expect(blind.empty).toBeUndefined()
+  // c5b r2 (the C3 record): nothing kept of what it read, only the page it searched on. That is still a part that looked.
+  const searched = lookup()
+  settleMember(searched, { answer: '관련 정보를 찾지 못했어요.', sources: ['https://search.naver.com/search.naver?query=linear'] }, 'now', true)
+  expect(searched).toMatchObject({ state: 'done', empty: true, result: '관련 정보를 찾지 못했어요.', sources: ['https://search.naver.com/search.naver?query=linear'] })
+  expect(searched.read).toBeUndefined()
   // A long memo that mentions one thing it did not find is a memo.
   expect(foundNothing(`${'노션이 새 기능을 냈어요. '.repeat(30)}가격은 찾지 못했어요.`)).toBe(false)
 })

@@ -299,15 +299,20 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   // schedule). What it read stays under what it wrote, less the rows whose address the answer already names.
   // c5 C3: "…관련 정보를 찾지 못했어요." stood alone and the row read "이번엔 못 찾았어요." with no link, though a results page had been read. What it
   // read stays under a found-nothing answer too, marked `empty`: its row says what was checked and links it (company-tools nothingNew).
-  const empty = !tail && !!read && !!member.lookup && foundNothing(answer)
+  // c5b r2: the recorded case had no kept text at all (`read` empty), only the address of the results page it searched on (`sources`), and
+  // still read "이번엔 못 찾았어요." with no link. Having loaded a page is enough: the row links where it looked.
+  const sources = sourcesOf(outcome.sources ?? [])
+  const empty = !tail && (!!read || sources.length > 0) && !!member.lookup && foundNothing(answer)
   const rest = !answer || empty ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
   if (rest) member.read = true
-  if (empty && rest) member.empty = true
+  if (empty) member.empty = true
   member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
-  if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
+  if (sources.length) member.sources = sources
   // c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made, and the host gave the report up to the main
   // model. A file is something made in the workspace: an address is never one.
-  const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.replace(/https?:\/\/[^\s)\]>"'|]+/g, ' ').matchAll(DOC_FILE)].map(m => m[1]!).filter(file => !/^www\./i.test(file))]
+  // c5b r2: "example.com/report.html", an address written without its scheme, was still kept. A path that opens on a host name is an address.
+  // shortcut: a workspace folder named like a host ("notes.old/a.md") is not recorded as a file, so the host writes that report, not the lead; match a list of real endings if that shows up.
+  const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.replace(/https?:\/\/[^\s)\]>"'|]+/g, ' ').matchAll(DOC_FILE)].map(m => m[1]!).filter(file => !/^(?:www\.|(?:[a-z0-9-]+\.)+[a-z]{2,}\/)/i.test(file))]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
   else if (member.lookup && member.state === 'done' && !tail && answer && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
 }

@@ -848,14 +848,19 @@ export function lateShown(task: DelegatedTask): void { if (task.team?.members.so
 // here on its way to the thread, whoever wrote it.
 const BARE_HOST = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i
 const spaced = (text: string): string => text.replace(/(\]\([^)\s]*\))[ \t]*(?=\[[^\]\n]+\]\()/g, '$1 · ')
+// c5b r2: "example.com/report.html", an address written without its scheme, passed as plain words. It is an address: it counts as a raw one,
+// and wherever one still stands in what is shown (a teammate's own result in the host's list) it becomes a named link.
+// shortcut: known endings only, so "node.js/express" stays words; an address on another ending is shown as written. Add the ending here.
+const HOST_PATH = /\[[^\]]*\]\([^)]*\)|https?:\/\/[^\s)\]>"'|]+|(?<![\w@/.-])((?:[a-z0-9-]+\.)+(?:com|net|org|io|kr|ai|dev|app|co|me|info|gov|edu|jp|us|uk|tv|so|xyz)\/[^\s)\]>"'|]*)/gi
+const hostLinked = (text: string): string => text.replace(HOST_PATH, (all: string, bare?: string) => { if (!bare) return all; const at = trimmed(bare); return named(at.split('/')[0]!.replace(/^www\./i, ''), `https://${at}`) + bare.slice(at.length) })
 /** A team answer as it may be shown: a raw address, a line that is only a teammate's name or only a host name sends the host's own list (named links only); with a file or a question in it, which that list cannot carry, the text is repaired in place. Links that follow each other are set apart. */
 export function teamAnswer(answer: string, task: DelegatedTask | undefined): string {
   const members = partsOf(task, false)
   if (!members.length) return answer
   const bare = (line: string): string => line.replace(/[*_#:\s-]/g, ''), stray = (line: string): boolean => members.some(m => bare(line) === m.role) || BARE_HOST.test(bare(line))
-  if (!/https?:\/\//.test(answer.replace(/\]\(https?:\/\/[^)\s]*\)/g, '')) && !answer.split('\n').some(stray)) return spaced(answer)
-  if (members.some(m => delivered(m)) && !handsIn(members)) return mergedReport(members)
-  return spaced(answer.split('\n').filter(line => !stray(line)).join('\n').replace(/(?<!\]\()https?:\/\/[^\s)\]>"'|]+/g, url => named(hostOf(url), trimmed(url))).replace(/\n{3,}/g, '\n\n').trim())
+  if (!/https?:\/\//.test(answer.replace(/\]\(https?:\/\/[^)\s]*\)/g, '')) && hostLinked(answer) === answer && !answer.split('\n').some(stray)) return spaced(answer)
+  if (members.some(m => delivered(m)) && !handsIn(members)) return hostLinked(mergedReport(members))
+  return spaced(hostLinked(answer.split('\n').filter(line => !stray(line)).join('\n').replace(/(?<!\]\()https?:\/\/[^\s)\]>"'|]+/g, url => named(hostOf(url), trimmed(url)))).replace(/\n{3,}/g, '\n\n').trim())
 }
 /** What a task's background agents brought back, for the person's thread, with no model; undefined when one of them needs the person or handed in a file (the lead writes that report). */
 export function employeesReport(task: DelegatedTask | undefined): string | undefined {
@@ -924,7 +929,7 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // Every part that found something links a page it stands on, in its own row when there is a table (GROKBOT rule 7; c3b r1: a table with no link passed).
   const rowOf = (m: TeamMember): string => table ? text.split('\n').filter(row => row.startsWith('|') && row.includes(`(${m.role})`)).join('\n') : text
   if (parts.some(m => {
-    const pages = findings(delivered(m)).lines.length ? [...partPages(m), ...handedPages(m, members)] : []
+    const pages = m.empty || findings(delivered(m)).lines.length ? [...partPages(m), ...handedPages(m, members)] : []
     return pages.length > 0 && !pages.some(url => rowOf(m).includes(`](${url})`))
   })) return undefined
   // A part still at work says so, and one that looked and found nothing new is never "못 찾았어요" (c5 C3).

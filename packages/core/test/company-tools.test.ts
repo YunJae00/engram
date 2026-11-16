@@ -1262,3 +1262,34 @@ test('c5 rule 7: a part still at work when the others are reported is labeled th
   expect(lateParts(teamTask([{ ...kim, state: 'working', result: undefined }, { ...doyun, state: 'working', late: undefined }]))).toEqual([])
   expect(lateParts(teamTask([{ ...kim, then: { botId: 'b', who: '서연', brief: '문구' } }, part('m2', '서연', handoffBrief('문구 쓰기', '지민', 'x'), { background: true, state: 'working' })]))).toEqual([])
 })
+
+// c5b review r1: the C3 record kept no read text, only the page searched on, and the row still read "이번엔 못 찾았어요." with no link.
+test('c5b r2 C3: a part that searched and kept no text still says where it looked, as a named link, and the writer may not drop that link', () => {
+  const kim = part('m1', '지민', '이번 주 노션 신기능 조사', { background: true, lookup: true, topic: '노션', result: '노션이 새 보기를 냈어요 https://example.com/a' })
+  const doyun = part('m3', '도윤', '이번 주 리니어 신기능 조사', { state: 'working', background: true, lookup: true, topic: '리니어' })
+  settleMember(doyun, { answer: '관련 정보를 찾지 못했어요.', sources: ['https://search.naver.com/search.naver?query=linear'] }, 'now', true)
+  expect(doyun.empty).toBe(true)
+  const row = mergedReport([kim, doyun]).split('\n').find(line => line.includes('(도윤)'))!
+  expect(row).toContain('이번 주 새 소식은 안 보여요.')
+  expect(row).toContain('](https://search.naver.com/search.naver?query=linear)')
+  expect(row).not.toContain('못 찾았')
+  const table = (cell: string): string => `| 항목 | 내용 |\n| --- | --- |\n| 노션 (지민) | 새 보기를 냈어요. [example.com](https://example.com/a) |\n| 리니어 (도윤) | ${cell} |`
+  expect(checkedReport(table('이번 주 새 소식은 안 보여요.'), [kim, doyun])).toBeUndefined()
+  expect(checkedReport(table('이번 주 새 소식은 안 보여요. [네이버](https://search.naver.com/search.naver?query=linear)'), [kim, doyun])).toBeDefined()
+})
+
+// c5b review r1: "example.com/report.html" was kept as a file and shown as written.
+test('c5b r2 C5: an address written without its scheme is not a file and never reaches the thread raw', () => {
+  const kim = part('m1', '지민', '행사 조사', { state: 'working', background: true })
+  settleMember(kim, { answer: 'example.com/report.html' }, 'now', true)
+  expect(kim.files).toBeUndefined()
+  const shown = teamAnswer('example.com/report.html', teamTask([kim]))
+  expect(shown).toContain('[example.com](https://example.com/report.html)')
+  expect(shown.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(/example\.com/)
+  // Inside a sentence the main model wrote, with a file the host's list cannot carry: repaired where it stands, the full stop kept.
+  const park = part('m2', '서연', '보고서 만들기', { state: 'working', background: true, lookup: false })
+  settleMember(park, { answer: '보고서를 만들었어요. reports/3분기.docx 에 있어요.' }, 'now', true)
+  expect(teamAnswer('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 www.coex.co.kr/sw.', teamTask([park]))).toBe('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 [coex.co.kr](https://www.coex.co.kr/sw).')
+  // Words with a dot and a slash that are no address, a named link and a workspace file stand.
+  for (const fine of ['node.js/express 로 만들었어요.', '[coex.co.kr/sw](https://www.coex.co.kr/sw) 에 있어요.', 'reports/q3.docx 에 있어요.']) expect(teamAnswer(fine, teamTask([park]))).toBe(fine)
+})
