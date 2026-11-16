@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveLinks, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveCited, linkAnswers, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -2906,10 +2906,9 @@ export function registerIpc(ctx: VaultContext): void {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
-          // c4 L3: an address the turn did not load itself is asked once before it is shown (team-hire-tools.ts liveLinks). A site that
-          // answers but turns robots away (401, 403, 429) opens for a person, so it is kept.
-          const linked = await liveLinks(result.answer, [...read], (url, limit) => net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return response.status < 400 || [401, 403, 429].includes(response.status) }), korean)
-          result.answer = citeOwn(await team.cited(channel, linked), [...read], korean)
+          // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
+          // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
+          result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), (url, limit) => net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) }), korean)
         }
         // The thread gets the answer alone: why the host counts it unverified is for the log.
         const answered = answerOnly(result.answer)

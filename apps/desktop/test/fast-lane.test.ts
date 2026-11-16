@@ -113,10 +113,13 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   // A lookup cut at its limit is delivered as the answer it wrote (no English wrapper, no auto-continue), then every member's link is added.
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
   // c4 L3: the addresses the answer shows are checked before the citations are finished; c4 L1: the browser starts with the turn.
-  expect(ipc).toContain('const linked = await liveLinks(result.answer, [...read], (url, limit) => net.fetch(url, { signal: limit, credentials: \'omit\' })')
-  expect(ipc).toContain('result.answer = citeOwn(await team.cited(channel, linked), [...read], korean)')
+  // c4 r2: the check wraps the citing (a member's link was added after it and never asked), and no 4xx is let through.
+  expect(ipc).toContain('result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), (url, limit) => net.fetch(url, { signal: limit, credentials: \'omit\' })')
+  expect(ipc).toContain('return linkAnswers(response.status) }), korean)')
+  expect(ipc).not.toMatch(/401, 403, 429|await liveLinks\(/)
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
-  expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
+  expect(ipc.indexOf('team.cited(channel, answer)')).toBeGreaterThan(0)
+  expect(ipc.indexOf('team.cited(channel, answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
   // Beside it, something the person only told gets its one line from the same voice (desk-lane.ts onlyTells).
   expect(ipc).toContain('whole: quickQuestion(request.message) }')

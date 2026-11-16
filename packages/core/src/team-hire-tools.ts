@@ -196,27 +196,43 @@ const BOXES: [RegExp, string, string][] = [[/날씨|기온|강수|미세\s?먼�
 // turn read; with none (or with that page already linked) the link goes and its name stays as plain words. One still unanswered at the
 // budget is kept: the check never holds the answer longer, never fails it and never makes up an address.
 export const LINK_CHECK_MS = 1_500
+// c4 r2: 401, 403 and 429 were kept as "opens for a person"; the link check that grades the answer counts every 4xx and 5xx as dead.
+export const linkAnswers = (status: number): boolean => status >= 200 && status < 400
 const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
-export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
-  // The same address reads differently once its spaces and Korean are escaped for a link.
-  const plain = (url: string): string => { try { return decodeURI(url) } catch { return url } }
-  const loaded = new Set(read.map(plain))
-  const shown = [...new Set((answer.match(ADDRESS) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')))].filter(url => !loaded.has(plain(url)))
-  if (!shown.length) return answer
+// The same address reads differently once its spaces and Korean are escaped for a link.
+const plainAddress = (url: string): string => { try { return decodeURI(url) } catch { return url } }
+const unloaded = (text: string, read: readonly string[]): string[] => { const loaded = new Set(read.map(plainAddress)); return [...new Set((text.match(ADDRESS) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')))].filter(url => !loaded.has(plainAddress(url))) }
+async function deadOf(shown: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms: number): Promise<string[]> {
+  if (!shown.length) return []
   const limit = new AbortController(), timer = setTimeout(() => limit.abort(), ms)
   const late = new Promise<boolean>(resolve => limit.signal.addEventListener('abort', () => resolve(true), { once: true }))
   // A check that throws at the budget was slow, not dead.
   const dead = (await Promise.all(shown.map(async url => (await Promise.race([Promise.resolve().then(() => alive(url, limit.signal)).catch(() => limit.signal.aborted), late])) ? '' : url))).filter(Boolean)
   clearTimeout(timer)
   limit.abort()
+  return dead
+}
+function withoutDead(answer: string, dead: readonly string[], read: readonly string[], korean: boolean): string {
   const own = sourcesOf(read)[0], literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   let out = answer
   for (const url of dead) {
-    const swap = own && !plain(out).includes(plain(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
+    const swap = own && !plainAddress(out).includes(plainAddress(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
     out = out.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), (_whole, name: string) => swap ? `[${siteName(own!, korean)}](${swap})` : name)
       .replace(new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g'), swap)
   }
   return out
+}
+export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
+  return withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), read, korean)
+}
+// c4 r2: the citations were finished after the check, so a link citeMembers put in a row or a closing line was never asked. `cite` finishes
+// the citations; every address it can add (seen by citing the answer with its own addresses taken out) is asked in the same one pass as the
+// answer's own. A dead address is taken out before citing, so its row gets its member's page, and again after, so a member's dead page goes too.
+export async function liveCited(answer: string, read: readonly string[], cite: (answer: string) => Promise<string> | string, alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
+  const dead = await deadOf(unloaded(`${answer}\n${await cite(answer.replace(ADDRESS, ''))}`, read), alive, ms)
+  const out = withoutDead(await cite(withoutDead(answer, dead, read, korean)), dead, read, korean)
+  // A closing source line lists links only: a member's dead page leaves no bare name there.
+  return out.replace(/\n\n(출처|Sources): ([^\n]*)$/, (_whole, label: string, items: string) => { const kept = items.split(' · ').filter(item => /\]\(https?:\/\//.test(item)); return kept.length ? `\n\n${label}: ${kept.join(' · ')}` : '' })
 }
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
 // c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.

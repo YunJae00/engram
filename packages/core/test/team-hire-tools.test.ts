@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { liveLinks, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { liveLinks, liveCited, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -537,6 +537,37 @@ describe('team hire tools', () => {
     const before = asked.length
     expect(await liveLinks('부산은 맑아요.', read, alive([]), true)).toBe('부산은 맑아요.')
     expect(asked).toHaveLength(before)
+  })
+
+  // c4 r2 finding 1: 401, 403 and 429 were counted as alive, so a link that fails the link check stayed the answer's only link.
+  it('counts every 4xx and 5xx as a dead link', () => {
+    for (const status of [200, 204, 301, 302]) expect(linkAnswers(status)).toBe(true)
+    for (const status of [400, 401, 403, 404, 410, 429, 500, 503, 0]) expect(linkAnswers(status)).toBe(false)
+  })
+
+  // c4 r2 finding 2: citeMembers ran after the check, so a member's page that answers 4xx went into a row or the closing line unasked.
+  it('asks the links the citations add as well, in the same one pass', async () => {
+    const member = (id: string, role: string, sources: string[]) => ({ id, role, brief: role, deliverable: '', state: 'released', sources }) as never
+    const members = [member('m1', '서울 날씨', ['https://gone.example/seoul']), member('m2', '부산 날씨', ['https://ok.example/busan']), member('m3', '제주 날씨', ['https://ok.example/jeju'])]
+    const asked: string[] = []
+    const alive = async (url: string): Promise<boolean> => { asked.push(url); return !/gone\.example|dead\.example/.test(url) }
+    const cite = (answer: string): string => citeOwn(citeMembers(answer, members, true), [], true)
+    // 서울's member page is dead: its row gets no link. 부산's row cited a dead blog: it gets its member's page instead. 제주 keeps its own live link, and its member's live page closes the answer as before.
+    const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://dead.example/blog) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |'
+    const out = await liveCited(table, [], cite, alive, true)
+    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |\n\n출처: [ok.example](https://ok.example/jeju)')
+    expect(out).not.toMatch(/gone\.example|dead\.example/)
+    // One pass: each address asked once, the ones only the citing would add among them.
+    expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
+    // The closing line: a dead member page is not listed, a live one is.
+    expect(await liveCited('세 도시 모두 큰 비는 없어요.', [], cite, alive, true)).toBe('세 도시 모두 큰 비는 없어요.\n\n출처: [ok.example](https://ok.example/busan) · [ok.example](https://ok.example/jeju)')
+    // With a page the turn read, the dead member link gives way to it; a slow check still keeps everything inside the one budget.
+    expect(await liveCited('서울은 맑아요.', ['https://search.naver.com/search.naver?query=서울 날씨'], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.\n\n출처: [네이버 날씨](https://search.naver.com/search.naver?query=서울%20날씨)')
+    // Every member page dead and nothing read: no source line at all, never a bare name.
+    expect(await liveCited('서울은 맑아요.', [], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.')
+    const started = Date.now()
+    expect(await liveCited(table, [], cite, () => new Promise<boolean>(() => undefined), true, 40)).toBe(cite(table))
+    expect(Date.now() - started).toBeLessThan(600)
   })
 
   // grokbar c4 R1/L1: weather read from the results page's own box was cited to a blog, or to "네이버 검색".
