@@ -43,6 +43,17 @@ describe('i18n', () => {
     expect(ko['help.shortcutsTitle']).not.toBe(en['help.shortcutsTitle'])
   })
 
+  it('the tour speaks the product language: bots, not comets, cosmos or a librarian', () => {
+    const tour = (Object.keys(en) as (keyof typeof en)[]).filter(key => key.startsWith('tour.'))
+    expect(tour.length).toBeGreaterThan(8)
+    for (const key of tour) {
+      expect(ko[key], key).not.toMatch(/혜성|코멧|코스모스|사서|두뇌/)
+      expect(en[key], key).not.toMatch(/comet|cosmos|librarian|brain/i)
+    }
+    expect(ko['tour.cometsTitle']).toContain('봇')
+    expect(en['tour.cometsTitle']).toContain('Bots')
+  })
+
   it('system ko-KR→ko, en-US→en, ja-JP→ko, default is system', () => {
     expect(resolveUiLanguage('system', 'ko-KR')).toBe('ko')
     expect(resolveUiLanguage('system', 'en-US')).toBe('en')
