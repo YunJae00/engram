@@ -95,3 +95,29 @@ test('a stopped turn keeps its reply after relaunch', async () => {
   expect(later[sent - 1]?.user, `STOP-KEPT stacked ${JSON.stringify(later)}`).toBe(false)
   expect(later.slice(asked, sent + 1).map(one => one.text.includes('Count slowly') ? 'Count slowly' : one.text.includes('Stopped.') ? 'Stopped.' : one.text), `STOP-KEPT order ${JSON.stringify(later)}`).toEqual(['Count slowly', 'Stopped.', 'And then?'])
 })
+
+test('a relaunch reopens the chat that was open at quit, and falls back to the welcome when it is gone', async () => {
+  const { root, data, paths, botId } = await vault()
+  const other = (await createBot(paths, { name: 'Other chat fixture' })).id
+  await appendBotTurn(paths, botId, { role: 'user', text: 'Remember this line', at: new Date().toISOString() })
+  await appendBotTurn(paths, botId, { role: 'assistant', text: 'Line remembered.', at: new Date().toISOString() })
+  const env = { ENGRAM_ENGINE: 'none' }
+  let page = await launch(root, data, botId, env)
+  await expect(page.getByTestId('bots-title-pill')).toContainText('Relaunch order fixture')
+
+  await app?.close()
+  app = await electron.launch({ args: [MAIN, '--no-sandbox'], env: baseEnv(root, data, env) })
+  page = await app.firstWindow()
+  // No sidebar click: the last-open chat comes back by itself.
+  await expect(page.getByTestId('bots-title-pill'), 'LAST-OPEN title').toContainText('Relaunch order fixture', { timeout: 8000 })
+  await expect(page.locator('.bots-view .bubble-msg').filter({ hasText: 'Line remembered.' }), 'LAST-OPEN history').toBeVisible()
+  await expect(page.getByTestId(`bot-${other}`)).toBeVisible()
+
+  // The remembered chat no longer exists: the welcome shows, never a blank main.
+  await page.evaluate(() => localStorage.setItem('engram.comets.selected', 'bot-that-was-deleted'))
+  await app.close()
+  app = await electron.launch({ args: [MAIN, '--no-sandbox'], env: baseEnv(root, data, env) })
+  page = await app.firstWindow()
+  await expect(page.getByTestId('comet-welcome'), 'LAST-OPEN gone').toBeVisible({ timeout: 8000 })
+  await expect(page.getByTestId('welcome-input')).toBeVisible()
+})

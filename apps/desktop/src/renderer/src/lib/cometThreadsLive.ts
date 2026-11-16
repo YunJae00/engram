@@ -7,7 +7,12 @@ const SELECTED_KEY = 'engram.comets.selected'
 
 // One store for the renderer's lifetime. The view mounts and unmounts with
 // the tab; the conversations do not.
-export const cometThreads = createCometThreads(null)
+// A launch reopens the chat that was open at quit. A reload inside the same
+// window (sessionStorage outlives it, a relaunch does not) starts at the welcome.
+const LAUNCHED_KEY = 'engram.comets.launched'
+const fresh = sessionStorage.getItem(LAUNCHED_KEY) === null
+sessionStorage.setItem(LAUNCHED_KEY, '1')
+export const cometThreads = createCometThreads(fresh ? localStorage.getItem(SELECTED_KEY) : null)
 const pendingReloads = new Set<string>()
 
 export function selectComet(id: string | null): void {
