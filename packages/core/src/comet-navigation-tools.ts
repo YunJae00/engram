@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, calendarDates, defaultSearchTemplate, deriveSearchTemplate, NEWS_ASK, newsTemplate, searchResults, searchUrlFor } from './search-template.js'
+import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, searchResults, searchUrlFor } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -15,6 +15,10 @@ const signInAsk = (task: string | undefined, search = false): string => formatAs
   : search ? 'Please sign in on the open search page, then tell me when it is done.' : 'Please sign in or complete the check in the open page, then tell me when it is done.', [])
 
 const RESULTS_CAP = 8
+// A news list is asked for by the handful ("5개"), and some rows are the same event twice.
+const NEWS_CAP = 12
+// With no count said, a recent-news list this short is filled from older news.
+const NEWS_FEW = 3
 // A results page often holds the answer itself (weather, a price, a rate) a few hundred characters in.
 const RESULTS_PROSE_CAP = 1200
 const RESULT_TITLE_CAP = 100
@@ -149,7 +153,10 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const query = str(args, 'query')
           if (!query) return 'search_web needs something to look for'
           const general = (await deps.searchTemplate?.()) || defaultSearchTemplate(query)
-          const template = args['kind'] === 'news' || NEWS_ASK.test(query) ? newsTemplate(general) : general
+          const news = args['kind'] === 'news' || NEWS_ASK.test(query)
+          // The period is the person's word ("요즘", "이번 주"), which the query may have left out.
+          const asked = `${query} ${context.task ?? ''}`, period = news ? newsPeriod(asked) : undefined
+          const template = news ? newsTemplate(general, period) : general
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           let page: Awaited<ReturnType<typeof courier.fetchPage>>
@@ -160,8 +167,20 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           }
           if (page.wall) return signInAsk(context.task, true)
           // The results are picked first and only those are followed through the engine's redirector: the page's tabs and filters cost a request each before.
-          const at = page.url || url
-          const picked = searchResults((page.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), page.text, query, at, RESULTS_CAP)
+          const at = page.url || url, now = new Date(), cap = news ? NEWS_CAP : RESULTS_CAP
+          const list = (from: typeof page, where: string) => searchResults((from.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), from.text, query, where, cap, now)
+          const listed = list(page, at)
+          // c5 R3/H6: whatever the page did with the period, a row dated outside it never reaches the model as recent news.
+          const recent = period ? listed.filter(one => inPeriod(one.date, period, now)) : listed
+          let older: typeof listed = []
+          if (period && recent.length < (askedCount(asked) ?? NEWS_FEW)) {
+            // Fewer than asked: the same search once more with no period, and those rows go after the recent ones with their year.
+            const wide = searchUrlFor(newsTemplate(general), query)
+            const more = wide && wide !== url ? await courier.fetchPage(wide, context.signal).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null }) : null
+            const have = new Set(recent.map(one => one.url))
+            older = (more && !more.wall ? list(more, more.url || wide!) : listed).filter(one => !have.has(one.url)).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
+          }
+          const picked = [...recent, ...older].slice(0, cap)
           const behind = await resolveResultLinks(picked.map(one => ({ text: one.title, url: one.url })), at, courier.followRedirect?.bind(courier), context.signal)
           const links = picked.map((one, index) => ({ ...one, url: behind[index]?.url ?? one.url }))
           const found = [page.text, ...links.map((one) => `${one.title} ${one.url}`)].join(' ')
@@ -177,12 +196,14 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
             ...(links.length > 0
               ? [
                   'Results, each as title — its own address — what it says — its date. Answer from them when they hold the fact and cite that result\'s address; open one (read_pages for several) only for a number none of them shows.',
+                  ...(period && older.length ? [`${recent.length ? `The first ${recent.length} are from the last ${period}; the ones after them are` : `None is from the last ${period}: these are`} older and say their year. Use an older one only when the recent ones are fewer than the person asked for, with its own date and year.`] : []),
                   ...links.map(one => `- ${[one.title.slice(0, RESULT_TITLE_CAP), one.url, one.snippet, one.date].filter(Boolean).join(' — ')}`),
                   '',
                 ]
               : []),
             // c4 R3: the page's own words carry the same ages ("1주 전") as its results; they read as dates too.
-            calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), new Date(), false, /[가-힣]/.test(query) || undefined),
+            // A page that did not keep to the period carries the old articles in its words too: they are left out with their rows.
+            period && recent.length < listed.length ? '' : calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), now, false, /[가-힣]/.test(query) || undefined),
           ].join('\n')
         },
       },

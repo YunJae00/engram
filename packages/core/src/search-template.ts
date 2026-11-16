@@ -100,7 +100,8 @@ function unwrapBingLink(url: URL): string | null {
 export interface SearchResult { title: string; url: string; snippet: string; date: string }
 const NEW_WINDOW = /\s*(새\s?창\s?열림|opens? in (a )?new (window|tab))\s*/gi
 const AD_HOST = /(^|\.)(ad|ads|ader|adcr|adclick|saedu|doubleclick|googleadservices|googlesyndication)\./i
-const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
+const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d{4}년\s*\d{1,2}월\s*\d{1,2}일|\d{4}-\d{2}-\d{2}|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
+// c5a r2: "2024년 4월 16일" and "2024-04-16" were not read as a date, so an old article had none and passed the recent-news filter as undated.
 const RESULT_SNIPPET = 160
 // grokbar c4 R3/H6: a news table's date column read "1주 전 / 1주 전 / 11시간 전": the results page's own age was passed through as written.
 // An age is turned into the calendar date it means, from the time the page was fetched, before the model sees it; a written date is left alone.
@@ -161,20 +162,70 @@ export function searchResults(links: { text: string; url: string }[], text: stri
   })
   // When the page has results that echo the question, what echoes none of it is furniture that got through (an outlet's home, a promo).
   const echoing = scored.filter(one => one.hits > 0)
-  return (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score).slice(0, cap).map(one => one.result)
+  // grokbar c5 R2: three lookups each got a page of blog posts and all three rows were cited to "네이버 블로그". The best row of each site
+  // is the only one kept (c5a r2: a site's further rows used to fill the cap, so a page of blogs was three rows of one source), a maker's
+  // or an outlet's page before a blog, café or forum post. A blog is never dropped for being one: when only blogs exist, the best is returned.
+  // c5a r3: no exception for a site's own search either; one row per site is the rule everywhere.
+  const seen = new Set<string>(), lead: typeof scored = []
+  for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); if (!seen.has(site)) lead.push(one); seen.add(site) }
+  const sinks = (one: typeof scored[number]): number => Number(communityPost(one.result.url))
+  return lead.sort((a, b) => sinks(a) - sinks(b)).slice(0, cap).map(one => one.result)
 }
+const siteKey = (url: string): string => new URL(url).hostname.replace(/^(www|m)\./, '')
+// shortcut: a closed list of places where anyone posts; another one is ranked as a site of its own until it is added here.
+const COMMUNITY = /(^|\.)(blog\.naver\.com|cafe\.naver\.com|post\.naver\.com|tistory\.com|brunch\.co\.kr|dcinside\.com|clien\.net|fmkorea\.com|ppomppu\.co\.kr|velog\.io|medium\.com)$/
+// Whether an address is a post on one of them (team-hire-tools names such a source by its title, never by the place).
+export const communityPost = (url: string): boolean => { try { return COMMUNITY.test(siteKey(url)) } catch { return false } }
 
 // A news ask is searched where news is listed: each entry an article with its outlet and date, not a blog round-up
 // (grokbar c3 R3/H6: the web tab gave two weekly round-up posts for "AI 스타트업 투자 뉴스").
 export const NEWS_ASK = /뉴스|기사|속보|보도\s?자료|헤드라인|\b(news|headlines?)\b/i
 // shortcut: only Naver's news tab is known; another engine's template is searched as it is, add its news address here when one is used.
-export function newsTemplate(template: string): string {
+// period: Naver's own period buttons build nso=…p:1d / p:1w / p:1m (read on saved results pages, tmp/grokbar/b1-probe; its news tab
+// writes nso=so:r,p:all,a:all), so a recent-news ask is searched with that. The host filters by date as well, whatever the page does.
+export function newsTemplate(template: string, period?: NewsPeriod): string {
   try {
     const url = new URL(template.replace('{q}', 'QQ'))
     if (url.host !== 'search.naver.com') return template
     url.searchParams.set('where', 'news')
+    if (period) url.searchParams.set('nso', `so:r,p:${{ day: '1d', week: '1w', month: '1m' }[period]},a:all`)
     return url.toString().replace('QQ', '{q}')
   } catch { return template }
+}
+// grokbar c5 R3/H6: "요즘 … 투자 뉴스" was searched by relevance over all time and came back as three 2024 rounds, a plan and a visit.
+// A news ask that says when is searched for that period: a day for 오늘, a week for 이번 주, a month for 요즘 / 최근 / 이번 달.
+export type NewsPeriod = 'day' | 'week' | 'month'
+const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\s?주|금주|\bthis week\b/i, 'week'], [/요즘|요새|최근|이번\s?달|\b(recent|recently|lately|these days|this month)\b/i, 'month']]
+const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31 }
+export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+// The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
+export function resultDay(date: string, now = new Date()): Date | null {
+  const dot = /(\d{4})(?:\.\s?|-)(\d{1,2})(?:\.\s?|-)(\d{1,2})/.exec(date), ko = /(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일/.exec(date), en = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?/i.exec(date)
+  const [year, month, day] = dot ? [dot[1], Number(dot[2]), dot[3]] : ko ? [ko[1], Number(ko[2]), ko[3]] : en ? [en[3], MONTHS.indexOf(en[1]!.toLowerCase()) + 1, en[2]] : []
+  if (!month || !day) return null
+  const at = new Date(Number(year ?? now.getFullYear()), month - 1, Number(day))
+  // Written with no year, a day that has not come yet is last year's.
+  if (!year && at.getTime() > now.getTime() + 86_400_000) at.setFullYear(at.getFullYear() - 1)
+  return at
+}
+// A row with no date is kept: nothing says it is old.
+export function inPeriod(date: string, period: NewsPeriod, now = new Date()): boolean {
+  const at = resultDay(date, now)
+  return !at || at.getTime() >= new Date(now.getFullYear(), now.getMonth(), now.getDate() - PERIOD_DAYS[period]).getTime()
+}
+// An older row says its year, so "9월 3일" is never read as this month's news.
+export function datedWithYear(date: string, now = new Date()): string {
+  const at = /\d{4}/.test(date) ? null : resultDay(date, now)
+  return !at ? date : /월/.test(date) ? `${at.getFullYear()}년 ${date}` : `${date}, ${at.getFullYear()}`
+}
+// How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
+const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+export function askedCount(ask: string): number | undefined {
+  const said = /(\d{1,2}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:개|건|가지|꼭지)|\btop (\d{1,2})\b|\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten) (?:\w+ ){0,2}(?:news|articles?|stories|items|headlines)\b/i.exec(ask)
+  const word = (said?.[1] ?? said?.[2] ?? said?.[3])?.toLowerCase()
+  if (!word) return undefined
+  return /^\d/.test(word) ? Number(word) : KO_COUNT.indexOf(word) + 1 || EN_COUNT.indexOf(word) + 1
 }
 
 export function rankLinks(
