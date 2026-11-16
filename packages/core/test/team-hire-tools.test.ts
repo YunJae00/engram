@@ -4,25 +4,30 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
 function world(goal = '서울·제주·부산 날씨 조사해서 PDF로') {
   const task: DelegatedTask = { id: 't1', goal, botId: 'b1', state: 'running', turns: 1, createdAt: '2026-11-14T00:00:00.000Z', updatedAt: '2026-11-14T00:00:00.000Z', approvals: [], log: [] }
-  const state = { task, tokens: 200_000, said: goal, runs: [] as { id: string; redo?: MemberRedo }[], released: [] as string[], answer: (id: string) => `result of ${id}`, asks: new Set<string>() }
+  const state = { task, tokens: 200_000, said: goal, runs: [] as { id: string; redo?: MemberRedo }[], released: [] as string[], answer: (id: string) => `result of ${id}`, asks: new Set<string>(), gate: undefined as Promise<void> | undefined, steer: undefined as Promise<void> | undefined, live: new Set<string>() }
   const host = (self: string | null): TeamHost => ({
     self,
     load: async () => structuredClone(state.task),
     change: async work => work(state.task),
-    run: async (ids, _signal, redo) => { for (const id of ids) { state.runs.push({ id, ...(redo ? { redo } : {}) }); const m = state.task.team!.members.find(one => one.id === id)!; m.state = state.asks.delete(id) ? 'waiting' : 'done'; m.result = state.answer(id) } },
+    run: async (ids, _signal, redo) => {
+      for (const id of ids) state.live.add(id)
+      await state.gate
+      for (const id of ids) { state.live.delete(id); state.runs.push({ id, ...(redo ? { redo } : {}) }); const m = state.task.team!.members.find(one => one.id === id)!; if (state.asks.delete(id)) { m.state = 'waiting'; m.result = state.answer(id) } else if (m.lookup) settleMember(m, { answer: state.answer(id) }, 'now'); else { m.state = 'done'; m.result = state.answer(id) } }
+    },
     release: async ids => { for (const id of ids) { state.released.push(id); state.task.team!.members.find(one => one.id === id)!.state = 'released' } },
-    live: () => false,
+    live: id => state.live.has(id),
     tokensLeft: async () => state.tokens,
     personSaid: () => state.said,
+    ...(state.steer ? { steered: () => state.steer! } : {}),
   })
   const call = (self: string | null, name: string, args: Record<string, unknown> = {}) => teamHireTools(host(self)).find(tool => tool.name === name)!.run(args, { task: '' })
-  return { state, call }
+  return { state, call, tools: (self: string | null) => teamHireTools(host(self)) }
 }
 
 describe('team hire tools', () => {
@@ -59,6 +64,80 @@ describe('team hire tools', () => {
     expect(memberPersona(state.task.team!.members[1]!)).not.toContain('You only look things up')
     expect(TEAM_LEAD_RULE).toContain('asks for bots, members or a team, hire them')
     expect(TEAM_LEAD_RULE).toContain('at most 3 short lines')
+  })
+
+  // grokbar: three review_member rounds cost ~10 s of a 71 s answer; a sourced lookup needs none, and then no team check turn either.
+  it('accepts a lookup member that finished on its own with a source; any other member keeps the review', async () => {
+    const m = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', lookup: true as const, state: 'working' as const, sessionKey: 'k', hiredAt: '' }
+    const settled = (outcome: Parameters<typeof settleMember>[1], patch: Record<string, unknown> = {}) => { const one = { ...m, ...patch } as Parameters<typeof settleMember>[0]; settleMember(one, outcome, 'now', true); return one }
+    expect(settled({ answer: '서울 12도 맑음 (https://weather.example/seoul)' }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '서울 12도 맑음' }).review).toBeUndefined()
+    expect(settled({ answer: '서울 12도 (https://weather.example/seoul)', timedOut: true }).review).toBeUndefined()
+    expect(settled({ answer: '서울 12도 (https://weather.example/seoul)', budgetExhausted: true }).review).toBeUndefined()
+    expect(settled({ answer: '어느 도시인가요? https://weather.example', asked: true }).review).toBeUndefined()
+    expect(settled({ answer: '', error: 'it was stopped.' }).review).toBeUndefined()
+    expect(settled({ answer: '정리했어요 https://weather.example\n/tmp/out/weather.xlsx' }).review).toBeUndefined()
+    expect(settled({ answer: '서울 12도 (https://weather.example/seoul)' }, { lookup: undefined }).review).toBeUndefined()
+
+    const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+    state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`
+    const out = JSON.parse(await call(null, 'hire_members', { members: three.map(one => ({ ...one, lookup: true })) }))
+    expect(out.members.map((one: { id: string; state: string; accepted?: boolean }) => [one.id, one.state, one.accepted])).toEqual([['m1', 'released', true], ['m2', 'released', true], ['m3', 'done', undefined]])
+    expect(out.note).toContain('do not call review_member for them')
+    expect(out.note).toContain('For the others: Review each member')
+    expect(state.released).toEqual(['m1', 'm2'])
+    expect(teamReviewIssue(state.task)).toBe('Team members not reviewed yet: 부산 조사 (m3). Call review_member for each before reporting done.')
+    await call(null, 'review_member', { id: 'm3', ok: true, note: 'fine' })
+    expect(teamReviewIssue(state.task)).toBe('')
+
+    const all = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+    all.state.answer = id => `${id} 12도 (https://weather.example/${id})`
+    const sourced = JSON.parse(await all.call(null, 'hire_members', { members: three.map(one => ({ ...one, lookup: true })) }))
+    expect(sourced.note).not.toContain('Review each member')
+    expect(teamReviewIssue(all.state.task)).toBe('')
+  })
+
+  // grokbar T1: "아 대구도 추가해" said while the lead waits on three members belongs in the same answer.
+  it('returns early when the person speaks while the lead waits, and the next call hands back the members left working', async () => {
+    const { state, tools } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+    state.answer = id => `${id} 12도 (https://weather.example/${id})`
+    let finish!: () => void, speak!: () => void
+    state.gate = new Promise(resolve => { finish = resolve })
+    state.steer = new Promise(resolve => { speak = resolve })
+    const lead = tools(null), hire = lead.find(tool => tool.name === 'hire_members')!
+    const first = hire.run({ members: three.map(one => ({ ...one, lookup: true })) }, { task: '' })
+    await new Promise(resolve => setTimeout(resolve, 5))
+    speak()
+    const early = JSON.parse(await first)
+    expect(early.members.map((one: { id: string; state: string }) => [one.id, one.state])).toEqual([['m1', 'working'], ['m2', 'working'], ['m3', 'working']])
+    expect(early.note).toContain('The person wrote to you while the team worked')
+    // The added part is hired; the same call waits for the three still working and returns all four.
+    state.steer = new Promise(() => undefined)
+    const second = hire.run({ members: [{ role: '대구 조사', brief: 'Daegu weather', lookup: true }] }, { task: '' })
+    await new Promise(resolve => setTimeout(resolve, 5))
+    finish()
+    const out = JSON.parse(await second)
+    expect(out.members.map((one: { id: string; state: string }) => [one.id, one.state])).toEqual([['m1', 'released'], ['m2', 'released'], ['m3', 'released'], ['m4', 'released']])
+    expect(teamReviewIssue(state.task)).toBe('')
+    // Nothing left open: an empty call is refused as before.
+    await expect(hire.run({ members: [] }, { task: '' })).rejects.toThrow('members needs 1 to 4 entries')
+  })
+
+  it('waits for the members left working when called with no new members; a member cannot be steered', async () => {
+    const { state, tools } = world('서울 부산 제주 날씨')
+    let finish!: () => void, speak!: () => void
+    state.gate = new Promise(resolve => { finish = resolve })
+    state.steer = new Promise(resolve => { speak = resolve })
+    const hire = tools(null).find(tool => tool.name === 'hire_members')!
+    const first = hire.run({ members: three }, { task: '' })
+    await new Promise(resolve => setTimeout(resolve, 5))
+    speak()
+    expect(JSON.parse(await first).members.every((one: { state: string }) => one.state === 'working')).toBe(true)
+    state.steer = new Promise(() => undefined)
+    const wait = hire.run({ members: [] }, { task: '' })
+    finish()
+    expect(JSON.parse(await wait).members.map((one: { id: string; state: string }) => [one.id, one.state])).toEqual([['m1', 'done'], ['m2', 'done'], ['m3', 'done']])
+    expect(state.task.team!.hires).toBe(3)
   })
 
   it('counts a time-boxed member\'s partial result as delivered, not failed', () => {

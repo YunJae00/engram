@@ -33,8 +33,8 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
   expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS })
-  // perf146 r3: the lead waits for its slowest member, so the member phase is bounded at 55 s for a 60-80 s answer.
-  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([40_000, 55_000, 10])
+  // grokbar: the lead waits for its slowest member, so the member phase is bounded at 24 s inside a 35 s answer.
+  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([18_000, 24_000, 6])
   expect(lookup!.options.native).toBeUndefined()
   expect(lookup!.options.persona).toContain('You only look things up')
   // A member that makes something keeps the full set and the work model.
@@ -43,7 +43,8 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   expect(work!.options.deadlineMs).toBeUndefined()
   expect(work!.options.native).toBeTruthy()
   expect(w.nativeFor).toHaveBeenCalledTimes(1)
-  expect(out.members.map((m: { state: string }) => m.state)).toEqual(['done', 'done'])
+  // The sourced lookup comes back accepted; the member that made something waits for the lead's review.
+  expect(out.members.map((m: { state: string }) => m.state)).toEqual(['released', 'done'])
 })
 
 it('hands the lead what a lookup member had when it stops at its call or time limit', async () => {
@@ -83,7 +84,8 @@ it('counts a lookup member\'s hard limit from when it starts working, not from w
     return { answer: '제주 비 17도 (https://weather.example)', steps: [], fellBack: false }
   }, 40)
   const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
-  expect(out.members[0]).toMatchObject({ state: 'done', result: '제주 비 17도 (https://weather.example)' })
+  // A sourced lookup that finished on its own comes back accepted: no review round.
+  expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '제주 비 17도 (https://weather.example)' })
 })
 
 it('marks a lookup member that timed out with nothing as failed, with no English line for the thread', async () => {
@@ -105,7 +107,7 @@ it('a lookup member told a page needs the person reads on instead of ending the 
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined,
     toolsFor: async () => ['open_page', 'search_web', 'ask_person'].map(name => ({ ...tool(name), run: async () => wall })) }
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '서울 조사', brief: '서울 오늘 날씨', lookup: true }] }, { task: '' }))
-  expect(out.members[0]).toMatchObject({ state: 'done', result: '서울 12도 (https://weather.example)' })
+  expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '서울 12도 (https://weather.example)' })
   expect(said.filter(line => line.includes('ASK: '))).toEqual([`ask_person: ${wall}`])
   expect(said[0]).toContain('needs the person')
 })

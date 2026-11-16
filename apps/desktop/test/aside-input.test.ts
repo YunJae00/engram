@@ -95,3 +95,30 @@ it('relays words said while the answer streams, and refuses them once the answer
     expect((await readBotTranscript(paths, 'done')).filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['While it streams', 'At a work tool start', 'Next turn, still writing'])
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+// grokbar T3: "멈춰" typed while a team works stopped nothing; it waited behind the turn and was answered as its own turn.
+it('stops the conversation at once when the whole message is a stop word, and leaves any other message to the turn', async () => {
+  const { STOP_WORDS } = await import('../src/main/aside-ipc.js')
+  for (const word of ['멈춰', '멈춰!', ' 그만해 ', '중지해줘', '취소', 'stop', 'Stop.', 'cancel']) expect(STOP_WORDS.test(word), word).toBe(true)
+  for (const word of ['멈춰 있는 창 닫아줘', '그만큼만 정리해', '주가 조사 말고 환율로 해', 'stop words 목록 알려줘', '아 대구도 추가해', '취소 수수료 알려줘']) expect(STOP_WORDS.test(word), word).toBe(false)
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-stop-'))
+  const paths = { cache } as VaultPaths
+  const stopped: [string, string][] = [], held: string[] = []
+  let busy = true
+  registerAsideIpc({ paths, busy: () => busy, answered: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async (channel, said) => { stopped.push([channel, said]) } })
+  try {
+    // Also after the answer is out, while the team or a check still runs.
+    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    expect(await handlers.get('chat:say')!({}, 'bot-team', 'stop')).toEqual({ ok: true, action: 'stop', reply: 'Stopped.' })
+    expect(stopped).toEqual([['bot-team', '중지했어요.'], ['bot-team', 'Stopped.']])
+    expect(held).toEqual([])
+    expect((await readBotTranscript(paths, 'team')).map(turn => [turn.role, turn.text, turn.aside])).toEqual([['user', '멈춰', true], ['user', 'stop', true]])
+    expect((await readCheckpoint(paths, 'team')).pending).toEqual([])
+    // Nothing is running: the word is an ordinary message for the next turn.
+    busy = false
+    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: false })
+    expect(stopped).toHaveLength(2)
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})

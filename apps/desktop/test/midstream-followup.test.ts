@@ -128,3 +128,36 @@ it('an answered follow-up is not answered again after relaunch', async () => {
   expect(relaunched.requests).toEqual([])
   expect(checkpointResume(stored, await readBotTranscript(paths, 'five'))).not.toContain('User messages saved')
 })
+
+// grokbar T1/T2: words the running turn took with a tool result are answered inside it; they get no turn of their own.
+it('gives the running turn the words said to it, wakes a lead waiting on its team, and starts no follow-up turn for them', async () => {
+  const follow = await import('../src/main/midstream-followup.js')
+  const ran: string[] = []
+  let busy = true
+  follow.answerFollowUps(async request => { ran.push(request.message) }, () => busy)
+  const waiting = new AbortController(), given = new AbortController()
+  let woke = 0, late = 0
+  void follow.followUpSaid('bot-steer', waiting.signal).then(() => { woke++ })
+  void follow.followUpSaid('bot-steer', given.signal).then(() => { late++ })
+  given.abort()
+  await Promise.resolve()
+  expect(woke).toBe(0)
+  follow.followUpFor('bot-steer')('아 대구도 추가해')
+  await Promise.resolve()
+  expect([woke, late]).toEqual([1, 0])
+  // Words already waiting wake the next waiter at once.
+  await follow.followUpSaid('bot-steer', new AbortController().signal)
+  expect(follow.takeFollowUps('bot-steer')).toEqual(['아 대구도 추가해'])
+  expect(follow.takeFollowUps('bot-steer')).toEqual([])
+  busy = false
+  follow.afterTurn('bot-steer')
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(ran).toEqual([])
+  // Words nobody took are still answered as their own turn.
+  busy = true
+  follow.followUpFor('bot-steer')('그리고 광주도')
+  busy = false
+  follow.afterTurn('bot-steer')
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(ran).toEqual(['그리고 광주도'])
+})

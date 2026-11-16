@@ -27,7 +27,7 @@ const log = (fields: Record<string, unknown>): void => flog('first-line', JSON.s
 // Small talk is answered by the main turn itself: no model is asked. A short
 // question may still be a job ("Can you draft the Q3 report?"); the small
 // model answers NONE for one a single sentence settles.
-function plainReply(message: string): boolean {
+export function plainReply(message: string): boolean {
   const text = message.trim(), size = [...text].length
   // A few signs with no words ("ㅇㅇ", "??", "👍") are a reaction; a few words ("메일 써줘") can be a job.
   if (size < CHAT_MIN && !/[\p{Script=Latin}\p{N}가-힣\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return true
@@ -66,8 +66,9 @@ export function cleanLine(raw: string): string | undefined {
 }
 
 // Races the main turn: the small model is asked at once; its line is shown
-// once the request is in the thread and only while the main turn's prompt is
-// not yet built, so that prompt always knows the exact line (or that none came).
+// once the request is in the thread and only until the main turn says its
+// first word. The main prompt is built long before the line can come (grokbar:
+// 10-57 ms against ~1 s), so it is told a line may be up (firstLineNote).
 export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | undefined>; workdir: EngineCwd; signal: AbortSignal; show(line: string): void }): void {
   endFirstLine(ask.channel)
   const skip = wantsFirstLine(ask)
@@ -123,12 +124,13 @@ export function firstLineSpoke(channel: string): void {
 }
 
 // One sentence for the main turn, read when its prompt is built; never waits.
-// A line not shown by now is never shown, so the sentence is exact.
+// A line still on its way stays open (it was dropped here, and so never shown: grokbar measured first text at 2.2-9 s);
+// the answer is told not to open the way that line does.
 export function firstLineNote(channel: string): string {
   const turn = turns.get(channel)
   if (!turn) return ''
-  if (turn.open) { turn.open = false; turn.line = undefined; log({ channel, outcome: 'dropped', reason: 'prompt' }) }
-  return turn.shown && turn.line ? `The person has already been shown this first line from you: ${JSON.stringify(turn.line)}. Do not repeat or rephrase it and do not write another opening line; go straight to the work.` : ''
+  if (turn.shown && turn.line) return `The person has already been shown this first line from you: ${JSON.stringify(turn.line)}. Do not repeat or rephrase it and do not write another opening line; go straight to the work.`
+  return turn.open ? 'A short first line from you that restates the request may already be on screen when you answer. Do not open with a greeting, a restatement of the request or a line that says what you are about to do; start with the work or the answer itself.' : ''
 }
 
 // Every chat event passes here. A reset finalizes (or drops) the streaming

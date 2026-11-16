@@ -353,6 +353,10 @@ it('keeps the team check for a report without sources, a member not reviewed, or
   expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`)).toBe(true)
   expect(teamCheckDue(open, '서울 12도예요.')).toBe(true)
   expect(teamCheckDue(reviewed, '[표](engram-artifact:weather.md)')).toBe(true)
+  // grokbar: sourced lookup members are accepted when they report (no review_member round), so a cited report needs no check turn.
+  const auto = { team: { members: ['m1', 'm2', 'm3'].map(id => ({ state: 'released', lookup: true, review: { ok: true, note: 'auto: sourced lookup' }, role: id, id })) } } as never
+  expect(teamCheckDue(auto, sourced)).toBe(false)
+  expect(teamCheckDue(auto, '서울 12도예요.')).toBe(true)
 })
 
 it('ends done with the delivered report when the team check runs out of the task budget', async () => {

@@ -130,12 +130,28 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toContain('보고서를 표로 정리해드릴게요.')
   })
 
-  it('never shows a line that arrives after the main prompt was built, so the prompt is exact', async () => {
+  // grokbar: the main prompt is built 10-57 ms after the send and the line takes ~1 s, so a line dropped at prompt build was never shown at all.
+  it('shows a line that arrives after the main prompt was built, and that prompt is told a line may be up', async () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
     firstLineReady('bot-1')
-    expect(firstLineNote('bot-1')).toBe('')
+    const note = firstLineNote('bot-1')
+    expect(note).toContain('may already be on screen')
+    expect(note).toContain('Do not open with a greeting, a restatement')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(show).toHaveBeenCalledExactlyOnceWith('보고서를 표로 정리해드릴게요.')
+    expect(firstLineCarried('bot-1')).toBe('보고서를 표로 정리해드릴게요.')
+  })
+
+  it('drops a line still on its way once the answer says its first word, and adds no note when no line is asked for', async () => {
+    const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
+    firstLineReady('bot-1')
+    firstLineNote('bot-1')
+    firstLineSpoke('bot-1')
     await vi.advanceTimersByTimeAsync(1000)
     expect(show).not.toHaveBeenCalled()
+    expect(firstLineNote('bot-1')).toBe('')
+    endFirstLine('bot-1')
+    begin(voice(later('x', 10)), { message: '안녕' })
     expect(firstLineNote('bot-1')).toBe('')
   })
 

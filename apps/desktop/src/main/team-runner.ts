@@ -32,6 +32,8 @@ export function teamRunner(deps: {
   endLane(lane: string): void
   step(channel: string, line: string): void
   changed(): void
+  // Resolves when the person says something in this lead's thread mid-turn (a lead waiting on its members hears it at once).
+  steered?(channel: string, signal: AbortSignal): Promise<void>
   run?: typeof runComet
   // Test seam: a lookup member's hard time limit.
   lookupHardMs?: number
@@ -200,6 +202,7 @@ export function teamRunner(deps: {
         live: id => [...live.keys()].some(key => key.endsWith(`/${id}`) && live.get(key)!.channel === leadChannel),
         tokensLeft: async () => { const task = await load(); return task ? tokensLeft(task.id) : 0 },
         personSaid: kit.said,
+        ...(self === null && deps.steered ? { steered: (signal: AbortSignal) => deps.steered!(leadChannel, signal) } : {}),
       }
       return teamHireTools(host)
     },

@@ -88,7 +88,7 @@ export async function sendCometMessage(api: ChatApi, store: CometThreadsStore, b
       return
     }
     // A stop is said where the work ends; anything else in the running work.
-    if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? ''); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
+    if (answer.action === 'stop' && store.thread(botId).busy) { store.stop(botId, answer.reply ?? '', answer.reply); await api.chatAbort?.(cometChannel(botId)).catch(() => undefined); return }
     if (answer.reply) store.noteWork(botId, `said: ${answer.reply}`)
     void flushQueuedCometMessages(api, store, botId)
     return
