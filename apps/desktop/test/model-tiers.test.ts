@@ -25,7 +25,7 @@ vi.mock('core', async original => ({ ...await original<typeof import('core')>(),
 
 import { chosenModel, ClaudeEngine, closeClaudeSessions, forSandbox, tierPurpose, trimWarm } from '../src/main/engine-claude.js'
 import { SessionPool, signatureOf } from '../src/main/engine-claude-session.js'
-import { beginFirstLine, cleanLine, endFirstLine, fallbackLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLinePrompt, firstLineNote, firstLineNow, firstLineReady, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, withFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { beginFirstLine, cleanLine, endFirstLine, fallbackLine, FIRST_LINE_BUDGET_MS, FIRST_LINE_FALLBACK_MS, firstLineCarried, firstLinePrompt, firstLineNote, firstLineNow, firstLineReady, firstLineWaiting, laneLine, firstLineSaw, firstLineSpoke, greeting, quickAnswerPrompt, smallTalkAnswer, smallTalkPrompt, wantsFirstLine, warmFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { withModelCallContext } from '../src/main/model-call-metrics.js'
 import { cometNativeTools, commandSandbox, nativeDecision, type NativePolicy } from '../src/main/native-tools.js'
 import { DEV_DEFAULTS } from '../src/main/dev-store.js'
@@ -128,7 +128,9 @@ describe('instant first line', () => {
       expect(show).toHaveBeenCalledExactlyOnceWith('지금 날씨 확인할게요.')
       expect(live.quick).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toContain('지금 날씨 확인할게요.')
-      expect(withFirstLine('bot-1', '서울은 13도예요.')).toBe('지금 날씨 확인할게요.\n\n서울은 13도예요.')
+      // Still on screen, never glued onto the saved answer; a line that names a step is not the host's waiting line.
+      expect(firstLineCarried('bot-1')).toBe('지금 날씨 확인할게요.')
+      expect(firstLineWaiting('bot-1')).toBe(false)
       await vi.advanceTimersByTimeAsync(5000)
       expect(show).toHaveBeenCalledOnce()
     }
@@ -209,7 +211,9 @@ describe('instant first line', () => {
     expect(ipc).toContain('const firstSaid = firstLineNote(channel)')
     expect(ipc).not.toMatch(/await firstLine/)
     expect(ipc).toMatch(/attachmentContext: \[[^\n]*firstSaid\]/)
-    expect(ipc).toContain('onToken: (text) => { firstLineSpoke(channel);')
+    // A line on screen gives way only to words that are shown: a held round does not take it down.
+    expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
+    expect(ipc).toContain('quietRounds(text => { firstLineSpoke(channel); broadcast({ type: \'chat:token\', channel, text }) })')
     expect(ipc.indexOf('beginFirstLine({')).toBeLessThan(ipc.indexOf('handleChatSend(request, controller.signal'))
   })
 
@@ -233,8 +237,10 @@ describe('instant first line', () => {
     const { show } = begin(voice(later('보고서를 표로 정리해드릴게요.', 300)))
     firstLineReady('bot-1')
     const note = firstLineNote('bot-1')
-    expect(note).toContain('may already be on screen')
-    expect(note).toContain('Do not open with a greeting, a restatement')
+    expect(note).toContain('is already on screen')
+    expect(note).toContain('Do not open with a greeting or a restatement')
+    // grokbar D4, H3, H4: "I'll read the file first." came under the host's line.
+    expect(note).toContain('Write nothing before your first tool call and nothing between tool calls')
     await vi.advanceTimersByTimeAsync(300)
     expect(show).toHaveBeenCalledExactlyOnceWith('보고서를 표로 정리해드릴게요.')
     expect(firstLineCarried('bot-1')).toBe('보고서를 표로 정리해드릴게요.')
@@ -253,26 +259,25 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toBe('')
   })
 
-  it('keeps the shown line as the start of the answer until a reset finalizes it', async () => {
+  it('keeps the shown line on screen until a reset freezes it or the answer replaces it, and never adds it to the answer', async () => {
     begin(voice(later('보고서를 정리해드릴게요.', 10)))
     firstLineReady('bot-1')
     await vi.advanceTimersByTimeAsync(10)
     expect(firstLineCarried('bot-1')).toBe('보고서를 정리해드릴게요.')
-    expect(withFirstLine('bot-1', '| 분기 | 매출 |')).toBe('보고서를 정리해드릴게요.\n\n| 분기 | 매출 |')
-    expect(withFirstLine('bot-1', '보고서를 정리해드릴게요.\n\n표')).toBe('보고서를 정리해드릴게요.\n\n표')
     firstLineSaw({ type: 'chat:token', channel: 'bot-2', text: '', reset: true })
     expect(firstLineCarried('bot-1')).toBe('보고서를 정리해드릴게요.')
     firstLineSaw({ type: 'chat:token', channel: 'bot-1', text: '', reset: true })
     expect(firstLineCarried('bot-1')).toBeUndefined()
-    expect(withFirstLine('bot-1', '표')).toBe('표')
   })
 
   it('wires the line into the answer stream after the saved request, with no reset of its own', () => {
     const ipc = source('ipc.ts')
-    expect(ipc).toContain("show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\\n\\n` }) })")
+    expect(ipc).toContain("show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\\n\\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })")
     expect(ipc.indexOf('recordedRequests.add(request)')).toBeLessThan(ipc.indexOf('firstLineReady(channel)'))
     expect(ipc.indexOf('firstLineReady(channel)')).toBeLessThan(ipc.indexOf('const firstSaid = firstLineNote(channel)'))
-    expect(ipc).toContain('extractChatCaptures(finishProgress(channel, withFirstLine(channel, rawText)))')
+    // grokbar cycle 3 cause A: the line is never saved as the answer's first paragraph.
+    expect(ipc).toContain('extractChatCaptures(finishProgress(channel, rawText))')
+    expect(ipc).not.toContain('withFirstLine')
     expect(ipc).toContain('tapBroadcast(firstLineSaw)')
   })
 
@@ -289,7 +294,7 @@ describe('instant first line', () => {
     await vi.advanceTimersByTimeAsync(600)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 처리할게요.')
     expect(firstLineNote('bot-1')).toContain('바로 처리할게요.')
-    expect(withFirstLine('bot-1', '기억했어요.')).toBe('바로 처리할게요.\n\n기억했어요.')
+    expect(firstLineWaiting('bot-1')).toBe(true)
     // Late: the host's line at 1.3 s, and the small model's own line is not shown over it.
     endFirstLine('bot-1')
     show = start(voice(later('회의록을 요약해드릴게요.', 1400)), { message: 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘' })
@@ -364,8 +369,8 @@ describe('instant first line', () => {
     // The line names the first step in the person's own terms: no "네, 알겠습니다" filler, no echo of the request.
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 팀에 넣을게요.')
     expect(firstLineNote('bot-1')).toContain('바로 팀에 넣을게요.')
-    // A closing tool's reply sends no reset, so the line opens the saved answer.
-    expect(withFirstLine('bot-1', '지민을 리서치 담당으로 추가했어요.')).toBe('바로 팀에 넣을게요.\n\n지민을 리서치 담당으로 추가했어요.')
+    // A closing tool's reply sends no reset: the line is still on screen, and the reply replaces it rather than following it.
+    expect(firstLineCarried('bot-1')).toBe('바로 팀에 넣을게요.')
     await vi.advanceTimersByTimeAsync(2000)
     expect(show).toHaveBeenCalledOnce()
     expect(laneLine('지우 무슨 일 하는 사람이야?', true)).toBe('지금 확인해 볼게요.')
@@ -456,7 +461,6 @@ describe('instant first line', () => {
       expect(show).not.toHaveBeenCalled()
       expect(firstLineNote('bot-1')).toBe('')
       expect(firstLineCarried('bot-1')).toBeUndefined()
-      expect(withFirstLine('bot-1', '안녕하세요! 오늘은 무엇을 도와드릴까요?')).toBe('안녕하세요! 오늘은 무엇을 도와드릴까요?')
     }
     expect(FIRST_LINE_BUDGET_MS).toBeLessThan(2000)
     expect(smallTalkPrompt('안녕', true)).toContain('Korean, polite -요 form')

@@ -5,7 +5,7 @@ import { vaultPaths } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: (name: string) => join('C:/home', name) } }))
 import { cometNativeTools, mentionedOutputs, nativeDecision, nativeSummary, rememberWorkFolder, workFolderFor, type NativePolicy } from '../src/main/native-tools.js'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 let root: string, cwd: string, documents: string, cache: string, privateDir: string
 const policy = (ask?: NativePolicy['ask']): NativePolicy => ({ cwd, roots: [cwd, join(cache, 'artifacts'), documents], cacheDir: cache, privateDir, commands: { allowed: false }, ...(ask ? { ask } : {}) })
@@ -31,7 +31,7 @@ describe('native tool policy', () => {
   it('reads what the person keeps in their workspace, but not Engram\'s store or another chat\'s task folder, and writes nothing there', async () => {
     const workspace = join(root, 'ws'), store = join(workspace, '.engram'), mine = join(workspace, 'tasks', 'bot-1')
     await Promise.all([join(workspace, 'fixtures'), store, mine, join(workspace, 'tasks', 'bot-2')].map(path => mkdir(path, { recursive: true })))
-    const inside: NativePolicy = { cwd: mine, roots: [mine], workspace, cacheDir: store, privateDir, commands: { allowed: false } }
+    const inside: NativePolicy = { cwd: mine, roots: [mine], workspace, cacheDir: store, privateDir, commands: { allowed: false }, named: 'fixtures/meeting-notes.md 오타 고쳐줘\nbots.json이랑 theirs.md, kept.md도 봐줘' }
     const decide = async (name: string, input: Record<string, unknown>) => (await nativeDecision(inside, name, input)).behavior
     expect(await decide('Read', { file_path: join(workspace, 'fixtures', 'meeting-notes.md') })).toBe('allow')
     expect(await decide('Glob', { pattern: '*.pdf', path: join(workspace, 'fixtures') })).toBe('allow')
@@ -42,8 +42,8 @@ describe('native tool policy', () => {
     expect(await decide('Grep', { pattern: 'x', path: workspace })).toBe('deny')
     expect(await decide('Grep', { pattern: 'x', path: join(workspace, 'tasks') })).toBe('deny')
     expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'new.md'), content: 'x' })).toBe('deny')
-    // grokbar B5 r3: a file the person already keeps there is changed in place with no card; nothing new is made there, and the store, the other
-    // chats' folders and the private folder stay closed to writes.
+    // grokbar B5 r3: a file the person named and already keeps there is changed in place with no card; nothing new is made there, and the store, the
+    // other chats' folders and the private folder stay closed to writes even for a file they named.
     await Promise.all([join(workspace, 'fixtures', 'meeting-notes.md'), join(store, 'bots.json'), join(workspace, 'tasks', 'bot-2', 'theirs.md'), join(privateDir, 'kept.md')].map(path => writeFile(path, 'x')))
     expect(await decide('Edit', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), old_string: 'x', new_string: 'y' })).toBe('allow')
     expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), content: 'y' })).toBe('allow')
@@ -53,6 +53,33 @@ describe('native tool policy', () => {
     expect(await decide('Edit', { file_path: join(privateDir, 'kept.md'), old_string: 'x', new_string: 'y' })).toBe('deny')
     expect((await nativeDecision({ ...inside, mode: 'plan' }, 'Edit', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), old_string: 'x', new_string: 'y' })).behavior).toBe('deny')
     expect(await decide('Read', { file_path: join(root, 'outside', 'x.txt') })).toBe('deny')
+  })
+
+  // grokbar cycle 3 item 7 (Codex b5 r3, GROKBOT rule 6): "fixtures/meeting-notes.md 고쳐줘" is done with no card, and nothing wider than that.
+  it('changes in place only a workspace file the person named: not one they did not name, not one outside, and never a delete', async () => {
+    const workspace = join(root, 'ws'), mine = join(workspace, 'tasks', 'bot-1'), outside = join(root, 'elsewhere')
+    await Promise.all([join(workspace, 'fixtures'), mine, outside].map(path => mkdir(path, { recursive: true })))
+    await Promise.all([join(workspace, 'fixtures', 'meeting-notes.md'), join(workspace, 'fixtures', '회의록.md'), join(workspace, 'fixtures', 'budget.md'), join(outside, 'meeting-notes.md')].map(path => writeFile(path, 'x')))
+    const asked = (named?: string): NativePolicy => ({ cwd: mine, roots: [mine], workspace, privateDir, commands: { allowed: false }, ...(named ? { named } : {}) })
+    const edit = async (policy: NativePolicy, path: string) => (await nativeDecision(policy, 'Edit', { file_path: path, old_string: 'x', new_string: 'y' })).behavior
+    // 1. Named in this message, or earlier in the thread (the host passes every message of theirs), whatever case or folder they wrote.
+    expect(await edit(asked('fixtures/meeting-notes.md 오타 고쳐줘'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
+    expect(await edit(asked('Meeting-Notes.md 좀 봐줘\n거기 3번 항목 고쳐줘'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
+    expect(await edit(asked('회의록.md 날짜만 바꿔줘'.normalize('NFD')), join(workspace, 'fixtures', '회의록.md'))).toBe('allow')
+    expect((await nativeDecision(asked('fixtures/meeting-notes.md 다시 써줘'), 'Write', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), content: 'y' })).behavior).toBe('allow')
+    // 2. A file they did not name, and a turn with no words of theirs at all.
+    expect(await edit(asked('fixtures/meeting-notes.md 오타 고쳐줘'), join(workspace, 'fixtures', 'budget.md'))).toBe('deny')
+    expect(await edit(asked(), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('deny')
+    // 3. Outside the workspace, named or not.
+    expect(await edit(asked('meeting-notes.md 고쳐줘'), join(outside, 'meeting-notes.md'))).toBe('deny')
+    expect(await edit(asked('meeting-notes.md 고쳐줘'), join(workspace, 'fixtures', '..', '..', 'elsewhere', 'meeting-notes.md'))).toBe('deny')
+    // 4. Deleting is no Write or Edit: a command that removes the named file still has to ask, and with nobody to ask it does not run.
+    expect((await nativeDecision(asked('fixtures/meeting-notes.md 지워줘'), 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
+    const ask = vi.fn(async () => 'cancel' as const)
+    expect((await nativeDecision({ ...asked('fixtures/meeting-notes.md 지워줘'), ask }, 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
+    expect(ask).toHaveBeenCalledOnce()
+    // The host hands over what the person said in this thread.
+    expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain("named: [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\\n')")
   })
 
   it('writes only in the work folder and points deliverables at the file tools', async () => {

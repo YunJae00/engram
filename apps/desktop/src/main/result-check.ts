@@ -67,6 +67,15 @@ const properties = {
 /** The requirement name of the entries the host adds to a report for its own defects. */
 export const HOST_CHECK = 'Unresolved verification'
 
+// grokbar D4: the check tool was offered every turn, the model called it unasked, the check was not accepted and a delivered workbook ended
+// "작업이 멈췄어요". It is offered on an ordinary turn only when the person asked for the result to be checked ("확인까지 해줘", "double-check it").
+// "날씨 확인해줘" asks to look something up, not to check a result.
+const CHECK_ASK = /확인까지|검증|검수|(다시|한\s*번\s*더|제대로|꼼꼼히|맞는지|틀린\s*(데|곳)|오류).{0,12}(확인|검토|체크)|(확인|검토|체크)\s*(도|까지)\s*(해|부탁)|\b(verify|double[- ]check|proofread|check (it|them|the result|your work|that it)|make sure)\b/i
+export const asksForCheck = (message: string): boolean => CHECK_ASK.test(message)
+// The answer under a "Not verified as complete" wrapper (core agent-session.ts): the reason above it is written for the model and goes to the
+// log, never to the thread (grokbar H1: "Unverified collection items (2/6): …" was shown). A wrapper with no answer under it is left as it is.
+export const answerOnly = (text: string): string => /^Not verified as complete\.\n\n[^]*?\n\nUnverified response:\n([^]*)$/.exec(text)?.[1]?.trim() || text
+
 export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; standing?: Standing }): AgentTool {
   return {
     name: TOOL,

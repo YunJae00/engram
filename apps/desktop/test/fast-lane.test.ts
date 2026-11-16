@@ -60,10 +60,11 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : everyTool,')
+  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),")
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
-  expect(ipc).toContain('const lane = !company && fastLane(request.message, plainAsk)')
+  // A correction takes the route of the ask before it (desk-lane.ts routeAsk); any other message is routed by its own words.
+  expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   expect(ipc).toContain('takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); replying ||= said.length > 0; return said }')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
@@ -108,7 +109,8 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(ipc).toContain('result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))')
   expect(ipc.indexOf('team.cited(channel, result.answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
-  expect(ipc).toContain(': { whole: quickQuestion(request.message) }')
+  // Beside it, something the person only told gets its one line from the same voice (desk-lane.ts onlyTells).
+  expect(ipc).toContain('whole: quickQuestion(request.message) }')
 })
 
 // grokbar B6 r2 Q2: "1년은 몇 초야?" had its first text at 2.7-4.3 s (the work model's first word).
@@ -144,5 +146,5 @@ it('shows a lookup turn\'s answer and its reply to mid-turn words, never the not
   expect(shown).toEqual(['대구도 넣을게요.'])
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('if (quiet) quiet.token(text, replying); else broadcast({ type: \'chat:token\', channel, text })')
-  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); replying = false; broadcast(')
+  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); replying = false; if (firstLineWaiting(channel)) return; broadcast(')
 })

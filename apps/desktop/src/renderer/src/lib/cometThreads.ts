@@ -1,5 +1,6 @@
 import type { ChatAttachmentDto, ChatTurnDto, EngramEvent } from '../../../shared/types.js'
 import { askOrder, shownTexts } from './transcriptOrder.js'
+import { readsKorean, threadLang } from './threadLang.js'
 
 export interface CometMessage extends ChatTurnDto {
   streaming?: boolean
@@ -391,7 +392,10 @@ export function createCometThreads(initialSelected: string | null = null) {
             if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: next }, true) }
             return id
           }
-          if (next[at]!.text.trim()) {
+          // grokbar D4, H3: "I'll read the file first." was frozen as a bubble in a Korean thread. Words written mid-work that do not read
+          // Korean there are dropped, not kept (rule 12); the saved turns leave them out the same way (main conversation-progress.ts).
+          if (next[at]!.text.trim() && threadLang(next) === 'ko' && !readsKorean(next[at]!.text)) next[at] = { ...next[at]!, text: '' }
+          else if (next[at]!.text.trim()) {
             next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }
             next.splice(at + 1, 0, { role: 'assistant', text: '', streaming: true })
           }

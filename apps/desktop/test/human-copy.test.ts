@@ -86,10 +86,12 @@ describe('fixed copy a person reads in a conversation', () => {
   })
 
   it('says a model-facing stop note for the person instead of showing it', () => {
-    const note = 'Not verified as complete.\n\nThe last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.\n\nUnverified response:\n엔비디아 주가는 162.85달러예요.'
-    const shown = displayTaskAnswer(note, 'ko')
+    const stop = 'Not verified as complete.\n\nThe last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.'
+    // grokbar cycle 3 cause C: with an answer under it, the answer is shown alone - no note, no "현재까지 확인한 내용".
+    expect(displayTaskAnswer(`${stop}\n\nUnverified response:\n엔비디아 주가는 162.85달러예요.`, 'ko')).toBe('엔비디아 주가는 162.85달러예요.')
+    // With nothing under it, the person reads the short note in their language.
+    const shown = displayTaskAnswer(stop, 'ko')
     expect(shown).toContain('몇 군데는 끝까지 읽지 못했어요.')
-    expect(shown).toContain('162.85달러')
     expect(shown).not.toMatch(/[A-Za-z]{4,}/)
   })
 
@@ -108,7 +110,7 @@ describe('fixed copy a person reads in a conversation', () => {
 describe('how the bot is told to talk', () => {
   it('gives every turn the coworker rule: register, no jargon, memory of the thread, decisions, one next step, team voice, small talk', () => {
     expect(openRuleLines()).toContain(COLLEAGUE_RULE)
-    for (const part of [/coworker on a messenger/, /-요 form/, /never switch to -습니다/, /no tool or function names/, /에이전트/, /without asking for it again/, /민호로 고쳤어요/, /without mentioning memory, records or notes/, /아 그거 말고 지난주 걸로/, /never offer a menu of options/, /ONE short, natural next step/, /지민이가 찾은 날씨를 서연이가 문구로 다듬었어요/, /아 왜 이렇게 느려/, /never a repeated one/, /무엇을 도와드릴까요/])
+    for (const part of [/coworker on a messenger/, /-요 form/, /never switch to -습니다/, /no tool or function names/, /에이전트/, /without asking for it again/, /민호로 고쳤어요/, /without mentioning memory, records or notes/, /아 그거 말고 지난주 걸로/, /never offer a menu of options/, /ONE short offer line of something new/, /never repeat an offer you made in your previous reply/, /지민이가 찾은 날씨를 서연이가 문구로 다듬었어요/, /아 왜 이렇게 느려/, /never a repeated one/, /무엇을 도와드릴까요/])
       expect(COLLEAGUE_RULE).toMatch(part)
     // The examples it gives are themselves clean: the trade words appear only in the sentence that forbids them.
     for (const example of COLLEAGUE_RULE.match(/\("[^"]+"\)/g) ?? []) expect(jargon(example), example).toEqual([])
