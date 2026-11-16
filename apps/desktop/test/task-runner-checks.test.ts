@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { join } from 'node:path'
 import { listTasks, TASK_TOKEN_BUDGET } from 'core'
 import { done, setup, pressed } from './task-runner-fixture.js'
+import { teamCheckDue } from '../src/main/task-runner.js'
 
 it.each(['Saved', '[Report](engram-artifact:report.md)'])('delivers %s without a separate verification turn', async answer => {
   const t = await setup(async () => ({ ...done(answer, 1), trail: [pressed('Save')] }))
@@ -340,6 +341,17 @@ it('skips the team check when every member was reviewed and the report names its
   expect(t.sent).toHaveLength(1)
   expect(await teamEnd(t)).toMatchObject({ state: 'done', result: sourced, turns: 1 })
   expect(t.delivered).toEqual([sourced])
+})
+
+it('keeps the team check for a report without sources, a member not reviewed, or a handed-in file', async () => {
+  const reviewed = { team: { members: [{ state: 'released', review: { ok: true, note: '' }, role: 'a', id: 'm1' }] } } as never
+  const open = { team: { members: [{ state: 'done', role: 'a', id: 'm1' }] } } as never
+  expect(teamCheckDue(reviewed, sourced, 100_000)).toBe(false)
+  expect(teamCheckDue(reviewed, '서울 12도\n\n**출처**: 기상청 날씨누리', 100_000)).toBe(false)
+  expect(teamCheckDue(reviewed, '서울 12도예요.', 100_000)).toBe(true)
+  expect(teamCheckDue(open, sourced, 100_000)).toBe(true)
+  expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`, 100_000)).toBe(true)
+  expect(teamCheckDue(reviewed, '서울 12도예요.', 10_000)).toBe(false)
 })
 
 it('ends done with the delivered report when the team check runs out of the task budget', async () => {

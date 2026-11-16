@@ -68,7 +68,7 @@ const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 // The team check is one more full lead turn. It is skipped when the lead reviewed every member and the words-only report names its sources
 // (perf146: a weather lookup paid 20-60 s for it), and when the budget left could not finish it anyway.
 export const teamCheckDue = (task: DelegatedTask, answer: string, tokensLeft: number): boolean =>
-  tokensLeft >= TEAM_TOKEN_RESERVE && !(!teamReviewIssue(task) && /https?:\/\/[^\s)]+/.test(answer) && !savedFile(answer))
+  tokensLeft >= TEAM_TOKEN_RESERVE && !(!teamReviewIssue(task) && /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer) && !savedFile(answer))
 const WORTH_KEEPING_STEPS = 3
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
