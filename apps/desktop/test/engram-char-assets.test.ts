@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { ORBS } from '../../../packages/core/src/bot-character.js'
 import { decodePng, encodePng, resample } from '../scripts/gen-engram-char-sizes.mjs'
+import { renderMaster } from '../scripts/icon-art.mjs'
 import { rasterize } from '../scripts/svg-raster.mjs'
 
 type Img = { width: number; height: number; data: Buffer }
@@ -15,10 +16,9 @@ const SIZES = [1024, 512, 256, 128, 64, 48, 40, 32, 24, 20, 16]
 const SMALL_MAX = 48
 
 const lum = (img: Img, i: number) => (img.data[i] * 299 + img.data[i + 1] * 587 + img.data[i + 2] * 114) / 1000
-const violet = (img: Img, i: number) => img.data[i + 3] === 255 && img.data[i + 2] >= 60 && img.data[i + 2] - img.data[i + 1] >= 20 && img.data[i] >= img.data[i + 1]
-const master = (file: string) => rasterize(readFileSync(new URL(file, BUILD), 'utf8')) as Img
-const regular = master('icon.svg')
-const small = master('icon-small.svg')
+const bright = (img: Img, i: number) => img.data[i + 3] === 255 && lum(img, i) >= 200
+const regular = renderMaster() as Img
+const small = renderMaster({ small: true }) as Img
 
 function icoEntry(size: number): Img {
   const ico = readFileSync(new URL('icon.ico', BUILD))
@@ -57,7 +57,7 @@ describe('orb and icon masters', () => {
   })
 
   it('rasterizes transparent 1024 RGBA icon masters with a single body and dark edges', () => {
-    for (const [name, img] of [['icon.svg', regular], ['icon-small.svg', small]] as const) {
+    for (const [name, img] of [['regular', regular], ['small', small]] as const) {
       expect([img.width, img.height, img.data.length], name).toEqual([1024, 1024, 1024 * 1024 * 4])
       const a = (x: number, y: number) => img.data[(y * 1024 + x) * 4 + 3]
       for (const [x, y] of [[0, 0], [1023, 0], [0, 1023], [1023, 1023]]) expect(a(x, y), `${name} corner`).toBe(0)
@@ -66,18 +66,18 @@ describe('orb and icon masters', () => {
       let fringe = 0
       for (let i = 0; i < img.data.length; i += 4) {
         const al = img.data[i + 3]
-        if (al > 0 && al < 255 && lum(img, i) > 24) fringe++
+        if (al > 0 && al < 255 && lum(img, i) > 60) fringe++
       }
       expect(fringe, `${name} light fringe on the rounded edge`).toBe(0)
     }
   })
 
-  it('keeps one silhouette for both masters: the small one only thickens the arc and widens the bloom', () => {
+  it('keeps one silhouette for both masters: the small one only thickens the arcs', () => {
     let alphaDiff = 0, lit = 0, litSmall = 0
     for (let i = 0; i < regular.data.length; i += 4) {
       if (regular.data[i + 3] !== small.data[i + 3]) alphaDiff++
-      if (violet(regular, i)) lit++
-      if (violet(small, i)) litSmall++
+      if (bright(regular, i)) lit++
+      if (bright(small, i)) litSmall++
     }
     expect(alphaDiff).toBe(0)
     expect(lit).toBeGreaterThan(1000)
@@ -116,21 +116,23 @@ describe('icon sizes', () => {
     for (const size of [64, 128, 256]) expect(icoEntry(size).data.equals((resample(regular, size) as Img).data), `${size} regular`).toBe(true)
   })
 
-  it('keeps a violet arc with a brighter bloom at its centre on the 24px icon', () => {
+  it('keeps two light arcs, top and bottom, each brightest at its crest near the centre, on the 24px icon', () => {
     const img = icoEntry(24)
     const row = Array.from({ length: 24 }, (_, y) => Math.max(...Array.from({ length: 24 }, (_, x) => lum(img, (y * 24 + x) * 4))))
-    const y = row.indexOf(Math.max(...row))
-    expect(y / 24).toBeGreaterThanOrEqual(0.4)
-    expect(y / 24).toBeLessThanOrEqual(0.75)
-    const across = Array.from({ length: 24 }, (_, x) => Math.max(lum(img, ((y - 1) * 24 + x) * 4), lum(img, (y * 24 + x) * 4), lum(img, ((y + 1) * 24 + x) * 4)))
-    const peak = across.indexOf(Math.max(...across))
-    expect(peak === 11 || peak === 12, 'bloom sits at the centre').toBe(true)
-    expect(across[peak]! - across[4]!, 'bloom is brighter than the arc').toBeGreaterThan(25)
-    expect(across.filter(v => v >= 40).length, 'arc spans the tile').toBeGreaterThanOrEqual(8)
-    let count = 0
-    for (let i = 0; i < img.data.length; i += 4) if (violet(img, i)) count++
-    expect(count).toBeGreaterThanOrEqual(6)
-    expect(Math.max(...row.slice(0, 6)), 'no highlight above').toBeLessThan(40)
+    for (const [name, from] of [['top', 0], ['bottom', 12]] as const) {
+      const half = row.slice(from, from + 12)
+      const y = from + half.indexOf(Math.max(...half))
+      // The crest sits on the circle: the same distance from the centre above and below.
+      expect(Math.abs(y - 11.5), `${name} arc row`).toBeGreaterThanOrEqual(6)
+      expect(Math.abs(y - 11.5), `${name} arc row`).toBeLessThanOrEqual(9)
+      const across = Array.from({ length: 24 }, (_, x) => Math.max(lum(img, ((y - 1) * 24 + x) * 4), lum(img, (y * 24 + x) * 4), lum(img, ((y + 1) * 24 + x) * 4)))
+      const peak = across.indexOf(Math.max(...across))
+      expect(peak, `${name} crest sits near the centre`).toBeGreaterThanOrEqual(10)
+      expect(peak, `${name} crest sits near the centre`).toBeLessThanOrEqual(13)
+      expect(across[peak]!, `${name} white core`).toBeGreaterThanOrEqual(200)
+      expect(across.filter(v => v >= 100).length, `${name} arc has length`).toBeGreaterThanOrEqual(8)
+    }
+    for (const y of [9, 12, 14]) expect(lum(img, (y * 24 + 12) * 4), 'dark plate between the arcs').toBeLessThan(60)
   })
 
   it('fails loudly on a bad SVG or PNG instead of drawing something else', () => {

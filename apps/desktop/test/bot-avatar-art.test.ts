@@ -73,9 +73,9 @@ describe('bot avatar', () => {
       const html = render({ size, state: 'attention', primary: true })
       expect(html).not.toMatch(/<img|<image|url\(|<foreignObject|<text/)
       expect(html.match(/<svg /g)).toHaveLength(3)
-      // Two banded sheets (lobe, sheet, lit edges; hook, fold, streak, lit edges) and the ghost bubble.
-      expect(html.match(/<path /g)).toHaveLength(10)
-      expect(html.match(/<circle /g)).toHaveLength(1)
+      // The bloom, the two fringes and the core; each path holds the top arc and its twin at the bottom. No drawn disc, no glow span.
+      expect(html.match(/<path /g)).toHaveLength(4)
+      expect(html).not.toMatch(/<circle |bot-orb-core|bot-orb-glow/)
     }
     const batch = () => {
       for (let i = 0; i < 50; i++) for (const size of SIZES) render({ id: `bot-perf-${i}`, size })
@@ -92,20 +92,26 @@ describe('bot avatar', () => {
     expect(avatar.startsWith("@import './bot-orb.css';")).toBe(true)
     const css = orb + avatar
     const keyframes = [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\n\}/g)]
-    expect(keyframes).toHaveLength(5)
+    expect(keyframes).toHaveLength(2)
     for (const [, body] of keyframes) {
       const props = [...body!.matchAll(/\{\s*([^}]*)\}/g)].flatMap(m => [...m[1]!.matchAll(/(?:^|;)\s*([\w-]+)\s*:/g)].map(p => p[1]!))
       expect(props.length).toBeGreaterThan(0)
       for (const prop of props) expect(['transform', 'opacity']).toContain(prop)
     }
     const animated = blocks(css).filter(block => /animation(-name)?\s*:(?! none)/.test(block.body))
-    expect(animated.length).toBeGreaterThanOrEqual(5)
+    expect(animated.length).toBeGreaterThanOrEqual(2)
     for (const { selector, body } of animated) {
       expect(selector).toMatch(/^\.bot-orb\[data-motion='(idle|working)'\] /)
-      const seconds = Number(/animation:\s*[\w-]+ (\d+(?:\.\d+)?)s ease-in-out infinite/.exec(body)?.[1])
+      const [, name, time, easing] = /animation:\s*([\w-]+) (\d+(?:\.\d+)?)s (ease-in-out|linear) infinite/.exec(body) ?? []
+      // Only the turn is linear (an eased turn lurches at each end of its loop); everything else eases.
+      expect(easing).toBe(name === 'bot-orb-turn' ? 'linear' : 'ease-in-out')
+      const seconds = Number(time)
       expect(seconds).toBeGreaterThanOrEqual(8)
       expect(seconds).toBeLessThanOrEqual(12)
     }
+    // The turn is a plain rotation by a half turn, which the mark's 180-degree symmetry closes without a seam.
+    expect(orb).toMatch(/@keyframes bot-orb-turn \{\s*from \{ transform: rotate\(0deg\); \}\s*to \{ transform: rotate\(180deg\); \}\s*\}/)
+    expect(animated.some(block => block.body.includes('bot-orb-turn'))).toBe(true)
     expect(css).not.toMatch(/data-motion='static'/)
     expect(css).not.toMatch(/mix-blend-mode|transition\s*:/)
     for (const sheet of [avatar, orb]) {
@@ -113,6 +119,10 @@ describe('bot avatar', () => {
       expect(sheet).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-(avatar|orb)[^{]*\{ animation-play-state: paused; \}/)
     }
     expect(avatar).not.toMatch(/#2F6FEB|#4C86F0|blue/i)
+    // The orb is light, not a ball: no glass body is painted and nothing clips it to a disc.
+    const body = blocks(orb).find(block => block.selector.endsWith('.bot-orb'))!.body
+    expect(body).not.toMatch(/background|overflow|border-radius/)
+    expect(orb).not.toMatch(/overflow:\s*hidden|\.bot-orb::(before|after)/)
     const orbSource = readFileSync(join(SRC, 'components/BotOrb.tsx'), 'utf8')
     expect(orbSource).not.toMatch(/\buse[A-Z]|requestAnimationFrame|setInterval|setTimeout/)
     expect(readFileSync(join(SRC, 'components/BotAvatar.tsx'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout/)

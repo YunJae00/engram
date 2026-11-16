@@ -2,42 +2,30 @@ import type { OrbId } from '../lib/botAvatar.js'
 
 export type OrbMotion = 'static' | 'idle' | 'working'
 
-// Drawn on a 100-unit sphere after the approved orb sheet: a twisted sheet of light that pinches at the core (50, 50).
-// Layer 1, left: a wide band sweeps up-left from the core, folds over near the rim and returns under itself as a broad lobe;
-// the outer and inner loops are two overlapping translucent sheets, the lit top band is where the fold faces the viewer.
-// Layer 2, right: a teardrop band curls down to the lower right and a narrow streak runs out to the right rim.
-// Layer 3: the faint ghost bubble offset to the upper right.
-// Bands are translucent filled sheets that brighten where they overlap, with one lit edge; bot-orb.css fades every layer with a mask, so no gradient ids are needed.
-const OUTER = 'M48 49C42 41 34 33 24 30.5C15 28.5 7 34 4.5 44C2.5 55 7 67 18 74C28 80 44 81 54 77C59 74.5 60 68 57 62C55 58 51 53 48 49Z'
-const INNER = 'M48 49C41 45 32 41 23 41C17 41 14.5 45 14.5 51C15 60 20 68 29 72C38 76 50 75 56 70C58.5 67 58 63 56 60C54 56 51 52 48 49Z'
-const TOP = 'M54 54C45 42 34 33 24 30.5C15 28.5 7 34 4.5 44C7 47.5 10.5 50 14.5 51C14.5 45 17 41 23 41C32 41 42 45.5 54 54Z'
-const HOOK = 'M44 47C50 50 54 54 57 59C60 64 62 69 65 73C68 78 72 80 76 79C80 78 80.5 72 79 66C77 59 70 54 62 52C55 50.5 49 49.5 44 47Z'
-const FOLD = 'M44 47C50 50 54 54 57 59C60 64 62 69 65 73C68 78 71 80 73 79.5C74.5 75 74.5 70 72.5 65C70 59 63 55 54 52C50 50.5 47 49 44 47Z'
-const STREAK = 'M50 49C58 47 70 46.5 82 45.6C87 45.2 91 44 94.5 42.2C90 46 85 48.6 78 50C68 51.4 58 51.2 50 50.5Z'
+// Light only, no sphere, in the app icon's language (scripts/icon-art.mjs): two identical arcs of a circle (radius 40 of a 100-unit box), one at the top and one at the bottom.
+// Every shape is a lune that is thickest at its middle and tapers to nothing at both ends, and each path holds the top lune and the same lune turned 180 degrees,
+// so the mark is unchanged by a half turn. Layer 1 is the bloom, layer 2 the fringes (warm outside the circle, cool inside it), layer 3 the core.
+// bot-orb.css blurs the layers and turns them; each layer's box reaches 25 units past the orb so the blur is not cut.
+const BLOOM = 'M8 31.3A46 46 0 0 1 92 31.3A78 78 0 0 0 8 31.3ZM92 68.7A46 46 0 0 1 8 68.7A78 78 0 0 0 92 68.7Z'
+const WARM = 'M11.7 29.6A43.4 43.4 0 0 1 88.3 29.6A52.5 52.5 0 0 0 11.7 29.6ZM88.3 70.4A43.4 43.4 0 0 1 11.7 70.4A52.5 52.5 0 0 0 88.3 70.4Z'
+const COOL = 'M15 31.4A39.6 39.6 0 0 1 85 31.4A49.1 49.1 0 0 0 15 31.4ZM85 68.6A39.6 39.6 0 0 1 15 68.6A49.1 49.1 0 0 0 85 68.6Z'
+const CORE = 'M15.1 28.2A41.1 41.1 0 0 1 84.9 28.2A48.2 48.2 0 0 0 15.1 28.2ZM84.9 71.8A41.1 41.1 0 0 1 15.1 71.8A48.2 48.2 0 0 0 84.9 71.8Z'
 
 export function BotOrb({ orb, motion }: { orb: OrbId; motion: OrbMotion }) {
   return (
     <span className="bot-orb" data-orb={orb} data-motion={motion}>
       <span className="bot-orb-ribbons">
-        <svg className="bot-orb-ribbon" viewBox="0 0 100 100" focusable="false">
-          <path className="bot-orb-wash" d={OUTER} />
-          <path className="bot-orb-wash" d={INNER} />
-          <path className="bot-orb-sheet" d={TOP} />
-          <path className="bot-orb-edge" d="M4.5 44C7 34 15 28.5 24 30.5C34 33 42 41 48 49M14.5 51C14.5 45 17 41 23 41C32 41 41 45 48 49" />
-          <path className="bot-orb-edge bot-orb-edge-under" d="M14.5 51C15 60 20 68 29 72C38 76 50 75 56 70" />
+        <svg className="bot-orb-ribbon" viewBox="-25 -25 150 150" focusable="false">
+          <path className="bot-orb-bloom" d={BLOOM} />
         </svg>
-        <svg className="bot-orb-ribbon" viewBox="0 0 100 100" focusable="false">
-          <path className="bot-orb-sheet" d={HOOK} />
-          <path className="bot-orb-sheet bot-orb-front" d={FOLD} />
-          <path className="bot-orb-sheet bot-orb-thin" d={STREAK} />
-          <path className="bot-orb-edge" d="M38 44C44 46.5 50 50 54 54.5C57 58 61 67 65 73C68 78 72 80 76 79C80 78 80.5 72 79 66M52 48.6C60 47 72 46.4 82 45.6C87 45.2 91 44 94.5 42.2" />
-          <path className="bot-orb-edge bot-orb-edge-faint" d="M54 52C63 55 70 59 72.5 65C74.5 70 74.5 75 73 79.5M79 66C77 59 70 54 62 52M54 50.8C66 51.2 80 49.6 92 44.6" />
+        <svg className="bot-orb-ribbon" viewBox="-25 -25 150 150" focusable="false">
+          <path className="bot-orb-warm" d={WARM} />
+          <path className="bot-orb-cool" d={COOL} />
         </svg>
-        <svg className="bot-orb-ribbon" viewBox="0 0 100 100" focusable="false">
-          <circle className="bot-orb-bubble" cx="66" cy="46" r="29" />
+        <svg className="bot-orb-ribbon" viewBox="-25 -25 150 150" focusable="false">
+          <path className="bot-orb-light" d={CORE} />
         </svg>
       </span>
-      <span className="bot-orb-core" />
     </span>
   )
 }

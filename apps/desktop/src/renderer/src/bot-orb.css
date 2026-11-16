@@ -1,15 +1,13 @@
-/* The approved orb: a dark see-through glass sphere with a faint thin rim, a ghost bubble, a twisted sheet of light (wide translucent bands, one edge lit)
-   pinched at a small white-hot core. Idle: the twist sways and its two bands fold a little, the core breathes. Working: the twist turns and folds deeper, the core pulses. */
+/* The orb is light, not a ball: two identical arcs of one circle, top and bottom, each a soft core with a warm fringe outside it,
+   a cool one inside and a smoky bloom, tapering evenly to both ends. Nothing is filled and nothing is clipped, so the surface shows through.
+   The mark is unchanged by a half turn, so a slow linear half turn loops with no seam. Working: the same turn, and the bloom swells. */
 .bot-orb {
   --orb: #8B7CF6; position: relative; display: block; width: 100%; height: 100%;
-  border-radius: 50%; overflow: hidden; isolation: isolate; container-type: size;
-  /* Percent-based layers: a faint thin rim that fades inward, a little color near the center, a dark neutral glass body. */
-  background:
-    radial-gradient(circle closest-side, transparent 93%, color-mix(in srgb, var(--orb) 14%, transparent) 96.5%, color-mix(in srgb, color-mix(in srgb, var(--orb) 72%, #FFFFFF) 40%, transparent) 99%, color-mix(in srgb, var(--orb) 24%, transparent) 100%),
-    radial-gradient(circle closest-side, transparent 78%, color-mix(in srgb, var(--orb) 6%, transparent) 89%, color-mix(in srgb, var(--orb) 16%, transparent) 95%, color-mix(in srgb, color-mix(in srgb, var(--orb) 80%, #FFFFFF) 22%, transparent) 99%),
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--orb) 15%, transparent) 0%, color-mix(in srgb, var(--orb) 4%, transparent) 60%, transparent 90%),
-    radial-gradient(circle, rgba(14, 13, 18, 0.94) 0%, rgba(11, 10, 14, 0.94) 100%);
+  isolation: isolate; container-type: size;
+  /* The fringes keep the orb's color: the warm one leans it toward peach, the cool one toward blue. On a light surface the core is the color too. */
+  --warm: color-mix(in srgb, var(--orb) 50%, #FFB98A); --cool: color-mix(in srgb, var(--orb) 55%, #5E9BFF); --core: color-mix(in srgb, var(--orb) 55%, #FFFFFF);
 }
+[data-theme='dark'] .bot-orb { --core: color-mix(in srgb, var(--orb) 6%, #FFFFFF); }
 .bot-orb[data-orb='orb-violet'] { --orb: #8B7CF6; }
 .bot-orb[data-orb='orb-blue'] { --orb: #5B8DEF; }
 .bot-orb[data-orb='orb-teal'] { --orb: #3FB8AF; }
@@ -18,78 +16,42 @@
 .bot-orb[data-orb='orb-rose'] { --orb: #E8798F; }
 .bot-orb[data-orb='orb-lilac'] { --orb: #D3A4F0; }
 .bot-orb[data-orb='orb-silver'] { --orb: #B8BCC8; }
+/* Blue mixed into amber or silver goes grey, so those two take the app icon's own blue; silver has no hue, so it takes the peach as well. */
+.bot-orb[data-orb='orb-amber'], .bot-orb[data-orb='orb-silver'] { --cool: #6FA2F5; }
+.bot-orb[data-orb='orb-silver'] { --warm: #F2A474; }
 
-.bot-orb-ribbons, .bot-orb-ribbon, .bot-orb-core { position: absolute; inset: 0; width: 100%; height: 100%; }
-.bot-orb-ribbons, .bot-orb-ribbon { transform-origin: 50% 50%; }
-/* Soft luminous sheets: a light blur and a tinted glow; each layer fades with a mask (the left sheet toward its lower lobe, the hook away from the core, the bubble toward the lower right). */
-.bot-orb-ribbon {
-  overflow: visible; fill: color-mix(in srgb, var(--orb) 90%, #FFFFFF); stroke: color-mix(in srgb, var(--orb) 45%, #FFFFFF);
-  filter: blur(0.4cqw) drop-shadow(0 0 0.9cqw color-mix(in srgb, var(--orb) 70%, transparent)) drop-shadow(0 0 2.6cqw color-mix(in srgb, var(--orb) 40%, transparent));
-  -webkit-mask-image: linear-gradient(176deg, #000 38%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.46) 80%);
-  mask-image: linear-gradient(176deg, #000 38%, rgba(0, 0, 0, 0.72) 58%, rgba(0, 0, 0, 0.46) 80%);
-}
-.bot-orb-ribbon:nth-child(2) {
-  -webkit-mask-image: radial-gradient(circle closest-side at 50% 50%, #000 40%, rgba(0, 0, 0, 0.72) 82%);
-  mask-image: radial-gradient(circle closest-side at 50% 50%, #000 40%, rgba(0, 0, 0, 0.72) 82%);
-}
-.bot-orb-ribbon:nth-child(3) {
-  -webkit-mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
-  mask-image: linear-gradient(140deg, #000 22%, rgba(0, 0, 0, 0.32) 62%, rgba(0, 0, 0, 0.1) 86%);
-}
-.bot-orb-wash { stroke: none; fill-opacity: 0.14; }
-.bot-orb-sheet { stroke: none; fill-opacity: 0.3; }
-.bot-orb-ribbon:nth-child(2) .bot-orb-sheet { fill-opacity: 0.3; }
-.bot-orb-ribbon:nth-child(2) .bot-orb-front { fill-opacity: 0.38; }
-.bot-orb-ribbon:nth-child(2) .bot-orb-thin { fill-opacity: 0.34; }
-.bot-orb-edge { fill: none; stroke-width: 1.1px; stroke-linecap: round; stroke-opacity: 0.95; }
-.bot-orb-edge-under { stroke: color-mix(in srgb, var(--orb) 75%, #FFFFFF); stroke-opacity: 0.72; stroke-width: 1px; }
-.bot-orb-edge-faint { stroke: color-mix(in srgb, var(--orb) 75%, #FFFFFF); stroke-opacity: 0.55; stroke-width: 0.9px; }
-.bot-orb-bubble { fill-opacity: 0.2; stroke: color-mix(in srgb, var(--orb) 70%, #FFFFFF); stroke-opacity: 0.46; stroke-width: 1.3px; }
-.bot-orb-core {
-  inset: auto; left: 25%; top: 24%; width: 50%; height: 50%; border-radius: 50%; opacity: 0.95;
-  background: radial-gradient(circle, #FFFFFF 0%, color-mix(in srgb, var(--orb) 14%, #FFFFFF) 5%, color-mix(in srgb, var(--orb) 34%, rgba(255, 255, 255, 0.88)) 10%, color-mix(in srgb, var(--orb) 55%, rgba(255, 255, 255, 0.55)) 16%, color-mix(in srgb, var(--orb) 60%, transparent) 24%, color-mix(in srgb, var(--orb) 30%, transparent) 34%, color-mix(in srgb, var(--orb) 10%, transparent) 48%, transparent 66%);
-}
+.bot-orb-ribbons { position: absolute; inset: 0; transform-origin: 50% 50%; }
+/* Each layer is drawn on a box half again as large as the orb, so its blur has room. */
+.bot-orb-ribbon { position: absolute; inset: -25%; width: 150%; height: 150%; overflow: visible; }
+.bot-orb-ribbon:nth-child(1) { filter: blur(5cqw); }
+.bot-orb-ribbon:nth-child(2) { filter: blur(1.6cqw); }
+.bot-orb-ribbon:nth-child(3) { filter: blur(0.8cqw) drop-shadow(0 0 2.6cqw color-mix(in srgb, var(--core) 50%, transparent)); }
+.bot-orb-bloom { fill: var(--orb); fill-opacity: 0.5; }
+.bot-orb-warm { fill: var(--warm); }
+.bot-orb-cool { fill: var(--cool); }
+.bot-orb-light { fill: var(--core); }
+/* Small orbs: a blur would eat the arcs, so the layers sharpen and a stroke in the same color gives them weight. */
 @container (max-width: 40px) {
-  .bot-orb-ribbons { opacity: 0.78; }
-  .bot-orb-ribbon { filter: blur(0.25px); }
-  .bot-orb-edge { stroke-width: 2px; }
-  .bot-orb-edge-under, .bot-orb-edge-faint { stroke-width: 1.4px; }
-  .bot-orb-bubble { stroke-width: 1.8px; }
-  .bot-orb-core { left: 20%; top: 19%; width: 60%; height: 60%; opacity: 1; }
+  .bot-orb-ribbon:nth-child(1) { filter: blur(1.5px); }
+  .bot-orb-ribbon:nth-child(2), .bot-orb-ribbon:nth-child(3) { filter: none; }
+  .bot-orb-warm { stroke: var(--warm); stroke-width: 2px; }
+  .bot-orb-cool { stroke: var(--cool); stroke-width: 2px; }
+  .bot-orb-light { stroke: var(--core); stroke-width: 2.5px; }
 }
-.bot-orb[data-motion='working'] .bot-orb-core { opacity: 1; }
 
-.bot-orb[data-motion='idle'] .bot-orb-ribbons { animation: bot-orb-sway 12s ease-in-out infinite; will-change: transform; }
-.bot-orb[data-motion='idle'] .bot-orb-ribbon:not(:last-child) { --m: 0.5; animation: bot-orb-morph 11s ease-in-out infinite; will-change: transform; }
-.bot-orb[data-motion='idle'] .bot-orb-core { animation: bot-orb-breathe 10s ease-in-out infinite; will-change: transform, opacity; }
-.bot-orb[data-motion='working'] .bot-orb-ribbons { animation: bot-orb-turn 9s ease-in-out infinite; will-change: transform; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon { --m: 1; animation: bot-orb-morph 8s ease-in-out infinite; will-change: transform; }
-.bot-orb[data-motion='idle'] .bot-orb-ribbon:nth-child(2),
-.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(2) { animation-delay: -2.7s; }
-.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(3) { animation-delay: -5.3s; }
-.bot-orb[data-motion='working'] .bot-orb-core { animation: bot-orb-pulse 8s ease-in-out infinite; will-change: transform, opacity; }
+.bot-orb[data-motion='idle'] .bot-orb-ribbons,
+.bot-orb[data-motion='working'] .bot-orb-ribbons { animation: bot-orb-turn 12s linear infinite; will-change: transform; }
+.bot-orb[data-motion='working'] .bot-orb-ribbon:nth-child(1) { animation: bot-orb-pulse 12s ease-in-out infinite; will-change: transform, opacity; }
 
-@keyframes bot-orb-sway {
-  0%, 100% { transform: rotate(-6deg); }
-  50% { transform: rotate(6deg); }
-}
-@keyframes bot-orb-breathe {
-  0%, 100% { transform: scale(0.94); opacity: 0.84; }
-  50% { transform: scale(1.06); opacity: 1; }
-}
+/* Run linear, or the turn would lurch at each end of the loop. */
 @keyframes bot-orb-turn {
-  0% { transform: rotate(0deg); }
-  50% { transform: rotate(180deg); }
-  100% { transform: rotate(360deg); }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
 }
-@keyframes bot-orb-morph {
-  0%, 100% { transform: rotate(0deg) scale(1, 1); }
-  33% { transform: rotate(calc(var(--m, 1) * 9deg)) scale(calc(1 + var(--m, 1) * 0.06), calc(1 - var(--m, 1) * 0.1)); }
-  66% { transform: rotate(calc(var(--m, 1) * -6deg)) scale(calc(1 - var(--m, 1) * 0.04), calc(1 + var(--m, 1) * 0.08)); }
-}
+/* Two swells per turn, so it still closes with the loop. */
 @keyframes bot-orb-pulse {
-  0%, 100% { transform: scale(0.9); opacity: 0.9; }
-  50% { transform: scale(1.18); opacity: 1; }
+  0%, 50%, 100% { transform: scale(1); opacity: 0.6; }
+  25%, 75% { transform: scale(1.06); opacity: 1; }
 }
 
 :root:not([data-window-focused='true']) .bot-orb,

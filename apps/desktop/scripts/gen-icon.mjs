@@ -1,14 +1,16 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { encodePng, resample } from './gen-engram-char-sizes.mjs'
-import { rasterize } from './svg-raster.mjs'
+import { renderMaster } from './icon-art.mjs'
 
+// Usage: node scripts/gen-icon.mjs [--preview <dir>]
+// --preview also writes the full-bleed and Dock-grid 1024 PNGs, 128/64/32/16 previews and (on macOS) Engram.icns into <dir>, for review.
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'build')
-const master = (file) => rasterize(readFileSync(join(dir, file), 'utf8'))
-const regular = master('icon.svg')
-const small = master('icon-small.svg')
-// The thin arc vanishes when scaled down, so small bodies use the master with a thicker arc and wider bloom.
+const regular = renderMaster()
+const small = renderMaster({ small: true })
+// The thin arcs vanish when scaled down, so small bodies use the master that draws them thicker.
 const SMALL_MAX = 48
 
 export const renderIcon = (px) => resample(px <= SMALL_MAX ? small : regular, px).data
@@ -84,6 +86,20 @@ writeFileSync(join(dir, 'icon.ico'), ico)
 for (const { file, png } of catalog) writeFileSync(join(set, file), png)
 const images = catalog.map(({ size, scale, file }) => ({ size: `${size}x${size}`, idiom: 'mac', filename: file, scale: `${scale}x` }))
 writeFileSync(join(set, 'Contents.json'), JSON.stringify({ images, info: { version: 1, author: 'engram' } }, null, 2))
+const at = process.argv.indexOf('--preview')
+if (at > 0) {
+  if (!process.argv[at + 1]) throw new Error('gen-icon: --preview needs a directory')
+  const preview = resolve(process.argv[at + 1])
+  // The catalog files already carry the names iconutil expects of an iconset.
+  const iconset = join(preview, 'Engram.iconset')
+  mkdirSync(iconset, { recursive: true })
+  writeFileSync(join(preview, 'appicon-1024.png'), encodePng(1024, regular.data))
+  writeFileSync(join(preview, 'appicon-mac-1024.png'), mac)
+  for (const { file, png } of catalog) writeFileSync(join(iconset, file), png)
+  for (const px of [128, 64, 32, 16]) writeFileSync(join(preview, `appicon-${px}.png`), encodePng(px, renderIcon(px)))
+  if (process.platform === 'darwin') execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(preview, 'Engram.icns')])
+  console.log(`preview written: ${preview}`)
+}
 console.log(
   `icons written: icon.png (${png512.length} bytes) + icon-mac.png (${mac.length} bytes, ${MAC_BODY}/${MAC_CANVAS} grid) + icon.ico (${ico.length} bytes, ${icoSizes.join('/')}px) + ${set}`,
 )
