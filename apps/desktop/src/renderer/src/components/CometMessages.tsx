@@ -24,7 +24,7 @@ const MessageTurn = memo(function MessageTurn({ message: m, live, divider: label
   </div></div>
   return <div className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
     {divider}
-    <CometWork busy={live} lines={[...work]} />
+    <CometWork busy={live} lines={[...work]} lang={lang} />
     {failed(m)
       ? <div className="bubble-msg assistant error"><ErrorAnswer text={m.text} kind={m.errorKind} provider={m.provider} lang={lang} /></div>
       : m.text && !restated ? <div className={`bubble-msg assistant${m.checking ? ' checking' : ''}`} style={{ '--copy-anchor': `${anchor}-0` } as CSSProperties}>

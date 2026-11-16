@@ -1,5 +1,5 @@
 import type { StringKey, Translate } from '../i18n.js'
-import { GROUP_KO, WORK_KO } from './threadLangKo.js'
+import { GROUP_KO, GROUP_KO_OTHER, WORK_KO, WORK_KO_OTHER } from './threadLangKo.js'
 
 // The loop narrates a step as "tool: argument". The tool's own name is the
 // evidence; this is the sentence a person reads for it. A line that is not
@@ -69,7 +69,8 @@ export function stepLabel(t: Translate, line: string): string {
     return arg ? text : text.replace(/\s*\(\s*\)/g, '')
   }
   if (SPOKEN.test(line)) return match[2]!.trim() || line
-  return line
+  // An unnamed step in a Korean conversation is never shown by its internal name.
+  return (t as { lang?: string }).lang === 'ko' && /^[A-Za-z_]+$/.test(match[1]!) ? WORK_KO_OTHER : line
 }
 
 // Words the comet wrote between actions, kept in the work as what it said.
@@ -99,7 +100,7 @@ export function workBlocks(lines: string[]): ({ type: 'said' | 'you'; text: stri
 
 export function workLabel(line: string, lang: 'en' | 'ko' = 'en'): string {
   const label = englishWorkLabel(line)
-  return lang === 'ko' ? GROUP_KO[label] ?? label : label
+  return lang === 'ko' ? GROUP_KO[label] ?? (/[\uac00-\ud7a3]/.test(label) ? label : GROUP_KO_OTHER) : label
 }
 
 function englishWorkLabel(line: string): string {

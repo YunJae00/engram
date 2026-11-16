@@ -47,7 +47,7 @@ test('split panes show localized approval and choice cards without overflow', as
     }, await listTasks(paths))
     // The card asks once in the conversation's language and shows the whole command below it.
     await expect(approval.locator('.approval-command')).toHaveText(shown)
-    await expect(approval.locator('.decision-card-title')).toHaveText('샌드박스 밖에서 이 명령을 실행할까요?')
+    await expect(approval.locator('.decision-card-title')).toHaveText('제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?')
     await expect(approval.getByText('진행하기 전에')).toHaveCount(1)
     await expect(approval.getByRole('button', { name: '진행해 주세요' })).toBeEnabled()
     expect(await approval.evaluate(node => !!node.closest('.mini-chat-thread'))).toBe(true)
