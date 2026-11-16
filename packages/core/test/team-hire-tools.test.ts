@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { failOnRestart, memberTask, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -43,6 +43,35 @@ describe('team hire tools', () => {
     expect(state.task.team!.members[0]!.brief).toContain('Notes from the lead:\nUse Celsius')
     expect(teamUnverified(state.task)).toBe(true)
     expect(teamReviewIssue(state.task)).toContain('서울 조사 (m1)')
+  })
+
+  // perf146: the Busan member's brief said "가능하면 미세먼지"; it chased air quality for 90 s after the weather and the lead waited.
+  it('cuts optional extras the person did not ask for out of a brief, and keeps a lookup flag', async () => {
+    expect(withoutExtras('부산 오늘 날씨를 조사해 주세요. 가능하면 미세먼지도 알려 주세요.', '부산 날씨 조사해줘')).toBe('부산 오늘 날씨를 조사해 주세요.')
+    expect(withoutExtras('Busan weather today, and if possible the air quality', 'Busan weather')).toBe('Busan weather today')
+    expect(withoutExtras('부산 날씨. 가능하면 미세먼지도.', '부산 날씨랑 가능하면 미세먼지도')).toBe('부산 날씨. 가능하면 미세먼지도.')
+    expect(withoutExtras('가능하면 미세먼지', '부산 날씨')).toBe('가능하면 미세먼지')
+    const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+    await call(null, 'hire_members', { members: [{ role: '부산 조사', brief: '부산 오늘 날씨 조사. 가능하면 미세먼지도 조사.', deliverable: '기온과 하늘 상태 (가능하면 미세먼지)', lookup: true }, { role: '정리', brief: '표로 정리' }] })
+    expect(state.task.team!.members[0]).toMatchObject({ brief: '부산 오늘 날씨 조사.', deliverable: '기온과 하늘 상태', lookup: true })
+    expect(state.task.team!.members[1]!.lookup).toBeUndefined()
+    expect(memberPersona(state.task.team!.members[0]!)).toContain('You only look things up')
+    expect(memberPersona(state.task.team!.members[1]!)).not.toContain('You only look things up')
+    expect(TEAM_LEAD_RULE).toContain('asks for bots, members or a team, hire them')
+    expect(TEAM_LEAD_RULE).toContain('at most 3 short lines')
+  })
+
+  it('counts a time-boxed member\'s partial result as delivered, not failed', () => {
+    const m = { id: 'm1', parentId: null, depth: 1, role: 'r', brief: 'b', state: 'working' as const, sessionKey: 'k', hiredAt: '' }
+    const partial = { ...m }, empty = { ...m }, broken = { ...m }
+    settleMember(partial, { answer: '부산 15도', timedOut: true }, 'now')
+    expect(partial).toMatchObject({ state: 'done', result: '부산 15도\n(stopped at its time or call limit: this is what it had)' })
+    settleMember(empty, { answer: '', timedOut: true }, 'now')
+    expect(empty).toMatchObject({ state: 'done', result: 'It ran out of time before it reported anything.' })
+    settleMember(broken, { answer: '', error: 'it was stopped.' }, 'now')
+    expect(broken.state).toBe('failed')
+    expect(cutShortAnswer('Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 15도')).toBe('부산 15도')
+    expect(cutShortAnswer('부산 15도')).toBe('부산 15도')
   })
 
   it('lets a member hire a helper at depth 2 and 3, and refuses a depth-3 member', async () => {

@@ -1,5 +1,5 @@
 import {
-  failOnRestart, listTasks, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  cutShortAnswer, failOnRestart, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -33,6 +33,8 @@ export function teamRunner(deps: {
   step(channel: string, line: string): void
   changed(): void
   run?: typeof runComet
+  // Test seam: a lookup member's hard time limit.
+  lookupHardMs?: number
 }) {
   const { paths } = deps
   const live = new Map<string, { control: AbortController; channel: string }>()
@@ -90,9 +92,13 @@ export function teamRunner(deps: {
       const { me, helpers } = member
       role = me.role; roles.set(key, role)
       let outcome: MemberOutcome
+      // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
+      let timedOut = false, draft = ''
+      const hardStop = me.lookup ? setTimeout(() => { timedOut = true; control.abort() }, deps.lookupHardMs ?? LOOKUP_HARD_MS) : undefined
       try {
-        const native = await kit.nativeFor(lane)
-        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name)).map(tool => screenGuard(tool, taskId, me))
+        // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
+        const native = me.lookup ? undefined : await kit.nativeFor(lane)
+        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
@@ -101,20 +107,23 @@ export function teamRunner(deps: {
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => deps.step(leadChannel, line),
+            ...(me.lookup ? { modelHint: 'smart' as const, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, onToken: (text: string) => { draft += text }, onReset: () => { draft = '' } } : {}),
           })
-          outcome = { answer: result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}) }
+          const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
+          outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
           // A member reports up only after it reviewed its own helpers; it gets one reminder.
           const open = unreviewed((await find(taskId))?.team, id)
           if (!open.length || result.asked || result.budgetExhausted || control.signal.aborted) break
           if (round) { outcome = { answer: '', error: `it reported without reviewing ${open.map(m => m.role).join(', ')}.` }; break }
           prompt = reviewFirst(open)
         }
-      } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
-      if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
+      } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } } finally { clearTimeout(hardStop) }
+      if (timedOut && !signal?.aborted) outcome = { answer: draft, timedOut: true }
+      else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released' && !(control.signal.aborted && halting.has(leadChannel))) settleMember(m, outcome, now())
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, outcome, now())
         ended = m?.state
       })
     } catch (error) { flog('team', error) } finally {

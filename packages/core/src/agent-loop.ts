@@ -123,6 +123,10 @@ export interface AgentLoopOptions {
   onToken?(text: string): void
   onReset?(dropDraft?: boolean, tool?: string): void
   maxCalls?: number
+  // A tool session's model tier, for work that needs speed more than depth; an engine without that tier ignores it.
+  modelHint?: 'fast' | 'smart'
+  // Wall-clock share of a tool session: past it no new tool call starts and the model is told to report what it has.
+  deadlineMs?: number
 }
 
 export interface AgentLoopStep {

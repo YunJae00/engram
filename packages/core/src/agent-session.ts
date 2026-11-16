@@ -91,6 +91,10 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
+      if (options.deadlineMs !== undefined && Date.now() - started > options.deadlineMs) {
+        exhausted = true
+        return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
+      }
       const budget = allowance()
       const cost = tool.name === 'read_pages' && Array.isArray(args['pages']) ? Math.min(4, Math.max(1, args['pages'].length)) : 1
       const checkpoint = !exhausted && tool.name === 'task_plan' && startedCalls === budget && budget < Math.min(options.maxCalls ?? 120, 120)
@@ -222,6 +226,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       EARLIER_REPLIES_RULE, `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
+    ...(options.modelHint ? { modelHint: options.modelHint } : {}),
     ...(options.native ? { native: {
       ...options.native,
       decide: async (name, input, signal) => {

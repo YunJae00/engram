@@ -102,3 +102,24 @@ it('preserves collected values and unavailable items in a budget stop answer', a
   expect(result.answer).toContain('Movie A: showtime: 14:00')
   expect(result.answer).toContain('Movie B: Not verified — HTTP 403')
 })
+
+
+// perf146: a member's time box. Past it no tool starts, the model is told to report, and the turn says it was cut short.
+it('starts no tool after the session deadline and passes the model tier to the engine', async () => {
+  const said: string[] = []
+  let hint: unknown
+  const engine = { runTools: async (job: ToolSessionJob) => {
+    hint = job.modelHint
+    said.push(await job.tools[0]!.run({}) as string)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    said.push(await job.tools[0]!.run({}) as string)
+    return { answer: 'Seoul 12C' }
+  } } as unknown as Engine
+  let ran = 0
+  const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [{ name: 'read_note', description: '', argsSchema: {}, run: async () => { ran++; return 'note' } }] }, 'Seoul weather', { deadlineMs: 10, modelHint: 'smart' })
+  expect(ran).toBe(1)
+  expect(said[1]).toContain('Time is up for this part')
+  expect(hint).toBe('smart')
+  expect(result.stopped).toBe('calls')
+  expect(result.answer).toContain('Seoul 12C')
+})

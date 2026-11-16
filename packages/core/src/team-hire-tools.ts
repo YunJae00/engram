@@ -11,14 +11,24 @@ export const TEAM_PLAN_OK = ['이대로 진행', 'Go ahead as planned']
 export const TEAM_PLAN_FIX = ['고칠 점 말할게', 'I want changes']
 export const TEAM_PLAN_YES = /^\s*(이대로 진행(해|해줘|해주세요)?|go ahead as planned|go ahead|응|네|예|좋아|좋아요|진행해|진행해줘|yes|ok|okay)\s*[.!~]*\s*$/i
 const CODING = /코딩|코드|개발|프로그램|앱\s*(을|를)?\s*만들|웹\s*사이트|\b(cod(e|ing)|develop\w*|implement\w*|program\w*|app|website|software|repo(sitory)?)\b/i
-export const MEMBER_RULE = 'Do only your part. You may hire helpers only if your part clearly has separable pieces; review what they return before you report. Report the result in at most 2000 characters, then the files you made by path. You do not talk to the person: when only they can answer, call ask_person once and stop.'
+export const MEMBER_RULE = 'Do only your part, and only what it asks: no optional extras. Never wait with a shell sleep or by polling memory; when a tool cannot run now, use another source or report what you have. You may hire helpers only if your part clearly has separable pieces; review what they return before you report. Report the result in at most 2000 characters, then the files you made by path. You do not talk to the person: when only they can answer, call ask_person once and stop.'
 export const MEMBER_BLOCKED = /^(new_bot|schedule|keep_in_mind|keep_how_to|offer_study|study_findings|report_result_check)$/
 export const SCREEN_TOOL = /^(app_|desktop_|open_app|look_desktop|read_desktop|list_windows|excel_|word_|ppt_|outlook_|compose_live_document|edit_live_document|read_live_document)/
 const TOKEN_REFUSAL = 'The task token budget is nearly used. Do not hire. Finish with what exists and close with what is done, what is missing and what comes next.'
 const PLAN_FIRST = `Big team plan: nothing was hired. Show the plan to the person once before hiring: call ask_person with the members and what each delivers, options ["${TEAM_PLAN_OK[0]}", "${TEAM_PLAN_FIX[0]}"] in their language, and end this turn there. Hire after they agree in their next message. Their OK covers the plan only: sends, posts, purchases and deletions are still asked one by one.`
-const REVIEW_NOTE = 'Review each member with review_member before you report. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
+const REVIEW_NOTE = 'Review each member with review_member before you report. A member that stopped at its time limit handed back what it had: accept it and say what is missing, and redo it only when the missing part is what the person asked for. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
-export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; error?: string }
+// A lookup member (research, fact check, reading): a faster model, reading tools only, and a time box. perf146: three opus members with 65 tools
+// each took 118-213 s on a weather lookup, one of them 90 s on an optional extra, and the lead waits for the slowest.
+export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'read_open_page', 'look', 'reveal', 'search_memory', 'read_note', 'search_chats', 'ask_person'])
+// After the soft limit no new tool call starts and the member reports what it has; at the hard limit it is stopped with what it wrote so far.
+export const LOOKUP_SOFT_MS = 60_000
+export const LOOKUP_HARD_MS = 80_000
+export const LOOKUP_MAX_CALLS = 12
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about a minute. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. If your part needs anything other than reading, say so in one line and stop.'
+const TIMED_OUT = 'It ran out of time before it reported anything.'
+
+export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string }
 export interface MemberRedo { note: string; answered?: boolean }
 
 export interface TeamHost {
@@ -70,15 +80,28 @@ export function releaseAll(team: TaskTeam, at: string): string[] {
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string): void {
   const answer = outcome.answer.trim()
   member.finishedAt = at
+  // A time-boxed member that had nothing yet still delivered: the lead is told so and goes on, rather than waiting on a re-hire.
+  if (outcome.timedOut && !outcome.error && !answer) { member.state = 'done'; member.result = TIMED_OUT; return }
   if (outcome.error || !answer) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? 'it ended without an answer.'}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
-  const tail = outcome.budgetExhausted ? '\n(stopped at the token budget)' : ''
+  const tail = outcome.budgetExhausted ? '\n(stopped at the token budget)' : outcome.timedOut ? '\n(stopped at its time or call limit: this is what it had)' : ''
   member.result = cut(answer, MEMBER_RESULT_CHARS - tail.length) + tail
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
 }
 
-export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}`
+export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`
+
+// The session wraps an answer cut short by the call or time limit for a person to read; a lead gets the answer itself.
+export const cutShortAnswer = (answer: string): string => /^Not verified as complete\.\n\nThe tool-call or time limit was reached\.\n\nUnverified response:\n/.test(answer) ? answer.slice(answer.indexOf('Unverified response:\n') + 21).trim() : answer
+
+const OPTIONAL = /가능하면|가능하다면|가능한 경우|여유가? ?되면|시간이? ?되면|if possible|if time permits|if you have time|optionally|nice to have|as a bonus/i
+// An optional extra the person did not ask for is cut from a brief: one member chasing it held the whole team for 90 s (perf146).
+export function withoutExtras(brief: string, personSaid: string): string {
+  if (!OPTIONAL.test(brief) || OPTIONAL.test(personSaid)) return brief
+  const kept = brief.split(/(?<=[.!?。\n,;])|(?=\()|(?<=\))/).filter(part => !OPTIONAL.test(part)).join('').replace(/[ \t]+\n/g, '\n').replace(/[,;]\s*$/, '').trim()
+  return kept || brief
+}
 
 // Complete on its own, so a session trimmed while idle loses nothing.
 export function memberTask(member: TeamMember, goal: string, redo?: MemberRedo, helpers: readonly TeamMember[] = []): string {
@@ -119,17 +142,18 @@ const text = (value: unknown, max: number): string => typeof value === 'string' 
 export function teamHireTools(host: TeamHost): AgentTool[] {
   const hire: AgentTool = {
     name: 'hire_members',
-    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own) and deliverable (what it hands back). notes carries what you already know that they need. Never hire for a one-step ask. Returns each member's result, files and state; review each with review_member.`,
+    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools and about a minute; leave it out for a part that makes or changes something. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review each with review_member.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
-        members: { type: 'array', minItems: 1, maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' } } } },
+        members: { type: 'array', minItems: 1, maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' } } } },
         notes: { type: 'string' }, big: { type: 'boolean' },
       },
     },
     async run(args, context) {
       const asked = (Array.isArray(args['members']) ? args['members'] : []) as Record<string, unknown>[]
-      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: text(m?.['brief'], 1500), deliverable: text(m?.['deliverable'], 300) }))
+      const said = host.personSaid()
+      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: withoutExtras(text(m?.['brief'], 1500), said), deliverable: withoutExtras(text(m?.['deliverable'], 300), said), lookup: m?.['lookup'] === true }))
       if (!wanted.length || wanted.length > HIRE_MAX_PER_CALL) throw new Error(`members needs 1 to ${HIRE_MAX_PER_CALL} entries, each with role, brief and deliverable.`)
       if (wanted.some(m => !m.role || m.role.length > 40 || !m.brief || m.brief.length > 1500 || m.deliverable.length > 300)) throw new Error('Each member needs role (1 to 40 characters), brief (1 to 1500) and deliverable (at most 300).')
       const notes = text(args['notes'], 1500).slice(0, 1500)
@@ -154,7 +178,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
         const at = new Date().toISOString()
         const ids = wanted.map(m => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, ...(m.deliverable ? { deliverable: m.deliverable } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, ...(m.deliverable ? { deliverable: m.deliverable } : {}), ...(m.lookup ? { lookup: true } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += n

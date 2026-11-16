@@ -25,7 +25,7 @@ export interface TaskApproval {
 
 export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
 // One hidden worker hired for a part of the task; parentId null means the lead hired it.
-export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; deliverable?: string; state: MemberState; result?: string; files?: string[]; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
+export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; deliverable?: string; /** Only looks things up and reports: runs fast, read-only and time-boxed. */ lookup?: boolean; state: MemberState; result?: string; files?: string[]; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
 // planTurn is the task turn in which the big plan was last sent back to be shown; only a later turn can approve it.
 export interface TaskTeam { members: TeamMember[]; hires: number; maxHires: number; maxDepth: number; big: boolean; approvedAt?: string; planTurn?: number }
 export const TEAM_MAX_HIRES = 8

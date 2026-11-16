@@ -167,6 +167,8 @@ export interface ToolSessionJob {
   native?: NativeTools
   onContextReset?(): void
   model?: string
+  // The tier to run this session on (see EngineJob.modelHint); unset is the work model.
+  modelHint?: 'fast' | 'smart'
   effort?: ReasoningEffort
   workdir: EngineCwd
   // Standing instructions, the same for every turn of a session.
