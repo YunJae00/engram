@@ -82,7 +82,7 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
     const avatar = rowAvatar(page, id)
     await expect(avatar).toHaveAttribute('data-character', /^orb-/)
     await expect(avatar.locator('.bot-orb')).toHaveCount(1)
-    await expect(avatar.locator('svg.bot-orb-ribbon')).toHaveCount(3)
+    await expect(avatar.locator('svg.bot-orb-ribbon')).toHaveCount(5)
     await expect(avatar.locator('img')).toHaveCount(0)
   }
   await expect(rowAvatar(page, old.id)).toHaveAttribute('data-character', 'orb-violet')
@@ -135,9 +135,10 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   await expect(page.locator(`${working} .bot-orb`)).toHaveAttribute('data-motion', 'working')
   await expect(page.locator(`${idle} .bot-orb`)).toHaveAttribute('data-motion', 'idle')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
-  await expect.poll(async () => (await animationsIn(page, working)).length).toBeGreaterThanOrEqual(4)
+  // Working: the turn, the bead that slides along the arcs, and the bloom's swell. Idle: the turn and the bead.
+  await expect.poll(async () => (await animationsIn(page, working)).length).toBe(3)
   const [busy, calm] = [await animationsIn(page, working), await animationsIn(page, idle)]
-  expect(calm.length).toBeGreaterThanOrEqual(1)
+  expect(calm.length).toBe(2)
   expect(busy.length).toBeGreaterThan(calm.length)
   for (const animation of [...busy, ...calm]) {
     expect(animation.css).toBe(true)

@@ -124,9 +124,9 @@ test('conversation rows show persisted previews, timestamps and avatars after re
   await expect(first.locator('.sidebar-conversation-preview')).toHaveText('Tomorrow’s checkpoint is ready.')
   await expect(first.locator('.sidebar-conversation-content')).toHaveAttribute('title', new Date(STAMP).toLocaleString('en-US'))
   await expect(first.locator('time')).toHaveCount(0)
-  // The orb avatar draws its twisting ribbons as three svg layers.
+  // The orb avatar draws its two light arcs as five svg layers: bloom, fringes, band, filament, bead.
   await expect(first.locator('.bot-avatar .bot-orb')).toBeVisible()
-  await expect(first.locator('.bot-avatar svg.bot-orb-ribbon')).toHaveCount(3)
+  await expect(first.locator('.bot-avatar svg.bot-orb-ribbon')).toHaveCount(5)
   await expect(first.locator('.bot-avatar svg.bot-orb-ribbon').first()).toBeVisible()
   await expect(page.getByTestId(`bot-${bots[1]!.id}`).locator('.sidebar-conversation-preview')).toHaveText('You: Please verify the handoff checklist.')
   const saved = await page.evaluate(id => window.engram.botsList().then(list => list.find(bot => bot.id === id)), bots[0]!.id)

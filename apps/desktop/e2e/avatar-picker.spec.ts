@@ -77,7 +77,19 @@ test.describe('avatar picker', () => {
     await page.getByTestId('bot-info-avatar').click()
     const picker = page.locator('#bot-info-avatar-picker [data-testid="avatar-picker"]')
     await expect(picker).toBeVisible()
-    expect(await picker.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+    // Each orb's glow is drawn on a transparent box half again as large as the orb, so the last column's box passes the picker's own edge by design.
+    // What must hold is what a person sees: every cell sits inside the picker, the picker sits inside the pane, and the pane cannot scroll sideways.
+    expect(await picker.evaluate(node => {
+      const pane = node.closest('[data-testid="bot-info-pane"]')!
+      const box = node.getBoundingClientRect(), outer = pane.getBoundingClientRect()
+      const cells = [...node.querySelectorAll('.avatar-picker-cell')].map(cell => cell.getBoundingClientRect())
+      return {
+        cells: cells.length === 8 && cells.every(cell => cell.left >= box.left - 0.5 && cell.right <= box.right + 0.5),
+        picker: box.left >= outer.left && box.right <= outer.right,
+        pane: pane.scrollWidth <= pane.clientWidth,
+        glow: node.scrollWidth - node.clientWidth,
+      }
+    })).toEqual({ cells: true, picker: true, pane: true, glow: expect.any(Number) })
     await picker.getByRole('radio', { name: 'orb-lilac', exact: true }).click()
     await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-lilac' })
     await picker.getByRole('radio', { name: 'orb-teal', exact: true }).click()

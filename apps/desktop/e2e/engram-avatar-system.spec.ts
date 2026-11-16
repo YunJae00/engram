@@ -54,7 +54,7 @@ async function sharp(avatar: Locator, px: number) {
   })
   expect(m.box).toEqual([px, px])
   expect(m.orb).toEqual([px, px])
-  expect(m.ribbons).toBe(3)
+  expect(m.ribbons).toBe(5)
   expect(m.images).toBe(0)
   expect(m.clipped).toBe(false)
   return m.motion
