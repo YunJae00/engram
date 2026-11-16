@@ -342,6 +342,30 @@ export async function markBotTaskRun(paths: VaultPaths, botId: string, taskId: s
 }
 
 // One appended line per turn; compacted only once well past the cap.
+// Let go, not deleted: the record moves out of the list every surface reads, so the comet is gone from the sidebar and from
+// schedules, while its transcript and memory (keyed by id) stay for restoreBot.
+export async function loadArchivedBots(paths: VaultPaths): Promise<Bot[]> {
+  const kept = parseBots(await readBotsBytes(paths).catch(() => undefined))?.raw['archived']
+  return Array.isArray(kept) ? kept.filter(isBot) : []
+}
+
+function moveBot(paths: VaultPaths, id: string, from: 'bots' | 'archived'): Promise<Bot> {
+  return serialized(paths, async () => {
+    const stored = await readForWrite(paths)
+    const archived: unknown[] = Array.isArray(stored.raw['archived']) ? stored.raw['archived'] : []
+    const source = from === 'bots' ? stored.bots : archived
+    const bot = source.filter(isBot).find((b) => b.id === id)
+    if (!bot) throw new Error('no such comet')
+    if (bot.primary === true) throw new Error('the primary comet cannot be let go')
+    const rest = source.filter((entry) => entry !== bot)
+    await writeBotsFile(paths, { ...stored.raw, bots: from === 'bots' ? rest : [...stored.bots, bot], archived: from === 'bots' ? [...archived, bot] : rest, dismissed: stored.dismissed })
+    return bot
+  })
+}
+
+export const archiveBot = (paths: VaultPaths, id: string): Promise<Bot> => moveBot(paths, id, 'bots')
+export const restoreBot = (paths: VaultPaths, id: string): Promise<Bot> => moveBot(paths, id, 'archived')
+
 const TRANSCRIPT_COMPACT_BYTES = 2_000_000
 const compactAt = new Map<string, number>()
 

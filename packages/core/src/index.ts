@@ -80,6 +80,7 @@ export * from './import.js'
 export { BundledBinaryProvider } from './bundled-binary.js'
 export * from './audio.js'
 export * from './capture/doc-extract.js'
+export { archiveBot, loadArchivedBots, restoreBot } from './bots.js'
 export { addBotTask, appendBotTurn, archiveBotTranscript, createBot, deleteBot, dismissBotSuggestion, loadBots, loadDismissedSuggestions, markBotTaskRun, readBotTranscript, recommendBots, removeBotTask, setBotTaskPaused, renameBot, titleFromMessage, UNTITLED_BOT_NAME, declineStanding, type Bot, type BotSuggestion, type BotTask, type TaskWatch, type BotTurn, type TurnEvidence } from './bots.js'
 export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './errand-journal.js'
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, renameRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
@@ -97,6 +98,7 @@ export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_
 export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'
 export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools.js'
 export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
+export * from './company-tools.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,
