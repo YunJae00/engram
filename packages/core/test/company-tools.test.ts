@@ -617,6 +617,27 @@ test('a hand-off result is written in the hand-off shape, and the background rep
   expect(await employeesAnswer({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'waiting' }] } }, async () => written)).toBeUndefined()
 })
 
+// grokbar c3b r2: 지민 read a page but his memo named no address; the hand-off dropped it and the answer went out uncited.
+test('a hand-off carries the pages the first teammate read when the memo names none', async () => {
+  const kim = part('m1', '지민', '서울 날씨 조사', { background: true, then: { botId: 'bot-m2', who: '서연', brief: '나들이 문구 쓰기' }, result: '토요일 서울은 맑고 20도예요.', sources: ['https://weather.example/seoul'] })
+  const uncited = '서연이 지민 조사로 나들이 문구를 썼어요.\n\n맑은 토요일, 가볍게 나들이 가요.\n\n지민이 찾은 내용: 토요일 서울은 맑고 20도예요.'
+  const cited = `${uncited} [날씨 예보](https://weather.example/seoul)`
+  const own = '서연이 지민한테 받은 내용으로 했어요.\n\n맑은 토요일, 가볍게 나들이 가요.\n\n지민이 찾은 내용: 토요일 서울은 맑고 20도예요. · [weather.example](https://weather.example/seoul)'
+  // The brief carries them (the one handing over may be in another task: assign's "last finished job"); a memo with its own address is left as it is.
+  const carried = handoffBrief('나들이 문구 쓰기', '지민', kim.result!, kim.brief, kim.sources)
+  expect(carried.endsWith('토요일 서울은 맑고 20도예요.\nhttps://weather.example/seoul')).toBe(true)
+  expect(handoffBrief('문구', '지민', '맑아요 https://a.example/x', '', ['https://b.example/y'])).not.toContain('b.example')
+  // And a brief written without them still finds the pages on the one who handed over.
+  for (const brief of [carried, handoffBrief('나들이 문구 쓰기', '지민', kim.result!, kim.brief)]) {
+    const members = [kim, part('m2', '서연', brief, { background: true, lookup: undefined, writer: true, result: '맑은 토요일, 가볍게 나들이 가요.' })]
+    expect(mergedReport(members)).toBe(own)
+    expect(reportPrompt('날씨 보고 문구 써줘', members)).toContain('"pages":["https://weather.example/seoul"]')
+    expect(checkedReport(uncited, members)).toBeUndefined()
+    expect(checkedReport(cited, members)).toBe(cited)
+    expect(await writtenReport({ ask: '날씨 보고 문구 써줘', members, write: async () => uncited })).toBe(own)
+  }
+})
+
 test('a name as people write it names the teammate: 지민이, 지민이는, 지민이랑, 지민한테, 지민 씨', async () => {
   const staff = ['지민', '서연', '도윤', '지민아']
   for (const word of ['지민', '지민이', '지민이는', '지민이랑', '지민한테', '지민이한테', '지민 씨', '지민씨는', '지민은', '지민님']) expect(teamName(word, staff), word).toBe('지민')

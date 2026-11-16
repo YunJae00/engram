@@ -416,9 +416,11 @@ const READS_WEB = /조사|검색|찾아|알아\s*[봐보]|최신|뉴스|확인/u
 export const writesFromHandover = (brief: string): boolean => !READS_WEB.test(brief)
 
 /** What the next agent is told when a result is handed to them. job: the brief the earlier agent worked from, so the report can say what their facts were for. */
-export const handoffBrief = (brief: string, from: string, result: string, job = ''): string => {
+export const handoffBrief = (brief: string, from: string, result: string, job = '', sources: readonly string[] = []): string => {
   const what = clip((handedFrom(job)?.brief ?? job).split('\n')[0]!.replace(/[()]/g, ' '), 80)
-  return `${brief}\n\nHanded over by ${from}${what ? ` (their job: ${what})` : ''}. Work from this result, and keep the facts and source addresses you use from it in your own result:\n${result}`
+  // grokbar c3b r2: a memo that named no address was handed on without the pages its agent read, so nothing downstream could cite them.
+  const read = result.match(ADDRESS) ? [] : pagesOf('', sources).slice(0, 3)
+  return `${brief}\n\nHanded over by ${from}${what ? ` (their job: ${what})` : ''}. Work from this result, and keep the facts and source addresses you use from it in your own result:\n${[result, ...read].join('\n')}`
 }
 const HANDED = /\n\nHanded over by (.+?)(?: \(their job: ([^)\n]*)\))?\. Work from this result[^\n]*:\n/
 /** A handoff brief taken apart again: what was asked, who handed over, what their job was and what they found. */
@@ -508,6 +510,11 @@ const NOTHING = '이번엔 못 찾았어요.'
 const CUT_NOTE = '이번엔 여기까지 찾았어요.'
 // A result that was handed on is shown under the agent who finished it, not as a part of its own.
 const shownParts = (members: readonly TeamMember[]): TeamMember[] => members.filter(m => !(m.then && members.some(next => next !== m && handedFrom(next.brief)?.from === m.role && !!delivered(next))))
+// The pages a handed-over result stands on: the ones in the brief, or else the ones the handing agent is recorded to have read.
+const handedPages = (m: TeamMember, members: readonly TeamMember[]): string[] => {
+  const from = handedFrom(m.brief)
+  return from ? pagesOf(from.result, members.find(giver => giver !== m && giver.role === from.from && !!giver.then)?.sources) : []
+}
 const partName = (m: TeamMember, topics: ReadonlyMap<string, string>): string => (topics.get(m.id) || m.topic || jobOf(m)).replace(/[|()]/g, ' ').trim()
 
 /** The agents' results as the one answer the person reads, put together by the host with no model: the fallback of writtenReport. topics: member id to the short name of its part ("노션"). hired: what the call said before the results ("도윤은 새로 넣었어요."). */
@@ -530,7 +537,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const said = delivered(m), from = handedFrom(m.brief), body = said ? read(said, true).join('\n') : ''
     const head = !body ? `${partName(m, topics)}(${m.role}): ${NOTHING}` : from ? `${josa(m.role, '이', '가')} ${from.from}한테 받은 내용으로 했어요.` : `${josa(m.role, '이', '가')} 정리해 왔어요.`
     const given = from ? read(from.result).slice(0, 3).join(' · ') : ''
-    const facts = from && given ? `${josa(from.from, '이', '가')} 찾은 내용: ${[clip(given, 240), linksOf(pagesOf(from.result), 2)].filter(Boolean).join(' · ')}` : ''
+    const facts = from && given ? `${josa(from.from, '이', '가')} 찾은 내용: ${[clip(given, 240), linksOf(handedPages(m, members), 2)].filter(Boolean).join(' · ')}` : ''
     return [i ? head : lead(head), body, body ? linksOf(pagesOf(said, m.sources), 2) : '', facts].filter(Boolean)
   })
   return [...blocks, ...closing()].join('\n\n')
@@ -562,7 +569,7 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
   const parts = shownParts(members), handoff = parts.find(m => handedFrom(m.brief)), table = parts.length > 1 && !handoff
   const data = parts.map(m => {
     const said = delivered(m), from = handedFrom(m.brief)
-    return { name: m.role, part: partName(m, topics), text: clip(said.replace(CUT_SHORT, ''), WRITER_TEXT_CHARS), pages: pagesOf(said, m.sources).slice(0, 3), ...(CUT_SHORT.test(said) ? { cut: true } : {}), ...(from ? { from: { name: from.from, job: from.job, text: clip(from.result.replace(CUT_SHORT, ''), WRITER_TEXT_CHARS), pages: pagesOf(from.result).slice(0, 3) } } : {}) }
+    return { name: m.role, part: partName(m, topics), text: clip(said.replace(CUT_SHORT, ''), WRITER_TEXT_CHARS), pages: pagesOf(said, m.sources).slice(0, 3), ...(CUT_SHORT.test(said) ? { cut: true } : {}), ...(from ? { from: { name: from.from, job: from.job, text: clip(from.result.replace(CUT_SHORT, ''), WRITER_TEXT_CHARS), pages: handedPages(m, members).slice(0, 3) } } : {}) }
   })
   return [
     'You write the one answer a person reads in their team chat, from what their teammates brought back. Write in Korean, polite -요 form (해요체, never -습니다), short and warm, the way a capable coworker writes on a messenger.',
@@ -582,7 +589,7 @@ const NOT_SAID = /이번 턴|턴\s*안|실패|\(여기까지|시간\s*(?:한도|
 /** The writer's text when it may be shown: only addresses it was given, everyone named, a table when there are several parts, nothing the person should not read. Undefined sends the host's own table. */
 export function checkedReport(raw: string | undefined, members: readonly TeamMember[]): string | undefined {
   const parts = shownParts(members)
-  const allowed = new Set(parts.flatMap(m => { const said = delivered(m), from = handedFrom(m.brief); return [...pagesOf(said, m.sources), ...(from ? pagesOf(from.result) : [])] }))
+  const allowed = new Set(parts.flatMap(m => { const said = delivered(m); return [...pagesOf(said, m.sources), ...handedPages(m, members)] }))
   // An address the writer was not given is dropped: a link keeps its words, a bare address goes.
   const text = (raw ?? '').replace(/^```\w*\n?|\n?```$/g, '').trim()
     .replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (link, words: string, url: string) => allowed.has(trimmed(url)) ? link : words)
@@ -592,7 +599,7 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   const table = parts.length > 1 && !parts.some(m => handedFrom(m.brief))
   // Every part that found something links a page it stands on, in its own row when there is a table (GROKBOT rule 7; c3b r1: a table with no link passed).
   if (parts.some(m => {
-    const said = delivered(m), from = handedFrom(m.brief), pages = findings(said).lines.length ? [...pagesOf(said, m.sources), ...(from ? pagesOf(from.result) : [])] : []
+    const said = delivered(m), pages = findings(said).lines.length ? [...pagesOf(said, m.sources), ...handedPages(m, members)] : []
     const where = table ? text.split('\n').find(row => row.startsWith('|') && row.includes(`(${m.role})`)) ?? '' : text
     return pages.length > 0 && !pages.some(url => where.includes(`](${url})`))
   })) return undefined
@@ -680,7 +687,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         const last = lastJob(bot.id)
         if (!last) return [...lines, `${josa(bot.name, '이', '가')} 끝낸 일이 아직 없어서 넘길 게 없어요.`].join(' ')
         // grokbar C6: 서연 ran a 15 s web lookup on a job of writing three lines from what 지민 had found.
-        wanted.push({ bot: staff.get(next!.who)!, brief: handoffBrief(next!.brief, bot.name, last.result!, last.brief), topic: part.topic, make: part.make, from: bot.name, ...(!part.make && writesFromHandover(next!.brief) ? { writer: true as const } : {}) })
+        wanted.push({ bot: staff.get(next!.who)!, brief: handoffBrief(next!.brief, bot.name, last.result!, last.brief, last.sources), topic: part.topic, make: part.make, from: bot.name, ...(!part.make && writesFromHandover(next!.brief) ? { writer: true as const } : {}) })
       }
       if (!wanted.length) return lines.join(' ')
       const out = await host.change((task): { refuse: string } | { ids: string[] } => {
