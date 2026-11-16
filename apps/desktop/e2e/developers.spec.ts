@@ -46,7 +46,9 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await page.getByRole('button', { name: 'Add folder', exact: true }).click()
   await expect(page.locator('.dev-folder-button')).toHaveCount(1)
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
-  await expect(page.locator('.sidebar-status-block')).toBeVisible()
+  // Quiet at rest: the footer holds only the settings button until work runs.
+  await expect(page.locator('.sidebar-status-block')).toHaveCount(0)
+  await expect(page.locator('.sidebar-footer [data-testid="activity-settings"]')).toBeVisible()
   await expect(page.locator('.recent-web')).toHaveCount(0)
   await expect(page.locator('.dev-composer select')).toHaveCount(0)
   await expect(page.locator('.dev-empty')).toHaveCount(0)
