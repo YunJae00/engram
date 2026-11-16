@@ -354,7 +354,16 @@ async function measureGallery(page: Page): Promise<Check[]> {
       size: Number(cell.dataset['size']), state: cell.dataset['state'], primary: cell.dataset['primary'] === 'true',
       avatar: box(cell.querySelector(':scope > .bot-avatar')), alert: box(cell.querySelector('.bot-avatar-alert')), badge: box(cell.querySelector('.bot-avatar-primary')),
       ribbon: (core => core ? getComputedStyle(core).fill : null)(cell.querySelector('.bot-orb-core')),
-      sphere: (orb => orb ? getComputedStyle(orb).backgroundColor : null)(cell.querySelector('.bot-orb')),
+      // The glass is painted with gradients, so the ball has no background-color. The wave is measured against --mist, the opaque base of the glass and its
+      // lightest part (the gradients above it only darken it, except the faint floor glow far below the wave), resolved through a probe inside the orb.
+      sphere: (orb => {
+        if (!orb) return null
+        const probe = orb.appendChild(document.createElement('span'))
+        probe.style.backgroundColor = 'var(--mist)'
+        const value = getComputedStyle(probe).backgroundColor
+        probe.remove()
+        return value
+      })(cell.querySelector('.bot-orb')),
     }))
   })
   const sized = g.filter(c => c.avatar && Math.abs(c.avatar.width - c.size) <= 1 && Math.abs(c.avatar.height - c.size) <= 1).length

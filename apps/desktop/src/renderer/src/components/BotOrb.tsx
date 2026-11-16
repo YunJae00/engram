@@ -11,7 +11,9 @@ const STILL = { full: orbPaths('full', 0), small: orbPaths('small', 0) }
 const FRAME_MS = 1000 / 30
 
 const live = new Set<Element>()
+let mounted = 0
 let watcher: IntersectionObserver | undefined
+let focus: MutationObserver | undefined
 let frame = 0
 let drawn = -1
 
@@ -19,11 +21,11 @@ function draw(orb: Element, d: string[]): void {
   orb.querySelectorAll('path').forEach((path, i) => path.setAttribute('d', d[i]!))
 }
 
-// One requestAnimationFrame loop for every rippling orb on screen. It stops when none is on screen, the browser stops it while the document is hidden,
-// and it draws nothing while the window is not focused. Reduced motion holds the still frame.
+const awake = (): boolean => live.size > 0 && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'
+
+// One requestAnimationFrame loop for every rippling orb on screen. Reduced motion holds the still frame.
 function tick(now: number): void {
-  frame = live.size > 0 ? requestAnimationFrame(tick) : 0
-  if (document.documentElement.dataset['windowFocused'] !== 'true') return
+  frame = awake() ? requestAnimationFrame(tick) : 0
   const step = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.floor(now / FRAME_MS) + 1
   if (step === drawn) return
   drawn = step
@@ -31,19 +33,42 @@ function tick(now: number): void {
   for (const orb of live) draw(orb, d)
 }
 
-function ripple(orb: Element): () => void {
-  watcher ??= new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) live.add(entry.target)
-      else live.delete(entry.target)
-    }
-    if (live.size > 0 && frame === 0) frame = requestAnimationFrame(tick)
-  })
+// The loop runs only while a rippling orb is on screen in a visible, focused window; otherwise the pending frame is cancelled and none is requested.
+function sync(): void {
+  if (!awake()) {
+    cancelAnimationFrame(frame)
+    frame = 0
+  } else if (frame === 0) frame = requestAnimationFrame(tick)
+}
+
+// Exported for the ticker's unit test only.
+export function ripple(orb: Element): () => void {
+  if (!watcher) {
+    watcher = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) live.add(entry.target)
+        else live.delete(entry.target)
+      }
+      sync()
+    })
+    focus = new MutationObserver(sync)
+    focus.observe(document.documentElement, { attributes: true, attributeFilter: ['data-window-focused'] })
+    document.addEventListener('visibilitychange', sync)
+  }
   watcher.observe(orb)
+  mounted++
   return () => {
-    watcher!.unobserve(orb)
+    watcher?.unobserve(orb)
     live.delete(orb)
     draw(orb, STILL.full)
+    // The last rippling orb is gone: nothing is left observing or listening.
+    if (--mounted === 0) {
+      watcher?.disconnect()
+      focus?.disconnect()
+      document.removeEventListener('visibilitychange', sync)
+      watcher = focus = undefined
+    }
+    sync()
   }
 }
 

@@ -187,6 +187,8 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   const held = await core(big)
   await page.waitForTimeout(300)
   expect(await core(big)).toBe(held)
+  // The css motion holds too: the 36px header orb's breathe and the working row's pulse are paused, not just the ripple.
+  expect(await page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-orb')).map(a => a.playState))).not.toContain('running')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
 
   // Reduced motion: a static frame, even for the working row, and the large orb returns to the still wave and stays there.

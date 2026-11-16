@@ -82,8 +82,9 @@
   25%, 75% { opacity: 1; }
 }
 
+/* !important: the rules that start an animation use the shorthand, which sets the play state back to running, and the breathe rule is the more specific one. */
 :root:not([data-window-focused='true']) .bot-orb,
-:root:not([data-window-focused='true']) .bot-orb * { animation-play-state: paused; }
+:root:not([data-window-focused='true']) .bot-orb * { animation-play-state: paused !important; }
 
 @media (prefers-reduced-motion: reduce) {
   .bot-orb, .bot-orb * { animation: none !important; transition: none !important; }

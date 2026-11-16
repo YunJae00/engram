@@ -3,11 +3,11 @@ import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as core from 'core/src/bot-character'
 import { avatarCharacter, CHARACTERS, defaultCharacter, FALLBACK_CHARACTER, fnv1a, ORBS, RIPPLE_MIN_PX, SMALL_MAX_PX } from '../src/renderer/src/lib/botAvatar.js'
 import { BotAvatar, type BotAvatarProps } from '../src/renderer/src/components/BotAvatar.js'
-import { BotOrb } from '../src/renderer/src/components/BotOrb.js'
+import { BotOrb, ripple } from '../src/renderer/src/components/BotOrb.js'
 import { ORB_LOOP_MS, ORB_WAVE_LAYERS, ORB_WORK_LAYERS, orbPaths } from '../src/renderer/src/lib/orbWave.js'
 
 const SRC = join(__dirname, '../src/renderer/src')
@@ -174,8 +174,10 @@ describe('bot avatar', () => {
     expect(orb).toMatch(/\.bot-orb\[data-motion='working'\] \.bot-orb-work \{ opacity: 1;/)
     for (const sheet of [avatar, orb]) {
       expect(sheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.bot-(avatar|orb)[^{]*\{ animation: none !important;( transition: none !important;)? \}/)
-      expect(sheet).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-(avatar|orb)[^{]*\{ animation-play-state: paused; \}/)
+      expect(sheet).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-(avatar|orb)[^{]*\{ animation-play-state: paused( !important)?; \}/)
     }
+    // The orb's pause has to beat the more specific breathe rule, whose shorthand sets the play state back to running.
+    expect(orb).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-orb \* \{ animation-play-state: paused !important; \}/)
     expect(avatar).not.toMatch(/#2F6FEB|#4C86F0|blue/i)
     // The avatar is the ball alone: a circle that clips its light, with no plate behind it.
     const body = blocks(orb).find(block => block.selector.endsWith('.bot-orb'))!.body
@@ -186,17 +188,100 @@ describe('bot avatar', () => {
 
   it('redraws the wave from one shared, pausable ticker and nowhere else', () => {
     const orbSource = readFileSync(join(SRC, 'components/BotOrb.tsx'), 'utf8')
-    // One loop for every orb: it is started when an orb comes on screen and re-armed only from inside itself while one is still there.
+    // One loop for every orb: it is started from sync() and re-armed from inside itself only while an orb is on screen in a visible, focused window.
     expect(orbSource.match(/requestAnimationFrame\(/g)).toHaveLength(2)
-    expect(orbSource).toContain('frame = live.size > 0 ? requestAnimationFrame(tick) : 0')
-    expect(orbSource).toContain('if (live.size > 0 && frame === 0) frame = requestAnimationFrame(tick)')
+    expect(orbSource).toContain('frame = awake() ? requestAnimationFrame(tick) : 0')
+    expect(orbSource).toContain('} else if (frame === 0) frame = requestAnimationFrame(tick)')
     expect(orbSource.match(/new IntersectionObserver\(/g)).toHaveLength(1)
-    expect(orbSource).toContain("document.documentElement.dataset['windowFocused'] !== 'true'")
+    expect(orbSource).toContain("live.size > 0 && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'")
     expect(orbSource).toContain("matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 :")
     expect(orbSource).toContain("const rippling = motion !== 'static' && size >= RIPPLE_MIN_PX")
     expect(orbSource).not.toMatch(/setInterval|setTimeout|<canvas|getContext/)
     expect(readFileSync(join(SRC, 'components/BotAvatar.tsx'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout/)
     expect(readFileSync(join(SRC, 'lib/orbWave.ts'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout|document|window/)
+  })
+
+  it('requests no frame while blurred, hidden or with no orb on screen, and lets go of its observers after the last orb', () => {
+    // A hand-driven frame queue, so every requestAnimationFrame call is counted.
+    let requested = 0
+    let pending = new Map<number, (now: number) => void>()
+    const run = (now: number) => { const due = pending; pending = new Map(); for (const callback of due.values()) callback(now) }
+    const listeners = new Set<() => void>()
+    const root = { dataset: { windowFocused: 'true' } as Record<string, string> }
+    const doc = { hidden: false, documentElement: root, addEventListener: (_: string, fn: () => void) => listeners.add(fn), removeEventListener: (_: string, fn: () => void) => listeners.delete(fn) }
+    const observers: { seen: (entries: { target: unknown; isIntersecting: boolean }[]) => void; connected: boolean }[] = []
+    const mutations: { changed: () => void; connected: boolean }[] = []
+    vi.stubGlobal('document', doc)
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.stubGlobal('requestAnimationFrame', (callback: (now: number) => void) => { pending.set(++requested, callback); return requested })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { pending.delete(id) })
+    vi.stubGlobal('IntersectionObserver', class { self: (typeof observers)[number]; constructor(seen: (typeof observers)[number]['seen']) { observers.push(this.self = { seen, connected: true }) } observe() {} unobserve() {} disconnect() { this.self.connected = false } })
+    vi.stubGlobal('MutationObserver', class { self: (typeof mutations)[number]; constructor(changed: () => void) { mutations.push(this.self = { changed, connected: true }) } observe() {} disconnect() { this.self.connected = false } })
+    try {
+      const paths = Array.from({ length: ORB_WAVE_LAYERS.length + ORB_WORK_LAYERS.length }, () => ({ d: '', setAttribute(_: string, value: string) { this.d = value } }))
+      const orb = { querySelectorAll: () => paths } as unknown as Element
+      const frames = (from: number, count: number) => { for (let i = 0; i < count; i++) run(from + i * 40) }
+      const focus = (value: boolean) => { root.dataset['windowFocused'] = String(value); mutations.at(-1)!.changed() }
+      const visible = (value: boolean) => { doc.hidden = !value; for (const fn of listeners) fn() }
+
+      const stop = ripple(orb)
+      // Mounted but not on screen yet: no frame.
+      expect([requested, pending.size]).toEqual([0, 0])
+      observers[0]!.seen([{ target: orb, isIntersecting: true }])
+      expect([requested, pending.size]).toEqual([1, 1])
+      frames(1000, 5)
+      expect([requested, pending.size]).toEqual([6, 1])
+      expect(paths[0]!.d).toBe(orbPaths('full', ((Math.floor(1160 / (1000 / 30)) + 1) * (1000 / 30)) / ORB_LOOP_MS)[0])
+
+      // Blur cancels the pending frame and nothing is requested until focus returns.
+      focus(false)
+      expect(pending.size).toBe(0)
+      const held = paths[0]!.d
+      frames(2000, 5)
+      expect([requested, pending.size, paths[0]!.d]).toEqual([6, 0, held])
+      focus(true)
+      expect([requested, pending.size]).toEqual([7, 1])
+      frames(3000, 3)
+      expect(requested).toBe(10)
+
+      // A hidden document: the same.
+      visible(false)
+      expect(pending.size).toBe(0)
+      frames(4000, 5)
+      focus(false)
+      focus(true)
+      expect([requested, pending.size]).toEqual([10, 0])
+      visible(true)
+      expect([requested, pending.size]).toEqual([11, 1])
+
+      // Scrolled off screen, then back.
+      observers[0]!.seen([{ target: orb, isIntersecting: false }])
+      expect(pending.size).toBe(0)
+      observers[0]!.seen([{ target: orb, isIntersecting: true }])
+      expect([requested, pending.size]).toEqual([12, 1])
+
+      // A second orb shares the loop and the observer; the loop outlives the first orb and ends with the last.
+      const other = { querySelectorAll: () => [] } as unknown as Element
+      const stopOther = ripple(other)
+      observers[0]!.seen([{ target: other, isIntersecting: true }])
+      expect([requested, pending.size, observers.length]).toEqual([12, 1, 1])
+      stop()
+      expect(paths[0]!.d).toBe(orbPaths('full', 0)[0])
+      expect([pending.size, observers[0]!.connected, listeners.size]).toEqual([1, true, 1])
+      stopOther()
+      expect([requested, pending.size]).toEqual([12, 0])
+      expect([observers[0]!.connected, mutations[0]!.connected, listeners.size]).toEqual([false, false, 0])
+      frames(5000, 5)
+      expect(requested).toBe(12)
+
+      // A later orb starts again with a fresh observer.
+      const again = ripple(orb)
+      expect([observers.length, observers[1]!.connected, listeners.size]).toEqual([2, true, 1])
+      again()
+      expect([observers[1]!.connected, listeners.size, pending.size]).toEqual([false, 0, 0])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('holds the contract edges: primary keeps its hashed face, no photo is ever shown', () => {
