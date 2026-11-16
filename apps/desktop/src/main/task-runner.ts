@@ -65,10 +65,11 @@ const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string
   '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
-// The team check is one more full lead turn. It is skipped when the lead reviewed every member and the words-only report names its sources
-// (perf146: a weather lookup paid 20-60 s for it), and when the budget left could not finish it anyway.
+// The team check is one more full lead turn. It is skipped only for a words-only report whose members the lead all reviewed, when that report
+// names its sources (perf146: a weather lookup paid 20-60 s for it) or the budget left could not finish the check anyway.
+// A member not reviewed or a handed-in file always gets the check, whatever budget is left.
 export const teamCheckDue = (task: DelegatedTask, answer: string, tokensLeft: number): boolean =>
-  tokensLeft >= TEAM_TOKEN_RESERVE && !(!teamReviewIssue(task) && /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer) && !savedFile(answer))
+  !(!teamReviewIssue(task) && !savedFile(answer) && (tokensLeft < TEAM_TOKEN_RESERVE || /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer)))
 const WORTH_KEEPING_STEPS = 3
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
@@ -264,7 +265,10 @@ export function taskRunner(deps: {
           continuations.set(id, { count, reason })
           logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
         }
-      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t) && teamCheckDue(t, outcome.answer, TASK_TOKEN_BUDGET - (t.tokensUsed ?? 0))) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
+      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) }
+      // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
+      else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
+      else if (teamUnverified(t) && teamCheckDue(t, outcome.answer, TASK_TOKEN_BUDGET - (t.tokensUsed ?? 0))) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.

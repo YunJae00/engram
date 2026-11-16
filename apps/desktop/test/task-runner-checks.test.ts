@@ -352,6 +352,10 @@ it('keeps the team check for a report without sources, a member not reviewed, or
   expect(teamCheckDue(open, sourced, 100_000)).toBe(true)
   expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`, 100_000)).toBe(true)
   expect(teamCheckDue(reviewed, '서울 12도예요.', 10_000)).toBe(false)
+  // perf146 r2: little budget left never excuses a member nobody reviewed or a handed-in file nobody read.
+  expect(teamCheckDue(open, '서울 12도예요.', 10_000)).toBe(true)
+  expect(teamCheckDue(open, sourced, 10_000)).toBe(true)
+  expect(teamCheckDue(reviewed, '[표](engram-artifact:weather.md)', 10_000)).toBe(true)
 })
 
 it('ends done with the delivered report when the team check runs out of the task budget', async () => {
@@ -384,4 +388,27 @@ it('ends the turn with the delivered report when the team check overruns its tim
   const task = await teamEnd(t)
   expect(task).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
   expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
+})
+
+it('still checks a team report whose member was not reviewed when little budget is left', async () => {
+  const { updateTask } = await import('core')
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); await updateTask(t.paths, (await listTasks(t.paths))[0]!.id, saved => { const m = saved.team!.members[0]!; m.state = 'done'; delete m.review }); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: TASK_TOKEN_BUDGET - 10_000, trail: hired } }
+    return { ...done('규정 5개와 체크리스트 10개예요.', 1), check: { accepted: true, verified: true, issues: [] } }
+  }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  expect(t.sent).toHaveLength(2)
+  expect(t.sent[1]?.extra?.verification).toBeTruthy()
+  expect((await listTasks(t.paths))[0]!.state).not.toBe('done')
+})
+
+// perf146 r2: the lead reports what its team delivered while one member still needs the person; the report stands and the task waits for the answer.
+it('delivers the lead\'s combined report and waits when a member still needs the person', async () => {
+  const { updateTask } = await import('core')
+  const report = '부산 15도, 제주 17도예요. 서울은 아직이에요: 어느 계정으로 볼까요?'
+  const t = await setup(async () => { await hireLeads(t.paths); await updateTask(t.paths, (await listTasks(t.paths))[0]!.id, saved => { saved.team!.members.push({ ...saved.team!.members[0]!, id: 'm2', role: '서울 조사', state: 'waiting', result: '어느 계정으로 볼까?', review: undefined } as never) }); return { ...done(report, 1), trail: hired } }, false)
+  await t.chat('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 알려줘')
+  expect(t.sent).toHaveLength(1)
+  expect(await teamEnd(t)).toMatchObject({ state: 'waiting', result: report, turns: 1 })
+  expect(t.delivered).toEqual([report])
 })
