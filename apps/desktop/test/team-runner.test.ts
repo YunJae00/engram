@@ -228,13 +228,13 @@ describe('team runner', () => {
   })
 })
 
-describe('employees handed work by the chief of staff (assign)', () => {
+describe('agents on the team handed work from the person\'s thread (assign)', () => {
   const staffed = async (script: Parameters<typeof world>[1]) => {
     const w = await world(2, script)
     const { createBot } = await import('core'), { updateBot } = await import('../../../packages/core/src/bots.js')
-    await createBot(w.paths, { name: '비서실장' })
-    const kim = await updateBot(w.paths, (await createBot(w.paths, { name: '김대리', purpose: '자료를 찾아 출처와 함께 정리한다' })).id, { label: '리서치 담당' })
-    const park = await updateBot(w.paths, (await createBot(w.paths, { name: '박사원', purpose: '홍보 문구를 쓴다' })).id, { label: '카피 담당' })
+    await createBot(w.paths, { name: '엔그램' })
+    const kim = await updateBot(w.paths, (await createBot(w.paths, { name: '지민', purpose: '자료를 찾아 출처와 함께 정리한다' })).id, { label: '리서치 담당' })
+    const park = await updateBot(w.paths, (await createBot(w.paths, { name: '서연', purpose: '홍보 문구를 쓴다' })).id, { label: '카피 담당' })
     const reported: string[] = []
     w.team.reportTo((channel, taskId) => reported.push(`${channel} ${taskId}`))
     const assign = (args: Record<string, unknown>) => use(w.team.tools('bot-b1', w.kit, () => undefined), 'assign', args)
@@ -243,88 +243,88 @@ describe('employees handed work by the chief of staff (assign)', () => {
   const personas: string[] = []
   const persona: Run = async (_deps, _prompt, options = {}) => { personas.push(options.persona ?? ''); return reply('노션이 AI 회의록을 냈다 https://notion.so/releases') }
 
-  it('only the chief of staff has assign, and a member never does', async () => {
+  it('only the person\'s own thread has assign, and a member never does', async () => {
     const w = await staffed(async () => 'ok')
     expect(w.team.tools('bot-b1', w.kit).map(tool => tool.name)).not.toContain('assign')
     expect(w.team.tools('bot-b1', w.kit, () => undefined).map(tool => tool.name)).toContain('assign')
     expect(w.team.tools(memberLane('bot-b1', 'm1'), w.kit, () => undefined).map(tool => tool.name)).not.toContain('assign')
   })
 
-  it('an employee works as themselves and the finished job goes on their own record', async () => {
+  it('an agent works as themselves and the finished job goes on their own record', async () => {
     const w = await staffed(async turn => `${turn.role}: 노션이 AI 회의록을 냈다 https://notion.so/releases`)
     const { loadBotMemory, readBotTranscript, recordFacts } = await import('core')
     await recordFacts(w.paths, w.kim.id, ['지난주에 슬랙 가격을 조사했다'])
-    const out = JSON.parse(await w.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능 조사' }] }))
-    expect(out.reports).toEqual([{ who: '김대리', state: 'done', result: '김대리: 노션이 AI 회의록을 냈다 https://notion.so/releases' }])
-    expect((await readBotTranscript(w.paths, w.kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '김대리: 노션이 AI 회의록을 냈다 https://notion.so/releases']])
-    expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 김대리: 노션이 AI 회의록을 냈다 .* \(김대리, \d{4}-\d\d-\d\d\)$/)
+    // grokbar B7: a waited lookup comes back as the answer itself, under the agent's name, with no merge round.
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('지민 결과예요.\n\n지민: 노션이 AI 회의록을 냈다 https://notion.so/releases')
+    expect((await readBotTranscript(w.paths, w.kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '지민: 노션이 AI 회의록을 냈다 https://notion.so/releases']])
+    expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 지민: 노션이 AI 회의록을 냈다 .* \(지민, \d{4}-\d\d-\d\d\)$/)
     expect((await w.members())[0]).toMatchObject({ botId: w.kim.id, lookup: true, state: 'released', review: { ok: true } })
     // The persona carries who they are, their role and what they remember.
     const p = await staffed(async () => 'unused')
     await recordFacts(p.paths, p.kim.id, ['지난주에 슬랙 가격을 조사했다'])
     const team = teamRunner({ paths: p.paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run: persona })
-    await use(team.tools('bot-b1', p.kit, () => undefined), 'assign', { wait: true, to: [{ who: '김대리', brief: '노션 신기능 조사' }] })
-    expect(personas[0]).toContain('You are "김대리", a member of a hidden team')
-    expect(personas[0]).toContain('You are 김대리, 리서치 담당')
+    await use(team.tools('bot-b1', p.kit, () => undefined), 'assign', { wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })
+    expect(personas[0]).toContain('You are "지민", a member of a hidden team')
+    expect(personas[0]).toContain('You are 지민, 리서치 담당')
     expect(personas[0]).toContain('자료를 찾아 출처와 함께 정리한다')
     expect(personas[0]).toContain('지난주에 슬랙 가격을 조사했다')
+    expect(personas[0]).toContain('Answer like a short memo')
   })
 
-  it('hands a finished result to the next employee, and only when the first ended done', async () => {
-    const w = await staffed(async turn => turn.role === '김대리' ? '11월 20일 서울 AI 서밋 https://example.com/summit' : `문구 3개 <- ${turn.prompt.includes('11월 20일 서울 AI 서밋 https://example.com/summit') ? '김대리 자료' : '자료 없음'}`)
-    const out = JSON.parse(await w.assign({ wait: true, to: [{ who: '김대리', brief: '행사 조사', then: { who: '박사원', brief: '홍보 문구 3개' } }] }))
-    expect(out.reports.map((r: { who: string; state: string; result: string }) => [r.who, r.state, r.result])).toEqual([['김대리', 'done', '11월 20일 서울 AI 서밋 https://example.com/summit'], ['박사원', 'done', '문구 3개 <- 김대리 자료']])
-    expect((await w.members())[1]).toMatchObject({ botId: w.park.id, role: '박사원', state: 'released' })
-    expect(w.seen.map(turn => turn.role)).toEqual(['김대리', '박사원'])
+  it('hands a finished result to the next agent, and only when the first ended done', async () => {
+    const w = await staffed(async turn => turn.role === '지민' ? '11월 20일 서울 AI 서밋 https://example.com/summit' : `문구 3개 <- ${turn.prompt.includes('11월 20일 서울 AI 서밋 https://example.com/summit') ? '지민 자료' : '자료 없음'}`)
+    // grokbar B7 (C6): one report, 서연's result first and then the facts 지민 found, named as his and by the job they came from.
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('서연 결과예요. 지민한테 받은 내용으로 했어요.\n\n문구 3개 <- 지민 자료\n\n지민한테 받은 내용 (행사 조사):\n11월 20일 서울 AI 서밋 https://example.com/summit')
+    expect((await w.members()).map(m => [m.role, m.state])).toEqual([['지민', 'released'], ['서연', 'released']])
+    expect((await w.members())[1]).toMatchObject({ botId: w.park.id, role: '서연', state: 'released' })
+    expect(w.seen.map(turn => turn.role)).toEqual(['지민', '서연'])
     expect((await w.task()).team!.hires).toBe(2)
-    const failed = await staffed(async turn => { if (turn.role === '김대리') throw new Error('no source'); return 'never' })
-    const none = JSON.parse(await failed.assign({ wait: true, to: [{ who: '김대리', brief: '행사 조사', then: { who: '박사원', brief: '홍보 문구 3개' } }] }))
-    expect(none.reports.map((r: { who: string; state: string }) => [r.who, r.state])).toEqual([['김대리', 'failed']])
-    expect(failed.seen.map(turn => turn.role)).toEqual(['김대리'])
+    const failed = await staffed(async turn => { if (turn.role === '지민') throw new Error('no source'); return 'never' })
+    expect(await failed.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민 결과예요.\n\n지민: 조사하지 못했어요.')
+    expect(failed.seen.map(turn => turn.role)).toEqual(['지민'])
   })
 
-  it('a background employee outlives the lead\'s turn, takes a handoff given meanwhile, and the lead is told once when all have ended', async () => {
+  it('a background agent outlives the lead\'s turn, takes a handoff given meanwhile, and the lead is told once when all have ended', async () => {
     let go!: () => void
     const gate = new Promise<void>(resolve => { go = resolve })
-    const w = await staffed(async turn => { if (turn.role === '김대리') { turn.usage(1000); await gate; return '행사 3건 https://example.com/events' } return `문구 3개 <- ${turn.prompt.includes('행사 3건') ? '김대리 자료' : '없음'}` })
-    expect(await w.assign({ wait: false, to: [{ who: '김대리', brief: '다음 달 서울 IT 행사 일정 정리' }] })).toBe('김대리한테 맡겼어요.')
+    const w = await staffed(async turn => { if (turn.role === '지민') { turn.usage(1000); await gate; return '행사 3건 https://example.com/events' } return `문구 3개 <- ${turn.prompt.includes('행사 3건') ? '지민 자료' : '없음'}` })
+    expect(await w.assign({ wait: false, to: [{ who: '지민', brief: '다음 달 서울 IT 행사 일정 정리' }] })).toBe('지민한테 맡겼어요.')
     await vi.waitFor(async () => expect((await w.members())[0]!.state).toBe('working'))
     // The lead's turn ends: the task waits for the report, and the member is not counted as lost.
     await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
     await w.team.turnEnded('bot-b1')
     expect((await w.members())[0]).toMatchObject({ state: 'working', background: true })
     expect(w.team.waiting('bot-b1')).toBe(false)
-    // "김대리 조사 끝나면 박사원한테 넘겨": asked in a new turn (a new task) while 김대리 is still on it.
-    const second = await createTask(w.paths, '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해', 'b1')
+    // "지민 조사 끝나면 서연한테 넘겨": asked in a new turn (a new task) while 지민 is still on it.
+    const second = await createTask(w.paths, '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', 'b1')
     await updateTask(w.paths, second.id, t => { t.state = 'running'; t.turns = 1 })
-    expect(await w.assign({ wait: true, to: [{ who: '김대리', then: { who: '박사원', brief: '홍보 문구 3개' } }] })).toBe('김대리 일이 끝나면 박사원한테 넘길게요.')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민 일이 끝나면 서연한테 넘길게요.')
     await updateTask(w.paths, second.id, t => { t.state = 'done' })
     expect(w.reported).toEqual([])
     go()
     await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
-    expect((await w.members()).map(m => [m.role, m.state, m.background, m.result])).toEqual([['김대리', 'done', true, '행사 3건 https://example.com/events'], ['박사원', 'done', true, '문구 3개 <- 김대리 자료']])
+    expect((await w.members()).map(m => [m.role, m.state, m.background, m.result])).toEqual([['지민', 'done', true, '행사 3건 https://example.com/events'], ['서연', 'done', true, '문구 3개 <- 지민 자료']])
     // Its tokens are saved with the task, not left hanging in flight.
     expect((await w.task()).tokensUsed).toBe(1000)
-    expect(continuationPrompt(await w.task(), 'report')).toContain('- 박사원 [done]: 문구 3개 <- 김대리 자료')
+    expect(continuationPrompt(await w.task(), 'report')).toContain('- 서연 [done]: 문구 3개 <- 지민 자료')
   })
 
-  it('an employee mid-turn in their own conversation gets the job on their record after that turn, and the chief of staff is not kept waiting', async () => {
+  it('an agent mid-turn in their own conversation gets the job on their record after that turn, and the lead is not kept waiting', async () => {
     const w = await staffed(async () => '노션 결과 https://notion.so/releases')
     const { appendBotTurn, readBotTranscript } = await import('core')
     const texts = async () => (await readBotTranscript(w.paths, w.kim.id)).map(turn => turn.text)
     w.busy.add(`bot-${w.kim.id}`)
     await appendBotTurn(w.paths, w.kim.id, { role: 'user', text: '내 질문', at: new Date().toISOString() })
-    const out = JSON.parse(await w.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능 조사' }] }))
-    expect(out.reports[0]).toMatchObject({ who: '김대리', state: 'done' })
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('지민 결과예요.')
     expect(await texts()).toEqual(['내 질문'])
     await appendBotTurn(w.paths, w.kim.id, { role: 'assistant', text: '내 답', at: new Date().toISOString() })
     w.busy.delete(`bot-${w.kim.id}`)
     await vi.waitFor(async () => expect(await texts()).toEqual(['내 질문', '내 답', '노션 신기능 조사', '노션 결과 https://notion.so/releases']), { timeout: 3000 })
   })
 
-  it('a stop aborts background employees and no report follows', async () => {
+  it('a stop aborts background agents and no report follows', async () => {
     const w = await staffed(turn => new Promise((_resolve, reject) => turn.signal.addEventListener('abort', () => reject(new Error('aborted')))))
-    await w.assign({ wait: false, to: [{ who: '김대리', brief: 'a' }, { who: '박사원', brief: 'b' }] })
+    await w.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
     await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
     await updateTask(w.paths, w.id, t => { t.state = 'stopped' })
     await w.team.stop('bot-b1')
@@ -336,13 +336,13 @@ describe('employees handed work by the chief of staff (assign)', () => {
     expect(await readBotTranscript(w.paths, w.kim.id)).toEqual([])
   })
 
-  it('after a restart a task that waited for a background employee is not left hanging: the member is failed and the lead reports', async () => {
+  it('after a restart a task that waited for a background agent is not left hanging: the member is failed and the lead reports', async () => {
     const w = await staffed(async () => 'unused')
-    await updateTask(w.paths, w.id, t => { t.state = 'waiting'; t.team = teamOf(member('m1', 'working', { role: '김대리', botId: w.kim.id, background: true })) })
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting'; t.team = teamOf(member('m1', 'working', { role: '지민', botId: w.kim.id, background: true })) })
     await w.team.resume()
     expect((await w.members())[0]).toMatchObject({ state: 'failed', result: 'Failed: the app restarted while this member was working.' })
     expect(w.reported).toEqual([`bot-b1 ${w.id}`])
-    expect(continuationPrompt(await w.task(), 'report')).toContain('- 김대리 [failed]: Failed: the app restarted')
+    expect(continuationPrompt(await w.task(), 'report')).toContain('- 지민 [failed]: Failed: the app restarted')
   })
 })
 

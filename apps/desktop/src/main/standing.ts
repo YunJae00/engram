@@ -50,7 +50,7 @@ export async function standingTick(deps: StandingDeps): Promise<string[]> {
           const ids = fresh.flatMap(item => item.id ? [item.id] : [])
           message = `${task.goal}\n\n(${fresh.length} new in ${task.watch.tool} since the last look${ids.length ? `; ids: ${ids.join(', ')}` : ''})`
         }
-        // A duty kept by the chief of staff (chat is its own bot) runs in that conversation, the person's thread.
+        // A schedule kept on the person's own thread (chat is its own bot) runs in that conversation.
         const reply = await deps.runPrompt(task.name, message, task.schedule.every || task.chat === bot.id ? task.chat : undefined)
         if (!reply.ok) continue
         if (task.schedule.on) await removeBotTask(deps.paths, bot.id, task.id)

@@ -78,10 +78,17 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
       const path = await actualPath(resolve(policy.cwd, target))
       const cwd = await actualPath(policy.cwd)
       if (WRITES.has(name) && policy.mode === 'plan') return deny(PLAN_ONLY)
-      if (WRITES.has(name)) return within(cwd, path)
-        ? { behavior: 'allow', updatedInput: { ...input, [key]: path } }
-        : deny(`Write and Edit work only inside the task folder ${policy.cwd}. Save deliverables with file_create_copy, file_create_workbook or render_file so they are linked and checked.`)
       const privateDir = await actualPath(policy.privateDir)
+      if (WRITES.has(name)) {
+        // grokbar B5 r3: changing a file the person keeps in their workspace was refused here, so the model asked to leave the sandbox (a card).
+        // A file of theirs that is already there is changed in place, like reading it or moving it (file_move): Engram's store, the other chats'
+        // task folders and the private folder stay closed, and a new file is still made in the task folder alone.
+        const box = policy.workspace ? await actualPath(policy.workspace) : undefined, store = policy.cacheDir ? await actualPath(policy.cacheDir) : undefined
+        const theirs = !!box && within(box, path) && !(store && within(store, path)) && !within(join(box, 'tasks'), path) && !within(privateDir, path) && await lstat(path).then(info => info.isFile(), () => false)
+        return within(cwd, path) || theirs
+          ? { behavior: 'allow', updatedInput: { ...input, [key]: path } }
+          : deny(`Write and Edit make new files only inside the task folder ${policy.cwd}; a file the person already keeps in their workspace can be changed where it is. Save deliverables with file_create_copy, file_create_workbook or render_file so they are linked and checked.`)
+      }
       const roots = await Promise.all(policy.roots.map(actualPath))
       const cache = policy.cacheDir ? await actualPath(policy.cacheDir) : undefined
       const attached = await Promise.all((policy.attachedPaths ?? []).map(actualPath))

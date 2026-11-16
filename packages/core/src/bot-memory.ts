@@ -445,3 +445,8 @@ export function rememberPrompt(exchange: { user: string; answer: string; previou
     ...(exchange.places?.length ? ['Pages the work reached:', ...exchange.places.slice(0, 6).map((place) => `- ${place}`)] : []),
   ].join('\n')
 }
+
+/** Every memory kept on disk, by id: bot ids and the shared ones (`_person`, `_team`). */
+export async function memoryIds(paths: VaultPaths): Promise<string[]> {
+  return (await readdir(join(paths.cache, MEMORY_DIR)).catch(() => [])).filter(name => name.endsWith('.json')).map(name => name.slice(0, -5))
+}

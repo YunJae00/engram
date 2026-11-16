@@ -42,6 +42,16 @@ describe('native tool policy', () => {
     expect(await decide('Grep', { pattern: 'x', path: workspace })).toBe('deny')
     expect(await decide('Grep', { pattern: 'x', path: join(workspace, 'tasks') })).toBe('deny')
     expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'new.md'), content: 'x' })).toBe('deny')
+    // grokbar B5 r3: a file the person already keeps there is changed in place with no card; nothing new is made there, and the store, the other
+    // chats' folders and the private folder stay closed to writes.
+    await Promise.all([join(workspace, 'fixtures', 'meeting-notes.md'), join(store, 'bots.json'), join(workspace, 'tasks', 'bot-2', 'theirs.md'), join(privateDir, 'kept.md')].map(path => writeFile(path, 'x')))
+    expect(await decide('Edit', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), old_string: 'x', new_string: 'y' })).toBe('allow')
+    expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), content: 'y' })).toBe('allow')
+    expect(await decide('Edit', { file_path: join(workspace, 'fixtures'), old_string: 'x', new_string: 'y' })).toBe('deny')
+    expect(await decide('Edit', { file_path: join(store, 'bots.json'), old_string: 'x', new_string: 'y' })).toBe('deny')
+    expect(await decide('Edit', { file_path: join(workspace, 'tasks', 'bot-2', 'theirs.md'), old_string: 'x', new_string: 'y' })).toBe('deny')
+    expect(await decide('Edit', { file_path: join(privateDir, 'kept.md'), old_string: 'x', new_string: 'y' })).toBe('deny')
+    expect((await nativeDecision({ ...inside, mode: 'plan' }, 'Edit', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), old_string: 'x', new_string: 'y' })).behavior).toBe('deny')
     expect(await decide('Read', { file_path: join(root, 'outside', 'x.txt') })).toBe('deny')
   })
 
