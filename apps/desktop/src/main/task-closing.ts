@@ -86,7 +86,9 @@ export function closingMessage(input: ClosingInput, reason: ClosingReason, lang:
   const approved = (input.log ?? []).flatMap(entry => /^Approved: "(.+)"$/.exec(entry.line)?.[1] ?? []).slice(-3).map(words => w.approved(cut(words, 40)))
   const milestone = progress ? cut(progress.text, 100) : !names.length && approved.length ? approved.join(', ') : ''
   const goal = `“${cut(input.goal, 60)}”`
-  const detail = input.detail ? cut(withoutSecrets(input.detail, input.goal), 160) : ''
+  const raw = input.detail ? cut(withoutSecrets(input.detail, input.goal), 160) : ''
+  // In a Korean conversation a raw error ("Provider unavailable", a status code) is not something to read: only words written for the person are shown.
+  const detail = lang === 'ko' && !/[\uac00-\ud7a3]/.test(raw) ? '' : raw
   return [
     w.done(parts),
     ...(milestone ? [w.milestone(milestone)] : []),
