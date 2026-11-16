@@ -88,9 +88,11 @@ export function releaseAll(team: TaskTeam, at: string): string[] {
   return open.map(m => m.sessionKey)
 }
 
+// One line that only says what the member is about to do ("지금 검색하겠습니다."): cut off there, it reported nothing.
+const PROGRESS_ONLY = /^(?:[^\n]{0,120}(?:겠습니다|겠어요|[할볼릴]게요|하는 중(?:입니다|이에요)?)|(?:I['’]ll|I will|I am going to|I'm going to|Let me|Searching|Looking|Checking)\b[^\n]{0,120})[.!…\s]*$/i
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
-  const answer = outcome.answer.trim()
+  const said = outcome.answer.trim(), answer = outcome.timedOut && PROGRESS_ONLY.test(said) ? '' : said
   member.finishedAt = at
   // A member with no answer delivered nothing, time-boxed or not: it is failed, never done. A "Failed: " result is kept out of what the person sees.
   if (outcome.error || !answer) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }

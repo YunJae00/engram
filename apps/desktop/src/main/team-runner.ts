@@ -94,7 +94,7 @@ export function teamRunner(deps: {
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
-      let timedOut = false, draft = '', hardStop: ReturnType<typeof setTimeout> | undefined
+      let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
       const begun = () => { if (me.lookup) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, deps.lookupHardMs ?? LOOKUP_HARD_MS) }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
@@ -108,7 +108,7 @@ export function teamRunner(deps: {
             onUsage: tokens => { begun(); used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
-            onStep: line => deps.step(leadChannel, line),
+            onStep: line => { read = true; deps.step(leadChannel, line) },
             ...(me.lookup ? { modelHint: 'smart' as const, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } } : {}),
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
@@ -120,7 +120,8 @@ export function teamRunner(deps: {
           prompt = reviewFirst(open)
         }
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } } finally { clearTimeout(hardStop) }
-      if (timedOut && !signal?.aborted) outcome = { answer: draft, timedOut: true }
+      // Only what it wrote after reading something is a result: words before its first tool call are an opening line, not findings (perf146 r3).
+      if (timedOut && !signal?.aborted) outcome = { answer: read ? draft : '', timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used

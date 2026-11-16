@@ -73,6 +73,15 @@ describe('team hire tools', () => {
     settleMember(korean, { answer: '부산 15도', timedOut: true }, 'now', true)
     expect(korean).toMatchObject({ state: 'done', result: '부산 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
     expect((korean as { result?: string }).result).not.toMatch(/[A-Za-z]{4,}/)
+    // perf146 r3: a member stopped while it was still announcing its first step delivered nothing.
+    for (const line of ['지금 검색하겠습니다.', '서울 날씨를 찾아볼게요', 'Let me search for the Seoul weather.']) {
+      const announced = { ...m }
+      settleMember(announced, { answer: line, timedOut: true }, 'now', true)
+      expect(announced).toMatchObject({ state: 'failed', result: 'Failed: it ran out of time before it reported anything.' })
+    }
+    const full = { ...m }
+    settleMember(full, { answer: '지금 검색하겠습니다.\n서울 12도 (https://weather.example)', timedOut: true }, 'now', true)
+    expect(full.state).toBe('done')
     settleMember(broken, { answer: '', error: 'it was stopped.' }, 'now')
     expect(broken.state).toBe('failed')
     expect(cutShortAnswer('Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 15도')).toBe('부산 15도')

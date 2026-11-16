@@ -52,7 +52,7 @@ it('hands the lead what a lookup member had when it stops at its call or time li
 
 it('stops a lookup member at its hard limit and still delivers what it wrote', async () => {
   const w = await world(seen => new Promise((_, reject) => {
-    seen.options.onToken?.('thinking aloud'); seen.options.onReset?.(); seen.options.onToken?.('제주 비 17도')
+    seen.options.onToken?.('thinking aloud'); seen.options.onReset?.(); seen.options.onStep?.('search_web: 제주 날씨'); seen.options.onToken?.('제주 비 17도')
     seen.options.signal!.addEventListener('abort', () => reject(new Error('aborted')))
   }), 30)
   const started = Date.now()
@@ -60,6 +60,16 @@ it('stops a lookup member at its hard limit and still delivers what it wrote', a
   expect(Date.now() - started).toBeLessThan(2_000)
   expect(out.members[0]).toMatchObject({ state: 'done', result: '제주 비 17도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
   expect((await w.members())[0]!.state).toBe('done')
+})
+
+// perf146 r3: words streamed before the member read anything ("먼저 기상청부터 확인.") were settled as its finished result.
+it('fails a lookup member stopped at its hard limit before it read anything, whatever it had said', async () => {
+  const w = await world(seen => new Promise((_, reject) => {
+    seen.options.onStart?.(); seen.options.onToken?.('먼저 기상청부터 확인.')
+    seen.options.signal!.addEventListener('abort', () => reject(new Error('aborted')))
+  }), 30)
+  const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
+  expect(out.members[0]).toMatchObject({ state: 'failed', result: expect.stringMatching(/^Failed: /) })
 })
 
 // perf146 r2: the 80 s limit ran from hire time, so a member still in line for its turn was stopped before it began and "delivered" an English placeholder.
