@@ -42,7 +42,7 @@ const WORK: Record<string, string | ((arg: string) => string)> = {
   Bash: arg => `Running a command (${arg.slice(0, 60)})`, PowerShell: arg => `Running a command (${arg.slice(0, 60)})`, Shell: arg => `Running a command (${arg.slice(0, 60)})`,
   file_read: arg => `Reading ${fileName(arg)}`, file_read_workbook: arg => `Reading the workbook ${fileName(arg)}`, file_read_package: arg => `Reading the document ${fileName(arg)}`,
   render_file: 'Rendering a file', file_create_copy: arg => `Saving ${fileName(arg)}`, file_create_workbook: arg => `Saving ${fileName(arg)}`, file_edit_package: arg => `Updating ${fileName(arg)}`,
-  find_files: arg => `Finding files named like “${arg}”`, open_skill: 'Reading a how-to it was shown',
+  find_files: arg => `Finding files named like “${arg}”`, file_move: 'Moving files', open_skill: 'Reading a how-to it was shown',
   look_in_parallel: 'Looking into several things at once',
   outage: arg => `${arg} is not answering on its side; sending again shortly`,
   page_do: 'Working through the page', app_do: 'Working in the app', task_plan: 'Planning the steps', report_result_check: 'Reporting the check', collect_results: 'Checking collected details',

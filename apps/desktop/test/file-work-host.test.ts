@@ -349,3 +349,68 @@ it('records the earlier version only where a task file is replaced in place, and
   await rm(a2.path)
   expect(await previousVersions(paths, a3.artifact)).toEqual([a.artifact])
 })
+
+// grokbar D1/F1: what the person names inside their own workspace is read and moved without a card; Engram's own store and anything outside still ask or refuse.
+it('reads a file the person named in their workspace without asking, in their own chat only', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  await mkdir(join(paths.workspace, 'fixtures'), { recursive: true })
+  await mkdir(paths.cache, { recursive: true })
+  const named = join(paths.workspace, 'fixtures', 'meeting-notes.md'), store = join(paths.cache, 'bots.json')
+  await writeFile(named, '# 회의록')
+  await writeFile(store, '{}')
+  const read = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_read')!
+  expect(JSON.parse(await read.run({ path: named }, { task: 'Summarize it.' })).content).toBe('# 회의록')
+  expect(state.confirm).not.toHaveBeenCalled()
+  await read.run({ path: store }, { task: 'Read it.' })
+  expect(state.confirm).toHaveBeenCalledOnce()
+  // A chat with no task folder (an outside connection) keeps the card.
+  await cometFileTools(paths, 'lane').find(tool => tool.name === 'file_read')!.run({ path: named }, { task: 'Summarize it.' })
+  expect(state.confirm).toHaveBeenCalledTimes(2)
+  expect(hostFileTools(paths, 'lane').some(tool => tool.name === 'file_move')).toBe(false)
+})
+
+it('moves the person\'s files inside the workspace without asking, and never overwrites, deletes or leaves it', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1'), dump = join(paths.workspace, 'fixtures', 'inbox-dump')
+  await mkdir(dump, { recursive: true })
+  for (const folder of [paths.notes, paths.cache, join(root, 'outside')]) await mkdir(folder, { recursive: true })
+  for (const name of ['a.pdf', 'b.pdf', 'c.docx']) await writeFile(join(dump, name), name)
+  await writeFile(join(paths.notes, 'n.md'), 'note')
+  await writeFile(join(root, 'outside', 'o.txt'), 'out')
+  const move = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_move')!
+  const run = (moves: { from: string; to: string }[]) => move.run({ moves }, { task: 'Sort the folder by type.' })
+  const receipt = JSON.parse(await run([{ from: 'fixtures/inbox-dump/a.pdf', to: 'fixtures/inbox-dump/PDF/a.pdf' }, { from: join(dump, 'b.pdf'), to: join(dump, 'PDF', 'b.pdf') }, { from: 'fixtures/inbox-dump/c.docx', to: 'fixtures/inbox-dump/Word/c.docx' }]))
+  expect(receipt).toEqual({ moved: 3, overwritten: 0, deleted: 0, folders: [{ folder: 'fixtures/inbox-dump/PDF', count: 2, files: ['a.pdf', 'b.pdf'] }, { folder: 'fixtures/inbox-dump/Word', count: 1, files: ['c.docx'] }] })
+  expect((await readdir(dump)).sort()).toEqual(['PDF', 'Word'])
+  expect(await readFile(join(dump, 'PDF', 'b.pdf'), 'utf8')).toBe('b.pdf')
+  expect(state.confirm).not.toHaveBeenCalled()
+  // One target that exists stops the whole batch: the first move is not made either.
+  await writeFile(join(dump, 'd.pdf'), 'new d')
+  await expect(run([{ from: 'fixtures/inbox-dump/PDF/a.pdf', to: 'fixtures/inbox-dump/a.pdf' }, { from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/inbox-dump/PDF/b.pdf' }])).rejects.toThrow('already exists')
+  expect((await readdir(join(dump, 'PDF'))).sort()).toEqual(['a.pdf', 'b.pdf'])
+  expect(await readFile(join(dump, 'PDF', 'b.pdf'), 'utf8')).toBe('b.pdf')
+  // Engram's folders, the private vault and anything outside the workspace are neither a source nor a target.
+  for (const [from, to] of [['notes/n.md', 'fixtures/n.md'], ['fixtures/inbox-dump/d.pdf', '.engram/d.pdf'], ['fixtures/inbox-dump/d.pdf', '../outside/d.pdf'], [join(root, 'outside', 'o.txt'), 'fixtures/o.txt'], ['fixtures/inbox-dump/d.pdf', join(root, 'private', 'd.pdf')], ['tasks', 'fixtures/tasks'], ['fixtures', 'fixtures/inbox-dump/PDF/fixtures']])
+    await expect(run([{ from: from!, to: to! }])).rejects.toThrow()
+  expect(await readFile(join(paths.notes, 'n.md'), 'utf8')).toBe('note')
+  expect(await readFile(join(dump, 'd.pdf'), 'utf8')).toBe('new d')
+  // A folder moves whole, and back.
+  await run([{ from: 'fixtures/inbox-dump/PDF', to: 'fixtures/inbox-dump/문서/PDF' }])
+  expect((await readdir(join(dump, '문서', 'PDF'))).sort()).toEqual(['a.pdf', 'b.pdf'])
+  state.stopped = true
+  await expect(run([{ from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/inbox-dump/e.pdf' }])).rejects.toThrow('Stopped')
+})
+
+it.skipIf(process.platform === 'win32')('does not move through a link that leads out of the workspace', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  await mkdir(join(paths.workspace, 'fixtures'), { recursive: true })
+  await mkdir(join(root, 'outside'))
+  await writeFile(join(root, 'outside', 'o.txt'), 'out')
+  await writeFile(join(paths.workspace, 'fixtures', 'in.txt'), 'in')
+  await symlink(join(root, 'outside'), join(paths.workspace, 'fixtures', 'door'))
+  const move = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_move')!
+  await expect(move.run({ moves: [{ from: 'fixtures/in.txt', to: 'fixtures/door/in.txt' }] }, { task: 'Move it.' })).rejects.toThrow('Only the person')
+  await expect(move.run({ moves: [{ from: 'fixtures/door/o.txt', to: 'fixtures/o.txt' }] }, { task: 'Move it.' })).rejects.toThrow('Only the person')
+  // The link itself is neither a file nor a folder of theirs.
+  await expect(move.run({ moves: [{ from: 'fixtures/door', to: 'fixtures/door2' }] }, { task: 'Move it.' })).rejects.toThrow('Not a file or folder')
+  expect(await readFile(join(root, 'outside', 'o.txt'), 'utf8')).toBe('out')
+})

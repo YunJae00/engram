@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { checkOfficeResult, officeWriteUnverified } from '../src/office-verification.js'
+import { checkOfficeResult, OFFICE_CLOSED, officeWriteUnverified } from '../src/office-verification.js'
 import type { AgentLoopStep } from '../src/agent-loop.js'
 
 const step = (tool: string, result: unknown, args: Record<string, unknown> = {}): AgentLoopStep => ({ tool, args, observation: typeof result === 'string' ? result : JSON.stringify(result) })
@@ -50,4 +50,13 @@ it('keeps failed writes incomplete and preserves explicit questions without clai
   const asked = { steps, answer: 'Continue?', fellBack: false, asked: true }
   expect(checkOfficeResult(asked)).toBe(asked)
   expect(checkOfficeResult(result)).toBe(result)
+})
+
+it('takes a composed file the host saved and compared as read back, and a command refused for a closed application as no write', () => {
+  const composed = { artifact: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a.docx', path: '/out/a.docx', sha256: 'a'.repeat(64), completeReadback: true }
+  expect(officeWriteUnverified([step('word_write', composed), step('ppt_build', composed)])).toBeUndefined()
+  expect(officeWriteUnverified([step('word_write', { ...composed, completeReadback: false })])).toBeDefined()
+  expect(officeWriteUnverified([step('word_write', { path: '/out/a.docx' })])).toBeDefined()
+  expect(officeWriteUnverified([step('excel_write', `that did not work: ${OFFICE_CLOSED}`)])).toBeUndefined()
+  expect(officeWriteUnverified([write(), step('excel_write', `that did not work: ${OFFICE_CLOSED}`)])).toBeDefined()
 })

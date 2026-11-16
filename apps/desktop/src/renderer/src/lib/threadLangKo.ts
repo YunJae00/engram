@@ -116,7 +116,7 @@ export const WORK_KO: Record<string, string | ((arg: string) => string)> = {
   Bash: '명령 실행하는 중', PowerShell: '명령 실행하는 중', Shell: '명령 실행하는 중',
   file_read: arg => `${name(arg)} 읽는 중`, file_read_workbook: arg => `${name(arg)} 읽는 중`, file_read_package: arg => `${name(arg)} 읽는 중`,
   render_file: 'PDF/이미지 만드는 중', file_create_copy: arg => `${name(arg)} 저장하는 중`, file_create_workbook: arg => `${name(arg)} 저장하는 중`, file_edit_package: arg => `${name(arg)} 고치는 중`,
-  find_files: arg => `“${arg}” 파일 찾는 중`, open_skill: '배운 방법 읽는 중',
+  find_files: arg => `“${arg}” 파일 찾는 중`, file_move: '파일 옮기는 중', open_skill: '배운 방법 읽는 중',
   look_in_parallel: '여러 가지를 한꺼번에 알아보는 중',
   outage: arg => `${arg} 쪽에서 응답이 없어 잠시 뒤 다시 보내요`,
   page_do: '페이지에서 하나씩 해보는 중', app_do: '앱에서 하나씩 해보는 중', task_plan: '할 일 순서 정하는 중', report_result_check: '확인 결과 정리하는 중', collect_results: '모은 내용을 확인하는 중',

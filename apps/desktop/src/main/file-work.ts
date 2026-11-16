@@ -11,6 +11,7 @@ import { renderTool } from './render-file.js'
 import type { ArtifactViewDto } from '../shared/types.js'
 import type { Ask } from './page-actions.js'
 import { READ_CARD } from './read-card.js'
+import { fileMoveTool } from './file-move.js'
 
 const within = (root: string, path: string) => {
   const tail = relative(root, path)
@@ -318,6 +319,11 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
       if (roots.some(root => root && within(root, real))) return true
+      // The person's own workspace: a file they name there ("fixtures/회의록.md 요약해줘") is theirs to have read, and the comet's commands
+      // already read it without a card (grokbar D1: the card cost 20 s and a question nobody needed). Engram's own store there and another chat's task folder still ask.
+      // Only in a chat of the person's own, which has a task folder: an outside connection has none and reads nothing it was not handed.
+      const [workspace, cache] = await Promise.all([realpath(paths.workspace).catch(() => ''), realpath(paths.cache).catch(() => resolve(paths.cache))])
+      if (folder && workspace && within(workspace, real) && !within(cache, real) && !within(join(workspace, 'tasks'), real)) return true
       // Anything else is asked in the chat; with no chat to ask in, it is not read.
       if (!consent.ask) return false
       const words = consent.korean?.()
@@ -330,7 +336,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       approved.add(path)
       return true
     },
-  }), workbookTool(directory, active), ...(folder ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
+  }), workbookTool(directory, active), ...(folder ? [fileMoveTool(paths, active), renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
     const outcome = await tool.runRich!(args, context)
     return outcome.image ? { ...outcome, image: fitImage(outcome.image) } : outcome

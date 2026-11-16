@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { dirname, extname, isAbsolute, join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import type { OfficeOp } from 'core'
+import { OFFICE_CLOSED, type OfficeOp } from 'core'
 import { planOfficeEdits, type OfficeText } from './office-edit-plan.js'
 import { DesktopHost } from './desktop-host.js'
 
@@ -15,6 +15,16 @@ const running = new Set<AbortController>()
 const script = (): string => app.isPackaged ? join(process.resourcesPath, 'bin', 'desktop', 'Office.js')
   : fileURLToPath(new URL('../../native/macos/Office.js', import.meta.url))
 const digest = async (file: string): Promise<string> => createHash('sha256').update(await readFile(file)).digest('hex')
+
+// Word, Excel and PowerPoint are driven only while the person already has them open: a command sent to a closed one would start it, on the
+// person's screen, and leave it running after the app quit (grokbar D4: Excel started under ENGRAM_HIDDEN=1 and outlived the run).
+// Files on disk are read, made and changed by the file tools, which need no application. Outlook is not covered: a draft is opened for the person.
+const APPS = { excel: 'Microsoft Excel', word: 'Microsoft Word', ppt: 'Microsoft PowerPoint' } as const
+export const officeOpen = (name: string): Promise<boolean> => new Promise(resolve => execFile('/usr/bin/pgrep', ['-x', name], error => resolve(!error)))
+export async function assertOfficeOpen(op: string, open: (name: string) => Promise<boolean> = officeOpen): Promise<void> {
+  const name = APPS[op.split('.')[0] as keyof typeof APPS]
+  if (name && !await open(name)) throw new Error(`${OFFICE_CLOSED} ${name} is closed. For a file on disk use file_read or file_read_package to read it, file_edit_package to change it and file_create_workbook for a new workbook; they need no application. Do not retry this tool and do not ask the person about it.`)
+}
 
 export function closeMacOffice(): void {
   for (const controller of running) controller.abort()
@@ -27,6 +37,7 @@ export async function macOfficeRequest(op: OfficeOp, args: Record<string, unknow
   assertActive?.()
   if (op === 'probe') return Object.fromEntries(['Excel', 'Word', 'PowerPoint', 'Outlook'].map(name => [name.toLowerCase(),
     ['/Applications', join(homedir(), 'Applications')].some(root => existsSync(join(root, `Microsoft ${name}.app`)))]))
+  await assertOfficeOpen(op)
   const controller = new AbortController()
   running.add(controller)
   const abort = () => controller.abort()

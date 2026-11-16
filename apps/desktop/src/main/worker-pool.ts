@@ -196,6 +196,7 @@ export class WorkerPool {
   readonly base: number
   target: number
   running = 0
+  private interactiveRunning = 0
   private healthy = 0
   private readonly waiters: Waiter[] = []
   private sampling: Promise<void> | null = null
@@ -273,23 +274,28 @@ export class WorkerPool {
   }
 
   private pump(): void {
-    while (this.running < this.target) {
+    for (;;) {
       const ready = this.waiters.filter(w => w.ready)
       const next = ready.find(w => w.interactive) ?? ready[0]
       if (!next) return
+      // The person's own turn does not wait behind background work alone: while no turn of theirs runs, one goes over the target
+      // (grokbar F1: at target 1 a memory chore held the only slot and the first word came after 28.8 s). A second turn of theirs waits as before.
+      if (this.running >= this.target && !(next.interactive && this.interactiveRunning === 0)) return
       this.waiters.splice(this.waiters.indexOf(next), 1)
       clearTimeout(next.timer)
       this.running++
-      next.grant(this.releaser())
+      if (next.interactive) this.interactiveRunning++
+      next.grant(this.releaser(next.interactive))
     }
   }
 
-  private releaser(): () => void {
+  private releaser(interactive: boolean): () => void {
     let done = false
     return () => {
       if (done) return
       done = true
       this.running--
+      if (interactive) this.interactiveRunning--
       this.pump()
     }
   }
@@ -303,7 +309,7 @@ export class WorkerPool {
     // A tool outside any leased turn (no pool context) takes nothing, as before.
     if (store?.inside && !parent) return new Lease(this, NO_SLOT, interactive, signal)
     if (parent) {
-      if (this.running < this.target && this.waiters.length === 0) { this.running++; return new Lease(this, this.releaser(), interactive, signal) }
+      if (this.running < this.target && this.waiters.length === 0) { this.running++; return new Lease(this, this.releaser(false), interactive, signal) }
       if (parent.held) {
         const unlock = await parent.borrow()
         if (signal?.aborted) { unlock(); return null }

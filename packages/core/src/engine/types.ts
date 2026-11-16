@@ -153,6 +153,8 @@ export interface NativeTools {
   cwd: string
   // Folders the runtime may also read from.
   readRoots: string[]
+  // The person's workspace folder: a relative path they name is under it.
+  workspace?: string
   mode?: PermissionMode
   // Commands may already run without asking: chosen, or approved for this comet.
   ready?(): boolean
