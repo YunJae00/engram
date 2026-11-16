@@ -141,16 +141,19 @@ test('picking or making things is never a hire: a hire needs a staff word and no
 })
 
 // B3 r2: "마케팅팀 이번 주 한 일 요약해서 슬랙에 올려" took the lane, which has no posting tool and so no approval gate to reach.
-test('anything that goes outside or names an app keeps the normal path, also on a scheduled run; keeping a duty stays in the lane', () => {
+test('anything that goes outside or names an app keeps the normal path, also on a scheduled run and when it also sets a regular time', () => {
   const who = { staff: ['김대리', '박사원'], gone: ['이과장'], teams: ['마케팅팀'], chief: true }
   for (const ask of ['마케팅팀 이번 주 한 일 요약해서 슬랙에 올려', '마케팅팀 주간보고 메일로 보내', '마케팅팀 이번 주 한 일 요약해서 노션에 올려줘', '김대리한테 시켜서 거래처에 문자 보내', '김대리 뭐하는지 카톡으로 알려줘', '마케팅팀 성과 요약해서 팀 채널에 공유해']) {
     expect(isOutsideAsk(ask), ask).toBe(true)
     expect(takesCompanyLane(ask, who), ask).toBe(false)
     expect(takesCompanyLane(ask, { ...who, scheduled: true }), `scheduled: ${ask}`).toBe(false)
   }
-  // Said with a regular time it is only kept (schedule add posts nothing); the run it starts later is the one that posts.
-  expect(takesCompanyLane('매주 월요일 아침 9시에 마케팅팀 주간보고 슬랙에 올려', who)).toBe(true)
-  expect(takesCompanyLane('매주 월요일 아침 9시에 마케팅팀 주간보고 슬랙에 올려', { ...who, scheduled: true })).toBe(false)
+  // B3 r3: a regular time does not bring an outside post into the lane, which could keep the schedule but never post now. The normal path has both tools.
+  for (const ask of ['지금 마케팅팀 주간보고 슬랙에 올리고 매주 월요일 9시에도 올려', '매주 월요일 아침 9시에 마케팅팀 주간보고 슬랙에 올려', '마케팅팀 주간보고 지금 메일로 보내고 매주 금요일 오후 5시에도 보내줘', '매일 아침 9시에 김대리 한 일 정리해서 노션에 올리고 오늘 것도 바로 올려', '오늘 실적 팀 채널에 공유하고 매주 월요일 10시마다 공유해', '매달 1일 오전 9시에 거래처에 문자 발송하고 이번 달 건 지금 발송해']) {
+    expect(isDutyAsk(ask), ask).toBe(true)
+    expect(takesCompanyLane(ask, who), ask).toBe(false)
+    expect(takesCompanyLane(ask, { ...who, scheduled: true }), `scheduled: ${ask}`).toBe(false)
+  }
   // Nothing outside: the lane still takes them, a scheduled report in the thread included.
   for (const ask of ['마케팅팀 이번 주 한 일 요약해', '마케팅팀 주간보고 올려', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 뭐해?', '이과장 다시 불러와']) {
     expect(takesCompanyLane(ask, who), ask).toBe(true)

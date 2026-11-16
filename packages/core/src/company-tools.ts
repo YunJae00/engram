@@ -239,10 +239,10 @@ export function isTeamWorkAsk(message: string, teams: readonly string[]): boolea
 const OUTSIDE = /(슬랙|slack|노션|notion|메일|gmail|카톡|카카오톡|문자|디스코드|discord|텔레그램|telegram|팀즈|teams|트위터|인스타|인스타그램|페이스북|링크드인|블로그|유튜브|게시판|채널|단톡방?|드라이브|drive|깃허브|github|지라|jira|컨플루언스|confluence|캘린더|calendar)\s*(에|으로|로)(?!서)|(?<!내)보내|전송|발송|게시|포스팅|트윗|공유|(에|으로|로)\s*(올려|올리|업로드|등록)/iu
 export const isOutsideAsk = (message: string): boolean => OUTSIDE.test(message)
 
-/** Whether a message takes the company lane (small menu, fast tier). Keeping a duty only stores it, so it stays in the lane whatever the duty does; its scheduled run, and anything else that goes outside, takes the normal path. */
+/** Whether a message takes the company lane (small menu, fast tier). Going outside is checked before every lane matcher: the lane cannot post, so a sentence that names an outside place keeps the normal path (which has schedule too), even when it also sets a regular time. */
 export function takesCompanyLane(message: string, who: { staff: readonly string[]; gone?: readonly string[]; teams: readonly string[]; chief: boolean; scheduled?: boolean }): boolean {
-  if (who.chief && !who.scheduled && isDutyAsk(message)) return true
   if (isOutsideAsk(message)) return false
+  if (who.chief && !who.scheduled && isDutyAsk(message)) return true
   return (who.chief && (isAssignAsk(message, [...who.staff, ...who.teams]) || isTeamWorkAsk(message, who.teams))) || isCompanyAsk(message, [...who.staff, ...(who.gone ?? []), ...who.teams], who.chief)
 }
 
