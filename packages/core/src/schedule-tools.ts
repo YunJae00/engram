@@ -29,17 +29,51 @@ export function scheduleWords(schedule: Schedule): string {
 }
 
 const DAY_KO = ['일', '월', '화', '수', '목', '금', '토']
-/** "매주 월요일 09:00", for the line the person reads. */
+// The time as people say it: "9시", "오후 3시 반", "밤 12시".
+const timeKo = (hour: number, minute: number): string => `${hour === 0 ? '밤 12' : hour < 6 ? `새벽 ${hour}` : hour < 12 ? hour : hour === 12 ? '낮 12' : `오후 ${hour - 12}`}시${minute === 30 ? ' 반' : minute ? ` ${minute}분` : ''}`
+/** "매주 월요일 9시", for the line the person reads. */
 export function scheduleWordsKo(schedule: Schedule): string {
-  const time = `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`
+  const time = timeKo(schedule.hour, schedule.minute)
   if (schedule.on) return `${schedule.on} ${time}에 한 번`
   const days = [...schedule.days].sort((a, b) => a - b)
   const when = days.length === 7 ? '매일' : days.length === 5 && days.every(d => d >= 1 && d <= 5) ? '평일' : `매주 ${days.map(d => DAY_KO[d]).join('·')}요일`
   return schedule.every ? `${when} ${time}부터 ${schedule.every}분마다` : `${when} ${time}`
 }
 
-function described(task: BotTask): Record<string, string> {
-  return { id: task.id, what: task.goal, when: task.schedule ? scheduleWords(task.schedule) : 'not scheduled', ...(task.watch ? { onlyWhenNew: task.watch.tool } : {}), ...(task.lastRunAt ? { lastRun: task.lastRunAt } : {}) }
+// grokbar C7: "매주 월요일 09:00 일정으로 넣었어요: 지난주 팀이 한 일 요약해줘" read like a form. The request's own ending is turned into a
+// promise ("…요약해 드릴게요."); an ending that cannot be turned safely is quoted as it was said.
+function keptLine(schedule: Schedule, what: string): string {
+  const when = scheduleWordsKo(schedule), asked = /^(.*[가-힣])\s*(?:줘요?|주세요|줄래요?)[.!~\s]*$/u.exec(what.trim())?.[1]
+  const open = asked ? (asked.charCodeAt(asked.length - 1) - 0xac00) % 28 === 0 : false
+  if (schedule.on || schedule.every || !asked || !open || asked.includes('\n')) return `${when}${schedule.on || schedule.every ? '' : '에'} 할게요: "${what}"`
+  return `${when}에 ${asked} 드릴게요.`
+}
+
+// grokbar C7: one model round only to copy a day and a time into the call took 6.6 s (bar 5 s). These plain shapes are made by the host.
+// shortcut: weekly on one day, daily, weekdays and weekends, at a whole hour with optional minutes; anything else is the model's call.
+const PLAIN_REPEAT = /^(매주\s*([월화수목금토일])요일(?:\s*마다)?|매일|평일\s*마다|주말\s*마다)\s*(아침|오전|낮|오후|저녁|밤)?\s*(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분|(반))?\s*(?:에|마다)?\s+(.+)$/u
+const ASKS_FOR = /(줘요?|주세요|줄래요?|해|해요)[.!~\s]*$/u
+// Something to do now as well, another time in the job, or somewhere outside: not a plain schedule.
+const NOT_PLAIN = /지금|먼저|매주|매일|마다|\d\s*시|보내|올려|전송|게시|공유/u
+/** The schedule arguments for a plain recurring ask ("매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘"), or undefined. An hour with no part of day is taken as said from 7 to 23; an earlier one is ambiguous and left to the model. */
+export function plainSchedule(message: string): { action: 'add'; what: string; time: string; days: number[] } | undefined {
+  const line = message.trim(), said = line.length <= 200 && !line.includes('\n') ? PLAIN_REPEAT.exec(line) : null
+  if (!said) return undefined
+  const [, repeat, day, part, hours, minutes, half, what] = said as unknown as [string, string, string | undefined, string | undefined, string, string | undefined, string | undefined, string]
+  const n = Number(hours), minute = half ? 30 : Number(minutes ?? 0)
+  const hour = part === '아침' || part === '오전' ? (n === 12 ? 0 : n <= 11 ? n : -1)
+    : part === '낮' ? (n === 12 ? 12 : n <= 5 ? n + 12 : -1)
+    : part === '밤' ? (n === 12 ? 0 : n <= 4 ? n : n <= 11 ? n + 12 : -1)
+    : part ? (n <= 11 ? n + 12 : n === 12 ? 12 : -1)
+    : n >= 7 && n <= 23 ? n : -1
+  if (hour < 0 || n < 1 || minute > 59 || !ASKS_FOR.test(what) || NOT_PLAIN.test(what)) return undefined
+  const days = day ? [DAY_KO.indexOf(day)] : repeat.startsWith('평일') ? [1, 2, 3, 4, 5] : repeat.startsWith('주말') ? [0, 6] : [0, 1, 2, 3, 4, 5, 6]
+  return { action: 'add', what: what.trim(), time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, days }
+}
+
+// korean: on the person's own thread the time is given the way the confirmation said it ("매주 월요일 9시"), so the list reads the same.
+function described(task: BotTask, korean = false): Record<string, string> {
+  return { id: task.id, what: task.goal, when: task.schedule ? (korean ? scheduleWordsKo : scheduleWords)(task.schedule) : 'not scheduled', ...(task.watch ? { onlyWhenNew: task.watch.tool } : {}), ...(task.lastRunAt ? { lastRun: task.lastRunAt } : {}) }
 }
 
 export function scheduleFrom(args: Record<string, unknown>, now: Date): Schedule {
@@ -80,7 +114,7 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
       const action = args['action']
       if (action === 'list') {
         const kept = (await deps.list()).filter(task => task.schedule && !task.routineId)
-        return JSON.stringify({ scheduled: kept.map(described) })
+        return JSON.stringify({ scheduled: kept.map(task => described(task, deps.duty)) })
       }
       if (action === 'remove') {
         const id = typeof args['id'] === 'string' ? args['id'] : ''
@@ -102,7 +136,7 @@ export function scheduleTool(deps: ScheduleDeps): AgentTool {
         watch = { tool, args: toolArgs as Record<string, unknown> }
       }
       const task = await deps.add({ name: what.slice(0, 60), goal: what, schedule, ...(watch ? { watch } : {}) })
-      if (deps.duty) return `${scheduleWordsKo(schedule)} 일정으로 넣었어요: ${what}`
+      if (deps.duty) return keptLine(schedule, what)
       return JSON.stringify({ scheduled: described(task), note: 'Say back in one line what will run and when.' })
     },
   }

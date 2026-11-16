@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, aboutEmployee, employeesReport, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSchedule, answersItself, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2308,8 +2308,12 @@ export function registerIpc(ctx: VaultContext): void {
     answering.add(entry.channel)
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
+    // An ask the host answers itself on the person's own thread (the team's status, who someone is, a plain add, hand-off or schedule) is
+    // decided here, before a first line can be shown: its answer is the first text (grokbar C9: a canned line at 0.6 s over an answer ready at 1 s).
+    const hostAnswers = !!request.botId && !request.scheduled && !recovery && !savedRoutine && !turn?.report && !turn?.verification && !turn?.quiet && !request.attachments?.length && !studying.has(entry.channel)
+      && await loadBots(paths).then(bots => bots.find(bot => bot.id === request.botId)?.primary === true && answersItself(request.message, bots), () => false)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
+    beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2358,8 +2362,6 @@ export function registerIpc(ctx: VaultContext): void {
 
   // The tools a comet is offered, the same list for a turn and for a session
   // warmed ahead of one: what differs per turn rides in the closures.
-  // The last step an agent's own conversation showed, while it works.
-  const staffDoing = (botId: string) => workSoFar.get(`bot-${botId}`)?.at(-1)
   const cometToolSet = async (input: {
     channel: string; engine: Engine; settings: Awaited<ReturnType<typeof loadSettings>>; permission: PermissionMode; native: NativeTools | undefined
     attachments: Awaited<ReturnType<typeof readChatAttachments>>; earlierOutputs: Awaited<ReturnType<typeof linkedOutputs>>; turn: TaskTurn | undefined
@@ -2455,7 +2457,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths, staffDoing)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
@@ -2551,7 +2553,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     // "다들 뭐 하고 있어?" on the person's own thread is answered from stored state: no model round.
     if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && isStatusAsk(request.message)) {
-      const said = companyStatus(await loadBots(paths), await listTasks(paths), staffDoing)
+      const said = companyStatus(await loadBots(paths), await listTasks(paths))
       await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
       turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
       answering.delete(channel)
@@ -2797,9 +2799,13 @@ export function registerIpc(ctx: VaultContext): void {
         // grokbar B7: so is adding one named agent (C1), and two answers need no call at all: who an agent is (C9), and the
         // result of agents who worked in the background (C5, C6: the merge is the host's, so it keeps every fact, name and address).
         const hire = !handoff && company && chief && !turn?.report && request.scheduled !== true ? plainHire(request.message) : undefined
-        const direct = handoff ? { tool: 'assign', args: handoff } : hire ? { tool: 'agents', args: hire } : undefined
+        // grokbar C7: and so is keeping a plain weekly or daily ask (one model round only copied the day and the time: 6.6 s, bar 5 s).
+        const kept = !handoff && !hire && company && chief && !turn?.report && request.scheduled !== true ? plainSchedule(request.message) : undefined
+        const direct = handoff ? { tool: 'assign', args: handoff } : hire ? { tool: 'agents', args: hire } : kept ? { tool: 'schedule', args: kept } : undefined
+        // The quick model writes the team's merged answer from their results; the host checks it and keeps its own table as the fallback.
+        const writer = engine.id === 'claude' && engine.quick ? (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: REPORT_WRITER_MS }) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
-          : !company ? undefined : turn?.report ? employeesReport((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)) : aboutEmployee(request.message, everyone, await listTasks(paths))
+          : !company ? undefined : turn?.report ? await employeesAnswer((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id), writer) : aboutEmployee(request.message, everyone, await listTasks(paths))
         // The hand-off's own line is the whole answer: a quick first line still on its way would be a second one.
         if (handed) firstLineSpoke(channel)
         if (company && !handed) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))

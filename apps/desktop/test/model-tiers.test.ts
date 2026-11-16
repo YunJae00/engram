@@ -373,7 +373,9 @@ describe('instant first line', () => {
     expect(laneLine('이번 주 팀이 한 일 요약해', true)).toBe('지금 정리할게요.')
     expect(laneLine('서연은 빼고 지민은 이름을 지우로 바꿔', true)).toBe('바로 정리할게요.')
     expect(laneLine('박사원 내보내고 김대리는 김과장으로 승진시켜', true)).toBe('바로 정리할게요.')
-    expect(laneLine('지민이는 날씨 찾아보고 서연이는 문구 써줘. 둘한테 나눠 맡겨', true)).toBe('바로 맡길게요.')
+    // The split's own line follows ("…한테 나눠 맡겼어요."): the first line names the step before it and is not the same thing said twice.
+    expect(laneLine('지민이는 날씨 찾아보고 서연이는 문구 써줘. 둘한테 나눠 맡겨', true)).toBe('누가 뭘 맡을지 나눠 볼게요.')
+    expect(laneLine('이 조사는 도윤한테 맡겨줘', true)).toBe('바로 맡길게요.')
     expect(laneLine('매주 월요일 아침 9시에 주간보고 올려', true)).toBe('일정에 넣어 둘게요.')
     expect(laneLine('이것 좀 해줘', true)).toBe('지금 바로 할게요.')
     for (const said of ['김대리 하나 뽑아줘', '내 일정 뭐 있어?', '이것 좀 해줘']) expect(laneLine(said, true)).not.toMatch(/^네[,.]|알겠습니다|습니다/)
@@ -381,11 +383,43 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
     // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
-    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'agents', args: hire \} : undefined/)
+    // grokbar cycle 3 (C7): a plain weekly or daily ask is the schedule call made by the host under the same gates.
+    expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
+    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'agents', args: hire \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
     expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : await runComet\(/)
     // grokbar B7: adding one agent is the agents call made by the host under the same gates; who an agent is and a background result need no model either.
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? employeesReport\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\)\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    // grokbar cycle 3: the background result is written by the quick model from the agents' texts (the host's own table is the fallback).
+    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(\(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\), writer\) : aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    expect(source('ipc.ts')).toMatch(/const writer = engine\.id === 'claude' && engine\.quick \? \(prompt: string\) => engine\.quick!\(prompt, \{ workdir: engineCwd\(paths\), timeoutMs: REPORT_WRITER_MS \}\) : undefined/)
+  })
+
+  // grokbar cycle 3 (C9): "바로 확인해 볼게요." came up at 0.6 s over an answer the host had ready at 1 s, because the host's answer was
+  // decided only after the first line had been started.
+  it('an ask the host answers itself is decided before the first line and shows none', async () => {
+    const ask = { channel: 'bot-1', message: '지우 무슨 일 하는 사람이야?', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }
+    expect(wantsFirstLine(ask)).toBeNull()
+    expect(wantsFirstLine({ ...ask, host: true })).toBe('host')
+    vi.useFakeTimers()
+    try {
+      const show = vi.fn(), quick = vi.fn(async () => '지금 확인해 볼게요.')
+      beginFirstLine({ ...ask, host: true, engine: async () => ({ id: 'claude', quick }), workdir: '/tmp' as never, signal: new AbortController().signal, show, fallback: '바로 확인해 볼게요.' })
+      firstLineReady('bot-1')
+      await vi.advanceTimersByTimeAsync(FIRST_LINE_FALLBACK_MS + 1000)
+      // No line from the small model, no fallback line, and the lane's fixed line has nothing to show either.
+      firstLineNow('bot-1', ask.message, true)
+      expect(show).not.toHaveBeenCalled()
+      expect(quick).not.toHaveBeenCalled()
+      expect(firstLineNote('bot-1')).toBe('')
+    } finally { vi.useRealTimers(); endFirstLine('bot-1') }
+    // In the turn: the decision is made, with the team as it is, before beginFirstLine is called, and is passed to it.
+    const ipc = source('ipc.ts'), decided = ipc.indexOf('const hostAnswers = '), begun = ipc.indexOf('beginFirstLine({ host: hostAnswers,')
+    expect(decided).toBeGreaterThan(0)
+    expect(begun).toBeGreaterThan(decided)
+    expect(ipc.slice(decided, begun)).toContain('answersItself(request.message, bots)')
+    expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && answersItself/)
+    // It never throws out of the turn's setup: a team that cannot be read means an ordinary first line.
+    expect(ipc.slice(decided, begun)).toContain('() => false)')
   })
 
   it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {

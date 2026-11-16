@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { continuationPrompt, createTask, listTasks, parseAsk, updateTask, type AgentTool, type DelegatedTask, type Engine, type TaskTeam, type TeamMember, type ToolSessionJob, type VaultPaths } from 'core'
 import { cards, done, readback, setup } from './task-runner-fixture.js'
-import { memberLane, teamRunner, type TurnKit } from '../src/main/team-runner.js'
+import { memberLane, teamRunner, WRITER_HARD_MS, type TurnKit } from '../src/main/team-runner.js'
 import { withLease, WorkerPool } from '../src/main/worker-pool.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
@@ -255,7 +255,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const { loadBotMemory, readBotTranscript, recordFacts } = await import('core')
     await recordFacts(w.paths, w.kim.id, ['지난주에 슬랙 가격을 조사했다'])
     // grokbar B7: a waited lookup comes back as the answer itself, under the agent's name, with no merge round.
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('지민 결과예요.\n\n지민: 노션이 AI 회의록을 냈다 https://notion.so/releases')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('지민이 정리해 왔어요.\n\n지민: 노션이 AI 회의록을 냈다\n\n[notion.so](https://notion.so/releases)')
     expect((await readBotTranscript(w.paths, w.kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '지민: 노션이 AI 회의록을 냈다 https://notion.so/releases']])
     expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 지민: 노션이 AI 회의록을 냈다 .* \(지민, \d{4}-\d\d-\d\d\)$/)
     expect((await w.members())[0]).toMatchObject({ botId: w.kim.id, lookup: true, state: 'released', review: { ok: true } })
@@ -274,13 +274,21 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
   it('hands a finished result to the next agent, and only when the first ended done', async () => {
     const w = await staffed(async turn => turn.role === '지민' ? '11월 20일 서울 AI 서밋 https://example.com/summit' : `문구 3개 <- ${turn.prompt.includes('11월 20일 서울 AI 서밋 https://example.com/summit') ? '지민 자료' : '자료 없음'}`)
     // grokbar B7 (C6): one report, 서연's result first and then the facts 지민 found, named as his and by the job they came from.
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('서연 결과예요. 지민한테 받은 내용으로 했어요.\n\n문구 3개 <- 지민 자료\n\n지민한테 받은 내용 (행사 조사):\n11월 20일 서울 AI 서밋 https://example.com/summit')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('서연이 지민한테 받은 내용으로 했어요.\n\n문구 3개 <- 지민 자료\n\n지민이 찾은 내용: 11월 20일 서울 AI 서밋 · [example.com](https://example.com/summit)')
+    // grokbar C6: the next one's job is writing from what was handed over, so they run as a writer: no tools at all, the handed result in the prompt.
+    expect((await w.members())[1]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
+    expect((await w.members())[1]!.lookup).toBeUndefined()
+    expect(w.seen[1]!.tools).toEqual([])
+    expect(w.seen[1]!.prompt).toContain('Handed over by 지민')
     expect((await w.members()).map(m => [m.role, m.state])).toEqual([['지민', 'released'], ['서연', 'released']])
     expect((await w.members())[1]).toMatchObject({ botId: w.park.id, role: '서연', state: 'released' })
     expect(w.seen.map(turn => turn.role)).toEqual(['지민', '서연'])
     expect((await w.task()).team!.hires).toBe(2)
     const failed = await staffed(async turn => { if (turn.role === '지민') throw new Error('no source'); return 'never' })
-    expect(await failed.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민 결과예요.\n\n지민: 조사하지 못했어요.')
+    expect(await failed.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('행사 조사(지민): 이번엔 못 찾았어요.')
+    // grokbar C10: a part that found nothing leaves its line on the team's record too, in plain words.
+    const { loadBotMemory } = await import('core')
+    await vi.waitFor(async () => expect((await loadBotMemory(failed.paths, '_team')).facts.map(fact => fact.text.replace(/\d{4}-\d\d-\d\d/, 'day'))).toEqual(['행사 조사 → 못 찾았어요 (지민, day)']))
     expect(failed.seen.map(turn => turn.role)).toEqual(['지민'])
   })
 
@@ -298,7 +306,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     // "지민 조사 끝나면 서연한테 넘겨": asked in a new turn (a new task) while 지민 is still on it.
     const second = await createTask(w.paths, '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', 'b1')
     await updateTask(w.paths, second.id, t => { t.state = 'running'; t.turns = 1 })
-    expect(await w.assign({ wait: true, to: [{ who: '지민', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민 일이 끝나면 서연한테 넘길게요.')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민이 끝내면 서연한테 넘길게요.')
     await updateTask(w.paths, second.id, t => { t.state = 'done' })
     expect(w.reported).toEqual([])
     go()
@@ -315,11 +323,33 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const texts = async () => (await readBotTranscript(w.paths, w.kim.id)).map(turn => turn.text)
     w.busy.add(`bot-${w.kim.id}`)
     await appendBotTurn(w.paths, w.kim.id, { role: 'user', text: '내 질문', at: new Date().toISOString() })
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('지민 결과예요.')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('지민이 정리해 왔어요.')
     expect(await texts()).toEqual(['내 질문'])
     await appendBotTurn(w.paths, w.kim.id, { role: 'assistant', text: '내 답', at: new Date().toISOString() })
     w.busy.delete(`bot-${w.kim.id}`)
     await vi.waitFor(async () => expect(await texts()).toEqual(['내 질문', '내 답', '노션 신기능 조사', '노션 결과 https://notion.so/releases']), { timeout: 3000 })
+  })
+
+  // grokbar C6 (stack2): 서연 wrote her three lines without calling a tool, was stopped at the limit, and they were thrown away ("조사하지 못했어요").
+  it('a writer stopped at the limit keeps what they wrote; with nothing written they found nothing; and the hand-off goes on the record', async () => {
+    const { loadBotMemory } = await import('core')
+    // The runner itself: a writer member is time-boxed (WRITER_HARD_MS) and its draft is its result.
+    expect(WRITER_HARD_MS).toBeLessThanOrEqual(20_000)
+    const w = await staffed(async () => 'unused')
+    let calls = 0
+    const run: Run = (deps, prompt, options = {}) => ++calls === 1 ? Promise.resolve(reply('Notion Agent 개선 https://www.notion.com/releases'))
+      : new Promise((_resolve, reject) => { options.onStart?.(); expect(deps.tools).toEqual([]); expect(prompt).toContain('Notion Agent 개선'); expect(options.persona).toContain('you have no tools'); options.onToken?.('1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로'); options.signal!.addEventListener('abort', () => reject(new Error('aborted'))) })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const team = teamRunner({ paths: w.paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
+      const answer = use(team.tools('bot-b1', w.kit, () => undefined), 'assign', { wait: true, to: [{ who: '지민', brief: '노션 신기능 조사', then: { who: '서연', brief: '홍보 문구 3개 뽑기' } }] })
+      await vi.waitFor(() => expect(calls).toBe(2))
+      await vi.advanceTimersByTimeAsync(WRITER_HARD_MS + 10)
+      vi.useRealTimers()
+      expect(await answer).toBe('서연이 지민한테 받은 내용으로 했어요.\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로\n\n지민이 찾은 내용: Notion Agent 개선 · [notion.com](https://www.notion.com/releases)\n\n이번엔 여기까지 찾았어요.')
+    } finally { vi.useRealTimers() }
+    expect((await w.members())[1]).toMatchObject({ role: '서연', writer: true, state: 'released', review: { ok: true } })
+    await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → Notion Agent 개선 https://www.notion.com/releases', '홍보 문구 3개 뽑기 (지민한테 받아서) → 1. 일은 에이전트에게 2. 하루를 맡기세요 3. 더 적은 비용으로']))
   })
 
   it('a stop aborts background agents and no report follows', async () => {

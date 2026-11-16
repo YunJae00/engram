@@ -48,7 +48,9 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   }
   // Codex cap (b7 r3): the row of an agent cut at the limit says so the way a colleague would, never with the host's limit note.
   expect(answer).not.toMatch(/한도|멈춤|stopped at/)
-  expect(rows.every(row => row.includes('(여기까지만 찾았어요)'))).toBe(true)
+  // grokbar cycle 3: and it is said once, in words under the table, not as "(여기까지만 찾았어요)" in every row.
+  expect(answer).not.toContain('(여기까지')
+  expect(answer.match(/이번엔 여기까지 찾았어요\./g)).toHaveLength(1)
   // Review r2: the thread turns a table of three or more columns into cards, so the person never saw a table. It must stay one.
   const shown = answerHtml(answer)
   expect(shown).not.toContain('answer-card')
@@ -64,7 +66,7 @@ it('every agent stopped at the time limit still gets a link in their row, at the
 it('agents that reached no page are said so in their rows, and that answer is not re-checked either', async () => {
   const w = await world(async (_deps, _prompt, options = {}) => { options.onStart?.(); return stuck(options, '') })
   const answer = await w.assign()
-  expect(answer.split('\n').filter(line => line.endsWith(') | 조사하지 못했어요. |'))).toHaveLength(3)
+  expect(answer.split('\n').filter(line => line.endsWith(') | 이번엔 못 찾았어요. |'))).toHaveLength(3)
   expect(answer).not.toMatch(/https?:/)
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
 })

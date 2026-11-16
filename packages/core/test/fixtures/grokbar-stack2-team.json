@@ -1,0 +1,85 @@
+{
+  "c3": {
+    "goal": "이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜",
+    "members": [
+      {
+        "id": "m1",
+        "parentId": null,
+        "depth": 1,
+        "role": "지민",
+        "brief": "노션의 이번 주 신기능을 조사해서 정리해줘.",
+        "lookup": true,
+        "background": true,
+        "state": "released",
+        "result": "노션 최신 업데이트 조사 결과:\n- 2026-10-19: \"Agents, rebuilt to do more for less\" – Notion Agent 대폭 개선(독립 컴퓨터/브라우저 탑재, 최대 24시간 작업), 신규 모델 라우터 'Auto'(비용 90%↓),\n(시간 한도에서 멈춤: 여기까지 찾은 내용)",
+        "sources": [
+          "https://www.bing.com/search?q=Notion%20new%20features%20November%202026"
+        ],
+        "sessionKey": "team-t-mwjhp3yn-0b6181-m1",
+        "hiredAt": "2026-11-16T16:40:36.590Z",
+        "finishedAt": "2026-11-16T16:40:51.610Z",
+        "botId": "bot-m1"
+      },
+      {
+        "id": "m2",
+        "parentId": null,
+        "depth": 1,
+        "role": "서연",
+        "brief": "슬랙의 이번 주 신기능을 조사해서 정리해줘.",
+        "lookup": true,
+        "background": true,
+        "state": "released",
+        "result": "슬랙 신기능 조사 결과를 확인하지 못했어요.\n\n검색 결과와 공식 릴리즈 노트 페이지(https://slack.com/release-notes/windows) 모두 이번 턴 안에 내용을 읽어오지 못했습니다(검색은 빈 결과만 돌아왔고, 페이지 열람은 시간이 초과됨).\n\n- 이번 주 슬랙 신기능: 확인 불가 (소스 접근 실패)\n- 참고 시도한 주소: https://www.bing.com/search?q=Slack%20new%20features%20November%202026, https://slack.com/release-notes/windows\n\n누락된 부분: 실제 신기능 내용과 날짜를 확인하지 못했어요. 다시 시도가 필요합니다.\n(시간 한도에서 멈춤: 여기까지 찾은 내용)",
+        "sources": [
+          "https://www.bing.com/search?q=Slack%20new%20features%20November%202026",
+          "https://www.bing.com/search?q=Slack%20release%20notes%20update%20log"
+        ],
+        "sessionKey": "team-t-mwjhp3yn-0b6181-m2",
+        "hiredAt": "2026-11-16T16:40:36.590Z",
+        "finishedAt": "2026-11-16T16:40:50.894Z",
+        "botId": "bot-m2"
+      },
+      {
+        "id": "m3",
+        "parentId": null,
+        "depth": 1,
+        "role": "도윤",
+        "brief": "리니어의 이번 주 신기능을 조사해서 정리해줘.",
+        "lookup": true,
+        "background": true,
+        "state": "released",
+        "result": "This week's main items from Nov 12 and Nov 4 entries found.\n\nLinear 신기능 (이번 주)\n- 11/12: Coding agent에 BYOK(Bring Your Own Key) 지원 추가 — OpenAI·Anthropic·AWS Bedrock·Azure OpenAI 등 자체 API 키/요금제를 연결해 사용 가능 (워크스페이스 관리자가 설정에서 활성화)\n- 11/4: 모바일에서 Diffs(코드 변경사항) 볼 수 있는 \"Mobile Diffs\" 기능 추가\n- 그 외 다수 버그 수정: 에이전트 대화 스크롤, GitHub PR 연동, Loop 관련 수정 등\n\nhttps://linear.app/changelog/2026-11-12-bring-your-own-key\nhttps://linear.app/changelog/2026-11-04-mobile-diffs",
+        "sources": [
+          "https://www.bing.com/search?q=Linear%20changelog%20November%202026"
+        ],
+        "sessionKey": "team-t-mwjhp3yn-0b6181-m3",
+        "hiredAt": "2026-11-16T16:40:36.590Z",
+        "finishedAt": "2026-11-16T16:40:50.977Z",
+        "botId": "bot-m3"
+      }
+    ]
+  },
+  "c5": {
+    "goal": "이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리",
+    "members": [
+      {
+        "id": "m1",
+        "parentId": null,
+        "depth": 1,
+        "role": "지민",
+        "brief": "다음 달 서울 IT 행사 일정 정리",
+        "lookup": true,
+        "background": true,
+        "state": "released",
+        "result": "2026년 12월 서울 IT 행사 조사 결과(검색 결과 기준):\n- 2026-12-02~04: 국내 소프트웨어 기업 연말 행사 - AI·SW 도입 사례 중심, 무료 입장, 12월 2일은 비즈니스 데이(일반 참관객은 3일·4일 권장)\n- 2027 월드IT쇼(WIS 2027) 관련 일정이 전자신문 정보사업국 행사 목록에 포함되어 있음(정확한 날짜는 해당 페이지에서 추가 확인 필요)\n\n페이지 상세 열람이 시간 초과로 막혀 전자신문 정보사업국 행사 목록(www.sek.co.kr/schedule_all)에서 구체적 날짜·장소는 확인하지 못했습니다.\n\n출처: 네이버 검색 AI 브리핑 결과 (2026-11-17 조회)\n(시간 한도에서 멈춤: 여기까지 찾은 내용)",
+        "sources": [
+          "https://search.naver.com/search.naver?query=%EC%84%9C%EC%9A%B8%20IT%20%ED%96%89%EC%82%AC%202026%EB%85%84%2012%EC%9B%94%20%EC%9D%BC%EC%A0%95"
+        ],
+        "sessionKey": "team-t-mwjhpvmf-9f02ff-m1",
+        "hiredAt": "2026-11-16T16:41:03.081Z",
+        "finishedAt": "2026-11-16T16:41:18.058Z",
+        "botId": "bot-m1"
+      }
+    ]
+  }
+}

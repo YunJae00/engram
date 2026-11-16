@@ -6,7 +6,12 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, handoffBrief, logTask } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, handoffBrief, jobTitle, logTask, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+
+// Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
+// grokbar C6 has 45 s for a lookup (15 s at most) and then this.
+export const WRITER_HARD_MS = 20_000
+const OPENING_LINE_CHARS = 60
 
 // Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
@@ -90,7 +95,7 @@ export function teamRunner(deps: {
     const control = new AbortController(), stop = () => control.abort()
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
-    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string } | undefined
+    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
     // Tokens a lead session already counts are saved with the lead's turn, not again here.
     let charged = leads.has(leadChannel)
     try {
@@ -101,17 +106,18 @@ export function teamRunner(deps: {
       // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
       // An agent on the team works as themselves: their role and what they remember ride with the member rules.
-      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId) : '')
+      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
       const sources = new Set<string>()
-      const begun = () => { if (me.lookup) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, deps.lookupHardMs ?? LOOKUP_HARD_MS) }
+      const begun = () => { if (me.lookup || me.writer) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS) }
+      const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
-        const native = me.lookup ? undefined : await kit.nativeFor(lane)
-        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepSources(skipWalls(tool), sources) : tool, taskId, me))
+        const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
+        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepSources(skipWalls(tool), sources) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
@@ -121,7 +127,7 @@ export function teamRunner(deps: {
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => { read = true; deps.step(leadChannel, line) },
-            ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } } : {}),
+            ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
@@ -132,15 +138,19 @@ export function teamRunner(deps: {
           prompt = reviewFirst(open)
         }
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } } finally { clearTimeout(hardStop) }
-      // Only what it wrote after reading something is a result: words before its first tool call are an opening line, not findings (perf146 r3).
-      if (timedOut && !signal?.aborted) outcome = { answer: read ? draft : '', timedOut: true }
+      // What it had written at the hard stop is its result, whether or not it called a tool first (grokbar C6: three lines of copy written with
+      // no tool call were thrown away as "조사하지 못했어요"). Only a lookup's one short line before its first tool call is still an opening line,
+      // not findings (perf146 r3: "먼저 기상청부터 확인.").
+      const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
+      if (timedOut && !signal?.aborted) outcome = { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, sources.size ? { ...outcome, sources: [...sources] } : outcome, now(), isKorean(goal))
         ended = m?.state
-        if (m?.botId && ended === 'done') done = { botId: m.botId, brief: m.brief, result: m.result ?? '' }
+        // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
+        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
       })
       if (done) {
         // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
@@ -167,7 +177,8 @@ export function teamRunner(deps: {
       const team = task.team, m = team?.members.find(one => one.id === id)
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, lookup: true, ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return to
@@ -178,7 +189,7 @@ export function teamRunner(deps: {
   // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.
   async function later(taskId: string, leadChannel: string, ids: string[], kit: TurnKit): Promise<void> {
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
-    const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup).map(m => m.id))
+    const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
     void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).then(async () => {
       const task = await find(taskId)
       if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task)) report?.(leadChannel, taskId)
@@ -205,7 +216,7 @@ export function teamRunner(deps: {
       const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
       // The caller's pool slot is given back for the whole wait; each child takes a root slot from the background line.
       // Lookup members are light and work side by side in the caller's slot: when all are, the caller keeps its slot for them.
-      const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup && ids.includes(m.id)).map(m => m.id))
+      const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => (m.lookup || m.writer) && ids.includes(m.id)).map(m => m.id))
       const all = () => Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, signal, kit, share, redo))))
       await (light.size === ids.length ? all() : whileWaitingForPerson(all))
     } finally {
@@ -251,6 +262,7 @@ export function teamRunner(deps: {
       return [...teamHireTools(host), assignTool(paths, {
         ...host,
         later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
+        ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: REPORT_WRITER_MS }) } : {}),
         // The job that agent is on right now in this thread, whichever task of the thread it belongs to.
         attach: async (botId, then) => {
           for (const [key, one] of live) {
