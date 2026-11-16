@@ -398,3 +398,26 @@ it('scopes a command allowance to its file host and sandbox side, not its folder
   expect(after.approvals.slice(1).map(a => a.url)).toEqual([command('ls', 'file://server/tmp/work').url, 'file:///tmp/work'])
   await t.runner.stopChannel('bot-bot-1')
 })
+
+it.each(['approve-task', 'approve'] as const)('after %s on a member\'s read card, the same file read by another member or a later step asks again only when it was allowed once', async answer => {
+  const read = (who: string, file = 'memo.txt') => ({ words: `${who}Read this file?\n/tmp/work/${file}`, url: `file:///tmp/work/${file}#read` })
+  const t = await setup(async (request, turn, _extra, runner) => {
+    const ask = runner.askFor(request.channel!, async () => 'approve', 0)!
+    const asks = turn === 1 ? [read('Legal lead: ')] : request.message === 'Another task' ? [read('')] : [read('Legal lead: '), read('Schedule lead: '), read(''), read('', 'other.txt')]
+    const verdicts: string[] = []
+    for (const one of asks) verdicts.push(await ask(one))
+    return done(verdicts.join(' '))
+  })
+  const waiting = await t.chat('Plan the launch with a team').then(() => t.settle('waiting'))
+  await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
+  // Allowed for the task: every member and the orchestrator read that file with no new card; another file still asks. Allowed once: only that one read.
+  await vi.waitFor(async () => expect((await listTasks(t.paths)).at(-1)!.result).toBe(answer === 'approve-task' ? 'approve approve approve later' : 'approve later later later'), { timeout: 5000 })
+  const after = await t.settle('waiting')
+  expect(after.approvals.filter(a => !a.answer).map(a => a.words)).toEqual([...(answer === 'approve-task' ? [] : [read('Schedule lead: ').words]), read('', 'other.txt').words])
+  await t.runner.stopChannel('bot-bot-1')
+  // Another task asks again for the same file.
+  await t.chat('Another task')
+  const next = await t.settle('waiting')
+  expect([next.id === waiting.id, next.approvals.map(a => [a.url, a.answer])]).toEqual([false, [[read('').url, undefined]]])
+  await t.runner.stopChannel('bot-bot-1')
+})

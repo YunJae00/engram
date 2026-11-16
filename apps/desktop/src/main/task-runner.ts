@@ -68,10 +68,11 @@ const WORTH_KEEPING_STEPS = 3
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
-// A file read card (#read, file-work.ts) is for that one file: approving it for the task covers only that file.
+// A file read card (#read, file-work.ts) is for that one file: approving it for the task covers only that file, whoever in the task asks
+// (a team member's card carries its role before the words, the orchestrator's does not: qa146 S19).
 const kindOf = (url: string, words: string): string => {
   if (!url.startsWith('file:')) return exactKey(url, words)
-  try { const u = new URL(url); return u.hash === READ_CARD ? exactKey(url, words) : `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
+  try { const u = new URL(url); return u.hash === READ_CARD ? url : `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
 }
 
 export function taskRunner(deps: {
