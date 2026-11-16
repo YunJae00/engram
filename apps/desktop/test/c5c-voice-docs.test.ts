@@ -29,6 +29,15 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     for (const tool of ['word_write', 'file_create_workbook', 'file_read', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     // Sent somewhere, a how-to question, a question about a named file, or only a file's name: not this menu.
     for (const ask of ['회의록 워드로 만들어서 민호한테 메일로 보내줘', '엑셀에서 행 추가하는 법 알려줘', '엑셀 표 만드는 방법이 뭐야?', 'fixtures/budget.xlsx에서 합계 알려줘', 'fixtures/word.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
+    // r3: a Word or Excel file named only by its file name, and a request that ends in "?", still had ask_person.
+    for (const ask of ['fixtures/budget.xlsx 수정해줘', 'report.docx 고쳐줘', 'fixtures/budget.xlsx에 12월 행 추가해줘', 'notes.doc 제목 바꿔줘', 'Fix the totals in budget.xlsx',
+      '분기 매출 엑셀로 만들어 줄래?', '회의록으로 워드 보고서 만들어 줄 수 있어?', 'report.docx 좀 고쳐주실래요?', 'Can you make an Excel sheet of monthly totals?']) {
+      expect(deskKind(ask), ask).toBe('deck')
+      expect(DESK_TOOLS[deskKind(ask)!]!.has('ask_person'), ask).toBe(false)
+    }
+    for (const tool of ['file_read_package', 'file_edit_package']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
+    // Still not this menu: a question about the file, a how-to that names a file, a file that is sent, an extension that only looks alike.
+    for (const ask of ['budget.xlsx 합계 수정됐어?', '엑셀로 차트도 만들 수 있어?', 'budget.xlsx에 행 추가하는 법 알려줘', 'report.docx 고쳐서 민호한테 보내줘', 'fixtures/notes.docs.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
     expect(DESK_TOOLS.deck!.has('ask_person')).toBe(false)
     for (const tool of ['ppt_build', 'word_write', 'file_create_workbook', 'find_files']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     // Sending, saving outside and buying stop in the app itself; a sign-in ask comes from the page tools, which the deck menu does not hold.

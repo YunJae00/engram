@@ -14,7 +14,13 @@ const DECK = /ppt|피피티|파워포인트|슬라이드|발표\s*자료|powerpo
 // a Word or Excel file takes the same menu. One that also sends it somewhere keeps every tool: the menu has nothing to send with.
 const SHEET = /워드|엑셀|스프레드시트|\b(word|excel|docx|xlsx|spreadsheet)\b/i
 // A how-to question about Word or Excel ("엑셀에서 행 추가하는 법 알려줘") makes no file.
-const HOW_TO = /방법|하는\s*법|어떻게|[?？]\s*$|\bhow\b/i
+// c5c r3: "fixtures/budget.xlsx 수정해줘" and "report.docx 고쳐줘" name the document only by its file: the kind check looks at the message with
+// file names taken out, so they kept every tool, ask_person among them. A named Word or Excel file is itself the document.
+const OFFICE_FILE = /\.(docx?|xlsx?)(?![a-z0-9])/i
+// c5c r3: any closing "?" counted as a how-to, so "분기 매출 엑셀로 만들어 줄래?" lost the menu. A question that asks for the work is a request.
+const HOW_TO = /방법|하는\s*법|어떻게|\bhow\b/i
+const ASKS_FOR_IT = /줘|줄래|주실|주세요|줄\s*수|주시겠|주겠|\b(can|could|would|will) you\b|\bplease\b/i
+const howTo = (text: string): boolean => HOW_TO.test(text) || (/[?？]\s*$/.test(text) && !ASKS_FOR_IT.test(text))
 const SENT = /보내|전송|올려|게시|메일|슬랙|노션|카톡|한테|에게|\b(send|post|e-?mail|slack|notion)\b/i
 const DECK_WORK = /만들|작성|바꿔|고쳐|수정|변경|추가|\b(make|create|build|change|rename|fix|add)\b/i
 // grokbar H3: "fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘" took 31.6 s on the work model, which wrote a file for a chat-sized answer.
@@ -74,7 +80,7 @@ export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()
   if (!text || [...text].length > ASK_MAX || text.includes('\n') || text.startsWith('/')) return undefined
-  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : (DECK.test(text) || (SHEET.test(text.replace(NAMED_FILE, ' ')) && !SENT.test(text) && !HOW_TO.test(text))) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
+  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : (DECK.test(text) || ((SHEET.test(text.replace(NAMED_FILE, ' ')) || OFFICE_FILE.test(text)) && !SENT.test(text) && !howTo(text))) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
 }
 
 // plain: an ordinary first turn by the person on a Claude brain (ipc.ts plainAsk): nothing attached, resumed, scheduled or re-checked.
