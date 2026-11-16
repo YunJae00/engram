@@ -20,7 +20,7 @@ const MessageTurn = memo(function MessageTurn({ message: m, live, divider: label
   const divider = label !== null && <div className="bubble-time-divider">{label}</div>
   if (m.role !== 'assistant') return <div className="bubble-turn">{divider}<div className={`bubble-msg user${m.scheduled ? ' scheduled' : ''}`}>
     {m.scheduled && <small className="bubble-scheduled" data-testid="bubble-scheduled"><Clock size={11} aria-hidden /> {threadWords(lang).scheduled}</small>}
-    <UserMessage text={m.text} attachments={m.attachments} />
+    <UserMessage text={m.text} attachments={m.attachments} lang={lang} />
   </div></div>
   return <div className={`bubble-turn${m.streaming || live ? ' live' : ''}`}>
     {divider}
