@@ -2,7 +2,7 @@ import type { AgentTool } from './agent-loop.js'
 import { BOT_LABEL_CHARS } from './bot-fields.js'
 import { loadBotMemory, renderMemory } from './bot-memory.js'
 import { archiveBot, createBot, loadArchivedBots, loadBots, restoreBot, updateBot, type Bot } from './bots.js'
-import { listTasks, type DelegatedTask } from './delegated-tasks.js'
+import { listTasks, SOURCE_TITLES_RULE, type DelegatedTask } from './delegated-tasks.js'
 import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn } from './bots.js'
@@ -316,7 +316,7 @@ export async function employeeWriteBack(paths: VaultPaths, job: { botId: string;
 const WRITE_BACK_POLL_MS = 500
 
 const ASSIGN_MAX = 4
-const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member for it. Give the person ONE merged report in their language, each part under the name of the employee who did it, keeping the source addresses each one gave. Mention anyone in "hired" in one short line. Where one employee handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one. Say plainly which part failed or is missing. A report with state waiting needs the person: close with its question, and when they answer pass it with review_member({id, ok:false, note:<answer>}).'
+const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member for it. Give the person ONE merged report in their language, each part under the name of the employee who did it, keeping the source addresses each one gave. Mention anyone in "hired" in one short line. Where one employee handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one. Say plainly which part failed or is missing. ' + SOURCE_TITLES_RULE + ' A report with state waiting needs the person: close with its question, and when they answer pass it with review_member({id, ok:false, note:<answer>}).'
 
 export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => void): AgentTool {
   return {

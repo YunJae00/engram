@@ -196,6 +196,8 @@ export class WorkerPool {
   readonly base: number
   target: number
   running = 0
+  // Slots held by a person's own turns.
+  private people = 0
   private healthy = 0
   private readonly waiters: Waiter[] = []
   private sampling: Promise<void> | null = null
@@ -273,23 +275,28 @@ export class WorkerPool {
   }
 
   private pump(): void {
-    while (this.running < this.target) {
+    for (;;) {
       const ready = this.waiters.filter(w => w.ready)
       const next = ready.find(w => w.interactive) ?? ready[0]
       if (!next) return
+      // One slot past the target is the person's: work nobody is watching (a memory note, a title, employees in the background)
+      // never holds up their turn (as-e1cf9bfd C2/C10: 21 s and 24 s behind the last turn's memory note at target 1).
+      if (this.running >= this.target && !(next.interactive && this.people === 0)) return
       this.waiters.splice(this.waiters.indexOf(next), 1)
       clearTimeout(next.timer)
-      this.running++
-      next.grant(this.releaser())
+      next.grant(this.take(next.interactive))
     }
   }
 
-  private releaser(): () => void {
+  private take(person: boolean): () => void {
+    this.running++
+    if (person) this.people++
     let done = false
     return () => {
       if (done) return
       done = true
       this.running--
+      if (person) this.people--
       this.pump()
     }
   }
@@ -303,7 +310,7 @@ export class WorkerPool {
     // A tool outside any leased turn (no pool context) takes nothing, as before.
     if (store?.inside && !parent) return new Lease(this, NO_SLOT, interactive, signal)
     if (parent) {
-      if (this.running < this.target && this.waiters.length === 0) { this.running++; return new Lease(this, this.releaser(), interactive, signal) }
+      if (this.running < this.target && this.waiters.length === 0) return new Lease(this, this.take(interactive), interactive, signal)
       if (parent.held) {
         const unlock = await parent.borrow()
         if (signal?.aborted) { unlock(); return null }

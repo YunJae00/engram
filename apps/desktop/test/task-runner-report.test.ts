@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { listTasks, updateTask, type TaskTeam, type TeamMember } from 'core'
 import { done, setup } from './task-runner-fixture.js'
+import { awaitingEmployees, EMPLOYEES_REPORT_LOG } from '../src/shared/task-waits.js'
 
 // Work the chief of staff handed to employees in the background (assign with wait false): the task waits for their report, not for the person.
 const employee = (state: TeamMember['state'], more: Partial<TeamMember> = {}): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사 일정 정리', botId: 'kim', lookup: true, background: true, state, sessionKey: 'team-x-m1', hiredAt: new Date().toISOString(), ...more })
@@ -23,6 +24,8 @@ it('a hand-off ends the turn on the ack, leaves the thread free, and the report 
   // Nothing tells the person a task is paused, and no check turn ran on the ack.
   expect(s.notified).toEqual([])
   expect(s.sent).toHaveLength(1)
+  // The thread's card reads this: no "작업이 멈췄어요" card and no attention mark while the employee works.
+  expect(awaitingEmployees(await first(s))).toBe(true)
   // The person keeps chatting: a task of its own, and the waiting one is neither continued nor replaced.
   await s.chat('오늘 날씨 어때?')
   expect((await listTasks(s.paths)).map(t => t.state)).toEqual(['waiting', 'done'])
@@ -35,6 +38,7 @@ it('a hand-off ends the turn on the ack, leaves the thread free, and the report 
   expect(s.sent[2]!.extra?.verification).toBeUndefined()
   expect(s.sent[2]!.request.message).toContain('- 김대리 [done]: 11월 20일 서울 AI 서밋 https://example.com/summit')
   expect(await first(s)).toMatchObject({ state: 'done', result: '김대리 보고: 11월 20일 서울 AI 서밋' })
+  expect(awaitingEmployees(await first(s))).toBe(false)
   expect(s.runner.activeChannels()).toEqual([])
 })
 
@@ -77,4 +81,15 @@ it('a stop ends the waiting task and a late report does nothing', async () => {
   expect(s.sent).toHaveLength(1)
   expect((await first(s)).state).toBe('stopped')
   expect(s.runner.activeChannels()).toEqual([])
+})
+
+// as-e1cf9bfd C5/C6: the thread showed "작업이 멈췄어요 / Waiting for the employees' report" while 김대리 was still working.
+it('only a task waiting on its employees is cardless: a question, an open approval or any other pause still shows', () => {
+  const parked = { state: 'waiting', approvals: [], log: [{ line: 'Assigned 김대리' }, { line: EMPLOYEES_REPORT_LOG }] }
+  expect(awaitingEmployees(parked)).toBe(true)
+  expect(awaitingEmployees({ ...parked, question: '어느 달 일정인가요?' })).toBe(false)
+  expect(awaitingEmployees({ ...parked, approvals: [{}] })).toBe(false)
+  expect(awaitingEmployees({ ...parked, approvals: [{ answer: 'approve' }] })).toBe(true)
+  expect(awaitingEmployees({ ...parked, log: [{ line: 'You declined a command, so this turn stopped. Waiting for your next instruction.' }] })).toBe(false)
+  expect(awaitingEmployees({ ...parked, state: 'failed' })).toBe(false)
 })

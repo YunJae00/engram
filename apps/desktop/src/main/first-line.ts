@@ -124,6 +124,19 @@ export function firstLineSpoke(channel: string): void {
   log({ channel, outcome: 'dropped', reason: 'spoke' })
 }
 
+// The company lane builds its prompt in milliseconds, so the small model's line can never arrive first (as-e1cf9bfd: dropped on
+// every lane turn, first text 2.5-25 s). Where a first line is wanted at all, the lane says a fixed one at once.
+export const laneLine = (message: string, korean: boolean): string => {
+  const asks = /[?？]\s*$|뭐|무슨|누구|어디|언제|어떻게|어때|몇|왜|\b(what|who|when|where|which|how|why)\b/i.test(message.trim())
+  return korean ? (asks ? '네, 확인해 볼게요.' : '네, 바로 할게요.') : (asks ? 'Let me check.' : 'On it.')
+}
+export function firstLineNow(channel: string, message: string, korean: boolean): void {
+  const turn = turns.get(channel)
+  if (!turn?.open) return
+  turn.line = laneLine(message, korean)
+  reveal(channel, turn)
+}
+
 // One sentence for the main turn, read when its prompt is built; never waits.
 // A line not shown by now is never shown, so the sentence is exact.
 export function firstLineNote(channel: string): string {

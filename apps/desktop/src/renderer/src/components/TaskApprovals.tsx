@@ -8,6 +8,7 @@ import { useThreadT } from '../lib/useThreadT.js'
 import { answerText } from '../markdown.js'
 import { renderMarkdown } from '../lib/markdown.js'
 import { DecisionCard } from './DecisionCard.js'
+import { awaitingEmployees } from '../../../shared/task-waits.js'
 
 // Presses the comet's task left for the person while it went on with the
 // rest: each is decided here, and once all are decided the task continues.
@@ -28,7 +29,7 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
     return () => { live = false; off() }
   }, [botId])
   useEffect(() => {
-    if (task?.state === 'waiting') webPane.attention(`bot-${botId}`)
+    if (task?.state === 'waiting' && !awaitingEmployees(task)) webPane.attention(`bot-${botId}`)
   }, [task, botId])
   if (!task || !['running', 'waiting', 'failed'].includes(task.state)) return null
   // A failure the thread already says needs no second card.
@@ -36,6 +37,8 @@ export function TaskApprovals({ botId, questionShown, failureShown }: { botId: s
   if (task.question && answerText(task.question).trim() === answerText(questionShown ?? '').trim()) return null
   const pending = task.approvals.filter((a) => !a.answer)
   if (task.state === 'running' && !pending.length) return null
+  // Employees are working in the background: nothing stopped and nothing is asked, so there is no card.
+  if (awaitingEmployees(task)) return null
   if (!pending.length || task.question) {
     // A one-line question is the card's title; a longer one is read below it.
     const log = task.log.at(-1)?.line

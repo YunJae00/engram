@@ -180,7 +180,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, withFirstLine } from './first-line.js'
+import { beginFirstLine, endFirstLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, withFirstLine } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2750,6 +2750,7 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
         let firstToken = true
         let tokensUsed = 0
+        if (company) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
         const firstSaid = firstLineNote(channel)
         const result = await runComet(
           {
