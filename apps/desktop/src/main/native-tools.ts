@@ -31,6 +31,9 @@ export interface NativePolicy {
   cwd: string
   roots: string[]
   privateDir: string
+  // The person's workspace: read like their Documents (a file they name there needs no card), except Engram's own store and the other
+  // chats' task folders. It is no sandbox root: commands write in the task folder alone, and files there are moved with file_move.
+  workspace?: string
   cacheDir?: string
   attachedPaths?: string[]
   commands: { allowed: boolean }
@@ -84,9 +87,11 @@ export async function nativeDecision(policy: NativePolicy, name: string, input: 
       const attached = await Promise.all((policy.attachedPaths ?? []).map(actualPath))
       const inRoot = roots.some(root => within(root, path) && (!cache || !within(cache, path) || within(cache, root)))
       const protectedSearch = search && (within(path, privateDir) || (cache && within(path, cache)))
-      if (!within(privateDir, path) && !protectedSearch && (inRoot || attached.includes(path))) return { behavior: 'allow', updatedInput: { ...input, [key]: path } }
+      const workspace = policy.workspace ? await actualPath(policy.workspace) : undefined
+      const inWorkspace = !!workspace && within(workspace, path) && !(cache && within(cache, path)) && !within(join(workspace, 'tasks'), path) && !(search && within(path, join(workspace, 'tasks')))
+      if (!within(privateDir, path) && !protectedSearch && (inRoot || inWorkspace || attached.includes(path))) return { behavior: 'allow', updatedInput: { ...input, [key]: path } }
     } catch { return deny('The file location could not be verified.') }
-    return deny('Only files in the task folder, this chat\'s attachments, saved outputs, Documents, Desktop and Downloads can be read directly. Search a narrower folder or ask the person to attach anything else.')
+    return deny('Only files in the task folder, the person\'s workspace, this chat\'s attachments, saved outputs, Documents, Desktop and Downloads can be read directly. Search a narrower folder or ask the person to attach anything else.')
   }
   if (SHELLS.has(name)) {
     const command = typeof input['command'] === 'string' ? input['command'].trim() : ''
@@ -354,9 +359,10 @@ export async function cometNativeTools(options: { paths: VaultPaths; channel: st
   const consentKey = `${await realpath(cwd)}:${options.sandboxed ? 'sandboxed' : 'full'}`
   let commands = consent.get(consentKey)
   if (!commands) consent.set(consentKey, commands = { allowed: false })
-  const policy: NativePolicy = { cwd, roots, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}), ...(options.member ? { member: true } : {}) }
+  const policy: NativePolicy = { cwd, roots, workspace: options.paths.workspace, privateDir: options.paths.privateDir, cacheDir: options.paths.cache, attachedPaths: options.attachedPaths ?? [], commands, sandboxed: options.sandboxed, ...(options.mode ? { mode: options.mode } : {}), ...(options.ask ? { ask: options.ask } : {}), ...(options.member ? { member: true } : {}) }
   return {
     cwd,
+    workspace: options.paths.workspace,
     readRoots: roots,
     ...(options.sandboxed ? { sandbox: {
       enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true,

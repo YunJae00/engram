@@ -30,7 +30,8 @@ export interface DesktopCourier {
   windows?(signal?: AbortSignal): Promise<string>
   apps?(signal?: AbortSignal): Promise<string>
   attach?(app: string, signal?: AbortSignal): Promise<string>
-  open?(app: string, signal?: AbortSignal): Promise<string>
+  // task: the person's message, by which the host decides whether an app it does not start unasked may be started.
+  open?(app: string, signal?: AbortSignal, task?: string): Promise<string>
   read(signal?: AbortSignal, app?: string, options?: DesktopReadOptions): Promise<string>
   look?(signal?: AbortSignal, app?: string): Promise<ToolOutcome>
   act?(action: DesktopAction, context: AgentToolContext): Promise<string>
@@ -186,7 +187,7 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
           const attached = await courier.attach(asked, context.signal)
           if (attached) return attached
         }
-        if (opaque && !courier.attach) return await open(asked, context.signal)
+        if (opaque && !courier.attach) return await open(asked, context.signal, context.task)
         const listed = JSON.parse(await apps(context.signal)) as { id: string; name: string; aliases?: string[] }[]
         if (opaque) {
           const entry = listed.find(app => app.id === asked)
@@ -194,12 +195,12 @@ export function desktopTools(courier: DesktopCourier): AgentTool[] {
             const attached = await courier.attach(entry.name, context.signal)
             if (attached) return attached
           }
-          return await open(asked, context.signal)
+          return await open(asked, context.signal, context.task)
         }
         const wanted = asked.toLocaleLowerCase()
         const exact = listed.filter(app => appNameMatch(app, wanted, true))
         const near = exact.length ? exact : listed.filter(app => appNameMatch(app, wanted))
-        if (near.length === 1) return await open(near[0]!.id, context.signal)
+        if (near.length === 1) return await open(near[0]!.id, context.signal, context.task)
         return JSON.stringify(near.length
           ? { opened: false, reason: `Several apps match "${asked}"; call open_app again with the ID of the one meant.`, matches: near.slice(0, APP_MATCHES) }
           : { opened: false, reason: `No catalog name matches "${asked}". This does not prove the app is uninstalled. These are only similar-name suggestions, not the full catalog. Try its other display name or bundle identity.`, catalogCount: listed.length, suggestions: similarApps(listed, asked).map(app => app.name) })

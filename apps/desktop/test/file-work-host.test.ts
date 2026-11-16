@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import { resolve, join } from 'node:path'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { dirname, resolve, join } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
 // Reads outside the usual folders are asked in the chat (state.ask), never with an app-modal dialog (state.dialog).
@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools, placeInTask, previousVersions, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { cometFileTools as hostFileTools, linkedOutputs, placeInTask, previousVersions, registerArtifactIpc, taskOutputs, twinsFile } from '../src/main/file-work.js'
 
 // Every chat has its in-chat approval card; state.confirm answers it.
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
@@ -348,4 +348,145 @@ it('records the earlier version only where a task file is replaced in place, and
   // A version whose saved output is gone is not offered.
   await rm(a2.path)
   expect(await previousVersions(paths, a3.artifact)).toEqual([a.artifact])
+})
+
+// grokbar D1/F1: what the person names inside their own workspace is read and moved without a card; Engram's own store and anything outside still ask or refuse.
+it('reads a file the person named in their workspace without asking, in their own chat only', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  await mkdir(join(paths.workspace, 'fixtures'), { recursive: true })
+  await mkdir(paths.cache, { recursive: true })
+  const named = join(paths.workspace, 'fixtures', 'meeting-notes.md'), store = join(paths.cache, 'bots.json')
+  await writeFile(named, '# 회의록')
+  await writeFile(store, '{}')
+  const read = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_read')!
+  expect(JSON.parse(await read.run({ path: named }, { task: 'Summarize it.' })).content).toBe('# 회의록')
+  expect(state.confirm).not.toHaveBeenCalled()
+  await read.run({ path: store }, { task: 'Read it.' })
+  expect(state.confirm).toHaveBeenCalledOnce()
+  // A chat with no task folder (an outside connection) keeps the card.
+  await cometFileTools(paths, 'lane').find(tool => tool.name === 'file_read')!.run({ path: named }, { task: 'Summarize it.' })
+  expect(state.confirm).toHaveBeenCalledTimes(2)
+  expect(hostFileTools(paths, 'lane').some(tool => tool.name === 'file_move')).toBe(false)
+})
+
+it('moves the person\'s files inside the workspace without asking, and never overwrites, deletes or leaves it', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1'), dump = join(paths.workspace, 'fixtures', 'inbox-dump')
+  await mkdir(dump, { recursive: true })
+  for (const folder of [paths.notes, paths.cache, join(root, 'outside')]) await mkdir(folder, { recursive: true })
+  for (const name of ['a.pdf', 'b.pdf', 'c.docx']) await writeFile(join(dump, name), name)
+  await writeFile(join(paths.notes, 'n.md'), 'note')
+  await writeFile(join(root, 'outside', 'o.txt'), 'out')
+  const move = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_move')!
+  const run = (moves: { from: string; to: string }[]) => move.run({ moves }, { task: 'Sort the folder by type.' })
+  const receipt = JSON.parse(await run([{ from: 'fixtures/inbox-dump/a.pdf', to: 'fixtures/inbox-dump/PDF/a.pdf' }, { from: join(dump, 'b.pdf'), to: join(dump, 'PDF', 'b.pdf') }, { from: 'fixtures/inbox-dump/c.docx', to: 'fixtures/inbox-dump/Word/c.docx' }]))
+  expect(receipt).toEqual({ moved: 3, overwritten: 0, deleted: 0, folders: [{ folder: 'fixtures/inbox-dump/PDF', count: 2, files: ['a.pdf', 'b.pdf'] }, { folder: 'fixtures/inbox-dump/Word', count: 1, files: ['c.docx'] }] })
+  expect((await readdir(dump)).sort()).toEqual(['PDF', 'Word'])
+  expect(await readFile(join(dump, 'PDF', 'b.pdf'), 'utf8')).toBe('b.pdf')
+  expect(state.confirm).not.toHaveBeenCalled()
+  // One target that exists stops the whole batch: the first move is not made either.
+  await writeFile(join(dump, 'd.pdf'), 'new d')
+  await expect(run([{ from: 'fixtures/inbox-dump/PDF/a.pdf', to: 'fixtures/inbox-dump/a.pdf' }, { from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/inbox-dump/PDF/b.pdf' }])).rejects.toThrow('already exists')
+  expect((await readdir(join(dump, 'PDF'))).sort()).toEqual(['a.pdf', 'b.pdf'])
+  expect(await readFile(join(dump, 'PDF', 'b.pdf'), 'utf8')).toBe('b.pdf')
+  // Engram's folders, the private vault and anything outside the workspace are neither a source nor a target.
+  for (const [from, to] of [['notes/n.md', 'fixtures/n.md'], ['fixtures/inbox-dump/d.pdf', '.engram/d.pdf'], ['fixtures/inbox-dump/d.pdf', '../outside/d.pdf'], [join(root, 'outside', 'o.txt'), 'fixtures/o.txt'], ['fixtures/inbox-dump/d.pdf', join(root, 'private', 'd.pdf')], ['tasks', 'fixtures/tasks'], ['fixtures', 'fixtures/inbox-dump/PDF/fixtures']])
+    await expect(run([{ from: from!, to: to! }])).rejects.toThrow()
+  expect(await readFile(join(paths.notes, 'n.md'), 'utf8')).toBe('note')
+  expect(await readFile(join(dump, 'd.pdf'), 'utf8')).toBe('new d')
+  // A source that cannot be removed is not left in both places (r1: the link stayed while the answer said nothing was moved).
+  // Folder permissions do not stop an unlink on Windows, so this part runs elsewhere.
+  if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+    const locked = join(paths.workspace, 'fixtures', 'locked')
+    await mkdir(locked)
+    await writeFile(join(locked, 'k.txt'), 'k')
+    await chmod(locked, 0o555)
+    try {
+      await expect(run([{ from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/kept/d.pdf' }, { from: 'fixtures/locked/k.txt', to: 'fixtures/kept/k.txt' }])).rejects.toThrow('Nothing was moved')
+    } finally { await chmod(locked, 0o755) }
+    expect(await readdir(join(paths.workspace, 'fixtures', 'kept'))).toEqual([])
+    expect(await readFile(join(locked, 'k.txt'), 'utf8')).toBe('k')
+    expect(await readFile(join(dump, 'd.pdf'), 'utf8')).toBe('new d')
+  }
+  // A move that is whole says so itself: its receipt is read from the disk after the move.
+  const seen = vi.fn()
+  await move.run({ moves: [{ from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/inbox-dump/d2.pdf' }] }, { task: 'Rename it.', onObservedAfterAction: seen })
+  expect(seen).toHaveBeenCalledTimes(1)
+  await move.run({ moves: [{ from: 'fixtures/inbox-dump/d2.pdf', to: 'fixtures/inbox-dump/d.pdf' }] }, { task: 'Rename it back.' })
+  // A folder moves whole, and back.
+  await run([{ from: 'fixtures/inbox-dump/PDF', to: 'fixtures/inbox-dump/문서/PDF' }])
+  expect((await readdir(join(dump, '문서', 'PDF'))).sort()).toEqual(['a.pdf', 'b.pdf'])
+  state.stopped = true
+  await expect(run([{ from: 'fixtures/inbox-dump/d.pdf', to: 'fixtures/inbox-dump/e.pdf' }])).rejects.toThrow('Stopped')
+})
+
+it.skipIf(process.platform === 'win32')('does not move through a link that leads out of the workspace', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  await mkdir(join(paths.workspace, 'fixtures'), { recursive: true })
+  await mkdir(join(root, 'outside'))
+  await writeFile(join(root, 'outside', 'o.txt'), 'out')
+  await writeFile(join(paths.workspace, 'fixtures', 'in.txt'), 'in')
+  await symlink(join(root, 'outside'), join(paths.workspace, 'fixtures', 'door'))
+  const move = cometFileTools(paths, 'lane', [], [task]).find(tool => tool.name === 'file_move')!
+  await expect(move.run({ moves: [{ from: 'fixtures/in.txt', to: 'fixtures/door/in.txt' }] }, { task: 'Move it.' })).rejects.toThrow('Only the person')
+  await expect(move.run({ moves: [{ from: 'fixtures/door/o.txt', to: 'fixtures/o.txt' }] }, { task: 'Move it.' })).rejects.toThrow('Only the person')
+  // The link itself is neither a file nor a folder of theirs.
+  await expect(move.run({ moves: [{ from: 'fixtures/door', to: 'fixtures/door2' }] }, { task: 'Move it.' })).rejects.toThrow('Not a file or folder')
+  expect(await readFile(join(root, 'outside', 'o.txt'), 'utf8')).toBe('out')
+})
+
+// grokbar D5: "방금 만든 PPT 3번 슬라이드 제목 바꿔줘" asked whether to make a copy. A composed file (ppt_build, word_write) changed in a later
+// turn under its own name is the same file in the task folder, with no question and no numbered twin.
+it('a later turn changes a composed file in place in the task folder, under its own name, without asking', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1')
+  // Composed files are handed in through taskOutputs, as ppt_build and word_write do; the bytes here are a workbook the file tools can open.
+  const draft = JSON.parse(await hostFileTools(paths, 'lane', [], [join(paths.workspace, 'tasks', 'bot-0')], { ask: state.confirm, turn: 't0' }).find(tool => tool.name === 'file_create_workbook')!.run({ name: 'draft.xlsx', sheet: 'S', rows: [['title'], [41]] }, { task: 'Make it.' })) as { path: string }
+  const first = await taskOutputs(paths, async () => task, new Set<string>(), 't1').save('deck.xlsx', await readFile(draft.path)) as { path: string; taskPath: string }
+  const tools = hostFileTools(paths, 'lane', [first.path], [task], { ask: state.confirm, turn: 't2' })
+  const use = async (name: string, args: Record<string, unknown>) => JSON.parse(await tools.find(tool => tool.name === name)!.run(args, { task: 'Change the number to 42.' }))
+  const part = await use('file_read_package', { path: first.taskPath, part: 'xl/worksheets/sheet1.xml' })
+  const edited = await use('file_edit_package', { sourcePath: first.taskPath, expectedSha256: part.sha256, name: 'deck.xlsx', edits: [{ part: part.part, expectedSha256: part.partSha256, before: '<v>41</v>', after: '<v>42</v>' }] })
+  expect(edited.taskPath).toBe(first.taskPath)
+  expect(await readdir(task)).toEqual(['deck.xlsx'])
+  expect((await use('file_read_package', { path: first.taskPath, part: 'xl/worksheets/sheet1.xml' })).xml).toContain('<v>42</v>')
+  // The file itself was changed, so it is still one file: the earlier bytes are not kept as a second deck in the saved outputs
+  // (grokbar D5 r1: the harness counts every .pptx in the workspace, and found two).
+  const saved = async () => (await readdir(dirname(first.path))).filter(file => file.endsWith('deck.xlsx'))
+  expect(await saved()).toEqual([edited.artifact])
+  expect(await previousVersions(paths, edited.artifact)).toEqual([])
+  // Changed again in the next turn, through the saved output's own path: still one.
+  const later = hostFileTools(paths, 'lane', [edited.path], [task], { ask: state.confirm, turn: 't3' })
+  const next = async (name: string, args: Record<string, unknown>) => JSON.parse(await later.find(tool => tool.name === name)!.run(args, { task: 'Change the number to 43.' }))
+  const again = await next('file_read_package', { path: edited.path, part: 'xl/worksheets/sheet1.xml' })
+  const third = await next('file_edit_package', { sourcePath: edited.path, expectedSha256: again.sha256, name: 'deck.xlsx', edits: [{ part: again.part, expectedSha256: again.partSha256, before: '<v>42</v>', after: '<v>43</v>' }] })
+  expect(third.taskPath).toBe(first.taskPath)
+  expect(await saved()).toEqual([third.artifact])
+  expect(state.confirm).not.toHaveBeenCalled()
+  // The cards the earlier messages hold name outputs that are gone. They are that file still, and open it as it is now
+  // (grokbar D5 r2: the card of the first version found nothing once the file was changed).
+  const { ipcMain, shell } = await import('electron')
+  registerArtifactIpc(paths)
+  const handler = (channel: string) => vi.mocked(ipcMain.handle).mock.calls.findLast(call => call[0] === channel)![1] as (event: unknown, id: string) => Promise<unknown>
+  for (const id of [first.path.split('/').at(-1)!, edited.artifact]) {
+    expect(await handler('artifact:info')(null, id)).toMatchObject({ size: (await readFile(third.path)).length, previous: [] })
+    await handler('artifact:reveal')(null, id)
+    expect(vi.mocked(shell.showItemInFolder)).toHaveBeenLastCalledWith(third.path)
+    expect(await handler('artifact:read')(null, id)).toMatchObject({ name: 'deck.xlsx' })
+    expect(await linkedOutputs(dirname(first.path), [{ role: 'assistant', text: `[deck.xlsx](engram-artifact:${encodeURIComponent(id)})` }])).toEqual([{ name: 'deck.xlsx', path: third.path }])
+  }
+  // An output that was never there is still not found.
+  await expect(handler('artifact:info')(null, `00000000-0000-0000-0000-000000000000-deck.xlsx`)).rejects.toThrow()
+})
+
+it('an earlier version another chat\'s task folder also holds is not removed by a change here', async () => {
+  const paths = vaultPaths(root), task = join(paths.workspace, 'tasks', 'bot-1'), other = join(paths.workspace, 'tasks', 'bot-2')
+  const draft = JSON.parse(await hostFileTools(paths, 'lane', [], [join(paths.workspace, 'tasks', 'bot-0')], { ask: state.confirm, turn: 't0' }).find(tool => tool.name === 'file_create_workbook')!.run({ name: 'deck.xlsx', sheet: 'S', rows: [['title'], [41]] }, { task: 'Make it.' })) as { path: string }
+  const data = await readFile(draft.path)
+  const first = await taskOutputs(paths, async () => task, new Set<string>(), 't1').save('deck.xlsx', data) as { path: string; taskPath: string; artifact: string }
+  await taskOutputs(paths, async () => other, new Set<string>(), 't1').save('deck.xlsx', data)
+  const tools = hostFileTools(paths, 'lane', [first.path], [task], { ask: state.confirm, turn: 't2' })
+  const use = async (name: string, args: Record<string, unknown>) => JSON.parse(await tools.find(tool => tool.name === name)!.run(args, { task: 'Change the number to 42.' }))
+  const part = await use('file_read_package', { path: first.taskPath, part: 'xl/worksheets/sheet1.xml' })
+  const edited = await use('file_edit_package', { sourcePath: first.taskPath, expectedSha256: part.sha256, name: 'deck.xlsx', edits: [{ part: part.part, expectedSha256: part.partSha256, before: '<v>41</v>', after: '<v>42</v>' }] })
+  expect(await previousVersions(paths, edited.artifact)).toEqual([first.artifact])
+  expect((await readFile(first.path)).equals(data)).toBe(true)
 })

@@ -280,7 +280,8 @@ export class WorkerPool {
       const next = ready.find(w => w.interactive) ?? ready[0]
       if (!next) return
       // One slot past the target is the person's: work nobody is watching (a memory note, a title, employees in the background)
-      // never holds up their turn (as-e1cf9bfd C2/C10: 21 s and 24 s behind the last turn's memory note at target 1).
+      // never holds up their turn (as-e1cf9bfd C2/C10: 21 s and 24 s behind the last turn's memory note at target 1; grokbar F1: first word after 28.8 s).
+      // A second turn of theirs waits as before.
       if (this.running >= this.target && !(next.interactive && this.people === 0)) return
       this.waiters.splice(this.waiters.indexOf(next), 1)
       clearTimeout(next.timer)

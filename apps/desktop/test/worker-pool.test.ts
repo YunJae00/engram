@@ -204,6 +204,34 @@ describe('WorkerPool', () => {
     expect(p.running).toBe(0)
   })
 
+  // grokbar F1: at target 1 a memory chore held the only slot and the person's message waited 25 s for it.
+  it('the person\'s turn does not wait behind background work alone, and a second one of theirs waits as before', async () => {
+    const { p } = pool(1)
+    const chore = track(p.acquire())
+    await flush()
+    const say = vi.fn()
+    const first = track(withTurnPriority({ interactive: true, say }, () => p.acquire()))
+    await flush()
+    expect(first.settled).toBe(true)
+    expect(p.running).toBe(2)
+    const second = track(withTurnPriority({ interactive: true }, () => p.acquire()))
+    const later = track(p.acquire())
+    await flush()
+    expect([second.settled, later.settled]).toEqual([false, false])
+    chore.release?.()
+    await flush()
+    // Still at the target: the chore's slot is not handed on while the turn that went over it runs.
+    expect([second.settled, later.settled, p.running]).toEqual([false, false, 1])
+    first.release?.()
+    await flush()
+    expect([second.settled, later.settled, p.running]).toEqual([true, false, 1])
+    second.release?.()
+    await flush()
+    expect(later.settled).toBe(true)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(say).not.toHaveBeenCalled()
+  })
+
   it('drops a waiter aborted while queued without running it', async () => {
     const { p } = pool(1)
     // The slot is held by another conversation's turn of the person's: a turn of theirs waits only behind one of their own.
@@ -284,6 +312,7 @@ describe('WorkerPool', () => {
   it('a waiting interactive turn says once after 2 s, in the thread language', async () => {
     for (const korean of [true, false]) {
       const { p } = pool(1)
+      // Behind another turn of the person's own; behind background work alone it does not wait at all.
       const a = track(withTurnPriority({ interactive: true }, () => p.acquire()))
       await flush()
       const say = vi.fn()

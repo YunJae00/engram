@@ -30,7 +30,7 @@ async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string
   const receipt = await outputs.save(name, built.data)
   names.add(name.toLowerCase())
   const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
-  return { ...receipt, ...count, verification: 'Built as a file and handed in to the chat; no Office window was opened. Read the saved file back before claiming completion.' }
+  return { ...receipt, ...count, verification: 'Built as a file, saved and compared byte for byte by the host; no Office window was opened. Answer now with its markdownLink.' }
 }
 
 async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {

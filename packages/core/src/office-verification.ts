@@ -5,7 +5,9 @@ import { evidenceFault } from './work-evidence.js'
 
 const WRITES = new Set(['excel_write', 'ppt_build', 'ppt_edit', 'word_write', 'word_edit'])
 const READS = new Set(['excel_read', 'ppt_read', 'word_read'])
-export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout: inspect those only when the request is about them; otherwise say in one line what was not checked.'
+// What the host says when an Office command was refused because its application is not open: nothing was touched, so there is nothing to read back.
+export const OFFICE_CLOSED = 'Nothing was changed: the application is not open and is not started for this.'
+export const DOCUMENT_CHECK_RULE = 'After writing, read the changed document back and compare it with the request before reporting completion. Check every changed range or document. Text readback does not verify formulas, unsupported objects or visual layout: inspect those only when the request is about them; otherwise say in one line what was not checked. A new file from word_write, ppt_build or file_create_workbook is saved and compared by the host itself and its receipt is that readback: answer with its link at once, and read it again only when the person asked for the content to be checked.'
 
 function receipt(step: AgentLoopStep): Record<string, unknown> | undefined {
   try {
@@ -58,6 +60,10 @@ export function officeWriteUnverified(steps: AgentLoopStep[]): string | undefine
     const result = receipt(step)
     const key = result && identity(step.tool, result)
     if (WRITES.has(step.tool)) {
+      // A composed file (word_write, ppt_build) is saved and compared byte for byte by the host, with no application involved: its receipt is the
+      // readback. Counted as unread, every new document ended "Not verified as complete" and was continued for minutes (grokbar D2: 317 s).
+      if (result?.['completeReadback'] === true && typeof result['artifact'] === 'string') continue
+      if (step.observation.includes(OFFICE_CLOSED)) continue
       if (!key) { unknownWrite = true; continue }
       const needed = pending.get(key) ?? new Set<string>()
       if (step.tool === 'excel_write') {

@@ -19,14 +19,14 @@ export async function dropHeldDraft(turn: { saveHeld?: (answer: string) => Promi
   drop()
 }
 
-export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+export const RESULT_CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package|file_move)$/
 // Whether a turn changed a result: any successful RESULT_CHANGES step, a rendered file, a native file write, or a command that may have written
 // a file (commandChanged, the one rule freshness and the post-check list use; a failed command may still have written, so it counts too).
 export const changedResult = (steps: TurnStep[]): boolean => successfulTurnSteps(steps).some(step => RESULT_CHANGES.test(step.tool) || /^(render_file|Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool)) || steps.some(step => !step.seeded && commandChanged(step))
 // Work that leaves something behind: a document, a file, an app or a saved
 // procedure changed, or a press the person approved because it commits.
 // Reading a site - opening tabs, filters, pages - leaves nothing to check.
-const LEAVES_WORK = /^(upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package)$/
+const LEAVES_WORK = /^(upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package|file_move)$/
 // Presses and app actions count only when the host marked them as committing (send, submit, save, delete).
 const PRESSES = /^(page_steps|press|press_point|app_do|app_set|app_press)$/
 const savedWorkFile = (text = '') => /\]\(engram-artifact:[^\s)]+\.(?:txt|md|json|csv|tsv|xlsx|docx|pptx)\)/i.test(text)

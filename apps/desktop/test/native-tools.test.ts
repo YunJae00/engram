@@ -27,6 +27,24 @@ describe('native tool policy', () => {
     expect((await nativeDecision(policy(), 'Read', { file_path: join(root, 'outside', 'x.txt') })).message).toContain('attach')
   })
 
+  // grokbar D1: "fixtures/meeting-notes.md 요약해줘" was denied here, then asked through a card.
+  it('reads what the person keeps in their workspace, but not Engram\'s store or another chat\'s task folder, and writes nothing there', async () => {
+    const workspace = join(root, 'ws'), store = join(workspace, '.engram'), mine = join(workspace, 'tasks', 'bot-1')
+    await Promise.all([join(workspace, 'fixtures'), store, mine, join(workspace, 'tasks', 'bot-2')].map(path => mkdir(path, { recursive: true })))
+    const inside: NativePolicy = { cwd: mine, roots: [mine], workspace, cacheDir: store, privateDir, commands: { allowed: false } }
+    const decide = async (name: string, input: Record<string, unknown>) => (await nativeDecision(inside, name, input)).behavior
+    expect(await decide('Read', { file_path: join(workspace, 'fixtures', 'meeting-notes.md') })).toBe('allow')
+    expect(await decide('Glob', { pattern: '*.pdf', path: join(workspace, 'fixtures') })).toBe('allow')
+    expect(await decide('Read', { file_path: join(mine, 'draft.md') })).toBe('allow')
+    expect(await decide('Read', { file_path: join(store, 'bots.json') })).toBe('deny')
+    expect(await decide('Read', { file_path: join(workspace, 'tasks', 'bot-2', 'theirs.md') })).toBe('deny')
+    // A search from the top would walk the store and every chat's folder.
+    expect(await decide('Grep', { pattern: 'x', path: workspace })).toBe('deny')
+    expect(await decide('Grep', { pattern: 'x', path: join(workspace, 'tasks') })).toBe('deny')
+    expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'new.md'), content: 'x' })).toBe('deny')
+    expect(await decide('Read', { file_path: join(root, 'outside', 'x.txt') })).toBe('deny')
+  })
+
   it('writes only in the work folder and points deliverables at the file tools', async () => {
     expect((await nativeDecision(policy(), 'Write', { file_path: 'parse.py', content: '' })).behavior).toBe('allow')
     expect((await nativeDecision(policy(), 'Edit', { file_path: `${cwd}/parse.py` })).behavior).toBe('allow')

@@ -1,6 +1,6 @@
 import { app, ipcMain, nativeImage, shell } from 'electron'
 import { createHash, randomUUID } from 'node:crypto'
-import { appendFile, link, lstat, mkdir, open, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { appendFile, link, lstat, mkdir, open, readdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { artifactHref, fileWorkTools, renameWithRetry, workbookTool, resolveArtifact, findLocalFiles, type VaultPaths, type AgentTool, readArtifact } from 'core'
@@ -11,6 +11,7 @@ import { renderTool } from './render-file.js'
 import type { ArtifactViewDto } from '../shared/types.js'
 import type { Ask } from './page-actions.js'
 import { READ_CARD } from './read-card.js'
+import { fileMoveTool } from './file-move.js'
 
 const within = (root: string, path: string) => {
   const tail = relative(root, path)
@@ -64,9 +65,12 @@ const sha = (data: Buffer | string) => createHash('sha256').update(data).digest(
 
 // What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
 // artifact: the saved output (its id) these bytes are linked by in the chat.
-export interface Placement { source: string; turn?: string; artifact?: string }
+// outputs: the saved-outputs folder, where the version a change to the file itself replaces is removed from.
+export interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
 // Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
 const versionsFile = (handIns: string) => join(handIns, 'previous')
+// Which saved output a change to the file itself removed, and the one that file is now: `earlier id\0id` per line (see findArtifact).
+const replacedFile = (handIns: string) => join(handIns, 'replaced')
 // The earlier versions of a saved output that are still there, nearest first: the "(이전)" link's only source (qa146 2a: a repeated file
 // name in the chat is not a version; two tasks that each made plan.md were linked).
 export async function previousVersions(paths: VaultPaths, id: string): Promise<string[]> {
@@ -77,7 +81,7 @@ export async function previousVersions(paths: VaultPaths, id: string): Promise<s
     if (!before || before === id || chain.includes(before)) break
     chain.push(at = before)
   }
-  const found = await Promise.all(chain.map(earlier => findArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
+  const found = await Promise.all(chain.map(earlier => storedArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
   return found.filter(Boolean)
 }
 // A copy's task file; content (one source per name); any other tool and the file it names, else its own input.
@@ -130,7 +134,15 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
-        if (was && made.artifact && was !== made.artifact) await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        if (was && made.artifact && was !== made.artifact) {
+          // A change to the file itself (file_edit_package on this task file or on its saved output) leaves one file, not the file and its
+          // earlier bytes: the person asked for that file to be changed, and a second deck in the store is a duplicate (grokbar D5).
+          // A file made again from scratch keeps its earlier version, as does one another task folder also holds.
+          const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : ''
+          const others = edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
+          if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).then(() => appendFile(replacedFile(dirname(record)), `${was}\0${made.artifact}\n`)).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
+          else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        }
         return path
       }
     }
@@ -138,7 +150,7 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
   } finally { await unlink(tmp).catch(() => undefined) }
 }
 
-const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), made) }
+const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), { ...made, outputs: artifactDirectory(paths) }) }
 
 // The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
 export function freeName(base: string, held: (name: string) => boolean): string {
@@ -177,7 +189,16 @@ export async function resolveOutput(directory: string, value: unknown): Promise<
   return path
 }
 // Evidence captures (mp4, webm) are core's own kinds.
-const findArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
+const storedArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
+// A saved output that a change to the file itself replaced is that file as it is now: the card in the earlier message still opens the
+// file, with its present contents (grokbar D5 r2: the earlier output was removed and its card found nothing).
+const findArtifact = (directory: string, id: unknown) => storedArtifact(directory, id).catch(async error => {
+  const rows = (await readFile(replacedFile(join(dirname(directory), 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
+  let now = id
+  for (let hops = 0; hops < 50; hops += 1) { const next = rows.filter(row => row[0] === now).at(-1)?.[1]; if (!next) break; now = next }
+  if (now === id) throw error
+  return storedArtifact(directory, now)
+})
 
 // Core's priorOutputs, for the wider set of output kinds.
 // every: each distinct file the text links, also two under one name (the readback gate answers for both: qa143 S19a); else the last one per name.
@@ -318,6 +339,11 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
       if (roots.some(root => root && within(root, real))) return true
+      // The person's own workspace: a file they name there ("fixtures/회의록.md 요약해줘") is theirs to have read, and the comet's commands
+      // already read it without a card (grokbar D1: the card cost 20 s and a question nobody needed). Engram's own store there and another chat's task folder still ask.
+      // Only in a chat of the person's own, which has a task folder: an outside connection has none and reads nothing it was not handed.
+      const [workspace, cache] = await Promise.all([realpath(paths.workspace).catch(() => ''), realpath(paths.cache).catch(() => resolve(paths.cache))])
+      if (folder && workspace && within(workspace, real) && !within(cache, real) && !within(join(workspace, 'tasks'), real)) return true
       // Anything else is asked in the chat; with no chat to ask in, it is not read.
       if (!consent.ask) return false
       const words = consent.korean?.()
@@ -330,7 +356,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       approved.add(path)
       return true
     },
-  }), workbookTool(directory, active), ...(folder ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
+  }), workbookTool(directory, active), ...(folder ? [fileMoveTool(paths, active), renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
     const outcome = await tool.runRich!(args, context)
     return outcome.image ? { ...outcome, image: fitImage(outcome.image) } : outcome
@@ -363,8 +389,9 @@ export function registerArtifactIpc(paths: VaultPaths): void {
     const name = basename(path).replace(/^[0-9a-f-]{36}-/, '')
     if (!VIEWABLE.has(kindOf(path)) || (await stat(path)).size > VIEW_BYTES) return { name, text: null }
     const wide = !CORE_OUTPUTS.has(kindOf(path))
-    const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), String(id))
-    if (wide && !String(id).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
+    // The file found, which for a replaced output is not the id asked for.
+    const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), basename(path))
+    if (wide && !basename(path).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
     return { name, text: data.length > VIEW_BYTES ? null : data.toString('utf8') }
   })
   ipcMain.removeHandler('artifact:reveal')

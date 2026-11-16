@@ -5,7 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock('electron', () => ({ app: { getPath: () => 'unused' } }))
 vi.mock('node:fs/promises', () => ({ mkdir: vi.fn(), writeFile: vi.fn() }))
-vi.mock('node:child_process', () => ({ spawn: fake.spawn }))
+// execFile: the Mac side of the host now loads core, whose modules bind it on import; nothing here calls it.
+vi.mock('node:child_process', () => ({ spawn: fake.spawn, execFile: vi.fn() }))
 vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return fake.spawn(...args) } } }))
 
 function worker() {
