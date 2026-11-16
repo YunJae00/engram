@@ -40,6 +40,8 @@ it('keeps the lane menu small enough to be preloaded, with the team and reading 
   expect(LANE_NOTE).toContain('source address in every row')
   // grokbar baseline R2: the lead redid two members and then went looking itself; the answer never came.
   expect(LANE_NOTE).toContain('do not redo a member and do not look up the missing parts yourself')
+  // grokbar baseline R3 (U1): the lead opened a Korean thread with "I'll find recent Korean AI startup funding news".
+  expect(LANE_NOTE).toContain('the lines before a tool call included, is in their language')
   expect(SMALL_TALK_NOTE).toContain('one or two short sentences')
 })
 
