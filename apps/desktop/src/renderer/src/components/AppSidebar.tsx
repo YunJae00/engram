@@ -15,7 +15,7 @@ import { SidebarBotTeam, SidebarConversation } from './SidebarConversation.js'
 import { watchAccountUsage } from '../lib/accountUsage.js'
 import { WorkspaceMode } from './WorkspaceMode.js'
 import { SidebarPrimary } from './SidebarPrimary.js'
-import { groupSidebarBots, isEmptyUntitled, matchesSidebarSearch, sidebarSearchEmpty } from '../lib/sidebarBots.js'
+import { groupSidebarBots, isEmptyUntitled, matchesSidebarSearch, searchExcerpt, sidebarSearchEmpty } from '../lib/sidebarBots.js'
 import { SidebarSpaceMenu } from './SidebarSpaceMenu.js'
 import { CreateBotDialog } from './CreateBotDialog.js'
 
@@ -25,7 +25,7 @@ interface Props {
   selectedRoutineId: string | null; onSelectRoutine(id: string): void
 }
 
-const NO_HITS: ReadonlySet<string> = new Set()
+const NO_HITS: ReadonlyMap<string, string> = new Map()
 
 export function AppSidebar({ developer, open, onToggle, onOpenSettings, selectedRoutineId, onSelectRoutine }: Props) {
   const { activity, setActivity, vaultReady, showToast } = useShellState()
@@ -36,7 +36,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchId = useId(), searchToggle = useRef<HTMLButtonElement>(null), composing = useRef(false)
-  const [bodyHits, setBodyHits] = useState<{ query: string; ids: Set<string> }>({ query: '', ids: new Set() })
+  const [bodyHits, setBodyHits] = useState<{ query: string; ids: Map<string, string> }>({ query: '', ids: new Map() })
   const createId = useId(), createMenu = useRef<HTMLDivElement>(null), searchInput = useRef<HTMLInputElement>(null)
   const [layout, setLayout] = useState<SidebarLayout | null>(null)
   const [layoutError, setLayoutError] = useState('')
@@ -108,7 +108,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   useEffect(() => {
     if (!search || library || !vaultReady) return
     let live = true
-    const timer = window.setTimeout(() => void api.botsSearch(search).then(ids => { if (live) setBodyHits({ query: search, ids: new Set(ids) }) }).catch(() => undefined), 150)
+    const timer = window.setTimeout(() => void api.botsSearch(search).then(found => { if (live) setBodyHits({ query: search, ids: new Map(found.map(hit => [hit.id, hit.excerpt])) }) }).catch(() => undefined), 150)
     return () => { live = false; window.clearTimeout(timer) }
   }, [search, library, vaultReady, bots])
   const live = (bot: BotDto) => waiting.has(bot.id) || ['running', 'waiting'].includes(activityOf(bot))
@@ -116,7 +116,7 @@ export function AppSidebar({ developer, open, onToggle, onOpenSettings, selected
   const hits = bodyHits.query === search ? bodyHits.ids : NO_HITS
   const matchingBots = listed.filter(bot => matchesSidebarSearch(bot, search, hits))
   const matchingHidden = hidden.filter(bot => matchesSidebarSearch(bot, search, hits))
-  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} />, below: <SidebarBotTeam bot={bot} />, bot })
+  const botItem = (bot: BotDto) => ({ id: bot.id, name: bot.name, active: bot.id === selectedId && (activity === 'bots' || activity === 'mission'), recency: live(bot) ? Number.MAX_SAFE_INTEGER : Date.parse(bot.lastMessage?.at ?? bot.createdAt), content: <SidebarConversation bot={bot} state={activityOf(bot)} active={bot.id === selectedId && (activity === 'bots' || activity === 'mission')} found={searchExcerpt(bot, search, hits)} />, below: <SidebarBotTeam bot={bot} />, bot })
   const openBot = (id: string) => { selectComet(id); navigate('bots') }
   const focusComposer = () => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="bots-view"] [data-testid="bots-input"]')?.focus()))
   const newBot = async () => {

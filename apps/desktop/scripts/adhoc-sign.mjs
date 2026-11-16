@@ -22,9 +22,9 @@
 //
 // Release builds use the stable certificate; local builds without an identity stay ad-hoc.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const ICON_NAME = 'AppIcon'
 
@@ -62,6 +62,16 @@ function which(tool) {
   }
 }
 
+// actool targets macOS 11+, where Assets.car carries the icon, so the
+// AppIcon.icns it leaves beside it holds only 16 and 128 (and their @2x).
+// The catalog's files already use iconutil's names: the same PNGs make the
+// complete set, 16 through 512@2x (1024). `work` is a scratch directory.
+export function writeFullIcns(appiconset, out, work) {
+  const iconset = join(work, 'AppIcon.iconset')
+  cpSync(appiconset, iconset, { recursive: true, filter: (file) => !file.endsWith('.json') })
+  execFileSync('iconutil', ['--convert', 'icns', '--output', out, iconset], { stdio: 'pipe' })
+}
+
 function compileIcon(context, app) {
   const xcassets = join(context.packager.info.projectDir, 'build', 'Engram.xcassets')
   if (!existsSync(xcassets)) {
@@ -94,6 +104,7 @@ function compileIcon(context, app) {
     ],
     { stdio: 'pipe' },
   )
+  writeFullIcns(join(xcassets, `${ICON_NAME}.appiconset`), join(app, 'Contents', 'Resources', `${ICON_NAME}.icns`), dirname(partial))
   // The catalog is inert until the bundle names the icon inside it.
   execFileSync('plutil', ['-replace', 'CFBundleIconName', '-string', ICON_NAME, join(app, 'Contents', 'Info.plist')], {
     stdio: 'pipe',

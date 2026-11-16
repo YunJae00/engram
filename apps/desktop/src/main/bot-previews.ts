@@ -4,7 +4,7 @@ import { readBotTranscript, type Bot, type VaultPaths } from 'core'
 import { withoutReplies } from 'core/src/agent-history'
 import { readLastBotTurn } from 'core/src/bot-transcript'
 import { updateBot, type BotPatch } from 'core/src/bots'
-import type { BotConversationDto, BotDto } from '../shared/types.js'
+import type { BotConversationDto, BotDto, BotSearchHit } from '../shared/types.js'
 
 const cached = new Map<string, { stamp: string; value: Promise<BotDto['lastMessage']> }>()
 
@@ -32,13 +32,15 @@ export async function botPreviews(paths: VaultPaths, bots: Bot[]): Promise<BotDt
   return rows
 }
 
-const texts = new Map<string, { stamp: string; value: Promise<string> }>()
-const fold = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+const texts = new Map<string, { stamp: string; value: Promise<{ plain: string; folded: string }[]> }>()
+const flat = (text: string) => text.replace(/\s+/g, ' ').trim()
+const fold = (text: string) => flat(text).toLocaleLowerCase()
 
-export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): Promise<string[]> {
+/** Conversations whose messages contain the query, each with the words around the first hit so the row can show why it is listed. */
+export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): Promise<BotSearchHit[]> {
   const needle = fold(query)
   if (!needle) return []
-  const hits: string[] = []
+  const hits: BotSearchHit[] = []
   for (let offset = 0; offset < bots.length; offset += 8) {
     await Promise.all(bots.slice(offset, offset + 8).map(async bot => {
       if (!/^[\w-]+$/.test(bot.id)) return
@@ -49,12 +51,19 @@ export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): 
         let held = texts.get(path)
         if (!held || held.stamp !== stamp) {
           // A finite limit reads the whole transcript; the default keeps only the last 400 turns.
-          const value = readBotTranscript(paths, bot.id, Number.MAX_SAFE_INTEGER).then(turns => turns.filter(turn => !turn.progress).map(turn => fold(turn.text)).join('\n'))
+          const value = readBotTranscript(paths, bot.id, Number.MAX_SAFE_INTEGER).then(turns => turns.filter(turn => !turn.progress).map(turn => ({ plain: flat(turn.text), folded: fold(turn.text) })))
           held = { stamp, value }
           if (texts.size >= 256) texts.delete(texts.keys().next().value!)
           texts.set(path, held)
         }
-        if ((await held.value).includes(needle)) hits.push(bot.id)
+        for (const turn of await held.value) {
+          const at = turn.folded.indexOf(needle)
+          if (at < 0) continue
+          // A short lead keeps the matched words inside the narrow sidebar row.
+          const from = Math.max(0, at - 8)
+          hits.push({ id: bot.id, excerpt: (from ? '…' : '') + turn.plain.slice(from, at + needle.length + 120) })
+          break
+        }
       } catch { texts.delete(path) }
     }))
   }

@@ -124,6 +124,7 @@ export interface BotDto {
 }
 
 export interface BotConversationDto { stamp: string; turns: number }
+export interface BotSearchHit { id: string; excerpt: string }
 
 export interface BotTurnDto {
   role: 'user' | 'assistant'
