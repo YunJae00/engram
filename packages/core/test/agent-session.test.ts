@@ -104,6 +104,46 @@ it('opens a fresh session with the person\'s earlier request whole and its own r
 
 // A brain that holds its own loop: it calls the tools it is handed in the
 // order a script says, then answers.
+// grokbar B6 r3 (GROKBOT rule 3): words said while the answer is being written, after the last tool result, change that answer.
+it('rewrites the answer with words said after the last tool result, in the same turn', async () => {
+  const waiting: string[] = []
+  const prompts: string[] = []
+  const resets: unknown[] = []
+  const tool: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async () => '엔비디아 189달러' }
+  const engine = sessionBrain(async job => {
+    prompts.push(job.prompt)
+    if (prompts.length === 1) {
+      await job.tools.find(t => t.name === 'search_web')!.run({ query: '엔비디아 주가' })
+      job.onToken?.('엔비디아는 189달러예요.')
+      waiting.push('그냥 애플로 바꿔')
+      return { answer: '엔비디아는 189달러예요.' }
+    }
+    return { answer: '애플로 바꿨어요. 애플은 230달러예요.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { takeSteer: () => waiting.splice(0), onReset: drop => resets.push(drop) })
+  expect(result.answer).toBe('애플로 바꿨어요. 애플은 230달러예요.')
+  expect(prompts).toHaveLength(2)
+  expect(prompts[1]).toContain('엔비디아는 189달러예요.')
+  expect(prompts[1]).toContain('"그냥 애플로 바꿔"')
+  // The draft the person saw streaming is dropped, not kept beside the new answer.
+  expect(resets).toEqual([true])
+  expect(waiting).toEqual([])
+})
+
+it('writes the answer once when nothing was said, and leaves a question to the person alone', async () => {
+  let runs = 0
+  const quiet = sessionBrain(async () => { runs++; return { answer: 'Done' } })
+  expect((await runToolSession({ engine: quiet, workdir: WORKDIR, tools: [] }, 'Say done', { takeSteer: () => [] })).answer).toBe('Done')
+  expect(runs).toBe(1)
+  // Words that keep coming are not rewritten for ever: what is left gets its own turn.
+  runs = 0
+  const taken: number[] = []
+  const chatty = sessionBrain(async () => ({ answer: `Answer ${++runs}` }))
+  const result = await runToolSession({ engine: chatty, workdir: WORKDIR, tools: [] }, 'Say done', { takeSteer: () => { taken.push(runs); return ['more'] } })
+  expect(result.answer).toBe('Answer 4')
+  expect(taken).toEqual([1, 2, 3])
+})
+
 function sessionBrain(script: (job: ToolSessionJob) => Promise<ToolSessionResult>): Engine {
   return {
     id: 'mock',

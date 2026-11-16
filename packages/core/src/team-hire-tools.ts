@@ -21,7 +21,7 @@ const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask
 export const AUTO_REVIEW = 'auto: sourced lookup'
 const ACCEPTED_NOTE = 'Members with accepted true are sourced lookups, already accepted and released: do not call review_member for them. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
-const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources; never a site name alone.'
+const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources; never a site name alone. The first cell of every row names the member who reported it, in parentheses after the item.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
@@ -140,18 +140,23 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   if (!answer.trim()) return answer
   const cited = members.filter(m => m.sources?.length && m.state !== 'failed')
   const href = (m: TeamMember): string => m.sources![0]!.replace(/\)/g, '%29').replace(/ /g, '%20')
+  const name = (m: TeamMember): string => m.role.replace(/[[\]|]/g, '').trim()
   const lines = answer.split('\n')
   let sourceColumn = false
   for (const [i, line] of lines.entries()) {
     if (!/^\s*\|.*\|\s*$/.test(line) || TABLE_RULE.test(line)) continue
     const cells = line.trim().slice(1, -1).split('|').map(cell => cell.trim())
     if (TABLE_RULE.test(lines[i + 1] ?? '')) { sourceColumn = /출처|링크|source|link/i.test(cells.at(-1)!); continue }
-    if (/https?:\/\//.test(line)) continue
     const words = cells[0]!.replace(/[*_`]/g, '').split(/[\s(),/·]+/).filter(word => word.length >= 2)
-    const scored = cited.map(m => ({ m, hits: words.filter(word => `${m.role} ${m.brief}`.includes(word)).length })).filter(one => one.hits).sort((x, y) => y.hits - x.hits)
+    const scored = members.map(m => ({ m, hits: words.filter(word => `${m.role} ${m.brief}`.includes(word)).length })).filter(one => one.hits).sort((x, y) => y.hits - x.hits)
     if (!scored.length || scored[1]?.hits === scored[0]!.hits) continue
-    const own = scored[0]!.m, last = cells.at(-1)!.replace(/[[\]]/g, '')
-    cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || own.role.replace(/[[\]]/g, '')}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+    const own = scored[0]!.m
+    // grokbar B6 r3: every row says whose report it is, "서울(서울 날씨)" as "노션(김대리)"; a row with a link and no name was unattributed.
+    if (name(own) && !line.includes(name(own))) cells[0] = `${cells[0]}(${name(own)})`
+    if (cited.includes(own) && !/https?:\/\//.test(line)) {
+      const last = cells.at(-1)!.replace(/[[\]]/g, '')
+      cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || name(own)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+    }
     lines[i] = `| ${cells.join(' | ')} |`
   }
   const fixed = lines.join('\n')

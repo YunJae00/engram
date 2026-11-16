@@ -27,7 +27,7 @@ export function followUpFor(channel: string): (text: string) => void {
   }
 }
 
-// The running turn takes the words said to it so far (handed over with its next tool result): it answers them itself, so they get no turn of their own.
+// The running turn takes the words said to it so far (handed over with its next tool result, or when its answer is written if no tool result is left): it answers them itself, so they get no turn of their own.
 // grokbar T1/T2: "아 대구도 추가해" belongs in the answer under way, not in a second one after it. Words nobody took are still answered as their own turn.
 export function takeFollowUps(channel: string): string[] {
   const said = waiting.get(channel) ?? []

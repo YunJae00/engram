@@ -253,6 +253,7 @@ describe('team hire tools', () => {
     const out = JSON.parse(await host.find(tool => tool.name === 'hire_members')!.run({ members: three.map(m => ({ ...m, lookup: true })) }, { task: '' }))
     expect(out.members.map((m: { sources?: string[] }) => m.sources)).toEqual([['https://weather.naver.com/today/09', 'https://search.naver.com/search.naver?query=seoul'], ['https://search.naver.com/search.naver?query=busan'], undefined])
     expect(out.note).toContain('markdown link')
+    expect(out.note).toContain('names the member who reported it')
     expect(out.note).toContain('never re-run')
     void call
   })
@@ -263,18 +264,22 @@ describe('team hire tools', () => {
     const table = '세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | 네이버 날씨 검색 |\n| 제주 | 흐림 | 15.6°C | 네이버 날씨 검색 |'
     const cited = citeMembers(table, members, true)
     // grokbar B6 r2: the link goes into the member's own row (a closing line left 부산 and 제주 with a site name alone). Still one table, no closing line.
-    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
+    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울(서울 날씨) | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산(부산 날씨) | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주(제주 날씨) | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
+    // grokbar B6 r3: every row names the member whose report it is, also the row that already had its link.
+    for (const [n, row] of cited.split('\n').slice(4).entries()) expect(row).toContain(`(${['서울', '부산', '제주'][n]} 날씨)`)
     for (const row of cited.split('\n').slice(4)) expect(row).toMatch(/\]\(https:\/\//)
     expect(citeMembers(cited, members, true)).toBe(cited)
     expect(cited).not.toContain('failed.example')
     // No source column: the row keeps its cells and gains the link. A row named with its employee, an empty source cell.
-    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산**(부산 날씨) | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
     const staff = [member('m1', '김대리', ['https://notion.com/releases']), member('m2', '박사원', ['https://slack.com/changelog'])]
     expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | - |\n| 슬랙(박사원) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | [김대리](https://notion.com/releases) |\n| 슬랙(박사원) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
     // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line.
     const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
     expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [서울 날씨](https://weather.naver.com/today/09) · [부산 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
-    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table)
+    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table.replace('| 서울 |', '| 서울(서울 날씨) |'))
+    // A member with nothing to link (no pages kept, or failed) is still named in its row.
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| 대구 | 아직 조사 중이에요. |\n| 광주 | 확인하지 못했어요. |', members.slice(3), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| 대구(대구 날씨) | 아직 조사 중이에요. |\n| 광주(광주 날씨) | 확인하지 못했어요. |')
     expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [서울 날씨](https://weather.naver.com/today/09)')
     expect(citeMembers('', members, true)).toBe('')
   })

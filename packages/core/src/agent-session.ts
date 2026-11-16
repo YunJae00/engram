@@ -44,6 +44,11 @@ export function withSteer(text: string, said: string[]): string {
 
 const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
+// shortcut: words that keep coming past this many rewrites are answered as their own turn, raise it if people steer more often.
+const LATE_STEER_ROUNDS = 3
+export function lateSteer(draft: string, said: string[]): string {
+  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
+}
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
@@ -290,6 +295,16 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     session = await Promise.race([run, ended, new Promise<ToolSessionResult>(resolve => { close = resolve })])
     // The model's own closing words are not waited for or shown, but its round is left to finish (bounded): cutting it would cost the warm session.
     if (closed !== undefined) { const stop = () => lifetime.abort(new Error('The tool session has ended.')), limit = setTimeout(stop, CLOSE_TAIL_MS); void run.catch(() => undefined).finally(() => { clearTimeout(limit); stop() }) }
+    // Words said after the last tool result, while the answer was being written, had no tool result left to ride on: the answer is
+    // written again with them, in the same turn, and the draft is dropped. grokbar B6 r3: "그냥 애플로 바꿔" got the 엔비디아 answer and a turn of its own.
+    for (let round = 0; round < LATE_STEER_ROUNDS && closed === undefined && !signal.aborted && !session.error && !asked; round++) {
+      const late = options.takeSteer?.() ?? []
+      if (!late.length) break
+      options.onReset?.(true)
+      // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
+      exhausted = false; extended = false; startedCalls = 0; working = Date.now()
+      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late)}` }), ended])
+    }
   } finally {
     options.onSteerable?.(null)
     clearInterval(watchdog)
