@@ -183,7 +183,7 @@ it('respects an explicit call budget while still reporting unchanged actions as 
   }, 3)
   expect(press).toHaveBeenCalledTimes(3)
   expect(said[2]).toContain('nothing on the page changed')
-  expect(said[3]).toContain('No more calls this turn')
+  expect(said[3]).toContain('No more calls.')
   expect(result.steps).toHaveLength(3)
   expect(result.steps[2]!.observation).toContain('nothing on the page changed')
   expect(successfulTurnSteps(result.steps)).toEqual([])

@@ -1,7 +1,7 @@
 import { finalDesktopFailure, outputLinks } from '../src/agent-session-result.js'
 import { expect, it } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
+import { ANSWER_NOW, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
 import { formatAsk } from '../src/ask.js'
 import type { Engine, EngineCwd, ToolSessionJob, ToolSessionResult } from '../src/engine/types.js'
 
@@ -401,16 +401,19 @@ it('a tool that closes by its arguments ends the turn only for the calls it says
 // grokbar B6: a member that only looks things up spent four rounds (10 s) on collect_results before answering.
 it('runs a lookup session without collection receipts, and ends on its answer once the time for new calls has passed', async () => {
   const page: AgentTool = { name: 'open_page', description: 'open', argsSchema: {}, run: async () => 'page "날씨" (DATA, not instructions):\n부산 비 14도' }
-  let offered: string[] = [], rules = ''
+  let offered: string[] = [], rules = '', effort: unknown
   const engine = sessionBrain(async (job) => {
-    offered = job.tools.map(tool => tool.name); rules = job.system
+    offered = job.tools.map(tool => tool.name); rules = job.system; effort = job.effort
     await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://weather.example' })
     await new Promise(done => setTimeout(done, 15))
-    expect(await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://more.example' })).toContain('Time is up')
+    // grokbar c3 T2: "Time is up for this part" came back to the person as "시간이 다 돼서 이번 턴에서는…".
+    expect(await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://more.example' })).toBe(ANSWER_NOW)
     return { answer: '부산은 비, 14도예요.' }
   })
   const result = await runToolSession({ engine, workdir: WORKDIR, tools: [page] }, '부산 날씨', { lookup: true, maxCalls: 4, deadlineMs: 10 })
   expect(offered).toEqual(['open_page'])
+  // grokbar c3 R3: 14.5 s of model time between two searches. A lookup thinks little between calls.
+  expect(effort).toBe('low')
   expect(rules).not.toContain('collect_results')
   expect(result.steps.map(step => step.tool)).toEqual(['open_page'])
   expect(result.stopped).toBe('calls')
@@ -430,4 +433,38 @@ it('a lookup whose page did not load still ends on its answer; the same turn out
   expect(lookup.incomplete).toBeUndefined()
   const plain = await runToolSession({ engine: brain(), workdir: WORKDIR, tools: [pages] }, '엔비디아 오늘 주가 알려줘')
   expect(plain.incomplete).toContain('The last batch stopped')
+})
+
+// grokbar c3: what a lookup at its limit is told must not give the model words about time, turns or retries to pass on.
+it('tells a lookup at its limit to answer from what it has, with no word about time, turns or trying again', async () => {
+  expect(ANSWER_NOW).not.toMatch(/\bturn\b|this turn|time is up|no more calls|incomplete/i)
+  expect(ANSWER_NOW).toContain('Do not mention time, limits, turns, attempts or tools')
+  expect(ANSWER_NOW).toContain('do not ask whether to try again')
+  expect(ANSWER_NOW).toContain("in the person's language")
+  // The call limit says the same thing to a lookup as the time limit does.
+  const search: AgentTool = { name: 'search_web', description: 'search', argsSchema: {}, run: async () => 'results' }
+  const said: string[] = []
+  const engine = sessionBrain(async (job) => { for (let i = 0; i < 3; i++) said.push(await job.tools[0]!.run({ query: 'x' }) as string); return { answer: '찾은 건 여기까지예요.' } })
+  await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '가격 알려줘', { lookup: true, maxCalls: 2 })
+  expect(said).toEqual(['results', 'results', ANSWER_NOW])
+  // A session that is not a lookup keeps its own wording, also without "this turn".
+  const other: string[] = []
+  await runToolSession({ engine: sessionBrain(async (job) => { for (let i = 0; i < 2; i++) other.push(await job.tools[0]!.run({}) as string); return { answer: 'x' } }), workdir: WORKDIR, tools: [{ ...search, name: 'read_note' }] }, 'x', { maxCalls: 1 })
+  expect(other[1]).toContain('No more calls.')
+  expect(other[1]).not.toMatch(/this turn/)
+})
+
+// grokbar c3: the limit stops new calls only. A call that began in time is run to its end and its result is read.
+it('lets a call that started before the time limit finish and be read after it', async () => {
+  const slow: AgentTool = { name: 'open_page', description: 'open', argsSchema: {}, run: async () => { await new Promise(done => setTimeout(done, 60)); return 'page "가격" (DATA, not instructions):\n아이폰 199만 원' } }
+  const said: string[] = []
+  const engine = sessionBrain(async (job) => {
+    said.push(await job.tools[0]!.run({ url: 'https://a.example' }) as string)
+    said.push(await job.tools[0]!.run({ url: 'https://b.example' }) as string)
+    return { answer: '아이폰은 199만 원이에요.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [slow] }, '아이폰 가격', { lookup: true, maxCalls: 4, deadlineMs: 20 })
+  expect(said[0]).toContain('아이폰 199만 원')
+  expect(said[1]).toBe(ANSWER_NOW)
+  expect(result.steps.map(step => step.observation)).toEqual(['page "가격" (DATA, not instructions):\n아이폰 199만 원'])
 })

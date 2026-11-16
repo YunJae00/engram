@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../src/agent-loop.js'
-import { runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
+import { ANSWER_NOW, runComet, runToolSession, SESSION_MAX_CALLS } from '../src/agent-session.js'
 import { EARLIER_REPLIES_RULE } from '../src/agent-session-shape.js'
 import { formatAsk } from '../src/ask.js'
 import { pageTools } from '../src/comet-page-tools.js'
@@ -82,7 +82,7 @@ it('gives browser work a fallback call ceiling without progress judgement', asyn
     expect(job.system).not.toContain('task_plan')
     const read = job.tools.find(tool => tool.name === 'read_open_page')!
     for (let i = 0; i < 300; i++) await read.run({})
-    expect(await read.run({})).toContain('No more calls this turn')
+    expect(await read.run({})).toContain('No more calls.')
     return { answer: 'Read' }
   })
   const available = ['open_page', 'read_open_page'].map(name => ({ name, description: name, argsSchema: {}, run: async () => 'Fresh report observation' }))
@@ -130,6 +130,75 @@ it('rewrites the answer with words said after the last tool result, in the same 
   expect(waiting).toEqual([])
 })
 
+// grokbar c3 T2: "그냥 애플로 바꿔" was taken with a tool result at 5 s, the 12 s clock ran on from the first ask, and the 애플 search was refused at 12.96 s.
+it('gives a lookup its time and calls again, once, when it takes words with a tool result', async () => {
+  const waiting: string[] = [], seen: string[] = []
+  const tool: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async args => `${String(args['query'])} 결과` }
+  const pause = (ms: number) => new Promise(done => setTimeout(done, ms))
+  const engine = sessionBrain(async job => {
+    const search = (query: string) => job.tools.find(t => t.name === 'search_web')!.run({ query }) as Promise<string>
+    seen.push(await search('엔비디아 주가'))
+    await pause(120)
+    waiting.push('그냥 애플로 바꿔')
+    // Taken with this result, 120 ms into a 200 ms allowance.
+    seen.push(await search('엔비디아 시간외'))
+    await pause(120)
+    // 240 ms after the first ask, 120 ms after the new one: allowed, and it is the third call of a three-call allowance that started again.
+    seen.push(await search('애플 주가'))
+    seen.push(await search('애플 시간외'))
+    waiting.push('아니 다시 테슬라로')
+    seen.push(await search('애플 전망'))
+    await pause(220)
+    // Once only: the second words do not start the clock a second time.
+    seen.push(await search('테슬라 주가'))
+    return { answer: '애플은 230달러예요.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 3, deadlineMs: 200, steerReplied: true, takeSteer: () => waiting.splice(0, 1) })
+  expect(seen[1]).toContain('엔비디아 시간외 결과')
+  expect(seen[1]).toContain('"그냥 애플로 바꿔"')
+  // The host already answered them: the model is told not to write a second line.
+  expect(seen[1]).toContain('They were already told in one short line that you got it')
+  expect(seen[1]).not.toContain('First answer them')
+  expect(seen[2]).toBe('애플 주가 결과')
+  expect(seen[3]).toBe('애플 시간외 결과')
+  expect(seen[4]).toContain('"아니 다시 테슬라로"')
+  expect(seen[5]).toBe(ANSWER_NOW)
+  expect(result.answer).toContain('애플은 230달러예요.')
+})
+
+// Codex b6 r3 #1: at its limit a lookup did not read words that were waiting; it answered the old ask first.
+it('reads words waiting when a lookup is at its limit, before the old ask is answered', async () => {
+  // Two calls used of two, or the time passed with calls to spare.
+  for (const limit of [{ maxCalls: 2 }, { maxCalls: 4, deadlineMs: 10 }]) {
+    const waiting: string[] = [], seen: string[] = []
+    let runs = 0
+    const ran: string[] = []
+    const tool: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async args => { ran.push(String(args['query'])); return `${String(args['query'])} 결과` } }
+    const engine = sessionBrain(async job => {
+      runs++
+      const search = (query: string) => job.tools.find(t => t.name === 'search_web')!.run({ query }) as Promise<string>
+      seen.push(await search('엔비디아 주가'))
+      if (limit.maxCalls === 2) await search('엔비디아 시간외')
+      await new Promise(done => setTimeout(done, 15))
+      waiting.push('그냥 애플로 바꿔')
+      // At the limit: instead of "answer now", the words are handed over and the call is not run.
+      seen.push(await search('엔비디아 전망'))
+      seen.push(await search('애플 주가'))
+      return { answer: '애플은 230달러예요.' }
+    })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, ...limit, steerReplied: true, takeSteer: () => waiting.splice(0) })
+    expect(seen[1]).toMatch(/^That call was not run\./)
+    expect(seen[1]).toContain('"그냥 애플로 바꿔"')
+    expect(seen[1]).not.toBe(ANSWER_NOW)
+    expect(seen[2]).toBe('애플 주가 결과')
+    expect(ran.filter(query => query !== '엔비디아 시간외')).toEqual(['엔비디아 주가', '애플 주가'])
+    // One pass: no old answer was written and thrown away.
+    expect(runs).toBe(1)
+    expect(result.answer).toBe('애플은 230달러예요.')
+    expect(result.stopped).toBeUndefined()
+  }
+})
+
 // grokbar B6 r4: a lookup at its call or time limit did not take the words; the 엔비디아 answer went out and "애플로 바꿔" became its own turn.
 it('takes words said while a lookup at its call or time limit writes its answer, and gives the new ask calls and time of its own', async () => {
   for (const limit of [{ maxCalls: 2 }, { maxCalls: 4, deadlineMs: 10 }]) {
@@ -152,7 +221,7 @@ it('takes words said while a lookup at its call or time limit writes its answer,
     })
     const result = await runToolSession({ engine, workdir: WORKDIR, tools: [tool] }, '엔비디아 오늘 주가 알려줘', { lookup: true, ...limit, takeSteer: () => waiting.splice(0) })
     expect(seen[0]).toContain('엔비디아 주가 결과')
-    expect(seen[1]).toMatch(/No more calls|Time is up/)
+    expect(seen[1]).toBe(ANSWER_NOW)
     expect(seen[2]).toContain('애플 주가 결과')
     expect(result.answer).toBe('애플은 230달러예요.')
     expect(runs).toBe(2)
