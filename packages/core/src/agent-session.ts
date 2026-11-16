@@ -102,7 +102,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
       if (closed !== undefined) return 'The turn already ended with your last reply to the person. Call nothing more.'
-      if (!tool.closes) { composing = true; release() }
+      const closing = typeof tool.closes === 'function' ? tool.closes(args) : tool.closes === true
+      if (!closing) { composing = true; release() }
       if (options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs) {
         exhausted = true
         return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
@@ -173,7 +174,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
-      if (tool.closes && !composing && !said.length && !observation.startsWith('that did not work')) {
+      if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
         closeLines.push(observation)
         held ??= []
         const mark = startedCalls

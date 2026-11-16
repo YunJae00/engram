@@ -4,6 +4,7 @@ import { readCheckpoint } from './comet-checkpoint.js'
 import { taskQueued } from './task-notify.js'
 import { ipcMain } from 'electron'
 import {
+  backgroundOpen,
   continuationPrompt,
   createTask,
   findPlaybook,
@@ -53,7 +54,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
+export interface TaskTurn { /** The lead passing on what its background employees reported: a short turn of words, no team check. */ report?: true; tokenBudget?: number; context?: string; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -105,8 +106,16 @@ export function taskRunner(deps: {
     deps.broadcast({ type: 'comet:working', channel, working: true })
   }
   const release = (channel: string) => {
-    if (channels.delete(channel)) deps.broadcast({ type: 'comet:working', channel, working: false })
+    if (!channels.delete(channel)) return
+    deps.broadcast({ type: 'comet:working', channel, working: false })
+    // A report that came in while the thread was busy starts now, never in the middle of the person's turn.
+    const next = [...reports].find(([, one]) => one === channel)
+    if (next) void report(next[0], channel).catch(error => flog('tasks', error))
   }
+  // Tasks whose background employees have all ended and whose lead has not reported yet, by lead channel.
+  const reports = new Map<string, string>()
+  // Waiting for its employees, not for the person: a new message leaves it alone and it is not announced as paused.
+  const parked = (task: DelegatedTask) => task.state === 'waiting' && !task.question && (backgroundOpen(task) || reports.has(task.id))
   const stopped = new Set<string>()
   const waiting = new Map<string, number>()
   const owners = new Map<string, string>()
@@ -180,7 +189,7 @@ export function taskRunner(deps: {
     const earlier = trails.get(id) ?? []
     refusedThisTurn.delete(id)
     // The answers this runner re-checks before calling the task done (see the branches below): a team's report, and a result whose own check is not clean, once.
-    const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members'))
+    const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && !extra?.report && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members' || step.tool === 'assign'))
     // A re-check's own answer has no visible draft and is not saved: the report it re-checks is. An earlier report still waiting is posted, never overwritten.
     const saveHeld: TaskTurn['saveHeld'] = extra?.verification ? undefined : async (answer) => {
       if (unshown.get(id) !== answer) await flush(started)
@@ -269,7 +278,9 @@ export function taskRunner(deps: {
       } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
       else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
-      else if (teamUnverified(t) && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
+      // Employees are still on work handed off in the background (or their report is in line): the turn's words stand and the task waits for the report.
+      else if (backgroundOpen(t) || reports.has(id)) { t.state = 'waiting'; logTask(t, 'Waiting for the employees\' report') }
+      else if (teamUnverified(t) && !extra?.report && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
@@ -316,7 +327,7 @@ export function taskRunner(deps: {
     if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); teamChecks.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') { trails.delete(task.id); reportTrails.delete(task.id) }
-    if (['done', 'waiting', 'failed'].includes(task.state)) {
+    if (['done', 'waiting', 'failed'].includes(task.state) && !parked(task)) {
       const checkpoint = await readCheckpoint(paths, task.botId)
       taskQueued(task.botId, !!(checkpoint.pending.length))
       try { deps.notify(task) } catch (error) { flog('task-notify', error) }
@@ -346,7 +357,7 @@ export function taskRunner(deps: {
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
         readbackNext.delete(id)
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', goal: task.goal, ...(unread ? { readback: true } : {}) } } : {}) })
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', goal: task.goal, ...(unread ? { readback: true } : {}) } } : {}), ...(why === 'report' ? { report: true as const } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }
@@ -359,7 +370,23 @@ export function taskRunner(deps: {
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
 
+  // The background employees of a task have all ended (team-runner): its lead reports in the person's thread, in a turn of its own.
+  async function report(id: string, channel: string): Promise<void> {
+    reports.set(id, channel)
+    if (channels.has(channel)) return
+    acquire(channel)
+    try {
+      reports.delete(id)
+      if (stopped.has(channel)) return
+      const task = await edit(id, t => { if (t.state === 'waiting' && !t.question) t.state = 'queued' })
+      if (task?.state !== 'queued') return
+      owners.set(channel, id)
+      await carryOn(id, 'report', '', channel)
+    } finally { release(channel) }
+  }
+
   return {
+    report,
     activeChannels: (): string[] => [...channels],
     async chat(request: ChatRequestDto): Promise<void> {
       const botId = request.botId!, channel = `bot-${botId}`
@@ -371,7 +398,7 @@ export function taskRunner(deps: {
       let after: DelegatedTask | undefined
       try {
         const history = (await listTasks(paths)).filter(t => t.botId === botId)
-        const active = history.filter(t => ['queued', 'running', 'waiting'].includes(t.state))
+        const active = history.filter(t => ['queued', 'running', 'waiting'].includes(t.state) && !parked(t))
         if (active.some((t) => t.state !== 'waiting')) throw new Error('This conversation is still working. Stop it or wait for it to finish.')
         const asked = active.find((t) => t.question)
         const resumed = asked ?? active.find(t => t.approvals.every(a => a.answer))

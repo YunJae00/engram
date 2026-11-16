@@ -3,6 +3,11 @@ import { BOT_LABEL_CHARS } from './bot-fields.js'
 import { loadBotMemory, renderMemory } from './bot-memory.js'
 import { archiveBot, createBot, loadArchivedBots, loadBots, restoreBot, updateBot, type Bot } from './bots.js'
 import { listTasks, type DelegatedTask } from './delegated-tasks.js'
+import { formatAsk } from './ask.js'
+import { recordFacts } from './bot-memory.js'
+import { appendBotTurn } from './bots.js'
+import { logTask, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
+import type { TeamHost } from './team-hire-tools.js'
 import { changeSidebarLayout, readSidebarLayout } from './sidebar-layout.js'
 import type { VaultPaths } from './vault.js'
 
@@ -165,7 +170,7 @@ export function isStatusAsk(message: string): boolean {
 }
 
 // The company lane's whole menu: few enough that the session preloads it (no tool search round).
-export const COMPANY_LANE_TOOLS: ReadonlySet<string> = new Set(['staff', 'company_status', 'schedule', 'hire_members', 'review_member', 'team_status', 'search_web', 'read_pages', 'search_chats', 'search_memory', 'read_note', 'ask_person', 'keep_in_mind'])
+export const COMPANY_LANE_TOOLS: ReadonlySet<string> = new Set(['staff', 'assign', 'company_status', 'schedule', 'hire_members', 'review_member', 'team_status', 'search_web', 'read_pages', 'search_chats', 'search_memory', 'read_note', 'ask_person', 'keep_in_mind'])
 
 export const COMPANY_ASK_CHARS = 200
 // The lane has no file, office or browser tools, so it takes only sentences it can finish: a roster change or a question about who someone is or
@@ -202,12 +207,21 @@ export function isCompanyAsk(message: string, known: readonly string[], chief: b
   return NEW_TEAM.test(message) || (HIRE.test(message) && PERSON.test(rest)) || (CHANGE.test(message) && (named > 0 || PERSON.test(rest)))
 }
 
+// Handing work to staff is also a sentence the lane can finish: the chief of staff only hands off (assign) and merges, the employees work with their own full tools.
+const TO_STAFF = /(사원|주임|대리|과장|차장|부장|팀장|인턴|팀|님|씨)\s*(한테|에게)/u
+const DELEGATE = /맡겨|맡기|시켜|시키|넘겨|넘기/u
+/** The chief of staff is told to hand work to an employee or a team ("김대리한테 맡겨", "박사원한테 넘겨서 ..."). When unsure, false. */
+export function isAssignAsk(message: string, known: readonly string[]): boolean {
+  if (message.length > COMPANY_ASK_CHARS || !DELEGATE.test(message)) return false
+  return TO_STAFF.test(message) || known.some(name => name.trim().length >= 2 && new RegExp(`${escaped(name.trim())}\\s*(한테|에게)`, 'u').test(message))
+}
+
 /** The roster for a prompt, with what each employee named in the message remembers and last did: "who is 김과장" needs no tool. */
 export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot[]; message: string; teams?: ReadonlyMap<string, string>; tasks?: readonly DelegatedTask[]; chief: boolean; now?: Date }): Promise<string> {
   const staff = employees(input.bots)
   if (!staff.length && !input.chief) return ''
   const lines = [input.chief
-    ? 'The person runs a company by chat: they are the CEO, you are their chief of staff, and each employee below is a bot of its own. Do a staffing request (hire, promote or rename, let go, bring back, make a team) with ONE staff call for the whole sentence: no question, no confirmation, and never mention bots, tools or the sidebar. Answer questions about who someone is or what they do from the lines below with no tool call. Speak as a chief of staff would to their CEO: short, natural, in the person\'s language.'
+    ? 'The person runs a company by chat: they are the CEO, you are their chief of staff, and each employee below is a bot of its own. Do a staffing request (hire, promote or rename, let go, bring back, make a team) with ONE staff call for the whole sentence: no question, no confirmation, and never mention bots, tools or the sidebar. Hand work to employees with ONE assign call for the whole sentence (wait false when the person just hands a job off, wait true when they want the report in this answer); someone named who is not on staff yet is hired by that same call, and you never do an assigned part yourself. Answer questions about who someone is or what they do from the lines below with no tool call. Speak as a chief of staff would to their CEO: short, natural, in the person\'s language.'
     : 'The person runs a company by chat: they are the CEO and each employee below is a bot of its own. Answer questions about who someone is or what they do from these lines with no tool call, short and natural, in the person\'s language.']
   lines.push(staff.length ? 'Staff now:' : 'Staff now: nobody yet.')
   for (const bot of staff) {
@@ -221,4 +235,136 @@ export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot
     if (!memory && !recent.length) lines.push(`  ${bot.name} has no finished work on record yet; say so rather than inventing any.`)
   }
   return lines.join('\n')
+}
+
+// --- Handing work to employees (assign) ---
+
+export interface AssignHost extends TeamHost {
+  /** Starts these members without waiting for them: the lead's turn may end first, and their report comes back as a turn of its own. */
+  later(ids: string[]): Promise<void>
+  /** Gives a handoff to the job this employee is doing right now in this thread; false when they are not on one. */
+  attach(botId: string, then: NonNullable<TeamMember['then']>): Promise<boolean>
+}
+
+/** What the next employee is told when a result is handed to them. */
+export const handoffBrief = (brief: string, from: string, result: string): string => `${brief}\n\nHanded over by ${from}. Work from this result, and keep the facts and source addresses you use from it in your own result:\n${result}`
+
+/** Who the employee is, added to the member persona: they work as themselves, with their own role and memory. */
+export async function employeeNote(paths: VaultPaths, botId: string, now?: Date): Promise<string> {
+  const bot = (await loadBots(paths)).find(one => one.id === botId)
+  if (!bot) return ''
+  const memory = renderMemory(await loadBotMemory(paths, botId), now)
+  return ` You are ${bot.name}${bot.label?.trim() ? `, ${bot.label.trim()}` : ''}, an employee of the person's company; the lead is their chief of staff. Your role: ${clip(bot.purpose || bot.label || bot.name, 600)}${memory ? `\nWhat you remember from your earlier work:\n${memory}` : ''}`
+}
+
+export const teamMemoryId = (folderId: string): string => `_team-${folderId}`
+
+/** A finished job goes on the employee's own record: the brief and the result in their conversation, one dated line in their memory and in their team's. No model is asked. */
+export async function employeeWriteBack(paths: VaultPaths, job: { botId: string; brief: string; result: string }, now = new Date()): Promise<void> {
+  const bots = await loadBots(paths), bot = bots.find(one => one.id === job.botId)
+  if (!bot) return
+  const at = now.toISOString()
+  await appendBotTurn(paths, bot.id, { role: 'user', text: job.brief, at })
+  await appendBotTurn(paths, bot.id, { role: 'assistant', text: job.result, at })
+  // Ends on the name and the day, so the line is never read as a question, a label or the bot's own "…했습니다" (notAFact).
+  const what = clip(job.brief.split('\n')[0]!.replace(/^[#|<`\s]+/, ''), 40), tail = ` (${bot.name}, ${at.slice(0, 10)})`
+  const line = `${what} → ${clip(job.result, 150 - Array.from(what).length - tail.length)}${tail}`
+  await recordFacts(paths, bot.id, [line], now)
+  const folder = (await readSidebarLayout(paths, { chat: bots.map(one => one.id) })).chat.items.find(item => item.id === bot.id)?.folder
+  if (folder) await recordFacts(paths, teamMemoryId(folder), [line], now)
+}
+
+const ASSIGN_MAX = 4
+const ASSIGN_NOTE = 'Each report is accepted as it is: do not call review_member for it. Give the person ONE merged report in their language, each part under the name of the employee who did it, keeping the source addresses each one gave. Mention anyone in "hired" in one short line. Where one employee handed their result to the next, the last result is the deliverable; keep the facts it took from the earlier one. Say plainly which part failed or is missing. A report with state waiting needs the person: close with its question, and when they answer pass it with review_member({id, ok:false, note:<answer>}).'
+
+export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => void): AgentTool {
+  return {
+    name: 'assign',
+    // Handing off without waiting is answered by the tool's own line; a waited report is written by the chief of staff.
+    closes: args => args['wait'] === false,
+    description: `Hand work to employees by name; each does their part as themselves, with their own role and memory, side by side. ONE call for the whole sentence, 1 to ${ASSIGN_MAX} parts, no question and no confirmation. to: who (the employee's name), brief (their whole part, complete on its own, at most 3 short lines; only what the person asked for). Someone named who is not on staff yet is hired by this same call: give their title (the job title from the sentence, or one that fits the part). then {who, brief}: when who finishes, their result goes to this second employee, who does brief with it ("김대리 조사 끝나면 박사원한테 넘겨서 ..."); leave the first brief out to hand over the work that employee is on now or last finished. make true only for a part that creates or changes a file or acts on a page; otherwise the part is a fast read-only lookup. wait false when the person just hands the job off ("맡겨", "시켜 놔"): the reply is shown to the person as your answer and ends the turn, and the report comes back here by itself when the work is done. wait true when they want the result in this answer ("조사해서 보고해"): it returns every report for you to merge.`,
+    argsSchema: {
+      type: 'object', additionalProperties: false, required: ['to', 'wait'],
+      properties: {
+        to: { type: 'array', minItems: 1, maxItems: ASSIGN_MAX, items: { type: 'object', additionalProperties: false, required: ['who'], properties: { who, brief: who, title: who, make: { type: 'boolean' }, then: { type: 'object', additionalProperties: false, required: ['who', 'brief'], properties: { who, brief: who, title: who } } } } },
+        wait: { type: 'boolean' },
+      },
+    },
+    async run(args, context) {
+      const wait = args['wait'] !== false
+      const parts = rows(args['to']).map(row => {
+        const next = typeof row['then'] === 'object' && row['then'] !== null ? row['then'] as Record<string, unknown> : undefined
+        return { who: said(row['who'], 60), brief: String(row['brief'] ?? '').trim().slice(0, 1500), title: said(row['title'], BOT_LABEL_CHARS), make: row['make'] === true, ...(next ? { then: { who: said(next['who'], 60), brief: String(next['brief'] ?? '').trim().slice(0, 1500), title: said(next['title'], BOT_LABEL_CHARS) } } : {}) }
+      })
+      if (!parts.length || parts.length > ASSIGN_MAX) throw new Error(`to needs 1 to ${ASSIGN_MAX} parts, each with who and brief.`)
+      if (parts.some(part => !part.who || (!part.brief && !part.then) || (part.then && (!part.then.who || !part.then.brief)))) throw new Error('Each part needs who and brief; then needs who and brief.')
+      const active = await loadBots(paths), gone = await loadArchivedBots(paths)
+      const staff = new Map(active.filter(bot => !bot.primary).map(bot => [bot.name.trim(), bot]))
+      const refused: string[] = [], hiring = new Map<string, string>()
+      for (const one of parts.flatMap(part => [part, ...(part.then ? [part.then] : [])])) {
+        if (staff.has(one.who) || hiring.has(one.who)) continue
+        if (active.some(bot => bot.primary && bot.name.trim() === one.who)) refused.push('비서실장한테는 맡길 수 없어요. 직원 이름을 알려 주세요.')
+        else if (gone.some(bot => bot.name.trim() === one.who)) refused.push(`${josa(one.who, '은', '는')} 전에 내보낸 직원이에요. "${one.who} 다시 불러와"라고 하면 돌아와요.`)
+        else hiring.set(one.who, one.title || '사원')
+      }
+      // Work handed over with no new brief comes from the job they are on now, or else the last one they finished.
+      const tasks = parts.some(part => !part.brief) ? await listTasks(paths) : []
+      const lastResult = (botId: string): string | undefined => tasks.flatMap(task => task.team?.members ?? [])
+        .filter(m => m.botId === botId && (m.state === 'done' || m.state === 'released') && m.review?.ok !== false && !!m.result && !m.result.startsWith('Failed: '))
+        .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))[0]?.result
+      for (const part of parts) if (!part.brief && !staff.has(part.who)) refused.push(`${josa(part.who, '이', '가')} 끝낸 일이 아직 없어서 넘길 게 없어요.`)
+      if (refused.length) return [...new Set(refused)].join('\n')
+
+      const lines: string[] = []
+      for (const [name, title] of hiring) {
+        const bot = await createBot(paths, { name, purpose: title })
+        staff.set(name, await updateBot(paths, bot.id, { label: title }))
+        lines.push(`${josa(name, '은', '는')} ${ro(title)} 새로 뽑았어요.`)
+      }
+      if (hiring.size) changed()
+
+      const wanted: { bot: Bot; brief: string; make: boolean; then?: NonNullable<TeamMember['then']> }[] = []
+      for (const part of parts) {
+        const bot = staff.get(part.who)!, next = part.then ? { botId: staff.get(part.then.who)!.id, who: part.then.who, brief: part.then.brief } : undefined
+        if (part.brief) { wanted.push({ bot, brief: part.brief, make: part.make, ...(next ? { then: next } : {}) }); continue }
+        if (await host.attach(bot.id, next!)) { lines.push(`${bot.name} 일이 끝나면 ${next!.who}한테 넘길게요.`); continue }
+        const result = lastResult(bot.id)
+        if (!result) return [...lines, `${josa(bot.name, '이', '가')} 끝낸 일이 아직 없어서 넘길 게 없어요.`].join('\n')
+        wanted.push({ bot: staff.get(next!.who)!, brief: handoffBrief(next!.brief, bot.name, result), make: part.make })
+      }
+      if (!wanted.length) return lines.join('\n')
+      const out = await host.change((task): { refuse: string } | { ids: string[] } => {
+        const team = task.team ?? { members: [], hires: 0, maxHires: TEAM_MAX_HIRES, maxDepth: TEAM_MAX_DEPTH, big: false }
+        if (task.state !== 'running' || team.hires + wanted.length > team.maxHires) return { refuse: '지금은 더 맡길 수 없어요. 하던 일이 끝난 뒤에 다시 말해 주세요.' }
+        task.team = team
+        const at = new Date().toISOString()
+        const ids = wanted.map(one => {
+          const id = `m${team.members.length + 1}`
+          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, ...(one.make ? {} : { lookup: true as const }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          return id
+        })
+        team.hires += ids.length
+        logTask(task, `Assigned ${wanted.map(one => one.bot.name).join(', ')}`)
+        return { ids }
+      })
+      if (!out || 'refuse' in out) return [...lines, out?.refuse ?? '지금은 맡길 수 없어요. 다시 말해 주세요.'].join('\n')
+      const handed = wanted.map(one => `${one.bot.name}한테 맡겼어요.${one.then ? ` 끝나면 ${one.then.who}한테 넘길게요.` : ''}`)
+      if (!wait) { await host.later(out.ids); return [...lines, ...handed].join('\n') }
+
+      await host.run(out.ids, context.signal)
+      // Everyone this call started, with whoever a result was handed on to (added after them while they ran).
+      const mine = (members: readonly TeamMember[]) => members.slice(members.findIndex(m => m.id === out.ids[0])).filter(m => m.parentId === null && !!m.botId)
+      // An employee's report stands as their own: nobody reviews it, and the chief of staff says whose it is.
+      const settled = await host.change(task => mine(task.team?.members ?? []).filter(m => m.state === 'done' || m.state === 'failed').map(m => { m.review ??= { ok: m.state === 'done', note: 'auto: employee report' }; return m.id })) ?? []
+      await host.release(settled)
+      const team = (await host.load())?.team, reports = mine(team?.members ?? [])
+      const asking = reports.filter(m => m.state === 'waiting')
+      if (asking.length && !reports.some(m => m.result && m.review?.ok)) return formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), [])
+      return JSON.stringify({
+        ...(lines.length ? { hired: lines } : {}),
+        reports: reports.map(m => ({ who: m.role, state: m.review ? (m.review.ok ? 'done' : 'failed') : m.state, result: m.result ?? '', ...(m.files?.length ? { files: m.files } : {}), ...(m.state === 'waiting' ? { id: m.id, ask: m.result ?? '' } : {}) })),
+        note: ASSIGN_NOTE,
+      })
+    },
+  }
 }

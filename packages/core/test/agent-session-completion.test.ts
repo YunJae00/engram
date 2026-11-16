@@ -389,3 +389,11 @@ it('holds the model\'s words after a closing tool succeeds: dropped when the tur
   expect((await runToolSession({ engine: quick, workdir: WORKDIR, tools: [closing] }, 'x', { onToken: text => shown.push(text) })).answer).toBe('바로 답')
   expect(shown).toEqual(['바로 답'])
 })
+
+it('a tool that closes by its arguments ends the turn only for the calls it says', async () => {
+  const assign: AgentTool = { name: 'assign', description: 'assign', argsSchema: {}, closes: args => args['wait'] === false, run: async args => args['wait'] === false ? '김대리한테 맡겼어요.' : '{"reports":[]}' }
+  const handed = await runToolSession({ engine: sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'assign')!.run({ wait: false }); await pause(400); return { answer: 'again' } }), workdir: WORKDIR, tools: [...tools, assign] }, '김대리한테 맡겨')
+  expect(handed.answer).toBe('김대리한테 맡겼어요.')
+  const waited = await runToolSession({ engine: sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'assign')!.run({ wait: true }); await pause(400); return { answer: '합친 보고' } }), workdir: WORKDIR, tools: [...tools, assign] }, '조사해서 보고해')
+  expect(waited.answer).toBe('합친 보고')
+})

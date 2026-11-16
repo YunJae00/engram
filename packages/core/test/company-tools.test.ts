@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { loadBotMemory, recordFacts } from '../src/bot-memory.js'
 import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript } from '../src/bots.js'
-import { companyNote, companyStatus, companyStatusTool, isCompanyAsk, isStatusAsk, staffTool } from '../src/company-tools.js'
+import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isStatusAsk, staffTool } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
@@ -145,4 +145,124 @@ test('the prompt note lists the roster and gives a named employee\'s memory and 
   expect(note).not.toContain('What 박사원 remembers')
   expect(note).not.toContain('ONE staff call')
   expect(await companyNote(paths, { bots, message: '박사원 뭐하는 사람이야', chief: true })).toContain('ONE staff call')
+})
+
+// --- assign: handing work to employees ---
+import { parseAsk } from '../src/ask.js'
+import { assignTool, employeeNote, employeeWriteBack, handoffBrief, teamMemoryId, COMPANY_LANE_TOOLS, type AssignHost } from '../src/company-tools.js'
+import { changeSidebarLayout } from '../src/sidebar-layout.js'
+import { settleMember } from '../src/team-hire-tools.js'
+
+async function office(work: (member: TeamMember) => { answer: string; asked?: boolean; error?: string } = member => ({ answer: `${member.role} 결과 https://example.com/${member.id}` })) {
+  const c = await company()
+  await c.run({ hire: [{ name: '김대리', title: '리서치 담당', role: '자료를 찾아 출처와 함께 정리한다' }, { name: '박사원', title: '카피 담당' }], team: [{ name: '마케팅팀', members: ['김대리', '박사원'] }] })
+  const task = { id: 't1', goal: '경쟁사 조사', botId: c.chief.id, state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [] } as DelegatedTask
+  const later: string[][] = [], attached: unknown[] = []
+  let attach = false
+  const finish = (ids: string[]) => { for (const m of task.team!.members.filter(one => ids.includes(one.id))) settleMember(m, work(m), '2026-11-16T01:00:00.000Z') }
+  const host: AssignHost = {
+    self: null, load: async () => task, change: async change => change(task),
+    run: async ids => finish(ids),
+    release: async ids => { for (const m of task.team!.members) if (ids.includes(m.id)) m.state = 'released' },
+    live: () => false, tokensLeft: async () => 100_000, personSaid: () => '',
+    later: async ids => { later.push(ids) },
+    attach: async (botId, then) => { attached.push({ botId, then }); return attach },
+  }
+  const tool = assignTool(c.paths, host, c.changed)
+  return { ...c, task, later, attached, finish, tool, assign: (args: Record<string, unknown>) => tool.run(args, { task: '' }), attachable: (on: boolean) => { attach = on } }
+}
+
+test('assign runs each employee as a member of their own, hires an unknown name on the spot and hands back attributed reports', async () => {
+  const o = await office()
+  const out = JSON.parse(await o.assign({ wait: true, to: [{ who: '김대리', brief: '노션 신기능' }, { who: '박사원', brief: '슬랙 신기능' }, { who: '이과장', brief: '리니어 신기능', title: '리서치 담당' }] }))
+  const lee = (await o.named('이과장'))!
+  expect(lee.label).toBe('리서치 담당')
+  expect(out.hired).toEqual(['이과장은 리서치 담당으로 새로 뽑았어요.'])
+  expect(out.reports.map((r: { who: string; state: string }) => [r.who, r.state])).toEqual([['김대리', 'done'], ['박사원', 'done'], ['이과장', 'done']])
+  expect(out.reports[2].result).toContain('https://example.com/m3')
+  // Each is the employee (botId), a fast lookup, and already accepted: the chief of staff needs no review round.
+  expect(o.task.team!.members.map(m => [m.botId === (m.role === '이과장' ? lee.id : m.botId), m.lookup, m.state, m.review?.ok, m.background])).toEqual([[true, true, 'released', true, undefined], [true, true, 'released', true, undefined], [true, true, 'released', true, undefined]])
+  expect(o.task.team!.members[0]!.botId).toBe((await o.named('김대리'))!.id)
+  expect(typeof o.tool.closes === 'function' && [o.tool.closes({ wait: true }), o.tool.closes({ wait: false })]).toEqual([false, true])
+  expect(MEMBER_BLOCKED.test('assign')).toBe(true)
+  expect(COMPANY_LANE_TOOLS.has('assign')).toBe(true)
+  expect(COMPANY_LANE_TOOLS.size).toBeLessThanOrEqual(16)
+  // Handing work off takes the lane by its own matcher (isCompanyAsk leaves work sentences alone).
+  for (const ask of ['이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 보고해. 김대리, 박사원, 이과장한테 나눠서 시켜', '이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', '김대리 조사 끝나면 박사원한테 넘겨서 홍보 문구 3개 뽑게 해', '마케팅팀에게 맡겨줘', '민지한테 시켜'])
+    expect(isAssignAsk(ask, ['김대리', '박사원', '민지', '마케팅팀']), ask).toBe(true)
+  for (const ask of ['이거 나한테 맡겨', '엄마한테 메일 보내라고 시켜줘', '김대리한테 온 메일 보여줘', '피자 시켜줘', '김대리가 만든 엑셀 고쳐줘', `김대리한테 맡겨 ${'가'.repeat(200)}`])
+    expect(isAssignAsk(ask, ['김대리', '박사원']), ask).toBe(false)
+})
+
+test('assign without waiting answers in one Korean line and leaves the work running in the background', async () => {
+  const o = await office()
+  expect(await o.assign({ wait: false, to: [{ who: '김대리', brief: '다음 달 서울 IT 행사 일정 정리' }] })).toBe('김대리한테 맡겼어요.')
+  expect(o.later).toEqual([['m1']])
+  expect(o.task.team!.members[0]).toMatchObject({ background: true, state: 'hired', role: '김대리' })
+  expect(await o.assign({ wait: false, to: [{ who: '김대리', brief: '조사', then: { who: '박사원', brief: '홍보 문구 3개' } }] })).toBe('김대리한테 맡겼어요. 끝나면 박사원한테 넘길게요.')
+  expect(o.task.team!.members[1]!.then).toEqual({ botId: (await o.named('박사원'))!.id, who: '박사원', brief: '홍보 문구 3개' })
+})
+
+test('a failed part is said as failed, and an employee who needs the person is asked up', async () => {
+  const failing = await office(member => member.role === '박사원' ? { answer: '', error: 'no source' } : { answer: `${member.role} 결과` })
+  const out = JSON.parse(await failing.assign({ wait: true, to: [{ who: '김대리', brief: 'a' }, { who: '박사원', brief: 'b' }] }))
+  expect(out.reports.map((r: { state: string }) => r.state)).toEqual(['done', 'failed'])
+  expect(failing.task.team!.members.every(m => m.state === 'released' && !!m.review)).toBe(true)
+  const asking = await office(() => ({ answer: '어느 달인가요?', asked: true }))
+  expect(parseAsk(await asking.assign({ wait: true, to: [{ who: '김대리', brief: 'a' }] }))?.question).toBe('김대리: 어느 달인가요?')
+  expect(asking.task.team!.members[0]).toMatchObject({ state: 'waiting' })
+})
+
+test('a handoff with no new brief joins the job the employee is on, or takes their last finished result', async () => {
+  const o = await office()
+  const hand = { wait: true, to: [{ who: '김대리', then: { who: '박사원', brief: '홍보 문구 3개' } }] }
+  // Nothing finished and nothing running: refused in Korean, nothing started.
+  expect(await o.assign(hand)).toBe('김대리가 끝낸 일이 아직 없어서 넘길 게 없어요.')
+  expect(o.task.team).toBeUndefined()
+  o.attachable(true)
+  expect(await o.assign(hand)).toBe('김대리 일이 끝나면 박사원한테 넘길게요.')
+  expect(o.attached).toHaveLength(2)
+  expect(o.task.team).toBeUndefined()
+  // Finished earlier (in a task on record): 박사원 starts now with that result.
+  o.attachable(false)
+  const { createTask, updateTask } = await import('../src/delegated-tasks.js')
+  const earlier = await createTask(o.paths, '행사 조사', o.chief.id)
+  const kim = (await o.named('김대리'))!
+  await updateTask(o.paths, earlier.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사', botId: kim.id, state: 'released', result: '11월 20일 서울 AI 서밋 https://example.com/summit', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
+  const out = JSON.parse(await o.assign(hand))
+  expect(out.reports.map((r: { who: string }) => r.who)).toEqual(['박사원'])
+  expect(o.task.team!.members[0]!.brief).toBe(handoffBrief('홍보 문구 3개', '김대리', '11월 20일 서울 AI 서밋 https://example.com/summit'))
+})
+
+test('assign refuses a let-go employee and the chief of staff, and starts nothing', async () => {
+  const o = await office()
+  await o.run({ fire: ['박사원'] })
+  expect(await o.assign({ wait: false, to: [{ who: '박사원', brief: 'a' }, { who: '비서실장', brief: 'b' }] })).toBe('박사원은 전에 내보낸 직원이에요. "박사원 다시 불러와"라고 하면 돌아와요.\n비서실장한테는 맡길 수 없어요. 직원 이름을 알려 주세요.')
+  expect(o.task.team).toBeUndefined()
+  expect(o.later).toEqual([])
+})
+
+test('a finished job is written to the employee\'s own conversation, their memory and their team\'s memory', async () => {
+  const o = await office()
+  const kim = (await o.named('김대리'))!
+  const folder = (await readSidebarLayout(o.paths, { chat: (await loadBots(o.paths)).map(bot => bot.id) })).chat.items.find(item => item.id === kim.id)!.folder!
+  await employeeWriteBack(o.paths, { botId: kim.id, brief: '노션 신기능 조사', result: '노션이 AI 회의록을 추가했습니다. https://notion.so/releases' }, new Date('2026-11-16T03:00:00.000Z'))
+  expect((await readBotTranscript(o.paths, kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '노션이 AI 회의록을 추가했습니다. https://notion.so/releases']])
+  const line = '노션 신기능 조사 → 노션이 AI 회의록을 추가했습니다. https://notion.so/releases (김대리, 2026-11-16)'
+  expect((await loadBotMemory(o.paths, kim.id)).facts.map(fact => fact.text)).toEqual([line])
+  expect((await loadBotMemory(o.paths, teamMemoryId(folder))).facts.map(fact => fact.text)).toEqual([line])
+  // A long result is cut to one memory line that still ends on who and when.
+  await employeeWriteBack(o.paths, { botId: kim.id, brief: '슬랙 조사', result: '가'.repeat(400) }, new Date('2026-11-16T04:00:00.000Z'))
+  const long = (await loadBotMemory(o.paths, kim.id)).facts[1]!.text
+  expect(long.length).toBeLessThanOrEqual(160)
+  expect(long.endsWith('(김대리, 2026-11-16)')).toBe(true)
+  // The employee works as themselves: role and memory are in their persona.
+  const note = await employeeNote(o.paths, kim.id, new Date('2026-11-16T05:00:00.000Z'))
+  expect(note).toContain('You are 김대리, 리서치 담당')
+  expect(note).toContain('자료를 찾아 출처와 함께 정리한다')
+  expect(note).toContain('노션 신기능 조사 →')
+  // An employee outside any team writes no team memory.
+  await changeSidebarLayout(o.paths, { kind: 'chat', change: { action: 'move-item', id: kim.id, folder: null } }, { chat: (await loadBots(o.paths)).map(bot => bot.id) })
+  await employeeWriteBack(o.paths, { botId: kim.id, brief: '리니어 조사', result: '결과' }, new Date('2026-11-16T06:00:00.000Z'))
+  expect((await loadBotMemory(o.paths, teamMemoryId(folder))).facts).toHaveLength(2)
 })

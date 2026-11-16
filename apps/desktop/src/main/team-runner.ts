@@ -1,11 +1,12 @@
 import {
-  cutShortAnswer, failOnRestart, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, cutShortAnswer, failOnRestart, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
+import { assignTool, employeeNote, employeeWriteBack, handoffBrief, logTask } from 'core'
 
 // Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
@@ -47,6 +48,8 @@ export function teamRunner(deps: {
   const halting = new Set<string>()
   // The lead's running tool session per lead channel: member tokens count against the lead's turn budget, so lead plus team never pass it.
   const leads = new Map<string, { job: ToolSessionJob; spent: number }>()
+  // Told when the background members of a task have all ended: the lead reports in a turn of its own (task-runner report).
+  let report: ((channel: string, taskId: string) => void) | undefined
   const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
@@ -83,14 +86,18 @@ export function teamRunner(deps: {
     const control = new AbortController(), stop = () => control.abort()
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
-    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined
+    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string } | undefined
     // Tokens a lead session already counts are saved with the lead's turn, not again here.
-    const charged = leads.has(leadChannel)
+    let charged = leads.has(leadChannel)
     try {
-      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; if (m?.state === 'hired' && task.state === 'running') { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
+      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
       if (!member) return
       const { me, helpers } = member
       role = me.role; roles.set(key, role)
+      // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
+      if (me.background) charged = false
+      // An employee works as themselves: their role and what they remember ride with the member rules.
+      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId) : '')
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
@@ -103,7 +110,7 @@ export function teamRunner(deps: {
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
-            signal: control.signal, persona: memberPersona(me), session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
+            signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
             onStart: begun,
             onUsage: tokens => { begun(); used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
             ...(native ? { native } : {}),
@@ -128,7 +135,9 @@ export function teamRunner(deps: {
         const m = task.team?.members.find(one => one.id === id)
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, outcome, now(), isKorean(goal))
         ended = m?.state
+        if (m?.botId && ended === 'done') done = { botId: m.botId, brief: m.brief, result: m.result ?? '' }
       })
+      if (done) await employeeWriteBack(paths, done).catch(error => flog('team', error))
     } catch (error) { flog('team', error) } finally {
       signal?.removeEventListener('abort', stop)
       live.delete(key)
@@ -139,6 +148,32 @@ export function teamRunner(deps: {
       deps.endLane(lane)
       deps.step(leadChannel, isKorean(goal) ? `${role} 끝` : `${role} finished`)
     }
+  }
+
+  // A member, then whoever its result is handed to (TeamMember.then): one hop, only after it ended done, and it counts as a hire.
+  async function chain(taskId: string, leadChannel: string, id: string, signal: AbortSignal | undefined, kit: TurnKit, budget: number, redo?: MemberRedo): Promise<void> {
+    await runOne(taskId, leadChannel, id, signal, kit, budget, redo)
+    if (redo) return
+    const next = await change(taskId, task => {
+      const team = task.team, m = team?.members.find(one => one.id === id)
+      if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
+      const to = `m${team.members.length + 1}`
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? ''), botId: m.then.botId, lookup: true, ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.hires++
+      logTask(task, `${m.role} handed over to ${m.then.who}`)
+      return to
+    })
+    if (next) await runOne(taskId, leadChannel, next, signal, kit, budget)
+  }
+
+  // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.
+  async function later(taskId: string, leadChannel: string, ids: string[], kit: TurnKit): Promise<void> {
+    const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
+    const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup).map(m => m.id))
+    void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).then(async () => {
+      const task = await find(taskId)
+      if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task)) report?.(leadChannel, taskId)
+    }).catch(error => flog('team', error))
   }
 
   async function orphan(taskId: string, id: string, ended: TeamMember['state'] | undefined): Promise<void> {
@@ -162,7 +197,7 @@ export function teamRunner(deps: {
       // The caller's pool slot is given back for the whole wait; each child takes a root slot from the background line.
       // Lookup members are light and work side by side in the caller's slot: when all are, the caller keeps its slot for them.
       const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup && ids.includes(m.id)).map(m => m.id))
-      const all = () => Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => runOne(taskId, leadChannel, id, signal, kit, share, redo))))
+      const all = () => Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, signal, kit, share, redo))))
       await (light.size === ids.length ? all() : whileWaitingForPerson(all))
     } finally {
       const left = (waitingLanes.get(callerLane) ?? 1) - 1
@@ -188,7 +223,8 @@ export function teamRunner(deps: {
       }
       return new Proxy(engine, { get: (target, prop) => { if (prop === 'runTools') return runTools; const value = Reflect.get(target, prop, target) as unknown; return typeof value === 'function' ? value.bind(target) : value } })
     },
-    tools(channel: string, kit: TurnKit): AgentTool[] {
+    // staffChanged is given on the chief of staff's own turn only: it alone may hand work to employees (assign).
+    tools(channel: string, kit: TurnKit, staffChanged?: () => void): AgentTool[] {
       const leadChannel = leadOf(channel), self = laneMember(channel)?.[2] ?? null
       if (!/^bot-[^~]+$/.test(leadChannel)) return []
       const load = async () => (await listTasks(paths)).find(t => t.state === 'running' && channelOf(t) === leadChannel)
@@ -201,7 +237,20 @@ export function teamRunner(deps: {
         tokensLeft: async () => { const task = await load(); return task ? tokensLeft(task.id) : 0 },
         personSaid: kit.said,
       }
-      return teamHireTools(host)
+      if (!staffChanged || self !== null) return teamHireTools(host)
+      return [...teamHireTools(host), assignTool(paths, {
+        ...host,
+        later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
+        // The job that employee is on right now in this thread, whichever task of the thread it belongs to.
+        attach: async (botId, then) => {
+          for (const [key, one] of live) {
+            if (one.channel !== leadChannel) continue
+            const [taskId, id] = key.split('/') as [string, string]
+            if (await change(taskId, task => { const m = task.team?.members.find(x => x.id === id); if (m?.botId !== botId || m.then || !['hired', 'working'].includes(m.state)) return false; m.then = then; return true })) return true
+          }
+          return false
+        },
+      }, staffChanged)]
     },
     // A member's approval is raised on the lead's task, with the member's role in front.
     askFor(channel: string, confirm: Ask, waitMs?: number): Ask | undefined {
@@ -215,6 +264,7 @@ export function teamRunner(deps: {
         return ask ? ask({ ...what, words: `${prefix}${what.words}` }) : 'cancel'
       }) as Ask
     },
+    reportTo(tell: (channel: string, taskId: string) => void): void { report = tell },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
     async stop(channel: string): Promise<void> {
@@ -233,7 +283,8 @@ export function teamRunner(deps: {
     async turnEnded(channel: string): Promise<void> {
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && t.team)) {
         if (TERMINAL.includes(task.state)) { if (task.team!.members.some(m => m.state !== 'released')) await settle(task); continue }
-        const lost = task.team!.members.filter(m => ['hired', 'working'].includes(m.state) && !live.has(`${task.id}/${m.id}`))
+        // A background member is not this turn's: it ends by itself, by a stop, or by a restart.
+        const lost = task.team!.members.filter(m => ['hired', 'working'].includes(m.state) && !m.background && !live.has(`${task.id}/${m.id}`))
         if (lost.length) await change(task.id, t => { for (const m of t.team?.members ?? []) if (lost.some(l => l.id === m.id) && ['hired', 'working'].includes(m.state)) { m.state = 'failed'; m.result = 'Failed: its lead\'s turn ended.'; m.finishedAt = now() } })
       }
     },
@@ -241,6 +292,8 @@ export function teamRunner(deps: {
       for (const task of (await listTasks(paths)).filter(t => t.team)) {
         for (const m of task.team!.members) deps.closeSession(m.sessionKey)
         await change(task.id, t => { if (!t.team) return; if (TERMINAL.includes(t.state)) releaseAll(t.team, now()); else failOnRestart(t.team, now()) })
+        // A task that was waiting only for its background members has nobody left to wake it: its lead reports what there is, lost work included.
+        if (task.state === 'waiting' && !task.question && task.team!.members.some(m => m.background)) report?.(channelOf(task), task.id)
       }
     },
   }

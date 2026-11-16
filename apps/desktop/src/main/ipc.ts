@@ -40,7 +40,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, isCompanyAsk, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, isCompanyAsk, isAssignAsk, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -1809,6 +1809,8 @@ export function registerIpc(ctx: VaultContext): void {
     // The team check gets a bounded share of time; past it the report is the answer.
     checkBudgetMs: 90_000,
   })
+  // Work handed to employees in the background comes back as a turn of the chief of staff's, after whatever the thread is doing.
+  team.reportTo((channel, id) => void tasks.report(id, channel).catch(error => flog('tasks', error)))
   tasks.chat = answerFollowUps(tasks.chat, channel => answering.has(channel) || tasks.activeChannels().includes(channel))
   tasks.register()
   // Where the person works, learned once a day from their browser when they turned it on.
@@ -2432,7 +2434,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths, staffDoing)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length)), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths, staffDoing)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
@@ -2715,7 +2717,7 @@ export function registerIpc(ctx: VaultContext): void {
       const teams = new Map(staff.flatMap(one => { const folder = sidebar?.chat.items.find(item => item.id === one.id)?.folder, name = sidebar?.chat.folders.find(f => f.id === folder)?.name; return name ? [[one.id, name] as const] : [] }))
       const chief = bot.primary === true
       const company = !guided && !recovery && !savedRoutine && !turn?.verification && !attachments.paths.length && !studying.has(channel) && (chief || !bot.label)
-        && isCompanyAsk(request.message, [...staff, ...employees(await loadArchivedBots(paths))].map(one => one.name).concat([...teams.values()]), chief)
+        && (turn?.report === true || (chief && isAssignAsk(request.message, [...staff.map(one => one.name), ...teams.values()])) || isCompanyAsk(request.message, [...staff, ...employees(await loadArchivedBots(paths))].map(one => one.name).concat([...teams.values()]), chief))
         ? await companyNote(paths, { bots: everyone, message: request.message, teams, tasks: await listTasks(paths), chief }) : ''
       let resendAfterOutage = false
       let toolStarted = false
