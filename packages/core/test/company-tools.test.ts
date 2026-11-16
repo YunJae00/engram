@@ -1015,3 +1015,48 @@ test('c4b r2: words said while a split works are read as a change to it: add, sw
   expect(steerSplit(ended, { taskId: 't1', said: '', add: { role: '지민', botId: 'bot-m1', brief: brief('지라'), topic: '지라' } })).toBeUndefined()
   expect(ended.team!.members).toHaveLength(3)
 })
+
+test('c4b r3: three events on one day are three items: the writer keeping one of them is refused, and the host lists all three', async () => {
+  const kim = part('m1', '지민', '서울 IT 행사 일정 정리', { result: '12월 2일 행사 A https://example.com/a\n12월 2일 행사 B https://example.com/b\n12월 2일 행사 C https://example.com/c', sources: ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'] })
+  expect(checkedReport('지민이 정리했어요.\n\n- 12월 2일 행사 A [출처](https://example.com/a)', [kim])).toBeUndefined()
+  expect(checkedReport('지민이 정리했어요.\n\n- 12월 2일 행사 A\n- 12월 2일 행사 B\n- 12월 2일 행사 C [출처](https://example.com/a)', [kim])).toContain('행사 C')
+  const shown = await writtenReport({ ask: '서울 IT 행사 일정 정리해줘', members: [kim], write: async () => '지민이 정리했어요.\n\n- 12월 2일 행사 A [출처](https://example.com/a)' })
+  for (const event of ['행사 A', '행사 B', '행사 C']) expect(shown).toContain(event)
+})
+
+test('c4b r3: a schedule cut short after its first event is still written with the events and addresses the teammate had read', () => {
+  const kim = part('m1', '지민', '서울 IT 행사 일정 정리', { state: 'working' })
+  settleMember(kim, { answer: '12월 2일 소프트웨이브', timedOut: true, read: '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c' }, 'now', true)
+  const shown = mergedReport([kim])
+  for (const event of ['소프트웨이브', '12월 5일 개발자 행사', '12월 9일 AI 행사']) expect(shown).toContain(event)
+  expect(shown).toContain('](https://example.com/a)')
+  expect(shown).not.toMatch(/한도|여기까지/)
+  const data = JSON.parse(reportPrompt('서울 IT 행사 일정 정리해줘', [kim]).split('Data: ')[1]!) as { text: string; read?: boolean; pages: string[] }[]
+  expect(data[0]).toMatchObject({ read: true, pages: ['https://example.com/a'] })
+  expect(data[0]!.text).toContain('12월 9일 AI 행사 https://example.com/c')
+})
+
+test('c4b r3: with no written answer, a part that read only English pages is said in Korean by one small second ask, with its link', async () => {
+  const kim = part('m1', '지민', '노션 신기능 조사', { topic: '노션', read: true, result: 'Agents rebuilt to do more for less: New workspace controls https://www.notion.com/releases', sources: ['https://www.notion.com/releases'] })
+  const park = part('m2', '서연', '슬랙 신기능 조사', { topic: '슬랙', result: '슬랙이 캔버스 공유를 냈어요 https://slack.com/blog' })
+  const asked: string[] = []
+  // The first text is refused (an English sentence); the second ask is only about 지민.
+  const write = (second: string) => async (prompt: string): Promise<string> => { asked.push(prompt); return asked.length === 1 ? 'Agents rebuilt to do more for less' : second }
+  const alone = await writtenReport({ ask: '노션 신기능 조사해줘', members: [kim], write: write('지민: 노션이 Agents를 더 적은 비용으로 더 많이 하도록 다시 만들었고, 워크스페이스 관리 기능도 새로 냈어요.') })
+  expect(alone).toBe('지민이 노션 신기능 조사해 왔어요.\n\n노션이 Agents를 더 적은 비용으로 더 많이 하도록 다시 만들었고, 워크스페이스 관리 기능도 새로 냈어요.\n\n[notion.com](https://www.notion.com/releases)')
+  expect(asked[1]).toContain('New workspace controls')
+  expect(asked[1]).not.toContain('슬랙')
+  asked.length = 0
+  const table = await writtenReport({ ask: '노션, 슬랙 신기능 조사해줘', members: [kim, park], write: write('- 지민: 노션이 워크스페이스 관리 기능을 새로 냈어요.') })
+  expect(table).toContain('| 노션 (지민) | 노션이 워크스페이스 관리 기능을 새로 냈어요. · [notion.com](https://www.notion.com/releases) |')
+  expect(table).not.toContain('영어로 된 자료만')
+  // A second text that is still English, or names nobody, leaves the labelled line and its link: English is never shown.
+  for (const bad of ['지민: Agents rebuilt to do more for less', 'New workspace controls', '']) {
+    asked.length = 0
+    expect(await writtenReport({ ask: '노션 신기능 조사해줘', members: [kim], write: write(bad) })).toBe('지민이 영어로 된 자료만 찾았어요.\n\n[notion.com](https://www.notion.com/releases)')
+  }
+  // Nothing English-only: no second ask.
+  asked.length = 0
+  await writtenReport({ ask: '슬랙 신기능 조사해줘', members: [park], write: write('') })
+  expect(asked).toHaveLength(1)
+})

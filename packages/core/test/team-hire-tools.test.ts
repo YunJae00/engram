@@ -204,11 +204,23 @@ describe('team hire tools', () => {
       // Raw results are the lead's to read: never accepted on their own.
       expect(cutShort.review).toBeUndefined()
     }
-    // What it wrote itself stands, read or not; and the size limit holds.
+    // c4b r3: what it wrote stands first, and the rows it had not got to stay under it with their addresses (one event of three was all that was left).
     const wrote: Parameters<typeof settleMember>[0] = { ...m }
     settleMember(wrote, { answer: '부산 15도', timedOut: true, read: rows }, 'now', true)
-    expect(wrote.result).toBe('부산 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
-    expect(wrote.read).toBeUndefined()
+    expect(wrote).toMatchObject({ read: true, result: `부산 15도\n${rows}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)` })
+    const events = '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c'
+    const one: Parameters<typeof settleMember>[0] = { ...m, lookup: true }
+    settleMember(one, { answer: '12월 2일 소프트웨이브', timedOut: true, read: events }, 'now', true)
+    expect(one).toMatchObject({ state: 'done', read: true, result: `12월 2일 소프트웨이브\n${events}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)` })
+    expect(one.review).toBeUndefined()
+    // A row whose address the answer already names is not said twice; an answer that was not cut short is the whole result.
+    const cited: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(cited, { answer: '12월 2일 소프트웨이브 (https://example.com/a)', timedOut: true, read: events }, 'now', true)
+    expect(cited.result).toBe('12월 2일 소프트웨이브 (https://example.com/a)\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
+    const whole: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(whole, { answer: '12월 2일 소프트웨이브', read: events }, 'now', true)
+    expect(whole).toMatchObject({ result: '12월 2일 소프트웨이브' })
+    expect(whole.read).toBeUndefined()
     const long: Parameters<typeof settleMember>[0] = { ...m }
     settleMember(long, { answer: '', timedOut: true, read: '가'.repeat(5000) }, 'now', true)
     expect(long.result!.length).toBe(2000)

@@ -226,9 +226,12 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   if (outcome.error || (!answer && !read)) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
   const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''
-  // No answer of its own: its part is written from what it read, with those addresses (company-tools reportPrompt, mergedReport).
-  if (!answer) member.read = true
-  member.result = cut(answer || read, MEMBER_RESULT_CHARS - tail.length) + tail
+  // No answer of its own, or one cut short: its part is written from what it read, with those addresses (company-tools reportPrompt, mergedReport).
+  // c4b r3: an answer cut short stood alone and the rows it had not got to were dropped with their addresses (one event of three in a
+  // schedule). What it read stays under what it wrote, less the rows whose address the answer already names.
+  const rest = !answer ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
+  if (rest) member.read = true
+  member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
   if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
