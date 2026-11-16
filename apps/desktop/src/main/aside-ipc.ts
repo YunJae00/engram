@@ -13,6 +13,8 @@ export interface AsideIpcDeps {
   busy(channel: string): boolean
   // Queues words said mid-turn to be answered as their own turn; taken before any await so a Stop in between drops them.
   followUp?(channel: string): (text: string) => void
+  // The answer of the running turn was delivered; what still runs is the work after it.
+  answered?(channel: string): boolean
   setOffersAside(botId: string): Promise<void>
 }
 
@@ -29,8 +31,14 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   stopListening?.()
   const progress = conversationProgress(deps.paths)
   stopReply = (channel, text) => { if (deps.busy(channel)) void progress.stop(channel, text) }
+  // Turns that said their piece and went on to save what to remember (qa146 S26: "…기억해 둘게요." then keep_in_mind).
+  // shortcut: a turn that goes back to real work after a memory save keeps queueing until it ends, track the step after it if that matters.
+  const spoke = new Set<string>(), saving = new Set<string>()
   stopListening = tapBroadcast((event) => {
     progress.observe(event)
+    if (event.type === 'comet:working') { spoke.delete(event.channel); saving.delete(event.channel) }
+    else if (event.type === 'chat:token' && event.channel) { if (event.drop) spoke.delete(event.channel); else if (event.text.trim()) spoke.add(event.channel) }
+    else if (event.type === 'comet:step' && spoke.has(event.channel) && /^keep_(in_mind|how_to): /.test(event.line)) saving.add(event.channel)
     if (event.type === 'comet:step') workSoFar.set(event.channel, [...(workSoFar.get(event.channel) ?? []).slice(-29), event.line])
   })
   const watching = new Set<number>()
@@ -45,7 +53,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
   })
   ipcMain.handle('chat:say', async (_e, channel: unknown, text: unknown): Promise<{ ok: boolean; reply?: string; action?: 'relay'; instruction?: string }> => {
     if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > STEER_CAP) return { ok: false }
-    if (!deps.busy(channel)) return { ok: false }
+    // Words said after the answer are the next turn, not part of this one: the thread sends them when it ends.
+    if (!deps.busy(channel) || deps.answered?.(channel) || saving.has(channel)) return { ok: false }
     const hold = deps.followUp?.(channel)
     const said = text.trim()
     const botId = channel.slice('bot-'.length)

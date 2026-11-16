@@ -141,25 +141,31 @@ it('reports attachment queues to the host and clears them after the continuation
   expect(client.chatQueued).toHaveBeenLastCalledWith('one', true)
 })
 
-// qa146 S26: a short "I'll remember that." bubble is not the end of the turn.
-it('stays busy after a short first bubble, so a follow-up never starts a second turn inside the running one', async () => {
+// qa146 S26: after a short "I'll remember that." the turn only saves the memory; main refuses the relay then.
+it('sends words said after a finished short answer as their own turn once that turn ends, and still relays words said while it streams', async () => {
   const store = createCometThreads()
-  const chatSay = vi.fn(async () => ({ ok: true, action: 'relay' as const, instruction: 'What is the date now?' }))
+  let wrappingUp = false
+  const chatSay = vi.fn(async (_channel: string, text: string) => wrappingUp ? { ok: false as const } : { ok: true as const, action: 'relay' as const, instruction: text })
   const client = { ...api(), chatSay }
   await sendCometMessage(client, store, 'one', 'Fix the date to Dec 5')
   store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: true })
-  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'I will fix the date and remember it.\n\n' })
+  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'I will fix the date' })
+  await sendCometMessage(client, store, 'one', 'Make it Dec 6')
+  expect(chatSay).toHaveBeenLastCalledWith('bot-one', 'Make it Dec 6')
+  expect(store.thread('one').queued).toEqual([])
+  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: ' and remember it.\n\n' })
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: '', reset: true })
-  const afterAck = store.thread('one')
-  expect(afterAck.busy).toBe(true)
-  expect(afterAck.messages.map(m => [m.role, !!m.progress, !!m.streaming])).toEqual([['user', false, false], ['assistant', true, false], ['assistant', false, true]])
-  await sendCometMessage(client, store, 'one', 'What is the date now?')
-  expect(client.chatSend).toHaveBeenCalledTimes(1)
-  expect(chatSay).toHaveBeenCalledWith('bot-one', 'What is the date now?')
-  // The answer landed but the task still works (memory write, checks): still busy until main lets go.
-  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Fixed to Dec 5.' })
   expect(store.thread('one').busy).toBe(true)
-  store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: false })
-  expect(store.thread('one').busy).toBe(false)
+  wrappingUp = true
+  await sendCometMessage(client, store, 'one', 'What is the date now?')
+  expect(store.thread('one').queued.map(message => message.draft)).toEqual(['What is the date now?'])
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Fixed to Dec 6.' })
+  await flushQueuedCometMessages(client, store, 'one')
   expect(client.chatSend).toHaveBeenCalledTimes(1)
+  store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: false })
+  await flushQueuedCometMessages(client, store, 'one')
+  expect(client.chatSend).toHaveBeenCalledTimes(2)
+  expect(JSON.stringify(client.chatSend.mock.calls[1])).toContain('What is the date now?')
+  expect(chatSay).toHaveBeenCalledTimes(2)
+  expect(store.thread('one').queued).toEqual([])
 })

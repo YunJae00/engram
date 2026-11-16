@@ -1107,6 +1107,7 @@ export function registerIpc(ctx: VaultContext): void {
     paths,
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
     followUp: followUpFor,
+    answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
     setOffersAside,
   })
 
