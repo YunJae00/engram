@@ -47,8 +47,9 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   await expect(page.locator('.sidebar-primary').getByTestId('sidebar-team-lead'), 'SIDEBAR-TEAM primary leads').toHaveText([/Launch lead.+/])
 })
 
-// qa143 S19 (c): after a limit-stop, and after the "continue" that followed, the bot's team tree and in-chat team card were gone.
-test('a bot keeps its last team in the sidebar and the chat after the task stopped at a limit', async () => {
+// qa143 S19 (c) kept an ended team on view in the sidebar and the chat. grokbar c4 took the strip out of the chat and c5 the line under the
+// sidebar row ("팀 2명 · 모두 끝" stayed after every answer, GROKBOT rule 8): a team is on view only while someone is working (the test above).
+test('a team that has ended leaves no line under the sidebar row and no strip in the chat', async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-sidebar-team-ended-'))
   const paths = await initVault(root, { git: false })
@@ -63,13 +64,12 @@ test('a bot keeps its last team in the sidebar and the chat after the task stopp
   const page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
   const row = page.locator('li.sidebar-item', { has: page.getByTestId(`bot-${botId}`) })
-  const toggle = row.getByTestId('sidebar-team-toggle')
-  await expect(toggle, 'ENDED-TEAM stays under the bot row').toBeVisible()
-  await toggle.click()
-  await expect(row.getByTestId('sidebar-team-lead'), 'ENDED-TEAM leads and how they finished').toHaveText([/시장조사 팀장.+/, /마케팅 팀장.+/])
-  await expect(row.getByTestId('sidebar-team-lead').first()).toHaveAttribute('data-state', 'released')
+  await expect(page.getByTestId(`bot-${botId}`), 'the bot row is there').toBeVisible()
+  await expect(row.getByTestId('sidebar-team'), 'ENDED-TEAM leaves no line under the bot row').toHaveCount(0)
+  await expect(row.getByTestId('sidebar-team-toggle')).toHaveCount(0)
+  await expect(row.getByTestId('sidebar-team-lead')).toHaveCount(0)
   await page.getByTestId(`bot-${botId}`).click()
-  // c4: the strip in the thread is there only while someone is working; the sidebar row above keeps the ended team.
   await expect(page.getByTestId('bots-input'), 'the chat is open').toBeVisible()
+  await expect(row.getByTestId('sidebar-team'), 'ENDED-TEAM still none with the chat open').toHaveCount(0)
   await expect(page.getByTestId('team-card'), 'ENDED-TEAM leaves no strip in the chat').toHaveCount(0)
 })

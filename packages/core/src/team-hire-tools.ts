@@ -279,6 +279,9 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
   if (!['search_web', 'open_page', 'read_pages'].includes(tool.name)) return tool
   return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }
 }
+// An answer that only says nothing was found: short, no address of its own (a found fact carries one).
+const NOTHING_SAID = /찾지 못|못 찾|찾을 수 ?없|(?:소식|내용|정보|발표|결과|업데이트|자료|기능)[은는이가도]?\s*(?:전혀\s*|따로\s*|아직\s*)?(?:없|안 보|보이지 않)|확인되지 않|\b(?:no (?:new|recent|relevant)|nothing (?:new|relevant|found)|could ?n[o']t find|did ?n[o']t find)\b/iu
+export const foundNothing = (answer: string): boolean => !!answer && answer.length <= 400 && !/https?:\/\//.test(answer) && NOTHING_SAID.test(answer)
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = outcome.answer.trim()
@@ -294,11 +297,17 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   // No answer of its own, or one cut short: its part is written from what it read, with those addresses (company-tools reportPrompt, mergedReport).
   // c4b r3: an answer cut short stood alone and the rows it had not got to were dropped with their addresses (one event of three in a
   // schedule). What it read stays under what it wrote, less the rows whose address the answer already names.
-  const rest = !answer ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
+  // c5 C3: "…관련 정보를 찾지 못했어요." stood alone and the row read "이번엔 못 찾았어요." with no link, though a results page had been read. What it
+  // read stays under a found-nothing answer too, marked `empty`: its row says what was checked and links it (company-tools nothingNew).
+  const empty = !tail && !!read && !!member.lookup && foundNothing(answer)
+  const rest = !answer || empty ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
   if (rest) member.read = true
+  if (empty && rest) member.empty = true
   member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
   if (outcome.sources?.length) member.sources = sourcesOf(outcome.sources)
-  const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
+  // c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made, and the host gave the report up to the main
+  // model. A file is something made in the workspace: an address is never one.
+  const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.replace(/https?:\/\/[^\s)\]>"'|]+/g, ' ').matchAll(DOC_FILE)].map(m => m[1]!).filter(file => !/^www\./i.test(file))]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
   else if (member.lookup && member.state === 'done' && !tail && answer && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
 }

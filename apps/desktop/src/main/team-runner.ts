@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, handoffBrief, jobTitle, logTask, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, handoffBrief, jobTitle, logTask, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -45,6 +45,8 @@ export function teamRunner(deps: {
   run?: typeof runComet
   // Test seam: a lookup member's hard time limit.
   lookupHardMs?: number
+  // Test seam: how long a background job's report waits for its slowest part.
+  reportCapMs?: number
 }) {
   const { paths } = deps
   const live = new Map<string, { control: AbortController; channel: string }>()
@@ -154,7 +156,7 @@ export function teamRunner(deps: {
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: kept.join('\n\n') } : {}) }, now(), isKorean(goal))
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
-        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
+        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
       })
       if (done) {
         // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
@@ -196,7 +198,10 @@ export function teamRunner(deps: {
     told.delete(taskId)
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
     const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
-    void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).then(async () => {
+    // c5 (GROKBOT rule 7): the report waited for the slowest part however long it took. At the cap what has come back is reported, the
+    // parts still at work are labeled there ("아직 찾는 중이에요. 끝나면 이어서 올릴게요."), and the report below, when they end, is theirs alone.
+    const cap = setTimeout(() => void change(taskId, markLate).then(late => { if (late?.length && !halting.has(leadChannel) && !told.has(taskId)) report?.(leadChannel, taskId) }).catch(error => flog('team', error)), deps.reportCapMs ?? REPORT_CAP_MS)
+    void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).finally(() => clearTimeout(cap)).then(async () => {
       const task = await find(taskId)
       if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task) && !told.has(taskId)) { told.add(taskId); report?.(leadChannel, taskId) }
     }).catch(error => flog('team', error))

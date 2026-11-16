@@ -421,3 +421,21 @@ it.each(['approve-task', 'approve'] as const)('after %s on a member\'s read card
   expect([next.id === waiting.id, next.approvals.map(a => [a.url, a.answer])]).toEqual([false, [[read('').url, undefined]]])
   await t.runner.stopChannel('bot-bot-1')
 })
+
+// grokbar c5 (stack-4 risk 6): resume() runs 15 s after launch. A task this run of the app had worked on, found running at that moment with
+// its turn between two steps, was closed with the restart question as a leftover of the last run.
+it('the after-launch resume closes leftovers of the last run and never work begun in this one', async () => {
+  const t = await setup(async () => done('끝냈어요'))
+  await t.chat('이번 주 일정 정리해줘')
+  const own = await t.settle('done')
+  const left = await createTask(t.paths, '어제 하던 일', 'bot-2')
+  // Both are stored as running with no turn holding their thread.
+  await updateTask(t.paths, own.id, x => { x.state = 'running' })
+  await updateTask(t.paths, left.id, x => { x.state = 'running'; x.turns = 1 })
+  await t.runner.resume()
+  const after = await listTasks(t.paths)
+  expect(after.find(x => x.id === own.id)).toMatchObject({ state: 'running' })
+  expect(after.find(x => x.id === own.id)!.question).toBeUndefined()
+  expect(after.find(x => x.id === left.id)!.state).toBe('waiting')
+  expect(after.find(x => x.id === left.id)!.question).toBeTruthy()
+})

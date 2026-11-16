@@ -24,6 +24,7 @@ const member = (id: string, parentId: string | null, state: MemberState, extra: 
 const task = (botId: string, state: string, members?: unknown, id = `t-${botId}`, goal = '팀장 뽑아서 보고서 만들어줘') => ({ id, botId, state, goal, ...(members ? { team: { members } } : {}) })
 const tree = (members: TeamMemberView[], lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(TeamTree, { members, lang }))
 const summary = (members: TeamMemberView[] | undefined, lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(TeamSummary, { team: members && { taskId: 't', members }, lang }))
+const sidebar = (members: TeamMemberView[] | undefined) => renderToStaticMarkup(createElement(SidebarTeam, { team: members && { taskId: 't', members }, lang: 'ko' }))
 const line = (members: TeamMemberView[] | undefined, lang: 'ko' | 'en' = 'ko') => renderToStaticMarkup(createElement(SidebarTeamLine, { team: members && { taskId: 't', members }, lang }))
 const ids = (nodes: TeamNode[]): unknown[] => nodes.map(node => [node.member.id, ids(node.children)])
 const liOf = (html: string, id: string) => html.slice(html.indexOf(`data-member-id="${id}"`)).split('>')[0]!
@@ -124,11 +125,17 @@ describe('team card and sidebar line', () => {
 
   it('renders nothing without a team', () => {
     expect(summary(undefined)).toBe('')
-    // c4 (R1/R2/H5): with nobody working there is no strip in the thread ("팀 3명 · 모두 끝" read as a status report); the sidebar line stays.
+    // c4 (R1/R2/H5): with nobody working there is no strip in the thread ("팀 3명 · 모두 끝" read as a status report).
+    // c5: nor a line under the sidebar row; both are there only while someone is working.
     const over = [member('m1', null, 'done'), member('m2', null, 'released'), member('m3', null, 'failed')]
     expect(summary(over)).toBe('')
-    expect(line(over)).toContain('팀 3명 · 모두 끝')
-    for (const state of ['hired', 'working', 'waiting', 'reviewing'] as const) expect(summary([...over, member('m4', null, state)]), state).toContain('data-testid="team-card"')
+    expect(line(over)).toBe('')
+    expect(sidebar(over)).toBe('')
+    for (const state of ['hired', 'working', 'waiting', 'reviewing'] as const) {
+      expect(summary([...over, member('m4', null, state)]), state).toContain('data-testid="team-card"')
+      expect(line([...over, member('m4', null, state)]), state).toContain('팀 4명 · 1명 작업 중')
+      expect(sidebar([...over, member('m4', null, state)]), state).toContain('data-testid="sidebar-team-toggle"')
+    }
     expect(summary([])).toBe('')
     expect(line(undefined)).toBe('')
     expect(line([])).toBe('')

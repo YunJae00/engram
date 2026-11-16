@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, teamAnswer, teamSummary, lateShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2843,11 +2843,21 @@ export function registerIpc(ctx: VaultContext): void {
         const direct = handoff ? { tool: 'assign', args: handoff } : split ? { tool: 'assign', args: split } : hire ? { tool: 'agents', args: hire } : change ? { tool: 'agents', args: change } : kept ? { tool: 'schedule', args: kept } : undefined
         // The quick model writes the team's merged answer from their results; the host checks it and keeps its own table as the fallback.
         const writer = engine.id === 'claude' && engine.quick ? (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: REPORT_WRITER_MS }) : undefined
+        // c5 C10: what the team did is written from its record by the quick model (company-tools teamSummary), also for the kept weekly ask.
+        // The lane's waiting line goes up first: the writer takes a few seconds.
+        // Words that set a regular time keep a schedule; only the kept ask's own run is summed up.
+        const summing = !direct && !!company && chief && !turn?.report && isTeamWorkAsk(request.message) && (request.scheduled === true || !isDutyAsk(request.message))
+        if (summing) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
+        const reporting = !direct && company && turn?.report ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
-          : !company ? undefined : turn?.report ? await employeesAnswer((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id), writer) : aboutEmployee(request.message, everyone, await listTasks(paths))
+          : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer)
+            : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: SUMMARY_WRITER_MS }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
+              : aboutEmployee(request.message, everyone, await listTasks(paths))
+        // GROKBOT rule 7: this report was made without the parts still at work; the next one is theirs (company-tools lateParts).
+        if (reporting?.team?.members.some(member => member.late) && !reporting.team.lateTold) await updateTask(paths, reporting.id, lateShown)
         // The hand-off's own line is the whole answer: a quick first line still on its way would be a second one.
         if (handed) firstLineSpoke(channel)
-        if (company && !handed) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
+        if (company && !handed && !summing) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
         const firstSaid = firstLineNote(channel)
         // A person's own plain ask: nothing attached, resumed, scheduled, studied or re-checked.
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
@@ -2894,7 +2904,8 @@ export function registerIpc(ctx: VaultContext): void {
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
-            ...(company ? { modelHint: 'smart' as const } : {}),
+            // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
+            ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
@@ -2952,8 +2963,12 @@ export function registerIpc(ctx: VaultContext): void {
         // stack-4: a team answer made from what a teammate read links the rows of a kept results page, which nobody opened. Only a page a
         // teammate loaded counts as loaded; the rest are asked like a lookup's. One teammate's dead link gives way to the page they read;
         // with several, the link goes and its name stays, so no row is given another teammate's page.
+        // c5 C5: every team result passes the same refusal on its way to the thread, whoever wrote it (company-tools teamAnswer): no raw
+        // address, no line that is only a name or a host; the host's own list of named links stands in.
+        const teamTask = company && !result.asked ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
+        if (teamTask) result.answer = teamAnswer(result.answer, teamTask)
         if (company && !result.asked && /https?:\/\//.test(result.answer)) {
-          const members = (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members
+          const members = teamTask?.team?.members
           const loaded = (members ?? []).flatMap(member => member.sources ?? [])
           if (members) result.answer = await liveLinks(result.answer, loaded, alive, threadKorean(request.message, request.history ?? []), LINK_CHECK_MS, members.filter(member => member.sources?.length).length === 1 ? loaded : [])
         }
