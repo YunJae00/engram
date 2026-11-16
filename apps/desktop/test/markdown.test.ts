@@ -237,4 +237,35 @@ describe('restatedAnswers (qa143 S32)', () => {
     expect(restatedAnswers([...said(answer), ...said(answer)])).toEqual([false, false, false, false])
     expect(restatedAnswers(said('', answer))).toEqual([false, false, false])
   })
+
+  it('keeps an earlier answer whose sign or number a later one changed (r3 #1)', () => {
+    expect(restatedAnswers(said('Balance: -12', 'Balance: 12'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Ratio 1:2', 'Ratio 12'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Sent 10 000', 'Sent 10000'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('| Price | 12 | |', '| Price | | 12 |'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('- Balance: **-12**', 'Balance: -12'))).toEqual([false, true, false])
+  })
+
+  it('keeps an earlier table when a later one corrects one row of it (r3 #2)', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `| Item ${i} | ${i * 100} | ok |`).join('\n')
+    const long = `Here are the numbers.\n\n| Item | Draft | Ours |\n| --- | --- | --- |\n${rows}\n| Margin | 18% | |`
+    expect(restatedAnswers(said(long, long.replace('18%', '81%')))).toEqual([false, false, false])
+    expect(restatedAnswers(said(long, long))).toEqual([false, true, false])
+  })
+
+  it('keeps the only check record of the turn (r3 #3)', () => {
+    const turn = (first: boolean, second: boolean) => [{ role: 'user', text: 'Go' },
+      { role: 'assistant', text: answer, ...(first ? { evidence: {} } : {}) }, { role: 'assistant', text: answer, ...(second ? { evidence: {} } : {}) }]
+    expect(restatedAnswers(turn(true, false))).toEqual([false, false, false])
+    expect(restatedAnswers(turn(true, true))).toEqual([false, true, false])
+    expect(restatedAnswers(turn(false, true))).toEqual([false, true, false])
+  })
+
+  it('hides an answer said again with another label on the same file, not one for another file (r3 #4)', () => {
+    const first = `${answer}\n\n[report.xlsx](engram-artifact:a.xlsx)`
+    expect(restatedAnswers(said(first, `${answer}\n\n- [Open the report](engram-artifact:a.xlsx)`))).toEqual([false, true, false])
+    expect(restatedAnswers(said(`Saved as [report](engram-artifact:a.xlsx).`, `Saved as [the file](engram-artifact:a.xlsx).`))).toEqual([false, true, false])
+    expect(restatedAnswers(said(first, `${answer}\n\n[report.xlsx](engram-artifact:b.xlsx)`))).toEqual([false, false, false])
+    expect(restatedAnswers(said(first, `${answer.replace('12,000', '21,000')}\n\n[Open the report](engram-artifact:a.xlsx)`))).toEqual([false, false, false])
+  })
 })

@@ -162,25 +162,30 @@ export function laterFiles(messages: readonly { role: string; text: string }[]):
   return out
 }
 
-// The lines of an answer as said, without the marks and spacing a restatement may change.
-const saidLines = (text: string): string[] => answerText(text).split('\n').map(line => line.replace(/[\s|*_#>`:-]+/g, '').toLowerCase()).filter(Boolean)
-const RESTATED_SHARE = 0.8
+// The lines of an answer as said, without what a restatement may change: heading, quote, list and
+// emphasis marks, spacing, table rules and the label of a file link. Signs, digits, punctuation
+// and table columns stay, so a changed value is a changed line.
+const saidLines = (text: string): string[] => answerText(text).split('\n')
+  .filter(line => !/^[\s|:-]*-[\s|:-]*$/.test(line))
+  .map(line => line.replace(FILE_LINK, '$1').replace(/^\s*(?:>\s*)*(?:#{1,6}\s+)?(?:[-*+]\s+)?/, '')
+    .replace(/(?<![\p{L}\p{N}])[*_`]+|[*_`]+(?![\p{L}\p{N}])/gu, '').replace(/\s*\|\s*/g, '|').replace(/\s+/g, ' ').trim().toLowerCase())
+  .filter(Boolean)
 
 // A re-check often says the answer again as a second message. For each message: whether a later
-// answer to the same question already says nearly all of it (and links every file it links), so
-// this one is not shown as a bubble of its own. The later answer always stays, so a correction,
-// a different result or another file is never the one hidden.
-export function restatedAnswers(messages: readonly { role: string; text: string }[]): boolean[] {
+// answer to the same question says every line of it again and links every file it links, so this
+// one is not shown as a bubble of its own. One changed line (a corrected row, a sign, a number)
+// keeps both bubbles, and so does a check record that no later answer carries. The later answer
+// always stays.
+export function restatedAnswers(messages: readonly { role: string; text: string; evidence?: unknown }[]): boolean[] {
   const out: boolean[] = []
-  let later: Set<string>[] = []
+  let later: { said: Set<string>; files: Set<string>; evidence: boolean }[] = []
   for (let i = messages.length - 1; i >= 0; i--) {
-    const { role, text } = messages[i]!
+    const { role, text, evidence } = messages[i]!
     if (role !== 'assistant') { later = []; out[i] = false; continue }
-    const lines = saidLines(text), total = lines.reduce((sum, line) => sum + line.length, 0)
-    const files = lines.filter(line => line.includes('engramartifact'))
-    out[i] = total > 0 && later.some(said => files.every(line => said.has(line))
-      && lines.reduce((sum, line) => sum + (said.has(line) ? line.length : 0), 0) >= total * RESTATED_SHARE)
-    if (lines.length) later.push(new Set(lines))
+    const lines = saidLines(text), files = answerFiles(answerText(text)).files.map(file => file.id)
+    out[i] = lines.length > 0 && later.some(answer => (!evidence || answer.evidence)
+      && files.every(id => answer.files.has(id)) && lines.every(line => answer.said.has(line)))
+    if (lines.length) later.push({ said: new Set(lines), files: new Set(files), evidence: !!evidence })
   }
   return out
 }
