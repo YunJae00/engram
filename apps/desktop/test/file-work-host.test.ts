@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools, placeInTask, previousVersions, taskOutputs, twinsFile } from '../src/main/file-work.js'
+import { cometFileTools as hostFileTools, linkedOutputs, placeInTask, previousVersions, registerArtifactIpc, taskOutputs, twinsFile } from '../src/main/file-work.js'
 
 // Every chat has its in-chat approval card; state.confirm answers it.
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
@@ -461,6 +461,20 @@ it('a later turn changes a composed file in place in the task folder, under its 
   expect(third.taskPath).toBe(first.taskPath)
   expect(await saved()).toEqual([third.artifact])
   expect(state.confirm).not.toHaveBeenCalled()
+  // The cards the earlier messages hold name outputs that are gone. They are that file still, and open it as it is now
+  // (grokbar D5 r2: the card of the first version found nothing once the file was changed).
+  const { ipcMain, shell } = await import('electron')
+  registerArtifactIpc(paths)
+  const handler = (channel: string) => vi.mocked(ipcMain.handle).mock.calls.findLast(call => call[0] === channel)![1] as (event: unknown, id: string) => Promise<unknown>
+  for (const id of [first.path.split('/').at(-1)!, edited.artifact]) {
+    expect(await handler('artifact:info')(null, id)).toMatchObject({ size: (await readFile(third.path)).length, previous: [] })
+    await handler('artifact:reveal')(null, id)
+    expect(vi.mocked(shell.showItemInFolder)).toHaveBeenLastCalledWith(third.path)
+    expect(await handler('artifact:read')(null, id)).toMatchObject({ name: 'deck.xlsx' })
+    expect(await linkedOutputs(dirname(first.path), [{ role: 'assistant', text: `[deck.xlsx](engram-artifact:${encodeURIComponent(id)})` }])).toEqual([{ name: 'deck.xlsx', path: third.path }])
+  }
+  // An output that was never there is still not found.
+  await expect(handler('artifact:info')(null, `00000000-0000-0000-0000-000000000000-deck.xlsx`)).rejects.toThrow()
 })
 
 it('an earlier version another chat\'s task folder also holds is not removed by a change here', async () => {

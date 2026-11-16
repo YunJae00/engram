@@ -26,6 +26,18 @@ export async function assertOfficeOpen(op: string, open: (name: string) => Promi
   if (name && !await open(name)) throw new Error(`${OFFICE_CLOSED} ${name} is closed. For a file on disk use file_read or file_read_package to read it, file_edit_package to change it and file_create_workbook for a new workbook; they need no application. Do not retry this tool and do not ask the person about it.`)
 }
 
+// open_app is the other way a closed one gets started. It does so only when the person asked for the application to be opened, and never
+// in a hidden run (r2: a model changing a deck could pick open_app for PowerPoint and get the window and the leftover process back).
+// shortcut: "asked" is the application's name plus a word for opening in the person's message; upgrade if a real request is refused.
+const ASKED: Record<string, RegExp> = { [APPS.excel]: /excel|엑셀/i, [APPS.word]: /\bword\b|워드/i, [APPS.ppt]: /powerpoint|파워포인트|\bppt\b|피피티/i }
+const OPENS = /열어|열고|켜줘|켜 줘|실행|띄워|\b(open|launch|start)\b/i
+export async function officeStartRefused(names: string[], task = '', open: (name: string) => Promise<boolean> = officeOpen): Promise<string> {
+  const name = Object.values(APPS).find(app => names.includes(app))
+  if (!name || await open(name)) return ''
+  if (process.env['ENGRAM_HIDDEN'] !== '1' && ASKED[name]!.test(task) && OPENS.test(task)) return ''
+  return JSON.stringify({ opened: false, reason: `${OFFICE_CLOSED} ${name} is closed and the person did not ask to open it. For a file on disk use file_read or file_read_package to read it, file_edit_package to change it and file_create_workbook for a new workbook; they need no application. Do not retry this tool and do not ask the person about it.` })
+}
+
 export function closeMacOffice(): void {
   for (const controller of running) controller.abort()
   reads.clear()

@@ -69,6 +69,8 @@ const sha = (data: Buffer | string) => createHash('sha256').update(data).digest(
 export interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
 // Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
 const versionsFile = (handIns: string) => join(handIns, 'previous')
+// Which saved output a change to the file itself removed, and the one that file is now: `earlier id\0id` per line (see findArtifact).
+const replacedFile = (handIns: string) => join(handIns, 'replaced')
 // The earlier versions of a saved output that are still there, nearest first: the "(이전)" link's only source (qa146 2a: a repeated file
 // name in the chat is not a version; two tasks that each made plan.md were linked).
 export async function previousVersions(paths: VaultPaths, id: string): Promise<string[]> {
@@ -79,7 +81,7 @@ export async function previousVersions(paths: VaultPaths, id: string): Promise<s
     if (!before || before === id || chain.includes(before)) break
     chain.push(at = before)
   }
-  const found = await Promise.all(chain.map(earlier => findArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
+  const found = await Promise.all(chain.map(earlier => storedArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
   return found.filter(Boolean)
 }
 // A copy's task file; content (one source per name); any other tool and the file it names, else its own input.
@@ -138,7 +140,7 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
           // A file made again from scratch keeps its earlier version, as does one another task folder also holds.
           const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : ''
           const others = edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
-          if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
+          if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).then(() => appendFile(replacedFile(dirname(record)), `${was}\0${made.artifact}\n`)).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
           else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
         }
         return path
@@ -187,7 +189,16 @@ export async function resolveOutput(directory: string, value: unknown): Promise<
   return path
 }
 // Evidence captures (mp4, webm) are core's own kinds.
-const findArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
+const storedArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
+// A saved output that a change to the file itself replaced is that file as it is now: the card in the earlier message still opens the
+// file, with its present contents (grokbar D5 r2: the earlier output was removed and its card found nothing).
+const findArtifact = (directory: string, id: unknown) => storedArtifact(directory, id).catch(async error => {
+  const rows = (await readFile(replacedFile(join(dirname(directory), 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
+  let now = id
+  for (let hops = 0; hops < 50; hops += 1) { const next = rows.filter(row => row[0] === now).at(-1)?.[1]; if (!next) break; now = next }
+  if (now === id) throw error
+  return storedArtifact(directory, now)
+})
 
 // Core's priorOutputs, for the wider set of output kinds.
 // every: each distinct file the text links, also two under one name (the readback gate answers for both: qa143 S19a); else the last one per name.
@@ -378,8 +389,9 @@ export function registerArtifactIpc(paths: VaultPaths): void {
     const name = basename(path).replace(/^[0-9a-f-]{36}-/, '')
     if (!VIEWABLE.has(kindOf(path)) || (await stat(path)).size > VIEW_BYTES) return { name, text: null }
     const wide = !CORE_OUTPUTS.has(kindOf(path))
-    const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), String(id))
-    if (wide && !String(id).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
+    // The file found, which for a replaced output is not the id asked for.
+    const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), basename(path))
+    if (wide && !basename(path).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
     return { name, text: data.length > VIEW_BYTES ? null : data.toString('utf8') }
   })
   ipcMain.removeHandler('artifact:reveal')

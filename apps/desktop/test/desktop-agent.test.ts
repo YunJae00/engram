@@ -4,12 +4,15 @@ import type { DesktopObservationDto } from '../src/shared/desktop.js'
 const fake = vi.hoisted(() => ({
   binding: { lane: 'bot-one', source: 'window:42:0', name: 'Fixture', window: '42', pid: 55, readable: true, revision: 0, host: { request: vi.fn() } },
   truncatedQuiet: false, searchedQuiet: false, controlReason: undefined as string | undefined, resetHandover: undefined as (() => void) | undefined, assertNotStopped: vi.fn(), quietScan: vi.fn(), quietSnapshot: vi.fn(), quietPress: vi.fn(), quietSet: vi.fn(),
-  open: vi.fn(), lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), start: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true,
+  open: vi.fn(), lookup: vi.fn(), read: vi.fn(), act: vi.fn(), bitmap: vi.fn(), image: vi.fn(), decode: vi.fn(), start: vi.fn(), ensure: vi.fn(), windows: vi.fn(), available: true, covered: false, handedOver: true, officeRunning: false,
+  catalog: [{ id: 'e'.repeat(64), name: 'Microsoft PowerPoint', aliases: ['PowerPoint'] }, { id: 'c'.repeat(64), name: 'Calculator' }],
 }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-permission.js', async () => { const { desktopFailure } = await import('../src/main/desktop-failure.js'); return { permissionFailure: async (error: unknown, _lane: string, options?: Parameters<typeof desktopFailure>[1]) => desktopFailure(error, options) } })
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
-vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
+// The running-application check (pgrep) answers from officeRunning; every other command is the real one.
+vi.mock('node:child_process', async original => { const real = await original<typeof import('node:child_process')>(); return { ...real, execFile: (...args: unknown[]) => args[0] === '/usr/bin/pgrep' ? (args.at(-1) as (error: Error | null) => void)(fake.officeRunning ? null : new Error('no process')) : (real.execFile as (...all: unknown[]) => unknown)(...args) } })
+vi.mock('../src/main/desktop-access.js', () => ({ catalogHost: () => ({ request: async () => fake.catalog }), bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
 vi.mock('../src/main/desktop-host.js', () => ({ DesktopHost: { available: () => fake.available } }))
 vi.mock('../src/main/desktop-quiet.js', () => ({ quietVerdict: (_lane: string, app?: string) => fake.covered ? (!app || app === 'Fixture' ? { verdict: 'covered', title: 'Fixture' } : { verdict: 'bare', title: app }) : { verdict: 'bare', title: app ?? 'Fixture', truncated: fake.truncatedQuiet, searched: fake.searchedQuiet }, quietScan: fake.quietScan, quietSnapshot: fake.quietSnapshot, quietSet: fake.quietSet, quietPress: fake.quietPress, quietText: vi.fn(), quietControlName: (_snapshot: string, control: string) => control === 'c404' ? undefined : control === 'c9' ? 'Send' : 'New chat' }))
@@ -456,4 +459,36 @@ describe('send card on the app_do and foreground paths', () => {
     expect(await run('desktop_action', enter, [draft('회의 자료 보냅니다')])).toHaveBeenCalledWith('Fixture', 'Send', 'fresh', undefined, { app: 'Fixture', sending: '회의 자료 보냅니다' })
     expect(await run('desktop_action', enter, [draft('회의 자료 보냅니다'), draft('hunter2', true)])).toHaveBeenCalledWith('Fixture', 'Send', 'fresh', undefined, { app: 'Fixture', sending: undefined })
   })
+})
+
+// grokbar b5 r2: the Office commands refused a closed application, but open_app still started one the person never asked for.
+it('open_app does not start a closed Office application the person did not ask to open', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!, hidden = process.env['ENGRAM_HIDDEN']
+  Object.defineProperty(process, 'platform', { value: 'darwin' })
+  delete process.env['ENGRAM_HIDDEN']
+  try {
+    // Attaching (the fourth argument) finds no open window; a launch answers that it opened.
+    fake.open.mockReset().mockImplementation(async (_lane: string, _app: string, _signal: unknown, attachOnly?: boolean) => attachOnly ? '' : JSON.stringify({ opened: true }))
+    fake.officeRunning = false
+    const launches = () => fake.open.mock.calls.filter(call => !call[3]).length
+    const open = (app: string, task: string) => desktopAgentTools('bot-one').find(tool => tool.name === 'open_app')!.run({ app }, { task })
+    const refused = await open('Microsoft PowerPoint', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
+    expect(refused).toContain('Nothing was changed: the application is not open and is not started for this.')
+    expect(JSON.parse(refused)).toMatchObject({ opened: false })
+    // By the ID an earlier answer gave, too.
+    expect(await open('e'.repeat(64), 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘')).toContain('is not started for this')
+    expect(launches()).toBe(0)
+    // Asked for by the person, it is started; so is any other app.
+    await open('Microsoft PowerPoint', '파워포인트 열어줘')
+    expect(launches()).toBe(1)
+    await open('Calculator', '계산해줘')
+    expect(launches()).toBe(2)
+    // A hidden run starts none, whatever the message says.
+    process.env['ENGRAM_HIDDEN'] = '1'
+    expect(await open('Microsoft PowerPoint', '파워포인트 열어줘')).toContain('is not started for this')
+    expect(launches()).toBe(2)
+  } finally {
+    Object.defineProperty(process, 'platform', platform)
+    if (hidden === undefined) delete process.env['ENGRAM_HIDDEN']; else process.env['ENGRAM_HIDDEN'] = hidden
+  }
 })
