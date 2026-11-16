@@ -8,7 +8,6 @@ import { pendingStatus } from '../lib/pendingStatus.js'
 import { stoppedText, threadLang, threadT } from '../lib/threadLang.js'
 import { useStickToBottom } from '../lib/useStickToBottom.js'
 import { useLoadEarlier } from '../lib/useLoadEarlier.js'
-import type { StringKey } from '../i18n.js'
 import { cometChannel } from '../lib/cometThreads.js'
 import { cometThreads, loadCometThread, selectComet } from '../lib/cometThreadsLive.js'
 import { ThinkingDots } from '../components/Thinking.js'
@@ -21,8 +20,7 @@ import { PermissionCard } from '../components/PermissionCard.js'
 import { BotComposer } from '../components/BotComposer.js'
 import { BotTitlePill } from '../components/CometTitle.js'
 import { BotInfoPane } from '../components/BotInfoPane.js'
-import { useCometState, useShellState } from '../state-slices.js'
-import { t } from '../i18n.js'
+import { useShellState } from '../state-slices.js'
 import { CometWelcome } from '../components/CometWelcome.js'
 import { BotEmpty } from '../components/BotEmpty.js'
 import { takeOnboardBot } from '../lib/onboardBot.js'
@@ -34,17 +32,8 @@ import { takeOnboardBot } from '../lib/onboardBot.js'
 // not a lecture. The conversations themselves live in cometThreads, outside
 // this component: the tab unmounts on every switch and they must not.
 
-const PHASE_LABEL: Record<string, StringKey> = {
-  plan: 'topbar.errandPlan',
-  gather: 'topbar.errandGather',
-  web: 'topbar.errandWeb',
-  distill: 'topbar.errandDistill',
-  compose: 'topbar.errandCompose',
-}
-
 
 export const BotsView = memo(function BotsView({ active }: { active: boolean }) {
-  const { errand } = useCometState()
   const { showToast } = useShellState()
   const [bots, setBots] = useState<BotDto[]>([])
   const [info, setInfo] = useState<'closed' | 'open' | 'closing'>('closed')
@@ -178,26 +167,6 @@ export const BotsView = memo(function BotsView({ active }: { active: boolean }) 
                 <ThreadAsks botId={selected.id} questionShown={!busy && messages.at(-1)?.role === 'assistant' && !messages.at(-1)?.streaming ? messages.at(-1)?.text : undefined} failureShown={!!messages.at(-1)?.error} />
                 <PermissionCard lane={cometChannel(selected.id)} />
               </CometMessages>
-              {errand.running && (
-                <div className="bubble-msg assistant bots-working" data-testid="bots-errand-strip">
-                  <ThinkingDots />
-                  <span className="bots-working-body">
-                    <span className="bots-working-line">
-                      {t('bots.errandRunning', {
-                        phase: errand.phase && PHASE_LABEL[errand.phase] ? t(PHASE_LABEL[errand.phase]!) : '…',
-                      })}
-                    </span>
-                    {errand.pages && errand.pages.length > 0 ? (
-                      <span className="bots-working-detail">{errand.pages.map((x) => x.title || x.url).join(' · ')}</span>
-                    ) : errand.queries ? (
-                      <span className="bots-working-detail">{errand.queries.join(' · ')}</span>
-                    ) : null}
-                  </span>
-                  <button className="secondary bots-working-stop" onClick={() => void api.errandAbort()}>
-                    {t('errands.stop')}
-                  </button>
-                </div>
-              )}
             </div>
             <BotComposer
               key={selected.id}

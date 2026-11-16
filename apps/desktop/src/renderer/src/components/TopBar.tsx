@@ -47,7 +47,7 @@ export function TopBar({ sidebarOpen, developer, onToggleSidebar, devLayout, onD
   const { engines, enginesDetected, pendingWork } = useShellState()
   const showConnect = vaultReady && enginesDetected && engines.length === 0
   const botView = activity === 'bots'
-  const label = botView ? null : activity === 'sky' ? t('topbar.tabSky') : activity === 'routines' ? 'Routines' : activity === 'developers' ? 'Developers' : t('activity.list')
+  const label = botView ? null : activity === 'sky' ? t('topbar.tabSky') : activity === 'developers' ? 'Developers' : t('activity.list')
   const [sync, setSync] = useState<SyncStatusDto | null>(null)
   const [brief, setBrief] = useState<string | null>(null)
   useEffect(() => {
