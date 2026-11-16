@@ -146,8 +146,12 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     const inKorean = async (): Promise<boolean> => [text, turnGoals.get(channel) ?? '', ...(await readBotTranscript(deps.paths, channel.slice('bot-'.length), 6).catch(() => [])).map(turn => turn.text)].some(said => /[가-힣]/.test(said))
     if (busy && deps.stop && STOP_WORDS.test(text)) {
       const korean = await inKorean()
-      const reply = korean ? '중지했어요.' : 'Stopped.'
+      const reply = korean ? '멈췄어요.' : 'Stopped.'
       stops.set(channel, (stops.get(channel) ?? 0) + 1)
+      // stack-3 risk 3: a change said just before the stop was already written to the saved waiting list; the stop takes it back,
+      // or the next turn would start by doing what was stopped.
+      await changeCheckpoint(deps.paths, channel.slice('bot-'.length), state => state.pending.length ? { ...state, pending: [] } : state).catch(() => flog('aside', 'checkpoint-write-failed'))
+      taskQueued(channel.slice('bot-'.length), false)
       await appendBotTurn(deps.paths, channel.slice('bot-'.length), { role: 'user', text: text.trim(), at: new Date().toISOString(), aside: true })
       // The thread shows the stopped line only while its turn is still open there, so this answer leaves before the stop's own events do
       // (grokbar T3: the turn must end with the line under it, within 3 s).

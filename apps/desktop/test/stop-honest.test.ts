@@ -17,12 +17,12 @@ const streaming = (ask: string, partial: string) => {
 
 describe('stopping an answer', () => {
   it('keeps a cut answer and adds the thread-language stopped line', () => {
-    expect(threadT('ko')('bubble.stopped')).toBe('중지했어요.')
+    expect(threadT('ko')('bubble.stopped')).toBe('멈췄어요.')
     expect(threadT('en')('bubble.stopped')).toBe('Stopped.')
     const store = streaming('정리해줘', '회의 안건을 정리했어요')
-    expect(store.stop(BOT, 'x', threadT('ko')('bubble.stopped'))).toBe('중지했어요.')
+    expect(store.stop(BOT, 'x', threadT('ko')('bubble.stopped'))).toBe('멈췄어요.')
     const messages = store.thread(BOT).messages
-    expect(messages.map(m => m.text)).toEqual(['정리해줘', '회의 안건을 정리했어요', '중지했어요.'])
+    expect(messages.map(m => m.text)).toEqual(['정리해줘', '회의 안건을 정리했어요', '멈췄어요.'])
     expect(messages[1]).toMatchObject({ progress: true, streaming: false })
     expect(messages[2]).toMatchObject({ role: 'assistant', work: [] })
     expect(messages.some(m => m.streaming)).toBe(false)
@@ -35,7 +35,7 @@ describe('stopping an answer', () => {
   })
 
   it('offers carrying on first under a stopped or unfinished answer', () => {
-    expect(withRetry('중지했어요.', 'ko', ['a', 'b'])).toEqual(['이어서 해줘', 'a', 'b'])
+    expect(withRetry('멈췄어요.', 'ko', ['a', 'b'])).toEqual(['이어서 해줘', 'a', 'b'])
     expect(withRetry('한 일: 없음\n답을 마치지 못하고 끝났어요.\n다음: …', 'ko', ['a'])[0]).toBe('이어서 해줘')
     expect(withRetry('Stopped.', 'en', ['Continue', 'b', 'c', 'd'])).toEqual(['Continue', 'b', 'c'])
     expect(withRetry('Stopped here. Done so far: read', 'en', [])).toEqual(['Continue'])

@@ -46,6 +46,11 @@ export function askOrder<T extends ChatTurnDto>(list: T[], late?: T[]): T[] {
     // The reply line under words that were held goes with them.
     if (turn.role === 'assistant' && turn.aside && held.length && at > 0 && held.at(-1)!.at(-1) === list[at - 1]) { held.at(-1)!.push(turn); continue }
     if (turn.role === 'user' && !turn.aside) out.push(...held.splice(0).flat())
+    // c4 T2: a first line is saved when a tool call freezes it, which can be after words said mid-work and their reply were saved; it was
+    // on screen before them (its time is when it was first shown), so it goes back above them: ask, first line, the change, the reply, the answer.
+    let to = out.length
+    if (isProgress(turn) && !turn.aside && turn.at) while (to > 0 && out[to - 1]!.aside && (out[to - 1]!.at ?? '') > turn.at) to--
+    if (to < out.length) { out.splice(to, 0, turn); continue }
     out.push(turn)
     if (isAnswer(turn) && held.length) out.push(...held.shift()!)
   }

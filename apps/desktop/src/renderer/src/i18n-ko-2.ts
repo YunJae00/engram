@@ -18,7 +18,7 @@ export const ko2 = {
   'editor.saved': '저장됨',
   'editor.saveFailed': '저장 실패 — 편집 내용은 편집기에 남아 있고 닫을 때 다시 시도해요',
   'bubble.stop': '중지',
-  'bubble.stopped': '중지했어요.',
+  'bubble.stopped': '멈췄어요.',
   'bubble.thinking': '메모리 검색 중',
   'shell.opening': '볼트를 여는 중…',
   'shell.failedTitle': '볼트를 열 수 없어요',

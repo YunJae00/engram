@@ -99,6 +99,14 @@ function seated(list: CometMessage[]): CometMessage[] {
   return [...list.slice(0, at), { role: 'assistant', text: '', streaming: true }, ...list.slice(at)]
 }
 
+// Words the running turn took in mid-work, and the host's one-line reply to them, sit right under the first line that was on screen when
+// they were said. The answer comes under them: a new bubble is seated after them, and a bubble whose line is replaced by the answer moves there.
+const asidesEnd = (list: CometMessage[], at: number): number => { let to = at + 1; while (list[to]?.aside) to++; return to }
+function underAsides(list: CometMessage[], at: number): CometMessage[] {
+  const to = asidesEnd(list, at)
+  return to === at + 1 ? list : [...list.slice(0, at), ...list.slice(at + 1, to), list[at]!, ...list.slice(to)]
+}
+
 function pendingTail(list: CometMessage[]): CometMessage[] {
   const at = streamingAt(list)
   if (at < 0) return []
@@ -354,8 +362,12 @@ export function createCometThreads(initialSelected: string | null = null) {
       for (let i = messages.length - 1; i >= 0 && from < 0; i--) if (messages[i]!.role === 'user' && messages[i]!.text === text) from = i
       if (!current.busy || from < 0 || !reply.trim()) return
       const [said] = messages.splice(from, 1)
-      const streaming = streamingAt(messages), to = streaming >= 0 && streaming < from ? streaming : from
-      messages.splice(to, 0, said!, { role: 'assistant', text: reply, progress: true, aside: true })
+      const streaming = streamingAt(messages)
+      // c4 T2: a first line already on screen (the lookup's "checking the price now") was shown before these words, so it keeps its place above them; the
+      // answer still to come is seated under them when that line is frozen or replaced (underAsides).
+      const lineShown = streaming >= 0 && !messages[streaming]!.checking && /^.{1,80}$/.test(messages[streaming]!.text.trim())
+      const to = streaming >= 0 && streaming < from && !lineShown ? streaming : from
+      messages.splice(to, 0, { ...said!, aside: true }, { role: 'assistant', text: reply, progress: true, aside: true })
       patch(id, { messages })
     },
     noteWork(id: string, line: string): void {
@@ -413,7 +425,7 @@ export function createCometThreads(initialSelected: string | null = null) {
         const next = [...current.messages]
         if (event.reset) {
           if (event.drop) {
-            if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: next }, true) }
+            if (next[at]!.text.trim()) { next[at] = { ...next[at]!, checking: true }; patch(id, { messages: underAsides(next, at) }, true) }
             return id
           }
           // grokbar D4, H3: "I'll read the file first." was frozen as a bubble in a Korean thread. Words written mid-work that do not read
@@ -421,7 +433,7 @@ export function createCometThreads(initialSelected: string | null = null) {
           if (next[at]!.text.trim() && threadLang(next) === 'ko' && !readsKorean(next[at]!.text)) next[at] = { ...next[at]!, text: '' }
           else if (next[at]!.text.trim()) {
             next[at] = { ...next[at]!, streaming: false, progress: true, work: current.workLines }
-            next.splice(at + 1, 0, { role: 'assistant', text: '', streaming: true })
+            next.splice(asidesEnd(next, at), 0, { role: 'assistant', text: '', streaming: true })
           }
           patch(id, { messages: next, workLines: next.length > current.messages.length ? [] : current.workLines }, true)
           return id
@@ -433,7 +445,7 @@ export function createCometThreads(initialSelected: string | null = null) {
       if (event.type === 'chat:done') {
         const at = streamingAt(current.messages), next = [...current.messages]
         if (at >= 0) next[at] = { ...next[at]!, text: event.text || next[at]!.text, streaming: false, checking: undefined, ...(event.evidence ? { evidence: event.evidence } : {}) }
-        settle(id, next, { offer: event.offer ?? null })
+        settle(id, at >= 0 ? underAsides(next, at) : next, { offer: event.offer ?? null })
         return id
       }
       if (event.type === 'chat:error') {
