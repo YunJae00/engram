@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveCited, linkAnswers, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -188,7 +188,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { answerAlone, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
-import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
+import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
 import { officeAgentTools, officeContext } from './office-agent.js'
@@ -215,7 +215,7 @@ import { forgetImportedSession, importBrowserSession, importedAt, listBrowserSou
 import { routineDriver } from './routine-driver.js'
 import { routineRecovery, startRoutineChat, type RoutineRunReply, type RoutineStartOptions } from './routine-chat.js'
 import { associationEdges, echoRecall } from './memory-fabric.js'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, shell } from 'electron'
 import { open, readdir, readFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type {
@@ -2826,6 +2826,9 @@ export function registerIpc(ctx: VaultContext): void {
         const short = kind === 'ask' || kind === 'question'
         const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
+        // c4 L1: the first lookup after the browser was closed paid its launch inside search_web (7.5 s of a 7.9 s search). It is started
+        // here, while the model writes its first call (~6 s), and loads nothing: no address is opened until the search itself.
+        if (lane) void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`))
         const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
         // A small text file the person named in the ask (or in the ask this one corrects) is read here, so the turn has no read round (desk-lane.ts namedText).
         const given = kind === 'note' || kind === 'file' ? await namedText(routed, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(routed, path)) : undefined
@@ -2905,7 +2908,10 @@ export function registerIpc(ctx: VaultContext): void {
         if (lane && !result.asked) {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
-          result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))
+          const korean = threadKorean(request.message, request.history ?? [])
+          // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
+          // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
+          result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), (url, limit) => net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) }), korean)
         }
         // The thread gets the answer alone: why the host counts it unverified is for the log.
         const answered = answerOnly(result.answer)

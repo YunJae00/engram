@@ -113,18 +113,18 @@ it('stops the conversation at once when the whole message is a stop word, and le
   registerAsideIpc({ paths, busy: () => busy, answered: () => true, followUp: () => text => held.push(text), setOffersAside: async () => {}, stop: async (channel, said) => { stopped.push([channel, said]) } })
   try {
     // Also after the answer is out, while the team or a check still runs.
-    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    expect(await handlers.get('chat:say')!({}, 'bot-team', '멈춰')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
     // grokbar review r1: the reply is in the thread's language, not the stop word's.
-    expect(await handlers.get('chat:say')!({}, 'bot-team', 'stop')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    expect(await handlers.get('chat:say')!({}, 'bot-team', 'stop')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
     await appendBotTurn(paths, 'en', { role: 'user', text: 'Compare the three phones', at: new Date().toISOString() })
     expect(await handlers.get('chat:say')!({}, 'bot-en', 'stop')).toEqual({ ok: true, action: 'stop', reply: 'Stopped.' })
     turnGoals.set('bot-fresh', '아이폰 18 가격 조사해줘')
-    expect(await handlers.get('chat:say')!({}, 'bot-fresh', 'Cancel')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    expect(await handlers.get('chat:say')!({}, 'bot-fresh', 'Cancel')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
     turnGoals.delete('bot-fresh')
     // The answer is back before the stop runs: nothing was stopped yet when it returned.
-    expect(stopped).toEqual([['bot-team', '중지했어요.'], ['bot-team', '중지했어요.'], ['bot-en', 'Stopped.']])
+    expect(stopped).toEqual([['bot-team', '멈췄어요.'], ['bot-team', '멈췄어요.'], ['bot-en', 'Stopped.']])
     await new Promise(done => setImmediate(done))
-    expect(stopped).toEqual([['bot-team', '중지했어요.'], ['bot-team', '중지했어요.'], ['bot-en', 'Stopped.'], ['bot-fresh', '중지했어요.']])
+    expect(stopped).toEqual([['bot-team', '멈췄어요.'], ['bot-team', '멈췄어요.'], ['bot-en', 'Stopped.'], ['bot-fresh', '멈췄어요.']])
     expect(held).toEqual([])
     expect((await readBotTranscript(paths, 'team')).map(turn => [turn.role, turn.text, turn.aside])).toEqual([['user', '멈춰', true], ['user', 'stop', true]])
     expect((await readCheckpoint(paths, 'team')).pending).toEqual([])
@@ -239,9 +239,12 @@ it('hands a change to the running turn before the reply is written, keeps a rema
     expect(asked.at(-1)).toContain('in the middle of the job')
     held.pop()
     const before = asked.length
-    expect(await say('멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
+    // c4 (stack-3 risk 3): the words handed over so far are also in the saved waiting list; a stop clears that copy too.
+    expect((await readCheckpoint(paths, 'reply')).pending.length).toBeGreaterThan(0)
+    expect(await say('멈춰')).toEqual({ ok: true, action: 'stop', reply: '멈췄어요.' })
+    expect((await readCheckpoint(paths, 'reply')).pending).toEqual([])
     await new Promise(done => setImmediate(done))
-    expect(stopped).toEqual(['중지했어요.'])
+    expect(stopped).toEqual(['멈췄어요.'])
     expect(asked).toHaveLength(before)
     expect(held).toEqual(['아 대구도 추가해'])
     // c3a review r3 #2: "멈춰" said while an earlier message still waits for the quick voice. That message says nothing after the stop,
@@ -261,6 +264,8 @@ it('hands a change to the running turn before the reply is written, keeps a rema
       voice.quick = slow
       expect((await readBotTranscript(paths, 'reply')).slice(rows).map(turn => `${turn.role} ${turn.text}`)).toEqual([`user ${words}`, 'user 멈춰'])
       if (words.includes('?')) { expect(held).toEqual(['아 대구도 추가해']); expect((await readCheckpoint(paths, 'reply')).pending).toEqual(pending) }
+      // A change said less than the voice's wait before the stop was already saved as waiting: the stop took it back.
+      else expect((await readCheckpoint(paths, 'reply')).pending).toEqual([])
     }
   } finally { turnGoals.delete('bot-reply'); await rm(cache, { recursive: true, force: true }) }
 })

@@ -132,7 +132,7 @@ describe('task runner end paths', () => {
 
 describe('stoppedText', () => {
   it('names the last milestone of the turn the person stopped', () => {
-    expect(stoppedText([{ role: 'user', text: '정리해줘' }])).toBe('중지했어요.')
+    expect(stoppedText([{ role: 'user', text: '정리해줘' }])).toBe('멈췄어요.')
     expect(stoppedText([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '두 항목 확인했어요\n더', progress: true }])).toBe('여기까지 했어요: 두 항목 확인했어요')
     expect(stoppedText([{ role: 'user', text: '정리해줘' }], '페이지 읽는 중')).toBe('여기까지 했어요: 페이지 읽는 중')
     expect(stoppedText([{ role: 'user', text: 'Tidy' }, { role: 'assistant', text: 'Read two items', progress: true }])).toBe('Stopped here. Done so far: Read two items')
@@ -197,25 +197,25 @@ describe('keepStopMark', () => {
     const t = await setup(async () => done('x'))
     for (const turn of turns) await appendBotTurn(t.paths, 'bot-1', { ...turn, at: new Date().toISOString() })
     const events: { type: string }[] = []
-    await keepStopMark(t.paths, event => events.push(event), 'bot-bot-1', '중지했어요.', running, quick)
+    await keepStopMark(t.paths, event => events.push(event), 'bot-bot-1', '멈췄어요.', running, quick)
     return { turns: await readBotTranscript(t.paths, 'bot-1'), events }
   }
 
   it('stores the mark after a stored cut answer and flushes pending words first', async () => {
     const { turns, events } = await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '정리했어요', progress: true }])
-    expect(turns.map(turn => turn.text)).toEqual(['정리해줘', '정리했어요', '중지했어요.'])
+    expect(turns.map(turn => turn.text)).toEqual(['정리해줘', '정리했어요', '멈췄어요.'])
     expect(events.map(e => e.type)).toEqual(['chat:token', 'bots:changed'])
   })
 
   it('stores nothing after a user turn or a finished answer', async () => {
     expect((await run([{ role: 'user', text: '정리해줘' }])).turns).toHaveLength(1)
-    expect((await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '중지했어요.' }])).turns).toHaveLength(2)
+    expect((await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '멈췄어요.' }])).turns).toHaveLength(2)
   })
 
   it('waits for the stopped run to be released', async () => {
     const until = Date.now() + 120
     const { turns } = await run([{ role: 'user', text: '정리해줘' }, { role: 'assistant', text: '정리했어요', progress: true }], () => Date.now() < until)
-    expect(turns.at(-1)!.text).toBe('중지했어요.')
+    expect(turns.at(-1)!.text).toBe('멈췄어요.')
     expect(Date.now()).toBeGreaterThanOrEqual(until)
   })
 
@@ -224,9 +224,9 @@ describe('keepStopMark', () => {
     await appendBotTurn(t.paths, 'bot-1', { role: 'user', text: '정리해줘', at: new Date().toISOString() })
     const progress = conversationProgress(t.paths)
     progress.observe({ type: 'chat:token', channel: 'bot-bot-1', text: '회의 안건을 정리했어요' })
-    await progress.stop('bot-bot-1', '중지했어요.')
-    await keepStopMark(t.paths, event => progress.observe(event), 'bot-bot-1', '중지했어요.', () => false, quick)
+    await progress.stop('bot-bot-1', '멈췄어요.')
+    await keepStopMark(t.paths, event => progress.observe(event), 'bot-bot-1', '멈췄어요.', () => false, quick)
     const turns = await readBotTranscript(t.paths, 'bot-1')
-    expect(turns.map(turn => [turn.text, !!turn.progress])).toEqual([['정리해줘', false], ['회의 안건을 정리했어요', true], ['중지했어요.', false]])
+    expect(turns.map(turn => [turn.text, !!turn.progress])).toEqual([['정리해줘', false], ['회의 안건을 정리했어요', true], ['멈췄어요.', false]])
   })
 })

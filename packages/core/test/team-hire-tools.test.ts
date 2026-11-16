@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { liveLinks, liveCited, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -105,14 +105,14 @@ describe('team hire tools', () => {
     expect(settled({ answer: '서울 12.4도 흐림', sources: naver, timedOut: true }).review).toBeUndefined()
     expect(answeredLookup('서울 12.4도 흐림', naver)).toBe(true)
     // A lone lookup's answer names the page it read when its words gave no address; one that has an address is left alone.
-    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과 [네이버 검색](https://search.naver.com/search.naver?query=원달러%20환율)')
+    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과 [네이버 금융](https://search.naver.com/search.naver?query=원달러%20환율)')
     // grokbar c3 L2/L4: "출처: bing.com" on a line of its own read like a printout. One named link after the last sentence, a page of its own before a results page.
     expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C. [weather.example](https://www.weather.example/seoul)')
     expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).toBe('엔비디아는 159.22달러예요. [Bing 검색](https://www.bing.com/search?q=NVDA)')
     expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).not.toMatch(/출처|bing\.com\]/)
     // After a table or a list the link is a line of its own, never glued into the last row.
     expect(citeOwn('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |', ['https://finance.example/nvda'], true)).toBe('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)')
-    expect(citeOwn('- 첫째\n- 둘째', naver, true)).toBe('- 첫째\n- 둘째\n\n[네이버 검색](https://search.naver.com/search.naver?query=서울+날씨)')
+    expect(citeOwn('- 첫째\n- 둘째', naver, true)).toBe('- 첫째\n- 둘째\n\n[네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)')
     const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
     expect(citeOwn(linked, naver, true)).toBe(linked)
     expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
@@ -255,7 +255,14 @@ describe('team hire tools', () => {
     expect(LOOKUP_RULE).toContain('report at once from them, each fact with the address of the result it came from')
     expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
     expect(LOOKUP_RULE).toContain("Report in the person's language")
-    expect(LOOKUP_RULE).toContain('"아직 공식 가격은 안 나왔어요"')
+    // c4 R2: a value that is not announced still carries a labeled figure; each point asked is its own short line; a maker or news page before a blog.
+    expect(LOOKUP_RULE).toContain('"미발표, 예상 130만 원대"')
+    expect(LOOKUP_RULE).toContain('never a line with no figure when the results hold one')
+    expect(LOOKUP_RULE).toContain('report each on a line of its own, "가격: …", "출시일: …"')
+    expect(LOOKUP_RULE).toContain("the maker's own page or a news article when the list has one, before a café or blog post")
+    // c4 R1/L3: a figure from the results page's own box is cited to that service at the address that was loaded.
+    expect(LOOKUP_RULE).toContain('[네이버 날씨](that address)')
+    expect(LOOKUP_RULE).toContain('never to a blog or any other result you did not take it from')
     expect(LOOKUP_RULE).toContain('never write about time, limits, attempts, tools, pages that did not open or what you failed to do')
   })
 
@@ -322,7 +329,7 @@ describe('team hire tools', () => {
     // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line,
     // each link named for its site (grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11").
     const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
-    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [네이버](https://weather.naver.com/today/09) · [네이버 검색](https://search.naver.com/search.naver?query=부산%20날씨)`)
+    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [네이버](https://weather.naver.com/today/09) · [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
     const phones = [member('m1', 'iPhone18', ['https://www.bing.com/search?q=iPhone+18']), member('m2', 'GalaxyS27', ['https://www.bing.com/search?q=Galaxy+S27']), member('m3', 'Pixel11', ['https://www.bing.com/search?q=iPhone+18'])]
     const closing = citeMembers('세 기종 모두 아직 공식 가격이 안 나왔어요.', phones, true)
     expect(closing).toBe('세 기종 모두 아직 공식 가격이 안 나왔어요.\n\n출처: [Bing 검색](https://www.bing.com/search?q=iPhone+18) · [Bing 검색](https://www.bing.com/search?q=Galaxy+S27)')
@@ -489,5 +496,93 @@ describe('team hire tools', () => {
     raw.tasks[1].team.members[0].depth = 4
     await writeFile(file, JSON.stringify(raw))
     await expect(listTasks(paths)).rejects.toThrow('Invalid saved tasks; the file was preserved.')
+  })
+
+  // grokbar c4 L3: the answer's only link was korea247.kr, a result the turn never opened, on a host that does not answer.
+  it('checks each address the turn did not load once: a live link is kept, a dead one gives way to the page that was read, a slow one is kept', async () => {
+    const read = ['https://search.naver.com/search.naver?query=부산 날씨']
+    const asked: string[] = []
+    const alive = (dead: string[], slow: string[] = []) => async (url: string, signal: AbortSignal): Promise<boolean> => {
+      asked.push(url)
+      if (slow.some(host => url.includes(host))) return new Promise<boolean>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))))
+      if (dead.some(host => url.includes(host))) throw new Error('net::ERR_NAME_NOT_RESOLVED')
+      return true
+    }
+    // Live: kept as written. The page the turn loaded itself is not asked.
+    const live = '부산은 맑고 18도예요. [기상청](https://www.weather.go.kr/w/index.do) [네이버 날씨](https://search.naver.com/search.naver?query=%EB%B6%80%EC%82%B0%20%EB%82%A0%EC%94%A8)'
+    expect(await liveLinks(live, read, alive([]), true)).toBe(live)
+    expect(asked).toEqual(['https://www.weather.go.kr/w/index.do'])
+    // Dead (a network error, or the check says no): the page the turn read stands in, named as the service it is.
+    const dead = '부산은 맑고 18도예요. 강수 소식은 없네요. [korea247.kr](https://korea247.kr/weather/busan)'
+    const swapped = '부산은 맑고 18도예요. 강수 소식은 없네요. [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨)'
+    expect(await liveLinks(dead, read, alive(['korea247.kr']), true)).toBe(swapped)
+    expect(await liveLinks(dead, read, async () => false, true)).toBe(swapped)
+    // Nothing was read, or the read page is already linked: the link goes, its name stays as plain words, and no address is made up.
+    expect(await liveLinks(dead, [], alive(['korea247.kr']), true)).toBe('부산은 맑고 18도예요. 강수 소식은 없네요. korea247.kr')
+    expect(await liveLinks(`${live} [블로그](https://korea247.kr/x)`, read, alive(['korea247.kr']), true)).toBe(`${live} 블로그`)
+    // One dead row of a table leaves the live rows alone; a longer address that starts the same is not touched.
+    const table = '| 서울 | 12도 | [a](https://dead.example/a) |\n| 부산 | 18도 | [b](https://dead.example/a/b) |\n| 제주 | 20도 | [c](https://ok.example/c) |'
+    expect(await liveLinks(table, [], async url => url !== 'https://dead.example/a', true)).toBe(table.replace('[a](https://dead.example/a)', 'a'))
+    // Slow: kept, and the wait is the one budget for all of them together, never longer.
+    const started = Date.now()
+    const slow = '[느린 곳](https://slow.example/1) [또 느린 곳](https://slow.example/2) [죽은 곳](https://gone.example/3)'
+    expect(await liveLinks(slow, [], alive(['gone.example'], ['slow.example']), true, 60)).toBe('[느린 곳](https://slow.example/1) [또 느린 곳](https://slow.example/2) 죽은 곳')
+    expect(Date.now() - started).toBeLessThan(600)
+    expect(LINK_CHECK_MS).toBe(1_500)
+    // A check that ignores the signal cannot hold the answer either.
+    const stuck = Date.now()
+    expect(await liveLinks(slow, [], () => new Promise<boolean>(() => undefined), true, 40)).toBe(slow)
+    expect(Date.now() - stuck).toBeLessThan(600)
+    // No link, nothing asked.
+    const before = asked.length
+    expect(await liveLinks('부산은 맑아요.', read, alive([]), true)).toBe('부산은 맑아요.')
+    expect(asked).toHaveLength(before)
+  })
+
+  // c4 r2 finding 1: 401, 403 and 429 were counted as alive, so a link that fails the link check stayed the answer's only link.
+  it('counts every 4xx and 5xx as a dead link', () => {
+    for (const status of [200, 204, 301, 302]) expect(linkAnswers(status)).toBe(true)
+    for (const status of [400, 401, 403, 404, 410, 429, 500, 503, 0]) expect(linkAnswers(status)).toBe(false)
+  })
+
+  // c4 r2 finding 2: citeMembers ran after the check, so a member's page that answers 4xx went into a row or the closing line unasked.
+  it('asks the links the citations add as well, in the same one pass', async () => {
+    const member = (id: string, role: string, sources: string[]) => ({ id, role, brief: role, deliverable: '', state: 'released', sources }) as never
+    const members = [member('m1', '서울 날씨', ['https://gone.example/seoul']), member('m2', '부산 날씨', ['https://ok.example/busan']), member('m3', '제주 날씨', ['https://ok.example/jeju'])]
+    const asked: string[] = []
+    const alive = async (url: string): Promise<boolean> => { asked.push(url); return !/gone\.example|dead\.example/.test(url) }
+    const cite = (answer: string): string => citeOwn(citeMembers(answer, members, true), [], true)
+    // 서울's member page is dead: its row gets no link. 부산's row cited a dead blog: it gets its member's page instead. 제주 keeps its own live link, and its member's live page closes the answer as before.
+    const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://dead.example/blog) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |'
+    const out = await liveCited(table, [], cite, alive, true)
+    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [ok.example](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |\n\n출처: [ok.example](https://ok.example/jeju)')
+    expect(out).not.toMatch(/gone\.example|dead\.example/)
+    // c4 r3: the dead link's name ("블로그") does not become the name of the member's page; words that do name the linked site are kept.
+    expect(out).not.toContain('블로그')
+    // A row no teammate's page can take keeps the dead link's name as plain words; a name the lead wrote for a live page is kept as written.
+    expect(await liveCited('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | [블로그](https://dead.example/blog) |\n| 부산 | 비 | 부산 기상 |', [], answer => citeMembers(answer, members.slice(1, 2), true), async url => !/dead\.example/.test(url), true))
+      .toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | 블로그 |\n| 부산 | 비 | [부산 기상](https://ok.example/busan) |')
+    // One pass: each address asked once, the ones only the citing would add among them.
+    expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
+    // The closing line: a dead member page is not listed, a live one is.
+    expect(await liveCited('세 도시 모두 큰 비는 없어요.', [], cite, alive, true)).toBe('세 도시 모두 큰 비는 없어요.\n\n출처: [ok.example](https://ok.example/busan) · [ok.example](https://ok.example/jeju)')
+    // With a page the turn read, the dead member link gives way to it; a slow check still keeps everything inside the one budget.
+    expect(await liveCited('서울은 맑아요.', ['https://search.naver.com/search.naver?query=서울 날씨'], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.\n\n출처: [네이버 날씨](https://search.naver.com/search.naver?query=서울%20날씨)')
+    // Every member page dead and nothing read: no source line at all, never a bare name.
+    expect(await liveCited('서울은 맑아요.', [], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.')
+    const started = Date.now()
+    expect(await liveCited(table, [], cite, () => new Promise<boolean>(() => undefined), true, 40)).toBe(cite(table))
+    expect(Date.now() - started).toBeLessThan(600)
+  })
+
+  // grokbar c4 R1/L1: weather read from the results page's own box was cited to a blog, or to "네이버 검색".
+  it('names the service a results-page box belongs to', () => {
+    expect(siteName('https://search.naver.com/search.naver?query=서울 날씨', true)).toBe('네이버 날씨')
+    expect(siteName('https://search.naver.com/search.naver?query=엔비디아 주가', true)).toBe('네이버 증권')
+    expect(siteName('https://search.naver.com/search.naver?query=원달러 환율', true)).toBe('네이버 금융')
+    expect(siteName('https://search.naver.com/search.naver?query=아이폰 18 출시일', true)).toBe('네이버 검색')
+    expect(siteName('https://search.naver.com/search.naver?query=seoul weather')).toBe('Naver Weather')
+    expect(siteName('https://www.bing.com/search?q=seoul weather', true)).toBe('Bing 검색')
+    expect(siteName('https://weather.naver.com/today/09', true)).toBe('네이버')
   })
 })

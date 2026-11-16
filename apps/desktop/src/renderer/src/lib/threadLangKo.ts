@@ -31,7 +31,7 @@ export const KO: Partial<Record<StringKey, string>> = {
   'bots.stepLook': '화면 보는 중',
   'bots.stepAside': '잠시 비켜 있을게요 — 지금은 직접 쓰세요',
   'bots.stepResume': '페이지를 다시 읽고 이어갈게요',
-  'bubble.stopped': '중지했어요.',
+  'bubble.stopped': '멈췄어요.',
   'card.needsOk': '진행하기 전에',
   'card.press': '“{words}” 눌러도 될까요?',
   'card.pressHint': '제출하기 전에 지금 페이지에서 한 번 더 확인해요.',

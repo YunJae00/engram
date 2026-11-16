@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, defaultSearchTemplate, deriveSearchTemplate, NEWS_ASK, newsTemplate, searchResults, searchUrlFor } from './search-template.js'
+import { answersTheQuestion, calendarDates, defaultSearchTemplate, deriveSearchTemplate, NEWS_ASK, newsTemplate, searchResults, searchUrlFor } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -181,7 +181,8 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
                   '',
                 ]
               : []),
-            page.text.slice(0, RESULTS_PROSE_CAP),
+            // c4 R3: the page's own words carry the same ages ("1주 전") as its results; they read as dates too.
+            calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), new Date(), false),
           ].join('\n')
         },
       },

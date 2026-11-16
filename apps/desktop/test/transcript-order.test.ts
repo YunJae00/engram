@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import { askOrder } from '../src/renderer/src/lib/transcriptOrder.js'
+import { cometChannel, createCometThreads } from '../src/renderer/src/lib/cometThreads.js'
 import type { ChatTurnDto } from '../src/shared/types.js'
 
 const user = (text: string, aside = false): ChatTurnDto => ({ role: 'user', text, ...(aside ? { aside } : {}) })
@@ -38,4 +39,57 @@ it('hands words whose answer is on a newer page back to the caller', () => {
   const none: ChatTurnDto[] = []
   expect(texts(askOrder([user('q'), user('add', true), answer('both'), user('q2'), answer('a2')], none))).toEqual(['q', 'add', 'both', 'q2', 'a2'])
   expect(none).toEqual([])
+})
+
+// grokbar c4 T2: "엔비디아 오늘 주가 알려줘" / "그냥 애플로 바꿔" / "애플로 바꿔서 볼게요." / "지금 시세 확인할게요." / answer: the lookup's own
+// first line, on screen at 0.1 s, was frozen under the reply to words said after it, and read as a second acknowledgement.
+it('keeps a first line where it was shown: ask, first line, the change, the one-line reply, the answer', () => {
+  const BOT = 'bot-order', channel = cometChannel(BOT)
+  const said = (store: ReturnType<typeof createCometThreads>): string[] => store.thread(BOT).messages.map(m => m.text)
+  const start = () => { const store = createCometThreads(BOT); store.begin(BOT, '엔비디아 오늘 주가 알려줘'); store.handleEvent({ type: 'chat:token', channel, text: '지금 시세 확인할게요.\n\n' }); return store }
+  // The words come while the first line is still the live text; a tool call then freezes it.
+  const live = start()
+  live.noteUser(BOT, '그냥 애플로 바꿔', [], true)
+  live.noteReply(BOT, '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.')
+  expect(said(live)).toEqual(['엔비디아 오늘 주가 알려줘', '지금 시세 확인할게요.\n\n', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.'])
+  live.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
+  expect(said(live)).toEqual(['엔비디아 오늘 주가 알려줘', '지금 시세 확인할게요.\n\n', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', ''])
+  expect(live.thread(BOT).messages.at(-1)).toMatchObject({ role: 'assistant', streaming: true })
+  live.handleEvent({ type: 'chat:done', channel, text: '애플은 11월 16일 종가 기준 228.10달러예요.' })
+  expect(said(live)).toEqual(['엔비디아 오늘 주가 알려줘', '지금 시세 확인할게요.\n\n', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', '애플은 11월 16일 종가 기준 228.10달러예요.'])
+  // The line was already frozen when the words came: the same order (T1's path, unchanged).
+  const frozen = start()
+  frozen.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
+  frozen.noteUser(BOT, '그냥 애플로 바꿔', [], true)
+  frozen.noteReply(BOT, '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.')
+  expect(said(frozen)).toEqual(['엔비디아 오늘 주가 알려줘', '지금 시세 확인할게요.\n\n', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', ''])
+  // A waiting line the answer replaces is not kept: the bubble moves under the words, so the answer is still last.
+  const replaced = start()
+  replaced.noteUser(BOT, '그냥 애플로 바꿔', [], true)
+  replaced.noteReply(BOT, '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.')
+  replaced.handleEvent({ type: 'chat:token', channel, text: '', reset: true, drop: true })
+  replaced.handleEvent({ type: 'chat:done', channel, text: '애플은 228.10달러예요.' })
+  expect(said(replaced)).toEqual(['엔비디아 오늘 주가 알려줘', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', '애플은 228.10달러예요.'])
+  // No tool call and no drop before the answer lands in the bubble: the answer goes under the words too.
+  const direct = start()
+  direct.noteUser(BOT, '그냥 애플로 바꿔', [], true)
+  direct.noteReply(BOT, '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.')
+  direct.handleEvent({ type: 'chat:done', channel, text: '애플은 228.10달러예요.' })
+  expect(said(direct)).toEqual(['엔비디아 오늘 주가 알려줘', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', '애플은 228.10달러예요.'])
+  // Words before any line is on screen stay above the answer still to come, as before.
+  const early = createCometThreads(BOT)
+  early.begin(BOT, '서울 부산 제주 날씨')
+  early.noteUser(BOT, '아 대구도 추가해', [], true)
+  early.noteReply(BOT, '아 대구도 추가해', '대구도 넣을게요.')
+  expect(said(early)).toEqual(['서울 부산 제주 날씨', '아 대구도 추가해', '대구도 넣을게요.', ''])
+})
+
+it('reads a saved first line back above the words said after it was shown, whenever a tool call froze it', () => {
+  const at = (turn: ChatTurnDto, second: number): ChatTurnDto => ({ ...turn, at: `2026-11-17T01:00:${String(second).padStart(2, '0')}.000Z` })
+  // Saved in the order written: the words (3 s), their reply (4 s), then the first line, frozen at 6 s but shown at 0 s.
+  const saved = [at(user('엔비디아 오늘 주가 알려줘'), 0), at(user('그냥 애플로 바꿔', true), 3), at(line('애플로 바꿔서 볼게요.', true), 4), at(line('지금 시세 확인할게요.'), 0), at(answer('애플은 228.10달러예요.'), 12)]
+  expect(texts(askOrder(saved))).toEqual(['엔비디아 오늘 주가 알려줘', '지금 시세 확인할게요.', '그냥 애플로 바꿔', '애플로 바꿔서 볼게요.', '애플은 228.10달러예요.'])
+  // A line first shown after the words stays under them.
+  const later = [at(user('q'), 0), at(user('add', true), 3), at(line('adding', true), 4), at(line('reading the page'), 6), at(answer('both'), 12)]
+  expect(texts(askOrder(later))).toEqual(['q', 'add', 'adding', 'reading the page', 'both'])
 })
