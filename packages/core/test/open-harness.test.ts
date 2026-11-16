@@ -62,8 +62,9 @@ describe('a comet named by its first words', () => {
   it('cuts by whole characters, never through one', () => {
     const emoji = '🙂'.repeat(60)
     const name = titleFromMessage(emoji)
-    expect(name.endsWith('…')).toBe(true)
-    expect([...name.slice(0, -1)].every((char) => char === '🙂')).toBe(true)
+    expect(name.endsWith('…')).toBe(false)
+    expect([...name]).toHaveLength(40)
+    expect([...name].every((char) => char === '🙂')).toBe(true)
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { suggestedReplies, answerBubbles, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
+import { suggestedReplies, answerBubbles, answerWhole, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
 // What the local model actually emits, and what the user must end up seeing.
 
@@ -192,4 +192,80 @@ it('opens the exact Accessibility settings link through the external window hand
   const html = answerHtml('[Settings](x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility)')
   expect(html).toContain('target="_blank"')
   expect(html).toContain('rel="noopener noreferrer"')
+})
+
+describe('qa143 one answer, one bubble, one card', () => {
+  it('S14/S26 keeps a lead line and its details in one bubble, without the separator turning the lead into a heading', () => {
+    const whole = answerWhole('It is Gyeongbokgung.\n---\nBuilt in 1395.\n\n---\n\n```\na\n---\nb\n```\n```replies\nMore\n```')
+    expect(whole).toBe('It is Gyeongbokgung.\n\nBuilt in 1395.\n\n```\na\n---\nb\n```')
+    expect(answerHtml(whole)).not.toMatch(/<h2|<hr/)
+    expect(answerWhole('Just one line.')).toBe('Just one line.')
+  })
+  it('S04 cards a file once per turn, under the last answer that links it', () => {
+    const link = (id: string) => `[${id}](engram-artifact:${encodeURIComponent(id)})`
+    const messages = [
+      { role: 'assistant', text: `Earlier turn.\n\n${link('deck.pptx')}` },
+      { role: 'user', text: 'make it again' },
+      { role: 'assistant', text: `Made it.\n\n${link('deck.pptx')}\n${link('notes.md')}` },
+      { role: 'assistant', text: `Read it again.\n\n${link('deck.pptx')}` },
+      { role: 'assistant', text: `Checked.\n\n\`\`\`replies\nOk\n\`\`\`\n\n${link('deck.pptx')}` },
+    ]
+    expect(laterFiles(messages)).toEqual(['', '', 'deck.pptx', 'deck.pptx', ''])
+  })
+})
+
+describe('restatedAnswers (qa143 S32)', () => {
+  const table = '| Item | Draft | Ours |\n| --- | --- | --- |\n| Price | 12,000 | |\n| Units | 300 | |\n| Margin | 18% | |'
+  const answer = `Here are the draft numbers next to ours.\n\n${table}\n\nFill in the empty cells and I will redo the totals.`
+  const said = (...texts: string[]) => [{ role: 'user', text: 'Use our numbers' }, ...texts.map(text => ({ role: 'assistant', text }))]
+
+  it('hides an answer that its re-check says again as a second message', () => {
+    const recheck = `I checked the ten draft values and found no mismatch.\n\nHere are the draft numbers next to ours.\n\n${table.replace('| --- | --- | --- |', '|---|---|---|')}\n\n**Fill in the empty cells and I will redo the totals.**\n\n\`\`\`replies\nOk\n\`\`\``
+    expect(restatedAnswers(said(answer, recheck))).toEqual([false, true, false])
+    expect(restatedAnswers(said('Here are the draft numbers next to ours.', recheck))).toEqual([false, true, false])
+    expect(restatedAnswers(said(answer, answer, answer))).toEqual([false, true, true, false])
+  })
+
+  it('keeps a distinct later reply, a correction, another file, and another question', () => {
+    expect(restatedAnswers(said(answer, 'Stopped here.'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Reading the sheet first.', answer))).toEqual([false, false, false])
+    // A correction is the later message and stays; the earlier one stays too when most of it changed.
+    expect(restatedAnswers(said('The total is 12.', 'Correction: the total is 15, not 12.'))).toEqual([false, false, false])
+    const link = (name: string) => `[${name}](engram-artifact:${name})`
+    expect(restatedAnswers(said(`${answer}\n\n${link('a.xlsx')}`, `${answer}\n\n${link('b.xlsx')}`))).toEqual([false, false, false])
+    expect(restatedAnswers(said(`${answer}\n\n${link('a.xlsx')}`, `${answer}\n\n${link('a.xlsx')}`))).toEqual([false, true, false])
+    expect(restatedAnswers([...said(answer), ...said(answer)])).toEqual([false, false, false, false])
+    expect(restatedAnswers(said('', answer))).toEqual([false, false, false])
+  })
+
+  it('keeps an earlier answer whose sign or number a later one changed (r3 #1)', () => {
+    expect(restatedAnswers(said('Balance: -12', 'Balance: 12'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Ratio 1:2', 'Ratio 12'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('Sent 10 000', 'Sent 10000'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('| Price | 12 | |', '| Price | | 12 |'))).toEqual([false, false, false])
+    expect(restatedAnswers(said('- Balance: **-12**', 'Balance: -12'))).toEqual([false, true, false])
+  })
+
+  it('keeps an earlier table when a later one corrects one row of it (r3 #2)', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `| Item ${i} | ${i * 100} | ok |`).join('\n')
+    const long = `Here are the numbers.\n\n| Item | Draft | Ours |\n| --- | --- | --- |\n${rows}\n| Margin | 18% | |`
+    expect(restatedAnswers(said(long, long.replace('18%', '81%')))).toEqual([false, false, false])
+    expect(restatedAnswers(said(long, long))).toEqual([false, true, false])
+  })
+
+  it('keeps the only check record of the turn (r3 #3)', () => {
+    const turn = (first: boolean, second: boolean) => [{ role: 'user', text: 'Go' },
+      { role: 'assistant', text: answer, ...(first ? { evidence: {} } : {}) }, { role: 'assistant', text: answer, ...(second ? { evidence: {} } : {}) }]
+    expect(restatedAnswers(turn(true, false))).toEqual([false, false, false])
+    expect(restatedAnswers(turn(true, true))).toEqual([false, true, false])
+    expect(restatedAnswers(turn(false, true))).toEqual([false, true, false])
+  })
+
+  it('hides an answer said again with another label on the same file, not one for another file (r3 #4)', () => {
+    const first = `${answer}\n\n[report.xlsx](engram-artifact:a.xlsx)`
+    expect(restatedAnswers(said(first, `${answer}\n\n- [Open the report](engram-artifact:a.xlsx)`))).toEqual([false, true, false])
+    expect(restatedAnswers(said(`Saved as [report](engram-artifact:a.xlsx).`, `Saved as [the file](engram-artifact:a.xlsx).`))).toEqual([false, true, false])
+    expect(restatedAnswers(said(first, `${answer}\n\n[report.xlsx](engram-artifact:b.xlsx)`))).toEqual([false, false, false])
+    expect(restatedAnswers(said(first, `${answer.replace('12,000', '21,000')}\n\n[Open the report](engram-artifact:a.xlsx)`))).toEqual([false, false, false])
+  })
 })

@@ -11,9 +11,11 @@ import { t } from '../i18n.js'
 // grows with the length of the conversation. Memoised on the text, an
 // answer is parsed once and then left alone.
 
-export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean }) {
+export const Answer = memo(function Answer({ text: rawText, compact = false, citations = false, streaming = false, skipFiles = '' }: { text: string; compact?: boolean; citations?: boolean; streaming?: boolean; skipFiles?: string }) {
   const text = answerText(rawText)
-  const { text: body, files } = answerFiles(text)
+  const { text: body, files: linked } = answerFiles(text)
+  // A later answer to the same question shows these cards.
+  const files = skipFiles ? linked.filter(file => !skipFiles.split('\n').includes(file.id)) : linked
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const sites = compact ? [] : answerSites(text)

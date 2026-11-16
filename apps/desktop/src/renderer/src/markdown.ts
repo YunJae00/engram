@@ -103,6 +103,9 @@ export function answerBubbles(text: string): string[] {
   return bubbles.length ? bubbles : [answerText(text)]
 }
 
+// One answer is one bubble: its separator lines fall away and the parts stay paragraphs of it.
+export const answerWhole = (text: string): string => answerBubbles(text).join('\n\n')
+
 export function answerText(text: string): string {
   return normalizeProse(withoutReplies(unfence(text.split('<engram:capture')[0] ?? '')))
 }
@@ -144,6 +147,48 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
     } catch { /* A malformed link stays as written. */ }
   }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
+}
+
+// A file made in a turn gets one card, under the last answer that links it. For each message: the
+// ids (one per line) that a later answer to the same question cards, so this one does not.
+export function laterFiles(messages: readonly { role: string; text: string }[]): string[] {
+  const out: string[] = [], later = new Set<string>()
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const { role, text } = messages[i]!
+    if (role !== 'assistant') later.clear()
+    const ids = role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []
+    out[i] = ids.filter(id => later.has(id)).join('\n')
+    for (const id of ids) later.add(id)
+  }
+  return out
+}
+
+// The lines of an answer as said, without what a restatement may change: heading, quote, list and
+// emphasis marks, spacing, table rules and the label of a file link. Signs, digits, punctuation
+// and table columns stay, so a changed value is a changed line.
+const saidLines = (text: string): string[] => answerText(text).split('\n')
+  .filter(line => !/^[\s|:-]*-[\s|:-]*$/.test(line))
+  .map(line => line.replace(FILE_LINK, '$1').replace(/^\s*(?:>\s*)*(?:#{1,6}\s+)?(?:[-*+]\s+)?/, '')
+    .replace(/(?<![\p{L}\p{N}])[*_`]+|[*_`]+(?![\p{L}\p{N}])/gu, '').replace(/\s*\|\s*/g, '|').replace(/\s+/g, ' ').trim().toLowerCase())
+  .filter(Boolean)
+
+// A re-check often says the answer again as a second message. For each message: whether a later
+// answer to the same question says every line of it again and links every file it links, so this
+// one is not shown as a bubble of its own. One changed line (a corrected row, a sign, a number)
+// keeps both bubbles, and so does a check record that no later answer carries. The later answer
+// always stays.
+export function restatedAnswers(messages: readonly { role: string; text: string; evidence?: unknown }[]): boolean[] {
+  const out: boolean[] = []
+  let later: { said: Set<string>; files: Set<string>; evidence: boolean }[] = []
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const { role, text, evidence } = messages[i]!
+    if (role !== 'assistant') { later = []; out[i] = false; continue }
+    const lines = saidLines(text), files = answerFiles(answerText(text)).files.map(file => file.id)
+    out[i] = lines.length > 0 && later.some(answer => (!evidence || answer.evidence)
+      && files.every(id => answer.files.has(id)) && lines.every(line => answer.said.has(line)))
+    if (lines.length) later.push({ said: new Set(lines), files: new Set(files), evidence: !!evidence })
+  }
+  return out
 }
 
 export function answerHtml(text: string, sourceUrls: string[] = [], notes: string[] = []): string {
