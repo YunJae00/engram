@@ -1856,7 +1856,8 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 }
 .bots-title-pill > .bot-avatar { flex: none; }
 .bots-title-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 500; }
-.bots-title-pill ~ .bots-thread { padding-top: 56px; }
+/* The thread starts under the pill, so scrolled messages are cut off below it and never pass behind it. */
+.bots-title-pill ~ .bots-thread { margin-top: 48px; padding-top: 8px; }
 /* Not read yet: a quiet pulse, no claim about what will be there. */
 .bots-loading { color: var(--fg-faint); }
 .bots-empty {
