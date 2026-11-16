@@ -21,7 +21,8 @@ export interface PreferenceHost {
   learning(source: 'activity' | 'places' | 'files' | 'apps', on: boolean): Promise<void>
   rescanWork(): Promise<void>
   // Apps seen on this computer and the ones kept off, by process name and the name the app shows.
-  apps(): Promise<{ app: string; label: string }[]>
+  // on: false for one the person keeps out of reach.
+  apps(): Promise<{ app: string; label: string; on: boolean }[]>
   setApp(app: string, label: string, on: boolean): Promise<void>
   habits(): Promise<{ key: string; title: string }[]>
   answerHabit(key: string, keep: boolean): Promise<void>
@@ -247,6 +248,11 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     const ask: PreferenceAsk = { ...said, on: said.do === 'ask_first' ? said.on !== false : said.on === true }
     if (!widens(ask)) return done(ask)
     if ((ask.do === 'app' || ask.do === 'auto_allow') && !ask.name?.trim()) return done(ask)
+    if (ask.do === 'app') {
+      // Only an app that is off can be widened; one already in reach needs no question.
+      const name = ask.name!.trim().toLowerCase(), held = (await host.apps().catch(() => [])).find(one => one.label.toLowerCase() === name || one.app === name)
+      if (!held || held.on) return `${josa(held?.label ?? ask.name!.trim(), '은', '는')} 지금도 쓸 수 있어요.`
+    }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow' && !siteOf(ask.name ?? '')) return done(ask)
     pending.set(channel, { ask: ask.do === 'auto_allow' ? { ...ask, name: siteOf(ask.name ?? '')! } : ask, at: clock().getTime() })

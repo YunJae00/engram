@@ -16,7 +16,7 @@ vi.mock('../src/main/activity-watch.js', () => ({ setActivityWatchEnabled: fake.
 vi.mock('../src/main/config-ipc.js', () => ({ writeLogs: fake.logs }))
 vi.mock('../src/main/desktop-control.js', () => ({ stopDesktopControl: fake.stop }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-vi.mock('../src/main/habits-ipc.js', () => ({ appUse: async () => [{ app: 'kakaotalk', label: '카카오톡' }], setAppUse: fake.setApp, habitDrafts: async () => [{ key: 'h1', title: '메일 분류' }], answerHabit: fake.answer }))
+vi.mock('../src/main/habits-ipc.js', () => ({ appUse: async () => [{ app: 'kakaotalk', label: '카카오톡', on: true }], setAppUse: fake.setApp, habitDrafts: async () => [{ key: 'h1', title: '메일 분류' }], answerHabit: fake.answer }))
 vi.mock('../src/main/team.js', () => ({ connectGithub: fake.connect, disconnectGithub: fake.disconnect, hasBackup: async () => fake.remote, performSync: fake.sync, startAutoSync: fake.autoSync }))
 vi.mock('../src/main/work-map-job.js', () => ({ deskSettingChanged: fake.desk, refreshWorkMap: fake.refresh, workMapSettingChanged: fake.workMap }))
 vi.mock('../src/main/approvals.js', () => ({ reviewRuleInput: (value: { kind: string; target: string }) => ({ ...value, operation: 'submit' }) }))

@@ -2526,6 +2526,8 @@ export function registerIpc(ctx: VaultContext): void {
     if (bot && !recovery && !savedRoutine && !turn && !request.scheduled && !request.attachments?.length) {
       const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
       if (said) {
+        // Its one line is the whole answer: a quick first line still on its way would be a second one.
+        firstLineSpoke(channel)
         await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
         turnOutcomes.set(channel, { answer: said, asked: /[?？]$/.test(said), unfinished: false, steps: 0 })
         answering.delete(channel)

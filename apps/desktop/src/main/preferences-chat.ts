@@ -40,7 +40,7 @@ export function preferenceHost(ctx: VaultContext, approvals: Pick<ApprovalsStore
       if (on) deskSettingChanged()
     },
     rescanWork: async () => { void refreshWorkMap(ctx).catch(error => flog('preferences', error)) },
-    apps: async () => (await appUse(ctx)).map(one => ({ app: one.app, label: one.label })),
+    apps: async () => (await appUse(ctx)).map(one => ({ app: one.app, label: one.label, on: one.on })),
     setApp: (name, label, on) => setAppUse(name, label, on),
     habits: async () => (await habitDrafts(ctx)).map(one => ({ key: one.key, title: one.title })),
     answerHabit: async (key, keep) => { await answerHabit(ctx, key, keep) },

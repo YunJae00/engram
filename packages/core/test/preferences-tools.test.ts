@@ -9,7 +9,7 @@ function fakeHost(over: Partial<PreferenceHost> = {}) {
     autoStart: async on => { calls.push(`autoStart:${on}`) },
     learning: async (source, on) => { calls.push(`learning:${source}:${on}`) },
     rescanWork: async () => { calls.push('rescan') },
-    apps: async () => [{ app: 'kakaotalk', label: '카카오톡' }, { app: 'excel', label: '엑셀' }],
+    apps: async () => [{ app: 'kakaotalk', label: '카카오톡', on: true }, { app: 'excel', label: '엑셀', on: false }],
     setApp: async (app, label, on) => { calls.push(`app:${app}:${label}:${on}`) },
     habits: async () => [{ key: 'h1', title: '주간 보고서 정리' }, { key: 'h2', title: '메일 분류' }],
     answerHabit: async (key, keep) => { calls.push(`habit:${key}:${keep}`) },
@@ -133,6 +133,14 @@ describe('narrowing is done at once, widening is asked about once', () => {
       expect(calls).toEqual([])
     })
   }
+
+  it('an app that is already in reach needs no question', async () => {
+    const { chat, calls } = setup()
+    expect(await chat.say('c', '카카오톡은 써도 돼')).toBe('카카오톡은 지금도 쓸 수 있어요.')
+    expect(await chat.tool('c', () => true).run({ do: 'app', name: '파워포인트', on: true }, { task: '' })).toBe('파워포인트는 지금도 쓸 수 있어요.')
+    expect(await chat.say('c', '응')).toBeUndefined()
+    expect(calls).toEqual([])
+  })
 
   it('says which changes widen', () => {
     const on = (name: PreferenceAsk['do'], value: boolean): PreferenceAsk => ({ do: name, on: value, name: 'x.com' })
