@@ -48,6 +48,8 @@ it('previews existing conversations, refreshes changed transcripts, and clears a
   expect(bot).not.toHaveProperty('lastMessage')
 })
 
+const found = async (...args: Parameters<typeof botSearch>) => (await botSearch(...args)).map(hit => hit.id)
+
 it('finds conversations by any message text, caches by file stamp, and ignores progress and archived turns', async () => {
   await mkdir(resolve('tmp'), { recursive: true })
   const paths = await initVault(await mkdtemp(resolve('tmp/bot-previews-')), { git: false })
@@ -60,19 +62,22 @@ it('finds conversations by any message text, caches by file stamp, and ignores p
   await appendBotTurn(paths, b.id, { role: 'assistant', text: 'checking QX-7731', at, progress: true })
   const file = join(paths.cache, 'bot-chats', `${a.id}.jsonl`)
   await utimes(file, 1_700_000_000, 1_700_000_000)
-  for (const query of ['QX-7731', 'qx-7731', '회의코드', '  qx-7731 ', long, long.slice(0, 201)]) expect(await botSearch(paths, [a, b], query)).toEqual([a.id])
-  expect(await botSearch(paths, [a, b], '')).toEqual([])
-  expect(await botSearch(paths, [a, b], 'Add budget\nUpdated')).toEqual([])
+  for (const query of ['QX-7731', 'qx-7731', '회의코드', '  qx-7731 ', long, long.slice(0, 201)]) expect(await found(paths, [a, b], query)).toEqual([a.id])
+  expect(await found(paths, [a, b], '')).toEqual([])
+  // S17: a hit carries the words around it in their own case, so the row can show why it is listed.
+  expect(await botSearch(paths, [a, b], '견적서')).toEqual([{ id: a.id, excerpt: '…ted the 견적서' }])
+  expect(await botSearch(paths, [a, b], 'qx-7731 drafted')).toEqual([{ id: a.id, excerpt: '…nda for QX-7731 drafted' }])
+  expect(await found(paths, [a, b], 'Add budget\nUpdated')).toEqual([])
   await writeFile(file, (await readFile(file, 'utf8')).replaceAll('QX-7731', 'QX-9999'))
   await utimes(file, 1_700_000_000, 1_700_000_000)
-  expect(await botSearch(paths, [a], 'QX-9999')).toEqual([])
+  expect(await found(paths, [a], 'QX-9999')).toEqual([])
   await appendFile(file, '\n')
-  expect(await botSearch(paths, [a], 'QX-9999')).toEqual([a.id])
+  expect(await found(paths, [a], 'QX-9999')).toEqual([a.id])
   const c = await createBot(paths, { name: 'Long' })
   for (let index = 0; index < 401; index++) await appendBotTurn(paths, c.id, { role: 'user', text: index === 0 ? 'first QX-5555' : `turn ${index}`, at })
-  expect(await botSearch(paths, [a, b, c], 'qx-5555')).toEqual([c.id])
+  expect(await found(paths, [a, b, c], 'qx-5555')).toEqual([c.id])
   await archiveBotTranscript(paths, a.id)
-  expect(await botSearch(paths, [a], 'QX-9999')).toEqual([])
+  expect(await found(paths, [a], 'QX-9999')).toEqual([])
 })
 
 it('conversations lists archived transcripts newest first, live excluded', async () => {

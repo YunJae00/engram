@@ -1,5 +1,5 @@
 import type { CharacterId } from '../../../../packages/core/src/bot-character.js'
-import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
+import type { McpInfoDto, McpConnectResultDto, McpClientDto, BookmarkDto, NoteDto, OpenLoopDto, CardDto, CardDetailDto, InboxDto, MissionFrameDto, ScheduleDto, BotTaskDto, BotDto, BotConversationDto, BotSearchHit, BotTurnDto, BotSuggestionDto, ApprovalRuleDto, BotFactDto, RoutineStepDto, RoutineBlockDto, RoutineDto, ErrandRunDto, UpdateCheckDto, EngineStatusDto, DelegatedTaskDto, ChatRequestDto, ChatAttachmentDto, ChatAttachmentPreviewDto, SweepReportDto, SearchHitDto, MetaPatch, ApproveOptionsDto, SyncStatusDto, BrainFabricDto, FadingMemoryDto, SubjectKnowledgeDto, AbsorbStatusDto, GithubConnectResultDto, PendingWorkDto, BrowserTabDto, EngramEvent, WorkspaceInfoDto, AgentInputDto, NativeSurfaceDto, SemanticStatusDto, DiagnosticsDto } from './types.js'
 import type { DesktopApi } from './desktop.js'
 import type { DevelopersApi } from './developers.js'
 import type { SidebarLayout } from 'core'
@@ -73,7 +73,7 @@ export interface EngramApi extends DesktopApi, DevelopersApi {
   chatQueued(botId: string, pending: boolean): Promise<void>
   errandStart(goal: string, botId?: string): Promise<{ ok: boolean; error?: string }>
   botsList(): Promise<BotDto[]>
-  botsSearch(query: string): Promise<string[]>
+  botsSearch(query: string): Promise<BotSearchHit[]>
   siteIcon(origin: string, shortcut?: boolean): Promise<string | null>
   sidebarLayout(kind?: SidebarKind): Promise<SidebarLayout>
   sidebarChange(request: SidebarChange): Promise<SidebarLayout>

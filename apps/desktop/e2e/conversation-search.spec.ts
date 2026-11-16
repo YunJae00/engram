@@ -63,7 +63,19 @@ test('search finds a token from earlier messages of an old, unopened conversatio
     await expect(otherRow).toHaveCount(0)
     // S16: a row inside a folder sits to the right of a loose row, so membership shows.
     expect((await targetRow.boundingBox())!.x).toBeGreaterThanOrEqual(looseX + 10)
+    // S17: the title and last message lack the token, so the row shows the earlier words that matched.
+    await expect(targetRow.locator('.sidebar-conversation-preview')).toContainText('QX-7731')
     await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
+  }
+  // S17: the pill is the focus treatment; the input inside draws no ring of its own, in either theme.
+  for (const theme of ['light', 'dark']) {
+    expect(await input.evaluate((el, theme) => {
+      const root = document.documentElement, before = root.dataset['theme']
+      root.dataset['theme'] = theme
+      const style = getComputedStyle(el), ring = { focused: el.matches(':focus-visible'), outline: style.outlineStyle, shadow: style.boxShadow }
+      if (before === undefined) delete root.dataset['theme']; else root.dataset['theme'] = before
+      return ring
+    }, theme)).toEqual({ focused: true, outline: 'none', shadow: 'none' })
   }
   await input.fill('Weekly sy')
   await expect(targetRow).toBeVisible()

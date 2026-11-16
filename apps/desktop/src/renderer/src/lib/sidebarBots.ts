@@ -8,12 +8,19 @@ export function groupSidebarBots(bots: readonly BotDto[]): { hero: BotDto | null
   return { hero, listed, hidden }
 }
 
-export function matchesSidebarSearch(bot: BotDto, search: string, bodyHits: ReadonlySet<string>): boolean {
+type BodyHits = { has(id: string): boolean }
+
+/** The body text to show under a row that search lists for words its title does not have; undefined when the title already shows the match. */
+export function searchExcerpt(bot: BotDto, search: string, excerpts: ReadonlyMap<string, string>): string | undefined {
+  return search && !bot.name.toLocaleLowerCase().includes(search) ? excerpts.get(bot.id) : undefined
+}
+
+export function matchesSidebarSearch(bot: BotDto, search: string, bodyHits: BodyHits): boolean {
   if (!search) return true
   return `${bot.name} ${bot.label ?? ''} ${bot.lastMessage?.text ?? ''} ${bot.purpose}`.toLocaleLowerCase().includes(search) || bodyHits.has(bot.id)
 }
 
-export function sidebarSearchEmpty(hero: BotDto | null, listed: readonly BotDto[], hidden: readonly BotDto[], search: string, bodyHits: ReadonlySet<string>): boolean {
+export function sidebarSearchEmpty(hero: BotDto | null, listed: readonly BotDto[], hidden: readonly BotDto[], search: string, bodyHits: BodyHits): boolean {
   if (!search) return false
   return ![...(hero ? [hero] : []), ...listed, ...hidden].some(bot => matchesSidebarSearch(bot, search, bodyHits))
 }

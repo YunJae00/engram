@@ -77,7 +77,8 @@
 .sidebar-search > svg { flex: none; }
 .sidebar-search input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; outline: none; box-shadow: none; color: var(--fg); font-size: var(--fs-small); }
 /* One soft ring on the field, none on the input inside it. */
-.sidebar-search input:focus, .sidebar-search input:focus-visible { outline: none; box-shadow: none; }
+/* .app-sidebar outranks the light theme's global input:focus-visible ring; the pill is the focus treatment. */
+.app-sidebar .sidebar-search input:focus, .app-sidebar .sidebar-search input:focus-visible { outline: none; box-shadow: none; }
 .sidebar-search:focus-within { background: var(--input-bg); box-shadow: 0 0 0 1px var(--border-soft), 0 0 0 4px var(--hover-bg); }
 .sidebar-search button { display: grid; place-items: center; flex: none; padding: 3px; color: var(--fg-faint); }
 .sidebar-conversations .bots-row { height: 58px; padding: 8px 12px; gap: 12px; border-radius: var(--radius-row); }

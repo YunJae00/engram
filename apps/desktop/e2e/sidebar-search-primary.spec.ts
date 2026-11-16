@@ -43,7 +43,7 @@ test('a search that matches only the primary bot does not say No matches found',
   const empty = page.locator('.sidebar-conversations .sidebar-empty')
   await expect(heroTile).toBeVisible()
   await expect(plainRow).toBeVisible()
-  expect(await page.evaluate(q => window.engram.botsSearch(q), 'printing')).toEqual([hero.id])
+  expect((await page.evaluate(q => window.engram.botsSearch(q), 'printing')).map(hit => hit.id)).toEqual([hero.id])
   const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
   await page.getByTestId('sidebar-search-toggle').click()
   await input.fill('printing')

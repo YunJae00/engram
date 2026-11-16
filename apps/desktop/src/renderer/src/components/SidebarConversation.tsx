@@ -15,10 +15,11 @@ import { useTeam } from '../lib/teamLive.js'
 import { lineLang } from '../lib/teamView.js'
 import { SidebarTeam } from './TeamSummary.js'
 
-export const SidebarConversation = memo(function SidebarConversation({ bot, state, active }: { bot: BotDto; state: CometActivity; active: boolean }) {
+export const SidebarConversation = memo(function SidebarConversation({ bot, state, active, found }: { bot: BotDto; state: CometActivity; active: boolean; found?: string | undefined }) {
   const theme = useAvatarTheme()
   const thread = useSyncExternalStore(cometThreads.subscribe, () => cometThreads.thread(bot.id))
   const preview = useMemo(() => {
+    if (found) return sidebarPreview(found)
     if (state === 'waiting') return t('sidebar.waiting')
     if (thread.busy) {
       if (thread.messages.at(-1)?.text) return t('sidebar.writing')
@@ -35,7 +36,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     if (!last) return sidebarPreview(bot.purpose) || t('sidebar.startConversation')
     const text = sidebarPreview(displayTaskAnswer(last.text, threadLang(thread.messages)))
     return last.role === 'user' ? t('sidebar.youSaid', { text }) : text
-  }, [thread, state, bot.label, bot.lastMessage, bot.purpose])
+  }, [thread, state, bot.label, bot.lastMessage, bot.purpose, found])
   const date = new Date(bot.lastMessage?.at ?? bot.createdAt)
   const valid = Number.isFinite(date.getTime())
   const unread = markUnread(bot.id, bot.lastMessage, active)
