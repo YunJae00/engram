@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { connectionConfirmed, connectionLabel, visibleLoginMessage } from '../src/renderer/src/lib/connectionStatus.js'
+import { connectionConfirmed, connectionLabel, filingRetryShown, visibleLoginMessage } from '../src/renderer/src/lib/connectionStatus.js'
 import { connectionProbe } from '../src/main/connection-probe.js'
 
 it('distinguishes signed out, unknown, expired and quota-limited accounts', () => {
@@ -32,4 +32,14 @@ it('ends a hung connection check as unknown, not signed out or connected', async
 it('keeps provider evidence and handles probe failures without inventing a logout', async () => {
   expect(await connectionProbe(async () => ({ installed: true, loggedIn: true, conclusive: true }))).toEqual({ installed: true, loggedIn: true, conclusive: true })
   expect(await connectionProbe(async () => { throw new Error('runtime busy') })).toEqual({ installed: true, loggedIn: false, conclusive: false })
+})
+
+// qa146: the retry button sat in the sidebar all session, also when filing was fine.
+it('shows the filing retry button only when a filing stopped, cannot start, or is running', () => {
+  const idle = { working: false, paused: false, ready: true, enginesDetected: true }
+  expect(filingRetryShown(idle)).toBe(false)
+  expect(filingRetryShown({ ...idle, enginesDetected: false, ready: false })).toBe(false)
+  expect(filingRetryShown({ ...idle, paused: true })).toBe(true)
+  expect(filingRetryShown({ ...idle, ready: false })).toBe(true)
+  expect(filingRetryShown({ ...idle, working: true })).toBe(true)
 })

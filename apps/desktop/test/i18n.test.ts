@@ -54,6 +54,19 @@ describe('i18n', () => {
     expect(en['tour.cometsTitle']).toContain('Bots')
   })
 
+  // qa146: copy the person can still reach said comet, cosmos or librarian; the Cosmos tab keeps its name.
+  it('copy in use says bot and memory, not comet, cosmos or librarian', () => {
+    const live = ['bots.new', 'bots.untitled', 'settingsUi.newComet', 'settingsUi.theComet', 'settingsUi.rememberSessions', 'settingsUi.filingHint', 'settingsUi.learnNoteLong', 'topbar.tabBots', 'sidebar.routineComet', 'sidebar.cometsMode', 'sky.empty', 'sky.emptyHint', 'routines.empty', 'digest.empty', 'errands.hint', 'errand.placeholder', 'sheet.unlinkTitle', 'review.empty', 'inbox.title', 'empty.capture', 'banner.notResponding', 'banner.loginExpired', 'banner.offline'] as const
+    for (const key of live) {
+      expect(ko[key], key).not.toMatch(/혜성|코멧|코스모스|사서/)
+      expect(en[key], key).not.toMatch(/comet|cosmos|librarian/i)
+    }
+    expect(ko['bots.untitled']).toBe('새 봇')
+    expect(en['bots.untitled']).toBe('New bot')
+    expect(ko['settingsUi.newComet']).toBe('어디서나 새 봇')
+    expect(ko['settingsUi.filingHint']).toBe('보관한 내용을 기억으로 정리해요.')
+  })
+
   it('Korean settings name the cosmos the way its Korean tab does', () => {
     expect(ko['topbar.tabSky']).toBe('코스모스')
     for (const key of (Object.keys(en) as (keyof typeof en)[]).filter(key => key.startsWith('settingsUi.'))) expect(ko[key], key).not.toContain('Cosmos')

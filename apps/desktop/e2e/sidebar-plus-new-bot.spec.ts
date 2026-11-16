@@ -58,7 +58,7 @@ test('one press on + creates and opens a new bot chat, and an empty one is reuse
   await plus().click()
   await expect.poll(async () => (await botList()).length).toBe(before.length + 1)
   const created = (await botList()).find(bot => !before.some(old => old.id === bot.id))!
-  expect(created.name).toBe('New comet')
+  expect(created.name).toBe('New bot')
   await expect(page.getByTestId(`bot-${created.id}`)).toHaveClass(/\bactive\b/)
   await expect(composer()).toBeFocused()
   await expect(page.locator('.sidebar-create-menu')).toHaveCount(0)

@@ -4,7 +4,7 @@ import { api, apiErrorText } from '../api.js'
 import type { SweepStatus } from '../state.js'
 import { t, type StringKey, type Translate } from '../i18n.js'
 import { useShellState, useTopBarState } from '../state-slices.js'
-import { connectionConfirmed } from '../lib/connectionStatus.js'
+import { connectionConfirmed, filingRetryShown } from '../lib/connectionStatus.js'
 
 function sweepLabel(translate: Translate, status: SweepStatus): string {
   switch (status.kind) {
@@ -67,7 +67,7 @@ export function SidebarStatus() {
           <span className="sidebar-status-icon">{working || !enginesDetected ? <LoaderCircle size={14} strokeWidth={1.8} aria-hidden /> : paused || !ready ? <CircleAlert size={14} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}</span>
           <span>{activityText || idleLabel}</span>
         </div>
-      <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label={t('sidebar.retryFiling')} title={t('sidebar.retryFilingHint')} disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>
+      {filingRetryShown({ working, paused, ready, enginesDetected }) && <button className="sidebar-filing-retry" data-testid="filing-retry" aria-label={t('sidebar.retryFiling')} title={t('sidebar.retryFilingHint')} disabled={!vaultReady || working} onClick={() => void retry()}><RotateCw size={14} className={retrying ? 'computer-spinner' : undefined} aria-hidden /></button>}
     </div>
   )
 }

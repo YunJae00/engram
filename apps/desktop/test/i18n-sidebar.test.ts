@@ -8,7 +8,7 @@ import { botMenuItems } from '../src/renderer/src/lib/sidebarBots.js'
 const TABLE: [keyof typeof en, string][] = [
   ['sidebar.sectionUnknown', 'Could not tell which section was created; the bot was not moved.'],
   ['sidebar.routineBrowser', 'Browser task'],
-  ['sidebar.routineComet', 'Comet task'],
+  ['sidebar.routineComet', 'Bot task'],
   ['sidebar.routineSteps', '{n} steps'],
   ['sidebar.routineDone', 'Last run completed'],
   ['sidebar.routinePaused', 'Paused'],
@@ -99,7 +99,7 @@ const TABLE: [keyof typeof en, string][] = [
   ['sidebar.deleteWorkspace', 'Delete workspace'],
   ['sidebar.deleteWorkspaceNamed', 'Delete workspace {name}'],
   ['sidebar.workspaceMode', 'Workspace mode'],
-  ['sidebar.cometsMode', 'Comets mode'],
+  ['sidebar.cometsMode', 'Bots mode'],
   ['sidebar.developersMode', 'Developers mode'],
   ['sidebar.developers', 'Developers'],
 ]
@@ -149,7 +149,7 @@ describe('sidebar i18n', () => {
     for (const [key, value] of TABLE) expect(en[key], key).toBe(value)
     expect(en['sidebar.rename']).toBe('Rename')
     expect(en['sidebar.delete']).toBe('Delete')
-    expect(en['topbar.tabBots']).toBe('Comets')
+    expect(en['topbar.tabBots']).toBe('Bots')
     expect(Object.keys(ko3)).toEqual(TABLE.map(([key]) => key))
   })
 

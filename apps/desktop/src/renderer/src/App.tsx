@@ -46,6 +46,9 @@ const SettingsView = lazy(() => import('./views/SettingsView.js').then((m) => ({
 const SkyView = lazy(() => import('./views/SkyView.js').then((m) => ({ default: m.SkyView })))
 const DevelopersView = lazy(() => import('./views/DevelopersView.js').then((m) => ({ default: m.DevelopersView })))
 
+// A language switch remounts the whole app (main.tsx keys it by language); Settings, where the switch is, stays open through it.
+let settingsHeld: { open: boolean; section: SettingsSection } = { open: false, section: 'general' }
+
 function Shell() {
   const { activity, setActivity, engines, pendingWork, toast, vaultReady, vaultError, enginesDetected, openNote, showToast } = useShellState()
   const hideToast = useToastDismiss()
@@ -58,8 +61,9 @@ function Shell() {
   // scaffold to write into. Held here because the panel is unmounted while it
   // rests: a window event fired at a closed panel has nobody listening.
   const [action, setAction] = useState<PaletteAction | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general')
+  const [settingsOpen, setSettingsOpen] = useState(settingsHeld.open)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(settingsHeld.section)
+  useEffect(() => { settingsHeld = { open: settingsOpen, section: settingsSection } }, [settingsOpen, settingsSection])
   useEffect(() => {
     if (!api.developerUiEnabled) return
     const open = () => { setSettingsOpen(false); setActivity('developers') }

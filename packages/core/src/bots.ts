@@ -222,7 +222,7 @@ export function dismissBotSuggestion(paths: VaultPaths, name: string): Promise<v
 }
 
 // A comet made with one press carries this name until its first message names it.
-export const UNTITLED_BOT_NAME = 'New comet'
+export const UNTITLED_BOT_NAME = 'New bot'
 const TITLE_CHARS = 40
 
 // The first sentence without its closing mark, cut at a word; never an ellipsis in the stored name - the row clips what is long.

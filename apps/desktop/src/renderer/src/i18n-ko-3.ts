@@ -3,7 +3,7 @@ import type { StringKey } from './i18n'
 export const ko3 = {
   'sidebar.sectionUnknown': '어느 섹션이 만들어졌는지 알 수 없어서 봇을 옮기지 않았어요.',
   'sidebar.routineBrowser': '브라우저 작업',
-  'sidebar.routineComet': '코멧 작업',
+  'sidebar.routineComet': '봇 작업',
   'sidebar.routineSteps': '{n}단계',
   'sidebar.routineDone': '마지막 실행 완료',
   'sidebar.routinePaused': '일시 중지됨',
@@ -94,7 +94,7 @@ export const ko3 = {
   'sidebar.deleteWorkspace': '워크스페이스 삭제',
   'sidebar.deleteWorkspaceNamed': '워크스페이스 {name} 삭제',
   'sidebar.workspaceMode': '워크스페이스 모드',
-  'sidebar.cometsMode': '코멧 모드',
+  'sidebar.cometsMode': '봇 모드',
   'sidebar.developersMode': '개발자 모드',
   'sidebar.developers': '개발자',
 } satisfies Partial<Record<StringKey, string>>

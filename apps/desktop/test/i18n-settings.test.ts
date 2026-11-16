@@ -35,7 +35,7 @@ const ENGLISH: Record<string, string> = {
   'settingsUi.general': 'General',
   'settingsUi.appearance': 'Appearance',
   'settingsUi.app': 'App',
-  'settingsUi.newComet': 'New Comet anywhere',
+  'settingsUi.newComet': 'New bot anywhere',
   'settingsUi.newCometHint': 'Starts a conversation next to the pointer, from any app.',
   'settingsUi.keySpace': 'Space',
   'settingsUi.aiSection': 'AI connection',
@@ -76,7 +76,7 @@ const ENGLISH: Record<string, string> = {
   'settingsUi.computerHint': 'Engram uses your mouse and keyboard when a task needs an app. Move the mouse to pause, press Esc to stop. Passwords and sign-in pages stay off limits.',
   'settingsUi.dismiss': 'Dismiss',
   'settingsUi.stopControl': 'Stop computer control',
-  'settingsUi.theComet': 'The comet',
+  'settingsUi.theComet': 'The bot',
   'settingsUi.controlling': '{who} is controlling your computer',
   'settingsUi.aboutToUse': '{who} is about to use your computer',
   'settingsUi.attention': 'Your attention is needed',
@@ -86,7 +86,7 @@ const ENGLISH: Record<string, string> = {
   'settingsUi.devTools': 'Developer tools',
   'settingsUi.developers': 'Developers',
   'settingsUi.devOffHint': 'Turning off stops development tasks, not their files or history.',
-  'settingsUi.rememberSessions': 'Remember coding sessions in Cosmos',
+  'settingsUi.rememberSessions': 'Keep coding sessions in memory',
   'settingsUi.savedDecisions': 'Saved edit decisions',
   'settingsUi.savedDecisionsHint': 'Applies only to matching inputs and content. Commands and sensitive actions still ask outside full access.',
   'settingsUi.removedRepo': 'Removed repository',
@@ -115,7 +115,7 @@ const ENGLISH: Record<string, string> = {
   'settingsUi.filingModel': 'Filing model',
   'settingsUi.filing': 'Filing & memory',
   'settingsUi.filingAnswered': 'The selected model answered.',
-  'settingsUi.filingHint': 'Sorts what you keep into Cosmos.',
+  'settingsUi.filingHint': 'Sorts what you keep into memory.',
   'settingsUi.test': 'Test',
   'settingsUi.decisionConnection': 'Decision model connection',
   'settingsUi.retry': 'Retry',
@@ -181,7 +181,7 @@ const ENGLISH: Record<string, string> = {
   'settingsUi.srcAppsDetail': 'App names and how often you use them.',
   'settingsUi.srcActivity': 'App activity while Engram is open',
   'settingsUi.srcActivityDetail': 'App names, window titles and notifications, kept while Engram runs.',
-  'settingsUi.learnNoteLong': 'Pages and files are never opened. What you allow is saved as notes in your workspace, and your AI reads them to organize Cosmos.',
+  'settingsUi.learnNoteLong': 'Pages and files are never opened. What you allow is saved as notes in your workspace, and your AI reads them to organize your memory.',
   'settingsUi.learnLegend': 'What Engram may learn from',
   'settingsUi.learnCompact': 'Names, window titles and notifications are saved and shared with your AI. Browser history: last 30 days. Pages and file contents are not read.',
   'settingsUi.manageAccounts': 'Manage accounts',
@@ -342,11 +342,11 @@ describe('settings strings and interface language', () => {
       { state: 'running' }, { state: 'running', engineLabel: 'Claude' }, { state: 'ready' }, { state: 'needs-person' },
       { state: 'paused', resumable: true }, { state: 'paused' }, { state: 'idle' },
     ]
-    const english = ['The comet is controlling your computer', 'Claude is controlling your computer', 'The comet is about to use your computer', 'Your attention is needed', 'You took over', 'Computer control is off', 'Computer control is off']
+    const english = ['The bot is controlling your computer', 'Claude is controlling your computer', 'The bot is about to use your computer', 'Your attention is needed', 'You took over', 'Computer control is off', 'Computer control is off']
     const source = LEARNING_SOURCES.find(one => one.key === 'workMap')!
     try {
       await language('ko')
-      expect(states.map(computerStateLabel)).toEqual(['컴퓨터를 제어하는 중: 코멧', '컴퓨터를 제어하는 중: Claude', '곧 컴퓨터를 사용해요: 코멧', ko['settingsUi.attention'], ko['settingsUi.tookOver'], ko['settingsUi.controlOff'], ko['settingsUi.controlOff']])
+      expect(states.map(computerStateLabel)).toEqual(['컴퓨터를 제어하는 중: 봇', '컴퓨터를 제어하는 중: Claude', '곧 컴퓨터를 사용해요: 봇', ko['settingsUi.attention'], ko['settingsUi.tookOver'], ko['settingsUi.controlOff'], ko['settingsUi.controlOff']])
       expect(t(source.nameKey)).toBe('브라우저 기록, 북마크, 다운로드')
     } finally {
       await language('en')

@@ -27,3 +27,8 @@ export function usageLabel(name: string): string {
 export function visibleLoginMessage(connected: boolean, message?: string): string | undefined {
   return connected || !message ? undefined : message
 }
+
+// The footer's retry button is for a filing that stopped or cannot start (and stays, disabled, while one runs); with nothing to retry it is not shown.
+export function filingRetryShown(state: { working: boolean; paused: boolean; ready: boolean; enginesDetected: boolean }): boolean {
+  return state.working || state.paused || (state.enginesDetected && !state.ready)
+}

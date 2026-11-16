@@ -87,6 +87,10 @@ test('Settings language picker switches the UI live, keeps the draft and the Kor
 
     await pick(page, 'ko')
     await expect(page.getByTestId('activity-settings')).toHaveAttribute('aria-label', '설정')
+    // qa146 S25: picking a language keeps Settings open, now in that language.
+    await expect(page.getByTestId('settings-view'), 'settings stay open').toBeVisible()
+    await expect(page.getByTestId('setting-ui-language-ko')).toBeVisible()
+    await expect(page.getByTestId('settings-view').getByRole('button', { name: '완료', exact: true })).toBeVisible()
     expect(await page.evaluate(() => (window as unknown as { __langMarker?: number }).__langMarker)).toBe(1)
     expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
     await expect.poll(() => savedLanguage(profile)).toBe('ko')
