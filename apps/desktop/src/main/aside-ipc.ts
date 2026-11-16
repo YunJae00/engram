@@ -33,9 +33,16 @@ const REPLACES = /바꿔|바꾸|바꿀|말고|대신|아니라|아니고|\b(inst
 const ADDS = /추가|더해|포함|같이|도\s*(넣|해|찾|봐|알려|조사|알아|부탁)|[가-힣]도\s*[.!~]*$|\b(add|also|too|as well|include|plus)\b/i
 // A remark about the work (impatience, thanks), not a change to it: the work goes on as it was and its result still comes.
 // shortcut: short messages in a closed list only ("감사 보고서로 정리해줘" is a job); a remark it misses is handed to the turn as before, which costs time, not the request.
-const REMARKS = /느려|느리|왜\s*이렇게|오래\s*걸|답답|언제\s*(돼|되|끝|나와)|아직(이야|이에요|인가요|도\s*안|\s*멀었|\s*안\s*(됐|끝|나))|^\s*(아\s+)?(고마워|고맙|감사해|감사합니다|수고)|빨리\s*(좀|해|해줘)?[\s.!~]*$|\b(so slow|hurry up|how (much )?long(er)?|taking (so |too )?long|thanks|thank you)\b/i
+// Each alternative takes its whole word, so what is left over after them is whatever else the message says.
+const REMARKS = /느려\S*|느리\S*|왜\s*이렇게|오래\s*걸\S*|답답\S*|언제\s*(돼|되|끝|나와)\S*|아직(이야|이에요|인가요|도\s*안\s*\S*|\s*멀었\S*|\s*안\s*(됐|끝|나)\S*)|고마워\S*|고맙\S*|감사(해|합니다|드려|드립니다)\S*|수고\S*|빨리(\s*좀)?(\s*해\s*(줘|주세요)\S*)?|\b(so slow|hurry up|how (much )?long(er)?|taking (so |too )?long|thanks|thank you)\b/gi
+const REMARK_FILLER = /^(아|어|음|좀|진짜|너무|정말|왜|근데|이렇게|요|네|is|it|its|this|that|so|still|very|you|a lot|much)$/i
 const REMARK_MAX = 25
-export function asideShape(text: string): AsideShape { return REPLACES.test(text) ? 'replace' : ADDS.test(text) ? 'add' : [...text.trim()].length <= REMARK_MAX && REMARKS.test(text) ? 'remark' : 'other' }
+// A remark is nothing but the remark: thanks or impatience with a job behind it ("고마워, 대구 넣어줘") is a change and goes to the turn (c3a review r1 #1).
+function remark(text: string): boolean {
+  const rest = text.replace(REMARKS, ' ')
+  return [...text.trim()].length <= REMARK_MAX && rest !== text && rest.split(/[^가-힣a-z0-9]+/i).every(word => !word || REMARK_FILLER.test(word))
+}
+export function asideShape(text: string): AsideShape { return REPLACES.test(text) ? 'replace' : ADDS.test(text) ? 'add' : remark(text) ? 'remark' : 'other' }
 const FIXED: Record<AsideShape, [string, string]> = {
   add: ['그것도 넣을게요.', 'Adding that too.'],
   replace: ['바꿔서 볼게요.', 'Switching to that now.'],
@@ -58,14 +65,18 @@ export function asideReplyPrompt(goal: string, said: string, korean: boolean): s
     `Message: ${JSON.stringify(said.trim().slice(0, 600))}`,
   ].join('\n')
 }
-// One line within the budget, whatever the voice does.
-export async function asideReply(voice: Pick<Engine, 'id' | 'quick'> | undefined, workdir: string, goal: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string> {
+// In a Korean thread the only English a line may carry is what the person wrote themselves, a name they used
+// ("대구도 넣을게요. Searching the web for results" passed on its one Hangul word: c3a review r1 #3, GROKBOT rule 12).
+const english = (line: string, said: string): boolean => { const theirs = said.toLowerCase(); return (line.match(/[A-Za-z]+/g) ?? []).some(word => !theirs.includes(word.toLowerCase())) }
+type Voice = Pick<Engine, 'id' | 'quick'> | undefined
+// One line within the budget, whatever the voice does. The budget covers finding the voice too:
+// that lookup probes sign-in and can take 15 s, and it used to be awaited before the clock started (c3a review r1 #2).
+export async function asideReply(voice: Voice | Promise<Voice>, workdir: string, goal: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string> {
   const fixed = fixedAsideReply(said, korean)
-  if (!voice?.quick) return fixed
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const line = cleanLine(await Promise.race([voice.quick(asideReplyPrompt(goal, said, korean), { workdir, timeoutMs: budgetMs }), new Promise<string>(resolve => { timer = setTimeout(() => resolve(''), budgetMs) })]))
-    return line && [...line].length <= ASIDE_REPLY_MAX && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) && (!korean || /[가-힣]/.test(line)) && !/[?？]\s*$/.test(line) ? line : fixed
+    const line = cleanLine(await Promise.race([Promise.resolve(voice).then(found => found?.quick?.(asideReplyPrompt(goal, said, korean), { workdir, timeoutMs: budgetMs }) ?? ''), new Promise<string>(resolve => { timer = setTimeout(() => resolve(''), budgetMs) })]))
+    return line && [...line].length <= ASIDE_REPLY_MAX && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) && (!korean || /[가-힣]/.test(line) && !english(line, `${goal} ${said}`)) && !/[?？]\s*$/.test(line) ? line : fixed
   } catch { return fixed } finally { clearTimeout(timer) }
 }
 
@@ -142,8 +153,8 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     }
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     const started = Date.now()
-    const voice = await deps.voice?.(channel).catch(() => undefined)
-    const reply = await asideReply(voice, voice ? engineCwd(deps.paths) : '', goal, said, await inKorean())
+    const korean = await inKorean()
+    const reply = await asideReply(deps.voice?.(channel), deps.voice ? engineCwd(deps.paths) : '', goal, said, korean)
     flog('aside', JSON.stringify({ channel, reply: 'shown', shape: asideShape(said), ms: Date.now() - started }))
     // The reply is kept under the words it answers, as a line of the running turn, not as its answer.
     await appendBotTurn(deps.paths, botId, { role: 'assistant', text: withoutSecrets(reply, said), at: new Date().toISOString(), progress: true, aside: true }).catch(error => flog('aside', error))

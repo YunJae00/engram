@@ -143,6 +143,9 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   expect([asideShape('아 대구도 추가해'), asideShape('그냥 애플로 바꿔'), asideShape('엔비디아 말고 테슬라'), asideShape('아 왜 이렇게 느려'), asideShape('고마워 수고했어'), asideShape('표로 보여줘')]).toEqual(['add', 'replace', 'replace', 'remark', 'remark', 'other'])
   // Impatience that also changes the job is a change.
   expect(asideShape('빨리 대구도 추가해')).toBe('add')
+  // c3a review r1 #1: thanks or impatience with a job behind it is a change, whatever verb it uses; alone it stays a remark.
+  expect(['고마워, 대구 넣어줘', '느려, 표로 줘', '수고했어 이제 부산 날씨 봐줘', 'thanks, check Busan'].map(asideShape)).toEqual(['other', 'other', 'other', 'other'])
+  expect(['고마워요!', '아 진짜 너무 느려', '언제 끝나?', '아직 멀었어?', '빨리 좀 해줘', 'thanks'].map(asideShape)).toEqual(Array(6).fill('remark'))
   expect(fixedAsideReply('아 대구도 추가해', true)).toBe('그것도 넣을게요.')
   expect(fixedAsideReply('그냥 애플로 바꿔', true)).toBe('바꿔서 볼게요.')
   expect(fixedAsideReply('아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
@@ -172,6 +175,15 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   expect(await asideReply(quick('대구도 넣을까요?'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
   expect(await asideReply(quick('가'.repeat(ASIDE_REPLY_MAX + 1)), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
   expect(await asideReply(quick('Adding Daegu too.'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  // c3a review r1 #3: one Korean word does not make a Korean line; English the person did not write themselves is refused.
+  expect(await asideReply(quick('대구도 넣을게요. Searching the web for results'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
+  expect(await asideReply(quick('running 상태예요.'), 'tmp', goal, '아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
+  expect(await asideReply(quick('iPhone도 넣을게요.'), 'tmp', goal, 'iPhone도 추가해', true)).toBe('iPhone도 넣을게요.')
+  // c3a review r1 #2: the budget starts before the voice is found, so a slow sign-in probe cannot hold the reply.
+  const began = Date.now()
+  expect(await asideReply(new Promise(found => setTimeout(() => found(quick('대구도 넣을게요.')), 400)), 'tmp', goal, '아 대구도 추가해', true, 30)).toBe('그것도 넣을게요.')
+  expect(Date.now() - began).toBeLessThan(300)
+  expect(await asideReply(Promise.reject(new Error('no voice')), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 넣을게요.')
   expect(await asideReply(quick('NONE'), 'tmp', goal, '표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
   // What the voice is asked for.
   const prompt = asideReplyPrompt(goal, '아 왜 이렇게 느려', true)
@@ -202,6 +214,10 @@ it('hands a change to the running turn before the reply is written, keeps a rema
     expect(held).toEqual(['아 대구도 추가해'])
     expect((await readCheckpoint(paths, 'reply')).pending).toEqual(['아 대구도 추가해'])
     expect((await readBotTranscript(paths, 'reply')).map(turn => `${turn.role} ${turn.text}`)).toEqual(['user 아 대구도 추가해', 'assistant 대구도 넣을게요.', 'user 아 왜 이렇게 느려', 'assistant 거의 다 찾았어요, 금방 올릴게요.'])
+    // Thanks with a job behind it reaches the turn (review r1 #1).
+    expect((await say('고마워, 대구 넣어줘')).instruction).toBe('고마워, 대구 넣어줘')
+    expect(held).toEqual(['아 대구도 추가해', '고마워, 대구 넣어줘'])
+    held.pop()
     // Stop is not a steer: no voice, no hand-over, its own short line (T3).
     const before = asked.length
     expect(await say('멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
