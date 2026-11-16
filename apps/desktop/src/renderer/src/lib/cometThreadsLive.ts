@@ -10,8 +10,10 @@ const SELECTED_KEY = 'engram.comets.selected'
 // A launch reopens the chat that was open at quit. A reload inside the same
 // window (sessionStorage outlives it, a relaunch does not) starts at the welcome.
 const LAUNCHED_KEY = 'engram.comets.launched'
-const fresh = sessionStorage.getItem(LAUNCHED_KEY) === null
-sessionStorage.setItem(LAUNCHED_KEY, '1')
+// Without browser storage (a unit test) there is no last chat: the welcome.
+const stored = typeof sessionStorage !== 'undefined' && typeof localStorage !== 'undefined'
+const fresh = stored && sessionStorage.getItem(LAUNCHED_KEY) === null
+if (stored) sessionStorage.setItem(LAUNCHED_KEY, '1')
 export const cometThreads = createCometThreads(fresh ? localStorage.getItem(SELECTED_KEY) : null)
 const pendingReloads = new Set<string>()
 

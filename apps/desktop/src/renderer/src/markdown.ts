@@ -149,7 +149,7 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }
 
-// The ids of every file the chat's answers link, one per line. A card's "(이전)" link opens an earlier version only when it is one of these.
+// The ids of every file the chat's answers link, one per line. A card's "previous" link opens an earlier version only when it is one of these.
 export const linkedFiles = (messages: readonly { role: string; text: string }[]): string =>
   messages.flatMap(({ role, text }) => role === 'assistant' && text.includes('engram-artifact:') ? answerFiles(answerText(text)).files.map(file => file.id) : []).join('\n')
 
