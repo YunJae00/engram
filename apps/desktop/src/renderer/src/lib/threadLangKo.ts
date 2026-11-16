@@ -128,6 +128,6 @@ export const GROUP_KO: Record<string, string> = {
   'Using your memory': '기억 찾아보기', 'Planning the work': '순서 정하기', 'Running commands': '명령 실행', 'Checking the result': '결과 확인', 'Working with files': '파일 작업',
 }
 export const KO_STOP = { starts: ['중지했어요.', '멈췄어요.', '여기까지 했어요: '], ended: '답을 마치지 못하고 끝났어요.', retry: '이어서 해줘' } as const
-export const FILE_CARD_KO = { open: '열기', reveal: 'Finder에서 보기', revealWin: '탐색기에서 보기' } as const
+export const FILE_CARD_KO = { open: '열기', reveal: 'Finder에서 보기', revealWin: '탐색기에서 보기', previous: '(이전)', previousTitle: '이전 버전 열기' } as const
 // A message that only says to carry on (teamView).
 export const KO_CARRY_ON = /^(?:계속|이어서|마저)\s*(?:진행)?\s*(?:해|하자|해\s*줘|해\s*주세요|하세요)?$/
