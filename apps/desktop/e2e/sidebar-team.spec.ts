@@ -69,5 +69,7 @@ test('a bot keeps its last team in the sidebar and the chat after the task stopp
   await expect(row.getByTestId('sidebar-team-lead'), 'ENDED-TEAM leads and how they finished').toHaveText([/시장조사 팀장.+/, /마케팅 팀장.+/])
   await expect(row.getByTestId('sidebar-team-lead').first()).toHaveAttribute('data-state', 'released')
   await page.getByTestId(`bot-${botId}`).click()
-  await expect(page.getByTestId('team-card'), 'ENDED-TEAM card stays in the chat').toBeVisible()
+  // c4: the strip in the thread is there only while someone is working; the sidebar row above keeps the ended team.
+  await expect(page.getByTestId('bots-input'), 'the chat is open').toBeVisible()
+  await expect(page.getByTestId('team-card'), 'ENDED-TEAM leaves no strip in the chat').toHaveCount(0)
 })

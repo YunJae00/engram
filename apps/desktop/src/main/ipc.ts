@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSchedule, answersItself, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, aboutEmployee, employeesAnswer, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -202,6 +202,8 @@ import { withModelCallContext } from './model-call-metrics.js'
 import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
+// The reply just before this message: "그거 취소해" means what that reply named (core dutyToCancel).
+const lastReplyOf = (history?: readonly { role: string; text: string }[]): string | undefined => [...(history ?? [])].reverse().find(one => one.role === 'assistant')?.text
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { browserHistory, browserNavigate, browserResize } from './browser-navigation.js'
@@ -2312,7 +2314,7 @@ export function registerIpc(ctx: VaultContext): void {
     // An ask the host answers itself on the person's own thread (the team's status, who someone is, a plain add, hand-off or schedule) is
     // decided here, before a first line can be shown: its answer is the first text (grokbar C9: a canned line at 0.6 s over an answer ready at 1 s).
     const hostAnswers = !!request.botId && !request.scheduled && !recovery && !savedRoutine && !turn?.report && !turn?.verification && !turn?.quiet && !request.attachments?.length && !studying.has(entry.channel)
-      && await loadBots(paths).then(bots => bots.find(bot => bot.id === request.botId)?.primary === true && answersItself(request.message, bots), () => false)
+      && await loadBots(paths).then(bots => bots.find(bot => bot.id === request.botId)?.primary === true && answersItself(request.message, bots, lastReplyOf(request.history)), () => false)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
     beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (request.botId ? await readBotTranscript(paths, request.botId, 8) : request.history ?? []).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })
     workSoFar.delete(entry.channel)
@@ -2553,6 +2555,20 @@ export function registerIpc(ctx: VaultContext): void {
       turnOutcomes.set(channel, { answer: said, asked: true, unfinished: true, steps: 0 })
       broadcast({ type: 'chat:done', channel, text: said })
       return
+    }
+    // grokbar c4 C7: so is "내 일정 뭐 있어?", from the stored schedules, and "그거 취소해" right after the one schedule was said.
+    if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && !turn?.report && !request.scheduled) {
+      const kept = (await loadBots(paths)).flatMap(one => one.tasks ?? []), cancel = dutyToCancel(request.message, kept, lastReplyOf(savedHistory))
+      const said = cancel ? (await removeScheduled(paths, cancel.id) ? '취소했어요.' : undefined) : isDutyListAsk(request.message) ? dutyList(kept) : undefined
+      if (said) {
+        if (cancel) { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }
+        firstLineSpoke(channel)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
+        turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
+        answering.delete(channel)
+        broadcast({ type: 'chat:done', channel, text: said })
+        return
+      }
     }
     // "다들 뭐 하고 있어?" on the person's own thread is answered from stored state: no model round.
     if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && isStatusAsk(request.message)) {
@@ -2804,9 +2820,12 @@ export function registerIpc(ctx: VaultContext): void {
         // grokbar B7: so is adding one named agent (C1), and two answers need no call at all: who an agent is (C9), and the
         // result of agents who worked in the background (C5, C6: the merge is the host's, so it keeps every fact, name and address).
         const hire = !handoff && company && chief && !turn?.report && request.scheduled !== true ? plainHire(request.message) : undefined
+        // grokbar c4 C3, C8: and so are a plain split (a list of things and as many names) and taking one teammate off or renaming one.
+        const split = !handoff && !hire && company && chief && !turn?.report && request.scheduled !== true ? plainSplit(request.message, staff.map(one => one.name)) : undefined
+        const change = !handoff && !hire && !split && company && chief && !turn?.report && request.scheduled !== true ? plainChange(request.message, staff.map(one => one.name)) : undefined
         // grokbar C7: and so is keeping a plain weekly or daily ask (one model round only copied the day and the time: 6.6 s, bar 5 s).
-        const kept = !handoff && !hire && company && chief && !turn?.report && request.scheduled !== true ? plainSchedule(request.message) : undefined
-        const direct = handoff ? { tool: 'assign', args: handoff } : hire ? { tool: 'agents', args: hire } : kept ? { tool: 'schedule', args: kept } : undefined
+        const kept = !handoff && !hire && !split && !change && company && chief && !turn?.report && request.scheduled !== true ? plainSchedule(request.message) : undefined
+        const direct = handoff ? { tool: 'assign', args: handoff } : split ? { tool: 'assign', args: split } : hire ? { tool: 'agents', args: hire } : change ? { tool: 'agents', args: change } : kept ? { tool: 'schedule', args: kept } : undefined
         // The quick model writes the team's merged answer from their results; the host checks it and keeps its own table as the fallback.
         const writer = engine.id === 'claude' && engine.quick ? (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: REPORT_WRITER_MS }) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })

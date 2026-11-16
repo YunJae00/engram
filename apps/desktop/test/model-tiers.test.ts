@@ -371,6 +371,8 @@ describe('instant first line', () => {
     expect(firstLineNote('bot-1')).toContain('바로 팀에 넣을게요.')
     // A closing tool's reply sends no reset: the line is still on screen, and the reply replaces it rather than following it.
     expect(firstLineCarried('bot-1')).toBe('바로 팀에 넣을게요.')
+    // c4 C10/C7: it is the host's waiting line: a tool call does not freeze it into a bubble above the answer ("지금 정리할게요." over the summary).
+    expect(firstLineWaiting('bot-1')).toBe(true)
     await vi.advanceTimersByTimeAsync(2000)
     expect(show).toHaveBeenCalledOnce()
     expect(laneLine('지우 무슨 일 하는 사람이야?', true)).toBe('지금 확인해 볼게요.')
@@ -389,8 +391,8 @@ describe('instant first line', () => {
     // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
     expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
     // grokbar cycle 3 (C7): a plain weekly or daily ask is the schedule call made by the host under the same gates.
-    expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : hire \? \{ tool: 'agents', args: hire \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
+    expect(source('ipc.ts')).toMatch(/const kept = !handoff && !hire && !split && !change && company && chief && !turn\?\.report && request\.scheduled !== true \? plainSchedule\(request\.message\) : undefined/)
+    expect(source('ipc.ts')).toMatch(/const direct = handoff \? \{ tool: 'assign', args: handoff \} : split \? \{ tool: 'assign', args: split \} : hire \? \{ tool: 'agents', args: hire \} : change \? \{ tool: 'agents', args: change \} : kept \? \{ tool: 'schedule', args: kept \} : undefined/)
     expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: direct \? \[\{ tool: direct\.tool, args: direct\.args, observation: handed \}\] : \[\], fellBack: false \} : await runComet\(/)
     // grokbar B7: adding one agent is the agents call made by the host under the same gates; who an agent is and a background result need no model either.
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
@@ -421,7 +423,7 @@ describe('instant first line', () => {
     const ipc = source('ipc.ts'), decided = ipc.indexOf('const hostAnswers = '), begun = ipc.indexOf('beginFirstLine({ host: hostAnswers,')
     expect(decided).toBeGreaterThan(0)
     expect(begun).toBeGreaterThan(decided)
-    expect(ipc.slice(decided, begun)).toContain('answersItself(request.message, bots)')
+    expect(ipc.slice(decided, begun)).toContain('answersItself(request.message, bots, lastReplyOf(request.history))')
     expect(ipc.slice(decided, begun)).toMatch(/\.primary === true && answersItself/)
     // It never throws out of the turn's setup: a team that cannot be read means an ordinary first line.
     expect(ipc.slice(decided, begun)).toContain('() => false)')

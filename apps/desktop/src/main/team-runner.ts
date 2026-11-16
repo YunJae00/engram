@@ -1,5 +1,5 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -111,13 +111,13 @@ export function teamRunner(deps: {
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
-      const sources = new Set<string>()
+      const sources = new Set<string>(), kept: string[] = []
       const begun = () => { if (me.lookup || me.writer) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS) }
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepSources(skipWalls(tool), sources) : tool, taskId, me))
+        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepRead(keepSources(skipWalls(tool), sources), kept) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
@@ -147,7 +147,7 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, sources.size ? { ...outcome, sources: [...sources] } : outcome, now(), isKorean(goal))
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: kept.join('\n\n') } : {}) }, now(), isKorean(goal))
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
         if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
