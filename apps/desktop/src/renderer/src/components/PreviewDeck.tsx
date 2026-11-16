@@ -26,12 +26,17 @@ export function previewAppVisible(frame: PreviewFrame | undefined, view: { hidde
 export function previewSlot(frame: Pick<PreviewFrame, 'id' | 'source'>, lane: string): string {
   return frame.source === 'web' ? `${lane}:web` : frame.id
 }
+// A browser with no page open is nothing to show: no "no website open" card beside the chat (grokbar c3 T1.png; GROKBOT rule 9).
+// A page that is open keeps its card, so a sign-in wall can still be taken over from it.
+export function shownFrames(all: PreviewFrame[], busy: boolean): PreviewFrame[] {
+  return all.filter(frame => frame.phase !== 'empty' && (busy || frame.phase !== 'activity'))
+}
 export function PreviewDeck({ frames: all, busy, state, lang, lane, compact, onOpenWeb, active = true, overlay = false }: {
   frames: PreviewFrame[]; busy: boolean; state: 'recorded' | 'stopped' | 'waiting'
   lang: ThreadLang; lane: string; compact: boolean; onOpenWeb?(): void; active?: boolean; overlay?: boolean
 }) {
   const presence = useId()
-  const frames = busy ? all : all.filter(frame => frame.phase !== 'activity')
+  const frames = shownFrames(all, busy)
   const words = threadWords(lang).workPreview
   const { attention } = useWebPane(lane)
   const [view, setView] = useState(() => preferences.get(lane) ?? { collapsed: false, hidden: false })

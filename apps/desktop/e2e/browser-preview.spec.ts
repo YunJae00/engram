@@ -42,7 +42,7 @@ test.afterAll(async () => {
   }
 })
 
-test('page work with no website open offers address entry instead of indefinite loading', async () => {
+test('page work with no website open shows no browser card beside the chat', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
   // Neither composer opens the page panel by hand any more; it arrives as a card with a bot's page work, even before any site is open.
   await openWelcome(page)
@@ -53,13 +53,12 @@ test('page work with no website open offers address entry instead of indefinite 
   await page.getByTestId(`bot-${empty}`).click()
   await expect(page.getByTestId('composer-web')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'open_page: page' }), `bot-${empty}`)
-  const expandEmpty = page.getByRole('button', { name: 'Expand preview', exact: true })
-  if (await expandEmpty.isVisible()) await expandEmpty.click()
-  await expect(page.locator('.preview-card-state')).toHaveText('No website open')
-  await page.getByRole('button', { name: 'Open full browser', exact: true }).click()
-  await expect(page.getByTestId('live-address')).toBeFocused()
-  await expect(page.getByTestId('live-address')).toHaveValue('')
-  await page.getByTestId('web-pane-fold').click()
+  // grokbar c3 (GROKBOT rule 9): with no page open there is nothing to show, so no card, no collapsed chip and no second pane appear.
+  // Long enough for a card to have been drawn, had there been one.
+  await page.waitForTimeout(1000)
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
+  await expect(page.getByTestId('preview-card-collapsed')).toHaveCount(0)
+  await expect(page.locator('.preview-card-state')).toHaveCount(0)
   await expect(page.getByTestId('web-pane')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   await page.locator('.bots-row', { hasText: 'Browser preview' }).click()
@@ -163,7 +162,8 @@ test('preview stays within a narrow window, stays above the thread and supports 
   await page.evaluate(lane => window.engram.browserTab(lane, 'add'), lane)
   const picture = page.locator('.preview-card canvas')
   await expect(picture).toHaveCount(0)
-  await expect(page.locator('.preview-card-state')).toHaveText('No website open')
+  // A blank tab is no page: its card is not drawn (grokbar c3), and comes back with the tab that holds one.
+  await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await page.evaluate(async ({ lane, id }) => window.engram.browserTab(lane, 'select', id), { lane, id: tabs.find(tab => tab.active)!.id })
   await expect(picture).toHaveAttribute('data-painted', '')
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))

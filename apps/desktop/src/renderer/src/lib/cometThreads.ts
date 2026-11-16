@@ -326,11 +326,35 @@ export function createCometThreads(initialSelected: string | null = null) {
       patch(id, { messages: messages.slice(0, -2) })
       return { text: asked.text, attachments: asked.attachments ?? [] }
     },
-    noteUser(id: string, text: string, attachments: string[] = []): void {
-      const current = thread(id)
-      // The running answer keeps streaming in its own bubble; these words wait below it for their own reply.
-      const messages: CometMessage[] = [...current.messages, { role: 'user', text, ...(attachments.length ? { attachments } : {}) }]
+    // absorbed: the running turn is being handed these words (chat:say); without it they are for a later turn and wait below the answer.
+    noteUser(id: string, text: string, attachments: string[] = [], absorbed = false): void {
+      const current = thread(id), at = current.busy && absorbed ? streamingAt(current.messages) : -1
+      const said: CometMessage = { role: 'user', text, ...(attachments.length ? { attachments } : {}) }
+      // Words said before the answer shows are taken in by the running turn: they stay where they were said, above the answer still to come
+      // (grokbar c3 T1). Once the answer is on screen they wait below it.
+      const above = at >= 0 && !current.messages[at]!.text.trim()
+      const messages: CometMessage[] = above ? [...current.messages.slice(0, at), said, ...current.messages.slice(at)] : [...current.messages, said]
       if (current.busy && streamingAt(messages) < 0) messages.push({ role: 'assistant', text: '', streaming: true })
+      patch(id, { messages })
+    },
+    // The running turn did not take the words after all (its answer was already out): they wait below it for a turn of their own.
+    sinkUser(id: string, text: string): void {
+      const messages = [...thread(id).messages], streaming = streamingAt(messages)
+      let from = -1
+      for (let i = messages.length - 1; i >= 0 && from < 0; i--) if (messages[i]!.role === 'user' && messages[i]!.text === text) from = i
+      if (from < 0 || streaming < 0 || from > streaming) return
+      messages.push(messages.splice(from, 1)[0]!)
+      patch(id, { messages })
+    },
+    // The running turn took these words in and the host answered them in one line: the line sits right under them, both above the answer.
+    noteReply(id: string, text: string, reply: string): void {
+      const current = thread(id), messages = [...current.messages]
+      let from = -1
+      for (let i = messages.length - 1; i >= 0 && from < 0; i--) if (messages[i]!.role === 'user' && messages[i]!.text === text) from = i
+      if (!current.busy || from < 0 || !reply.trim()) return
+      const [said] = messages.splice(from, 1)
+      const streaming = streamingAt(messages), to = streaming >= 0 && streaming < from ? streaming : from
+      messages.splice(to, 0, said!, { role: 'assistant', text: reply, progress: true, aside: true })
       patch(id, { messages })
     },
     noteWork(id: string, line: string): void {

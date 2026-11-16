@@ -105,8 +105,14 @@ describe('team hire tools', () => {
     expect(settled({ answer: '서울 12.4도 흐림', sources: naver, timedOut: true }).review).toBeUndefined()
     expect(answeredLookup('서울 12.4도 흐림', naver)).toBe(true)
     // A lone lookup's answer names the page it read when its words gave no address; one that has an address is left alone.
-    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과\n\n출처: [search.naver.com](https://search.naver.com/search.naver?query=원달러%20환율)')
-    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C.\n\nSource: [weather.example](https://www.weather.example/seoul) · [google.com](https://www.google.com/search?q=seoul)')
+    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과 [네이버 검색](https://search.naver.com/search.naver?query=원달러%20환율)')
+    // grokbar c3 L2/L4: "출처: bing.com" on a line of its own read like a printout. One named link after the last sentence, a page of its own before a results page.
+    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C. [weather.example](https://www.weather.example/seoul)')
+    expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).toBe('엔비디아는 159.22달러예요. [Bing 검색](https://www.bing.com/search?q=NVDA)')
+    expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).not.toMatch(/출처|bing\.com\]/)
+    // After a table or a list the link is a line of its own, never glued into the last row.
+    expect(citeOwn('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |', ['https://finance.example/nvda'], true)).toBe('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)')
+    expect(citeOwn('- 첫째\n- 둘째', naver, true)).toBe('- 첫째\n- 둘째\n\n[네이버 검색](https://search.naver.com/search.naver?query=서울+날씨)')
     const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
     expect(citeOwn(linked, naver, true)).toBe(linked)
     expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
@@ -239,6 +245,14 @@ describe('team hire tools', () => {
     expect(LOOKUP_HARD_MS - LOOKUP_SOFT_MS).toBeGreaterThanOrEqual(5_000)
     expect(LOOKUP_MAX_CALLS).toBeLessThanOrEqual(4)
     expect(LOOKUP_RULE).toContain('about ten seconds')
+    // grokbar c3 R2/C3: members reported "소스 접근 실패", "이번 턴 안에 내용을 읽어오지 못했습니다". They answer from the results list, in the
+    // person's language, and say what is missing in a plain clause.
+    expect(LOOKUP_RULE).toContain('Search once')
+    expect(LOOKUP_RULE).toContain('report at once from them, each fact with the address of the result it came from')
+    expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
+    expect(LOOKUP_RULE).toContain("Report in the person's language")
+    expect(LOOKUP_RULE).toContain('"아직 공식 가격은 안 나왔어요"')
+    expect(LOOKUP_RULE).toContain('never write about time, limits, attempts, tools, pages that did not open or what you failed to do')
   })
 
   it('keeps the pages a lookup member read: a search that ran, a page that opened, the ready pages of a batch', async () => {
@@ -269,34 +283,51 @@ describe('team hire tools', () => {
     const out = JSON.parse(await host.find(tool => tool.name === 'hire_members')!.run({ members: three.map(m => ({ ...m, lookup: true })) }, { task: '' }))
     expect(out.members.map((m: { sources?: string[] }) => m.sources)).toEqual([['https://weather.naver.com/today/09', 'https://search.naver.com/search.naver?query=seoul'], ['https://search.naver.com/search.naver?query=busan'], undefined])
     expect(out.note).toContain('markdown link')
-    expect(out.note).toContain('names the member who reported it')
+    // grokbar c3 R1/R2: rows read "서울 (서울날씨봇)" and the closing line "출처: iPhone18 · GalaxyS27 · Pixel11".
+    expect(out.note).toContain("the link text the site's own name")
+    expect(out.note).toContain("never a member's role or name")
+    expect(out.note).toContain('A row names a member only when the person named the members themselves')
+    // One friendly lead and one table, no status sentence, and a plain line for a member that found nothing.
+    expect(out.note).toContain('one friendly lead sentence that already gives the gist, then one table')
+    expect(out.note).toContain('nothing after the table')
+    expect(out.note).toContain('No status sentence about bots, members or collecting results')
+    expect(out.note).toContain('"못 찾았어요"')
     expect(out.note).toContain('never re-run')
     void call
   })
 
   it('carries every member\'s link into its own row of the one merged table, and leaves an answer that already cites them alone', () => {
-    const member = (id: string, role: string, sources: string[] | undefined, state = 'released') => ({ id, role, sources, state, parentId: null, depth: 1, brief: '', sessionKey: id, hiredAt: '' }) as never
+    const member = (id: string, role: string, sources: string[] | undefined, state = 'released', botId?: string) => ({ id, role, sources, state, parentId: null, depth: 1, brief: '', sessionKey: id, hiredAt: '', ...(botId ? { botId } : {}) }) as never
     const members = [member('m1', '서울 날씨', ['https://weather.naver.com/today/09']), member('m2', '부산 날씨', ['https://search.naver.com/search.naver?query=부산 날씨']), member('m3', '제주 날씨', ['https://weather.naver.com/today/14']), member('m4', '대구 날씨', undefined), member('m5', '광주 날씨', ['https://failed.example'], 'failed')]
     const table = '세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | 네이버 날씨 검색 |\n| 제주 | 흐림 | 15.6°C | 네이버 날씨 검색 |'
     const cited = citeMembers(table, members, true)
     // grokbar B6 r2: the link goes into the member's own row (a closing line left 부산 and 제주 with a site name alone). Still one table, no closing line.
-    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울(서울 날씨) | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산(부산 날씨) | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주(제주 날씨) | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
-    // grokbar B6 r3: every row names the member whose report it is, also the row that already had its link.
-    for (const [n, row] of cited.split('\n').slice(4).entries()) expect(row).toContain(`(${['서울', '부산', '제주'][n]} 날씨)`)
-    for (const row of cited.split('\n').slice(4)) expect(row).toMatch(/\]\(https:\/\//)
+    // grokbar c3 R1: a bot made for the job is not named in its row ("서울 (서울날씨봇)" read like a log).
+    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
+    for (const row of cited.split('\n').slice(4)) { expect(row).toMatch(/\]\(https:\/\//); expect(row).not.toMatch(/\((서울|부산|제주) 날씨\)/) }
     expect(citeMembers(cited, members, true)).toBe(cited)
     expect(cited).not.toContain('failed.example')
-    // No source column: the row keeps its cells and gains the link. A row named with its employee, an empty source cell.
-    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산**(부산 날씨) | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
-    const staff = [member('m1', '김대리', ['https://notion.com/releases']), member('m2', '박사원', ['https://slack.com/changelog'])]
-    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | - |\n| 슬랙(박사원) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | [김대리](https://notion.com/releases) |\n| 슬랙(박사원) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
-    // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line.
+    // No source column: the row keeps its cells and gains the link.
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
+    // Someone on the person's team is named in their row (GROKBOT rule 7), and an empty source cell is filled with the site's name, never theirs.
+    const staff = [member('m1', '지민', ['https://www.notion.com/releases'], 'released', 'bot-jimin'), member('m2', '서연', ['https://slack.com/changelog'], 'released', 'bot-seoyeon'), member('m3', '도윤', undefined, 'released', 'bot-doyun')]
+    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | - |\n| 슬랙(서연) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | [notion.com](https://www.notion.com/releases) |\n| 슬랙(서연) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
+    const namedStaff = [member('m1', '지민', ['https://www.notion.com/releases'], 'released', 'bot-jimin')]
+    namedStaff[0]!['brief' as never] = '노션 신기능 조사' as never
+    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션 | AI 회의록 | 노션 블로그 |', namedStaff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | [노션 블로그](https://www.notion.com/releases) |')
+    // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line,
+    // each link named for its site (grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11").
     const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
-    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [서울 날씨](https://weather.naver.com/today/09) · [부산 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
-    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table.replace('| 서울 |', '| 서울(서울 날씨) |'))
-    // A member with nothing to link (no pages kept, or failed) is still named in its row.
-    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| 대구 | 아직 조사 중이에요. |\n| 광주 | 확인하지 못했어요. |', members.slice(3), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| 대구(대구 날씨) | 아직 조사 중이에요. |\n| 광주(광주 날씨) | 확인하지 못했어요. |')
-    expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [서울 날씨](https://weather.naver.com/today/09)')
+    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [네이버](https://weather.naver.com/today/09) · [네이버 검색](https://search.naver.com/search.naver?query=부산%20날씨)`)
+    const phones = [member('m1', 'iPhone18', ['https://www.bing.com/search?q=iPhone+18']), member('m2', 'GalaxyS27', ['https://www.bing.com/search?q=Galaxy+S27']), member('m3', 'Pixel11', ['https://www.bing.com/search?q=iPhone+18'])]
+    const closing = citeMembers('세 기종 모두 아직 공식 가격이 안 나왔어요.', phones, true)
+    expect(closing).toBe('세 기종 모두 아직 공식 가격이 안 나왔어요.\n\n출처: [Bing 검색](https://www.bing.com/search?q=iPhone+18) · [Bing 검색](https://www.bing.com/search?q=Galaxy+S27)')
+    expect(closing).not.toMatch(/iPhone18|GalaxyS27|Pixel11/)
+    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table)
+    // A member with nothing to link (no pages kept, or failed) keeps its row as the lead wrote it.
+    const missing = '| 도시 | 날씨 |\n|---|---|\n| 대구 | 아직 찾는 중이에요. |\n| 광주 | 못 찾았어요. |'
+    expect(citeMembers(missing, members.slice(3), true)).toBe(missing)
+    expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [Naver](https://weather.naver.com/today/09)')
     expect(citeMembers('', members, true)).toBe('')
   })
 

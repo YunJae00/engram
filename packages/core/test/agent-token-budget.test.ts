@@ -118,7 +118,7 @@ it('starts no tool after the session deadline and passes the model tier to the e
   let ran = 0
   const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [{ name: 'read_note', description: '', argsSchema: {}, run: async () => { ran++; return 'note' } }] }, 'Seoul weather', { deadlineMs: 10, modelHint: 'smart' })
   expect(ran).toBe(1)
-  expect(said[1]).toContain('Time is up for this part')
+  expect(said[1]).toContain('Call no more tools.')
   expect(hint).toBe('smart')
   expect(result.stopped).toBe('calls')
   expect(result.answer).toContain('Seoul 12C')

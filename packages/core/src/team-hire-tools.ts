@@ -20,8 +20,10 @@ const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask
 // A lookup member that finished on its own and names its sources is accepted as it is: the lead reads it while merging. grokbar: three review_member rounds cost ~10 s.
 export const AUTO_REVIEW = 'auto: sourced lookup'
 const ACCEPTED_NOTE = 'Members with accepted true are sourced lookups, already accepted and released: do not call review_member for them. Report in one merged answer: several items go in one table, each row with the address it came from.'
+// grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source), and nothing after the table. No status sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a fact that is not out yet is said as that ("아직 공식 가격은 안 나왔어요").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
-const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources; never a site name alone. The first cell of every row names the member who reported it, in parentheses after the item.'
+const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s own name (네이버 날씨, Apple), never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
@@ -36,7 +38,9 @@ export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'r
 export const LOOKUP_SOFT_MS = 8_000
 export const LOOKUP_HARD_MS = 15_000
 export const LOOKUP_MAX_CALLS = 4
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search first: the results come with their own address, the addresses on that page and what each says. When they answer the brief, report at once from them; open a page only for a fact the results do not hold. Report with the address of each page the facts came from (the page itself, never a search-results address). A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+// grokbar c3 R2/R3: members spent their ten seconds thinking between a search and a page that was then refused, and reported "소스 접근 실패".
+// The search now hands over the results themselves (title, address, words, date), so one search is the normal case.
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and at most one page. Search once, with the query in the person\'s language: the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from; open a page only for a number none of them shows. Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself, as with weather or a rate). When something is not out yet or could not be found, still give what there is (a reported or expected figure, named as that) and say what is missing in one plain clause ("아직 공식 가격은 안 나왔어요"); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -142,7 +146,8 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   if (!answer.trim()) return answer
   const cited = members.filter(m => m.sources?.length && m.state !== 'failed')
   const href = (m: TeamMember): string => m.sources![0]!.replace(/\)/g, '%29').replace(/ /g, '%20')
-  const name = (m: TeamMember): string => m.role.replace(/[[\]|]/g, '').trim()
+  // Only someone on the person's team is named in a row ("노션(지민)"); a bot made for the job has no name the person knows (c3 R1: "서울 (서울날씨봇)").
+  const name = (m: TeamMember): string => m.botId ? m.role.replace(/[[\]|]/g, '').trim() : ''
   const lines = answer.split('\n')
   let sourceColumn = false
   for (const [i, line] of lines.entries()) {
@@ -157,20 +162,33 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
     if (name(own) && !line.includes(name(own))) cells[0] = `${cells[0]}(${name(own)})`
     if (cited.includes(own) && !/https?:\/\//.test(line)) {
       const last = cells.at(-1)!.replace(/[[\]]/g, '')
-      cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || name(own)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+      cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || siteName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
     }
     lines[i] = `| ${cells.join(' | ')} |`
   }
   const fixed = lines.join('\n')
   const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)))
   if (!missing.length) return fixed
-  return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${missing.map(m => `[${m.role.replace(/[[\]]/g, '')}](${href(m)})`).join(' · ')}`
+  // grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11" - the link text is the site's name, never a member's role.
+  return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${[...new Map(missing.map(m => [href(m), `[${siteName(m.sources![0]!, korean)}](${href(m)})`])).values()].join(' · ')}`
+}
+// What a person calls the site an address is on: "네이버 검색", "apple.com".
+const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing']]
+export function siteName(url: string, korean = false): string {
+  let host: string
+  try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+  const known = SITES.find(([hosts]) => hosts.test(host))
+  if (!known) return host
+  return `${known[korean ? 1 : 2]}${SEARCH_PAGE.test(url) ? korean ? ' 검색' : ' search' : ''}`
 }
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
+// c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.
 export function citeOwn(answer: string, read: readonly string[], korean = false): string {
   if (!answer.trim() || !read.length || /https?:\/\//.test(answer)) return answer
-  const site = (url: string): string => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url } }
-  return `${answer.trimEnd()}\n\n${korean ? '출처' : 'Source'}: ${sourcesOf(read).map(url => `[${site(url)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`).join(' · ')}`
+  const url = sourcesOf(read)[0]!, link = `[${siteName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
+  const text = answer.trimEnd(), last = text.split('\n').at(-1)!
+  // After a table, a list or a code block the link is a line of its own.
+  return /^\s*([|>#*+-]|\d+[.)]\s|```)/.test(last) ? `${text}\n\n${link}` : `${text} ${link}`
 }
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
@@ -260,7 +278,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     // Nothing delivered and someone needs the person: their question ends the turn. With results in hand the lead reports them and asks at the end.
     const partial = ended.some(m => m.state === 'waiting') && ended.some(m => m.state === 'done')
     const base = partial ? PARTIAL_NOTE : ended.every(accepted) ? ACCEPTED_NOTE : ended.some(accepted) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
-    const note = ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base
+    const note = `${ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base}${partial ? '' : ` ${MERGED_SHAPE}`}`
     return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, note })
   }
   const hire: AgentTool = {

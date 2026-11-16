@@ -37,17 +37,25 @@ function summarizeArgs(args: Record<string, unknown>): string {
   return typeof first === 'string' ? first.slice(0, 80) : ''
 }
 
-export function withSteer(text: string, said: string[]): string {
+// replied: the host already gave the person a one-line reply (grokbar c3 T1/H6: the model's own reply came with its next tool result, at 6.7 s or never).
+export function withSteer(text: string, said: string[], replied = false): string {
   if (!said.length) return text
-  return `${text}\n\nThe person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}. First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
+  const words = `The person just wrote, while you work: ${said.map(line => JSON.stringify(line)).join(', then ')}.`
+  return replied
+    ? `${text}\n\n${words} They were already told in one short line that you got it: do not acknowledge, repeat or answer it again, and write nothing before your next step. Take it in now: when it adds to the job, do the added part too and give one answer that covers everything; when it replaces the job, do the new one only and leave the replaced one out of the answer; when it is only a remark (a complaint, thanks), go on unchanged. If it asked a question that one line could not have answered, answer it in your answer.`
+    : `${text}\n\n${words} First answer them in one short line in their language - that you got it, or the answer if they asked something - then go on, taking it into account; if it changes or stops the job, do that.`
 }
+
+// What a lookup is told when its time or its calls are used up. grokbar c3: "Time is up for this part" and "No more calls this turn" came
+// back to the person as "시간이 다 돼서 이번 턴에서는…" and "다시 시도해볼까요?".
+export const ANSWER_NOW = 'Call no more tools. Answer now from what you already have, in the person\'s language: what you found, each fact with the address it came from, and in one plain clause what is not out yet or could not be found. Do not mention time, limits, turns, attempts or tools, do not apologize, and do not ask whether to try again or look further.'
 
 const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
 // shortcut: words that keep coming past this many rewrites are answered as their own turn, raise it if people steer more often.
 const LATE_STEER_ROUNDS = 3
-export function lateSteer(draft: string, said: string[]): string {
-  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
+export function lateSteer(draft: string, said: string[], replied = false): string {
+  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
 }
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
@@ -90,6 +98,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   let exhausted = false
   let extended = false
   let toolMs = 0
+  // Words taken mid-lookup are a new ask: its time and its calls start again, once (grokbar c3 T2: "그냥 애플로 바꿔" was taken at 5 s and the 애플 search was refused at 12.96 s).
+  let renewed = false
+  const renew = (): void => { if (!options.lookup || renewed) return; renewed = true; exhausted = false; extended = false; startedCalls = 0; working = Date.now() }
   let stalled = false, stallNote = ''
   // A closing tool's reply is the answer (AgentTool.closes): the turn ends on it unless another kind of call ran this turn or one follows within the grace.
   let closed: string | undefined, composing = false, close: ((result: ToolSessionResult) => void) | undefined
@@ -110,9 +121,15 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (closed !== undefined) return 'The turn already ended with your last reply to the person. Call nothing more.'
       const closing = typeof tool.closes === 'function' ? tool.closes(args) : tool.closes === true
       if (!closing) { composing = true; release() }
-      if (options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs) {
+      const late = options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs
+      // A lookup at its limit still hears the person: words waiting there change the job before the old one is answered (Codex b6 r3 #1).
+      if (options.lookup && !renewed && (late || startedCalls + 1 > allowance())) {
+        const waiting = options.takeSteer?.() ?? []
+        if (waiting.length) { renew(); return withSteer('That call was not run.', waiting, options.steerReplied) }
+      }
+      if (late) {
         exhausted = true
-        return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
+        return ANSWER_NOW
       }
       const budget = allowance()
       const cost = tool.name === 'read_pages' && Array.isArray(args['pages']) ? Math.min(4, Math.max(1, args['pages'].length)) : 1
@@ -122,7 +139,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (startedCalls + cost > budget && finding) extended = true
       if (startedCalls + cost > budget && !checkpoint && !finding) {
         exhausted = true
-        return 'No more calls this turn. Report incomplete work and the last confirmed state; do not claim completion or propose saving this as a successful routine.'
+        return options.lookup ? ANSWER_NOW : 'No more calls. Report incomplete work and the last confirmed state, in the person\'s language and without speaking of turns, limits or attempts; do not claim completion or propose saving this as a successful routine.'
       }
       if (PAGE_MOVES.has(tool.name) || RECEIPT_ACTIONS.has(tool.name)) collection.invalidate()
       startedCalls += cost
@@ -180,13 +197,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const delivered = modelObservation ?? observation
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
+      if (said.length) renew()
       if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
         closeLines.push(observation)
         held ??= []
         const mark = startedCalls
         setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)
       } else release()
-      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said)
+      const text = said.length && liveSteer && await liveSteer(said).catch(() => false) ? result : withSteer(result, said, options.steerReplied)
       return image ? { text, image } : text
     },
   }))
@@ -252,6 +270,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),
+    // A lookup reads and reports: it needs no long thinking between calls (grokbar c3 R3: 14.5 s of model time between two searches).
+    ...(options.lookup ? { effort: 'low' as const } : {}),
     ...(options.native ? { native: {
       ...options.native,
       decide: async (name, input, signal) => {
@@ -303,7 +323,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       options.onReset?.(true)
       // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
       exhausted = false; extended = false; startedCalls = 0; working = Date.now()
-      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late)}` }), ended])
+      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
     }
   } finally {
     options.onSteerable?.(null)

@@ -16,7 +16,8 @@ export function withModel(engine: Engine, model: string, effort?: ReasoningEffor
   const selected: Engine = Object.create(engine) as Engine
   selected.detect = () => engine.detect()
   selected.run = job => engine.run({ ...job, model, effort })
-  if (engine.runTools) selected.runTools = job => engine.runTools!({ ...job, model, effort })
+  // A job that names its own effort keeps it (a lookup asks for low): the setting is the default, not an override.
+  if (engine.runTools) selected.runTools = job => engine.runTools!({ ...job, model, effort: job.effort ?? effort })
   return selected
 }
 

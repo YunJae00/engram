@@ -120,5 +120,7 @@ it('shows each search result with the words beside it and leaves the choice to t
   const search = cometTools({ paths, retrieve: async () => [], searchTemplate, courier: { fetchPage: async () => results } }).find(tool => tool.name === 'search_web')!
   const text = await search.run({ query: 'report' }, context)
   expect(text).not.toContain('call open_page with')
-  expect(text).toContain('- Weekly report — https://reports.example/weekly\n  North and South totals for the region.')
+  // grokbar c3: one line per result - title, its own address, the words under it (and its date when the page shows one).
+  expect(text).toContain('- Weekly report — https://reports.example/weekly — North and South totals for the region.')
+  expect(text).toContain("Answer from them when they hold the fact and cite that result's address")
 })

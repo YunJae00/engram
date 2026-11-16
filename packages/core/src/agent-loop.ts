@@ -135,6 +135,8 @@ export interface AgentLoopOptions {
   deadlineMs?: number
   // The tool session has its turn and starts working: time limits count from here, not from the wait in line.
   onStart?(): void
+  // The host already answered words said mid-turn with a line of its own: the model takes them in without writing another.
+  steerReplied?: boolean
 }
 
 export interface AgentLoopStep {
