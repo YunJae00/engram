@@ -123,3 +123,18 @@ it('starts no tool after the session deadline and passes the model tier to the e
   expect(result.stopped).toBe('calls')
   expect(result.answer).toContain('Seoul 12C')
 })
+
+// perf146 r2: a member that waited in line for its turn had its time used up before it started.
+it('counts the session deadline from when the engine starts working, not from the wait in line', async () => {
+  let ran = 0, began = false
+  const engine = { runTools: async (job: ToolSessionJob) => {
+    await new Promise(resolve => setTimeout(resolve, 40))
+    job.onStart?.()
+    await job.tools[0]!.run({})
+    return { answer: 'Seoul 12C' }
+  } } as unknown as Engine
+  const result = await runToolSession({ engine, workdir: 'tmp' as EngineCwd, tools: [{ name: 'read_note', description: '', argsSchema: {}, run: async () => { ran++; return 'note' } }] }, 'Seoul weather', { deadlineMs: 20, onStart: () => { began = true } })
+  expect(ran).toBe(1)
+  expect(began).toBe(true)
+  expect(result.stopped).toBeUndefined()
+})

@@ -1,9 +1,9 @@
 import {
-  cutShortAnswer, failOnRestart, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  cutShortAnswer, failOnRestart, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
-import { asBackground, whileWaitingForPerson } from './worker-pool.js'
+import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
 
@@ -93,21 +93,23 @@ export function teamRunner(deps: {
       role = me.role; roles.set(key, role)
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
-      let timedOut = false, draft = ''
-      const hardStop = me.lookup ? setTimeout(() => { timedOut = true; control.abort() }, deps.lookupHardMs ?? LOOKUP_HARD_MS) : undefined
+      // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
+      let timedOut = false, draft = '', hardStop: ReturnType<typeof setTimeout> | undefined
+      const begun = () => { if (me.lookup) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, deps.lookupHardMs ?? LOOKUP_HARD_MS) }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup ? undefined : await kit.nativeFor(lane)
-        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(tool, taskId, me))
+        const tools = (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? skipWalls(tool) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
             signal: control.signal, persona: memberPersona(me), session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
-            onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
+            onStart: begun,
+            onUsage: tokens => { begun(); used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => deps.step(leadChannel, line),
-            ...(me.lookup ? { modelHint: 'smart' as const, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, onToken: (text: string) => { draft += text }, onReset: () => { draft = '' } } : {}),
+            ...(me.lookup ? { modelHint: 'smart' as const, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } } : {}),
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
@@ -123,7 +125,7 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, outcome, now())
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, outcome, now(), isKorean(goal))
         ended = m?.state
       })
     } catch (error) { flog('team', error) } finally {
@@ -157,7 +159,10 @@ export function teamRunner(deps: {
     try {
       const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
       // The caller's pool slot is given back for the whole wait; each child takes a root slot from the background line.
-      await whileWaitingForPerson(() => Promise.all(ids.map(id => asBackground(() => runOne(taskId, leadChannel, id, signal, kit, share, redo)))))
+      // Lookup members are light and work side by side in the caller's slot: when all are, the caller keeps its slot for them.
+      const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup && ids.includes(m.id)).map(m => m.id))
+      const all = () => Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => runOne(taskId, leadChannel, id, signal, kit, share, redo))))
+      await (light.size === ids.length ? all() : whileWaitingForPerson(all))
     } finally {
       const left = (waitingLanes.get(callerLane) ?? 1) - 1
       if (left) waitingLanes.set(callerLane, left); else waitingLanes.delete(callerLane)

@@ -108,6 +108,9 @@ export function asBackground<T>(run: () => T): T { return scope.run({ interactiv
 // A tool of a turn that holds a slot. Nested turns take a free slot or borrow the parent's (one at a time),
 // so they never wait on their own parent and never run past the target.
 export function insideSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true, lease: scope.getStore()?.lease }, run) }
+// A light turn that works inside its caller's slot next to its siblings (a team's lookup members): it takes no slot of its own,
+// so a target lowered by load cannot line them up one after another (perf146 r2: three lookups ran in sequence at target 1).
+export function inCallerSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true }, run) }
 export const currentLease = (): Lease | undefined => scope.getStore()?.lease
 // A long-lived session's callbacks run in the context it was opened in, so each turn names its own lease.
 export function inTurnSlot<T>(lease: Lease | undefined, run: () => T): T { return lease ? withLease(lease, run) : insideSlot(run) }

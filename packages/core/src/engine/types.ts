@@ -163,6 +163,8 @@ export interface NativeTools {
 
 export interface ToolSessionJob {
   onUsage?(tokens: number): void
+  // Called once the session has its turn (any wait in line is over) and starts working.
+  onStart?(): void
   // The runtime's own tools, when the host hands them over.
   native?: NativeTools
   onContextReset?(): void

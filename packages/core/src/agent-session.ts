@@ -61,6 +61,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const tools = [...deps.tools, ...(browser ? [collection.tool] : []), ...(planned && desktop ? [plan.tool] : [])]
   const allowance = () => Math.min(options.maxCalls ?? 120, 120, baseCalls + plan.completed() * 20)
   const started = Date.now()
+  let working = started
   const lifetime = new AbortController()
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal
   let tokensUsed = 0, budgetExhausted = false
@@ -91,7 +92,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       signal.throwIfAborted()
       if (asked) return 'The question is already with the person. Reply with that question and nothing else.'
       if (carded) return 'A card is already with the person. End your answer now, in one line.'
-      if (options.deadlineMs !== undefined && Date.now() - started > options.deadlineMs) {
+      if (options.deadlineMs !== undefined && Date.now() - working > options.deadlineMs) {
         exhausted = true
         return 'Time is up for this part. Call no more tools: report now what you found, with where it came from, and say in one line what is missing.'
       }
@@ -250,6 +251,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     } } : {}),
     tools: sessionCalls,
     onContextReset: () => { compactPage() },
+    onStart: () => { working = Date.now(); options.onStart?.() },
     maxCalls: options.maxCalls ?? (browser ? CALL_CEILING : planned ? 120 : SESSION_MAX_CALLS),
     onToken: (text: string) => { if (text) options.onToken?.(text) },
     onSteerable: (steer) => { liveSteer = steer; options.onSteerable?.(steer) },

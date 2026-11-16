@@ -1,5 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
-import { formatAsk } from './ask.js'
+import { formatAsk, parseAsk } from './ask.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
@@ -16,7 +16,8 @@ export const MEMBER_BLOCKED = /^(new_bot|schedule|keep_in_mind|keep_how_to|offer
 export const SCREEN_TOOL = /^(app_|desktop_|open_app|look_desktop|read_desktop|list_windows|excel_|word_|ppt_|outlook_|compose_live_document|edit_live_document|read_live_document)/
 const TOKEN_REFUSAL = 'The task token budget is nearly used. Do not hire. Finish with what exists and close with what is done, what is missing and what comes next.'
 const PLAN_FIRST = `Big team plan: nothing was hired. Show the plan to the person once before hiring: call ask_person with the members and what each delivers, options ["${TEAM_PLAN_OK[0]}", "${TEAM_PLAN_FIX[0]}"] in their language, and end this turn there. Hire after they agree in their next message. Their OK covers the plan only: sends, posts, purchases and deletions are still asked one by one.`
-const REVIEW_NOTE = 'Review each member with review_member before you report. A member that stopped at its time limit handed back what it had: accept it and say what is missing, and redo it only when the missing part is what the person asked for. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
+const PARTIAL_NOTE = 'Some members reported and some need the person (their "ask"). Do not end on the question alone: review the members that reported, give the person the combined answer from them now, say which part is missing, and close with the waiting member\'s question in the person\'s language. Leave the waiting member unreviewed; when the person answers, pass it with review_member({id, ok:false, note:<answer>}).'
+const REVIEW_NOTE = 'Review each member with review_member before you report. A member that stopped at its time limit handed back what it had: accept it and say what is missing, and redo it only when the missing part is what the person asked for. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
 // A lookup member (research, fact check, reading): a faster model, reading tools only, and a time box. perf146: three opus members with 65 tools
 // each took 118-213 s on a weather lookup, one of them 90 s on an optional extra, and the lead waits for the slowest.
@@ -25,8 +26,18 @@ export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'r
 export const LOOKUP_SOFT_MS = 60_000
 export const LOOKUP_HARD_MS = 80_000
 export const LOOKUP_MAX_CALLS = 12
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about a minute. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. If your part needs anything other than reading, say so in one line and stop.'
-const TIMED_OUT = 'It ran out of time before it reported anything.'
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about a minute. Search or open the most direct source first, read several pages at once with read_pages, and report as soon as the brief is answered, with the addresses it came from. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+
+// A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
+// handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
+// robot check ended a three-city weather team on "로그인이나 확인을 마치고 알려줘" with no page open). Only the member's own ask_person asks.
+export function skipWalls(tool: AgentTool): AgentTool {
+  if (tool.name === 'ask_person') return tool
+  const skip = (text: string, args: Record<string, unknown>): string => parseAsk(text)
+    ? `${typeof args['url'] === 'string' ? args['url'] : 'That source'} needs the person (a sign-in, a robot check, or a setting only they have) and was not read. Do not ask about it and do not try to get past it: read another source (open_page on a site that holds the answer). If nothing else has it, report what you have and name this as the missing part.`
+    : text
+  return { ...tool, run: async (args, context) => skip(await tool.run(args, context), args), ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); return { ...out, text: skip(out.text, args) } } } : {}) }
+}
 
 export interface MemberOutcome { answer: string; asked?: boolean; budgetExhausted?: boolean; timedOut?: boolean; error?: string }
 export interface MemberRedo { note: string; answered?: boolean }
@@ -77,14 +88,14 @@ export function releaseAll(team: TaskTeam, at: string): string[] {
   return open.map(m => m.sessionKey)
 }
 
-export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string): void {
+// korean: the person's language, for the one line a cut-short result carries that the lead may show them.
+export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const answer = outcome.answer.trim()
   member.finishedAt = at
-  // A time-boxed member that had nothing yet still delivered: the lead is told so and goes on, rather than waiting on a re-hire.
-  if (outcome.timedOut && !outcome.error && !answer) { member.state = 'done'; member.result = TIMED_OUT; return }
-  if (outcome.error || !answer) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? 'it ended without an answer.'}`, MEMBER_RESULT_CHARS); return }
+  // A member with no answer delivered nothing, time-boxed or not: it is failed, never done. A "Failed: " result is kept out of what the person sees.
+  if (outcome.error || !answer) { member.state = 'failed'; member.result = cut(`Failed: ${outcome.error ?? (outcome.timedOut ? 'it ran out of time before it reported anything.' : 'it ended without an answer.')}`, MEMBER_RESULT_CHARS); return }
   member.state = outcome.asked ? 'waiting' : 'done'
-  const tail = outcome.budgetExhausted ? '\n(stopped at the token budget)' : outcome.timedOut ? '\n(stopped at its time or call limit: this is what it had)' : ''
+  const tail = outcome.budgetExhausted ? (korean ? '\n(처리 한도에서 멈춤)' : '\n(stopped at the token budget)') : outcome.timedOut ? (korean ? '\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' : '\n(stopped at its time or call limit: this is what it had)') : ''
   member.result = cut(answer, MEMBER_RESULT_CHARS - tail.length) + tail
   const files = [...[...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:[^)\s]+\)/g)].map(m => m[1]!), ...[...answer.matchAll(DOC_FILE)].map(m => m[1]!)]
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
@@ -190,7 +201,9 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       await host.run(out.ids, context.signal)
       const team = (await host.load())?.team
       const hired = (team?.members ?? []).filter(m => out.ids.includes(m.id))
-      return askUp(hired) ?? JSON.stringify({ members: hired.map(view), hiresLeft: team ? team.maxHires - team.hires : 0, note: REVIEW_NOTE })
+      // Nothing delivered and someone needs the person: their question ends the turn. With results in hand the lead reports them and asks at the end.
+      const partial = hired.some(m => m.state === 'waiting') && hired.some(m => m.state === 'done')
+      return (partial ? undefined : askUp(hired)) ?? JSON.stringify({ members: hired.map(view), hiresLeft: team ? team.maxHires - team.hires : 0, note: partial ? PARTIAL_NOTE : REVIEW_NOTE })
     },
   }
   const review: AgentTool = {

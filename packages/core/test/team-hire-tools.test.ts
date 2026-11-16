@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -66,8 +66,13 @@ describe('team hire tools', () => {
     const partial = { ...m }, empty = { ...m }, broken = { ...m }
     settleMember(partial, { answer: '부산 15도', timedOut: true }, 'now')
     expect(partial).toMatchObject({ state: 'done', result: '부산 15도\n(stopped at its time or call limit: this is what it had)' })
+    // perf146 r2: a member that timed out with nothing delivered nothing: failed, and its note is one the thread never shows ("Failed: ").
     settleMember(empty, { answer: '', timedOut: true }, 'now')
-    expect(empty).toMatchObject({ state: 'done', result: 'It ran out of time before it reported anything.' })
+    expect(empty).toMatchObject({ state: 'failed', result: 'Failed: it ran out of time before it reported anything.' })
+    const korean = { ...m }
+    settleMember(korean, { answer: '부산 15도', timedOut: true }, 'now', true)
+    expect(korean).toMatchObject({ state: 'done', result: '부산 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
+    expect((korean as { result?: string }).result).not.toMatch(/[A-Za-z]{4,}/)
     settleMember(broken, { answer: '', error: 'it was stopped.' }, 'now')
     expect(broken.state).toBe('failed')
     expect(cutShortAnswer('Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 15도')).toBe('부산 15도')
@@ -136,6 +141,31 @@ describe('team hire tools', () => {
     state.answer = () => 'sent'
     expect(JSON.parse(await call(null, 'review_member', { id: 'm1', ok: false, note: '보내도 돼' })).state).toBe('done')
     expect(state.runs.at(-1)!.redo).toEqual({ note: '보내도 돼', answered: true })
+  })
+
+  // perf146 r2: one member's sign-in question was the lead's whole answer while two cities had been reported.
+  it('returns what the others delivered when one member needs the person, instead of ending on the question alone', async () => {
+    const { state, call } = world()
+    state.asks.add('m1'); state.answer = id => id === 'm1' ? '어느 계정으로 볼까?' : `${id} 15도`
+    const raw = await call(null, 'hire_members', { members: [three[0], three[1], three[2]] })
+    expect(parseAsk(raw)).toBeNull()
+    const out = JSON.parse(raw)
+    expect(out.members.map((m: { state: string }) => m.state)).toEqual(['waiting', 'done', 'done'])
+    expect(out.members[0].ask).toBe('서울 조사: 어느 계정으로 볼까?')
+    expect(out.note).toContain('give the person the combined answer')
+    expect(out.note).toContain('close with the waiting member')
+  })
+
+  it('a lookup member skips a source that needs the person instead of asking about it; its own ask_person still asks', async () => {
+    const ask = 'ASK: {"question":"열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.","options":[]}'
+    const tool = (name: string, runRich = false) => ({ name, description: '', argsSchema: {}, run: async () => ask, ...(runRich ? { runRich: async () => ({ text: ask }) } : {}) })
+    const skipped = await skipWalls(tool('open_page')).run({ url: 'https://search.example/?q=서울' }, { task: '' })
+    expect(parseAsk(skipped)).toBeNull()
+    expect(skipped).toContain('https://search.example/?q=서울 needs the person')
+    expect(skipped).toContain('do not try to get past it')
+    expect((await skipWalls(tool('open_page', true)).runRich!({}, { task: '' })).text).toContain('was not read')
+    expect(await skipWalls({ ...tool('read_pages'), run: async () => 'page text' }).run({}, { task: '' })).toBe('page text')
+    expect(parseAsk(await skipWalls(tool('ask_person')).run({}, { task: '' }))?.question).toContain('로그인')
   })
 
   it('asks every waiting member in one question; a member that asks again after the answer is asked again', async () => {

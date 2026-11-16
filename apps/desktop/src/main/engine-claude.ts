@@ -301,6 +301,7 @@ export class ClaudeEngine implements CloudEngine {
     job = forSandbox(job)
     const lease = await workerPool.lease(job.signal)
     if (!lease) return { answer: '', error: 'canceled' }
+    job.onStart?.()
     const metric = modelCall('claude', job.prompt.length + job.system.length, job.effort, job.tools.length)
     const onToken = job.onToken
     job = { ...job, onToken: text => { metric.token(); onToken?.(text) } }

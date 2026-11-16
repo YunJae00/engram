@@ -47,7 +47,7 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
 it('hands the lead what a lookup member had when it stops at its call or time limit', async () => {
   const w = await world(async () => ({ answer: 'Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 흐림 15도', steps: [], fellBack: false, stopped: 'calls' }))
   const out = JSON.parse(await w.hire([{ role: '부산 조사', brief: '부산 오늘 날씨', lookup: true }]))
-  expect(out.members[0]).toMatchObject({ state: 'done', result: '부산 흐림 15도\n(stopped at its time or call limit: this is what it had)' })
+  expect(out.members[0]).toMatchObject({ state: 'done', result: '부산 흐림 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
 })
 
 it('stops a lookup member at its hard limit and still delivers what it wrote', async () => {
@@ -58,6 +58,42 @@ it('stops a lookup member at its hard limit and still delivers what it wrote', a
   const started = Date.now()
   const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
   expect(Date.now() - started).toBeLessThan(2_000)
-  expect(out.members[0]).toMatchObject({ state: 'done', result: '제주 비 17도\n(stopped at its time or call limit: this is what it had)' })
+  expect(out.members[0]).toMatchObject({ state: 'done', result: '제주 비 17도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
   expect((await w.members())[0]!.state).toBe('done')
+})
+
+// perf146 r2: the 80 s limit ran from hire time, so a member still in line for its turn was stopped before it began and "delivered" an English placeholder.
+it('counts a lookup member\'s hard limit from when it starts working, not from when it was hired', async () => {
+  const w = await world(async seen => {
+    await new Promise(resolve => setTimeout(resolve, 80))
+    seen.options.onStart?.()
+    await new Promise(resolve => setTimeout(resolve, 5))
+    return { answer: '제주 비 17도 (https://weather.example)', steps: [], fellBack: false }
+  }, 40)
+  const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
+  expect(out.members[0]).toMatchObject({ state: 'done', result: '제주 비 17도 (https://weather.example)' })
+})
+
+it('marks a lookup member that timed out with nothing as failed, with no English line for the thread', async () => {
+  const w = await world(seen => new Promise((_, reject) => { seen.options.onStart?.(); seen.options.signal!.addEventListener('abort', () => reject(new Error('aborted'))) }), 30)
+  const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
+  expect(out.members[0]).toMatchObject({ state: 'failed', result: expect.stringMatching(/^Failed: /) })
+})
+
+// perf146 r2: a search page's robot check made one lookup member ask the person to "finish the sign-in" in a tab that closed with it.
+it('a lookup member told a page needs the person reads on instead of ending the team on that question', async () => {
+  const wall = 'ASK: {"question":"열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.","options":[]}'
+  const said: string[] = []
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-lookup-')), '.engram') } as unknown as VaultPaths
+  const created = await createTask(paths, '서울 날씨 조사해서 알려줘', 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined,
+    run: async deps => { for (const t of deps.tools) said.push(`${t.name}: ${await t.run({ url: 'https://search.example/?q=x' }, { task: '' })}`); return { answer: '서울 12도 (https://weather.example)', steps: [], fellBack: false } } })
+  const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined,
+    toolsFor: async () => ['open_page', 'search_web', 'ask_person'].map(name => ({ ...tool(name), run: async () => wall })) }
+  const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '서울 조사', brief: '서울 오늘 날씨', lookup: true }] }, { task: '' }))
+  expect(out.members[0]).toMatchObject({ state: 'done', result: '서울 12도 (https://weather.example)' })
+  expect(said.filter(line => line.includes('ASK: '))).toEqual([`ask_person: ${wall}`])
+  expect(said[0]).toContain('needs the person')
 })

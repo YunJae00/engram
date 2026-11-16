@@ -236,6 +236,7 @@ export class CodexEngine implements CloudEngine {
 
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     if (job.signal?.aborted) return { answer: '', error: 'canceled' }
+    job.onStart?.()
     await loadBrainConnections()
     logSessionTools('codex', job)
     const binary = codexBinary()
