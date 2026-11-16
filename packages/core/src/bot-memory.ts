@@ -141,30 +141,50 @@ const STOP = new Set(['사용', '입니', '합니', '있습', '있어', '이다'
 const subject = (text: string) => new Set(stems(text.replace(/["“‘'][^"”’']*["”’']/g, ' ')).filter((stem) => !/^\d/.test(stem) && !STOP.has(stem)))
 const unquoted = (text: string) => text.replace(/["“‘'][^"”’']*["”’']/g, ' ').trim()
 // "은하호 프로젝트의 출시일은 …" -> owner ["은하호", "프로젝트의"], property ["출시일"]. A verb form ("진행하는 …") is not a topic.
-function topicOf(text: string): { owner: string[]; property: string[]; rest: string } | null {
+function topicOf(text: string): { owner: string[]; property: string[]; rest: string; value: string } | null {
   const plain = unquoted(text)
   const topic = /^(.+?)(?<![하있없되\s])[은는]\s/.exec(plain)
   if (!topic?.[1]) return null
   const words = topic[1].trim().split(/\s+/)
   let cut = -1
   for (let i = 0; i < words.length - 1; i++) if (/(의|프로젝트|제품|팀)$/.test(words[i] ?? '')) cut = i
-  return { owner: words.slice(0, cut + 1), property: words.slice(cut + 1), rest: plain.slice(plain.indexOf(words[cut + 1] ?? '')) }
+  return { owner: words.slice(0, cut + 1), property: words.slice(cut + 1), rest: plain.slice(plain.indexOf(words[cut + 1] ?? '')), value: plain.slice(topic[0].length).trim() }
 }
+const ownerWords = (owner: string[]) => owner.map((word) => word.replace(/의$/, '').replace(/^제품$/, '프로젝트')).filter((word) => !/^(출시|우리|저희|사용자)$/.test(word))
+const ownerName = (owner: string[]) => ownerWords(owner).filter((word) => !/^(프로젝트|팀)$/.test(word)).join(' ')
 function sameSubject(a: string, b: string): boolean {
   const [one, other] = [topicOf(a), topicOf(b)]
-  if (one && other) return one.property.join(' ') === other.property.join(' ') || stems(one.property.join(' ')).some((stem) => stems(other.property.join(' ')).includes(stem))
+  if (one && other) {
+    // Two named owners ("은하호 프로젝트", "별빛 프로젝트") are two subjects; an unnamed one ("프로젝트", "사용자의") matches any.
+    const [mine, theirs] = [ownerName(one.owner), ownerName(other.owner)]
+    if (mine && theirs && mine !== theirs) return false
+    return one.property.join(' ') === other.property.join(' ') || stems(one.property.join(' ')).some((stem) => stems(other.property.join(' ')).includes(stem))
+  }
   const theirs = subject(other?.rest ?? b)
   return [...subject(one?.rest ?? a)].some((stem) => theirs.has(stem))
 }
-// A property that holds one value at a time: a newer line for the same property of the same owner replaces the older
-// one even when nothing says so. Anything else needs the value named ("replaces", "outdated:", a line carrying it).
-// shortcut: a fixed list of property nouns and exact wording of the rest; "행사 일정", visits and the like are never merged.
+// A newer line replaces an older one even when nothing says so in two cases. Anything else needs the value named
+// ("replaces", "outdated:", a line carrying it).
+// 1. Same owner and same property, another value: a property known to hold one value (코드명, 출시일 …), or any
+//    "<owner>의 <property>는 <value>" line whose value is a bare value rather than a sentence of its own.
+// 2. The same line with one word respelled ("지민호가" -> "민호가").
+// shortcut: wording must match exactly apart from the value; a property that really holds several values ("민호의 취미는 …") keeps only the newest, and "행사 일정" without an owner, visits and the like are never merged.
 const SINGLE_VALUED = /(코드명|출시일|마감일?|담당자?)$/
+const bareValue = (value: string) => { const words = value.split(/\s+/); return words.length <= 4 && !words.some((word) => /(을|를|에|에서|로|와|과|고|며)$/.test(word)) }
 function valueKey(text: string): string | null {
   const topic = topicOf(text)
-  if (!topic || !SINGLE_VALUED.test(topic.property.join(' '))) return null
-  const owner = topic.owner.map((word) => word.replace(/의$/, '').replace(/^제품$/, '프로젝트')).filter((word) => !/^(출시|우리|저희|사용자)$/.test(word))
-  return `${owner.join(' ')}|${topic.property.filter((word) => !/^(새|정식|현재|최종)$/.test(word)).join(' ')}`
+  if (!topic) return null
+  const property = topic.property.join(' ')
+  if (!SINGLE_VALUED.test(property) && !(topic.owner.length && property && bareValue(topic.value))) return null
+  return `${ownerWords(topic.owner).join(' ')}|${topic.property.filter((word) => !/^(새|정식|현재|최종)$/.test(word)).join(' ')}`
+}
+const topicKey = (text: string) => { const topic = topicOf(text); return topic ? [...topic.owner, ...topic.property].join(' ') : '' }
+function respelled(a: string, b: string): boolean {
+  const [one, other] = [a.split(' '), b.split(' ')]
+  if (one.length < 3 || one.length !== other.length || topicKey(a) !== topicKey(b)) return false
+  const differing = one.flatMap((word, i) => (word === other[i] ? [] : [[word.toLowerCase(), (other[i] ?? '').toLowerCase()] as const]))
+  const [x, y] = differing[0] ?? ['', '']
+  return differing.length === 1 && !/\d/.test(x + y) && Math.min(x.length, y.length) >= 2 && (x.includes(y) || y.includes(x))
 }
 // Dates as month/day; a line that lost its month to the old list-marker bug ("월 28일 …") matches any month.
 const datesIn = (text: string) => [...text.matchAll(/(\d{1,2})월\s*(\d{1,2})일|(\d{1,2})\/(\d{1,2})(?!\d)|^()월\s*(\d{1,2})일/g)].map((m) => `${Number(m[1] ?? m[3]) || '*'}/${Number(m[2] ?? m[4] ?? m[6])}`)
@@ -200,9 +220,9 @@ function settleInto<T extends { text: string }>(kept: T[], raw: string): string 
     if (kept.some((one) => loose(one.text) === loose(text))) return ''
   }
   const key = valueKey(text)
-  if (key) for (let i = kept.length - 1; i >= 0; i--) {
+  for (let i = kept.length - 1; i >= 0; i--) {
     const old = kept[i]?.text ?? ''
-    if (valueKey(old) === key && loose(old) !== loose(text)) kept.splice(i, 1)
+    if (loose(old) !== loose(text) && ((key && valueKey(old) === key) || respelled(old, text))) kept.splice(i, 1)
   }
   return text
 }
@@ -328,18 +348,16 @@ const FACT_LINES_MAX = 6
 
 // A marked line goes where the extractor said; an unmarked one is shared only when it names who the person is.
 // A reply that is not a list of facts (the model answered the chat instead) keeps nothing.
-// `said` is the person's message: a line worded as an order is dropped unless they set that rule in it, and a
-// fact about the person is kept only when it shares words with what they said. A line about the app, a folder
-// or a file must be mostly their words: what the comet found out while working is not a fact about them.
-// shortcut: words are compared by stems, so a fact worded in another language than the message is not checked.
-const TOOLING = /앱|폴더|파일|경로|디렉터리|workspace|\b(app|folder|file|path|directory)\b|[\w-]+\.[a-z]{2,4}\b|[~.]?\/[\w.-]+\//i
-const hangul = (text: string) => /[가-힣]/.test(text)
+// `said` is the person's message: a line worded as an order is dropped unless they set that rule in it. A shared
+// line about the app, a folder, a file or an archive is what the comet found out while working, not a fact about
+// them, unless it is mostly their own words; every other fact about the person is kept whatever the language.
+// shortcut: a fixed list of tooling nouns, words compared by stems; a tooling fact the person stated in another language than the line is dropped.
+const TOOLING = /앱|폴더|파일|경로|디렉터리|보관함?|아카이브|workspace|\b(apps?|folders?|files?|paths?|director(y|ies)|archived?|archives?)\b|[~.]?\/[\w.-]+\//i
 function personSaid(line: string, said: string): boolean {
-  if (!said.trim() || hangul(line) !== hangul(said)) return true
+  if (!TOOLING.test(line)) return true
   const theirs = new Set(stems(said))
   const mine = stems(line).filter((stem) => !STOP.has(stem))
-  const shared = mine.filter((stem) => theirs.has(stem)).length
-  return TOOLING.test(line) ? shared * 2 > mine.length : shared > 0
+  return mine.filter((stem) => theirs.has(stem)).length * 2 > mine.length
 }
 export function scopeFacts(raw: string, known: readonly string[], said = ''): { shared: string[]; own: string[]; outdated?: string[] } {
   const written = raw.split('\n').filter((line) => line.trim())

@@ -129,9 +129,20 @@ describe('qa145 memory pollution', () => {
     expect(scopeFacts('- everyone: 은하호 프로젝트의 킥오프 일정은 12월 1일이다\n- outdated: 은하호 프로젝트의 킥오프 일정은 11월 28일이다', kickoff).outdated).toEqual(kickoff)
   })
 
+  it('qa146 r3: an outdated line cannot remove the same property of another named project', () => {
+    const other = ['은하호 프로젝트의 출시일은 11월 28일이다']
+    expect(scopeFacts('- everyone: 별빛 프로젝트의 출시일은 12월 5일이다\n- outdated: 은하호 프로젝트의 출시일은 11월 28일이다', other)).toEqual({ shared: ['별빛 프로젝트의 출시일은 12월 5일이다'], own: [] })
+    // An owner given without a name still matches.
+    expect(scopeFacts('- everyone: 프로젝트 출시일은 12월 5일이다\n- outdated: 은하호 프로젝트의 출시일은 11월 28일이다', other).outdated).toEqual(other)
+  })
+
   it('qa146 r2: what the comet found out about the app or a file is not a fact about the person', () => {
     expect(scopeFacts('- everyone: 앱 보관 폴더의 이전 버전 파일은 삭제가 불가능하다\n- everyone: 사용자메모 파일은 workspace 폴더에 있다', [], '파일을 만들어 줘')).toEqual({ shared: [], own: [] })
-    expect(scopeFacts('- everyone: 11월 지출 합계는 120만원이다', [], '파일을 만들어 줘')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: Office app cannot delete archived files', [], '보고서를 정리해 줘')).toEqual({ shared: [], own: [] })
+    expect(scopeFacts('- everyone: Office app cannot delete archived files', [])).toEqual({ shared: [], own: [] })
+    // An ordinary fact about the person is kept whatever they typed this turn, in either language.
+    for (const fact of ['Their preferred pronouns are she/her', 'Preferred name: Yun', 'Their time zone is KST', '사용자의 시간대는 KST다', '11월 지출 합계는 120만원이다'])
+      expect(scopeFacts(`- everyone: ${fact}`, [], '보고서를 정리해 줘').shared).toEqual([fact])
     // What the person said themselves stays, a file they placed included.
     const told: [string, string][] = [
       ['사용자의 팀 이름은 은하수입니다', '기억해 줘. 우리 팀 이름은 은하수야.'],

@@ -231,6 +231,25 @@ describe('qa146: a correction replaces', () => {
     expect(settle(apart)).toEqual(apart)
   })
 
+  it('qa146 r3: a new value for the same owner and property, or one respelled name, replaces the older line', () => {
+    const settled = (...lines: string[]) => settleFacts(lines.map((text) => ({ text }))).map((fact) => fact.text)
+    expect(settled('사용자의 팀 이름은 TeStCode다', '사용자의 팀 이름은 은하수다')).toEqual(['사용자의 팀 이름은 은하수다'])
+    expect(settled('할 일: 지민호가 API 문서를 12월 3일까지 작업합니다', '할 일: 민호가 API 문서를 12월 3일까지 작업합니다')).toEqual(['할 일: 민호가 API 문서를 12월 3일까지 작업합니다'])
+    // Another property, another owner, another person or another task is another fact.
+    for (const pair of [
+      ['사용자의 팀 이름은 은하수다', '사용자의 팀 리더는 민호다'],
+      ['민호의 역할은 백엔드다', '지수의 역할은 백엔드다'],
+      ['할 일: 민호가 API 문서를 12월 3일까지 작업합니다', '할 일: 지수가 API 문서를 12월 3일까지 작업합니다'],
+      ['할 일: 민호가 API 문서를 12월 3일까지 작업합니다', '할 일: 민호가 디자인 문서를 12월 3일까지 작업합니다'],
+      ['사용자의 팀은 매주 월요일에 회의한다', '사용자의 팀은 Slack을 쓴다'],
+    ]) expect(settled(...pair)).toEqual(pair)
+  })
+
+  it('qa146 r3: correcting one project\'s launch date leaves another project\'s launch date alone', () => {
+    const settled = settleFacts([{ text: '은하호 프로젝트의 출시일은 11월 28일이다' }, { text: '별빛 프로젝트의 출시일은 12월 5일이다(이전 11월 28일을 대체)' }]).map((fact) => fact.text)
+    expect(settled).toEqual(['은하호 프로젝트의 출시일은 11월 28일이다', '별빛 프로젝트의 출시일은 12월 5일이다'])
+  })
+
   it('qa146 r2: a corrected launch date leaves the kickoff of the same project on the old date', () => {
     const lines = ['은하호 프로젝트의 킥오프 일정은 11월 28일이다', '은하호 프로젝트의 출시일은 12월 5일입니다(이전 11월 28일을 대체)']
     expect(settleFacts(lines.map((text) => ({ text }))).map((f) => f.text)).toEqual(['은하호 프로젝트의 킥오프 일정은 11월 28일이다', '은하호 프로젝트의 출시일은 12월 5일입니다'])
