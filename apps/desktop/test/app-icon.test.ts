@@ -127,91 +127,56 @@ function icoEntry(size: number): Img {
 }
 
 const lum = (img: Img, i: number) => (img.data[i] * 299 + img.data[i + 1] * 587 + img.data[i + 2] * 114) / 1000
+const violet = (img: Img, i: number) => img.data[i + 3] === 255 && img.data[i + 2] >= 60 && img.data[i + 2] - img.data[i + 1] >= 20 && img.data[i] >= img.data[i + 1]
 const at = (img: Img, x: number, y: number) => (y * img.width + x) * 4
-const opaque = (img: Img, i: number) => img.data[i + 3] === 255
-// The arcs' two spectral fringes: peach outside the circle, blue inside it.
-const warm = (img: Img, i: number) => opaque(img, i) && img.data[i] - img.data[i + 2] >= 30
-const cool = (img: Img, i: number) => opaque(img, i) && img.data[i + 2] - img.data[i] >= 20
-// The brightest row of the centre column in the top half: the crest of the top arc.
-function crest(img: Img) {
-  const x = img.width >> 1
-  const column = Array.from({ length: img.width >> 1 }, (_, y) => opaque(img, at(img, x, y)) ? lum(img, at(img, x, y)) : 0)
-  return column.indexOf(Math.max(...column))
-}
-// A half turn about the centre of the plate.
-const turned = (img: Img, x: number, y: number) => at(img, img.width - 1 - x, img.width - 1 - y)
 
-it('draws twin arcs of light on a charcoal rounded square: equal top and bottom, unchanged by a half turn, no sphere', () => {
+it('draws the violet earthrise on a black rounded square', () => {
   const icons: Img[] = [decodePng(readFileSync(new URL('../build/icon.png', import.meta.url)), 'icon.png'), ...[256, 128, 64, 48, 32, 24, 16].map(icoEntry)]
   for (const img of icons) {
-    const W = img.width, centre = W >> 1
-    for (const [x, y] of [[0, centre], [W - 1, centre], [centre, 0], [centre, W - 1]]) {
-      const i = at(img, x!, y!)
-      expect(img.data[i + 3], `${W}px opaque at ${x},${y}`).toBe(255)
-      expect(lum(img, i), `${W}px charcoal at ${x},${y}`).toBeLessThan(60)
-      expect(Math.abs(img.data[i] - img.data[i + 2]), `${W}px neutral plate at ${x},${y}`).toBeLessThanOrEqual(4)
+    const W = img.width
+    for (const [x, y] of [[1, W >> 1], [W >> 1, W - 2]]) {
+      expect(img.data[at(img, x, y) + 3], `${W}px opaque at ${x},${y}`).toBe(255)
+      expect(lum(img, at(img, x, y)), `${W}px black at ${x},${y}`).toBeLessThan(24)
     }
     expect(img.data[3], `${W}px rounded corner`).toBe(0)
-    // 180-degree rotational symmetry, pixel for pixel: the bottom arc is the top arc turned, with the same thickness, brightness, taper and fringes.
-    let off = 0
-    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) for (let k = 0; k < 4; k++) off = Math.max(off, Math.abs(img.data[at(img, x, y) + k] - img.data[turned(img, x, y) + k]))
-    expect(off, `${W}px is unchanged by a half turn`).toBeLessThanOrEqual(2)
-    // The top arc's crest sits on the circle (radius 330/1024 of the plate), and the half turn puts its twin at the bottom.
-    const row = crest(img)
-    expect(row / W, `${W}px top arc row`).toBeGreaterThanOrEqual(0.12)
-    expect(row / W, `${W}px top arc row`).toBeLessThanOrEqual(0.25)
-    expect(lum(img, at(img, centre, row)), `${W}px soft white top arc`).toBeGreaterThanOrEqual(190)
-    expect(lum(img, turned(img, centre, row)), `${W}px soft white bottom arc`).toBeGreaterThanOrEqual(190)
-    // Two equal gaps: the circle is dark at the left and at the right. No closed rim.
-    const radius = centre - row
-    for (const x of [centre - radius, centre + radius]) for (const dy of [-0.06, 0, 0.06]) expect(lum(img, at(img, x, centre + Math.round(W * dy))), `${W}px gap at ${x},${dy}`).toBeLessThan(60)
-    // No sphere, no earthrise bowl: the plate shows through everywhere between the arcs.
-    for (const y of [0.38, 0.44, 0.5, 0.56, 0.62]) for (const x of [0.38, 0.5, 0.62]) expect(lum(img, at(img, Math.round(W * x), Math.round(W * y))), `${W}px empty middle at ${x},${y}`).toBeLessThan(60)
-    let tinted = 0, bright = 0, n = 0
-    for (let i = 0; i < img.data.length; i += 4) {
-      if (!opaque(img, i)) continue
-      n++
-      if (warm(img, i) || cool(img, i)) tinted++
-      if (lum(img, i) >= 200) bright++
+    let count = 0, highlight = 0
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      if (y < W / 4) highlight = Math.max(highlight, lum(img, at(img, x, y)))
+      if (!violet(img, at(img, x, y))) continue
+      count++
+      expect(y, `${W}px violet row`).toBeGreaterThanOrEqual(Math.floor(0.35 * W))
+      expect(y, `${W}px violet row`).toBeLessThanOrEqual(Math.ceil(0.8 * W))
     }
-    // The small master (48px and under) draws the fringes thicker, so more of it is tinted.
-    expect(tinted / n, `${W}px is monochrome with small spectral accents`).toBeLessThan(W <= 48 ? 0.16 : 0.08)
-    expect(bright / n, `${W}px has no large bright blob`).toBeLessThan(W <= 48 ? 0.12 : 0.04)
-  }
-  // At a size where the fringes resolve: peach sits outside the white core and blue inside it, on both arcs.
-  const big = icons[0]!
-  const row = crest(big), x = big.width >> 1
-  const outer = Array.from({ length: 24 }, (_, k) => [x, row - 1 - k] as const), inner = Array.from({ length: 24 }, (_, k) => [x, row + 1 + k] as const)
-  for (const [name, pick] of [['top', (px: number, py: number) => at(big, px, py)], ['bottom', (px: number, py: number) => turned(big, px, py)]] as const) {
-    expect(outer.some(([px, py]) => warm(big, pick(px, py))), `peach outside the ${name} arc`).toBe(true)
-    expect(inner.some(([px, py]) => cool(big, pick(px, py))), `blue inside the ${name} arc`).toBe(true)
-    expect(outer.some(([px, py]) => cool(big, pick(px, py))) || inner.some(([px, py]) => warm(big, pick(px, py))), `${name} fringes keep their sides`).toBe(false)
+    expect(count, `${W}px violet arc`).toBeGreaterThanOrEqual(Math.max(3, W * W * 0.004))
+    expect(highlight, `${W}px has no highlight in the top quarter`).toBeLessThan(40)
   }
   const mac = decodePng(readFileSync(new URL('../build/icon-mac.png', import.meta.url)), 'icon-mac.png')
   expect(mac.data[at(mac, 110, 512) + 3]).toBe(255)
-  expect(lum(mac, at(mac, 110, 512))).toBeLessThan(60)
+  expect(lum(mac, at(mac, 110, 512))).toBeLessThan(24)
   expect(mac.data[at(mac, 50, 512) + 3]).toBe(0)
 })
 
-it('keeps both arcs visible at 16px and 16@2x', () => {
+it('keeps the arc visible at 16px and 16@2x', () => {
   const set = new URL('../build/Engram.xcassets/AppIcon.appiconset/', import.meta.url)
   for (const img of [decodePng(readFileSync(new URL('icon_16x16.png', set)), '16'), decodePng(readFileSync(new URL('icon_16x16@2x.png', set)), '16@2x'), icoEntry(16), icoEntry(32)]) {
     const W = img.width
-    let low = 255, high = 0
+    let low = 255, high = 0, count = 0
+    const rows = new Array<number>(W).fill(0)
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = at(img, x, y)
-      if (!opaque(img, i)) continue
+      if (img.data[i + 3] !== 255) continue
       const v = lum(img, i)
-      low = Math.min(low, v); high = Math.max(high, v)
+      low = Math.min(low, v); high = Math.max(high, v); rows[y] = Math.max(rows[y]!, v)
+      if (violet(img, i)) count++
     }
     expect(high - low, `${W}px is not a flat tile`).toBeGreaterThanOrEqual(70)
-    // Each half holds an arc at least a quarter of the tile wide, with the plate between them.
-    for (const [name, from, to] of [['top', 0, W >> 1], ['bottom', W >> 1, W]] as const) {
-      const columns = new Set<number>()
-      for (let y = from; y < to; y++) for (let x = 0; x < W; x++) if (opaque(img, at(img, x, y)) && lum(img, at(img, x, y)) >= high / 2) columns.add(x)
-      expect(columns.size, `${W}px ${name} arc width`).toBeGreaterThanOrEqual(W / 4)
-    }
-    expect(lum(img, at(img, W >> 1, W >> 1)), `${W}px plate between the arcs`).toBeLessThan(high / 2)
+    expect(count, `${W}px violet`).toBeGreaterThanOrEqual(W === 16 ? 3 : 8)
+    const columns = new Set<number>()
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (img.data[at(img, x, y) + 3] === 255 && lum(img, at(img, x, y)) >= high / 2) columns.add(x)
+    expect(columns.size, `${W}px arc width`).toBeGreaterThanOrEqual(W / 4)
+    const brightest = rows.indexOf(Math.max(...rows))
+    expect(brightest / W, `${W}px arc row`).toBeGreaterThanOrEqual(0.4)
+    expect(brightest / W, `${W}px arc row`).toBeLessThanOrEqual(0.75)
   }
 })
 

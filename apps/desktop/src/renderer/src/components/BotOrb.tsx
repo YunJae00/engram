@@ -2,7 +2,7 @@ import type { OrbId } from '../lib/botAvatar.js'
 
 export type OrbMotion = 'static' | 'idle' | 'working'
 
-// Light only, no sphere, in the app icon's language (scripts/icon-art.mjs): two identical arcs of a circle (radius 40 of a 100-unit box), one at the top and one at the bottom.
+// Light only, no sphere, two identical arcs of a circle (radius 40 of a 100-unit box), one at the top and one at the bottom.
 // Every arc shape is a lune that is thickest at its middle and tapers to nothing at both ends, and each path holds the top lune and the same lune turned 180 degrees,
 // so the mark is unchanged by a half turn. From the back: the air inside the circle and the far bloom, the two fringes (warm outside the circle, cool inside it),
 // the band (the body of the light), the filament (a hairline core), and the bead (a caustic that slides along the arc).

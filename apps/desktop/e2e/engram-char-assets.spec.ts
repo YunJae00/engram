@@ -21,7 +21,7 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('no character masters ship and the app icon is two light arcs on a dark plate', async () => {
+test('no character masters ship and the app icon is the earthrise', async () => {
   await mkdir(SHOTS, { recursive: true })
   const vault = await mkdtemp(join(TMP, 'e2e-chars-')), profile = await mkdtemp(join(TMP, 'e2e-chars-profile-'))
   dirs.push(vault, profile)
@@ -50,27 +50,17 @@ test('no character masters ship and the app icon is two light arcs on a dark pla
     const lum = (d: Uint8ClampedArray, i: number) => at(d, i) * 0.299 + at(d, i + 1) * 0.587 + at(d, i + 2) * 0.114
     const measure = (img: ImageBitmap) => {
       const d = pixels(img), W = img.width
-      let warm = 0, cool = 0, low = 255, high = 0
-      // The brightest opaque pixel of each row, to find the crest of the arc in each half.
-      const rows = new Array<number>(W).fill(0)
+      let violet = 0, low = 255, high = 0, top = 0, row = 0
       for (let i = 0; i < d.length; i += 4) {
         if (at(d, i + 3) !== 255) continue
         const v = lum(d, i)
         low = Math.min(low, v)
-        high = Math.max(high, v)
-        const y = Math.floor(i / 4 / W)
-        rows[y] = Math.max(rows[y] ?? 0, v)
-        // The peach fringe outside the circle and the blue one inside it.
-        if (at(d, i) >= 120 && at(d, i) - at(d, i + 2) >= 30) warm++
-        if (at(d, i + 2) >= 120 && at(d, i + 2) - at(d, i) >= 30) cool++
+        if (v > high) { high = v; row = Math.floor(i / 4 / W) }
+        if (i / 4 < (W * W) / 4) top = Math.max(top, v)
+        if (at(d, i + 2) >= 60 && at(d, i + 2) - at(d, i + 1) >= 20 && at(d, i) >= at(d, i + 1)) violet++
       }
-      const side = (Math.floor(W / 2) * W + 1) * 4, centre = (Math.floor(W / 2) * W + Math.floor(W / 2)) * 4
-      // Each arc's crest: its brightness and how far it sits from the centre, as a share of the width.
-      const crests = [rows.slice(0, W / 2), rows.slice(W / 2)].map((half, k) => {
-        const peak = Math.max(...half)
-        return { lum: peak, off: Math.abs((k * W) / 2 + half.indexOf(peak) + 0.5 - W / 2) / W }
-      })
-      return { W, corner: at(d, 3), sideAlpha: at(d, side + 3), sideLum: lum(d, side), centreLum: lum(d, centre), warm, cool, range: high - low, crests }
+      const side = (Math.floor(W / 2) * W + 1) * 4
+      return { W, corner: at(d, 3), sideAlpha: at(d, side + 3), sideLum: lum(d, side), violet, range: high - low, top, row: row / W }
     }
     const board = document.createElement('canvas')
     board.width = (catalog.length + 1) * 160; board.height = 160
@@ -93,31 +83,15 @@ test('no character masters ship and the app icon is two light arcs on a dark pla
   expect(result.icon.W).toBe(512)
   expect(result.icon.corner).toBe(0)
   expect(result.icon.sideAlpha).toBe(255)
-  // The plate is dark but grainy, so one pixel is not flat black; the icon unit test holds the plate to the same bound.
-  expect(result.icon.sideLum).toBeLessThan(60)
-  expect(result.icon.centreLum, 'dark plate between the arcs').toBeLessThan(60)
-  expect(result.icon.warm, 'peach fringe').toBeGreaterThanOrEqual(512 * 512 * 0.004)
-  expect(result.icon.cool, 'blue fringe').toBeGreaterThanOrEqual(512 * 512 * 0.004)
-  const arcs = (name: string, set: (typeof result)['icon']) => {
-    expect(set.crests, `${name} one arc above the centre and one below`).toHaveLength(2)
-    for (const [k, crest] of set.crests.entries()) {
-      const arc = `${name} ${k === 0 ? 'top' : 'bottom'} arc`
-      expect(crest.lum, `${arc} white core`).toBeGreaterThanOrEqual(200)
-      expect(crest.off, `${arc} sits on the circle`).toBeGreaterThanOrEqual(0.2)
-      expect(crest.off, `${arc} sits on the circle`).toBeLessThanOrEqual(0.4)
-    }
-  }
-  arcs('icon.png', result.icon)
+  expect(result.icon.sideLum).toBeLessThan(24)
+  expect(result.icon.violet).toBeGreaterThanOrEqual(512 * 512 * 0.004)
+  expect(result.icon.top, 'no highlight in the top quarter').toBeLessThan(40)
   for (const [k, set] of result.sets.entries()) {
     expect(set.corner, `${files[k]} transparent margin`).toBe(0)
     expect(set.range, `${files[k]} is not a flat tile`).toBeGreaterThanOrEqual(70)
-    expect(set.centreLum, `${files[k]} dark plate between the arcs`).toBeLessThan(60)
-    arcs(files[k]!, set)
-    // 16px is drawn from the small master: heavier white arcs, too few pixels to hold a fringe.
-    if (set.W > 16) {
-      expect(set.warm, `${files[k]} peach fringe`).toBeGreaterThanOrEqual(3)
-      expect(set.cool, `${files[k]} blue fringe`).toBeGreaterThanOrEqual(3)
-    }
+    expect(set.violet, `${files[k]} violet arc`).toBeGreaterThanOrEqual(3)
+    expect(set.row, `${files[k]} arc row`).toBeGreaterThanOrEqual(0.4)
+    expect(set.row, `${files[k]} arc row`).toBeLessThanOrEqual(0.75)
   }
   await page.locator('canvas').last().screenshot({ path: join(SHOTS, 'side-by-side.png') })
 })
