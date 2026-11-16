@@ -1805,8 +1805,8 @@ export function registerIpc(ctx: VaultContext): void {
     notify: (task) => { void team.settled(task).catch(error => flog('team', error)); told.task(task) },
     offered: (channel) => offeredIn.has(channel),
     meaning: meaningScores,
-    // A check gets a bounded share of time; past it the draft is the answer.
-    checkBudgetMs: 5 * 60_000,
+    // The team check gets a bounded share of time; past it the report is the answer.
+    checkBudgetMs: 90_000,
   })
   tasks.chat = answerFollowUps(tasks.chat, channel => answering.has(channel) || tasks.activeChannels().includes(channel))
   tasks.register()

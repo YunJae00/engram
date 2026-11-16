@@ -16,7 +16,7 @@ import {
   recordPlaybook,
   routineCardExpired,
   TASK_MAX_TURNS,
-  TASK_TOKEN_BUDGET, teamReviewIssue, teamUnverified,
+  TASK_TOKEN_BUDGET, TEAM_TOKEN_RESERVE, teamReviewIssue, teamUnverified,
   tasksToResume,
   updateTask,
   withoutReplies,
@@ -64,8 +64,12 @@ const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string
   'Do no other work: do not edit, create, rerun or re-derive anything. If a readback shows the result is wrong, report that check as failed and say exactly what differs instead of fixing it.',
   '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
-const WORTH_KEEPING_STEPS = 3
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
+// The team check is one more full lead turn. It is skipped when the lead reviewed every member and the words-only report names its sources
+// (perf146: a weather lookup paid 20-60 s for it), and when the budget left could not finish it anyway.
+export const teamCheckDue = (task: DelegatedTask, answer: string, tokensLeft: number): boolean =>
+  tokensLeft >= TEAM_TOKEN_RESERVE && !(!teamReviewIssue(task) && /https?:\/\/[^\s)]+/.test(answer) && !savedFile(answer))
+const WORTH_KEEPING_STEPS = 3
 const exactKey = (url: string, words: string) => `${url}\n${words}`
 // Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
 // A file read card (#read, file-work.ts) is for that one file: approving it for the task covers only that file, whoever in the task asks
@@ -118,6 +122,8 @@ export function taskRunner(deps: {
   const continuations = new Map<string, { count: number; reason: string }>()
   const verifyAttempts = new Set<string>()
   const verifyNext = new Set<string>()
+  // Tasks whose next verify turn is the team check of a report with no known issue: cut short by its time or token budget, that report stands.
+  const teamChecks = new Set<string>()
   // A check turn that lacked only handed-in files' readbacks gets one readback-only turn; these are its files, and the tasks that already had theirs.
   const readbackNext = new Map<string, { name: string; path: string }[]>()
   const readbackAttempts = new Set<string>()
@@ -179,10 +185,19 @@ export function taskRunner(deps: {
       if (unshown.get(id) !== answer) await flush(started)
       unshown.set(id, answer); await edit(id, t => { t.unshown = answer })
     }
-    await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, ...(saveHeld ? { saveHeld } : {}), tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    // The team check gets a bounded share of time (qa146 S19: the thread stayed "생각하는 중" 5-10 min after the report); past it the report is the answer.
+    // A report that hands over a file still needs its readback, so only a report of words alone stands this way.
+    const teamCheck = teamChecks.delete(id) && !!extra?.verification?.result.trim() && !extra.verification.readback && !savedFile(extra.verification.result)
+    let overran = false
+    const deadline = teamCheck && deps.checkBudgetMs ? setTimeout(() => { overran = true; deps.abort(channelOf(started)) }, deps.checkBudgetMs) : undefined
+    try {
+      await withModelCallContext({ channel: channelOf(started), task: id, turn: started.turns, purpose: 'task' }, () => deps.send(request, { ...extra, holdIf, ...(saveHeld ? { saveHeld } : {}), tokenBudget: Math.max(0, TASK_TOKEN_BUDGET - (started.tokensUsed ?? 0)) }))
+    } finally { clearTimeout(deadline) }
     const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
+    // A team check that ran out of time or tokens leaves the report it was checking as the result (perf146: a full answer ended "처리 한도에 닿아 끝나지 않았어요").
+    const teamKept = teamCheck && (overran || (!!outcome?.budgetExhausted && !outcome.errored)) ? extra!.verification!.result : ''
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
     if (!extra?.verification) reportTrails.set(id, trail)
@@ -194,6 +209,7 @@ export function taskRunner(deps: {
       if (stopped.has(channelOf(t))) { t.state = 'stopped'; logTask(t, 'Stopped by you'); return }
       t.tokensUsed = (t.tokensUsed ?? 0) + Math.max(0, outcome?.tokensUsed ?? 0)
       t.work = (t.work ?? 0) + (outcome?.steps ?? 0)
+      if (teamKept) { t.result = teamKept; t.state = 'done'; delete t.verificationPending; continuations.delete(id); logTask(t, 'Done; the team check stopped at its time or token budget.'); return }
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
         // The host's own verdict on this turn's check. The budget text of a re-check that ran out is not the result: the report it re-checked is.
@@ -248,7 +264,7 @@ export function taskRunner(deps: {
           continuations.set(id, { count, reason })
           logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
         }
-      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t)) { verifyNext.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
+      } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) } else if (teamUnverified(t) && teamCheckDue(t, outcome.answer, TASK_TOKEN_BUDGET - (t.tokensUsed ?? 0))) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
     // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
@@ -258,7 +274,7 @@ export function taskRunner(deps: {
     if (!extra?.verification?.readback) verdicts.set(id, outcome?.check?.report)
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass' && one.status !== 'not_applicable')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
-    const kept = !!outcome?.budgetExhausted && !!recheckOf && after?.state === 'done'
+    const kept = (!!teamKept || !!outcome?.budgetExhausted && !!recheckOf) && after?.state === 'done'
     if (after && outcome?.held && after.result) {
       // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
       if (repeats || kept) await flush(after)
@@ -292,7 +308,7 @@ export function taskRunner(deps: {
   async function finished(task: DelegatedTask | undefined): Promise<void> {
     if (!task) return
     await flush(task)
-    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
+    if (['done', 'failed', 'stopped'].includes(task.state)) { approvalScopes.delete(task.id); alwaysFor.delete(task.id); routine.delete(task.id); held.delete(task.id); declined.delete(task.id); approved.delete(task.id); continuations.delete(task.id); verifyAttempts.delete(task.id); verifyNext.delete(task.id); teamChecks.delete(task.id); verdicts.delete(task.id); readbackNext.delete(task.id); readbackAttempts.delete(task.id) }
     const trail = trails.get(task.id) ?? []
     if (task.state !== 'waiting') { trails.delete(task.id); reportTrails.delete(task.id) }
     if (['done', 'waiting', 'failed'].includes(task.state)) {

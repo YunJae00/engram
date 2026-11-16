@@ -323,3 +323,53 @@ it('still stops a working turn at the budget', async () => {
   await t.chat('Merge the leads')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed', result: budgetStop.answer })
 })
+
+// perf146: "봇 3개로 서울 부산 제주 날씨" gave a full sourced answer, then its team check hit the task budget and the thread added
+// "작업이 처리 한도에 닿아 끝나지 않았어요". qa146 S19: the same check kept the thread "생각하는 중" for 5-10 minutes after the report.
+const sourced = '서울 12도, 부산 15도, 제주 17도예요.\n출처: https://www.weather.go.kr/w/index.do'
+const hired = [{ tool: 'hire_members', args: {}, observation: '{"members":[]}' }]
+const teamEnd = async (t: Awaited<ReturnType<typeof setup>>) => {
+  const task = (await listTasks(t.paths))[0]!
+  expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
+  return task
+}
+
+it('skips the team check when every member was reviewed and the report names its sources', async () => {
+  const t = await setup(async () => { await hireLeads(t.paths); return { ...done(sourced, 1), trail: hired } }, false)
+  await t.chat('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 알려줘')
+  expect(t.sent).toHaveLength(1)
+  expect(await teamEnd(t)).toMatchObject({ state: 'done', result: sourced, turns: 1 })
+  expect(t.delivered).toEqual([sourced])
+})
+
+it('ends done with the delivered report when the team check runs out of the task budget', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: 240_000, trail: hired } }
+    return budgetStop
+  }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = await teamEnd(t)
+  expect(task).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(task.log.at(-1)!.line).toBe('Done; the team check stopped at its time or token budget.')
+  expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
+})
+
+it('does not start a team check the budget left cannot finish', async () => {
+  const t = await setup(async () => { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: TASK_TOKEN_BUDGET - 10_000, trail: hired } }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  expect(t.sent).toHaveLength(1)
+  expect(await teamEnd(t)).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
+})
+
+it('ends the turn with the delivered report when the team check overruns its time', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), trail: hired } }
+    await new Promise<void>(resolve => { t.aborted.resolve = resolve })
+    return undefined
+  }, false, 30)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = await teamEnd(t)
+  expect(task).toMatchObject({ state: 'done', result: '규정 5개와 체크리스트 10개예요.' })
+  expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
+})
