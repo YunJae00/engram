@@ -2,7 +2,7 @@ import type { MemberState, TeamMember } from 'core'
 import { uiLanguage } from '../i18n.js'
 import { teamT, type TeamLang } from '../i18n-team.js'
 import { sidebarPreview } from './sidebarPreview.js'
-import { threadLang } from './threadLang.js'
+import { displayTaskAnswer, threadLang } from './threadLang.js'
 import { KO_CARRY_ON } from './threadLangKo.js'
 
 export type TeamMemberView = Pick<TeamMember, 'id' | 'parentId' | 'role' | 'state' | 'result'>
@@ -75,6 +75,9 @@ export function memberResult(member: TeamMemberView): string {
   const result = member.result?.trim() ?? ''
   return result && !result.startsWith('Failed: ') ? sidebarPreview(result.split(/\n\s*\n/)[0]!) : ''
 }
+
+// The sidebar's line for a last message. Before the thread is opened after a relaunch it has no messages, so the saved last message tells the language (qa145 S30).
+export const lastPreview = (text: string, messages: { role: string; text: string }[], lastMessage?: { role: string; text: string }): string => sidebarPreview(displayTaskAnswer(text, lineLang(messages, lastMessage)))
 
 export function lineLang(messages: { role: string; text: string }[], lastMessage?: { role: string; text: string }): TeamLang {
   return messages.length ? threadLang(messages) : lastMessage ? threadLang([lastMessage]) : uiLanguage()

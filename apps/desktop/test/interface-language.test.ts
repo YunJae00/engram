@@ -25,6 +25,30 @@ it('says a paused task with unconfirmed checks in the language of the conversati
   expect(displayTaskAnswer(line, 'en')).not.toContain('unresolved checks')
 })
 
+// qa145 S27: after declining a send card the banner read "작업이 멈췄어요 / You declined a command, so this turn stopped. …".
+it('says every other stopped-turn line in the language of the conversation', async () => {
+  const { displayTaskAnswer } = await import('../src/renderer/src/lib/threadLang.js')
+  const lines = ['You declined a command, so this turn stopped. Waiting for your next instruction.', 'The verification turn ended without a result check.',
+    'Stopped at the task budget or fallback turn limit.', 'The turn ended without an answer.', 'The turn ended with unfinished work; waiting for your next instruction.']
+  for (const line of lines) {
+    expect(displayTaskAnswer(line, 'ko'), line).not.toMatch(/[A-Za-z]{3}/)
+    expect(displayTaskAnswer(line, 'en'), line).not.toBe(line)
+  }
+  expect(displayTaskAnswer(lines[0]!, 'ko')).toBe('진행하지 않기로 하셔서 여기서 멈췄어요. 어떻게 이어갈지 알려주세요.')
+  // The lines the task runner writes are the ones mapped here.
+  const runner = await readFile(resolve('apps/desktop/src/main/task-runner.ts'), 'utf8'), closing = await readFile(resolve('apps/desktop/src/main/task-closing.ts'), 'utf8')
+  for (const line of lines) expect(runner + closing, line).toContain(`'${line}'`)
+})
+
+// qa145 S30: after a relaunch the thread is not loaded yet, and the sidebar read a Korean conversation's unconfirmed result in English.
+it('previews a saved last message in its own language before the thread is opened', async () => {
+  const { lastPreview } = await import('../src/renderer/src/lib/teamView.js')
+  const text = 'Not verified as complete.\n\n내장 브라우저로 로컬 form.html을 열어 이름 QA145를 입력했어요.'
+  const shown = lastPreview(text, [], { role: 'assistant', text })
+  expect(shown).toMatch(/^확인하지 못한 항목이 있어요\./)
+  expect(shown).not.toContain('Some results could not be confirmed')
+})
+
 it('shows the error card in the language of the conversation', async () => {
   const { createElement } = await import('react')
   const { renderToStaticMarkup } = await import('react-dom/server')

@@ -10,9 +10,9 @@ import { SiteIcon } from './SiteIcon.js'
 import { sidebarPreview } from '../lib/sidebarPreview.js'
 import { markUnread, rowStatus } from '../lib/botRowStatus.js'
 import { t, uiLocale } from '../i18n.js'
-import { displayTaskAnswer, threadLang } from '../lib/threadLang.js'
+import { threadLang } from '../lib/threadLang.js'
 import { useTeam } from '../lib/teamLive.js'
-import { lineLang } from '../lib/teamView.js'
+import { lastPreview, lineLang } from '../lib/teamView.js'
 import { SidebarTeam } from './TeamSummary.js'
 
 export const SidebarConversation = memo(function SidebarConversation({ bot, state, active, found }: { bot: BotDto; state: CometActivity; active: boolean; found?: string | undefined }) {
@@ -34,7 +34,7 @@ export const SidebarConversation = memo(function SidebarConversation({ bot, stat
     }
     if (bot.label) return bot.label
     if (!last) return sidebarPreview(bot.purpose) || t('sidebar.startConversation')
-    const text = sidebarPreview(displayTaskAnswer(last.text, threadLang(thread.messages)))
+    const text = lastPreview(last.text, thread.messages, bot.lastMessage)
     return last.role === 'user' ? t('sidebar.youSaid', { text }) : text
   }, [thread, state, bot.label, bot.lastMessage, bot.purpose, found])
   const date = new Date(bot.lastMessage?.at ?? bot.createdAt)
