@@ -2491,7 +2491,11 @@ export function registerIpc(ctx: VaultContext): void {
     // A plain sentence about a preference ("컴퓨터 켜면 자동으로 실행 꺼줘"), or the yes to its one question, is answered here: no model round,
     // so it stands before the check that an AI is connected.
     if (bot && isPersonSentence(request, turn, recovery, savedRoutine)) {
-      const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
+      // Collecting logs or reaching GitHub can take seconds: its first line is in the thread before that work starts (GROKBOT rule 1).
+      const opening = settingsChat.opening(channel, request.message)
+      if (opening) { await recordAsk(); firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text: `${opening}\n\n` }) }
+      const reply = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
+      const said = opening ? `${opening}\n\n${reply ?? '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'}` : reply
       if (said) {
         await recordAsk()
         // Its one line is the whole answer: a quick first line still on its way would be a second one.

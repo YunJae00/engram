@@ -234,6 +234,8 @@ const PENDING_MS = 10 * 60_000
 export interface Preferences {
   // The answer to a message this module takes whole, or undefined when the turn should go on as usual.
   say(channel: string, message: string): Promise<string | undefined>
+  // The first line for a sentence whose work can take seconds (collecting logs, reaching GitHub), shown before that work starts; undefined for the rest.
+  opening(channel: string, message: string): string | undefined
   tool(channel: string, korean: () => boolean): AgentTool
 }
 
@@ -263,6 +265,12 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     return question(pending.get(channel)!.ask)
   }
   return {
+    opening(channel, message) {
+      const held = pending.get(channel)
+      if (held?.ask.do === 'backup_connect' && clock().getTime() - held.at <= PENDING_MS && YES.test(message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, ''))) return '깃허브 저장소에 연결할게요.'
+      const ask = preferenceAsk(message)
+      return ask?.do === 'export_logs' ? '로그 모아서 내보낼게요.' : ask?.do === 'backup_now' && host.backup.available() ? '지금 깃허브에 백업할게요.' : undefined
+    },
     async say(channel, message) {
       const line = message.replace(/\s+/g, ' ').trim().replace(/[\s?？!.~]+$/u, '')
       const held = pending.get(channel)

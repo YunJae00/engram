@@ -201,6 +201,22 @@ describe('narrowing is done at once, widening is asked about once', () => {
     expect(calls).toEqual(['rule:allow:evil.example.com:true'])
   })
 
+  // Codex cap (sm r3): a log export or a GitHub connection said nothing until it had finished.
+  it('names the first step at once for the sentences whose work can take seconds, and for no other', async () => {
+    const { chat } = setup()
+    expect(chat.opening('c', '로그 내보내줘')).toBe('로그 모아서 내보낼게요.')
+    expect(chat.opening('c', '깃허브에 백업해줘')).toBe('지금 깃허브에 백업할게요.')
+    for (const quick of ['컴퓨터 켜면 자동으로 실행 꺼줘', '다크 모드로 바꿔', '응', '1년은 몇 초야?', '깃허브 백업 https://github.com/me/notes 로 연결해줘']) expect(chat.opening('c', quick)).toBeUndefined()
+    // The yes to the connection question is where the connecting starts; a yes to any other question is quick.
+    await chat.say('c', '깃허브 백업 https://github.com/me/notes 로 연결해줘')
+    expect(chat.opening('other', '응')).toBeUndefined()
+    expect(chat.opening('c', '아니')).toBeUndefined()
+    expect(chat.opening('c', '응')).toBe('깃허브 저장소에 연결할게요.')
+    await chat.say('c', '엑셀은 써도 돼')
+    expect(chat.opening('c', '응')).toBeUndefined()
+    for (const line of ['로그 모아서 내보낼게요.', '지금 깃허브에 백업할게요.', '깃허브 저장소에 연결할게요.']) expect(line).toMatch(/^[가-힣 ]+게요\.$/)
+  })
+
   it('a change that fails says so in one line and changes nothing else', async () => {
     const { chat } = setup({ autoStart: async () => { throw new Error('EPERM: operation not permitted') } })
     expect(await chat.say('c', '컴퓨터 켜면 자동으로 실행 꺼줘')).toBe('바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.')

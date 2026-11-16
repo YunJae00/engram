@@ -127,6 +127,10 @@ it('the chat handler answers a preference sentence before it checks that an AI i
   expect(handler.slice(0, says)).toContain('isPersonSentence(request, turn, recovery, savedRoutine)')
   expect(says).toBeLessThan(handler.indexOf('chatEngine(channel, ctx.engines)'))
   expect(says).toBeLessThan(handler.indexOf("isLimited('claude', channel)"))
+  // Codex cap (sm r3): the first line of a slow one (log export, GitHub) is in the thread before its work is awaited.
+  const opens = handler.indexOf("broadcast({ type: 'chat:token', channel, text: `${opening}\\n\\n` })")
+  expect(opens).toBeGreaterThan(handler.indexOf('settingsChat.opening(channel, request.message)'))
+  expect(opens).toBeLessThan(says)
   // The runner always passes a turn, so the old gate could never open.
   expect(handler.slice(0, says)).not.toMatch(/&& !turn &&/)
   const runner = await readFile('apps/desktop/src/main/task-runner.ts', 'utf8')
