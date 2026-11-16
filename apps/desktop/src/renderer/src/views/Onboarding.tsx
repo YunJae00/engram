@@ -35,7 +35,7 @@ export function Onboarding() {
   const signing = useRef(false)
   const completing = useRef(false)
   const primary = useRef<HTMLButtonElement>(null)
-  const [botName, setBotName] = useState('Engram')
+  const [botName, setBotName] = useState('')
   const [botLabel, setBotLabel] = useState('')
   const activityAtMount = useRef(true)
   const avatarTheme = useAvatarTheme()
@@ -139,7 +139,7 @@ export function Onboarding() {
       <h1>{t('onboard.botTitle')}</h1>
       <div className="onboard-ai-content onboard-bot">
         <BotAvatar id="onboard-primary" primary size={64} state="idle" theme={avatarTheme} />
-        <label className="onboard-bot-field"><span>{t('createBot.name')}</span><input data-testid="onboard-bot-name" value={botName} maxLength={60} disabled={finishing} onChange={event => setBotName(event.target.value)} /></label>
+        <label className="onboard-bot-field"><span>{t('createBot.name')}</span><input data-testid="onboard-bot-name" value={botName} placeholder="Engram" maxLength={60} disabled={finishing} onChange={event => setBotName(event.target.value)} /></label>
         <label className="onboard-bot-field"><span>{t('onboard.botLabel')}</span><input data-testid="onboard-bot-label" value={botLabel} disabled={finishing} onChange={event => setBotLabel(clipLabel(event.target.value))} /></label>
       </div>
     </section>}

@@ -58,8 +58,12 @@ test.afterEach(async () => { await closeTestApp(app) })
 test('finishing with the bot step renames the primary bot and keeps one bot', async () => {
   await toStep4()
   await expect(page.locator('[data-testid="onboard-step-4"] .bot-avatar')).toBeVisible()
-  await expect(page.getByTestId('onboard-bot-name')).toHaveValue('Engram')
-  await page.getByTestId('onboard-bot-name').fill('Sol')
+  // The default name is only a placeholder: typing without clearing gives just the typed name.
+  await expect(page.getByTestId('onboard-bot-name')).toHaveValue('')
+  await expect(page.getByTestId('onboard-bot-name')).toHaveAttribute('placeholder', 'Engram')
+  await page.getByTestId('onboard-bot-name').click()
+  await page.keyboard.type('Sol')
+  await expect(page.getByTestId('onboard-bot-name')).toHaveValue('Sol')
   await page.getByTestId('onboard-bot-label').fill('Research')
   await page.getByTestId('onboard-finish').click()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
@@ -73,7 +77,8 @@ test('finishing with the bot step renames the primary bot and keeps one bot', as
 test('re-running onboarding on the same vault keeps exactly one primary bot', async () => {
   await toStep4()
   await page.getByTestId('onboard-finish').click()
-  await expect(landed()).toBeVisible({ timeout: 60000 })
+  // An empty name field keeps the default name.
+  await expect(landed()).toContainText('Engram', { timeout: 60000 })
   await closeTestApp(app)
   await launch()
   await toStep4()
