@@ -109,7 +109,8 @@ export function staffTool(paths: VaultPaths, changed: () => void): AgentTool {
       }
       for (const { name, role, how, back } of adding) {
         if (back) await restoreBot(paths, back.id)
-        await updateBot(paths, (back ?? await createBot(paths, { name, purpose: how })).id, { label: role })
+        // Brought back with a new role, they work from it: their old way of working went with the old role (c3b r1: employeeNote read purpose first).
+        await updateBot(paths, (back ?? await createBot(paths, { name, purpose: how })).id, { label: role, ...(back ? { purpose: how } : {}) })
       }
       if (adding.length) lines.push(addedLine(adding))
       changed()
@@ -482,13 +483,19 @@ const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]
 // A line about the looking and not about what was found: time, limits, attempts, what could not be opened or confirmed.
 const META = /시간\s*(?:한도|초과|내에|안에|이\s*(?:다|부족|모자))|한도|이번 턴|턴\s*안|시도|확인 불가|누락|실패|읽어오지 못|가져오지 못|열어보지 못|받지 못|확인하지 못|찾지 못|못 찾|열람|추가\s*(?:확인|검색)|검색\s*결과(?:에서|와|는|\s*페이지)|조회\)|timed? ?out|could not|couldn't|unable to|failed/iu
 const HANGUL = /[가-힣]/
+// Four English words in a row nobody asked for (GROKBOT rule 12, U1). The writer's text is refused on it; the host's own table takes the run out.
+const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
+// grokbar c3b r1: a quoted headline stayed in the fallback row ('"Agents, rebuilt to do more for less" – Notion Agent 대폭 개선').
+const ENGLISH_RUNS = new RegExp(`["'“‘]?${ENGLISH_RUN.source}[.!?]?["'”’]?\\s*(?:[–—:-]\\s+)?`, 'g')
 /** What an agent found, as lines a person can read: no notes on the looking, no headings, no sentence in another language in a Korean result. cut: it was stopped at its limit. links: addresses stay where they were written. */
 function findings(text: string, links = false, marks = false): { lines: string[]; cut: boolean } {
   const cut = CUT_SHORT.test(text), korean = HANGUL.test(text)
   const lines = text.replace(CUT_SHORT, '').replace(/\[([^\]]*)\]\([^)]*\)/g, links ? '$&' : '$1').replace(links ? /$^/ : ADDRESS, '').split('\n')
     .map(line => (marks ? line : line.replace(/^\s*(?:[-*•>#]+|\d+[.)])\s*/, '')).replace(/\*\*|`/g, '').replace(/\|/g, '/').replace(/\(\s*\)/g, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
-      .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '').trim())
+      .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '')
+      // shortcut: a link's words are left alone where links are kept (the team record, which a model reads back, never the thread).
+      .replace(korean && !links ? ENGLISH_RUNS : /$^/, '').trim())
     .filter(line => line && !/^[\s/:·,-]+$/.test(line) && !/^(출처|참고|sources?\b)/i.test(line) && !/[:：]$/.test(line) && !META.test(line))
     // A sentence with no Hangul in a Korean result is the agent thinking aloud; a quoted title or a bare figure is kept.
     .map(line => !korean ? line : line.split(/(?<=[.!?])\s+/).filter(sentence => HANGUL.test(sentence) || /^["'“‘]/.test(sentence) || !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(sentence)).join(' '))
@@ -582,9 +589,16 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     .replace(/(?<!\]\()https?:\/\/[^\s)\]>"'|]+/g, url => allowed.has(trimmed(url)) ? url : '').trim()
   if (!text || text.length > 3000 || !HANGUL.test(text) || NOT_SAID.test(text)) return undefined
   if (parts.some(m => !text.includes(m.role))) return undefined
-  if (parts.length > 1 && !parts.some(m => handedFrom(m.brief)) && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
-  // A run of English nobody asked for (GROKBOT rule 12); link words and quoted titles are not counted.
-  if (/(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3}[A-Za-z]/.test(text.replace(/\[[^\]]*\]\([^)]*\)/g, '').replace(/["“][^"”\n]*["”]/g, ''))) return undefined
+  const table = parts.length > 1 && !parts.some(m => handedFrom(m.brief))
+  // Every part that found something links a page it stands on, in its own row when there is a table (GROKBOT rule 7; c3b r1: a table with no link passed).
+  if (parts.some(m => {
+    const said = delivered(m), from = handedFrom(m.brief), pages = findings(said).lines.length ? [...pagesOf(said, m.sources), ...(from ? pagesOf(from.result) : [])] : []
+    const where = table ? text.split('\n').find(row => row.startsWith('|') && row.includes(`(${m.role})`)) ?? '' : text
+    return pages.length > 0 && !pages.some(url => where.includes(`](${url})`))
+  })) return undefined
+  if (table && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
+  // A run of English nobody asked for (GROKBOT rule 12), quoted or not; only a link's words (the page's own name) are not counted.
+  if (ENGLISH_RUN.test(text.replace(/\[[^\]]*\]\([^)]*\)/g, ''))) return undefined
   return text
 }
 

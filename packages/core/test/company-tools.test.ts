@@ -69,7 +69,10 @@ test('removing archives (memory and transcript kept, restorable) and a rename ke
 
   // grokbar H5: adding someone under a removed name brings the same agent back with the role just given (it was refused with the way back).
   expect(await run({ add: [{ name: '서연', role: '글 담당' }] })).toBe('서연은 글 담당으로 다시 불렀어요.')
-  expect(await named('서연')).toMatchObject({ id: park.id, label: '글 담당' })
+  expect(await named('서연')).toMatchObject({ id: park.id, label: '글 담당', purpose: '글 담당' })
+  // c3b r1: the old role ("카피 담당") stayed as how they work, and the work they were handed was done under it.
+  expect(await employeeNote(paths, park.id)).toContain('Your role: 글 담당')
+  expect(await employeeNote(paths, park.id)).not.toContain('카피')
   expect((await loadBotMemory(paths, park.id)).facts).toHaveLength(1)
   // Asked back in so many words, they return as they were.
   await run({ remove: ['서연'] })
@@ -537,6 +540,9 @@ test('the host\'s own table on the results as they were stored: no notes on the 
   // U3, U6, U1 as they were measured.
   expect(report).not.toMatch(/턴|실패|\(여기까지|확인 불가|누락|시도|한도|결과예요|보고/)
   expect(report).not.toMatch(/This week|Bring Your Own Key|entries found/)
+  // c3b r1: the quoted headline stayed ("Agents, rebuilt to do more for less"); no run of four English words is left, and the finding it led stays.
+  expect(report).not.toMatch(/Agents, rebuilt|(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3}[A-Za-z]/)
+  expect(rows[1]).toContain('(지민) | 2026-10-19: Notion Agent 대폭 개선')
   for (const row of rows) { const hosts = [...row.matchAll(/\]\(https?:\/\/([^/)]+)/g)].map(hit => hit[1]); expect(new Set(hosts).size, row).toBe(hosts.length) }
   expect(report.match(/이번엔 여기까지 찾았어요\./g)).toHaveLength(1)
   // C5, one person: who brought it, what they found, the link once, and no "출처:" label for the thread to show twice.
@@ -573,7 +579,9 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   expect(out).toContain('| 슬랙 (서연) | 이번엔 못 찾았어요. |')
   const fallback = mergedReport(c3, topics)
   // A member with no row, a word the person must not read, an English sentence, no table, a throw, nothing, late: the host's table.
-  for (const bad of [good.replace(/\n\| 슬랙.*$/m, ''), good.replace('크게 개선됐어요', '조사에 실패했어요'), good.replace('크게 개선됐어요.', 'This week the agent was rebuilt.'), '지민, 서연, 도윤이 다 찾아 왔어요.', ''])
+  // c3b r1: a row that found something with no link to its own page, and a quoted English headline.
+  for (const bad of [good.replace(/ \[Bing 검색\]\([^)]*\)/, ''), good.replace(/\[Bing 검색\]\([^)]*\)/, '[Linear](https://linear.app/changelog/2026-11-12-bring-your-own-key)'), good.replace('Notion Agent가', '"Agents, rebuilt to do more for less"로 Notion Agent가'),
+    '찾아왔어요.\n\n| 맡은 일 (담당) | 내용과 출처 |\n|---|---|\n| 노션 (지민) | 개선됐어요. |\n| 슬랙 (서연) | 못 찾았어요. |\n| 리니어 (도윤) | 기능이 나왔어요. |', good.replace(/\n\| 슬랙.*$/m, ''), good.replace('크게 개선됐어요', '조사에 실패했어요'), good.replace('크게 개선됐어요.', 'This week the agent was rebuilt.'), '지민, 서연, 도윤이 다 찾아 왔어요.', ''])
     expect(await writtenReport({ ask: stored.c3.goal, members: c3, topics, write: async () => bad }), bad.slice(0, 40)).toBe(fallback)
   expect(await writtenReport({ ask: stored.c3.goal, members: c3, topics, write: async () => { throw new Error('no model') } })).toBe(fallback)
   expect(await writtenReport({ ask: stored.c3.goal, members: c3, topics, timeoutMs: 20, write: () => new Promise(resolve => setTimeout(() => resolve(good), 200)) })).toBe(fallback)
@@ -587,6 +595,7 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   // Three columns would be drawn as a stack of cards in the thread, not as a table.
   expect(checkedReport(good.replace('| 내용과 출처 |', '| 내용 | 출처 |').replace('|---|---|', '|---|---|---|'), c3)).toBeUndefined()
   expect(checkedReport(good, c3)).toBeDefined()
+  expect(checkedReport('지민이 정리해 왔어요.\n\n- 12월 2~4일 연말 행사', c5)).toBeUndefined()
   expect(checkedReport('지민이 정리해 왔어요.\n\n- 12월 2~4일 연말 행사\n\n[네이버 검색](https://search.naver.com/search.naver?query=%EC%84%9C%EC%9A%B8%20IT%20%ED%96%89%EC%82%AC%202026%EB%85%84%2012%EC%9B%94%20%EC%9D%BC%EC%A0%95)', c5)).toContain('[네이버 검색](https://search.naver.com/')
 })
 
