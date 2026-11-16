@@ -118,7 +118,9 @@ export function toldPrompt(message: string, korean: boolean, context = ''): stri
 const HELP_DESK = /도와\s*드릴\s*(까요|일|게|것|거|수\s*있)|도움이?\s*필요하|필요하신\s*(게|것|거|일|점)|(무엇이든|뭐든지?)\s*(말씀|물어|시켜)|\bhow (can|may) i (help|assist)\b|\bwhat can i (do|help)\b|\banything (else )?i can (help|do)\b|\bhow can i be of\b/i
 export const withoutHelpDesk = (text: string): string => text.split('\n').map(line => !line.trim() ? line : line.split(/(?<=[.!?？~])\s+/).filter(sentence => !HELP_DESK.test(sentence)).join(' ')).filter((line, at, lines) => line.trim() || (at > 0 && lines[at - 1]!.trim())).join('\n').trim()
 // What is said when a small-talk reply was nothing but the help-desk sentence.
-const plainTalk = (message: string, korean: boolean): string =>
+// c5c r2: the main model's reply fell back to itself when the filter left nothing, so "뭘 도와드릴까요?" still showed; talkOnly gives the plain line instead.
+export const talkOnly = (message: string, answer: string, korean: boolean): string => withoutHelpDesk(answer) || (answer.trim() ? plainTalk(message, korean) : answer)
+export const plainTalk = (message: string, korean: boolean): string =>
   /고마|고맙|감사|수고|고생|잘 ?했|최고|대박|멋져|훌륭|\b(thanks|thank you|thx|ty)\b/i.test(message) ? korean ? '별말씀을요.' : 'Anytime.' : /\bbye\b/i.test(message) ? korean ? '네, 들어가세요!' : 'See you!' : korean ? '안녕하세요!' : 'Hi!'
 
 export function cleanLine(raw: string): string | undefined {

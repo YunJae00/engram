@@ -13,11 +13,13 @@ export function learningTools(paths: VaultPaths, channel: string, said: () => st
       keep: async (facts, scope, replaces = []) => {
         const clean = facts.map(fact => withoutSecrets(fact, said()))
         const own = scope === 'this bot' && !!botId
-        const gone = replaces.length ? replacedLines((await loadBotMemory(paths, own ? botId : PERSON_MEMORY)).facts.map(fact => fact.text), clean, replaces) : []
-        if (own) {
-          for (const line of gone) await forgetFactText(paths, botId, line)
-          await recordFacts(paths, botId, clean)
-        } else await syncPersonNote(paths, new Date(), clean, gone)
+        // c5c r2: a fact held in both the person's memory and this teammate's own was replaced in one only, and a later thread
+        // recalled the old name next to the new one (rule 11). What is replaced goes from both; the new fact stays wherever the old one was.
+        const held = async (id: string): Promise<string[]> => replaces.length && id ? replacedLines((await loadBotMemory(paths, id)).facts.map(fact => fact.text), clean, replaces) : []
+        const gone = await held(PERSON_MEMORY)
+        for (const line of await held(botId)) await forgetFactText(paths, botId, line)
+        if (own) await recordFacts(paths, botId, clean)
+        if (!own || gone.length) await syncPersonNote(paths, new Date(), clean, gone)
         if (botId) broadcast({ type: 'comet:remembered', channel, botId, added: facts.length, touched: 0 })
       },
     }),

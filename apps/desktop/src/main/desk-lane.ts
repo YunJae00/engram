@@ -10,6 +10,12 @@ const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아
 const FILES = /폴더|파일|디렉터리|\bfolders?\b|\bfiles?\b/i
 const TIDY = /정리|분류|옮겨|나눠|\btidy\b|\borgani[sz]e\b|\bsort\b/i
 const DECK = /ppt|피피티|파워포인트|슬라이드|발표\s*자료|powerpoint|\bslides?\b|\bdeck\b/i
+// c5c r2: only PPT asks had the document menu; a Word or Excel ask ran with every tool, ask_person among them. An ask that makes or changes
+// a Word or Excel file takes the same menu. One that also sends it somewhere keeps every tool: the menu has nothing to send with.
+const SHEET = /워드|엑셀|스프레드시트|\b(word|excel|docx|xlsx|spreadsheet)\b/i
+// A how-to question about Word or Excel ("엑셀에서 행 추가하는 법 알려줘") makes no file.
+const HOW_TO = /방법|하는\s*법|어떻게|[?？]\s*$|\bhow\b/i
+const SENT = /보내|전송|올려|게시|메일|슬랙|노션|카톡|한테|에게|\b(send|post|e-?mail|slack|notion)\b/i
 const DECK_WORK = /만들|작성|바꿔|고쳐|수정|변경|추가|\b(make|create|build|change|rename|fix|add)\b/i
 // grokbar H3: "fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘" took 31.6 s on the work model, which wrote a file for a chat-sized answer.
 // A summary, tidy-up or extraction of a named note or text file, with no document to make and nowhere to send it, is desk work answered in the chat.
@@ -68,7 +74,7 @@ export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()
   if (!text || [...text].length > ASK_MAX || text.includes('\n') || text.startsWith('/')) return undefined
-  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : DECK.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
+  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : (DECK.test(text) || (SHEET.test(text.replace(NAMED_FILE, ' ')) && !SENT.test(text) && !HOW_TO.test(text))) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
 }
 
 // plain: an ordinary first turn by the person on a Claude brain (ipc.ts plainAsk): nothing attached, resumed, scheduled or re-checked.

@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, koreanLead, withoutHelpDesk, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, koreanLead, talkOnly, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2973,7 +2973,7 @@ export function registerIpc(ctx: VaultContext): void {
         // c5c Q3: a line asked for in another language is led by a few Korean words (first-line.ts koreanLead).
         if (kind === 'ask' && !result.asked) result.answer = koreanLead(request.message, result.answer, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)))
         // c5c Q1: small talk never asks how it can help (first-line.ts withoutHelpDesk).
-        if (plainAsk && plainReply(request.message) && !result.asked) result.answer = withoutHelpDesk(result.answer) || result.answer
+        if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
         if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
         // A Korean thread's answer does not open with an English working note (first-line.ts withoutWorkNote).

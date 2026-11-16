@@ -15,6 +15,7 @@ describe('desk lane', () => {
   it('takes the everyday asks that were slow on the work model', () => {
     for (const ask of [
       '내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '아 지민호 말고 민호야', '나 누구랑 일하지?', '정리한 폴더에 PDF 몇 개야?',
+      'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '회의록 요약해서 워드로 만들어줘',
       'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적',
       'Remember that I work with Minho', 'Organize the files in the inbox folder by type',
     ]) expect(deskLane(ask, true), ask).toBe(true)
@@ -22,7 +23,7 @@ describe('desk lane', () => {
 
   it('leaves everything else, and any turn that is not a plain ask, to the work model', () => {
     for (const ask of [
-      'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '이 계약서 검토해서 위험한 조항 정리한 보고서 작성해줘', '회의록 요약해서 워드로 만들어줘', '경쟁사 분석 자료 조사해서 정리해줘',
+      '이 계약서 검토해서 위험한 조항 정리한 보고서 작성해줘', '회의록 요약해서 워드로 만들어서 민호한테 보내줘', '경쟁사 분석 자료 조사해서 정리해줘',
       '기억해\n그리고 보고서도 써줘', `기억해 ${'가'.repeat(200)}`, '/plan', '',
     ]) expect(deskLane(ask, true), ask).toBe(false)
     expect(deskLane('나 누구랑 일하지?', false)).toBe(false)

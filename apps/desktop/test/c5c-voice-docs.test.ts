@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { loadBotMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, type VaultPaths } from 'core'
+import { loadBotMemory, mergeMemory, PERSON_MEMORY, PROFILE_NOTE_ID, profileLines, type VaultPaths } from 'core'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false }, ipcMain: { handle: () => {} } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
@@ -10,7 +10,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { DESK_NOTE, DESK_TOOLS, deskKind, keptFix, TOLD_NOTE, withOffer } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
-import { cleanLine, firstLinePrompt, koreanLead, smallTalkPrompt, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
+import { cleanLine, firstLinePrompt, koreanLead, smallTalkPrompt, talkOnly, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
@@ -21,6 +21,14 @@ const COLLEAGUE_RULE = core('agent-voice.ts')
 describe('a document ask makes the document (D3, D4, D5)', () => {
   it('gives the document kind no way to ask, and leaves the real gates where they are', () => {
     expect(deskKind('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).toBe('deck')
+    // r2: Word and Excel asks ran with every tool, ask_person among them. They take the same menu, which still has what D2 and D4 used.
+    for (const ask of ['위 회의록으로 워드 보고서 만들어줘', 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '회의록 요약해서 워드로 만들어줘', '서울 날씨 조사해서 엑셀로 만들어줘', 'Make an Excel sheet of monthly totals from fixtures/sales.csv', 'fixtures/meeting-notes.md에서 할 일 뽑아서 워드로 만들어줘']) {
+      expect(deskKind(ask), ask).toBe('deck')
+      expect(DESK_TOOLS[deskKind(ask)!]!.has('ask_person'), ask).toBe(false)
+    }
+    for (const tool of ['word_write', 'file_create_workbook', 'file_read', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
+    // Sent somewhere, a how-to question, a question about a named file, or only a file's name: not this menu.
+    for (const ask of ['회의록 워드로 만들어서 민호한테 메일로 보내줘', '엑셀에서 행 추가하는 법 알려줘', '엑셀 표 만드는 방법이 뭐야?', 'fixtures/budget.xlsx에서 합계 알려줘', 'fixtures/word.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
     expect(DESK_TOOLS.deck!.has('ask_person')).toBe(false)
     for (const tool of ['ppt_build', 'word_write', 'file_create_workbook', 'find_files']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     // Sending, saving outside and buying stop in the app itself; a sign-in ask comes from the page tools, which the deck menu does not hold.
@@ -88,6 +96,25 @@ describe('a kept fact is corrected by the host (M2)', () => {
     expect(note).toContain('민호랑 같이 일한다')
     expect(fix.answer).not.toMatch(/저장|기억/)
   })
+  // r2: M1 kept the fact for everyone and the teammate held its own copy; the correction changed one, and a new thread read both names.
+  it('takes the old value out of the person\'s memory and the teammate\'s own, whichever scope the correction names', async () => {
+    for (const scope of ['everyone', 'this bot']) {
+      const root = await mkdtemp(resolve('tmp/c5c-both-'))
+      const paths = { root, workspace: root, cache: join(root, '.engram'), notes: join(root, 'notes') } as unknown as VaultPaths
+      await mkdir(paths.notes, { recursive: true })
+      const keep = learningTools(paths, 'bot-1', () => '').find(tool => tool.name === 'keep_in_mind')!
+      await keep.run({ facts: kept }, { task: '' })
+      await keep.run({ facts: kept, scope: 'this bot' }, { task: '' })
+      const read = async () => mergeMemory(await loadBotMemory(paths, PERSON_MEMORY), await loadBotMemory(paths, '1')).facts.map(fact => fact.text)
+      expect((await loadBotMemory(paths, '1')).facts.map(fact => fact.text).join(' ')).toContain('지민호')
+      const fix = keptFix('아 지민호 말고 민호야', await read())!
+      await keep.run({ facts: [fix.fact], replaces: [fix.old], scope }, { task: '아 지민호 말고 민호야' })
+      for (const id of [PERSON_MEMORY, '1']) expect((await loadBotMemory(paths, id)).facts.map(fact => fact.text).join(' '), `${scope} ${id}`).not.toContain('지민호')
+      expect((await read()).join(' '), scope).toContain('민호랑 같이 일한다')
+      expect((await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text), scope).toContain('민호랑 같이 일한다')
+      expect(profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8')).join('\n'), scope).not.toContain('지민호')
+    }
+  })
   it('is made before the model is asked, and remember turns that reach the model do not think long', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("const fix = !handed && kind === 'keep' ? keptFix(request.message, remembered) : undefined")
@@ -114,7 +141,16 @@ describe('small talk never sounds like a help desk (Q1)', () => {
   it('describes the pattern in the prompts, not one string, and filters the main model\'s small talk too', () => {
     for (const text of [smallTalkPrompt('안녕', true), SMALL_TALK_NOTE, COLLEAGUE_RULE]) { expect(text).toMatch(/help in any wording/); expect(text).toContain('뭘 도와드릴까요') }
     expect(smallTalkPrompt('안녕', true)).toContain('안녕하세요! 좋은 아침이에요.')
-    expect(source('ipc.ts')).toContain('if (plainAsk && plainReply(request.message) && !result.asked) result.answer = withoutHelpDesk(result.answer) || result.answer')
+    expect(source('ipc.ts')).toContain('if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))')
+    // r2: the main model's reply was only the help-desk question and `|| result.answer` put it back. The host's plain line is said instead.
+    for (const said of ['뭘 도와드릴까요?', '무엇을 도와드릴까요?', '도움이 필요하시면 말씀해 주세요.']) {
+      expect(talkOnly('안녕', said, true), said).toBe('안녕하세요!')
+      expect(talkOnly('고마워 수고했어', said, true), said).toBe('별말씀을요.')
+    }
+    expect(talkOnly('hi', 'How can I help you today?', false)).toBe('Hi!')
+    expect(talkOnly('안녕', '안녕하세요! 뭘 도와드릴까요?', true)).toBe('안녕하세요!')
+    expect(talkOnly('안녕', '안녕하세요! 좋은 아침이에요.', true)).toBe('안녕하세요! 좋은 아침이에요.')
+    expect(talkOnly('안녕', '', true)).toBe('')
   })
 })
 

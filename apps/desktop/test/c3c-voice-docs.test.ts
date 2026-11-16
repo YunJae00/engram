@@ -417,7 +417,8 @@ describe('desk tool menus', () => {
     expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)
     // A short question keeps every tool, and so does a turn that is no desk turn.
     expect(DESK_TOOLS.question).toBeUndefined()
-    for (const message of ['fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '위 회의록으로 워드 보고서 만들어줘', '회의록 요약해서 워드로 만들어줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
+    // c5c r2: a Word or Excel ask takes the document menu (c5c-voice-docs.test.ts); one that is also sent somewhere keeps every tool.
+    for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
