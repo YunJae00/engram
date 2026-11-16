@@ -417,3 +417,35 @@ it('delivers the lead\'s combined report and waits when a member still needs the
   expect(await teamEnd(t)).toMatchObject({ state: 'waiting', result: report, turns: 1 })
   expect(t.delivered).toEqual([report])
 })
+
+// perf146 r3: a check started because a member was never reviewed was called done when it ran out of tokens or time, before its verdict was read.
+const unreviewedTeam = async (t: Awaited<ReturnType<typeof setup>>) => {
+  const { updateTask } = await import('core')
+  await hireLeads(t.paths)
+  await updateTask(t.paths, (await listTasks(t.paths))[0]!.id, saved => { const m = saved.team!.members[0]!; m.state = 'done'; delete m.review })
+}
+it('does not call a team report done at the budget when a member was never reviewed', async () => {
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await unreviewedTeam(t); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: 240_000, trail: hired } }
+    return budgetStop
+  }, false)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = (await listTasks(t.paths))[0]!
+  expect(task.state).toBe('failed')
+  expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
+})
+
+it('does not cut short the check of a team report whose member was never reviewed', async () => {
+  let aborted = false
+  const t = await setup(async (_request, turn) => {
+    if (turn === 1) { await unreviewedTeam(t); return { ...done('규정 5개와 체크리스트 10개예요.', 1), trail: hired } }
+    t.aborted.resolve = () => { aborted = true }
+    await new Promise(resolve => setTimeout(resolve, 120))
+    return { ...done('규정 5개와 체크리스트 10개예요.', 1), check: { accepted: true, verified: true, issues: [] } }
+  }, false, 30)
+  await t.chat('팀장 2명 뽑아서 합쳐서 보고해줘')
+  const task = (await listTasks(t.paths))[0]!
+  expect(aborted).toBe(false)
+  expect(task.state).not.toBe('done')
+  expect(task.verificationIssue).toContain('not reviewed')
+})

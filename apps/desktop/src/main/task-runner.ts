@@ -187,8 +187,9 @@ export function taskRunner(deps: {
       unshown.set(id, answer); await edit(id, t => { t.unshown = answer })
     }
     // The team check gets a bounded share of time (qa146 S19: the thread stayed "생각하는 중" 5-10 min after the report); past it the report is the answer.
-    // A report that hands over a file still needs its readback, so only a report of words alone stands this way.
-    const teamCheck = teamChecks.delete(id) && !!extra?.verification?.result.trim() && !extra.verification.readback && !savedFile(extra.verification.result)
+    // A report that hands over a file still needs its readback, and one with a member nobody reviewed still needs its verdict, so only a
+    // report of words alone whose members were all reviewed stands this way; any other check runs and ends as it did before.
+    const teamCheck = teamChecks.delete(id) && !!extra?.verification?.result.trim() && !extra.verification.readback && !savedFile(extra.verification.result) && !teamReviewIssue(started)
     let overran = false
     const deadline = teamCheck && deps.checkBudgetMs ? setTimeout(() => { overran = true; deps.abort(channelOf(started)) }, deps.checkBudgetMs) : undefined
     try {
