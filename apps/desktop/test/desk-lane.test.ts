@@ -61,6 +61,12 @@ describe('a question about a named file', () => {
     // Making, sending or tidying is other work; a lookup with no file is not this.
     for (const ask of ['fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', 'fixtures/sales.csv 합계 민호한테 메일로 보내줘', '엔비디아 오늘 주가 알려줘', 'report.pdf에서 합계 알려줘'])
       expect(deskKind(ask), ask).not.toBe('file')
+    // c4c r2: a word inside the file's own name ("report", "file", "보고서") is not a request to make or send something.
+    for (const ask of ['fixtures/report.md에서 합계 알려줘', 'fixtures/save-file.csv 11월 매출 얼마야?', '보고서.txt에 다음 회의 언제라고 돼 있어?', 'What is the total in report.csv?'])
+      expect(deskKind(ask), ask).toBe('file')
+    expect(deskKind('fixtures/report.md 팀에 공유하기 좋게 정리해줘')).toBe('note')
+    for (const ask of ['fixtures/report.md 합계 민호한테 메일로 보내줘', 'fixtures/report.md 합계를 summary.xlsx로 저장해줘', 'fixtures/report.md 요약해서 워드로 만들어줘'])
+      expect(['file', 'note'], ask).not.toContain(deskKind(ask))
     // The H2 pair: the correction has no file in it and takes the route of the ask before it.
     const earlier = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 매출 합계는 2,916,000원이에요.' }]
     const routed = routeAsk('아 그거 말고 11월 걸로', earlier)

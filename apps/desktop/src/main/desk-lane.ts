@@ -18,6 +18,10 @@ const NOTE_WORK = /정리|요약|뽑아|추려|다듬|\b(summari[sz]e|tidy|clean
 const NOTE_OUT = /워드|엑셀|피피티|ppt|슬라이드|보고서|파일로|문서로|pdf|만들|작성|저장|보내|전송|올려|게시|메일|슬랙|노션|카톡|한테|에게|\b(send|post|e-?mail|slack|notion)\b|\b(word|excel|powerpoint|slides?|report|file|make|create|save)\b/i
 // grokbar H2 (c3c-37bc057e): "fixtures/sales.csv에서 12월 매출 합계 알려줘" and its correction ran on the work model with 75 tools: 19.6 s to the
 // first output of a one-number answer. A question or a figure asked of a file the person named is desk work with the read-only file tools.
+// c4c r2: "fixtures/report.md에서 합계 알려줘" matched "report" inside the file name and lost the quick route. A file's own name says nothing
+// about where the answer should go, so the out words are looked for in the message with named files taken out.
+const NAMED_FILE = /[^\s"'“”‘’]*\.[a-z][a-z0-9]{1,4}(?![a-z0-9])/gi
+const wantsOut = (text: string): boolean => NOTE_OUT.test(text.replace(NAMED_FILE, ' '))
 const DATA_FILE = /\.(md|txt|csv|xlsx)(?![a-z0-9])/i
 const FILE_ASK = /알려|얼마|합계|총합|평균|몇|뭐|무엇|언제|누구|어디|[?？]\s*$|\b(what|how (much|many)|total|sum|average|which|who|when)\b/i
 const ASK_MAX = 200
@@ -47,7 +51,7 @@ export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()
   if (!text || [...text].length > ASK_MAX || text.includes('\n') || text.startsWith('/')) return undefined
-  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : DECK.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !NOTE_OUT.test(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !NOTE_OUT.test(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
+  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : DECK.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
 }
 
 // plain: an ordinary first turn by the person on a Claude brain (ipc.ts plainAsk): nothing attached, resumed, scheduled or re-checked.
