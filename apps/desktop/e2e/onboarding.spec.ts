@@ -24,6 +24,8 @@ test.beforeEach(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   await mkdir(PREVIEW, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
+  // The system locale picks the language; these assertions read English.
+  await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   mockDir = join(userData, 'mock')
   await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
   vaultRoot = join(await mkdtemp(join(REPO_TMP, 'e2e-onboard-')), 'Engram')

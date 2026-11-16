@@ -13,6 +13,8 @@ let mockDir: string
 
 async function launch() {
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-first-bot-home-'))
+  // The system locale picks the language; these assertions read English.
+  await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   mockDir = join(userData, 'mock')
   await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
   const env = { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ONBOARD_ROOT: vaultRoot, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0' }

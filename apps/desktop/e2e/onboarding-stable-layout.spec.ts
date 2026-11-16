@@ -58,6 +58,8 @@ const checks = () => app.evaluate(() => (globalThis as { checks?: number }).chec
 test.beforeEach(async () => {
   await mkdir(SHOTS, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
+  // The system locale picks the language; these assertions read English.
+  await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   app = await electron.launch({
     timeout: 90000,
     args: [MAIN_ENTRY, '--no-sandbox'],

@@ -60,9 +60,11 @@ async function expectFits() {
   await expect(page.getByTestId('onboard-next')).toBeInViewport()
 }
 
-test.beforeEach(async () => {
+// The system locale picks the language, so each launch names the one its assertions read.
+async function launch(uiLanguage: 'en' | 'ko' = 'en') {
   await mkdir(SHOTS, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
+  await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage }))
   vaultRoot = join(await mkdtemp(join(REPO_TMP, 'e2e-copy-')), '작업 공간', 'Engram')
   app = await electron.launch({
     timeout: 90000,
@@ -82,7 +84,9 @@ test.beforeEach(async () => {
   page = await app.firstWindow({ timeout: 90000 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.getByTestId('onboard-step-1')).toBeVisible()
-})
+}
+
+test.beforeEach(async () => { await launch() })
 
 test.afterEach(async () => {
   await closeTestApp(app)
@@ -167,4 +171,34 @@ test('first screen fits without clipping at normal and narrow sizes', async () =
     }
   }
   await expect(page.getByRole('heading', { name: NEW_COPY.heading, exact: true })).toBeVisible()
+})
+
+test('a Korean UI shows Korean onboarding chrome on every step', async () => {
+  await closeTestApp(app)
+  await launch('ko')
+  // Product names stay; any other run of Latin letters is an English leftover.
+  const leftovers = () => page.getByTestId('onboarding').evaluate(root => [...root.querySelectorAll('*')].flatMap(el => {
+    const own = [...el.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent ?? '').join(' ')
+    return [own, el.getAttribute('aria-label') ?? '', el.getAttribute('title') ?? '', el.getAttribute('placeholder') ?? '']
+  }).filter(text => /[A-Za-z]{3,}/.test(text.replace(/Engram|Claude|ChatGPT/g, ''))))
+  await expect(page.getByRole('heading', { name: '작업 폴더를 골라 주세요', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '작업 폴더 찾아보기', exact: true })).toHaveText('찾아보기…')
+  await expect(page.getByTestId('onboard-next')).toHaveText('계속')
+  await expect(page.locator('.onboard-progress')).toHaveAttribute('aria-label', '4단계 중 1단계')
+  expect(await leftovers()).toEqual([])
+  await page.getByTestId('onboard-next').click()
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    ipcMain.removeHandler('engines:states'); ipcMain.handle('engines:states', () => [{ id: 'claude', installed: true, loggedIn: true }])
+    for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
+  })
+  await expect(page.getByRole('heading', { name: 'AI 연결하기', exact: true })).toBeVisible()
+  await expect(page.getByTestId('onboard-brain-claude')).toHaveText('로그인됨')
+  await expect(page.getByRole('button', { name: '뒤로', exact: true })).toBeVisible()
+  expect(await leftovers()).toEqual([])
+  await page.getByTestId('onboard-ai-next').click()
+  await expect(page.getByRole('heading', { name: '나에게 맞추기', exact: true })).toBeVisible()
+  expect(await leftovers()).toEqual([])
+  await page.getByTestId('onboard-prefs-next').click()
+  await expect(page.getByTestId('onboard-finish')).toHaveText('Engram 시작하기')
+  expect(await leftovers()).toEqual([])
 })

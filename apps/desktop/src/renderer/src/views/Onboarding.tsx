@@ -13,10 +13,9 @@ import { clipLabel } from '../lib/createBot.js'
 import { ONBOARD_BOT_KEY, saveOnboardBot, type OnboardBot } from '../lib/onboardBot.js'
 import { t } from '../i18n.js'
 
-const CHECK_ERROR = 'Could not check AI connections. Please retry before continuing.'
-
 export function Onboarding() {
   const profiles = useAccountProfiles()
+  const CHECK_ERROR = t('onboard.checkError')
   const [step, setStep] = useState(1)
   const [root, setRoot] = useState('')
   const [finishing, setFinishing] = useState(false)
@@ -54,7 +53,7 @@ export function Onboarding() {
     finally { if (at === revision.current) setLoading(false) }
   }
   useEffect(() => {
-    void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError('Could not suggest a folder. Choose one to continue.'))
+    void api.onboardDefaults().then(value => setRoot(held => held || value.defaultRoot)).catch(() => setError(t('onboard.suggestFailed')))
     void loadBrains()
     void refreshAccountUsage(true).catch(() => undefined)
     void api.activityGet().then(activity => setSources(held => ({ ...held, activity }))).catch(() => undefined)
@@ -77,8 +76,8 @@ export function Onboarding() {
       if (states?.some(brain => brain.id === id && connectionConfirmed(brain))) return
       setError('')
       const result = await api.engineConnect(id)
-      if (!result.ok) setError(result.message || 'Sign-in was cancelled. Please try again.')
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign-in did not finish. Please try again.') }
+      if (!result.ok) setError(result.message || t('onboard.signInCancelled'))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : t('onboard.signInUnfinished')) }
     finally { signing.current = false; setConnecting(null); await loadBrains() }
   }
   const finish = async (bot: OnboardBot) => {
@@ -88,7 +87,7 @@ export function Onboarding() {
       const states = await api.engineStates(['claude'])
       const available = states.find(brain => brain.id === 'claude' && connectionConfirmed(brain))
       setBrains(held => [...held.filter(brain => brain.id !== 'claude'), ...states])
-      if (!available) throw new Error('Your AI connection is not verified. Connect it and try again.')
+      if (!available) throw new Error(t('onboard.notVerified'))
       await api.settingsSet({ defaultEngine: 'claude' })
       await api.aiSelectionSet('filing', { engine: 'claude', model: '' })
       const latest = await api.settingsGet()
@@ -98,23 +97,23 @@ export function Onboarding() {
       saveOnboardBot(bot)
       await api.onboardComplete({ root: root.trim(), importFolder: null, teamUrl: null, firstCapture: null })
     }
-    catch (cause) { localStorage.removeItem(ONBOARD_BOT_KEY); const message = apiErrorText(cause instanceof Error ? cause.message : 'Could not finish setup. Please try again.'); completing.current = false; setFinishing(false); const aiFailed = /AI|Claude|ChatGPT|connection/i.test(message); setCheckFailed(aiFailed ? 'claude' : null); if (aiFailed) setStep(2); setError(message) }
+    catch (cause) { localStorage.removeItem(ONBOARD_BOT_KEY); const message = apiErrorText(cause instanceof Error ? cause.message : t('onboard.finishFailed')); completing.current = false; setFinishing(false); const aiFailed = /AI|Claude|ChatGPT|connection/i.test(message); setCheckFailed(aiFailed ? 'claude' : null); if (aiFailed) setStep(2); setError(message) }
   }
-  const loginAction = (action: Promise<unknown>) => void action.catch(() => setError('Could not update the sign-in window. Please try again.'))
+  const loginAction = (action: Promise<unknown>) => void action.catch(() => setError(t('onboard.loginWindowFailed')))
 
   return <div className="onboarding" data-testid="onboarding"><div className="onboard-card">
-    <div className="onboard-progress" aria-label={`Step ${step} of 4`}><strong>Engram</strong><span>{step} / 4</span></div>
+    <div className="onboard-progress" aria-label={t('onboard.stepOf', { step })}><strong>Engram</strong><span>{step} / 4</span></div>
     {step === 1 ? <section data-testid="onboard-step-1">
-      <h1>Choose a workspace folder</h1>
+      <h1>{t('onboard.workspaceTitle')}</h1>
       <div className="onboard-folder">
         <div className="onboard-folder-path">
         <Folder size={18} aria-hidden />
-        <input id="onboard-root" aria-label="Workspace folder" data-testid="vault-root-input" value={root} placeholder="Folder path" onChange={event => setRoot(event.target.value)} />
+        <input id="onboard-root" aria-label={t('onboard.workspaceLabel')} data-testid="vault-root-input" value={root} placeholder={t('onboard.folderPath')} onChange={event => setRoot(event.target.value)} />
         </div>
-        <button className="secondary" aria-label="Browse for workspace folder" onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError('Could not open the folder picker. Type a path instead.'))}>Browse…</button>
+        <button className="secondary" aria-label={t('onboard.browseLabel')} onClick={() => void api.importPick().then(value => { if (value) setRoot(value) }).catch(() => setError(t('onboard.pickerFailed')))}>{t('onboard.browse')}</button>
       </div>
     </section> : step === 2 ? <section className="onboard-ai" data-testid="onboard-step-2">
-      <h1>Connect your AI</h1>
+      <h1>{t('onboard.aiTitle')}</h1>
       <div className="onboard-ai-content">
       <div className="onboard-providers" aria-busy={loading}>
         {(['claude'] as const).map(id => {
@@ -124,15 +123,15 @@ export function Onboarding() {
           const active = connecting === id
           return <div className="onboard-provider" key={id}>
             <ProviderIcon provider={id} size={24} />
-            <div className="onboard-provider-info"><strong>Claude</strong>{active && <span role="status">{login?.phase === 'browser' ? 'Finish in your browser' : 'Opening sign-in…'}</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>A reported account limit is full. Wait for it to reset or switch accounts.</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
-            {active ? <div className="onboard-signing"><LoaderCircle size={18} className="computer-spinner" aria-label="Signing in" /><button type="button" className="onboard-cancel" aria-label="Cancel sign-in" title="Cancel sign-in" onClick={() => loginAction(api.engineCancelLogin(id))}><X size={16} aria-hidden /></button></div> : loading ? <LoaderCircle size={18} className="computer-spinner" aria-label="Checking connection" /> : connected ? <span className={checkFailed === id ? 'setting-hint' : 'onboard-connected'} data-testid={`onboard-brain-${id}`} role="status">{checkFailed !== id && <Check size={15} aria-hidden />}{checkFailed === id ? 'Check failed' : 'Signed in'}</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>Retry check</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>Connect</button>}
-            {active && login?.canOpen && <div className="onboard-login-actions"><button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />Open browser</button></div>}
+            <div className="onboard-provider-info"><strong>Claude</strong>{active && <span role="status">{login?.phase === 'browser' ? t('onboard.finishInBrowser') : t('onboard.openingSignIn')}</span>}{!loading && !active && connected && limited(id) && <span role="status" data-testid={`onboard-limited-${id}`}>{t('onboard.limitFull')}</span>}{!loading && !active && !connected && state?.installed && <span>{connectionLabel(state, id)}</span>}</div>
+            {active ? <div className="onboard-signing"><LoaderCircle size={18} className="computer-spinner" aria-label={t('onboard.signingIn')} /><button type="button" className="onboard-cancel" aria-label={t('onboard.cancelSignIn')} title={t('onboard.cancelSignIn')} onClick={() => loginAction(api.engineCancelLogin(id))}><X size={16} aria-hidden /></button></div> : loading ? <LoaderCircle size={18} className="computer-spinner" aria-label={t('onboard.checkingConnection')} /> : connected ? <span className={checkFailed === id ? 'setting-hint' : 'onboard-connected'} data-testid={`onboard-brain-${id}`} role="status">{checkFailed !== id && <Check size={15} aria-hidden />}{checkFailed === id ? t('onboard.checkFailed') : t('onboard.signedIn')}</span> : state?.conclusive === false ? <button className="secondary" disabled={finishing} onClick={() => { checked.current = false; void loadBrains() }}>{t('onboard.retryCheck')}</button> : id === 'claude' && state && !state.installed ? <InstallClaude onInstalled={() => void loadBrains()} onBusy={setInstalling} /> : <button className="secondary" data-testid={`onboard-connect-${id}`} disabled={!!connecting || !state?.installed || finishing || installing} onClick={() => void connect(id)}>{t('onboard.connect')}</button>}
+            {active && login?.canOpen && <div className="onboard-login-actions"><button className="secondary" onClick={() => loginAction(api.engineOpenLogin(id))}><ExternalLink size={13} aria-hidden />{t('onboard.openBrowser')}</button></div>}
           </div>
         })}
       </div>
       </div>
     </section> : step === 3 ? <section className="onboard-ai" data-testid="onboard-step-3">
-      <h1>Make it yours</h1>
+      <h1>{t('onboard.prefsTitle')}</h1>
       <div className="onboard-ai-content onboard-preferences" aria-busy={finishing}>
         <LearningSources compact value={sources} disabled={finishing} testPrefix="onboard" onChange={(key, on) => setSources(held => ({ ...held, [key]: on }))} />
       </div>
@@ -144,14 +143,14 @@ export function Onboarding() {
         <label className="onboard-bot-field"><span>{t('onboard.botLabel')}</span><input data-testid="onboard-bot-label" value={botLabel} disabled={finishing} onChange={event => setBotLabel(clipLabel(event.target.value))} /></label>
       </div>
     </section>}
-    {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>Check connections again</button>}</div>}
+    {error && <div className="onboard-fail" role="alert">{error}{step === 2 && <button className="secondary" data-testid="onboard-brains-retry" disabled={loading || !!connecting} onClick={() => { setError(''); void loadBrains() }}>{t('onboard.checkAgain')}</button>}</div>}
     {/* One persistent bar: step changes rewrite these nodes instead of remounting them under the cursor. */}
     <div className="onboard-actions">
-      {step > 1 && <button className="secondary" disabled={step === 2 ? !!connecting || installing : finishing} onClick={event => { if (event.detail > 1) return; if (step === 2 && event.detail === 0) primary.current?.focus(); setError(''); setStep(step - 1) }}>Back</button>}
+      {step > 1 && <button className="secondary" disabled={step === 2 ? !!connecting || installing : finishing} onClick={event => { if (event.detail > 1) return; if (step === 2 && event.detail === 0) primary.current?.focus(); setError(''); setStep(step - 1) }}>{t('onboard.back')}</button>}
       {step === 3 && <button className="onboard-skip" data-testid="onboard-prefs-skip" disabled={finishing} onClick={() => { setSources({ workMap: false, workFiles: false, workApps: false, activity: activityAtMount.current }); setError(''); setStep(4) }}>{t('onboard.skip')}</button>}
       {step === 4 && <button className="onboard-skip" data-testid="onboard-bot-skip" disabled={finishing || !claudeReady} onClick={() => void finish({ name: null, label: null })}>{t('onboard.skip')}</button>}
       <button ref={primary} className="primary" data-testid={step === 1 ? 'onboard-next' : step === 2 ? 'onboard-ai-next' : step === 3 ? 'onboard-prefs-next' : 'onboard-finish'} disabled={step === 1 ? !root.trim() : step === 2 ? loading || !!connecting || installing || !claudeReady : finishing || !claudeReady} onClick={event => { if (event.detail > 1) return; if (step === 4) { void finish({ name: botName, label: botLabel }); return } setError(''); setStep(step + 1) }}>
-        {step === 4 && finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />Checking AI…</> : step === 4 ? 'Start Engram' : 'Continue'}
+        {step === 4 && finishing ? <><LoaderCircle size={14} className="computer-spinner" aria-hidden />{t('onboard.checkingAi')}</> : step === 4 ? t('onboard.finish') : t('onboard.continue')}
       </button>
     </div>
   </div></div>
