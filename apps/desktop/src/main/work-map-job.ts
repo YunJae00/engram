@@ -177,8 +177,4 @@ export function registerWorkMapIpc(ctx: VaultContext): void {
     const map = await readWorkMap(ctx.paths).catch(() => null)
     return { builtAt: map?.builtAt ?? null, places: map?.places.filter((place) => place.work !== false).length ?? 0 }
   })
-  ipcMain.handle('workMap:refresh', async () => {
-    const map = await refreshWorkMap(ctx)
-    return { builtAt: map?.builtAt ?? null, places: map?.places.filter((place) => place.work !== false).length ?? 0 }
-  })
 }

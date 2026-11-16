@@ -49,7 +49,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   uiLanguage: 'system',
   defaultEngine: 'claude',
-  autoStart: false,
+  // On unless the person says otherwise in chat ("컴퓨터 켜면 자동으로 실행 꺼줘"): standing duties need the app running.
+  autoStart: true,
   teamSync: 'auto',
   searchTemplate: '',
   agentBrowser: '',

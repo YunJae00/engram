@@ -7,6 +7,7 @@ import {
   runImport,
   TeamSync,
 } from 'core'
+import { loadSettings } from './settings.js'
 import { ipcMain, shell } from 'electron'
 import { access } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -68,7 +69,7 @@ async function statusDto(ctx: VaultContext): Promise<SyncStatusDto> {
   }
 }
 
-async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
+export async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
   statusCache = null // a real sync changes what status() should report
   if (!ctx.git) return { state: 'no-remote', ahead: 0, behind: 0 }
   const sync = syncOf(ctx)
@@ -88,6 +89,43 @@ async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
 export function getSyncStatus(ctx: VaultContext): Promise<SyncStatusDto> {
   return statusDto(ctx)
 }
+
+// Point the vault repo at a GitHub repository and push. Idempotent and retry-safe: a prior push that failed
+// on auth left the remote in place, so it pushes again rather than trap the person behind "already connected".
+export async function connectGithub(ctx: VaultContext, url: string): Promise<GithubConnectResultDto> {
+  const sync = syncOf(ctx)
+
+  let normalized: string
+  try {
+    normalized = normalizeGithubUrl(url)
+  } catch (err) {
+    return { ok: false, detail: cleanDetail(err) }
+  }
+  const existing = await sync.remoteUrl()
+  // A remote to a *different* repo means this workspace is already backed up
+  // elsewhere — refuse rather than silently repoint it.
+  if (existing && normalizeGithubUrl(existing) !== normalized) {
+    throw new Error('already-connected')
+  }
+  try {
+    if (existing) await sync.push()
+    else await sync.createTeam(normalized)
+  } catch (err) {
+    return { ok: false, detail: cleanDetail(err) }
+  }
+  startAutoSync(ctx, true)
+  broadcast({ type: 'vault:changed' })
+  return { ok: true }
+}
+
+// Stop backing up: the remote is forgotten here; what was pushed stays where it is.
+export async function disconnectGithub(ctx: VaultContext): Promise<void> {
+  await syncOf(ctx).disconnect()
+  statusCache = null
+  broadcast({ type: 'vault:changed' })
+}
+
+export const hasBackup = (ctx: VaultContext): Promise<boolean> => ctx.git ? syncOf(ctx).hasRemote() : Promise.resolve(false)
 
 export function registerTeamIpc(ctx: VaultContext): void {
   ipcMain.handle('sync:status', () => statusDto(ctx))
@@ -140,30 +178,7 @@ export function registerTeamIpc(ctx: VaultContext): void {
   // Step 2: point the existing vault repo at the pasted repo and push. Idempotent
   // and retry-safe — a prior push that failed on auth left the remote in place,
   // so we push again rather than trap the user behind an "already connected" wall.
-  ipcMain.handle('github:connect', async (_e, url: string): Promise<GithubConnectResultDto> => {
-    const sync = syncOf(ctx)
-    let normalized: string
-    try {
-      normalized = normalizeGithubUrl(url)
-    } catch (err) {
-      return { ok: false, detail: cleanDetail(err) }
-    }
-    const existing = await sync.remoteUrl()
-    // A remote to a *different* repo means this workspace is already backed up
-    // elsewhere — refuse rather than silently repoint it.
-    if (existing && normalizeGithubUrl(existing) !== normalized) {
-      throw new Error('already-connected')
-    }
-    try {
-      if (existing) await sync.push()
-      else await sync.createTeam(normalized)
-    } catch (err) {
-      return { ok: false, detail: cleanDetail(err) }
-    }
-    startAutoSync(ctx, true)
-    broadcast({ type: 'vault:changed' })
-    return { ok: true }
-  })
+  ipcMain.handle('github:connect', (_e, url: string) => connectGithub(ctx, url))
 
   ipcMain.handle('import:run', async (_e, folder: string) => {
     const report = await runImport(ctx.paths, folder, {
@@ -187,7 +202,8 @@ export function startAutoSync(ctx: VaultContext, auto: boolean): void {
   autoSyncArmed = true
   const tick = async () => {
     try {
-      if (await syncOf(ctx).hasRemote()) await performSync(ctx)
+      // Turned off in chat ("자동 백업 꺼줘"): the timer stays, and does nothing until it is on again.
+      if ((await loadSettings()).teamSync === 'auto' && await syncOf(ctx).hasRemote()) await performSync(ctx)
     } catch (err) {
       console.error('auto sync failed:', err)
     }

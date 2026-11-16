@@ -14,7 +14,7 @@ import { registerMcpIpc } from './mcp-connect.js'
 import { setExternalContext } from './external-connection.js'
 import { watchNotes, type NotesWatchHandle } from './notes-watch.js'
 import { loadSettings } from './settings.js'
-import { registerSemanticIpc, semanticNotesChanged, startSemantic, stopSemantic, warmSemantic } from './semantic.js'
+import { semanticNotesChanged, startSemantic, stopSemantic, warmSemantic } from './semantic.js'
 import { syncSessionContext } from './session-context.js'
 import { agentBrowserRunning, closeAgentBrowser, setAgentBrowser } from './agent-browser.js'
 import { attachNativeLayout } from './native-layout.js'
@@ -534,7 +534,6 @@ function registerBaseIpc(): void {
   registerMcpIpc()
   // Semantic layer status — the handler exists app-wide; the engine itself
   // starts per vault in bootVault.
-  registerSemanticIpc()
 
   ipcMain.handle('onboard:defaults', async () => ({
     defaultRoot: process.env['ENGRAM_ONBOARD_ROOT'] ?? join(app.getPath('home'), 'Engram'),

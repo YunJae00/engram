@@ -155,45 +155,51 @@ const drafts = (ledger: HabitLedger): HabitDraftDto[] => Object.entries(ledger)
   .filter(([, entry]) => entry.state === 'draft' && entry.draft)
   .map(([key, entry]) => ({ key, labels: entry.labels, times: entry.times, title: entry.draft!.title, description: entry.draft!.description, body: entry.draft!.body, ...(entry.botId ? { botId: entry.botId } : {}) }))
 
+// Apps this computer has seen in the last month, and the ones kept off.
+export async function appUse(ctx: VaultContext): Promise<AppUseDto[]> {
+  const off = (await loadSettings()).appsOff
+  const used = usedApps(await readActivityRange(ctx, Date.now() - WINDOW_MS, Date.now()))
+  // An app that only sent notifications is listed too, so it can be turned off.
+  const notes = toastUse(await readToasts(ctx, Date.now() - WINDOW_MS), await appPaths())
+  const shown = new Set(used.map(one => one.app))
+  const rows: AppUseDto[] = [
+    ...used.map(one => ({ app: one.app, label: one.label, hours: Math.round(one.ms / 360_000) / 10, days: one.days, notes: notes.get(one.app)?.count ?? 0, on: !off.some(kept => kept.app === one.app) })),
+    ...[...notes].filter(([app]) => !shown.has(app) && !off.some(kept => kept.app === app)).sort((a, b) => b[1].count - a[1].count)
+      .map(([app, note]) => ({ app, label: note.label, hours: 0, days: 0, notes: note.count, on: true })),
+  ]
+  return [...rows, ...off.filter(kept => !rows.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, notes: 0, on: false }))]
+}
+
+export async function setAppUse(app: unknown, label: unknown, on: unknown): Promise<void> {
+  if (typeof app !== 'string' || !app.trim() || app.length > 80 || typeof label !== 'string' || label.length > 80 || typeof on !== 'boolean') throw new Error('Invalid app')
+  const key = app.trim().toLowerCase()
+  const settings = await updateSettings(held => ({ ...held, appsOff: on ? held.appsOff.filter(one => one.app !== key) : [...held.appsOff.filter(one => one.app !== key), { app: key, label: label.trim() || key }] }))
+  broadcast({ type: 'settings:changed', settings })
+}
+
+export const habitDrafts = async (ctx: VaultContext): Promise<HabitDraftDto[]> => drafts(await readHabits(ctx.paths))
+
+export async function answerHabit(ctx: VaultContext, key: unknown, keep: unknown): Promise<HabitDraftDto[]> {
+  if (typeof key !== 'string' || typeof keep !== 'boolean') throw new Error('Invalid habit')
+  const ledger = await changeHabits(ctx.paths, async ledger => {
+    const entry = ledger[key]
+    if (entry?.state !== 'draft' || !entry.draft) throw new Error('That draft is no longer waiting.')
+    if (keep) {
+      const result = await installSkill(ctx.paths, habitCandidate(key), await revised(ctx, entry))
+      if (!result.installed) throw new Error(result.reason === 'privacy' ? 'The draft holds an address or a key, so it was not kept.' : 'The how-to could not be kept.')
+    }
+    ledger[key] = { ...entry, state: keep ? 'kept' : 'dismissed', at: new Date().toISOString() }
+  })
+  await changeNotices(ctx.paths, items => items.map(item => item.key === key ? { ...item, read: true } : item))
+  broadcast({ type: 'habits:changed' })
+  broadcast({ type: 'notices:changed' })
+  return drafts(ledger)
+}
+
 export function registerHabitsIpc(ctx: VaultContext): void {
   void loadSettings().then(applyAppsOff).catch(() => undefined)
   onSettingsSaved(applyAppsOff)
-  ipcMain.handle('apps:list', async (): Promise<AppUseDto[]> => {
-    const off = (await loadSettings()).appsOff
-    const used = usedApps(await readActivityRange(ctx, Date.now() - WINDOW_MS, Date.now()))
-    // An app that only sent notifications is listed too, so it can be turned off.
-    const notes = toastUse(await readToasts(ctx, Date.now() - WINDOW_MS), await appPaths())
-    const shown = new Set(used.map(one => one.app))
-    const rows: AppUseDto[] = [
-      ...used.map(one => ({ app: one.app, label: one.label, hours: Math.round(one.ms / 360_000) / 10, days: one.days, notes: notes.get(one.app)?.count ?? 0, on: !off.some(kept => kept.app === one.app) })),
-      ...[...notes].filter(([app]) => !shown.has(app) && !off.some(kept => kept.app === app)).sort((a, b) => b[1].count - a[1].count)
-        .map(([app, note]) => ({ app, label: note.label, hours: 0, days: 0, notes: note.count, on: true })),
-    ]
-    const all = [...rows, ...off.filter(kept => !rows.some(one => one.app === kept.app)).map(kept => ({ app: kept.app, label: kept.label, hours: 0, days: 0, notes: 0, on: false }))]
-    return Promise.all(all.map(async row => { const icon = await appIcon(row.app); return icon ? { ...row, icon } : row }))
-  })
-  ipcMain.handle('apps:set', async (_event, app: unknown, label: unknown, on: unknown) => {
-    if (typeof app !== 'string' || !app.trim() || app.length > 80 || typeof label !== 'string' || label.length > 80 || typeof on !== 'boolean') throw new Error('Invalid app')
-    const key = app.trim().toLowerCase()
-    const settings = await updateSettings(held => ({ ...held, appsOff: on ? held.appsOff.filter(one => one.app !== key) : [...held.appsOff.filter(one => one.app !== key), { app: key, label: label.trim() || key }] }))
-    broadcast({ type: 'settings:changed', settings })
-  })
-  ipcMain.handle('habits:list', async () => drafts(await readHabits(ctx.paths)))
-  ipcMain.handle('habits:scan', async () => { await scanHabits(ctx, true); return drafts(await readHabits(ctx.paths)) })
-  ipcMain.handle('habits:answer', async (_event, key: unknown, keep: unknown) => {
-    if (typeof key !== 'string' || typeof keep !== 'boolean') throw new Error('Invalid habit')
-    const ledger = await changeHabits(ctx.paths, async ledger => {
-      const entry = ledger[key]
-      if (entry?.state !== 'draft' || !entry.draft) throw new Error('That draft is no longer waiting.')
-      if (keep) {
-        const result = await installSkill(ctx.paths, habitCandidate(key), await revised(ctx, entry))
-        if (!result.installed) throw new Error(result.reason === 'privacy' ? 'The draft holds an address or a key, so it was not kept.' : 'The how-to could not be kept.')
-      }
-      ledger[key] = { ...entry, state: keep ? 'kept' : 'dismissed', at: new Date().toISOString() }
-    })
-    await changeNotices(ctx.paths, items => items.map(item => item.key === key ? { ...item, read: true } : item))
-    broadcast({ type: 'habits:changed' })
-    broadcast({ type: 'notices:changed' })
-    return drafts(ledger)
-  })
+  ipcMain.handle('apps:list', async (): Promise<AppUseDto[]> => Promise.all((await appUse(ctx)).map(async row => { const icon = await appIcon(row.app); return icon ? { ...row, icon } : row })))
+  ipcMain.handle('habits:list', () => habitDrafts(ctx))
+  ipcMain.handle('habits:answer', (_event, key: unknown, keep: unknown) => answerHabit(ctx, key, keep))
 }

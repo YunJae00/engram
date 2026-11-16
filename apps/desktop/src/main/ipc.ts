@@ -154,7 +154,8 @@ import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList 
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { deleteSummary } from 'core/src/bot-delete'
 import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
-import { approvalsStore, reviewRuleInput } from './approvals.js'
+import { approvalsStore } from './approvals.js'
+import { preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
 import { closeCodexSession } from './engine-codex.js'
 import { fetchCodexModels, forgetCodexModels } from './codex-account.js'
@@ -1445,6 +1446,8 @@ export function registerIpc(ctx: VaultContext): void {
   const ROUTINE_MIN_FREE = 1.5e9
 
   const approvals = approvalsStore(app.getPath('userData'))
+  // What the Settings page no longer shows, said in chat (preferences-chat.ts).
+  const settingsChat = preferencesChat(ctx, approvals)
   registerArtifactIpc(ctx.paths)
   registerChatAttachmentIpc(ctx.paths)
   ipcMain.handle('routines:list', () => listRoutines(paths))
@@ -1737,8 +1740,9 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('agent:lane', (_e, lane: string) => lookAtLane(String(lane)))
   // The page is reset: the lane's tab goes, and the next ask starts clean.
   ipcMain.handle('agent:reset', (_e, lane: string) => resetLaneView(String(lane)))
-  // The log itself, opened as a folder: plain files a person can read or
-  // hand to whoever asks what the comets did.
+
+  // shortcut: no renderer calls this any more (preload entry removed with the Settings row); the handler stays so this branch
+  // does not touch the shared import lines B6/B7 edit. Delete it with its two imports (auditDir, mkdir) after those merge.
   ipcMain.handle('audit:open', async () => {
     const dir = auditDir(paths)
     await mkdir(dir, { recursive: true })
@@ -1751,8 +1755,6 @@ export function registerIpc(ctx: VaultContext): void {
   ipcMain.handle('approvals:list', () => approvals.list())
   ipcMain.handle('approvals:forget', (_e, fingerprint: string) => approvals.forget(fingerprint))
   ipcMain.handle('reviewRules:list', () => approvals.reviewRules())
-  ipcMain.handle('reviewRules:add', (_e, input: unknown) => approvals.addReviewRule(reviewRuleInput(input)))
-  ipcMain.handle('reviewRules:remove', (_e, input: unknown) => approvals.removeReviewRule(reviewRuleInput(input)))
   // Standing tasks go through the same door as a press of Run.
   startStanding({
     paths,
@@ -2444,6 +2446,8 @@ export function registerIpc(ctx: VaultContext): void {
     ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths, staffDoing)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
+    // Preferences have no screen: the person's own conversation with a bot changes them, a member's lane never does.
+    ...(channel.startsWith('bot-') && !channel.includes('~') ? [settingsChat.tool(channel, () => /[가-힣]/.test(turnGoals.get(channel) ?? ''))] : []),
     ...(channel.startsWith('bot-') ? learningTools(paths, channel, () => turnGoals.get(channel) ?? '') : []),
     // Separate questions looked into at once, each on a tab of its own.
     ...(channel.startsWith('bot-') && !isHelperLane(channel) && agentBrowserAvailable() ? [helpersTool({
@@ -2517,6 +2521,17 @@ export function registerIpc(ctx: VaultContext): void {
       answering.delete(channel)
       broadcast({ type: 'chat:done', channel, text: said })
       return
+    }
+    // A plain sentence about a preference ("컴퓨터 켜면 자동으로 실행 꺼줘"), or the yes to its one question, is answered here: no model round.
+    if (bot && !recovery && !savedRoutine && !turn && !request.scheduled && !request.attachments?.length) {
+      const said = await settingsChat.say(channel, request.message).catch((error: unknown) => { flog('preferences', error); return undefined })
+      if (said) {
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
+        turnOutcomes.set(channel, { answer: said, asked: /[?？]$/.test(said), unfinished: false, steps: 0 })
+        answering.delete(channel)
+        broadcast({ type: 'chat:done', channel, text: said })
+        return
+      }
     }
     const attachmentIds = chatAttachmentIds(request.attachments, savedHistory)
     const attachments = await readChatAttachments(paths, attachmentIds, signal)
