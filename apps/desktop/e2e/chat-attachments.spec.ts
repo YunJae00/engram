@@ -27,28 +27,21 @@ test.beforeAll(async () => {
 })
 test.afterAll(async () => { await app?.close() })
 
-test('one-line composer keeps actions in a keyboard-accessible menu in both themes', async () => {
+test('one-line composer keeps one keyboard-accessible attach button and no menu in both themes', async () => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const [width, theme] of [[1280, 'light'], [620, 'dark']] as const) {
     await page.setViewportSize({ width, height: 840 })
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
+    // The + has no menu (hux): it opens the file picker itself, also from the keyboard.
     const add = page.getByTestId('welcome-input-add'), menu = page.getByLabel('Conversation actions', { exact: true })
-    await expect(menu).toBeHidden()
+    await expect(menu).toHaveCount(0)
+    await expect(add).toHaveAttribute('aria-label', 'Attach files')
+    const chooser = page.waitForEvent('filechooser')
     await add.focus(); await page.keyboard.press('Enter')
-    await expect(menu).toBeVisible()
-    await page.keyboard.press('Tab')
-    await expect(menu.getByRole('button', { name: 'Attach files', exact: true })).toBeFocused()
-    await page.keyboard.press('Escape')
-    await expect(menu).toBeHidden(); await expect(add).toBeFocused()
-    await add.click()
-    await expect(menu).toBeVisible()
-    await expect.poll(async () => Math.abs((await menu.boundingBox())!.x - (await add.boundingBox())!.x)).toBeLessThanOrEqual(1)
-    const bounds = await menu.boundingBox()
-    expect(bounds!.x).toBeGreaterThanOrEqual(0)
-    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
-    expect(bounds!.y).toBeGreaterThanOrEqual(0)
+    await (await chooser).setFiles([])
+    await expect(menu).toHaveCount(0)
     const png = await app.evaluate(async ({ BrowserWindow }) => {
       const contents = BrowserWindow.getAllWindows()[0]!.webContents
       await contents.capturePage()
@@ -72,7 +65,6 @@ test('one-line composer keeps actions in a keyboard-accessible menu in both them
 test('native picker attaches a file to a new chat without importing it into Cosmos', async () => {
   const chooser = page.waitForEvent('filechooser')
   await page.getByTestId('welcome-input-add').click()
-  await page.getByRole('button', { name: 'Attach files', exact: true }).click()
   await (await chooser).setFiles(input)
   await expect(page.getByLabel('Attached files')).toContainText('request.txt')
   await expect(page.getByTestId('welcome-input-send')).toBeEnabled()

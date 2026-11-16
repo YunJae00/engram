@@ -43,7 +43,8 @@ async function openChat(page: Page, chatId: string): Promise<void> {
 }
 
 async function openSettings(page: Page): Promise<void> {
-  if (!await page.getByTestId('settings-view').isVisible()) await page.getByTestId('activity-settings').click()
+  // The sheet reloads after a language switch; its overlay is there before its rows are.
+  if (!await page.locator('.settings-overlay').isVisible()) await page.getByTestId('activity-settings').click()
   await expect(page.getByTestId('settings-view')).toBeVisible()
 }
 

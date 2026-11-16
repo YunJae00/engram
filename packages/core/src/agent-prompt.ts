@@ -387,7 +387,7 @@ export function pickTools(all: AgentTool[], task: string, steps: AgentLoopStep[]
   const newBot = by('new_bot')
   if (newBot && (NEW_BOT.test(task) || NEW_BOT.test(earlier)) && !picked.includes(newBot)) picked.push(newBot)
   if (skill && !picked.includes(skill)) picked.push(skill)
-  const asked: [RegExp, string][] = [[/음량|볼륨|소리|음소거|volume|mute|sound|louder|quieter/i, 'system_volume'], [/권한|permission/i, 'permission_state'], [/pdf|png|svg|이미지|그림|그래프|차트|chart|graph|image|슬라이드|slide/i, 'render_file'], [/엑셀|xlsx|csv|표|스프레드시트|spreadsheet|스크립트|script|코드|code|pdf|png|파일|file/i, 'file_create_copy'], [/엑셀|xlsx|스프레드시트|spreadsheet|workbook/i, 'file_create_workbook']]
+  const asked: [RegExp, string][] = [[/음량|볼륨|소리|음소거|volume|mute|sound|louder|quieter/i, 'system_volume'], [/권한|permission/i, 'permission_state'], [/알림|notif|앞으로|from now on|지침|instruction/i, 'teammate_settings'], [/pdf|png|svg|이미지|그림|그래프|차트|chart|graph|image|슬라이드|slide/i, 'render_file'], [/엑셀|xlsx|csv|표|스프레드시트|spreadsheet|스크립트|script|코드|code|pdf|png|파일|file/i, 'file_create_copy'], [/엑셀|xlsx|스프레드시트|spreadsheet|workbook/i, 'file_create_workbook']]
   for (const tool of asked.filter(([test]) => test.test(task)).map(([, name]) => by(name))) if (tool && !picked.includes(tool)) picked.push(tool)
   // Evidence tools supplement navigation rather than replacing the controls needed to reproduce a problem.
   const evidence = /screenshot|reproduc|evidence|upload|attach|verify|스크린샷|재현|증거|첨부|업로드|검증/i.test(task)

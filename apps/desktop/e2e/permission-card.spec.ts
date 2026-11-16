@@ -108,7 +108,8 @@ test('the card leaves when the permission turns on', async () => {
     await app.evaluate(() => { (globalThis as Window).__engramPermissionState = { accessibility: true, screenRecording: true, inputMonitoring: true } })
     await expect(page.getByTestId('permission-card')).toHaveCount(0, { timeout: 15_000 })
     await expect.poll(() => app.evaluate(() => (globalThis as Window).__waited)).toBe('on')
-    await expect(page.getByTestId('bots-thinking')).toHaveAttribute('aria-label', 'read_desktop: KakaoTalk')
+    // The turn is still working; the waiting line is one fixed word and never a step name (hux r2).
+    await expect(page.getByTestId('bots-thinking')).toHaveAttribute('aria-label', 'Thinking')
     await expect(page.locator('.bots-thread')).toContainText(TURNS.at(-1)![1])
     expect(await app.evaluate(() => (globalThis as Window).__opened)).toEqual([])
   } finally { await cleanup() }

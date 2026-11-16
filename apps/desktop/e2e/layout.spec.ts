@@ -360,6 +360,9 @@ test('a long bot list scrolls inside the sidebar and leaves the last bot reachab
   const last = page.getByTestId(id!)
   await last.click()
   await expect(last).toHaveClass(/active/)
-  await expect(page.getByTestId('bot-empty')).toContainText(name)
+  // Its chat opens: the empty state names it, unless an earlier test here already talked to it and left a thread.
+  const empty = page.getByTestId('bot-empty')
+  await expect(empty.or(page.locator('.bots-thread .bubble-msg').first())).toBeVisible()
+  if (await empty.isVisible()) await expect(empty).toContainText(name!)
   await expect(page.getByTestId('bots-input')).toBeEditable()
 })

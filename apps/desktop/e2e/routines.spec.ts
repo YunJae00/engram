@@ -115,7 +115,8 @@ test('there is no routines library; a saved routine keeps its recorded steps as 
   await page.evaluate(() => { window.dispatchEvent(new Event('engram:open-routines')) })
   await expect(page.locator('[cmdk-root]')).toHaveCount(0)
   await expectNoRoutineLibrary(page)
-  await expect(page.getByTestId('sidebar-chat-collection')).toBeVisible()
+  // A fresh vault has no bots yet, so the list is there with no rows (and no height).
+  await expect(page.getByTestId('sidebar-chat-collection')).toBeAttached()
   await expect(page.getByTestId('bots-new')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
   await expect(page.getByTestId('app-sidebar').getByRole('textbox')).toHaveCount(0)

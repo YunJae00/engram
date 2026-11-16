@@ -105,6 +105,8 @@ test('a finished web preview card in the single chat view leaves the answer read
   const pinned = () => thread.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop <= 1)
   // Stick-to-bottom settles after the transcript paints, so measure from the pinned position.
   await expect.poll(pinned).toBe(true)
+  // The chat just opened from its row and rises 4px into place; measure once it has settled.
+  await pane.evaluate(async (node) => { await Promise.all(node.getAnimations().map((animation) => animation.finished)) })
   const before = await threadBox()
   const lane = `bot-${bots[0]!.id}`
 

@@ -198,6 +198,7 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
       // One chat view: the other bot's chat shows only its own app, and the first bot's comes back with it.
+      await openActivity(page, 'bots') // the narrow widths above closed the sidebar; the rows are in it
       await page.getByTestId(`bot-${bots[1]!.id}`).click()
       await expect(full.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
       await expect(full.getByTestId('task-approvals')).toBeVisible()
@@ -224,6 +225,8 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
       // A folded web lane makes the next theme start with app frames only; the fold is in the browser the web card opens.
       const webCard = page.locator('[data-testid="preview-card"][data-source="web"]')
       if (theme === 'light') {
+        // Coming back to this chat put its app card in front; the web card is promoted from behind it first.
+        if (!await webCard.isVisible()) await full.getByTestId('preview-deck').getByRole('button', { name: 'example.test', exact: true }).press('Enter')
         await webCard.getByRole('button', { name: /^Open (browser beside chat|full browser)$/ }).click()
         await page.getByTestId('web-pane-fold').click()
         await expect(webCard).toHaveCount(0)

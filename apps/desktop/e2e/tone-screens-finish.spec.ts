@@ -118,8 +118,9 @@ test('cream+ink screen finish and empty state', async () => {
     await open(failing.id)
     const error = page.locator('.bots-thread .bubble-msg.assistant.error')
     await expect(error).toBeVisible()
-    const errorStyle = await error.evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, heading: getComputedStyle(node.querySelector('.answer-error-heading')!).color }))
-    expect(errorStyle).toEqual({ color: DANGER, background: USER_BUBBLE, heading: DANGER })
+    const errorStyle = await error.evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, line: getComputedStyle(node.querySelector('.answer-error p')!).color, extras: node.querySelectorAll('.answer-error-heading, button, details').length }))
+    // An error is one human line now: no heading, retry button or details (hux, REMOVE.md row 79).
+    expect(errorStyle).toEqual({ color: DANGER, background: USER_BUBBLE, line: DANGER, extras: 0 })
     await shot('error-card.png')
 
     const emptyState = async (id: string, line: string) => {
