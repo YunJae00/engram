@@ -182,6 +182,25 @@ describe('narrowing is done at once, widening is asked about once', () => {
     expect((chat.tool('c', () => false).closes as (args: Record<string, unknown>) => boolean)({})).toBe(false)
   })
 
+  // Codex cap (sm r3): a model's call set the question, and any later "응" installed a standing allow for a site or sent the notes to a repository.
+  it('a model\'s call cannot start a standing allow or a backup connection; the person\'s own sentence still can', async () => {
+    const { chat, calls } = setup()
+    const tool = chat.tool('c', () => true)
+    const allow = await tool.run({ do: 'auto_allow', name: 'evil.example.com', on: true }, { task: '' })
+    expect(allow).toBe('그건 직접 말씀해 주셔야 바꿀 수 있어요. "evil.example.com에서는 묻지 말고 제출해"라고 말씀해 주세요.')
+    expect(await chat.say('c', '응')).toBeUndefined()
+    const backup = await tool.run({ do: 'backup_connect', name: 'https://github.com/someone/else' }, { task: '' })
+    expect(backup).toBe('백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 https://github.com/someone/else 로 연결해줘"라고 말씀해 주세요.')
+    expect(await chat.say('c', '네')).toBeUndefined()
+    expect(calls).toEqual([])
+    // The sentence each line names is one this module takes, asks about by site or repository, and does on yes.
+    expect(await chat.say('c', 'evil.example.com에서는 묻지 말고 제출해')).toBe('evil.example.com에서는 묻지 않고 바로 제출해도 될까요?')
+    expect(calls).toEqual([])
+    expect(await chat.say('c', '응')).toBe('evil.example.com에서는 묻지 않고 제출할게요.')
+    expect(await chat.say('c', '깃허브 백업 https://github.com/someone/else 로 연결해줘')).toBe('https://github.com/someone/else에 백업을 연결할까요? 노트가 그 저장소로 올라가요.')
+    expect(calls).toEqual(['rule:allow:evil.example.com:true'])
+  })
+
   it('a change that fails says so in one line and changes nothing else', async () => {
     const { chat } = setup({ autoStart: async () => { throw new Error('EPERM: operation not permitted') } })
     expect(await chat.say('c', '컴퓨터 켜면 자동으로 실행 꺼줘')).toBe('바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.')

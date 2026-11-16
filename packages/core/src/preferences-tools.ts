@@ -242,7 +242,7 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
   const failed = '바꾸지 못했어요. 잠시 후 다시 말씀해 주세요.'
   const done = (ask: PreferenceAsk) => apply(host, ask, clock()).catch(() => failed)
   // The one door: a widening is held as a question, everything else is done.
-  const settle = async (channel: string, said: PreferenceAsk): Promise<string> => {
+  const settle = async (channel: string, said: PreferenceAsk, typed = false): Promise<string> => {
     pending.delete(channel)
     // A call that leaves `on` out never widens: it reads as off, and for an ask-first rule as keeping the rule.
     const ask: PreferenceAsk = { ...said, on: said.do === 'ask_first' ? said.on !== false : said.on === true }
@@ -255,6 +255,10 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
     }
     if (ask.do === 'backup_connect' && (!host.backup.available() || !/github\.com[/:][\w.-]+\/[\w.-]+/i.test(ask.name ?? ''))) return done(ask)
     if (ask.do === 'auto_allow' && !siteOf(ask.name ?? '')) return done(ask)
+    // What lets something leave later with no question (submitting on a site, notes going to a repository) is settled only on the person's
+    // own sentence, where the question they answer is this module's own line. A model's call could be worded to them any way it likes.
+    if (!typed && ask.do === 'auto_allow') return `그건 직접 말씀해 주셔야 바꿀 수 있어요. "${siteOf(ask.name ?? '')}에서는 묻지 말고 제출해"라고 말씀해 주세요.`
+    if (!typed && ask.do === 'backup_connect') return `백업 연결은 직접 말씀해 주셔야 해요. "깃허브 백업 ${ask.name!.trim()} 로 연결해줘"라고 말씀해 주세요.`
     pending.set(channel, { ask: ask.do === 'auto_allow' ? { ...ask, name: siteOf(ask.name ?? '')! } : ask, at: clock().getTime() })
     return question(pending.get(channel)!.ask)
   }
@@ -271,7 +275,7 @@ export function preferences(host: PreferenceHost, clock: () => Date = () => new 
       }
       // The app list is read only for a sentence shaped like one about an app.
       const ask = preferenceAsk(message) ?? (APP_VERB.test(line) ? preferenceAsk(message, (await host.apps().catch(() => [])).map(one => one.label)) : undefined)
-      return ask ? settle(channel, ask) : undefined
+      return ask ? settle(channel, ask, true) : undefined
     },
     tool: (channel, korean) => ({
       name: 'preferences',
