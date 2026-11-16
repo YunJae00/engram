@@ -7,7 +7,7 @@ const pane = vi.hoisted(() => ({ attention: false }))
 vi.mock('../src/renderer/src/lib/webPane.js', () => ({ useWebPane: () => pane, webPane: {} }))
 vi.mock('../src/renderer/src/api.js', () => ({ api: {} }))
 vi.mock('../src/renderer/src/lib/agentMirrorLive.js', () => ({ agentMirror: {} }))
-import { appPreviewFrame } from '../src/renderer/src/components/usePreviewFrames.js'
+import { appPreviewFrame, previewGaveUp } from '../src/renderer/src/components/usePreviewFrames.js'
 import { PreviewCard, previewIcon } from '../src/renderer/src/components/PreviewCard.js'
 import { PreviewDeck } from '../src/renderer/src/components/PreviewDeck.js'
 import { threadWords } from '../src/renderer/src/lib/threadLang.js'
@@ -98,4 +98,15 @@ it('renders Outlook and Excel activity cards with their own chrome whichever is 
   expect(outlook).toContain('lucide-mail')
   expect(outlook).toContain('Outlook · Working')
   expect(outlook).not.toContain('Excel')
+})
+
+// QA145 S11: a card for a window that never showed a frame sat on the thread as "connecting" / "reconnecting" for good.
+it('a window that never showed a frame is no card once its stream has given up', () => {
+  const waiting = { phase: 'waiting' as const }
+  expect(previewGaveUp(waiting, { exhausted: true, live: false })).toBe(true)
+  expect(previewGaveUp(waiting, { exhausted: false, live: false })).toBe(false)
+  expect(previewGaveUp(waiting, { exhausted: true, live: true })).toBe(false)
+  expect(previewGaveUp(waiting, { exhausted: true, live: false, image: 'data:image/jpeg;base64,x' })).toBe(false)
+  expect(previewGaveUp({ phase: 'ready', image: 'x' }, { exhausted: true, live: false })).toBe(false)
+  expect(previewGaveUp(waiting)).toBe(false)
 })

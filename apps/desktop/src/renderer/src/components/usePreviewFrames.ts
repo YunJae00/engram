@@ -23,6 +23,11 @@ export function appPreviewFrame(frame: WorkPreviewDto): PreviewFrame {
   return { id: frame.id, source: 'app', title: frame.title, at: frame.at, image: frame.data,
     activity: frame.activity, phase: frame.unavailable ? 'unavailable' : frame.captureState ?? 'ready', reason: frame.captureReason === 'capture_unavailable' ? undefined : frame.captureReason, current: frame.current }
 }
+// A bound window that never showed a frame and whose stream has given up is
+// not a preview: no card, instead of "connecting" for good (QA145 S11).
+export function previewGaveUp(frame: Pick<PreviewFrame, 'image' | 'phase'>, stream?: { exhausted: boolean; live: boolean; image?: string }): boolean {
+  return !!stream?.exhausted && !stream.live && !stream.image && !frame.image && frame.phase === 'waiting'
+}
 export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame[] {
   const { bindings } = useDesktopSession()
   const binding = bindings.find(item => item.lane === lane && item.readable)
@@ -84,6 +89,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     if (stream && (!binding.hiddenByEngram || stream.live || stream.connecting)) { frame.stream = stream.source; frame.live = stream.live; frame.reconnecting = stream.reconnecting; frame.connecting = stream.connecting }
     if (stream?.live) { frame.stream = stream.source; frame.phase = 'ready'; frame.image = undefined }
     else if (stream?.image) { frame.image = stream.image; frame.at = stream.at; frame.phase = 'ready' }
+    if (!binding.hiddenByEngram && previewGaveUp(frame, stream)) frames.splice(frames.indexOf(frame), 1)
   }
   const showing = tile ? tile.url !== undefined : (pane.floating || (compact && !pane.expanded)) && !pane.folded
     && (pane.wanted || (mirror.lane === lane && (mirror.on || mirror.frame)))
