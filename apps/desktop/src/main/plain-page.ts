@@ -1,4 +1,5 @@
 import type { WebPage } from 'core'
+import { classifyWall } from './page-wall.js'
 
 // A page read without a browser tab: what a low-memory Mac falls back to when no tab can be opened for another lane
 // (perf146: three members at once got "not enough free memory … wait" and slept, polled vm_stat and re-opened pages).
@@ -30,7 +31,10 @@ export function plainPage(html: string, url: string): WebPage {
   }
   const text = decode(body.replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/section|\/article|\/table)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' '))
     .replace(/[ \t\r\f\v]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{2,}/g, '\n').trim()
-  return { url, requestedUrl: url, title, text: text.length > TEXT_CAP ? `${text.slice(0, TEXT_CAP)}\n[Page extract truncated; absence from this extract does not establish absence from the page.]` : text, links }
+  // The same sign-in and robot-check wall as a tab read: such a page is handed to the person, not passed on as page text.
+  let wall: ReturnType<typeof classifyWall> = null
+  try { wall = classifyWall(url, title, text, /<input\b[^>]*\btype\s*=\s*["']?password/i.test(html)) } catch { /* not an address */ }
+  return { url, requestedUrl: url, title, ...(wall ? { wall } : {}), text: text.length > TEXT_CAP ? `${text.slice(0, TEXT_CAP)}\n[Page extract truncated; absence from this extract does not establish absence from the page.]` : text, links }
 }
 
 export async function fetchPlainPage(url: string, signal: AbortSignal | undefined, fetcher: (url: string, init: RequestInit) => Promise<Response>): Promise<WebPage> {
@@ -39,7 +43,14 @@ export async function fetchPlainPage(url: string, signal: AbortSignal | undefine
   const response = await fetcher(url, { signal: signal ? AbortSignal.any([signal, limit]) : limit, credentials: 'omit', redirect: 'follow', headers: { accept: 'text/html,application/xhtml+xml,text/plain;q=0.8' } })
   const type = response.headers.get('content-type') ?? ''
   if (type && !/html|text\/plain|xml/i.test(type)) throw new Error(`${url} is not a page of text (${type.split(';')[0]}).`)
-  const bytes = new Uint8Array(await response.arrayBuffer()).subarray(0, PLAIN_MAX_BYTES)
+  // Read as it arrives and stop at the limit: a huge body is never held whole.
+  const parts: Uint8Array[] = []
+  let size = 0
+  const reader = response.body?.getReader()
+  try {
+    while (reader && size < PLAIN_MAX_BYTES) { const { done, value } = await reader.read(); if (done) break; parts.push(value); size += value.length }
+  } finally { await reader?.cancel().catch(() => undefined) }
+  const bytes = Buffer.concat(parts).subarray(0, PLAIN_MAX_BYTES)
   let html: string
   try { html = new TextDecoder(/charset=["']?([\w-]+)/i.exec(type)?.[1] ?? 'utf-8').decode(bytes) } catch { html = new TextDecoder().decode(bytes) }
   const page = plainPage(html, response.url || url)
@@ -52,12 +63,13 @@ export async function tabOrPlain<T>(tab: () => Promise<T>, plain: (() => Promise
   let refusal: unknown
   try { return { tab: await tab() } } catch (error) { if (!NO_ROOM.test(String(error instanceof Error ? error.message : error))) throw error; refusal = error }
   const read = plain ? await plain().catch(() => undefined) : undefined
-  if (read && read.text.length >= PLAIN_TEXT_MIN) return { read }
+  // A wall is better met in a tab, where the person can pass it: it waits its turn for one like a thin read.
+  if (read && read.text.length >= PLAIN_TEXT_MIN && !read.wall) return { read }
   for (const until = Date.now() + waitMs; Date.now() < until;) {
     await new Promise(resolve => setTimeout(resolve, stepMs))
     signal?.throwIfAborted()
     try { return { tab: await tab() } } catch (error) { if (!NO_ROOM.test(String(error instanceof Error ? error.message : error))) throw error; refusal = error }
   }
-  if (read?.text.trim()) return { read }
+  if (read?.text.trim() || read?.wall) return { read }
   throw refusal
 }

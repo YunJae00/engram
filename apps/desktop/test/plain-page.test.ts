@@ -40,3 +40,27 @@ it('passes on every other failure untouched', async () => {
   await expect(tabOrPlain(async () => { throw new Error('profile is locked') }, plain)).rejects.toThrow('profile is locked')
   expect(plain).not.toHaveBeenCalled()
 })
+
+// perf146 r2 (review B1): the no-tab read passed a robot check or sign-in page on as ordinary page text.
+it('marks a sign-in or robot-check page as a wall, like a tab read', async () => {
+  expect(plainPage('<title>Verify you are human</title><p>captcha required</p>', 'https://example.com/check').wall).toBe('captcha')
+  expect(plainPage('<title>Sign in</title><form><input type="password" name="p"></form>', 'https://example.com/account').wall).toBe('login')
+  expect(plainPage(`<title>서울 날씨</title><p>${long}</p>`, 'https://weather.example/seoul').wall).toBeUndefined()
+  // A wall waits for a tab, where the person can pass it; with none to be had it is still reported as a wall.
+  const walled = { url: 'u', title: '', text: long, wall: 'captcha' as const }
+  let tries = 0
+  expect(await tabOrPlain(async () => { if (++tries < 2) throw noRoom(); return 'tab' }, async () => walled, undefined, 1_000, 5)).toEqual({ tab: 'tab' })
+  expect(await tabOrPlain(async () => { throw noRoom() }, async () => ({ ...walled, text: '' }), undefined, 20, 5)).toMatchObject({ read: { wall: 'captcha' } })
+})
+
+// perf146 r2 (review B2): the 2 MB limit was applied after the whole body had been read into memory.
+it('stops reading a page body at the size limit', async () => {
+  let pulled = 0
+  const chunk = new TextEncoder().encode('가'.repeat(100_000))
+  const body = new ReadableStream<Uint8Array>({ pull(controller) { pulled += chunk.length; controller.enqueue(chunk) } }, { highWaterMark: 0 })
+  const response = new Response(body, { headers: { 'content-type': 'text/html' } })
+  response.arrayBuffer = async () => { throw new Error('the whole body was read') }
+  const page = await fetchPlainPage('https://example.com/huge', undefined, async () => response)
+  expect(page.text.length).toBeGreaterThan(1_000)
+  expect(pulled).toBeLessThan(3_000_000)
+})
