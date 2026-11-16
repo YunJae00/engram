@@ -96,7 +96,7 @@ export { askText, choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } 
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
 export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_CARD_TTL_MS, routineCardExpired, serializeReviewRules, type ReviewAction, type ReviewDecision, type ReviewRule, type ReviewRuleKind } from './review-rules.js'
 export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedule } from './schedule.js'
-export { scheduleTool, scheduleWords, type ScheduleDeps } from './schedule-tools.js'
+export { scheduleTool, scheduleWords, plainSchedule, type ScheduleDeps } from './schedule-tools.js'
 export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export * from './company-tools.js'
 export { backgroundOpen } from './delegated-tasks.js'

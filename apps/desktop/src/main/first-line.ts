@@ -23,6 +23,8 @@ export interface FirstLineAsk {
   limited: boolean
   followUp: boolean
   secret: boolean
+  /** The host answers this ask itself, with no model round (core answersItself): its answer is the first text, so no first line is shown. */
+  host?: boolean
 }
 type Voice = Pick<Engine, 'id' | 'quick'>
 // open: the small model may still answer. ready: the person's request is in the thread, so a line can follow it.
@@ -55,6 +57,8 @@ export function wantsFirstLine(ask: FirstLineAsk): string | null {
   if (ask.message.trim().startsWith('/')) return 'command'
   // The status question is answered whole from stored state: a first line beside it would be a second answer on screen.
   if (isStatusAsk(ask.message)) return 'status'
+  // grokbar C9: "바로 확인해 볼게요." came up at 0.6 s over an answer the host had ready at 1 s.
+  if (ask.host) return 'host'
   return plainReply(ask.message) ? 'chit-chat' : null
 }
 
@@ -189,7 +193,9 @@ const LANE_KO: [RegExp, string][] = [
   [/내보내|해고|빼(고|\s*줘)/u, '바로 정리할게요.'],
   [/뽑아|채용|고용|팀에\s*(추가|넣)|추가해/u, '바로 팀에 넣을게요.'],
   [/이름.{0,12}바꿔|승진|(으로|로)\s*불러/u, '바로 바꿔 둘게요.'],
-  [/맡겨|맡기|시켜|시키|넘겨|넘기|나눠/u, '바로 맡길게요.'],
+  // The line that follows a split is "…한테 나눠 맡겼어요.": the first line names the step before it, not the same thing again.
+  [/나눠/u, '누가 뭘 맡을지 나눠 볼게요.'],
+  [/맡겨|맡기|시켜|시키|넘겨|넘기/u, '바로 맡길게요.'],
   [/매주|매일|매달|매월|마다|요일.{0,8}\d{1,2}\s*시/u, '일정에 넣어 둘게요.'],
   [/취소|없애|지워/u, '바로 뺄게요.'],
   [/요약|정리/u, '지금 정리할게요.'],
