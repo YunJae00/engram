@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { scheduleTool, type ScheduleDeps } from '../src/schedule-tools.js'
+import { scheduleTool, scheduleWordsKo, type ScheduleDeps } from '../src/schedule-tools.js'
 import type { BotTask } from '../src/bots.js'
 
 function kept(now = new Date(2026, 9, 19, 10, 0)) {
@@ -39,4 +39,17 @@ it('keeps a repeat every so many minutes and a listing to look at first, only fr
   await expect(tool.run({ action: 'add', what: 'x', every: 15, onlyWhenNew: { tool: 'file_read' } }, { task: '' })).rejects.toThrow('outlook_mail')
   await expect(tool.run({ action: 'add', what: 'x', every: 1 }, { task: '' })).rejects.toThrow('every')
   await expect(kept().tool.run({ action: 'add', what: 'x', every: 15, onlyWhenNew: { tool: 'outlook_mail' } }, { task: '' })).rejects.toThrow('Nothing can be watched')
+})
+
+it('on the chief of staff a kept duty is confirmed by the tool in one Korean line that ends the turn; list and remove go on as before', async () => {
+  const tasks: BotTask[] = []
+  const tool = scheduleTool({ list: async () => tasks, add: async (input) => { const task = { id: 't1', ...input }; tasks.push(task); return task }, remove: async () => true, duty: true, now: () => new Date(2026, 10, 16, 10, 0) })
+  expect(await tool.run({ action: 'add', what: '마케팅팀 주간보고 올리기', time: '09:00', days: [1] }, { task: '' })).toBe('매주 월요일 09:00 일정으로 넣었어요: 마케팅팀 주간보고 올리기')
+  expect(tasks[0]).toMatchObject({ goal: '마케팅팀 주간보고 올리기', schedule: { days: [1], hour: 9, minute: 0 } })
+  expect(typeof tool.closes === 'function' && [tool.closes({ action: 'add' }), tool.closes({ action: 'list' }), tool.closes({ action: 'remove' })]).toEqual([true, false, false])
+  expect(JSON.parse(await tool.run({ action: 'list' }, { task: '' }) as string).scheduled[0]).toMatchObject({ what: '마케팅팀 주간보고 올리기', when: 'Mon 09:00' })
+  expect(scheduleWordsKo({ days: [1, 2, 3, 4, 5], hour: 8, minute: 30 })).toBe('평일 08:30')
+  expect(scheduleWordsKo({ days: [0, 1, 2, 3, 4, 5, 6], hour: 0, minute: 0, every: 15 })).toBe('매일 00:00부터 15분마다')
+  expect(scheduleWordsKo({ days: [], hour: 15, minute: 0, on: '2026-11-20' })).toBe('2026-11-20 15:00에 한 번')
+  expect(kept().tool.closes).toBeUndefined()
 })

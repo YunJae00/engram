@@ -281,7 +281,7 @@ export async function deleteBot(paths: VaultPaths, id: string, opts: { undoCreat
 export async function addBotTask(
   paths: VaultPaths,
   botId: string,
-  input: { name: string; goal: string; schedule?: Schedule; routineId?: string; watch?: TaskWatch },
+  input: { name: string; goal: string; schedule?: Schedule; routineId?: string; watch?: TaskWatch; chat?: string },
   now: Date = new Date(),
 ): Promise<BotTask> {
   const name = input.name.trim().slice(0, 60)
@@ -296,6 +296,7 @@ export async function addBotTask(
     ...(input.schedule ? { schedule: input.schedule } : {}),
     ...(input.routineId ? { routineId: input.routineId } : {}),
     ...(input.watch ? { watch: input.watch } : {}),
+    ...(input.chat ? { chat: input.chat } : {}),
   }
   await mutateBots(paths, (bots) => {
     const bot = bots.find((b) => b.id === botId)

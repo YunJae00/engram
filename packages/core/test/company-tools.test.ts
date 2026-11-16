@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { loadBotMemory, recordFacts } from '../src/bot-memory.js'
 import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript } from '../src/bots.js'
-import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isStatusAsk, staffTool } from '../src/company-tools.js'
+import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isStatusAsk, isTeamWorkAsk, staffTool } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
@@ -145,6 +145,33 @@ test('the prompt note lists the roster and gives a named employee\'s memory and 
   expect(note).not.toContain('What 박사원 remembers')
   expect(note).not.toContain('ONE staff call')
   expect(await companyNote(paths, { bots, message: '박사원 뭐하는 사람이야', chief: true })).toContain('ONE staff call')
+})
+
+test('a duty or a team-report sentence takes the lane by its own matcher; work on files does not', () => {
+  for (const ask of ['매주 월요일 아침 9시에 마케팅팀 주간보고 올려', '평일마다 오후 6시에 김대리 업무 정리해서 알려줘', '내 일정 뭐 있어?', '일정 뭐 있어', '정기 보고 뭐 있어?'])
+    expect(isDutyAsk(ask), ask).toBe(true)
+  for (const ask of ['매주 하는 회의가 너무 많아', '오늘 일정 정리해서 엑셀로 만들어줘', '내 일정에 치과 예약 넣어줘', '다음 달 서울 IT 행사 일정 정리', `매주 월요일 9시에 ${'가'.repeat(200)}`])
+    expect(isDutyAsk(ask), ask).toBe(false)
+  for (const ask of ['마케팅팀 이번 주 한 일 요약해', '마케팅팀 주간보고 올리기', '마케팅팀 지난주에 뭐 했어?'])
+    expect(isTeamWorkAsk(ask, ['마케팅팀']), ask).toBe(true)
+  for (const ask of ['마케팅팀 자료 PPT로 만들어줘', '마케팅팀 주간보고서 엑셀로 만들어줘', '이번 주 한 일 요약해', '개발팀 이번 주 한 일 요약해', '이 표 마케팅팀에 넣어줘'])
+    expect(isTeamWorkAsk(ask, ['마케팅팀']), ask).toBe(false)
+})
+
+test('a team named in the message brings its memory, written by its members\' finished jobs, into the prompt note', async () => {
+  const { paths, run } = await company()
+  await run({ hire: [{ name: '김대리', title: '리서치 담당' }, { name: '박사원', title: '카피 담당' }], team: [{ name: '마케팅팀', members: ['김대리', '박사원'] }] })
+  const bots = await loadBots(paths), kim = bots.find(bot => bot.name === '김대리')!
+  const folder = (await readSidebarLayout(paths, { chat: bots.map(bot => bot.id) })).chat.folders.find(one => one.name === '마케팅팀')!
+  const teamIds = new Map([[folder.name, folder.id]])
+  expect(await companyNote(paths, { bots, message: '마케팅팀 이번 주 한 일 요약해', chief: true, teamIds })).toContain('Team 마케팅팀 has no finished work on record yet')
+  await employeeWriteBack(paths, { botId: kim.id, brief: '노션 신기능 조사', result: '노션이 AI 회의록을 냈다 https://example.com/notion' }, new Date('2026-11-16T03:00:00Z'))
+  const note = await companyNote(paths, { bots, message: '마케팅팀 이번 주 한 일 요약해', chief: true, teamIds, now: new Date('2026-11-16T04:00:00Z') })
+  expect(note).toContain('Team 마케팅팀\'s record')
+  expect(note).toContain('노션 신기능 조사 → 노션이 AI 회의록을 냈다 https://example.com/notion (김대리, 2026-11-16)')
+  expect(note).toContain('schedule add')
+  // Not named, not loaded.
+  expect(await companyNote(paths, { bots, message: '김대리 뭐해?', chief: true, teamIds })).not.toContain('Team 마케팅팀')
 })
 
 // --- assign: handing work to employees ---

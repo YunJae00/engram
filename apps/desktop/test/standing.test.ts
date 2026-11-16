@@ -26,6 +26,23 @@ async function setPaused(paths: VaultPaths, taskId: string, paused: boolean): Pr
 // A standing task starts through the routine door when it is due, once a
 // day, and a refusal for the day counts as done.
 describe('standingTick', () => {
+  it('a duty kept on its own conversation runs there, and is tried again when that conversation was busy', async () => {
+    const paths = await tempPaths()
+    const chief = await createBot(paths, { name: '비서실장' })
+    const duty = await addBotTask(paths, chief.id, { name: '주간보고', goal: '마케팅팀 주간보고 올리기', schedule: { days: [1], hour: 9, minute: 0 }, chat: chief.id })
+    const fresh = await addBotTask(paths, chief.id, { name: '메일', goal: '메일 요약', schedule: { days: [1], hour: 9, minute: 0 } })
+    const calls: (string | undefined)[] = []
+    let busy = true
+    const deps = { paths, runRoutine: async () => ({ ok: true }), runPrompt: async (_name: string, _goal: string, into?: string) => { calls.push(into); return into && busy ? { ok: false } : { ok: true, botId: into ?? 'new' } }, now: () => new Date(2026, 10, 16, 9, 1) }
+    // Busy thread: the duty is not marked run, and the tick goes on to the next task.
+    expect(await standingTick(deps)).toEqual([fresh.id])
+    expect(calls).toEqual([chief.id, undefined])
+    busy = false
+    expect(await standingTick(deps)).toEqual([duty.id])
+    expect(calls.at(-1)).toBe(chief.id)
+    expect(await standingTick(deps)).toEqual([])
+  })
+
   it('starts a due task once and leaves the rest alone', async () => {
     const paths = await tempPaths()
     const bot = await createBot(paths, { name: 'Desk', purpose: 'chores' })

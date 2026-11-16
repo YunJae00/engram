@@ -216,12 +216,29 @@ export function isAssignAsk(message: string, known: readonly string[]): boolean 
   return TO_STAFF.test(message) || known.some(name => name.trim().length >= 2 && new RegExp(`${escaped(name.trim())}\\s*(한테|에게)`, 'u').test(message))
 }
 
+// Keeping a duty needs only the schedule tool, and a team's week is in its memory (in the lane prompt): both finish in the lane.
+const REPEATS = /매주|매일|매달|매월|평일마다|주말마다|[월화수목금토일]요일\s*마다/u
+const AT_TIME = /\d{1,2}\s*시|\d{1,2}:\d{2}|아침|오전|오후|점심|저녁|밤|정오|자정/u
+const DUTIES = /^(내|제|우리|지금|현재|회사|정기|예약된|잡힌|\s)*(일정|스케줄|정기\s*(업무|보고)|예약)(은|이|들)?\s*(뭐|뭐가|뭐뭐|어떤\s*게|어떤\s*거|목록)?\s*(있어|있나|있니|있지|알려\s*줘|보여\s*줘)요?[?？!.~\s]*$/u
+/** The chief of staff is given something to do regularly at a time ("매주 월요일 아침 9시에 ... 올려"), or asked what is kept ("내 일정 뭐 있어?"). */
+export function isDutyAsk(message: string): boolean {
+  if (message.length > COMPANY_ASK_CHARS) return false
+  return (REPEATS.test(message) && AT_TIME.test(message)) || DUTIES.test(message.trim())
+}
+const FILE_WORK = /엑셀|excel|ppt|파워포인트|pdf|워드|파일|문서|메일|보고서|자료|고쳐|수정/iu
+const TEAM_WORK = /한\s*일|했던\s*일|뭐\s*했|뭘\s*했|요약|주간\s*보고|월간\s*보고|일일\s*보고|성과|실적/u
+/** What a known team did, asked as words ("마케팅팀 이번 주 한 일 요약해"): answered from the team's memory. A file to make or change is not one. */
+export function isTeamWorkAsk(message: string, teams: readonly string[]): boolean {
+  if (message.length > COMPANY_ASK_CHARS || FILE_WORK.test(message) || !TEAM_WORK.test(message)) return false
+  return teams.some(name => name.trim().length >= 2 && message.includes(name.trim()))
+}
+
 /** The roster for a prompt, with what each employee named in the message remembers and last did: "who is 김과장" needs no tool. */
-export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot[]; message: string; teams?: ReadonlyMap<string, string>; tasks?: readonly DelegatedTask[]; chief: boolean; now?: Date }): Promise<string> {
+export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot[]; message: string; teams?: ReadonlyMap<string, string>; /** Team name to its folder id: a team named in the message brings its memory. */ teamIds?: ReadonlyMap<string, string>; tasks?: readonly DelegatedTask[]; chief: boolean; now?: Date }): Promise<string> {
   const staff = employees(input.bots)
   if (!staff.length && !input.chief) return ''
   const lines = [input.chief
-    ? 'The person runs a company by chat: they are the CEO, you are their chief of staff, and each employee below is a bot of its own. Do a staffing request (hire, promote or rename, let go, bring back, make a team) with ONE staff call for the whole sentence: no question, no confirmation, and never mention bots, tools or the sidebar. Hand work to employees with ONE assign call for the whole sentence (wait false when the person just hands a job off, wait true when they want the report in this answer); someone named who is not on staff yet is hired by that same call, and you never do an assigned part yourself. Answer questions about who someone is or what they do from the lines below with no tool call. Speak as a chief of staff would to their CEO: short, natural, in the person\'s language.'
+    ? 'The person runs a company by chat: they are the CEO, you are their chief of staff, and each employee below is a bot of its own. Do a staffing request (hire, promote or rename, let go, bring back, make a team) with ONE staff call for the whole sentence: no question, no confirmation, and never mention bots, tools or the sidebar. Hand work to employees with ONE assign call for the whole sentence (wait false when the person just hands a job off, wait true when they want the report in this answer); someone named who is not on staff yet is hired by that same call, and you never do an assigned part yourself. Something to be done regularly or later ("매주 월요일 9시에 마케팅팀 주간보고 올려") is kept with ONE schedule add call, the team or employee named in what; "내 일정 뭐 있어?" asks what is kept (schedule list): one line each, when and what. Answer questions about who someone is or what they do from the lines below with no tool call. Speak as a chief of staff would to their CEO: short, natural, in the person\'s language.'
     : 'The person runs a company by chat: they are the CEO and each employee below is a bot of its own. Answer questions about who someone is or what they do from these lines with no tool call, short and natural, in the person\'s language.']
   lines.push(staff.length ? 'Staff now:' : 'Staff now: nobody yet.')
   for (const bot of staff) {
@@ -233,6 +250,13 @@ export async function companyNote(paths: VaultPaths, input: { bots: readonly Bot
     if (memory) lines.push(`  What ${bot.name} remembers (their own memory, most recent work included):`, ...memory.split('\n').map(line => `  ${line}`))
     if (recent.length) lines.push(`  ${bot.name}'s recent finished work:`, ...recent.map(task => `  - ${task.updatedAt.slice(0, 10)}: ${clip(task.goal, 120)}`))
     if (!memory && !recent.length) lines.push(`  ${bot.name} has no finished work on record yet; say so rather than inventing any.`)
+  }
+  for (const [name, folder] of input.teamIds ?? []) {
+    if (name.trim().length < 2 || !input.message.includes(name.trim())) continue
+    const memory = renderMemory(await loadBotMemory(paths, teamMemoryId(folder)), input.now)
+    lines.push(memory
+      ? `Team ${name}'s record (one line per finished job: what was asked → what came back, with who did it and the day). Report on the team from these lines with no tool call unless the person wants more than is here, and cite each point by its employee and day, like "(김대리, 11-16 보고)":\n${memory.split('\n').map(line => `  ${line}`).join('\n')}`
+      : `Team ${name} has no finished work on record yet; say so rather than inventing any.`)
   }
   return lines.join('\n')
 }
