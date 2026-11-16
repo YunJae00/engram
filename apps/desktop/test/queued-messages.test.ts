@@ -140,3 +140,26 @@ it('reports attachment queues to the host and clears them after the continuation
   await sendCometMessage(client, store, 'one', 'Another queued request')
   expect(client.chatQueued).toHaveBeenLastCalledWith('one', true)
 })
+
+// qa146 S26: a short "I'll remember that." bubble is not the end of the turn.
+it('stays busy after a short first bubble, so a follow-up never starts a second turn inside the running one', async () => {
+  const store = createCometThreads()
+  const chatSay = vi.fn(async () => ({ ok: true, action: 'relay' as const, instruction: 'What is the date now?' }))
+  const client = { ...api(), chatSay }
+  await sendCometMessage(client, store, 'one', 'Fix the date to Dec 5')
+  store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: true })
+  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'I will fix the date and remember it.\n\n' })
+  store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: '', reset: true })
+  const afterAck = store.thread('one')
+  expect(afterAck.busy).toBe(true)
+  expect(afterAck.messages.map(m => [m.role, !!m.progress, !!m.streaming])).toEqual([['user', false, false], ['assistant', true, false], ['assistant', false, true]])
+  await sendCometMessage(client, store, 'one', 'What is the date now?')
+  expect(client.chatSend).toHaveBeenCalledTimes(1)
+  expect(chatSay).toHaveBeenCalledWith('bot-one', 'What is the date now?')
+  // The answer landed but the task still works (memory write, checks): still busy until main lets go.
+  store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'Fixed to Dec 5.' })
+  expect(store.thread('one').busy).toBe(true)
+  store.handleEvent({ type: 'comet:working', channel: 'bot-one', working: false })
+  expect(store.thread('one').busy).toBe(false)
+  expect(client.chatSend).toHaveBeenCalledTimes(1)
+})
