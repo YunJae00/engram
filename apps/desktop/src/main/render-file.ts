@@ -90,7 +90,7 @@ export function renderToBuffer(folder: string, file: string, kind: 'pdf' | 'png'
 export function renderTool(options: {
   folder(): Promise<string>
   source(path: string): Promise<string>
-  save(name: string, data: Buffer): Promise<{ markdownLink: string; path: string; sha256: string; taskPath: string }>
+  save(name: string, data: Buffer, args: Record<string, unknown>): Promise<{ markdownLink: string; path: string; sha256: string; taskPath: string }>
   assertActive(): void
 }): AgentTool {
   const text = { type: 'string', maxLength: INLINE_BYTES }
@@ -132,7 +132,7 @@ export function renderTool(options: {
       const data = await renderToBuffer(folder, file, kind, size, context.signal)
       if (data.length > OUTPUT_BYTES) throw new Error('Generated output exceeds 50 MB.')
       options.assertActive()
-      return JSON.stringify({ ...(await options.save(name, data)), completeReadback: true, format: kind, note: 'layout is not verified; text is as written in the source' })
+      return JSON.stringify({ ...(await options.save(name, data, args)), completeReadback: true, format: kind, note: 'layout is not verified; text is as written in the source' })
     },
   }
 }

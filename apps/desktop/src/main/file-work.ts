@@ -57,27 +57,43 @@ export async function taskFile(paths: VaultPaths, folder: string, requested: unk
   return real
 }
 
-// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path` per line, kept outside the folder the comet writes in.
+// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path\0turn\0source` per line (the last two only
+// when the caller named them), kept outside the folder the comet writes in.
 export const twinsFile = (paths: VaultPaths, folder: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(folder).digest('hex').slice(0, 32)}.twins`)
+const sha = (data: Buffer | string) => createHash('sha256').update(data).digest('hex')
+
+// What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
+export interface Placement { source: string; turn?: string }
+// A copy's task file; content (one source per name); any other tool and the file it names, else its own input.
+const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): string => {
+  if (tool === 'file_create_copy' && typeof args.fromPath === 'string') return `path\0${resolve(cwd, args.fromPath)}`
+  if (tool === 'file_create_copy' && typeof args.content === 'string') return 'content'
+  const input = [args.source, args.sourcePath, args.path].find(value => typeof value === 'string') as string | undefined
+  return `${tool}\0${input ? resolve(cwd, input) : sha(JSON.stringify(args))}`
+}
 
 // Never overwrites a file it did not place: a different file of the same name gets a numbered twin.
-// The one exception is its own earlier copy: a file on record as placed here that still holds the bytes it was placed with is the
-// comet's own output made again, and is replaced in place (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx").
-// The earlier version stays in the saved outputs, where the chat's "(이전)" link points. A file the person or a script changed or
-// put there is never on record with its bytes, so it is kept and the new one is numbered.
-// record (a twinsFile) notes the file only when this call created it: one found already there with the same bytes came from elsewhere,
-// or is on record from the receipt that placed it (qa143 S19a r12).
-export async function placeInTask(folder: string, name: string, data: Buffer, record?: string): Promise<string> {
+// The one exception is the same deliverable made again (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx"). It is replaced
+// in place only when both hold:
+// - the file still has the bytes of the LATEST placement on record at that path. An earlier version's bytes do not count: a person who put
+//   v1 back by hand has a file of their own (qa145 r2 #1). Nor does a file never on record, or one changed since.
+// - the new file is that deliverable again: made from the same source, or made in a later turn under the name (the fix the person asked
+//   for, which the chat links as the file with its "(이전)" version). Two different inputs under one name in one turn are two files, and so
+//   are two different task files copied under one name in any turn (qa143 S19a, qa145 r2 #2). With no turn named, only the same source counts.
+// The earlier version stays in the saved outputs, where the "(이전)" link points.
+// record (a twinsFile) notes the file only when this call created or replaced it: one found already there with the same bytes came from
+// elsewhere, or is on record from the receipt that placed it (qa143 S19a r12).
+export async function placeInTask(folder: string, name: string, data: Buffer, record?: string, made?: Placement): Promise<string> {
   outputName(name)
-  const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.')
+  const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.'), source = JSON.stringify(made?.source ?? null)
+  const note = async (path: string) => { if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${sha(data)}\0${path}\0${made?.turn ?? ''}\0${source}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`)) }
   await writeFile(tmp, data, { flag: 'wx' })
-  let placed: Set<string> | undefined
   try {
     for (let count = 1; count < 100; count += 1) {
       const path = join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
       try {
         await link(tmp, path)
-        if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${createHash('sha256').update(data).digest('hex')}\0${path}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`))
+        await note(path)
         return path
       } catch (error) {
         if (!exists(error)) throw error
@@ -85,19 +101,21 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         if (!info.isFile()) continue
         const held = await readFile(path)
         if (held.equals(data)) return path
-        placed ??= new Set(record ? (await readFile(record, 'utf8').catch(() => '')).split('\n') : [])
-        if (placed.has(`${createHash('sha256').update(held).digest('hex')}\0${path}`)) {
-          await renameWithRetry(tmp, path)
-          await appendFile(record!, `${createHash('sha256').update(data).digest('hex')}\0${path}\n`).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`))
-          return path
-        }
+        if (!record || !made) continue
+        const [hash, , turn, from] = (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0')).filter(line => line[1] === path).at(-1) ?? []
+        if (hash !== sha(held) || !from) continue
+        const copies = (value: string) => value.startsWith('"path\\u0000')
+        if (from !== source && !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source)))) continue
+        await renameWithRetry(tmp, path)
+        await note(path)
+        return path
       }
     }
     throw new Error('Too many files in the task folder share this name.')
   } finally { await unlink(tmp).catch(() => undefined) }
 }
 
-const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real)) }
+const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), made) }
 
 // The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
 export function freeName(base: string, held: (name: string) => boolean): string {
@@ -200,14 +218,15 @@ const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 // Where composed files are handed in: the workspace's saved outputs (linked
 // in the chat), plus a twin in the task folder when there is one.
 // made: the turn's record of what was saved here, which the comet's file tools read back without asking (ReadConsent.made).
-export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>) {
+// turn: this turn's id, which lets a later turn's remake replace the task-folder copy (placeInTask).
+export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>, turn?: string) {
   return {
     async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
       made?.add(receipt.path)
       const task = await folder?.()
       if (!task) return receipt
-      try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data) } }
+      try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data, { source: 'composed', turn }) } }
       catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return receipt }
     },
   }
@@ -217,16 +236,18 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
 // chat (QA 0.8.142 B6: an app-modal dialog froze the whole app for minutes).
 // made: outputs this turn's other tools saved (a composed document or deck: taskOutputs), read back like the file tools' own
 // (QA 0.8.145 S02/S04: the comet was told to read its new docx back, and the read asked the person and stalled the turn).
-export interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string> }
+// turn: this turn's id (placeInTask).
+export interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
 
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
   const approved = new Set(attachedPaths)
   const directory = artifactDirectory(paths), folder = handInRoots[0]
   const active = () => assertDesktopTurnNotStopped(lane)
-  const save = async (name: string, data: Buffer) => {
+  const placement = (tool: string, args: Record<string, unknown>): Placement => ({ source: madeFrom(tool, args, folder!), turn: consent.turn })
+  const save = async (name: string, data: Buffer, made: Placement) => {
     const receipt = await saveOutput(directory, name, data)
     approved.add(receipt.path)
-    return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data) }
+    return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data, made) }
   }
   // Kinds core does not hold (scripts, HTML, images, PDF, ZIP) are saved by the host.
   const createWide = async (args: Record<string, unknown>): Promise<string> => {
@@ -244,7 +265,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       data = await readFile(source)
     }
     active()
-    return JSON.stringify(await save(name, data))
+    return JSON.stringify(await save(name, data, placement('file_create_copy', args)))
   }
   // This task's folders, each checked to be a real folder (not a link) inside
   // the workspace's task folders; core hands in from these alone (codex p1 r3).
@@ -286,7 +307,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       approved.add(path)
       return true
     },
-  }), workbookTool(directory, active), ...(folder ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save, assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
+  }), workbookTool(directory, active), ...(folder ? [renderTool({ folder: () => ensureTaskFolder(paths, folder), source: async (path) => taskFile(paths, await ensureTaskFolder(paths, folder), path), save: (name, data, args) => save(name, data, placement('render_file', args)), assertActive: active })] : [])].map((tool): AgentTool => ({ ...tool, ...(tool.name === 'file_create_copy' && folder ? { description: `${tool.description} With content or fromPath it also saves HTML, SVG and scripts (py, js, ts, sh, ps1); with fromPath also PDF, PNG, JPG, GIF and ZIP built in the task folder, up to 50 MB.` } : {}), ...(tool.runRich ? { runRich: async (args, context) => {
     assertDesktopTurnNotStopped(lane)
     const outcome = await tool.runRich!(args, context)
     return outcome.image ? { ...outcome, image: fitImage(outcome.image) } : outcome
@@ -301,7 +322,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     approved.add(output.path)
     if (!folder) return result
     // The linked copy is the verified output; the task-folder twin is for combining work.
-    try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path)) }) }
+    try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path), placement(tool.name, args)) }) }
     catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return result }
   } }))
 }

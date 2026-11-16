@@ -109,13 +109,10 @@ it('gives up after 20 seconds or on cancel, and closes the window', async () => 
 it('renders one page at a time and never overwrites an earlier output', async () => {
   const [first, second] = (await Promise.all([render().run({ name: 'a.pdf', html: '<p>one</p>' }, context), render().run({ name: 'a.pdf', html: '<p>two</p>' }, context)])).map(text => JSON.parse(text))
   expect(fake.events).toEqual(['open', 'close', 'open', 'close'])
-  // Both saved outputs stay, each with its own render; the task folder keeps one a.pdf, the later one, with no "a (2).pdf" beside it (QA 0.8.145 S03/S33).
-  expect(first.taskPath).toBe(second.taskPath)
-  expect(first.taskPath).toMatch(/[\\/]a\.pdf$/)
-  expect(existsSync(join(cwd, 'a (2).pdf'))).toBe(false)
+  const twins = [first.taskPath, second.taskPath].sort()
+  expect(twins[0]).toMatch(/a \(2\)\.pdf$/)
   expect(await readFile(join(cwd, 'a.pdf'), 'utf8')).toMatch(/render [12]$/)
-  expect(first.path).not.toBe(second.path)
-  expect(await readFile(first.path, 'utf8')).not.toBe(await readFile(second.path, 'utf8'))
+  expect(await readFile(twins[0]!, 'utf8')).not.toBe(await readFile(twins[1]!, 'utf8'))
 })
 
 it('keeps an existing source of the same name and renders from a numbered twin', async () => {

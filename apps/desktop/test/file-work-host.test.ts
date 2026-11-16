@@ -269,3 +269,47 @@ it('never replaces a file it did not place, or one changed since it was placed',
   expect(await placeInTask(task, 'plain.md', Buffer.from('two'))).toContain('plain (2).md')
   expect(await readFile(twinsFile(paths, await (await import('node:fs/promises')).realpath(task)), 'utf8')).not.toContain('plain')
 })
+
+// qa145 r2 #1: the record keeps every version's hash. A person who puts v1's bytes back by hand has their own file, not the comet's latest copy.
+it('keeps a file a person set back to an earlier version, and numbers the next remake', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane'), outputs = taskOutputs(paths, async () => task)
+  await outputs.save('a.xlsx', Buffer.from('v1'))
+  await outputs.save('a.xlsx', Buffer.from('v2'))
+  await writeFile(join(task, 'a.xlsx'), 'v1')
+  expect(await outputs.save('a.xlsx', Buffer.from('v3'))).toMatchObject({ taskPath: expect.stringContaining('a (2).xlsx') })
+  expect(await readFile(join(task, 'a.xlsx'), 'utf8')).toBe('v1')
+  expect(await readFile(join(task, 'a (2).xlsx'), 'utf8')).toBe('v3')
+})
+
+// qa145 r2 #2 (qa143 S19a): two inputs under one name in one turn are two deliverables, each with its own task-folder copy.
+it('keeps two different inputs under one name as two task files, and replaces only the same deliverable made again', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane')
+  await mkdir(join(task, 'one'), { recursive: true })
+  await mkdir(join(task, 'two'), { recursive: true })
+  await writeFile(join(task, 'one', 'report.md'), 'from one')
+  await writeFile(join(task, 'two', 'report.md'), 'from two')
+  const copy = (turn: string) => hostFileTools(paths, 'lane', [], [task], { turn }).find(tool => tool.name === 'file_create_copy')!
+  const first = JSON.parse(await copy('t1').run({ name: 'report.md', fromPath: join(task, 'one', 'report.md') }, { task: 'x' }))
+  const second = JSON.parse(await copy('t1').run({ name: 'report.md', fromPath: join(task, 'two', 'report.md') }, { task: 'x' }))
+  expect(second.taskPath).not.toBe(first.taskPath)
+  expect(await readFile(first.taskPath, 'utf8')).toBe('from one')
+  expect(await readFile(second.taskPath, 'utf8')).toBe('from two')
+  // The same task file copied again after an edit is its revision, in this turn or a later one; the other task file's copy stays, also in a later turn.
+  await writeFile(join(task, 'one', 'report.md'), 'from one, fixed')
+  expect(JSON.parse(await copy('t1').run({ name: 'report.md', fromPath: join(task, 'one', 'report.md') }, { task: 'x' })).taskPath).toBe(first.taskPath)
+  await writeFile(join(task, 'two', 'report.md'), 'from two, fixed')
+  expect(JSON.parse(await copy('t2').run({ name: 'report.md', fromPath: join(task, 'two', 'report.md') }, { task: 'x' })).taskPath).toBe(second.taskPath)
+  expect(await readFile(first.taskPath, 'utf8')).toBe('from one, fixed')
+  expect((await readdir(task)).filter(name => name.startsWith('report')).sort()).toEqual(['report (2).md', 'report.md'])
+
+  // Inline inputs (a workbook's rows, a page's html): another input in the same turn is another file; in a later turn it is the fix of that file.
+  const real = await (await import('node:fs/promises')).realpath(task), record = twinsFile(paths, real)
+  const place = (data: string, source: string, turn?: string) => placeInTask(real, 'a.xlsx', Buffer.from(data), record, { source, turn })
+  expect(await place('v1', 'rows 1', 't1')).toBe(join(real, 'a.xlsx'))
+  expect(await place('other', 'rows 2', 't1')).toBe(join(real, 'a (2).xlsx'))
+  expect(await place('v2', 'rows 3', 't2')).toBe(join(real, 'a.xlsx'))
+  expect(await readFile(join(real, 'a (2).xlsx'), 'utf8')).toBe('other')
+  // With no turn named, only the same source is the same deliverable.
+  expect(await place('v3', 'rows 4')).toBe(join(real, 'a (3).xlsx'))
+  expect(await place('v4', 'rows 3')).toBe(join(real, 'a.xlsx'))
+})

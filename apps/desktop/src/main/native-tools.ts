@@ -252,7 +252,7 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // A hand-in is known by its source's path in the task folder, so two files with one name in different folders keep distinct names (report.md, report-2.md) and links, in this turn and later ones.
   await recordOwnCopies(cwd, result.steps, names, result.answer)
   // Read from the placement record, not from the receipts' taskPath: a receipt also names a same-byte file it found already there, and that one is another source.
-  const hashes = new Set((await readFile(twinsFile(paths, await realpath(cwd).catch(() => cwd)), 'utf8').catch(() => '')).split('\n').filter(Boolean))
+  const hashes = new Set((await readFile(twinsFile(paths, await realpath(cwd).catch(() => cwd)), 'utf8').catch(() => '')).split('\n').filter(Boolean).map(line => line.split('\0', 2).join('\0')))
   const named = await mentionedOutputs(cwd, result.answer, since, oversized, artifactDirectory(paths), names, hashes)
   if (JSON.stringify(names) !== before) await mkdir(dirname(file), { recursive: true }).then(() => writeFile(file, JSON.stringify(names))).catch(error => flog('native-tools', `hand-in names not saved: ${error instanceof Error ? error.message : String(error)}`))
   for (const path of named) {
