@@ -14,6 +14,7 @@ const live = new Set<Element>()
 let mounted = 0
 let watcher: IntersectionObserver | undefined
 let focus: MutationObserver | undefined
+let reduced: MediaQueryList | undefined
 let frame = 0
 let drawn = -1
 
@@ -21,20 +22,22 @@ function draw(orb: Element, d: string[]): void {
   orb.querySelectorAll('path').forEach((path, i) => path.setAttribute('d', d[i]!))
 }
 
-const awake = (): boolean => live.size > 0 && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'
+const awake = (): boolean => live.size > 0 && !reduced?.matches && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'
 
-// One requestAnimationFrame loop for every rippling orb on screen. Reduced motion holds the still frame.
+// One requestAnimationFrame loop for every rippling orb on screen.
 function tick(now: number): void {
   frame = awake() ? requestAnimationFrame(tick) : 0
-  const step = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.floor(now / FRAME_MS) + 1
+  const step = Math.floor(now / FRAME_MS)
   if (step === drawn) return
   drawn = step
-  const d = step === 0 ? STILL.full : orbPaths('full', ((step * FRAME_MS) % ORB_LOOP_MS) / ORB_LOOP_MS)
+  const d = orbPaths('full', ((step * FRAME_MS) % ORB_LOOP_MS) / ORB_LOOP_MS)
   for (const orb of live) draw(orb, d)
 }
 
-// The loop runs only while a rippling orb is on screen in a visible, focused window; otherwise the pending frame is cancelled and none is requested.
+// The loop runs only while a rippling orb is on screen in a visible, focused window with motion allowed; otherwise the pending frame is cancelled and none is requested.
 function sync(): void {
+  // Reduced motion shows the still wave, not whichever frame the ripple stopped on.
+  if (reduced?.matches) for (const orb of live) draw(orb, STILL.full)
   if (!awake()) {
     cancelAnimationFrame(frame)
     frame = 0
@@ -54,19 +57,23 @@ export function ripple(orb: Element): () => void {
     focus = new MutationObserver(sync)
     focus.observe(document.documentElement, { attributes: true, attributeFilter: ['data-window-focused'] })
     document.addEventListener('visibilitychange', sync)
+    reduced = matchMedia('(prefers-reduced-motion: reduce)')
+    reduced.addEventListener('change', sync)
   }
   watcher.observe(orb)
   mounted++
   return () => {
     watcher?.unobserve(orb)
     live.delete(orb)
-    draw(orb, STILL.full)
+    // React has already committed the orb's new size: leave the still wave of the master it is now, not of the one that rippled.
+    draw(orb, STILL[orb.getAttribute('data-master') === 'small' ? 'small' : 'full'])
     // The last rippling orb is gone: nothing is left observing or listening.
     if (--mounted === 0) {
       watcher?.disconnect()
       focus?.disconnect()
       document.removeEventListener('visibilitychange', sync)
-      watcher = focus = undefined
+      reduced?.removeEventListener('change', sync)
+      watcher = focus = reduced = undefined
     }
     sync()
   }

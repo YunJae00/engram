@@ -191,6 +191,29 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   expect(await page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-orb')).map(a => a.playState))).not.toContain('running')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
 
+  // A rippling orb that shrinks is left as the still master of its new size: the full still wave at 48px, the small one at 32px.
+  const wave = (selector: string) => page.evaluate(selector => [...document.querySelectorAll(`${selector} path`)].map(path => path.getAttribute('d')).join('|'), selector)
+  const resize = async (px: number) => {
+    await page.evaluate(px => { const avatar = document.querySelector<HTMLElement>('[data-testid="bot-info-avatar"] .bot-avatar')!; avatar.style.width = avatar.style.height = `${px}px` }, px)
+    // Any re-render measures the drawn size again; this one opens or closes the picker.
+    await page.getByTestId('bot-info-avatar').click()
+  }
+  const [fullStill, smallStill] = [await wave(`${header} .bot-orb`), await wave(`${idle} .bot-orb`)]
+  expect(fullStill).not.toBe(smallStill)
+  for (const [px, master, still] of [[48, 'full', fullStill], [32, 'small', smallStill]] as const) {
+    await expect(page.locator(big)).toHaveAttribute('data-ripple', 'true')
+    await expect.poll(() => wave(big)).not.toBe(fullStill)
+    await resize(px)
+    await expect(page.locator(big)).not.toHaveAttribute('data-ripple')
+    await expect(page.locator(big)).toHaveAttribute('data-master', master)
+    expect(await wave(big)).toBe(still)
+    await page.waitForTimeout(300)
+    expect(await wave(big)).toBe(still)
+    await resize(64)
+  }
+  await expect(page.locator(big)).toHaveAttribute('data-ripple', 'true')
+  await expect.poll(() => wave(big)).not.toBe(fullStill)
+
   // Reduced motion: a static frame, even for the working row, and the large orb returns to the still wave and stays there.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect.poll(() => core(big)).toBe(headerStart)
@@ -199,4 +222,7 @@ test('orb avatars: sidebar, header, picker, persistence across relaunch, and qui
   await expect(page.locator(`${working} .bot-orb-work`)).toHaveCSS('opacity', '1')
   await expect(page.locator(`${working}[data-state="working"]`)).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-avatar')).length)).toBe(0)
+  // The ticker asks for no frame while motion is reduced, so the ripple has to start again from the media query's change alone.
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect.poll(() => core(big)).not.toBe(headerStart)
 })

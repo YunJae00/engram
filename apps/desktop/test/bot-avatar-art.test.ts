@@ -193,15 +193,19 @@ describe('bot avatar', () => {
     expect(orbSource).toContain('frame = awake() ? requestAnimationFrame(tick) : 0')
     expect(orbSource).toContain('} else if (frame === 0) frame = requestAnimationFrame(tick)')
     expect(orbSource.match(/new IntersectionObserver\(/g)).toHaveLength(1)
-    expect(orbSource).toContain("live.size > 0 && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'")
-    expect(orbSource).toContain("matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 :")
+    expect(orbSource).toContain("live.size > 0 && !reduced?.matches && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'")
+    // Reduced motion is read from one media query object, whose change event runs sync(); the tick itself never asks.
+    expect(orbSource.match(/matchMedia\(/g)).toHaveLength(1)
+    expect(orbSource).toContain("reduced = matchMedia('(prefers-reduced-motion: reduce)')")
+    expect(orbSource).toContain("reduced.addEventListener('change', sync)")
+    expect(orbSource).toContain("reduced?.removeEventListener('change', sync)")
     expect(orbSource).toContain("const rippling = motion !== 'static' && size >= RIPPLE_MIN_PX")
     expect(orbSource).not.toMatch(/setInterval|setTimeout|<canvas|getContext/)
     expect(readFileSync(join(SRC, 'components/BotAvatar.tsx'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout/)
     expect(readFileSync(join(SRC, 'lib/orbWave.ts'), 'utf8')).not.toMatch(/requestAnimationFrame|setInterval|setTimeout|document|window/)
   })
 
-  it('requests no frame while blurred, hidden or with no orb on screen, and lets go of its observers after the last orb', () => {
+  it('requests no frame while blurred, hidden, under reduced motion or with no orb on screen, and lets go of its observers after the last orb', () => {
     // A hand-driven frame queue, so every requestAnimationFrame call is counted.
     let requested = 0
     let pending = new Map<number, (now: number) => void>()
@@ -212,14 +216,18 @@ describe('bot avatar', () => {
     const observers: { seen: (entries: { target: unknown; isIntersecting: boolean }[]) => void; connected: boolean }[] = []
     const mutations: { changed: () => void; connected: boolean }[] = []
     vi.stubGlobal('document', doc)
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    const motion = { matches: false, listeners: new Set<() => void>(), addEventListener(_: string, fn: () => void) { this.listeners.add(fn) }, removeEventListener(_: string, fn: () => void) { this.listeners.delete(fn) } }
+    let queries = 0
+    vi.stubGlobal('matchMedia', (query: string) => { expect(query).toBe('(prefers-reduced-motion: reduce)'); queries++; return motion })
     vi.stubGlobal('requestAnimationFrame', (callback: (now: number) => void) => { pending.set(++requested, callback); return requested })
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { pending.delete(id) })
     vi.stubGlobal('IntersectionObserver', class { self: (typeof observers)[number]; constructor(seen: (typeof observers)[number]['seen']) { observers.push(this.self = { seen, connected: true }) } observe() {} unobserve() {} disconnect() { this.self.connected = false } })
     vi.stubGlobal('MutationObserver', class { self: (typeof mutations)[number]; constructor(changed: () => void) { mutations.push(this.self = { changed, connected: true }) } observe() {} disconnect() { this.self.connected = false } })
     try {
       const paths = Array.from({ length: ORB_WAVE_LAYERS.length + ORB_WORK_LAYERS.length }, () => ({ d: '', setAttribute(_: string, value: string) { this.d = value } }))
-      const orb = { querySelectorAll: () => paths } as unknown as Element
+      let master = 'full'
+      const orb = { querySelectorAll: () => paths, getAttribute: (name: string) => (name === 'data-master' ? master : null) } as unknown as Element
+      const reduce = (value: boolean) => { motion.matches = value; for (const fn of motion.listeners) fn() }
       const frames = (from: number, count: number) => { for (let i = 0; i < count; i++) run(from + i * 40) }
       const focus = (value: boolean) => { root.dataset['windowFocused'] = String(value); mutations.at(-1)!.changed() }
       const visible = (value: boolean) => { doc.hidden = !value; for (const fn of listeners) fn() }
@@ -231,7 +239,7 @@ describe('bot avatar', () => {
       expect([requested, pending.size]).toEqual([1, 1])
       frames(1000, 5)
       expect([requested, pending.size]).toEqual([6, 1])
-      expect(paths[0]!.d).toBe(orbPaths('full', ((Math.floor(1160 / (1000 / 30)) + 1) * (1000 / 30)) / ORB_LOOP_MS)[0])
+      expect(paths[0]!.d).toBe(orbPaths('full', (Math.floor(1160 / (1000 / 30)) * (1000 / 30)) / ORB_LOOP_MS)[0])
 
       // Blur cancels the pending frame and nothing is requested until focus returns.
       focus(false)
@@ -260,25 +268,63 @@ describe('bot avatar', () => {
       observers[0]!.seen([{ target: orb, isIntersecting: true }])
       expect([requested, pending.size]).toEqual([12, 1])
 
+      // Reduced motion: the pending frame is cancelled, the orb shows the still wave and no frame is requested, whatever else changes; the ripple restarts on the query's change event.
+      frames(4500, 2)
+      expect([requested, pending.size]).toEqual([14, 1])
+      expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))
+      reduce(true)
+      expect(pending.size).toBe(0)
+      expect(paths.map(path => path.d)).toEqual(orbPaths('full', 0))
+      frames(4600, 5)
+      focus(false)
+      focus(true)
+      visible(false)
+      visible(true)
+      observers[0]!.seen([{ target: orb, isIntersecting: false }])
+      observers[0]!.seen([{ target: orb, isIntersecting: true }])
+      expect([requested, pending.size]).toEqual([14, 0])
+      expect(paths.map(path => path.d)).toEqual(orbPaths('full', 0))
+      reduce(false)
+      expect([requested, pending.size]).toEqual([15, 1])
+      frames(4800, 2)
+      expect([requested, pending.size]).toEqual([17, 1])
+      expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))
+      // An orb that mounts while motion is reduced asks for nothing either.
+      reduce(true)
+      const late = { querySelectorAll: () => [], getAttribute: () => 'full' } as unknown as Element
+      const calm = ripple(late)
+      observers[0]!.seen([{ target: late, isIntersecting: true }])
+      expect([requested, pending.size, queries]).toEqual([17, 0, 1])
+      calm()
+      reduce(false)
+      expect([requested, pending.size]).toEqual([18, 1])
+
       // A second orb shares the loop and the observer; the loop outlives the first orb and ends with the last.
-      const other = { querySelectorAll: () => [] } as unknown as Element
+      const other = { querySelectorAll: () => [], getAttribute: () => 'full' } as unknown as Element
       const stopOther = ripple(other)
       observers[0]!.seen([{ target: other, isIntersecting: true }])
-      expect([requested, pending.size, observers.length]).toEqual([12, 1, 1])
+      expect([requested, pending.size, observers.length]).toEqual([18, 1, 1])
       stop()
-      expect(paths[0]!.d).toBe(orbPaths('full', 0)[0])
-      expect([pending.size, observers[0]!.connected, listeners.size]).toEqual([1, true, 1])
+      expect(paths.map(path => path.d)).toEqual(orbPaths('full', 0))
+      expect([pending.size, observers[0]!.connected, listeners.size, motion.listeners.size]).toEqual([1, true, 1, 1])
       stopOther()
-      expect([requested, pending.size]).toEqual([12, 0])
-      expect([observers[0]!.connected, mutations[0]!.connected, listeners.size]).toEqual([false, false, 0])
+      expect([requested, pending.size]).toEqual([18, 0])
+      expect([observers[0]!.connected, mutations[0]!.connected, listeners.size, motion.listeners.size]).toEqual([false, false, 0, 0])
       frames(5000, 5)
-      expect(requested).toBe(12)
+      expect(requested).toBe(18)
 
       // A later orb starts again with a fresh observer.
       const again = ripple(orb)
       expect([observers.length, observers[1]!.connected, listeners.size]).toEqual([2, true, 1])
+      expect([queries, motion.listeners.size]).toEqual([2, 1])
+      // An orb that stops rippling because it shrank to the small master is left with the small still wave, not the full one.
+      observers[1]!.seen([{ target: orb, isIntersecting: true }])
+      frames(6000, 3)
+      expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))
+      master = 'small'
       again()
-      expect([observers[1]!.connected, listeners.size, pending.size]).toEqual([false, 0, 0])
+      expect(paths.map(path => path.d)).toEqual(orbPaths('small', 0))
+      expect([observers[1]!.connected, listeners.size, motion.listeners.size, pending.size]).toEqual([false, 0, 0, 0])
     } finally {
       vi.unstubAllGlobals()
     }
