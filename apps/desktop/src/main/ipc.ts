@@ -2341,7 +2341,9 @@ export function registerIpc(ctx: VaultContext): void {
     const { channel, engine, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit } = input
     // Key connections decide which app tools are on the menu (a decision model adds app_do).
     await loadBrainConnections()
-    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel))), ...desktopAgentTools(channel)], {
+    // The documents and decks this turn composes: its own outputs, which its file tools read back without a card.
+    const composed = new Set<string>()
+    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed)), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
       ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),
@@ -2444,7 +2446,7 @@ export function registerIpc(ctx: VaultContext): void {
       requireSourceEvidence: attachments.paths.length > 0,
       generatedDirectory: artifactDirectory(paths),
       standing: { guide: await workGuide(paths), request: turn.verification.goal ?? turnGoals.get(channel) ?? '' },
-    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))) }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
+    } : undefined), ...(!webOnly && (!guided || engine.id === 'mock') && engine.desktopToolIsolation === true ? cometFileTools(paths, channel, [...attachments.paths, ...earlierOutputs.map((output) => output.path)], [native?.cwd ?? await workFolderFor(paths, channel)], { ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'), korean: () => isKorean(turnGoals.get(channel) ?? turnGoals.get(leadOf(channel))), made: composed }) : []), ...appTools].filter((tool) => permission !== 'plan' || !PLAN_BLOCKED.test(tool.name)).map(tool => studyGuard(tool, () => studying.has(channel)))
   }
 
   async function handleChatSend(request: ChatRequestDto, signal: AbortSignal, recovery?: string, savedRoutine?: Routine, turn?: TaskTurn): Promise<void> {

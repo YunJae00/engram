@@ -186,10 +186,12 @@ const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 
 // Where composed files are handed in: the workspace's saved outputs (linked
 // in the chat), plus a twin in the task folder when there is one.
-export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>) {
+// made: the turn's record of what was saved here, which the comet's file tools read back without asking (ReadConsent.made).
+export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>) {
   return {
     async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
+      made?.add(receipt.path)
       const task = await folder?.()
       if (!task) return receipt
       try { return { ...receipt, taskPath: await placeTwin(paths, task, name, data) } }
@@ -200,7 +202,9 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
 
 // How a read outside the usual folders is put to the person: a card in the
 // chat (QA 0.8.142 B6: an app-modal dialog froze the whole app for minutes).
-export interface ReadConsent { ask?: Ask; korean?: () => boolean }
+// made: outputs this turn's other tools saved (a composed document or deck: taskOutputs), read back like the file tools' own
+// (QA 0.8.145 S02/S04: the comet was told to read its new docx back, and the read asked the person and stalled the turn).
+export interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string> }
 
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
   const approved = new Set(attachedPaths)
@@ -248,7 +252,7 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     approveRead: async (path, signal) => {
       signal?.throwIfAborted()
       await assertReadable(path)
-      if (approved.has(path) && await realpath(path) === path) return true
+      if ((approved.has(path) || consent.made?.has(path)) && await realpath(path) === path) return true
       const real = await realpath(path)
       // This task's folder: files the comet built itself, which its own file
       // tools also read without asking. Its handed-in outputs are in `approved`.

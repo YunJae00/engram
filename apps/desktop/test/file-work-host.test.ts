@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({ stopped: false, confirm: vi.fn(), dialog: vi.f
 vi.mock('electron', () => ({ app: { getPath: state.getPath }, dialog: { showMessageBox: state.dialog }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, shell: { showItemInFolder: vi.fn() } }))
 vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: () => { if (state.stopped) throw new Error('Stopped for this turn') } }))
 import { pathToFileURL } from 'node:url'
-import { cometFileTools as hostFileTools } from '../src/main/file-work.js'
+import { cometFileTools as hostFileTools, taskOutputs } from '../src/main/file-work.js'
 
 // Every chat has its in-chat approval card; state.confirm answers it.
 const cometFileTools = (paths: Parameters<typeof hostFileTools>[0], lane: string, attached: string[] = [], handIn: string[] = []) => hostFileTools(paths, lane, attached, handIn, { ask: state.confirm })
@@ -201,4 +201,38 @@ it.skipIf(process.platform === 'win32')('does not hand in another chat\'s file t
   expect(String(result)).toMatch(/task folder/)
   await expect(readdir(join(root, 'workspace', 'outputs')).catch(() => [])).resolves.not.toContain('stolen.txt')
   expect(ask).not.toHaveBeenCalled()
+})
+
+// QA 0.8.145 S02/S04: word_write and ppt_build save through taskOutputs, which the file tools knew nothing of, so the readback
+// the receipt itself asks for raised "이 파일을 읽어도 될까요?" on the comet's own new file and stalled the turn.
+it('reads back a document another tool of this turn composed, without asking', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane')
+  const made = new Set<string>(), ask = vi.fn().mockResolvedValue('cancel')
+  const receipt = await taskOutputs(paths, async () => task, made).save('주간 회의록.md', Buffer.from('출시일 11/28 확정'))
+  const read = hostFileTools(paths, 'lane', [], [task], { ask, made }).find(t => t.name === 'file_read')!
+  expect(JSON.parse(await read.run({ path: receipt.path }, { task: '회의록 만들어 줘' })).content).toContain('11/28')
+  expect(JSON.parse(await read.run({ path: receipt.taskPath }, { task: '회의록 만들어 줘' })).content).toContain('11/28')
+  expect(ask).not.toHaveBeenCalled()
+})
+
+it.skipIf(process.platform === 'win32')('still asks for everything that is not this turn\'s own output', async () => {
+  const paths = vaultPaths(root), task = join(root, 'workspace', 'tasks', 'lane'), other = join(root, 'workspace', 'tasks', 'other')
+  const made = new Set<string>(), ask = vi.fn().mockResolvedValue('cancel')
+  await taskOutputs(paths, async () => task, made).save('mine.md', Buffer.from('mine'))
+  // Another chat's output and task file, a file of the person's elsewhere, and a link out of the task folder.
+  const foreign = await taskOutputs(paths, async () => other).save('theirs.md', Buffer.from('other chat'))
+  await writeFile(join(root, 'person.md'), 'the person\'s own')
+  await symlink(join(root, 'person.md'), join(task, 'link.md'))
+  // A recorded path that has since become a link is not the output that was saved.
+  const swapped = join(root, 'workspace', 'swapped.md')
+  await symlink(join(root, 'person.md'), swapped)
+  made.add(swapped)
+  const gated = [foreign.path as string, foreign.taskPath as string, join(root, 'person.md'), join(task, 'link.md'), swapped]
+  for (const path of gated) {
+    // A decline ends reads for the session, so each path gets a fresh one.
+    const read = hostFileTools(paths, 'lane', [], [task], { ask, made }).find(t => t.name === 'file_read')!
+    const result = await read.run({ path }, { task: 'Read it.' }).catch((error: Error) => error.message)
+    expect(String(result)).toMatch(/declined/)
+  }
+  expect(ask).toHaveBeenCalledTimes(gated.length)
 })
