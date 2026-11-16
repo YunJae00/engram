@@ -98,9 +98,9 @@ it('gives a check turn that lacks only handed-in readbacks one readback-only tur
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.map(entry => entry.line)).toContain('Reading back the handed-in files once')
   // The ordinary check retry comes first; the third turn is the readback only.
-  expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
+  expect(t.sent[1]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report })
   // qa142 p2a-r8 A: it is not held to a requirement list; the check turn's report stands and this turn only adds the reads.
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect(t.sent[2]!.request.message).not.toContain('- Leads merged')
   expect(t.sent[2]!.request.message).toContain('The requirement checks you already reported stand as they are')
   const prompt = t.sent[2]!.request.message
@@ -116,7 +116,7 @@ it('hands the readback-only turn no requirement list, neither the model\'s own c
   const hostEntry = { requirement: 'Unresolved verification', status: 'unknown' as const, basis: 'Reread every final part of check_merge.py.' }
   const t = await setup(async () => ({ ...done(report, 1), check: { ...unreadCheck, report: { ...unreadReport, checks: [...unreadReport.checks, hostEntry] } }, trail: [fileRead] }), false)
   await t.chat('Merge the leads')
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect(t.sent[2]!.request.message).not.toContain('- Unresolved verification')
 })
 
@@ -129,7 +129,7 @@ it.each([[['Leads merged']], [['Leads merged', ' no  duplicates ']], [[]]] as co
     return { ...done(report, 1), check: { accepted: true, verified: true, issues: [], report: { ...unreadReport, checks: checks(restated) }, reportUnchanged: true }, trail: [fileRead] }
   }, false)
   await t.chat('Merge the leads')
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
   // The carried report passed, so the confirming readback adds no second message.
   expect(t.delivered).toEqual([report])
@@ -165,7 +165,7 @@ it.each([
     : { ...done(report, 1), check: { accepted: true, verified: true, issues: [], reportUnchanged: true }, trail: [change, fileRead] }, false)
   await t.chat('Merge the leads')
   const task = (await listTasks(t.paths))[0]!
-  expect(t.sent[2]?.extra?.verification).toEqual({ result: report, readback: true })
+  expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect(task).toMatchObject({ state: 'waiting', turns: 3, verified: false, verificationIssue: expect.stringContaining('readback-only turn changed the result') })
   expect(t.sent).toHaveLength(3)
   expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
@@ -262,7 +262,7 @@ it('finishes with the checked report when only its re-check ran out of budget', 
   await t.chat('Merge the leads')
   const task = (await listTasks(t.paths))[0]!
   expect(t.sent).toHaveLength(2)
-  expect(t.sent[1]?.extra?.verification).toEqual({ result: report })
+  expect(t.sent[1]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report })
   expect(task).toMatchObject({ state: 'done', result: report, turns: 2, verified: true })
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')

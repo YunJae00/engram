@@ -258,7 +258,7 @@ describe('team on a running task', () => {
     await s.chat('서울·제주·부산 날씨 조사해서 PDF로')
     const task = await s.settle('done')
     expect(s.sent).toHaveLength(2)
-    expect(s.sent[1]!.extra?.verification).toEqual({ result: 'all three cities are in weather.pdf' })
+    expect(s.sent[1]!.extra?.verification).toEqual({ goal: '서울·제주·부산 날씨 조사해서 PDF로', result: 'all three cities are in weather.pdf' })
     expect(task.verified).toBe(true)
     expect(task.log.map(l => l.line)).toContain('Checking the team deliverable before reporting done')
   })
