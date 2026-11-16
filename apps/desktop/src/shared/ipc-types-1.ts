@@ -243,6 +243,7 @@ export interface DelegatedTaskDto {
   approvals: { id: string; words: string; host: string; url: string; at: string; answer?: 'approve' | 'approve-task' | 'decline'; settled?: boolean }[]
   result?: string
   log: { at: string; line: string }[]
+  awaitingEmployees?: boolean
 }
 
 export interface ChatRequestDto {

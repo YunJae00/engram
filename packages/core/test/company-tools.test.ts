@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { loadBotMemory, recordFacts } from '../src/bot-memory.js'
 import { appendBotTurn, createBot, loadArchivedBots, loadBots, readBotTranscript } from '../src/bots.js'
-import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane } from '../src/company-tools.js'
+import { companyNote, companyStatus, companyStatusTool, isAssignAsk, isCompanyAsk, isDutyAsk, isOutsideAsk, plainHandoff, isStatusAsk, isTeamWorkAsk, staffTool, takesCompanyLane } from '../src/company-tools.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 import { readSidebarLayout } from '../src/sidebar-layout.js'
 import { MEMBER_BLOCKED } from '../src/team-hire-tools.js'
@@ -138,6 +138,21 @@ test('picking or making things is never a hire: a hire needs a staff word and no
     expect(isCompanyAsk(ask, known, true), ask).toBe(false)
   for (const ask of ['김대리 하나 뽑아줘. 리서치 담당이야', '직원 두 명 뽑아줘', '인턴 한 명 채용해줘. 영업 담당', '디자인 담당 팀원 뽑아줘', '마케팅팀 만들고 김대리랑 새로 박사원 뽑아서 넣어줘. 박사원은 카피 담당', '이과장 뽑아줘'])
     expect(isCompanyAsk(ask, known, true), ask).toBe(true)
+})
+
+// c1fix r1: C5's "김대리한테 맡겼어요" came 5.9 s in, after a model round that only copied the sentence into an assign call.
+test('a plain hand-off to one employee on staff is the assign call itself; anything more is left to the model', () => {
+  const staff = ['김대리', '박사원']
+  // The same arguments team-runner.test.ts gives assign for "김대리한테 맡겼어요.".
+  expect(plainHandoff('이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리', staff)).toEqual({ wait: false, to: [{ who: '김대리', brief: '다음 달 서울 IT 행사 일정 정리' }] })
+  expect(plainHandoff('박사원에게 시켜 줘： 경쟁사 가격 조사', staff)?.to).toEqual([{ who: '박사원', brief: '경쟁사 가격 조사' }])
+  for (const ask of [
+    '이거 이과장한테 맡겨: 행사 일정 정리', // not on staff: the model's call hires
+    '김대리한테 맡겨', '김대리한테 행사 일정 정리 맡겨', // no brief of its own after a colon
+    '김대리한테 맡겨: 행사 조사하고 끝나면 박사원한테 넘겨', '김대리랑 박사원한테 맡겨: 행사 조사', // a handoff, two people
+    '김대리한테 맡겨: 행사 일정 조사해서 보고해', '김대리한테 맡겨: 행사 일정표 파일로 만들어', // a report in this answer, a file to make
+    '김대리한테 맡겨: 행사 일정 정리해서 슬랙에 올려', '김대리한테 맡겨: 거래처에 메일 보내', // goes outside: never the lane
+  ]) expect(plainHandoff(ask, staff), ask).toBeUndefined()
 })
 
 // B3 r2: "마케팅팀 이번 주 한 일 요약해서 슬랙에 올려" took the lane, which has no posting tool and so no approval gate to reach.

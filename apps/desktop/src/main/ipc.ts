@@ -40,7 +40,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2750,14 +2750,19 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-starting', model: aiSelection(settings, channel).model, preparationMs: Date.now() - Date.parse(requestReceived.get(request) ?? new Date().toISOString()) }))
         let firstToken = true
         let tokensUsed = 0
-        if (company) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
+        const tools = (await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit, chief })).filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name))
+        // A plain hand-off to one employee is the same assign call with the person's own words as the brief: made here, its reply is the answer
+        // and no model is asked. A call that throws falls through to the model.
+        const handoff = company && chief && !turn?.report && request.scheduled !== true ? plainHandoff(request.message, staff.map(one => one.name)) : undefined
+        const handed = handoff ? await tools.find(tool => tool.name === 'assign')?.run(handoff, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined }) : undefined
+        if (company && !handed) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
         const firstSaid = firstLineNote(channel)
-        const result = await runComet(
+        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: [{ tool: 'assign', args: handoff!, observation: handed }], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: (await cometToolSet({ channel, engine, settings, permission, native, attachments, earlierOutputs, turn, recovery, remembered, guided, webOnly, audit, chief })).filter(tool => !company || COMPANY_LANE_TOOLS.has(tool.name)),
+            tools,
           },
           request.message,
           {

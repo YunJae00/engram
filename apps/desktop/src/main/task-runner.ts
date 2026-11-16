@@ -237,6 +237,7 @@ export function taskRunner(deps: {
         if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { recheckOf = ''; t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
       }
       delete t.verificationPending
+      delete t.awaitingEmployees
       const pending = t.approvals.filter((a) => !a.answer)
       if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
@@ -280,7 +281,7 @@ export function taskRunner(deps: {
       // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
       else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
       // Employees are still on work handed off in the background (or their report is in line): the turn's words stand and the task waits for the report.
-      else if (backgroundOpen(t) || reports.has(id)) { t.state = 'waiting'; logTask(t, EMPLOYEES_REPORT_LOG) }
+      else if (backgroundOpen(t) || reports.has(id)) { t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }
       else if (teamUnverified(t) && !extra?.report && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
     // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread

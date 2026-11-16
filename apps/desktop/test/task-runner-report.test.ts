@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
-import { listTasks, updateTask, type TaskTeam, type TeamMember } from 'core'
+import { listTasks, logTask, updateTask, type TaskTeam, type TeamMember } from 'core'
 import { done, setup } from './task-runner-fixture.js'
-import { awaitingEmployees, EMPLOYEES_REPORT_LOG } from '../src/shared/task-waits.js'
+import { awaitingEmployees } from '../src/shared/task-waits.js'
 
 // Work the chief of staff handed to employees in the background (assign with wait false): the task waits for their report, not for the person.
 const employee = (state: TeamMember['state'], more: Partial<TeamMember> = {}): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '김대리', brief: '행사 일정 정리', botId: 'kim', lookup: true, background: true, state, sessionKey: 'team-x-m1', hiredAt: new Date().toISOString(), ...more })
@@ -25,6 +25,9 @@ it('a hand-off ends the turn on the ack, leaves the thread free, and the report 
   expect(s.notified).toEqual([])
   expect(s.sent).toHaveLength(1)
   // The thread's card reads this: no "작업이 멈췄어요" card and no attention mark while the employee works.
+  expect(awaitingEmployees(await first(s))).toBe(true)
+  // c1fix r1: 김대리 ends and hands over while the task still waits (team-runner logs it onto the task): still no card.
+  await updateTask(s.paths, (await first(s)).id, t => { logTask(t, '김대리 handed over to 박사원') })
   expect(awaitingEmployees(await first(s))).toBe(true)
   // The person keeps chatting: a task of its own, and the waiting one is neither continued nor replaced.
   await s.chat('오늘 날씨 어때?')
@@ -85,11 +88,11 @@ it('a stop ends the waiting task and a late report does nothing', async () => {
 
 // as-e1cf9bfd C5/C6: the thread showed "작업이 멈췄어요 / Waiting for the employees' report" while 김대리 was still working.
 it('only a task waiting on its employees is cardless: a question, an open approval or any other pause still shows', () => {
-  const parked = { state: 'waiting', approvals: [], log: [{ line: 'Assigned 김대리' }, { line: EMPLOYEES_REPORT_LOG }] }
+  const parked = { state: 'waiting', approvals: [], awaitingEmployees: true }
   expect(awaitingEmployees(parked)).toBe(true)
   expect(awaitingEmployees({ ...parked, question: '어느 달 일정인가요?' })).toBe(false)
   expect(awaitingEmployees({ ...parked, approvals: [{}] })).toBe(false)
   expect(awaitingEmployees({ ...parked, approvals: [{ answer: 'approve' }] })).toBe(true)
-  expect(awaitingEmployees({ ...parked, log: [{ line: 'You declined a command, so this turn stopped. Waiting for your next instruction.' }] })).toBe(false)
+  expect(awaitingEmployees({ state: 'waiting', approvals: [] })).toBe(false)
   expect(awaitingEmployees({ ...parked, state: 'failed' })).toBe(false)
 })

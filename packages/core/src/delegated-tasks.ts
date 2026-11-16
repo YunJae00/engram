@@ -73,6 +73,8 @@ export interface DelegatedTask {
   unshown?: string
   // The hidden team hired for this task (team-hire-tools.ts).
   team?: TaskTeam
+  // Why it waits, as of its last turn end: for employees working in the background, not for the person. The thread shows no card for it.
+  awaitingEmployees?: boolean
 }
 
 // Turn count is a fallback for engines that do not report token usage.

@@ -218,6 +218,19 @@ export function isAssignAsk(message: string, known: readonly string[]): boolean 
   return TO_STAFF.test(message) || known.some(name => name.trim().length >= 2 && new RegExp(`${escaped(name.trim())}\\s*(한테|에게)`, 'u').test(message))
 }
 
+// "이거 김대리한테 맡겨: 다음 달 서울 IT 행사 일정 정리": the name is on staff and the brief is the person's own words after the colon, so the
+// host makes the assign call itself and the "맡겼어요" line needs no model round (as-e1cf9bfd C5: 5.9 s, bar 3 s).
+// shortcut: only this one shape, a read-only lookup for one employee; anything else (a handoff, two people, a file to make, a report wanted in this answer) is the model's call.
+const HANDOFF_MORE = /끝나면|넘겨|넘기|보고|알려|기다|만들|작성|저장|파일|고쳐|수정|바꿔|보내|올려|삭제|지워|한테|에게/u
+/** The assign arguments for a plain hand-off to one employee already on staff, or undefined. */
+export function plainHandoff(message: string, staff: readonly string[]): { to: { who: string; brief: string }[]; wait: false } | undefined {
+  if (message.length > COMPANY_ASK_CHARS || isOutsideAsk(message)) return undefined
+  const said = /^(?:(?:이거|이것|이건|이 일)\s*)?(.+?)\s*(?:한테|에게)\s*(?:맡겨|시켜)(?:\s*(?:줘|줘요|주세요|놔|놔줘))?\s*[:：]\s*(.+)$/u.exec(message.trim())
+  const who = said?.[1]!.trim(), brief = said?.[2]!.trim()
+  if (!who || !brief || brief.includes('\n') || !staff.some(name => name.trim() === who) || HANDOFF_MORE.test(brief)) return undefined
+  return { to: [{ who, brief }], wait: false }
+}
+
 // Keeping a duty needs only the schedule tool, and a team's week is in its memory (in the lane prompt): both finish in the lane.
 const REPEATS = /매주|매일|매달|매월|평일마다|주말마다|[월화수목금토일]요일\s*마다/u
 const AT_TIME = /\d{1,2}\s*시|\d{1,2}:\d{2}|아침|오전|오후|점심|저녁|밤|정오|자정/u

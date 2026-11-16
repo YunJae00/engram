@@ -193,7 +193,10 @@ describe('instant first line', () => {
     expect(laneLine('내 일정 뭐 있어?', true)).toBe('네, 확인해 볼게요.')
     expect(laneLine('마케팅팀 이번 주 한 일 요약해', true)).toBe('네, 바로 할게요.')
     expect(laneLine('Hand this to Kim: next month\'s events', false)).toBe('On it.')
-    expect(source('ipc.ts')).toMatch(/if \(company\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    expect(source('ipc.ts')).toMatch(/if \(company && !handed\) firstLineNow\(channel, [^\n]*\n\s*const firstSaid = firstLineNote\(channel\)/)
+    // c1fix r1 (C5 ack 5.9 s): a plain hand-off is the assign call made by the host, and its reply is the turn's answer with no model round and no canned line before it.
+    expect(source('ipc.ts')).toMatch(/const handoff = company && chief && !turn\?\.report && request\.scheduled !== true \? plainHandoff\(request\.message, /)
+    expect(source('ipc.ts')).toMatch(/handed \? \{ answer: handed, steps: \[\{ tool: 'assign', args: handoff!, observation: handed \}\], fellBack: false \} : await runComet\(/)
   })
 
   it('the lane says nothing where no first line is wanted: a report turn, the status question, a stopped turn', () => {
