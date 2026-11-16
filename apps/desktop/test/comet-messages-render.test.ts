@@ -13,9 +13,9 @@ describe('MessageTurn comparator', () => {
     expect(sameTurn(base(), { ...base(), message: { role: 'assistant', text: 'hello' } })).toBe(false)
   })
 
-  it('sameTurn compares live, divider, lang, anchor, retry and work element by element', () => {
+  it('sameTurn compares live, divider, lang, anchor and work element by element', () => {
     const changes: Partial<TurnKeys>[] = [
-      { live: true }, { divider: 'Today' }, { lang: 'ko' }, { anchor: '--copy-a-1' }, { retry: true }, { skipFiles: 'a.pptx' }, { restated: true },
+      { live: true }, { divider: 'Today' }, { lang: 'ko' }, { anchor: '--copy-a-1' }, { skipFiles: 'a.pptx' }, { restated: true },
       { work: ['one'] }, { work: ['one', 'two', 'three'] }, { work: ['one', 'TWO'] },
     ]
     for (const change of changes) expect(sameTurn(base(), { ...base(), ...change })).toBe(false)

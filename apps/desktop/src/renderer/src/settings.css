@@ -105,7 +105,7 @@ div.brief-box.settings-box { width: min(900px, calc(100vw - 48px)); height: min(
   .account-limit-ring circle:last-of-type { transition: stroke-dasharray 160ms ease-out; }
   dialog[open]:not(.delete-conversation-dialog) { animation: view-in 160ms var(--ease-out); }
   dialog[open]:not(.delete-conversation-dialog)::backdrop { animation: fade-in 160ms ease-out; }
-  .dev-skills, .dev-review, .workspace-menu, .mission-add-menu, .browser-bookmarks, .sidebar-menu, [role='menu']:not(.model-picker-menu) { animation: dev-popover-in 140ms var(--ease-out); }
+  .dev-skills, .dev-review, .workspace-menu, .mission-add-menu, .browser-bookmarks, [role='menu']:not(.model-picker-menu) { animation: dev-popover-in 140ms var(--ease-out); }
   .settings-panel:not([hidden]), .dev-pane-welcome .dev-empty, .dev-project-sessions { animation: fade-in 160ms ease-out; }
   .dev-control, .dev-menu-row, .dev-history-row, .dev-folder-button, .dev-access-options label, .model-picker-item { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
 }

@@ -32,9 +32,6 @@
 .bots-view .bots-chat > :is(.chat-approval, .decision-card) { width: min(var(--composer-width), calc(100% - 2 * var(--page-gutter))); margin: 0 auto 8px; box-sizing: border-box; }
 .bots-run-status:empty { display: none; }
 .bots-run-status { display: flex; flex-direction: column; gap: 6px; }
-
-/* In a split tile the cards fill the tile, closer together. */
-.mini-chat-gates { display: flex; flex-direction: column; gap: 6px; margin: 0 10px 6px; }
 .mini-chat-thread :is(.bots-choices, .bots-offer, .comet-keep) { margin: 2px 0; }
 
 /* A card with little room puts its answers on a line of their own. */

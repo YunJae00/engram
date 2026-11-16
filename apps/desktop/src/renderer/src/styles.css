@@ -344,14 +344,14 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 /* The name gives way (ellipsis) instead of spilling over the mode toggle when the head is crowded. */
 .app-sidebar-head .workspace-trigger { max-width: min(206px, 100%); min-width: 0; margin: 0; padding-left: 7px; }
 .app-sidebar-head .workspace-name { max-width: 156px; }
-.sidebar-icon-button, .sidebar-section-open, .sidebar-more {
+.sidebar-icon-button, .sidebar-section-open {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   color: var(--fg-faint); transition: color 100ms ease, background 100ms ease;
 }
 .sidebar-icon-button { width: 30px; height: 30px; }
-.sidebar-icon-button:hover, .sidebar-section-open:hover, .sidebar-more:hover { color: var(--fg); background: var(--hover-bg); }
+.sidebar-icon-button:hover, .sidebar-section-open:hover { color: var(--fg); background: var(--hover-bg); }
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: var(--space-1) var(--space-3); }
-.sidebar-nav-row, .sidebar-new {
+.sidebar-nav-row {
   width: 100%; min-height: 36px; padding: 7px 10px;
   display: flex; align-items: center; gap: 10px; text-align: left;
   border-radius: var(--radius-s); color: var(--fg-dim); font-size: var(--fs-body);
@@ -359,7 +359,7 @@ input::placeholder, textarea::placeholder { color: var(--fg-faint); }
 }
 .sidebar-nav-row:hover, .sidebar-new:hover:not(:disabled) { color: var(--fg); background: var(--hover-bg); }
 .sidebar-nav-row.active { color: var(--fg-strong); background: var(--selected-soft); font-weight: 550; }
-.sidebar-nav-row svg, .sidebar-new svg { flex: none; }
+.sidebar-nav-row svg { flex: none; }
 .sidebar-status-block {
   flex: none; margin: var(--space-1) var(--space-3); padding: 0 0 var(--space-2);
   display: flex; flex-direction: column; gap: 1px;
@@ -378,8 +378,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .sidebar-work-status { color: var(--fg-faint); }
 .sidebar-work-status svg { margin: 0; flex: none; }
 .sidebar-work-status.working svg { color: var(--fg-dim); animation: engram-spin 1.1s linear infinite; }
-.sidebar-new { margin: 6px 10px 8px; width: calc(100% - 20px); color: var(--fg); font-weight: 550; }
-.sidebar-new:disabled { opacity: 0.45; cursor: default; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 var(--space-3) var(--space-3); }
 .sidebar-section { display: flex; flex-direction: column; margin-top: 8px; }
 .sidebar-section-head { min-height: 30px; display: flex; align-items: center; gap: 2px; padding: 0 4px; }
@@ -400,21 +398,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 }
 .sidebar-item-main > span:last-child { display: block; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-item:hover .sidebar-item-main, .sidebar-item.active .sidebar-item-main { color: var(--fg); }
-.sidebar-more { position: absolute; right: 4px; width: 28px; height: 28px; opacity: 0; }
-.sidebar-item:hover .sidebar-more, .sidebar-more:focus-visible { opacity: 1; }
-.sidebar-rename {
-  flex: 1; min-width: 0; height: 28px; margin: 3px 2px 3px 5px; padding: 2px 7px;
-  border-radius: 6px; font-size: var(--fs-body);
-}
-.sidebar-menu {
-  position: absolute; top: 31px; right: 3px; z-index: 95; width: 142px; padding: 5px;
-  display: flex; flex-direction: column; gap: 1px;
-  background: var(--widget-bg); border: 1px solid var(--border-soft);
-  border-radius: var(--radius-m); box-shadow: var(--shadow-float); animation: menu-in 100ms ease-out;
-}
-.sidebar-menu button { min-height: 30px; padding: 5px 8px; display: flex; align-items: center; gap: 7px; text-align: left; color: var(--fg); }
-.sidebar-menu button:hover { background: var(--hover-bg); }
-.sidebar-menu button.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); }
 .sidebar-empty { padding: 7px 9px; color: var(--fg-faint); font-size: var(--fs-small); }
 .sidebar-footer { flex: none; padding: var(--space-2) var(--space-3); display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: 4px; align-items: start; }
 .sidebar-footer button { min-height: 32px; padding: 5px 9px; display: flex; align-items: center; gap: 10px; color: var(--fg-dim); text-align: left; }
@@ -471,7 +454,7 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .canvas-slot:not([hidden]) { animation: view-in 180ms ease-out; }
 /* Surfaces that used to appear between two frames now arrive. */
 .bots-memory, .comet-keep, .routine-submit, .bots-offer { animation: view-in 160ms ease-out; }
-.note-sheet, .review-sheet, .digest-sheet, .brief-box { animation: view-in 200ms ease-out; }
+.note-sheet, .review-sheet, .brief-box { animation: view-in 200ms ease-out; }
 .comet-work-line { animation: fade-in 180ms ease; }
 .model-picker-menu { animation: menu-in 120ms ease-out; transform-origin: bottom left; }
 .web-pane-tab-label { animation: name-in 220ms ease; }
@@ -592,25 +575,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 .review-main { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
 .review-close { position: absolute; top: 8px; right: 10px; z-index: 5; }
 .review-main .review-detail { flex: 1; }
-
-/* Today sheet — right-side slide-over: the note sheet's scrim + Escape/✕, but
-   the panel is docked to the right (never centered) and slides in from the edge.
-   The weekly digest sheet is the same slide-over, so it shares the geometry. */
-/* Reuses engram-spin so the existing prefers-reduced-motion rule covers it —
-   a private keyframe here would have spun for users who asked it not to. */
-
-.digest-sheet {
-  width: min(460px, calc(100vw - 48px)); height: 100vh;
-  background: var(--editor-bg); border-left: 1px solid var(--border);
-  box-shadow: var(--shadow-sheet);
-  display: flex; flex-direction: column;
-  animation: slide-left 180ms ease-out;
-}
-.digest-sheet .sheet-header {
-  padding-right: calc(16px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px));
-}
-.digest-overlay { align-items: stretch; justify-content: flex-end; }.digest-title { font-family: var(--font); font-size: var(--fs-title); font-weight: 600; color: var(--fg-strong); }
-.digest-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 24px; }
 /* Open loops sit above the brief and are separated by a rule, so the live
    half of the sheet never blurs into the markdown the librarian wrote. */
 /* Placeholders, not dimmed text: 0.45 opacity over real content read as a
@@ -626,10 +590,6 @@ button.sidebar-status-row:hover { color: var(--fg); background: var(--hover-bg);
 /* Same courtesy the app's other spinner gets: no pulse for anyone who asked
    the OS to stop moving things. */
 @media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; } }
-
-
-.digest-empty { margin-top: 9px; font-size: var(--fs-small); line-height: 1.6; color: var(--fg-faint); }
-.digest-empty { margin-top: 18px; }
 @keyframes slide-left { from { transform: translateX(24px); opacity: 0.5; } to { transform: translateX(0); opacity: 1; } }
 
 .badge {
@@ -1276,39 +1236,12 @@ body.bubble-host { background: transparent; }
 .chat-write > .chat-file-list, .chat-write > .chat-attachment-error, .chat-write > .chat-attachment-status { grid-column: 1 / -1; }
 .chat-add-button { grid-column: 1; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 50%; color: var(--fg-dim); }
 .chat-add-button:hover { background: var(--hover-bg); color: var(--fg); }
-.chat-add-menu { position: fixed; inset: auto; margin: 0; width: 220px; max-width: calc(100vw - 16px); padding: 5px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 14px; background: var(--editor-bg); color: var(--fg); box-shadow: var(--shadow-card-rest); overflow-y: auto; }
-.chat-add-menu:popover-open { display: grid; gap: 2px; animation: composer-menu-in 140ms ease-out; }
-.chat-add-menu > button { display: flex; justify-content: flex-start; gap: 10px; width: 100%; height: auto; min-height: 36px; padding: 8px 10px; border-radius: 9px; font-size: var(--fs-small); text-align: left; }
 .chat-add-menu > button:hover:not(:disabled) { background: var(--hover-bg); }
-.chat-add-menu > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.chat-mention-menu > button.picked { background: var(--hover-bg); }
-.chat-write > .chat-mention-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 0; }
-.chat-mention-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 7px; border-radius: 13px; background: var(--hover-bg); color: var(--fg); font-size: var(--fs-small); }
-.chat-mention-chip > .app-icon, .chat-mention-menu .app-icon { width: 16px; height: 16px; flex: none; object-fit: contain; }
 @keyframes composer-menu-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .chat-add-menu:popover-open { animation: none; } }
 .chat-write-tools { display: flex; align-items: center; flex: 1; gap: 4px; min-width: 0; }
 .chat-write-tools > .model-picker { margin-left: auto; }
 .chat-write-tools > button > svg { display: block; flex: none; width: 16px; height: 16px; }
-/* Which model answers, beside the composer: quiet until wanted, and a plain
-   menu when it is. */
-/* The page's own button, beside the composer: the one place the panel is
-   summoned from and the one light that says a page is open or being worked.
-   A quiet globe; a dot when a page is live; a pulse while hands are on it. */
-.chat-attach-button, .composer-web {
-  display: inline-flex; align-items: center; justify-content: center; padding: 0;
-  width: var(--write-control, 32px); height: var(--write-control, 32px); border-radius: 999px; color: var(--fg-dim);
-  flex: none;
-}
-.composer-web { position: relative; }
 .chat-attach-button:hover:not(:disabled), .composer-web:hover:not(:disabled) { background: var(--hover-bg); color: var(--fg); }
-.composer-web.showing { color: var(--fg-dim); background: var(--selected-soft); }
-.composer-web-dot {
-  position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border-radius: 50%;
-  /* Cut out of the composer's own ground, not the editor's. */
-  background: var(--accent); box-shadow: 0 0 0 2px var(--panel-bg);
-}
-.composer-web.working .composer-web-dot { animation: web-pane-pulse 1.4s ease-in-out infinite; }
 @keyframes web-pane-pulse {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
@@ -1551,12 +1484,6 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
    so the buttons keep their right-aligned order. */
 .brief-box input:not([type='checkbox']) { width: 100%; }
 .brief-box code { font-family: var(--mono); font-size: var(--fs-small); }
-/* Errand dialog: a multi-line goal box. Inherits the shared input/textarea
-   chrome (background, border, focus ring); this only sizes it. */
-.errand-input { width: 100%; min-height: 84px; resize: vertical; font-size: var(--fs-body); padding: 9px 11px; }
-
-
-
 
 /* ── Cosmos chat ─────────────────────────────────────────────── */
 .cosmos-chat {
@@ -1663,41 +1590,12 @@ button.onboard-skip:disabled { opacity: 0.45; cursor: default; }
 .web-pane-bar .live-address { flex: 1; min-width: 0; font-size: var(--fs-small); height: 32px; padding: 0 10px; border-radius: var(--radius-s); border-color: transparent; background: var(--hover-bg); }
 .browser-tabs { display: flex; align-items: flex-end; gap: 2px; flex: none; padding: 6px 8px 0; background: var(--canvas-bg); overflow-x: auto; scrollbar-width: none; }
 .browser-tabs::-webkit-scrollbar { display: none; }
-.browser-tab { display: flex; align-items: center; flex: 0 1 200px; min-width: 110px; height: 34px; border-radius: 9px 9px 0 0; background: transparent; }
-.browser-tab[data-active='true'] { background: var(--hover-bg); box-shadow: inset 0 -2px var(--fg); }
-.browser-tab-face { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1; padding: 0 6px 0 10px; height: 34px; background: none; border: 0; color: var(--fg-dim); cursor: pointer; }
-.browser-tab[data-active='true'] .browser-tab-face { color: var(--fg); font-weight: 600; }
-.browser-tab-icon { flex: none; display: inline-flex; align-items: center; width: 14px; height: 14px; }
-.browser-tab-icon img { width: 14px; height: 14px; border-radius: 3px; }
-.browser-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); }
-.browser-tab-close { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-right: 5px; border: 0; border-radius: 6px; background: none; color: var(--fg-dim); cursor: pointer; }
-.browser-tab-close:hover { background: var(--hover-bg); color: var(--fg); }
-.browser-tab-add { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 3px; border: 0; border-radius: 8px; background: none; color: var(--fg-dim); cursor: pointer; }
-.browser-tab-add:hover { background: var(--hover-bg); color: var(--fg); }
-.browser-tab-add:disabled { opacity: 0.3; cursor: default; }
 .browser-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 .browser-actions button:disabled { opacity: 0.3; cursor: default; }
 .browser-bookmarks { position: fixed; z-index: 2000; width: min(340px, calc(100vw - 24px)); max-height: min(480px, 60vh); display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel-bg); color: var(--fg); border: 1px solid var(--border-soft); border-radius: var(--radius-l); box-shadow: var(--shadow-float); }
 .browser-bookmarks > input { width: 100%; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: var(--radius-s); background: var(--canvas-bg); color: var(--fg); }
-.browser-bookmark-list { min-height: 40px; overflow-y: auto; }
-.browser-bookmark-list button { display: flex; flex-direction: column; width: 100%; align-items: flex-start; gap: 3px; padding: 8px; border-radius: var(--radius-s); text-align: left; }
-.browser-bookmark-list button:hover, .browser-bookmark-import button:hover { background: var(--hover-bg); }
-.browser-bookmark-list span, .browser-bookmark-list small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.browser-bookmarks small, .browser-bookmarks p, .browser-bookmark-import > span { color: var(--fg-dim); font-size: var(--fs-small); }
-.browser-bookmark-import { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
-.browser-bookmark-import button { text-align: left; padding: 7px 8px; border-radius: var(--radius-s); }
+.browser-bookmarks small, .browser-bookmarks p { color: var(--fg-dim); font-size: var(--fs-small); }
 .browser-bookmarks > select { width: 100%; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: var(--radius-s); background: var(--canvas-bg); color: var(--fg); }
-.bookmark-source + .bookmark-source { border-top: 1px solid var(--border-soft); margin-top: 8px; padding-top: 8px; }
-.bookmark-source h3 { display: flex; align-items: center; gap: 8px; margin: 4px 8px 8px; font-size: var(--fs-small); font-weight: 500; color: var(--fg-dim); }
-.bookmark-source h3 small, .bookmark-folder summary small { margin-left: auto; width: auto; flex-shrink: 0; }
-.bookmark-folder summary { display: flex; align-items: center; gap: 8px; padding: 9px 8px; border-radius: var(--radius-s); cursor: pointer; list-style: none; }
-.bookmark-folder summary::before { content: '›'; color: var(--fg-dim); transition: transform 120ms ease; }
-.bookmark-folder[open] > summary::before { transform: rotate(90deg); }
-.bookmark-folder summary:hover { background: var(--hover-bg); }
-.bookmark-folder summary svg { flex-shrink: 0; color: var(--fg-dim); }
-.bookmark-folder summary span { min-width: 0; }
-.bookmark-folder > div { margin-left: 14px; padding-left: 6px; border-left: 1px solid var(--border-soft); }
-@media (prefers-reduced-motion: reduce) { .bookmark-folder summary::before { transition: none; } }
 .web-pane-stop {
   display: inline-flex; align-items: center; gap: 5px; flex: none;
   height: 26px; padding: 0 11px; border-radius: 999px; font-size: var(--fs-small); font-weight: 600;
@@ -1825,17 +1723,12 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-memory-forget:hover { color: var(--fg); background: var(--hover-bg); }
 .bots-offer-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
 .bots-working { display: flex; align-items: flex-start; gap: 9px; max-width: 94%; }
-.bots-working-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.bots-working-line { font-size: var(--fs-body); color: var(--fg); }
-.bots-working-detail { font-size: var(--fs-micro); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bots-working-stop { flex: none; margin-left: auto; }
 /* The thread reads in one column of a readable measure; on a wide window
    the padding grows so the column stays centred under the composer. */
 .bots-thread { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--reading-gutter); display: flex; flex-direction: column; gap: var(--space-4); }
 .bot-empty { margin: auto 0; align-self: center; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; text-align: center; }
 .bot-empty-name { margin: 8px 0 0; font-size: 18px; font-weight: 600; color: var(--fg); }
 .bot-empty-label { margin: 0; font-size: 13px; color: var(--fg-faint); }
-.bot-empty-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .bots-write { position: relative; flex: none; z-index: 32; margin: var(--space-2) var(--composer-gutter) 16px; }
 .bots-write .chat-write { min-height: 44px; max-height: 200px; box-sizing: border-box; padding: 6px; border-radius: var(--radius-pill); overflow-y: auto; }
 .bots-write[data-multiline] .chat-write { border-radius: 22px; }
@@ -1847,17 +1740,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 .bots-write .chat-send-btn:disabled { opacity: 1; background: var(--selected-soft); color: var(--fg-dim); }
 [data-theme='light'] .bots-write .chat-send-btn:disabled { opacity: 0.4; background: var(--cta); color: var(--cta-fg); }
 .bots-write .bubble-stop, .bots-write .bubble-stop:hover:not(:disabled) { background: var(--clay); }
-.bots-title-pill {
-  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
-  display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 36px; max-width: min(960px, calc(100% - 32px)); padding: 0 14px 0 8px;
-  border-radius: var(--radius-pill); background: var(--editor-bg); color: var(--fg); box-shadow: var(--shadow-float);
-  white-space: nowrap; cursor: default;
-}
-.bots-title-pill > .bot-avatar { flex: none; }
-.bots-title-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 500; }
-/* The thread starts a clear 8px under the pill (out of its shadow) and scrolled messages fade out there, so none passes behind it or is cut hard against it. */
-.bots-title-pill ~ .bots-thread { margin-top: 52px; padding-top: 12px; }
-.bots-title-pill ~ .bots-thread.conversation-thread { mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 18px), transparent); }
 /* Not read yet: a quiet pulse, no claim about what will be there. */
 .bots-loading { color: var(--fg-faint); }
 .bots-empty {
@@ -1866,54 +1748,15 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 }
 .bots-empty-title { font-size: var(--fs-title); color: var(--fg-faint); }
 .bots-empty-hint { font-size: var(--fs-micro); letter-spacing: 0.02em; line-height: 1.6; color: var(--fg-faint); }
-
-/* ── Errands: the delegation's home ────────────────────────────── */
-.errands-box { width: min(560px, 92vw); max-height: 82vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.errands-hint { font-size: var(--fs-small); color: var(--fg-dim); line-height: 1.5; }
-.errand-live { border: 1px solid var(--border-soft); border-radius: var(--radius-card); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.errand-live-goal { font-size: var(--fs-body); font-weight: 600; color: var(--fg); }
-.errand-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.errand-step { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-small); color: var(--fg-faint); }
-.errand-step::before { content: '○'; }
-.errand-step.passed { color: var(--fg-dim); }
-.errand-step.passed::before { content: '●'; color: var(--accent); }
-.errand-step.current { color: var(--fg); font-weight: 600; }
-.errand-step.current::before { content: '●'; color: var(--accent); animation: errand-pulse 1.2s ease-in-out infinite; }
 @keyframes errand-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-.errand-step-detail { font-weight: 400; font-size: var(--fs-small); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.errand-wall-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: var(--fs-small); color: var(--fg-dim); }
-.errand-stop { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; }
-.errands-history-title { font-size: var(--fs-small); font-weight: 650; color: var(--fg-dim); margin-top: 2px; }
-.errands-empty { font-size: var(--fs-small); color: var(--fg-faint); }
-.errands-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.errand-run { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-s); transition: background 100ms ease; }
-.errand-run:hover { background: var(--hover-bg); }
-.errand-outcome { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--border); }
-.errand-outcome.done { background: var(--accent); }
-.errand-outcome.failed { background: var(--clay); }
-.errand-outcome.aborted { background: var(--fg-faint); }
-.errand-run-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
-.errand-run-goal { font-size: var(--fs-body); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.errand-run-meta { font-size: var(--fs-small); color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.errand-run-review { flex: none; }
 @media (prefers-reduced-motion: reduce) {
-  .errand-step.current::before, .cosmos-chat, .cosmos-chat.closing, .cosmos-chat-launcher { animation: none; }
+  .cosmos-chat, .cosmos-chat.closing, .cosmos-chat-launcher { animation: none; }
   .cosmos-chat-launch { transition: none; }
 }
 
 /* ── Routines sheet (saved replays; borrows the errand live chrome) ── */
 .routines-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .routine-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-s); transition: background 100ms ease; }
-.routine-approvals { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
-.routine-approval {
-  display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-micro); color: var(--fg-dim);
-  background: var(--hover-bg); border-radius: 999px; padding: 1px 4px 1px 8px;
-}
-.routine-approval-x {
-  display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 0;
-  border-radius: 999px; background: transparent; color: var(--fg-faint); padding: 0; cursor: pointer;
-}
-.routine-approval-x:hover { color: var(--fg); }
 .routine-row:hover { background: var(--hover-bg); }
 .routine-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
 .routine-run { flex: none; display: inline-flex; align-items: center; gap: 5px; }
@@ -2081,7 +1924,6 @@ input.comet-keep-name { border: 0; background: var(--panel-bg); box-shadow: inse
 }
 .workspace-switching-title { font-size: var(--fs-lead); font-weight: 600; color: var(--fg); margin-top: 6px; }
 .workspace-switching-sub { font-size: var(--fs-small); color: var(--fg-dim); }
-
 
 /* ── Web errand: the human-wall strip in the top bar ────────────────────── */
 /* The errand is parked in main until one of these buttons answers. */

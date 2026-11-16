@@ -48,8 +48,6 @@
 .answer-memory-sources li { padding: 4px 0; }
 .answer-memory-sources a { color: inherit; text-decoration: none; }
 .answer-memory-sources a:hover { text-decoration: underline; }
-.delete-conversation-dialog.bookmark-import-dialog { width: min(480px, calc(100vw - 40px)); }
-.bookmark-import-dialog .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .external-connections > h2 { margin: 0 0 12px; font-size: 20px; }
 .external-connections > p { line-height: 1.65; }
 .external-client-list { margin: 20px 0; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; }
@@ -58,7 +56,7 @@
 .external-client-copy { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .external-client-copy strong { font-weight: 550; }
 .external-client-copy small, .external-access small { color: var(--fg-dim); line-height: 1.5; font-size: var(--fs-small); }
-.external-client button, .external-actions button, .bookmark-import-dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.external-client button, .external-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .external-client button { min-width: 128px; }
 .external-client-copy small svg { vertical-align: -2px; margin-right: 5px; }
 .external-access { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0 10px; }
@@ -76,11 +74,6 @@
 .external-feedback { margin: 12px 0 0; color: var(--fg-dim); font-size: var(--fs-small); }
 @media (max-width: 560px) { .external-client { gap: 9px; padding: 12px; } .external-client > button { grid-column: 2 / 4; justify-self: start; } }
 @media (prefers-reduced-motion: reduce) { .external-access input, .external-access input::before { transition: none; } }
-.bookmark-import-dialog h2 { margin: 0 0 8px; font-size: 20px; }
-.bookmark-import-dialog p { color: var(--fg-dim); line-height: 1.6; margin: 0 0 24px; }
-.bookmark-import-dialog label { font-size: var(--fs-small); }
-.bookmark-profile { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; margin: 8px 0 28px; }
-.bookmark-profile select { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--fg); padding: 6px; }
 .web-pane-empty {
   flex: 1; min-width: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px;
@@ -111,16 +104,11 @@
 .bots-run-status .routine-submit-label { min-width: 0; flex: 0 0 30%; }
 .bots-run-status .routine-submit-value { min-width: 0; }
 .answer-error { display: flex; flex-direction: column; gap: 10px; min-width: 0; line-height: 1.6; }
-.answer-error-heading { display: flex; align-items: flex-start; gap: 10px; color: var(--fg-strong); }
-.answer-error-heading svg { flex: none; margin-top: 3px; color: var(--clay); }
 .answer-error p { margin: 0; }
-/* Not this app's fault: said calmly, without the alarm colour. */
-.answer-error.outage .answer-error-heading svg { color: var(--fg-dim); }
 .answer-error.outage p { color: var(--fg-dim); }
 .answer-error details { min-width: 0; color: var(--fg-dim); font-size: var(--fs-small); }
 .answer-error summary { cursor: pointer; padding: 4px 0; }
 .answer-error pre { margin: 8px 0 0; padding: 12px; border-radius: 8px; background: var(--panel-bg); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.answer-error-copy { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px; font-size: var(--fs-small); }
 
 .bots-view { container: conversation / inline-size; }
 .bots-main .web-pane-bar { background: var(--canvas-bg); border-bottom: 1px solid var(--border-soft); }
@@ -152,6 +140,5 @@
 .check-evidence li > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
 .check-evidence li > span > strong { display: block; font-weight: 550; color: var(--fg); }
 .check-evidence > p { margin: 6px 0 0; color: var(--fg-faint); }
-/* The empty canvas is one face and one short secondary line: the label when there is one, otherwise the name. */
-.bot-empty .bot-empty-chips, .bot-empty:has(> .bot-empty-label) > .bot-empty-name { display: none; }
+.bot-empty:has(> .bot-empty-label) > .bot-empty-name { display: none; }
 .bot-empty > :is(.bot-empty-name, .bot-empty-label) { max-width: min(320px, 100%); margin: 8px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--ink-secondary, var(--fg-dim)); }
