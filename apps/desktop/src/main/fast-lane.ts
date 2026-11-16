@@ -29,21 +29,10 @@ export const LANE_SOLO_CALLS = 4
 export const LANE_SOLO_SOFT_MS = 12_000
 export const LANE_TEAM_CALLS = 8
 // grokbar R3: the lead's notes to itself between calls ("Now I have solid sources for all 5 items. Let me verify...") were shown as
-// bubbles, in English. On a lookup turn a round's words are held until they are clearly the answer; a round that ends in a tool call
-// is dropped unseen. A round that answers words the person just said is shown as it comes ("대구도 넣을게요.").
-// shortcut: "clearly the answer" is its length; a longer note between calls would still show, hold the whole round if that is seen.
-export const NARRATION_MAX = 200
-export function quietRounds(show: (text: string) => void): { token(text: string, aloud: boolean): void; reset(): void } {
-  let held = '', flowing = false
-  return {
-    token(text, aloud) {
-      if (flowing || aloud) return show(text)
-      held += text
-      if ([...held].length > NARRATION_MAX) { flowing = true; show(held); held = '' }
-    },
-    reset() { held = ''; flowing = false },
-  }
-}
+// bubbles, in English. A lookup turn's words are never streamed: a round cannot be told from a note until it ends, and the delivered
+// answer shows the last one whole. (Showing a round once it passed 200 characters let a long note through: c3a review r2 #1.)
+// A round that answers words the person just said is shown as it comes.
+export const quietRounds = (show: (text: string) => void) => ({ token(text: string, aloud: boolean): void { if (aloud) show(text) } })
 export const teamAsk = (message: string): boolean => TEAM.test(message)
 // The line a lookup turn opens with, at once and with no model: it names the first step ("지금 시세 확인할게요.").
 // grokbar B6 r2: "바로 찾아볼게요." named no step, and the quick voice's line restated the request 0.6-1.5 s later.

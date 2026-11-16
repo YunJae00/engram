@@ -65,7 +65,7 @@ it('follow-up gets its own reply when no tool step takes it', async () => {
   await h.idle('bot-one')
   expect(h.requests).toEqual(['First', 'And what is 3 times 7?'])
   // grokbar c3: the host's one-line reply sits under the words; with no quick voice here it is the fixed line.
-  expect(await rows('one')).toEqual(['user First', 'user And what is 3 times 7?', 'assistant Working that into this now.', 'assistant Reply: First', 'assistant Reply: And what is 3 times 7?'])
+  expect(await rows('one')).toEqual(['user First', 'user And what is 3 times 7?', 'assistant Covering that too.', 'assistant Reply: First', 'assistant Reply: And what is 3 times 7?'])
 })
 
 it('live-steered follow-up is answered separately, not appended', async () => {

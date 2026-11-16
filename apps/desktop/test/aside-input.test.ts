@@ -10,6 +10,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
 import { turnGoals } from '../src/main/turn-state.js'
+import { quickAnswerPrompt } from '../src/main/first-line.js'
 import { tapBroadcast } from '../src/main/engine-health.js'
 import type { EngramEvent } from '../src/shared/types.js'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
@@ -151,7 +152,8 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   expect(fixedAsideReply('아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
   // Never a bare yes (rule 1).
   expect(fixedAsideReply('표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
-  for (const words of ['아 대구도 추가해', '그냥 애플로 바꿔', '아 왜 이렇게 느려', '표로 보여줘']) {
+  expect([asideShape('내 일정 뭐 있어?'), fixedAsideReply('내 일정 뭐 있어?', true)]).toEqual(['question', '그것도 같이 챙길게요.'])
+  for (const words of ['아 대구도 추가해', '그냥 애플로 바꿔', '아 왜 이렇게 느려', '표로 보여줘', '내 일정 뭐 있어?']) {
     const line = fixedAsideReply(words, true)
     expect(line, words).not.toMatch(/^네|알겠|[A-Za-z]|죄송|\?/)
     expect(line, words).toMatch(/요\.$/)
@@ -200,8 +202,8 @@ it('hands a change to the running turn before the reply is written, keeps a rema
   const cache = await mkdtemp(join(temporary, 'aside-reply-'))
   const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const held: string[] = [], order: string[] = [], stopped: string[] = []
-  const asked: string[] = []
-  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 넣을게요.' } }
+  const asked: string[] = [], answers: string[] = []
+  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return answers.shift() ?? (prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 넣을게요.') } }
   turnGoals.set('bot-reply', '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
   registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text); order.push('held') }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) }, voice: async () => voice })
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-reply', text) as Promise<{ ok: boolean; reply?: string; action?: string; instruction?: string }>
@@ -218,7 +220,24 @@ it('hands a change to the running turn before the reply is written, keeps a rema
     expect((await say('고마워, 대구 넣어줘')).instruction).toBe('고마워, 대구 넣어줘')
     expect(held).toEqual(['아 대구도 추가해', '고마워, 대구 넣어줘'])
     held.pop()
-    // Stop is not a steer: no voice, no hand-over, its own short line (T3).
+    // c3a review r2 #2: a question of its own said mid-work ("1년은 몇 초야?") is answered at once and the work goes on unchanged (rule 2).
+    answers.push('31,536,000초예요.')
+    expect(await say('1년은 몇 초야?')).toEqual({ ok: true, action: 'relay', reply: '31,536,000초예요.' })
+    expect(asked.at(-1)).toBe(quickAnswerPrompt('1년은 몇 초야?', true))
+    expect(held).toEqual(['아 대구도 추가해'])
+    expect((await readBotTranscript(paths, 'reply')).slice(-2).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', '1년은 몇 초야?', true, false], ['assistant', '31,536,000초예요.', true, true]])
+    // The voice is unsure (NONE), or answers in English nobody asked for: the question goes to the running work, with one fixed line and no second wait.
+    for (const line of ['NONE', 'There are 31,536,000 seconds.']) {
+      answers.push(line)
+      const count = asked.length
+      expect(await say('1마일은 몇 km야?')).toEqual({ ok: true, action: 'relay', instruction: '1마일은 몇 km야?', reply: '그것도 같이 챙길게요.' })
+      expect(asked).toHaveLength(count + 1)
+      expect(held.pop()).toBe('1마일은 몇 km야?')
+    }
+    // A question that needs the person's own things is not the quick voice's to answer: it is handed over and gets the usual reply line.
+    expect((await say('내 일정 뭐 있어?')).instruction).toBe('내 일정 뭐 있어?')
+    expect(asked.at(-1)).toContain('in the middle of the job')
+    held.pop()
     const before = asked.length
     expect(await say('멈춰')).toEqual({ ok: true, action: 'stop', reply: '중지했어요.' })
     await new Promise(done => setImmediate(done))

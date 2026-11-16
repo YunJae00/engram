@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, NARRATION_MAX, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -126,28 +126,22 @@ it('shows a lookup turn\'s answer and its reply to mid-turn words, never the not
   // A note, then a tool call: never shown.
   quiet.token('Now I have solid sources for all 5 items. ', false)
   quiet.token('Let me verify the article URL by reading it directly.', false)
-  quiet.reset()
   expect(shown).toEqual([])
-  // The answer: held while it could still be a note, then shown whole and streamed on.
-  const answer = '요즘 국내 AI 스타트업 투자 뉴스 5개예요.\n\n| 회사 | 내용 | 날짜 | 출처 |\n|---|---|---|---|\n' + '| 업스테이지 | 시리즈C 2차 | 2026-11-09 | [뉴스1](https://www.news1.kr/it-science/6348203) |\n'.repeat(3)
-  expect([...answer].length).toBeGreaterThan(NARRATION_MAX)
-  for (const piece of answer.match(/[^]{1,40}/g)!) quiet.token(piece, false)
-  quiet.token(' 끝.', false)
-  expect(shown.join('')).toBe(`${answer} 끝.`)
-  expect(shown.length).toBeGreaterThan(1)
-  // A short answer is not streamed; the delivered answer shows it (ipc deliverAnswer), so nothing is lost.
-  shown.length = 0
-  quiet.reset()
+  // c3a review r2 #1: a note longer than 200 characters was taken for the answer and shown as it was written.
+  const note = 'Now I have the search results for all three cities. Let me check each one against the weather service page before I write the table, since the first result looked a day old and the second one did not carry a date at all. Searching the web for results once more.'
+  expect([...note].length).toBeGreaterThan(200)
+  for (const piece of note.match(/[^]{1,40}/g)!) quiet.token(piece, false)
+  expect(shown).toEqual([])
+  // The answer is not streamed either; the delivered answer shows it (ipc deliverAnswer), so nothing is lost.
   quiet.token('지금 1달러에 1,385원이에요.', false)
   expect(shown).toEqual([])
   // A round marked aloud is shown as it comes.
-  quiet.reset()
   quiet.token('대구도 넣을게요.', true)
   expect(shown).toEqual(['대구도 넣을게요.'])
   // grokbar c3 T2: the reply to mid-turn words is the host's line now, so no round of a lookup is aloud: "알겠어요, 애플 주가로 알려드릴게요." was a second reply.
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('if (quiet) quiet.token(text, false); else broadcast({ type: \'chat:token\', channel, text })')
-  expect(ipc).toContain('onReset: (drop, tool) => { quiet?.reset(); broadcast(')
+  expect(ipc).toContain('onReset: (drop, tool) => { broadcast(')
 })
 
 // grokbar c3: R2 ended "다시 시도해볼까요, 아니면 지금은 여기까지로 둘까요?", T2 said "시간이 다 돼서 이번 턴에서는…", R1 opened with
