@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn } from './bots.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
-import { siteName, type TeamHost } from './team-hire-tools.js'
+import { placeNamed, siteName, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { plainSchedule, scheduleWordsKo } from './schedule-tools.js'
 
@@ -865,7 +865,10 @@ const hostLinked = (text: string): string => text.replace(HOST_PATH, (all: strin
 /** A team answer as it may be shown: a raw address, a line that is only a teammate's name or only a host name sends the host's own list (named links only); with a file or a question in it, which that list cannot carry, the text is repaired in place. Links that follow each other are set apart. */
 export function teamAnswer(answer: string, task: DelegatedTask | undefined): string {
   const members = partsOf(task, false)
-  if (!members.length) return answer
+  // stack-5: a team result's link is never named "네이버 블로그" either (team-hire-tools placeNamed, c5a's rule for a lookup's table).
+  return members.length ? placeNamed(shownAnswer(answer, members), members, HANGUL.test(answer)) : answer
+}
+function shownAnswer(answer: string, members: readonly TeamMember[]): string {
   const bare = (line: string): string => line.replace(/[*_#:\s-]/g, ''), stray = (line: string): boolean => members.some(m => bare(line) === m.role) || BARE_HOST.test(bare(line))
   if (!/https?:\/\//.test(answer.replace(/\]\(https?:\/\/[^)\s]*\)/g, '')) && hostLinked(answer) === answer && !answer.split('\n').some(stray)) return spaced(answer)
   if (members.some(m => delivered(m)) && !handsIn(members)) return hostLinked(mergedReport(members))

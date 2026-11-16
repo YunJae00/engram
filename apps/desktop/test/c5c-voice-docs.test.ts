@@ -29,6 +29,12 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     for (const tool of ['word_write', 'file_create_workbook', 'file_read', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     // Sent somewhere, a how-to question, a question about a named file, or only a file's name: not this menu.
     for (const ask of ['회의록 워드로 만들어서 민호한테 메일로 보내줘', '엑셀에서 행 추가하는 법 알려줘', '엑셀 표 만드는 방법이 뭐야?', 'fixtures/budget.xlsx에서 합계 알려줘', 'fixtures/word.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
+    // stack-5: a document ask that also sends, posts, deletes or buys keeps every tool (the question tool and the page tools, where those gates are); a plain one keeps the menu.
+    for (const ask of ['3분기 실적 PPT 만들어서 민호한테 메일로 보내줘', 'PPT 5장 만들고 슬랙에 게시해줘', '새 PPT 만들고 예전 발표 자료는 삭제해줘', '발표 자료 만들고 템플릿도 결제해줘', 'Make a deck and send it to Minho', '월별 합계 엑셀 만들고 원본은 지워줘']) {
+      expect(deskKind(ask), ask).not.toBe('deck')
+      expect(DESK_TOOLS[deskKind(ask)!]?.has('ask_person') ?? true, ask).toBe(true)
+    }
+    for (const ask of ['다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', '팀원들한테 보여줄 PPT 만들어줘', '결제 모듈 교체 일정 PPT 만들어줘', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘']) expect(deskKind(ask), ask).toBe('deck')
     // r3: a Word or Excel file named only by its file name, and a request that ends in "?", still had ask_person.
     for (const ask of ['fixtures/budget.xlsx 수정해줘', 'report.docx 고쳐줘', 'fixtures/budget.xlsx에 12월 행 추가해줘', 'notes.doc 제목 바꿔줘', 'Fix the totals in budget.xlsx',
       '분기 매출 엑셀로 만들어 줄래?', '회의록으로 워드 보고서 만들어 줄 수 있어?', 'report.docx 좀 고쳐주실래요?', 'Can you make an Excel sheet of monthly totals?']) {
@@ -174,6 +180,9 @@ describe('a line in another language is led by a few Korean words (Q3)', () => {
     expect(koreanLead('더 짧게', 'I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
     expect(koreanLead('더 정중하게', 'My sincere apologies for the delay.', '이건 어때요? I apologize for being late.')).toBe('이렇게 쓰면 돼요. My sincere apologies for the delay.')
     expect(koreanLead(ask, line, `이렇게 쓰면 돼요. ${line}`)).toBe(`이건 어때요? ${line}`)
+    // stack-5 (c5c run, Q4): the model wrote the same lead itself; its own lead is swapped too, and left alone when the reply before opened otherwise.
+    expect(koreanLead('방금 말한 거 더 짧게', '이렇게 쓰면 돼요. I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
+    expect(koreanLead('방금 말한 거 더 짧게', '이건 어때요? I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
   })
   it('adds nothing when the answer has Korean, has no words, or the person wrote in English', () => {
     for (const [said, answer] of [[ask, `이렇게 쓰면 돼요. ${line}`], [ask, '정중하게는 "I apologize"가 좋아요.'], ['Write a one-line apology email', line], ['1년은 몇 초야 숫자만 알려줘', '31,536,000'], [ask, '']] as const) expect(koreanLead(said, answer), said).toBe(answer)

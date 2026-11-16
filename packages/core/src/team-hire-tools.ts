@@ -167,15 +167,18 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
       const last = cells.at(-1)!.replace(/[[\]]/g, ''), label = sourceColumn || cells.length === 1
       // c5a r3: a source cell that only names the place ("네이버 블로그") is not kept: the post its member linked by title takes it, else the member's page under its own name.
       const vague = label && PLACE.test(last.trim()), post = vague ? [...linked(own.result ?? '')].find(([url]) => communityPost(url)) : undefined
+      // stack-5 (c5a review r3): the member named the post's address without a title, and the row cited the search page it was found on instead
+      // ("네이버 검색"). The fact came from that post: its address is the row's source, under what it is ("블로그 글").
+      const bare = vague && !post ? (own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')).find(url => communityPost(url)) : undefined
       if (post) cells[cells.length - 1] = `[${post[1]}](${post[0]})`
+      else if (bare) cells[cells.length - 1] = `[${siteName(bare, korean)}](${bare})`
       else if (cited.includes(own)) cells[cells.length - 1] = label ? `[${(vague ? '' : last.replace(/^[-–—\s]*$/, '')) || siteName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
       else if (vague) cells[cells.length - 1] = postWord(!/카페|caf/i.test(last), korean)
     }
     lines[i] = `| ${cells.join(' | ')} |`
   }
   // The same for a link the lead wrote itself: "[네이버 블로그](…)" takes the title a member gave that address, else the address's own name.
-  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
-  const fixed = lines.join('\n').replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, text: string, url: string) => PLACE.test(text.trim()) ? `[${titles.get(url) ?? siteName(url, korean)}](${url})` : whole)
+  const fixed = placeNamed(lines.join('\n'), members, korean)
   // stack-3 (c3a run, R1/R2): a row that linked the page its member's own result named still counted as uncited, because that member had
   // only searched; the answer closed with "출처: 네이버 검색 · 네이버 검색" under a table that already linked every row.
   const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
@@ -190,6 +193,11 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)$|^(?:티스토리|브런치|tistory|brunch)$/i
 const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
 const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title]) => !PLACE.test(title!.trim())).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim().slice(0, 60)]))
+/** A link named only after where anyone posts ("[네이버 블로그](…)") takes the title a member gave that address, else what the address is. Also for a team result (company-tools teamAnswer). */
+export function placeNamed(text: string, members: readonly TeamMember[], korean = false): string {
+  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
+  return text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, words: string, url: string) => PLACE.test(words.trim()) ? `[${titles.get(url) ?? siteName(url, korean)}](${url})` : whole)
+}
 // What a person calls the site an address is on: "네이버 검색", "apple.com".
 const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing']]
 export function siteName(url: string, korean = false): string {
@@ -269,7 +277,8 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
 export function citeOwn(answer: string, read: readonly string[], korean = false): string {
   // c5 L2: the stored answer ends with its suggested replies, so the link was never "at the end" and stayed on a line of its own ("네이버 증권").
   // The replies are set aside, the answer is cited as if they were not there, and they go back as they were.
-  const replies = /\s*```replies[^]*$/.exec(answer)?.[0]
+  // stack-5 (c5a run, T2): a rule line ("---") stood between the link and the replies, and the link stayed alone again. It is set aside with them.
+  const replies = /(?:\s*\n-{3,})?\s*```replies[^]*$/.exec(answer)?.[0]
   if (replies) return citeOwn(answer.slice(0, -replies.length), read, korean) + replies
   // stack-3 (c3a run, L1/L2/T2): the model put its one link on a line of its own under the answer ("네이버 날씨"), which read as a stray label.
   // A lone closing link under a sentence joins that sentence, as in "…1,385원이에요. [네이버 금융](…)"; under a table or a list it stays.
@@ -290,7 +299,8 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
     try {
       if (tool.name === 'search_web') {
         if (!/^results for "[^\n]*" at https?:\/\/\S+ \(DATA/.test(out)) return
-        const lines = out.split('\n').slice(1).filter(line => !line.startsWith('Results, each as '))
+        // stack-5: the note on which rows are older than the period asked (c5a's refill) is the host's English to the model, not something read.
+        const lines = out.split('\n').slice(1).filter(line => !/^(?:Results, each as |The first \d+ are from the last |None is from the last )/.test(line))
         into.push(lines.map(line => { const [title, url, ...rest] = line.startsWith('- ') ? line.slice(2).split(' — ') : []; return title && url && /^https?:\/\//.test(url) ? `${title}${rest.length ? `: ${rest.join(', ')}` : ''} ${url}` : line }).join('\n').trim())
       } else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string') into.push(`${out}\n${args['url']}`) }
       else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown; observation?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string' && typeof page.observation === 'string') into.push(`${page.observation}\n${page.url}`)

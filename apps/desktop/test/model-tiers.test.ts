@@ -664,3 +664,16 @@ describe('Claude command sandbox', () => {
     expect(source('engine-claude-session.ts')).toContain("'sandbox' in job.native ? { sandbox: job.native.sandbox }")
   })
 })
+
+// stack-5: c5c's low effort (pre-read notes, remember turns) and c5b's weekly summary sit beside the lookup and team options; neither reaches the other's turns.
+describe('stack-5: low effort stays on the turns it was given to', () => {
+  it('a team turn is low only for the weekly summary, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team or lookup turn', () => {
+    const ipc = source('ipc.ts')
+    expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),")
+    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),")
+    expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
+    // The Korean lead and the appended offer hang on the desk kind, so a team result or a lookup never gets either.
+    expect(ipc).toContain("if (kind === 'ask' && !result.asked) result.answer = koreanLead(")
+    expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(")
+  })
+})

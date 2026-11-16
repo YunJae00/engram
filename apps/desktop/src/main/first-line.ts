@@ -225,6 +225,9 @@ export function answerAlone(answer: string): string {
 const LEADS = ['이렇게 쓰면 돼요.', '이건 어때요?'] as const
 const REWORD = /더\s|다시|말고|한\s*번\s*더/
 export function koreanLead(ask: string, answer: string, lastReply = ''): string {
+  // stack-5 (c5c run, Q4): the model wrote the lead itself, the one its reply before opened with ("이렇게 쓰면 돼요." twice running). Its own lead is swapped the same way.
+  const own = LEADS.findIndex(lead => answer.trimStart().startsWith(lead))
+  if (own >= 0) return lastReply.trimStart().startsWith(LEADS[own]!) ? answer.trimStart().replace(LEADS[own]!, LEADS[1 - own]!) : answer
   const body = answer.replace(/```replies[^]*?(```|$)/g, '').trim()
   if (!/[가-힣]/.test(ask) || /[가-힣]/.test(body) || !/\p{L}{2,}/u.test(body)) return answer
   const wanted = REWORD.test(ask) ? 1 : 0, lead = LEADS[lastReply.trimStart().startsWith(LEADS[wanted]) ? 1 - wanted : wanted]!
