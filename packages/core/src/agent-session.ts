@@ -49,7 +49,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
-  const browser = deps.tools.some(tool => tool.name === 'open_page')
+  // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
+  const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
@@ -312,7 +313,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
   if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'), deps.workdir), task), steps, fellBack: false, asked: true }
-  const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : (options.lookup ? undefined : finalDesktopFailure(steps)) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`

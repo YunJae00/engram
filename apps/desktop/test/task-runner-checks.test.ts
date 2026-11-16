@@ -356,7 +356,14 @@ it('keeps the team check for a report without sources, a member not reviewed, or
   // grokbar: sourced lookup members are accepted when they report (no review_member round), so a cited report needs no check turn.
   const auto = { team: { members: ['m1', 'm2', 'm3'].map(id => ({ state: 'released', lookup: true, review: { ok: true, note: 'auto: sourced lookup' }, role: id, id })) } } as never
   expect(teamCheckDue(auto, sourced)).toBe(false)
-  expect(teamCheckDue(auto, '서울 12도예요.')).toBe(true)
+  // grokbar B6 r2: no member reached a page, so the report has no address: the 90 s check that followed the answer in R1, R2 and T1 does not run
+  // for a team that only looked things up, reviewed or not. One member that makes something, or a handed-in file, keeps the check.
+  const lookups = (patch: object = {}) => ({ team: { members: ['m1', 'm2', 'm3'].map(id => ({ state: 'done', lookup: true, role: id, id, ...patch })) } }) as never
+  expect(teamCheckDue(auto, '서울 12도예요.')).toBe(false)
+  expect(teamCheckDue(lookups(), '서울: 아직 조사 중이에요.')).toBe(false)
+  expect(teamCheckDue(lookups({ state: 'failed' }), '세 곳 모두 찾지 못했어요.')).toBe(false)
+  expect(teamCheckDue(lookups(), '[표](engram-artifact:weather.md)')).toBe(true)
+  expect(teamCheckDue({ team: { members: [{ state: 'done', lookup: true, role: 'a', id: 'm1' }, { state: 'done', role: 'b', id: 'm2' }] } } as never, '서울 12도예요.')).toBe(true)
 })
 
 it('ends done with the delivered report when the team check runs out of the task budget', async () => {

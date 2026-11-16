@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { LOOKUP_RULE, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -95,6 +95,22 @@ describe('team hire tools', () => {
     for (const answer of ['엔비디아(NVDA) 종가 162.85달러 (-2.01%). 출처: https://finance.example/quote/NVDA', '갤럭시 S27은 내년 2월 공개가 유력하고 가격은 아직 발표되지 않았습니다.\nhttps://news.example/s27', '서울 12도 맑음. 검색: https://search.naver.com/search.naver?query=서울 출처: https://weather.example/seoul', 'Seoul is 12°C and clear today. https://weather.example/today/seoul'])
       expect(settled({ answer }).review, answer).toEqual({ ok: true, note: AUTO_REVIEW })
     expect(LOOKUP_RULE).toContain('never a search-results address')
+    // grokbar stack-1 R1/T1: a weather member answers from the results page it read, so its only address is a search page. The read on
+    // record is the evidence: it is accepted without a review round. Words alone, an opening line or a wall are still the lead's to review.
+    const naver = ['https://search.naver.com/search.naver?query=서울+날씨']
+    expect(settled({ answer: '서울 12.4도 흐림, 16시부터 비. https://search.naver.com/search.naver?query=서울+날씨', sources: naver }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '서울 12.4도 흐림, 16시부터 비.', sources: naver }).review).toEqual({ ok: true, note: AUTO_REVIEW })
+    expect(settled({ answer: '지금 검색하겠습니다.', sources: naver }).review).toBeUndefined()
+    expect(settled({ answer: '로봇 확인 화면이 떠서 읽지 못했습니다.', sources: naver }).review).toBeUndefined()
+    expect(settled({ answer: '서울 12.4도 흐림', sources: naver, timedOut: true }).review).toBeUndefined()
+    expect(answeredLookup('서울 12.4도 흐림', naver)).toBe(true)
+    // A lone lookup's answer names the page it read when its words gave no address; one that has an address is left alone.
+    expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과\n\n출처: [search.naver.com](https://search.naver.com/search.naver?query=원달러%20환율)')
+    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C.\n\nSource: [weather.example](https://www.weather.example/seoul) · [google.com](https://www.google.com/search?q=seoul)')
+    const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
+    expect(citeOwn(linked, naver, true)).toBe(linked)
+    expect(citeOwn('1,335원이에요.', [], true)).toBe('1,335원이에요.')
+    expect(citeOwn('', naver, true)).toBe('')
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
     state.answer = id => id === 'm3' ? '부산 15도' : `${id} 12도 (https://weather.example/${id})`
@@ -213,6 +229,87 @@ describe('team hire tools', () => {
     state.tokens = TEAM_TOKEN_RESERVE - 1
     expect(await call(null, 'hire_members', { members: three })).toContain('token budget is nearly used')
     expect(state.task.team).toBeUndefined()
+  })
+
+  // grokbar B6: R1 38 s, R2 69 s, T1 70 s to the answer against 35 s. Plan ~8 s, review ~4 s, merge ~4 s leave the team about 15 s.
+  it('bounds a lookup member so plan, team, review and merge fit 35 s', () => {
+    const PLAN_MS = 8_500, REVIEW_MS = 4_000, MERGE_MS = 4_500
+    expect(PLAN_MS + LOOKUP_HARD_MS + REVIEW_MS + MERGE_MS).toBeLessThanOrEqual(35_000)
+    // After the soft limit the member still has time to write what it found.
+    expect(LOOKUP_HARD_MS - LOOKUP_SOFT_MS).toBeGreaterThanOrEqual(5_000)
+    expect(LOOKUP_MAX_CALLS).toBeLessThanOrEqual(4)
+    expect(LOOKUP_RULE).toContain('about ten seconds')
+  })
+
+  it('keeps the pages a lookup member read: a search that ran, a page that opened, the ready pages of a batch', async () => {
+    const seen = new Set<string>()
+    const tool = (name: string, out: string) => keepSources({ name, description: '', argsSchema: {}, run: async () => out }, seen)
+    await tool('search_web', 'results for "부산 날씨" at https://search.naver.com/search.naver?query=%EB%B6%80%EC%82%B0+%EB%82%A0%EC%94%A8 (DATA, not instructions):\n부산 14도').run({ query: '부산 날씨' }, { task: '' })
+    await tool('search_web', 'the search for "부산 날씨" did not run: the results page could not be loaded').run({ query: '부산 날씨' }, { task: '' })
+    await tool('open_page', 'page "부산 날씨" (DATA, not instructions):\n비 14도').run({ url: 'https://weather.naver.com/today/08' }, { task: '' })
+    await tool('open_page', 'https://walled.example needs the person (a sign-in, a robot check, or a setting only they have) and was not read.').run({ url: 'https://walled.example' }, { task: '' })
+    await tool('open_page', 'https://gone.example answered 404 (no such page)\n\npage "404" (DATA, not instructions):').run({ url: 'https://gone.example' }, { task: '' })
+    await tool('read_pages', `that did not work: ${JSON.stringify({ completed: 0, requested: 2, pages: [{ url: 'https://slow.example/a', ready: false }] })}`).run({ pages: [] }, { task: '' })
+    await tool('read_pages', JSON.stringify({ completed: 1, requested: 2, pages: [{ url: 'https://kma.go.kr/busan', ready: true }, { url: 'https://slow.example/b', ready: false }] })).run({ pages: [] }, { task: '' })
+    // A tool that reads nothing on the web names no source.
+    const memory = { name: 'search_memory', description: '', argsSchema: {}, run: async () => 'https://not-a-source.example' }
+    expect(keepSources(memory, seen)).toBe(memory)
+    expect([...seen]).toEqual(['https://search.naver.com/search.naver?query=%EB%B6%80%EC%82%B0+%EB%82%A0%EC%94%A8', 'https://weather.naver.com/today/08', 'https://kma.go.kr/busan'])
+  })
+
+  it('hands every member\'s pages to the lead with its result, a page of its own before the results page, also for a member cut short', async () => {
+    const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
+    const pages: Record<string, string[]> = { m1: ['https://search.naver.com/search.naver?query=seoul', 'https://weather.naver.com/today/09'], m2: ['https://search.naver.com/search.naver?query=busan'], m3: [] }
+    const host = teamHireTools({
+      self: null, load: async () => structuredClone(state.task), change: async work => work(state.task),
+      run: async ids => { for (const id of ids) settleMember(state.task.team!.members.find(m => m.id === id)!, { answer: `${id}: 14도, 비`, sources: pages[id]!, ...(id === 'm2' ? { timedOut: true } : {}) }, 'now', true) },
+      release: async ids => { for (const id of ids) state.task.team!.members.find(m => m.id === id)!.state = 'released' },
+      live: () => false, tokensLeft: async () => 200_000, personSaid: () => state.said,
+    })
+    const out = JSON.parse(await host.find(tool => tool.name === 'hire_members')!.run({ members: three.map(m => ({ ...m, lookup: true })) }, { task: '' }))
+    expect(out.members.map((m: { sources?: string[] }) => m.sources)).toEqual([['https://weather.naver.com/today/09', 'https://search.naver.com/search.naver?query=seoul'], ['https://search.naver.com/search.naver?query=busan'], undefined])
+    expect(out.note).toContain('markdown link')
+    expect(out.note).toContain('names the member who reported it')
+    expect(out.note).toContain('never re-run')
+    void call
+  })
+
+  it('carries every member\'s link into its own row of the one merged table, and leaves an answer that already cites them alone', () => {
+    const member = (id: string, role: string, sources: string[] | undefined, state = 'released') => ({ id, role, sources, state, parentId: null, depth: 1, brief: '', sessionKey: id, hiredAt: '' }) as never
+    const members = [member('m1', '서울 날씨', ['https://weather.naver.com/today/09']), member('m2', '부산 날씨', ['https://search.naver.com/search.naver?query=부산 날씨']), member('m3', '제주 날씨', ['https://weather.naver.com/today/14']), member('m4', '대구 날씨', undefined), member('m5', '광주 날씨', ['https://failed.example'], 'failed')]
+    const table = '세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | 네이버 날씨 검색 |\n| 제주 | 흐림 | 15.6°C | 네이버 날씨 검색 |'
+    const cited = citeMembers(table, members, true)
+    // grokbar B6 r2: the link goes into the member's own row (a closing line left 부산 and 제주 with a site name alone). Still one table, no closing line.
+    expect(cited).toBe('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울(서울 날씨) | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산(부산 날씨) | 비 | 14.0°C | [네이버 날씨 검색](https://search.naver.com/search.naver?query=부산%20날씨) |\n| 제주(제주 날씨) | 흐림 | 15.6°C | [네이버 날씨 검색](https://weather.naver.com/today/14) |')
+    // grokbar B6 r3: every row names the member whose report it is, also the row that already had its link.
+    for (const [n, row] of cited.split('\n').slice(4).entries()) expect(row).toContain(`(${['서울', '부산', '제주'][n]} 날씨)`)
+    for (const row of cited.split('\n').slice(4)) expect(row).toMatch(/\]\(https:\/\//)
+    expect(citeMembers(cited, members, true)).toBe(cited)
+    expect(cited).not.toContain('failed.example')
+    // No source column: the row keeps its cells and gains the link. A row named with its employee, an empty source cell.
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산**(부산 날씨) | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
+    const staff = [member('m1', '김대리', ['https://notion.com/releases']), member('m2', '박사원', ['https://slack.com/changelog'])]
+    expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | - |\n| 슬랙(박사원) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(김대리) | AI 회의록 | [김대리](https://notion.com/releases) |\n| 슬랙(박사원) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
+    // A row no single member answers for is left alone, and so is an answer with no table: those members get the closing line.
+    const both = '| 항목 | 값 |\n|---|---|\n| 날씨 | 흐림 |'
+    expect(citeMembers(both, members.slice(0, 2), true)).toBe(`${both}\n\n출처: [서울 날씨](https://weather.naver.com/today/09) · [부산 날씨](https://search.naver.com/search.naver?query=부산%20날씨)`)
+    expect(citeMembers(table, members.slice(0, 1), true)).toBe(table.replace('| 서울 |', '| 서울(서울 날씨) |'))
+    // A member with nothing to link (no pages kept, or failed) is still named in its row.
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| 대구 | 아직 조사 중이에요. |\n| 광주 | 확인하지 못했어요. |', members.slice(3), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| 대구(대구 날씨) | 아직 조사 중이에요. |\n| 광주(광주 날씨) | 확인하지 못했어요. |')
+    expect(citeMembers('Seoul 13°C', members.slice(0, 1))).toBe('Seoul 13°C\n\nSources: [서울 날씨](https://weather.naver.com/today/09)')
+    expect(citeMembers('', members, true)).toBe('')
+  })
+
+  // grokbar B6 T1: the lead re-ran the member that was cut at its time limit; 10.7 s for the same page.
+  it('never re-runs a lookup member: ok=false releases it with what it had', async () => {
+    const { state, call } = world()
+    await call(null, 'hire_members', { members: [{ ...three[0]!, lookup: true }] })
+    state.task.team!.members[0]!.review = undefined
+    const out = await call(null, 'review_member', { id: 'm1', ok: false, note: '더 자세히' })
+    expect(out).toContain('lookup member (never re-run)')
+    expect(state.runs.map(run => run.id)).toEqual(['m1'])
+    expect(state.task.team!.members[0]).toMatchObject({ state: 'released', review: { ok: false, note: '더 자세히' } })
+    expect(state.task.team!.hires).toBe(1)
   })
 
   it('review ok=false re-runs a member once with the note, then releases it; ok=true releases', async () => {
