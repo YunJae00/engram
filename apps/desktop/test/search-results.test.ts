@@ -143,9 +143,9 @@ it('keeps one row per site, community posts after the others, and still returns 
   const blogs = [1, 2, 3].map(n => row('갤럭시 S27 가격 출시일 예상', `https://blog.naver.com/p${n}/${n}`))
   expect(searchResults(blogs, '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x').map(one => one.url)).toEqual(['https://blog.naver.com/p1/1'])
   expect(searchResults(anchors.slice(0, 3), '', '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x')).toHaveLength(1)
-  // A site's own search lists its own pages: every one is a result.
   const wiki = [1, 2, 3].map(n => row(`휴가 규정 안내 ${n}판`, `https://wiki.example.com/page/${n}`))
-  expect(searchResults(wiki, '', '휴가 규정', 'https://wiki.example.com/search?q=x')).toHaveLength(3)
+  // c5a r3: a site's own search is no exception.
+  expect(searchResults(wiki, '', '휴가 규정', 'https://wiki.example.com/search?q=x').map(one => new URL(one.url).hostname)).toEqual(['wiki.example.com'])
 })
 
 // c5a r2: an old article dated "2024년 4월 16일" had no date read, and a row with no date passes the recent-news filter.

@@ -165,15 +165,17 @@ export function searchResults(links: { text: string; url: string }[], text: stri
   // grokbar c5 R2: three lookups each got a page of blog posts and all three rows were cited to "네이버 블로그". The best row of each site
   // is the only one kept (c5a r2: a site's further rows used to fill the cap, so a page of blogs was three rows of one source), a maker's
   // or an outlet's page before a blog, café or forum post. A blog is never dropped for being one: when only blogs exist, the best is returned.
-  // A site's own search (a wiki's, a shop's) lists its own pages: those are all results, not one source repeated.
-  const seen = new Set<string>(), lead: typeof scored = [], own = page ? siteKey(page.href) : ''
-  for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); if (site === own || !seen.has(site)) lead.push(one); seen.add(site) }
-  const sinks = (one: typeof scored[number]): number => Number(COMMUNITY.test(siteKey(one.result.url)))
+  // c5a r3: no exception for a site's own search either; one row per site is the rule everywhere.
+  const seen = new Set<string>(), lead: typeof scored = []
+  for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); if (!seen.has(site)) lead.push(one); seen.add(site) }
+  const sinks = (one: typeof scored[number]): number => Number(communityPost(one.result.url))
   return lead.sort((a, b) => sinks(a) - sinks(b)).slice(0, cap).map(one => one.result)
 }
 const siteKey = (url: string): string => new URL(url).hostname.replace(/^(www|m)\./, '')
 // shortcut: a closed list of places where anyone posts; another one is ranked as a site of its own until it is added here.
 const COMMUNITY = /(^|\.)(blog\.naver\.com|cafe\.naver\.com|post\.naver\.com|tistory\.com|brunch\.co\.kr|dcinside\.com|clien\.net|fmkorea\.com|ppomppu\.co\.kr|velog\.io|medium\.com)$/
+// Whether an address is a post on one of them (team-hire-tools names such a source by its title, never by the place).
+export const communityPost = (url: string): boolean => { try { return COMMUNITY.test(siteKey(url)) } catch { return false } }
 
 // A news ask is searched where news is listed: each entry an article with its outlet and date, not a blog round-up
 // (grokbar c3 R3/H6: the web tab gave two weekly round-up posts for "AI 스타트업 투자 뉴스").

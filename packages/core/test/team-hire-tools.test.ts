@@ -689,6 +689,28 @@ describe('team hire tools', () => {
     expect(siteName('https://www.bing.com/search?q=seoul weather', true)).toBe('Bing 검색')
     expect(siteName('https://weather.naver.com/today/09', true)).toBe('네이버')
   })
+
+  // c5a r3 (review r2): the lead wrote "네이버 블로그" in the source cell and it was kept as the link's name.
+  it('never names a source "네이버 블로그": a post takes its own title, else the address says what it is', () => {
+    const head = '| 제품 | 가격 | 출처 |\n|---|---|---|\n'
+    const member = (over: object) => ({ id: 'm1', parentId: null, depth: 1, role: '갤럭시 S27', brief: '갤럭시 S27 가격', sessionKey: 's', hiredAt: '2026-11-17T00:00:00Z', state: 'done' as const, ...over })
+    const blog = 'https://blog.naver.com/example/1'
+    // The reviewer's repro: only the address is known.
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({ sources: [blog] })], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [블로그 글](${blog}) |`)
+    // The member linked the post by its title: the row links that post under that title, though the member's kept page is the search.
+    const titled = member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'], result: `예상 130만 원이에요. [갤럭시 S27 출고가 총정리](${blog})` })
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [titled], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [갤럭시 S27 출고가 총정리](${blog}) |`)
+    // Only the search page is known: it is named as itself.
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 카페 |`, [member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'] })], true)).toContain('| [네이버 검색](https://search.naver.com/search.naver?query=갤럭시%20S27%20가격) |')
+    // A link the lead already wrote under that name, and a row whose member kept no page.
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`, [titled], true)).toContain(`| [갤럭시 S27 출고가 총정리](${blog}) |`)
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({})], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | 블로그 글 |`)
+    // A real site's name is kept, and a blog platform that is the subject of a row is not a source cell.
+    expect(citeMembers(`${head}| 갤럭시 S27 | 130만 원 | 삼성전자 뉴스룸 |`, [member({ sources: ['https://news.samsung.com/kr/1'] })], true)).toContain('[삼성전자 뉴스룸](https://news.samsung.com/kr/1)')
+    expect(citeMembers('| 서비스 | 특징 |\n|---|---|\n| 네이버 블로그 | 검색 노출이 좋아요 |', [member({ role: '네이버 블로그', brief: '네이버 블로그 특징' })], true)).toContain('| 네이버 블로그 | 검색 노출이 좋아요 |')
+    expect(siteName(blog, true)).toBe('블로그 글')
+    expect(siteName('https://cafe.naver.com/x/1')).toBe('forum post')
+  })
 })
 
 it('c4: keepRead keeps what a search, an opened page and a batch read gave, and nothing of a refusal or an empty search', async () => {

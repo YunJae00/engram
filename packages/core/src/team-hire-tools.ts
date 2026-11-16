@@ -1,5 +1,6 @@
 import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
+import { communityPost } from './search-template.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
@@ -162,13 +163,19 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
     const own = scored[0]!.m
     // grokbar B6 r3: every row says whose report it is, "서울(서울 날씨)" as "노션(김대리)"; a row with a link and no name was unattributed.
     if (name(own) && !line.includes(name(own))) cells[0] = `${cells[0]}(${name(own)})`
-    if (cited.includes(own) && !/https?:\/\//.test(line)) {
-      const last = cells.at(-1)!.replace(/[[\]]/g, '')
-      cells[cells.length - 1] = sourceColumn || cells.length === 1 ? `[${last.replace(/^[-–—\s]*$/, '') || siteName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+    if (!/https?:\/\//.test(line)) {
+      const last = cells.at(-1)!.replace(/[[\]]/g, ''), label = sourceColumn || cells.length === 1
+      // c5a r3: a source cell that only names the place ("네이버 블로그") is not kept: the post its member linked by title takes it, else the member's page under its own name.
+      const vague = label && PLACE.test(last.trim()), post = vague ? [...linked(own.result ?? '')].find(([url]) => communityPost(url)) : undefined
+      if (post) cells[cells.length - 1] = `[${post[1]}](${post[0]})`
+      else if (cited.includes(own)) cells[cells.length - 1] = label ? `[${(vague ? '' : last.replace(/^[-–—\s]*$/, '')) || siteName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
+      else if (vague) cells[cells.length - 1] = postWord(!/카페|caf/i.test(last), korean)
     }
     lines[i] = `| ${cells.join(' | ')} |`
   }
-  const fixed = lines.join('\n')
+  // The same for a link the lead wrote itself: "[네이버 블로그](…)" takes the title a member gave that address, else the address's own name.
+  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
+  const fixed = lines.join('\n').replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, text: string, url: string) => PLACE.test(text.trim()) ? `[${titles.get(url) ?? siteName(url, korean)}](${url})` : whole)
   // stack-3 (c3a run, R1/R2): a row that linked the page its member's own result named still counted as uncited, because that member had
   // only searched; the answer closed with "출처: 네이버 검색 · 네이버 검색" under a table that already linked every row.
   const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
@@ -177,11 +184,18 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   // grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11" - the link text is the site's name, never a member's role.
   return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${[...new Map(missing.map(m => [href(m), `[${siteName(m.sources![0]!, korean)}](${href(m)})`])).values()].join(' · ')}`
 }
+// c5 R2 / c5a r3: where anyone posts is not a source's name ("네이버 블로그", "네이버 카페"). A post is named by its own title when a member
+// linked it by one; the host has only the address otherwise, so it says what it is ("블로그 글").
+// shortcut: the title comes from a member's own "[title](address)" only; keep each read page's title with its address (keepSources) if that proves too rare.
+const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)$|^(?:티스토리|브런치|tistory|brunch)$/i
+const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
+const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title]) => !PLACE.test(title!.trim())).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim().slice(0, 60)]))
 // What a person calls the site an address is on: "네이버 검색", "apple.com".
 const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing']]
 export function siteName(url: string, korean = false): string {
   let host: string
   try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+  if (communityPost(url) && !SEARCH_PAGE.test(url)) return postWord(/blog|post\.|tistory|brunch|velog|medium/.test(host), korean)
   const known = SITES.find(([hosts]) => hosts.test(host))
   if (!known) return host
   if (!SEARCH_PAGE.test(url)) return known[korean ? 1 : 2]
