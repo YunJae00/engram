@@ -1,4 +1,4 @@
-import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
+import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
 import { openActivity, openWelcome } from './navigation.js'
 import { createCard, createNote, initVault, parseNote, type VaultPaths } from 'core'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // M3 acceptance e2e: boot → temp vault, capture via UI → file lands, open a
-// note, approve a seeded supersede card (A) → frontmatter changes, palette
-// quick-open. Serial — one app instance for the whole flow.
+// note, approve a seeded supersede card → frontmatter changes. There is no
+// palette. Serial — one app instance for the whole flow.
 
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
@@ -26,6 +26,10 @@ async function frontOf(id: string): Promise<Record<string, unknown> | null> {
     return null
   }
 }
+
+// The palette and its shortcuts are gone, and so is every sidebar menu.
+const palette = () => page.locator('[cmdk-root], [data-testid="palette-input"]')
+const menus = () => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
 
 test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
@@ -166,14 +170,13 @@ test('the cosmos chat collapses and comes back', async () => {
   await expect(page.getByTestId('cosmos-chat-input')).toBeVisible()
 })
 
-test('the app sidebar switches between chats and saved routines, renames them, and folds away', async () => {
+test('the app sidebar lists chats only, shows a rename made through the app, has no routines library, and folds away', async () => {
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   const sidebar = page.getByTestId('app-sidebar')
-  // Search sits behind its toolbar toggle since the sidebar search toggle change.
-  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeHidden()
-  await page.getByTestId('sidebar-search-toggle').click()
-  await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toBeVisible()
+  // The toolbar holds the one + and nothing to search with.
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(sidebar.locator('.sidebar-search, input, textarea')).toHaveCount(0)
   await expect(sidebar.locator('.sidebar-nav')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-chats-toggle')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-routines-toggle')).toHaveCount(0)
@@ -200,10 +203,8 @@ test('the app sidebar switches between chats and saved routines, renames them, a
     // The 'Bots' head row is gone: the scroll area opens straight on its first row, 12px under the toolbar.
     if (node.querySelector('.sidebar-tree-head, [data-testid="sidebar-new-folder"]')) throw new Error('the Bots head row is back')
     const content = node.querySelector('.sidebar-scroll')!.getBoundingClientRect()
-    const search = node.querySelector('.sidebar-search')!.getBoundingClientRect()
-    const add = node.querySelector('[data-testid="sidebar-create"]')!.getBoundingClientRect()
     const side = node.getBoundingClientRect()
-    return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: content.top - tools.bottom, heights: Math.abs(search.height - add.height) }
+    return { left: tools.left - row.left, right: row.right - tools.right, rowLeft: row.left - side.left, rowRight: side.right - row.right, above: tools.top - head.bottom, below: content.top - tools.bottom }
   })
   // Since the bot sidebar (rd-sidebar-bots, b8646f58) rows sit 8px from each sidebar edge, bleeding 4px past the toolbar on both sides.
   // The brief's tolerance is 8±2 (the sidebar's right edge carries a fractional scrollbar/border inset).
@@ -213,36 +214,31 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   expect(Math.abs(alignment.right - 4)).toBeLessThanOrEqual(2)
   expect(alignment.above).toBeCloseTo(12, 1)
   expect(alignment.below).toBeCloseTo(12, 1)
-  expect(alignment.heights).toBeLessThan(1)
 
   await expect(page.getByTestId(`sidebar-chat-menu-${bot.id}`)).toHaveCount(0)
   await page.getByTestId(`bot-${bot.id}`).click({ button: 'right' })
-  await expect(page.getByRole('dialog', { name: 'Options for Scout' }).getByRole('button')).toHaveText(['Rename', 'Change icon', 'Pin', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
-  await page.getByTestId(`sidebar-chat-rename-${bot.id}`).click()
-  await page.getByTestId(`sidebar-chat-name-${bot.id}`).fill('Field Scout')
-  await page.getByTestId(`sidebar-chat-name-${bot.id}`).press('Enter')
+  await expect(menus()).toHaveCount(0)
+  await expect(page.getByTestId(`sidebar-chat-name-${bot.id}`)).toHaveCount(0)
+  await page.evaluate(id => window.engram.botRename(id, 'Field Scout'), bot.id)
   await expect(page.getByTestId('sidebar-chats')).toContainText('Field Scout')
   await expect.poll(async () => (await page.evaluate(() => window.engram.botsList())).some((item) => item.name === 'Field Scout')).toBe(true)
 
   const routine = await page.evaluate(() => window.engram.routineAdd({ name: 'Portal notices', steps: [{ kind: 'open', url: 'https://example.com/notices' }] }))
-  await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
-  await openActivity(page, 'routines')
-  // The routine search also sits behind the toolbar toggle (606ca42a) and closes when left empty.
-  await expect(sidebar.getByRole('textbox', { name: 'Search routines' })).toBeHidden()
-  await page.getByTestId('sidebar-search-toggle').click()
-  await expect(sidebar.getByRole('textbox', { name: 'Search routines' })).toBeVisible()
-  await expect(page.getByTestId('sidebar-chats')).toHaveCount(0)
-  await expect(page.getByTestId('sidebar-routines')).toContainText('Portal notices')
-  await page.getByTestId(`sidebar-routine-menu-${routine.id}`).click()
-  await expect(page.getByRole('dialog', { name: 'Options for Portal notices' }).getByRole('button')).toHaveText(['Rename', 'Delete'])
-  await page.getByTestId(`sidebar-routine-rename-${routine.id}`).click()
-  await page.getByTestId(`sidebar-routine-name-${routine.id}`).fill('Morning portal')
-  await page.getByTestId(`sidebar-routine-name-${routine.id}`).press('Enter')
-  await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
+  const routineNames = () => page.evaluate(() => window.engram.routinesList().then(list => list.map(one => one.name)))
+  const expectNoLibrary = async () => {
+    await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="sidebar-routine"], [data-testid="routines-view"], [data-testid="activity-routines"]')).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-chats')).toBeVisible()
+  }
+  await expectNoLibrary()
+  // A routine is renamed through the app; saving or renaming one runs nothing and opens no chat.
   const chatsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
-  await page.getByTestId(`sidebar-routine-run-${routine.id}`).click()
-  await expect(page.getByTestId(`routine-detail-${routine.id}`).getByRole('heading', { name: 'Morning portal' })).toBeVisible()
+  await page.evaluate(id => window.engram.routineRename(id, 'Morning portal'), routine.id)
+  expect(await routineNames()).toEqual(['Morning portal'])
+  await page.evaluate(() => { window.dispatchEvent(new Event('engram:open-routines')) })
+  await expectNoLibrary()
   expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(chatsBefore)
+  expect(await page.evaluate(() => window.engram.chatActive())).toEqual([])
 
   await openActivity(page, 'bots')
   await expect(page.getByTestId('sidebar-chats')).toBeVisible()
@@ -263,8 +259,8 @@ test('the app sidebar switches between chats and saved routines, renames them, a
   await expect(page.getByTestId('bots-view')).toBeVisible()
   await expect(page.getByTestId('bots-suggestion')).toHaveCount(0)
   await expect(page.getByTestId(`bot-${bot.id}`)).toContainText('Field Scout')
-  await openActivity(page, 'routines')
-  await expect(page.getByTestId('sidebar-routines')).toContainText('Morning portal')
+  expect(await page.evaluate(() => window.engram.routinesList().then(list => list.map(one => one.name)))).toEqual(['Morning portal'])
+  await expect(page.getByTestId('sidebar-routines')).toHaveCount(0)
   await openActivity(page, 'sky')
 })
 
@@ -279,95 +275,97 @@ test('help is reachable through Settings on every view', async () => {
   }
 })
 
-test('commands open Help in Settings instead of redundant quick actions', async () => {
+test('the command shortcut opens no palette; Help is reached through Settings', async () => {
   await page.keyboard.press('ControlOrMeta+Shift+p')
-  await expect(page.getByTestId('palette-input')).toBeVisible()
-  await page.getByTestId('palette-input').fill('weekly digest')
+  await expect(palette()).toHaveCount(0)
   await expect(page.getByRole('option', { name: 'Read the weekly digest' })).toHaveCount(0)
-  await page.getByTestId('palette-input').fill('Help')
-  await page.getByRole('option', { name: 'Help', exact: true }).click()
+  await openActivity(page, 'settings')
+  await page.getByTestId('settings-nav-help').click()
   await expect(page.getByTestId('help-panel')).toBeVisible()
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('help-panel')).toHaveCount(0)
 })
 
-test('folders support drag reordering, keyboard rename cancellation, persistence, and non-destructive removal', async () => {
+test('folders made through the app hold their items, fold, persist, offer no drag or keyboard rename, and are removed without deleting anything', async () => {
   for (const kind of ['chat', 'routine'] as const) {
-    await openActivity(page, kind === 'chat' ? 'bots' : 'routines')
+    await openActivity(page, 'bots')
     const ids = await page.evaluate(async kind => {
       const result: string[] = []
       for (const name of ['Alpha', 'Beta']) result.push(kind === 'chat' ? (await window.engram.botCreate({ name: `${kind} ${name}` })).id : (await window.engram.routineAdd({ name: `${kind} ${name}`, steps: [{ kind: 'open', url: 'https://example.com' }] })).id)
       return result
     }, kind)
-    if (kind === 'chat') { const scroll = page.locator('.sidebar-scroll'); await scroll.click({ button: 'right', position: { x: 20, y: (await scroll.boundingBox())!.height - 6 } }); await page.getByTestId('sidebar-space-new-folder').click() } else { await page.getByTestId('sidebar-create').click(); await page.getByRole('button', { name: 'New routine folder' }).click() }
-    const input = page.getByTestId(`sidebar-${kind}-folder-name`)
-    await input.fill(`${kind} Work`)
-    await input.press('Enter')
-    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].folders.length).toBe(1)
-    const folder = (await page.evaluate(() => window.engram.sidebarLayout()))[kind].folders[0]!
+    await page.evaluate(async ({ kind, ids }) => {
+      const layout = await window.engram.sidebarChange({ kind, change: { action: 'create-folder', name: `${kind} Work` } })
+      const folder = layout[kind].folders.find(one => one.name === `${kind} Work`)!.id
+      for (const id of ids) await window.engram.sidebarChange({ kind, change: { action: 'move-item', id, folder } })
+    }, { kind, ids })
+    const layoutOf = async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind]
+    await expect.poll(async () => (await layoutOf()).folders.length).toBe(1)
+    const folder = (await layoutOf()).folders[0]!
+    expect((await layoutOf()).items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
+    const remove = () => page.evaluate(({ kind, id }) => window.engram.sidebarChange({ kind, change: { action: 'remove-folder', id } }), { kind, id: folder.id })
+    if (kind === 'routine') {
+      // Routine folders are data only: nothing lists them.
+      await expect(page.getByTestId(`sidebar-folder-${folder.id}`)).toHaveCount(0)
+      await expect(page.locator('[data-testid^="sidebar-routine"]')).toHaveCount(0)
+      await remove()
+      expect((await layoutOf()).folders).toEqual([])
+      expect((await page.evaluate(() => window.engram.routinesList())).map(one => one.id)).toEqual(expect.arrayContaining(ids))
+      continue
+    }
     const box = page.getByTestId(`sidebar-folder-${folder.id}`)
-    const item = (id: string) => page.getByTestId(kind === 'chat' ? `bot-${id}` : `sidebar-routine-run-${id}`)
-    // Hidden windows cannot reliably complete native drag interception; exercise the HTML5 lifecycle.
-    const drag = async (id: string, destination: Locator, after = false) => {
-      const source = item(id).locator('xpath=..'), collection = page.getByTestId(`sidebar-${kind}-collection`)
-      await expect(source).toBeVisible(); await expect(source).toHaveAttribute('draggable', 'true')
-      await expect(destination).toBeVisible()
-      const dataTransfer = await page.evaluateHandle(() => new DataTransfer())
-      try {
-        await source.dispatchEvent('dragstart', { dataTransfer })
-        expect(await dataTransfer.evaluate(data => JSON.parse(data.getData('application/x-engram-sidebar')))).toEqual({ type: 'item', id, kind })
-        await expect(collection).toHaveClass(/dragging/)
-        const point = await destination.evaluate((node, after) => { const rect = node.getBoundingClientRect(); return { clientX: rect.left + Math.min(40, rect.width / 2), clientY: rect.top + (after ? rect.height - 3 : 3) } }, after)
-        await destination.dispatchEvent('dragenter', { dataTransfer, ...point })
-        expect(await destination.evaluate((node, init) => { const event = new DragEvent('dragover', { ...init, bubbles: true, cancelable: true }); node.dispatchEvent(event); return event.defaultPrevented }, { dataTransfer, ...point })).toBe(true)
-        if (await destination.evaluate(node => node.classList.contains('sidebar-folder-head'))) {
-          await expect.poll(() => destination.evaluate(node => !!node.closest('.sidebar-drop-target'))).toBe(true)
-        } else {
-          await expect(collection.locator('.sidebar-item[data-insert]')).toHaveCount(1)
-          await expect.poll(() => destination.evaluate(node => node.closest('.sidebar-item')?.getAttribute('data-shift'))).toBe(after ? 'up' : 'down')
-        }
-        await destination.dispatchEvent('drop', { dataTransfer, ...point })
-      } finally {
-        await source.dispatchEvent('dragend', { dataTransfer })
-        await dataTransfer.dispose()
-      }
-      await expect(collection).not.toHaveClass(/dragging/)
-      await expect(collection.locator('.sidebar-drop-target')).toHaveCount(0)
-      await expect(collection.locator('.sidebar-item[data-insert]')).toHaveCount(0)
-    }
+    const item = (id: string) => page.getByTestId(`bot-${id}`)
+    const collection = page.getByTestId('sidebar-chat-collection')
     for (const id of ids) {
-      await drag(id, box.locator('.sidebar-folder-head'))
-      await expect(box).toContainText(id === ids[0] ? `${kind} Alpha` : `${kind} Beta`)
+      await expect(box.getByTestId(`bot-${id}`)).toBeVisible()
+      await expect(item(id).locator('xpath=..')).not.toHaveAttribute('draggable')
     }
-    await drag(ids[1]!, item(ids[0]!))
-    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual([ids[1], ids[0]])
-    await drag(ids[1]!, item(ids[0]!), true)
-    await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout()))[kind].items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
+    // A drag gesture starts nothing: no dragging state, no drop target, the same order.
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer())
+    try {
+      const source = item(ids[1]!).locator('xpath=..'), destination = item(ids[0]!)
+      await source.dispatchEvent('dragstart', { dataTransfer })
+      expect(await dataTransfer.evaluate(data => data.getData('application/x-engram-sidebar'))).toBe('')
+      await destination.dispatchEvent('dragover', { dataTransfer })
+      await expect(collection).not.toHaveClass(/dragging/)
+      await expect(collection.locator('.sidebar-drop-target, .sidebar-item[data-insert]')).toHaveCount(0)
+      await destination.dispatchEvent('drop', { dataTransfer })
+      await source.dispatchEvent('dragend', { dataTransfer })
+    } finally { await dataTransfer.dispose() }
+    expect((await layoutOf()).items.filter(one => one.folder === folder.id).map(one => one.id)).toEqual(ids)
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
     await expect(item(ids[0]!)).not.toBeVisible()
     await page.reload()
-    await openActivity(page, kind === 'chat' ? 'bots' : 'routines')
+    await openActivity(page, 'bots')
     await expect(box).toBeVisible()
     await expect(item(ids[0]!)).not.toBeVisible()
     await box.getByRole('button', { name: new RegExp(`${kind} Work`) }).first().click()
     await expect(item(ids[0]!)).toBeVisible()
-    if (kind === 'chat') await item(ids[0]!).click({ button: 'right' }); else await page.getByTestId(`sidebar-${kind}-menu-${ids[0]}`).click()
-    await page.getByTestId(`sidebar-${kind}-rename-${ids[0]}`).click()
-    await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).fill('Do not save this')
-    await page.getByTestId(`sidebar-${kind}-name-${ids[0]}`).press('Escape')
+    await item(ids[0]!).locator('xpath=..').focus()
+    await page.keyboard.press('F2')
+    await expect(page.getByTestId(`sidebar-${kind}-name-${ids[0]}`)).toHaveCount(0)
+    await expect(page.locator('.app-sidebar [role="tree"] input')).toHaveCount(0)
     await expect(item(ids[0]!)).toHaveAttribute('title', `${kind} Alpha`)
-    if (kind === 'chat') await box.locator(':scope > .sidebar-folder-head').click({ button: 'right' }); else await box.getByRole('button', { name: `Options for ${kind} Work`, exact: true }).click()
-    const menu = page.getByRole('dialog', { name: `Options for ${kind} Work`, exact: true })
-    await menu.getByRole('button', { name: 'Delete', exact: true }).click()
+    await item(ids[0]!).click({ button: 'right' })
+    await expect(menus()).toHaveCount(0)
+    await box.locator(':scope > .sidebar-folder-head').click({ button: 'right' })
+    await expect(menus()).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: 'Delete section?', exact: true })).toHaveCount(0)
     await expect(box).toBeVisible()
-    await page.getByRole('dialog', { name: kind === 'chat' ? 'Delete section?' : 'Delete folder?', exact: true }).getByRole('button', { name: kind === 'chat' ? 'Delete section only' : 'Delete folder only', exact: true }).click()
+    await remove()
     await expect(box).toHaveCount(0)
     for (const id of ids) await expect(item(id)).toBeVisible()
   }
   await openActivity(page, 'sky')
 })
 
-test('Ctrl+L is the door to the comets tab', async () => {
+test('Ctrl+L opens nothing; the comets tab is reached from the workspace menu', async () => {
+  await expect(page.getByTestId('sky-view')).toBeVisible()
   await page.keyboard.press('ControlOrMeta+l')
+  await expect(palette()).toHaveCount(0)
+  await expect(page.getByTestId('sky-view')).toBeVisible()
+  await expect(page.getByTestId('bots-view')).not.toBeVisible()
+  await openActivity(page, 'bots')
   await expect(page.getByTestId('bots-view')).toBeVisible()
   // and the cosmos furniture stays off this tab
   await expect(page.getByTestId('cosmos-chat')).toHaveCount(0)
@@ -408,14 +406,16 @@ test('hovering a star lights its neighbours and lets the rest of the sky recede'
   await expect(page.locator('[data-node-id="n-hello-0001"]')).not.toHaveAttribute('data-sky-state', /.*/)
 })
 
-test('quick-open palette (Ctrl+P) opens a note', async () => {
+test('Ctrl+P opens no quick-open palette; a note still opens from its star', async () => {
+  await openActivity(page, 'sky')
   await page.keyboard.press('ControlOrMeta+p')
-  await expect(page.getByTestId('palette-input')).toBeVisible()
-  await page.getByTestId('palette-input').fill('Hello')
-  await page.keyboard.press('Enter')
+  await expect(palette()).toHaveCount(0)
+  await expect(page.getByTestId('note-sheet')).toHaveCount(0)
+  await page.locator('[data-node-id="n-hello-0001"]').click()
   await expect(page.getByTestId('note-editor')).toBeVisible()
   await expect(page.getByTestId('cm-host')).toContainText('The very first note')
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('note-sheet')).toHaveCount(0)
 })
 
 test('file and text drops do not capture memories or navigate the app', async () => {
@@ -436,9 +436,8 @@ test('file and text drops do not capture memories or navigate the app', async ()
   expect(prevented).toEqual([true, true])
   await expect(page.locator('.drop-overlay')).toHaveCount(0)
   await page.keyboard.press('ControlOrMeta+Shift+p')
-  await page.getByTestId('palette-input').fill('Import')
+  await expect(palette()).toHaveCount(0)
   await expect(page.getByRole('option', { name: /Import/i })).toHaveCount(0)
-  await page.keyboard.press('Escape')
   expect(page.url()).toBe(url)
   expect((await readdir(paths.inbox)).filter((f) => f.endsWith('.md')).length).toBe(before)
 })
@@ -468,16 +467,13 @@ test('list view: rows render chronologically, the filter narrows them, a row ope
   await expect(page.getByTestId('note-sheet')).toHaveCount(0)
 })
 
-test('approving the seeded supersede card (A key) flips frontmatter', async () => {
+test('approving the seeded supersede card flips frontmatter, with no palette or review sheet to go through', async () => {
   await page.keyboard.press('ControlOrMeta+Shift+p')
-  await expect(page.getByTestId('palette-input')).toBeVisible()
-  await page.getByTestId('palette-input').fill('Open review')
-  await expect(page.locator('[cmdk-item][data-selected="true"]')).toContainText('Open review')
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('review-sheet')).toBeVisible()
-  await expect(page.getByTestId('review-detail')).toBeVisible()
-  await expect(page.getByTestId('diff-view')).toBeVisible()
-  await page.keyboard.press('a')
+  await expect(palette()).toHaveCount(0)
+  await expect(page.getByTestId('review-sheet')).toHaveCount(0)
+  const card = (await page.evaluate(() => window.engram.listCards())).find(one => one.cardType === 'supersede' && one.targets.includes('n-rule-0001'))!
+  expect(card.status).toBe('proposed')
+  await page.evaluate(id => window.engram.approveCard(id, {}), card.id)
   await expect
     .poll(async () => (await frontOf('n-rule-0001'))?.['status'] ?? 'pending', { timeout: 20_000 })
     .toBe('superseded')

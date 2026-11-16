@@ -57,8 +57,8 @@ test('the title row shows no bot name and carries the AI connect banner', async 
     })
     await expect(page.locator('.toast')).toBeVisible()
     expect(await inside(banner, topbar)).toBe(true)
-    await page.getByTestId('mission-layout-2').click()
-    await expect(page.getByTestId('mission-layout-2')).toHaveAttribute('aria-pressed', 'true')
+    // There is one chat view: no split-view buttons share the title row with the banner.
+    await expect(page.locator('[data-testid^="mission-layout-"]')).toHaveCount(0)
     await expect(page.locator('.bots-head-name, .conversation-title')).toHaveCount(0)
     await expect.poll(() => inside(banner, topbar)).toBe(true)
     await expect(page.locator('.notices [data-testid="connect-banner"]')).toHaveCount(0)
@@ -67,19 +67,17 @@ test('the title row shows no bot name and carries the AI connect banner', async 
   })
 })
 
-test('with an AI connected the title slot is gone and the pill still opens the info pane', async () => {
+test('with an AI connected the title slot is gone, with no title pill, info pane or split view, and the chat is ready', async () => {
   await withApp('mock', { uiLanguage: 'en' }, async (page) => {
     await page.getByTestId('bot-vis-chat').click()
     await expect(page.getByTestId('bots-view')).toBeVisible()
-    const pill = page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]')
-    await expect(pill).toBeVisible()
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     await expect(page.getByTestId('connect-banner')).toHaveCount(0)
     await expect(page.locator('[data-testid="topbar"] .topbar-title')).toHaveCount(0)
-    await expect(pill.locator('.bots-title-pill-name')).not.toHaveText('')
-    await pill.click()
-    await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-    await page.getByTestId('mission-layout-2').click()
-    await expect(page.getByTestId('mission-layout-2')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="mission-layout-"]')).toHaveCount(0)
+    await expect(page.getByTestId('bot-vis-chat')).toHaveClass(/active/)
+    await expect(page.getByTestId('bots-input')).toBeEditable()
     await expect(page.locator('[data-testid="topbar"] .topbar-title')).toHaveCount(0)
     await expect(page.locator('.bots-head-name, .conversation-title')).toHaveCount(0)
   })

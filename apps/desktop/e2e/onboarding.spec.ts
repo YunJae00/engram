@@ -1,9 +1,8 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, expandPreview, openActivity, openWelcome } from './navigation.js'
+import { closeTestApp, openActivity, openWelcome } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createServer } from 'node:http'
 // Fresh setup reaches the shell only after a verified AI response.
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
@@ -179,7 +178,7 @@ test('setup continues as soon as Claude is signed in, with no model step', async
   await expect(page.getByTestId('onboard-ai-next')).toBeEnabled()
 })
 
-test('first-run login states, filing retry and direct browser entry', async () => {
+test('first-run login states, filing retry, and a welcome with no direct browser entry', async () => {
   test.setTimeout(240000)
   await expect(page.getByTestId('onboarding')).toBeVisible()
   // ① vault location (pre-filled from ENGRAM_ONBOARD_ROOT)
@@ -279,58 +278,24 @@ test('first-run login states, filing retry and direct browser entry', async () =
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
   await page.setViewportSize({ width: 1100, height: 825 })
   await openWelcome(page)
-  await page.getByTestId('welcome-input-add').click()
-  await page.getByTestId('welcome-web').click()
-  await expandPreview(page)
-  await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
-  await expect(page.getByTestId('live-address')).toBeFocused()
-  await expect(page.locator('.bots-chat')).toBeHidden()
-  await screenshot('06-browser-start.png')
+  // No direct browser entry: the welcome's + only attaches files, and a page opens when the bot works on one.
+  await expect(page.getByTestId('welcome-input-add')).toHaveAttribute('aria-label', 'Attach files')
+  for (const id of ['welcome-web', 'chat-add-menu', 'web-pane', 'preview-card', 'live-address']) await expect(page.getByTestId(id)).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
-  await expect(page.locator('.web-pane-bar .live-address')).toHaveCount(1)
-  await expect(page.locator('.browser-start')).toBeEmpty()
+  await expect(page.getByRole('button', { name: 'New tab', exact: true })).toHaveCount(0)
+  await expect(page.getByTestId('bots-view').getByRole('tab')).toHaveCount(0)
   await expect(page.getByTestId('connect-banner')).toBeHidden()
-  await screenshot('07-browser-workspace.png')
-  const server = createServer((_req, res) => { res.setHeader('content-type', 'text/html'); res.end('<h1>Browser ready</h1>') })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  try {
-    const address = server.address(); if (!address || typeof address === 'string') throw new Error('No fixture address')
-    const url = `http://127.0.0.1:${address.port}/private?code=not-stored`
-    await page.getByTestId('live-address').fill(url)
-    await page.getByTestId('live-address').press('Enter')
-    await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url)), { timeout: 60000 }).toBe(url)
-    expect(await page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(conversationsBefore + 1)
-    await page.getByTestId('web-pane-expand').click()
-    await expect(page.locator('.bots-chat')).toBeVisible()
-    await screenshot('07-browser-and-chat.png')
-    await expandPreview(page)
-    await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
-    const lane = await page.evaluate(() => window.engram.agentState().then(state => state.lane!))
-    await page.getByRole('button', { name: 'New tab', exact: true }).click()
-    await expect(page.getByRole('tab')).toHaveCount(2)
-    await expect(page.getByTestId('live-address')).toBeVisible()
-    await page.getByRole('tab', { name: '127.0.0.1', exact: true }).click()
-    await expect.poll(() => page.evaluate(() => window.engram.agentState().then(state => state.url))).toBe(url)
-    const firstTabs = await page.evaluate(lane => window.engram.browserTabs(lane), lane)
-    await openWelcome(page)
-    await page.getByTestId('welcome-input-add').click()
-    await page.getByTestId('welcome-web').click()
-    await expandPreview(page)
-    await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
-    await expect(page.getByRole('tab')).toHaveCount(1)
-    expect(await page.evaluate(lane => window.engram.browserTabs(lane), lane)).toEqual(firstTabs)
-    await page.getByTestId(lane).click()
-    // openWelcome reloads, so the first conversation comes back with its preview card; reopen its browser to see the kept tabs.
-    await expandPreview(page)
-    await page.locator('.preview-card').getByRole('button', { name: /Open (browser beside chat|full browser)/, exact: true }).click()
-    await expect(page.getByRole('tab')).toHaveCount(2)
-    await page.getByRole('button', { name: 'Close New tab', exact: true }).click()
-    await expect(page.getByRole('tab')).toHaveCount(1)
-    await page.getByRole('button', { name: 'Close 127.0.0.1', exact: true }).click()
-    await expect(page.getByTestId('live-address')).toBeVisible()
-    await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
-  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
+  await screenshot('06-browser-start.png')
+  // The first words typed on the welcome start the conversation.
+  await page.getByTestId('welcome-input').fill('Open example.com for me')
+  await page.getByTestId('welcome-input').press('Enter')
+  await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user')).toHaveText(['Open example.com for me'])
+  await expect.poll(() => page.evaluate(() => window.engram.botsList().then(bots => bots.length))).toBe(conversationsBefore + 1)
+  await expect(page.getByTestId('bots-input')).toBeVisible()
+  await expect(page.getByTestId('bots-view').getByRole('tab')).toHaveCount(0)
+  await screenshot('07-browser-and-chat.png')
+  await page.reload()
+  await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
 })
 
 type Fixture = { state: { id: string; installed: boolean; loggedIn: boolean; conclusive?: boolean }; calls: unknown[]; connects: number; held: ((loggedIn: boolean | null) => void)[]; hold: boolean; finish?: () => void }

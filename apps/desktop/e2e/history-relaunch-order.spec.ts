@@ -103,13 +103,16 @@ test('a relaunch reopens the chat that was open at quit, and falls back to the w
   await appendBotTurn(paths, botId, { role: 'assistant', text: 'Line remembered.', at: new Date().toISOString() })
   const env = { ENGRAM_ENGINE: 'none' }
   let page = await launch(root, data, botId, env)
-  await expect(page.getByTestId('bots-title-pill')).toContainText('Relaunch order fixture')
+  await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+  await expect(page.getByTestId(`bot-${botId}`)).toHaveClass(/\bactive\b/)
+  await expect(page.getByTestId(`bot-${botId}`)).toContainText('Relaunch order fixture')
 
   await app?.close()
   app = await electron.launch({ args: [MAIN, '--no-sandbox'], env: baseEnv(root, data, env) })
   page = await app.firstWindow()
   // No sidebar click: the last-open chat comes back by itself.
-  await expect(page.getByTestId('bots-title-pill'), 'LAST-OPEN title').toContainText('Relaunch order fixture', { timeout: 8000 })
+  await expect(page.getByTestId(`bot-${botId}`), 'LAST-OPEN row').toHaveClass(/\bactive\b/, { timeout: 8000 })
+  await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg').filter({ hasText: 'Line remembered.' }), 'LAST-OPEN history').toBeVisible()
   await expect(page.getByTestId(`bot-${other}`)).toBeVisible()
 

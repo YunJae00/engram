@@ -1,5 +1,5 @@
 import { test, expect, chromium, _electron as electron, type ElectronApplication, type Browser, type Page } from '@playwright/test'
-import { expandPreview, openActivity } from './navigation.js'
+import { openActivity } from './navigation.js'
 import { createBot, initVault } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -48,7 +48,6 @@ test.beforeAll(async () => {
   await expect(shell.getByTestId('shell')).toBeVisible()
   await expect.poll(() => shell.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 60000 }).toBe(true)
   await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setSize(2600, 1600); win.show() })
-  await shell.evaluate((bots) => localStorage.setItem('engram.mission.slots', JSON.stringify(bots)), ids)
 })
 
 test.afterAll(async () => {
@@ -61,6 +60,12 @@ test.afterAll(async () => {
   else process.env['PW_CHROMIUM_ATTACH_TO_OTHER'] = previousAttach
 })
 
+const pane = () => shell.getByTestId('web-pane')
+// One chat view: a bot's page is reached by opening that bot from the sidebar.
+const openBot = async (index: number) => {
+  await shell.getByTestId(`bot-${ids[index]}`).click()
+  await expect(shell.getByTestId('live-address')).toHaveValue(`${url}/?pane=${index}`)
+}
 
 test('four native pages share the agent connection and keep independent input', async () => {
   expect(await shell.evaluate(() => window.engram.nativeEnabled())).toBe(true)
@@ -70,22 +75,16 @@ test('four native pages share the agent connection and keep independent input', 
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
   const context = browser.contexts()[0]!
   await expect.poll(() => context.pages().filter((page) => page.url().startsWith(url)).length).toBe(4)
-  await openActivity(shell, 'mission')
-  // A tile shows its page as a corner preview until the person opens it there.
+  await openActivity(shell, 'bots')
+  for (const count of [1, 2, 4]) await expect(shell.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  // Each bot shows only its own page beside its chat.
   for (let i = 0; i < 4; i++) {
-    const tile = shell.getByTestId(`mission-tile-${i}`)
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'false')
-    await expandPreview(tile)
-    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-  }
-  await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(4)
-  for (let i = 0; i < 4; i++) {
+    await openBot(i)
+    await expect(pane().getByTestId('native-browser-surface')).toHaveCount(1)
     const page = context.pages().find((page) => page.url() === `${url}/?pane=${i}`)!
     await page.getByRole('textbox', { name: 'Entry' }).fill(`Pane ${i} 한글`)
     await page.locator('#count').click()
     await expect(page.locator('#count')).toHaveText('1')
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(700)
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(100)
   }
   const frames = await shell.evaluate((ids) => window.engram.missionFrames(ids.map((id) => `bot-${id}`)), ids)
@@ -98,37 +97,32 @@ test('four native pages share the agent connection and keep independent input', 
     try { await new Promise(resolve => setTimeout(resolve, 5000)); return reads }
     finally { surfaces.forEach((element, i) => { element.getBoundingClientRect = originals[i]! }) }
   })
-  console.log(`Native layout: ${idleReads} surface measurements in 5 seconds across four idle panes`)
+  console.log(`Native layout: ${idleReads} surface measurements in 5 seconds for the idle page pane`)
 })
 
-test('resize and chat handoffs retain the live pages and scroll', async () => {
+test('resizing and switching bots retain the live pages and scroll', async () => {
   const pages = browser.contexts()[0]!.pages().filter((page) => page.url().startsWith(url))
   const first = pages.find((page) => page.url() === `${url}/?pane=0`)!
+  await openBot(0)
   await first.mouse.wheel(0, 400)
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
-  await shell.getByTestId('mission-layout-1').click()
   await expect(shell.getByTestId('mission-control')).toHaveCount(0)
-  await expect(shell.getByTestId('web-pane').getByTestId('native-browser-surface')).toHaveCount(1)
+  await expect(pane().getByTestId('native-browser-surface')).toHaveCount(1)
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeGreaterThan(500)
-  await shell.getByTestId('mission-layout-4').click()
-  await expect(shell.locator('.mission-preview').getByTestId('native-browser-surface')).toHaveCount(4)
-  await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
-  await expect(shell.getByTestId('web-pane')).toBeVisible()
-  await expect(shell.getByTestId('live-address')).toHaveValue(`${url}/?pane=0`)
-  await openActivity(shell, 'mission')
+  await openBot(1)
+  await openBot(0)
+  await expect(pane()).toBeVisible()
   for (let i = 0; i < 4; i++) {
     const page = pages.find((page) => page.url() === `${url}/?pane=${i}`)!
     await expect(page.getByRole('textbox', { name: 'Entry' })).toHaveValue(`Pane ${i} 한글`)
   }
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
+  // A small window keeps the page as the preview card over the chat.
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
-  await expect(shell.getByTestId('mission-tile-0').locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
+  await expect(shell.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
+  await expect(pane()).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
-  for (let i = 0; i < 4; i++) {
-    const tile = shell.getByTestId(`mission-tile-${i}`)
-    await expandPreview(tile)
-    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
-  }
+  await expect(pane().getByTestId('native-browser-surface')).toBeVisible()
 })
 
 test('typing and editing a conversation after using the web does not reach the web page', async () => {
@@ -137,7 +131,7 @@ test('typing and editing a conversation after using the web does not reach the w
   await input.click()
   await input.fill('Browser keeps this')
   await first.evaluate(() => { (window as unknown as { keysSeen: string[] }).keysSeen = []; document.addEventListener('keydown', event => { (window as unknown as { keysSeen: string[] }).keysSeen.push(event.key) }) })
-  const draft = shell.getByTestId('mission-tile-0').locator('.mini-chat-write textarea')
+  const draft = shell.getByTestId('bots-input')
   await draft.click()
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.isFocused())).toBe(true)
   await shell.keyboard.type('chat draft')
@@ -165,8 +159,8 @@ test('popup closure restores the original page', async () => {
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Pane 0 한글')
 })
 
-test('partially clipped native surfaces retain their full viewport and stay inside the tile border', async () => {
-  const surface = shell.locator('.mission-preview').getByTestId('native-browser-surface').first()
+test('partially clipped native surfaces retain their full viewport and stay inside the page pane', async () => {
+  const surface = pane().getByTestId('native-browser-surface')
   const inset = await surface.evaluate((node) => {
     const box = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect()
     return { left: box.left - parent.left, right: parent.right - box.right, bottom: parent.bottom - box.bottom }
@@ -231,51 +225,43 @@ test('occlusion keeps native layout while a dialog hides it immediately and rest
   }
 })
 
-test('folding a tile conversation and dismissing its picker keep the native page interactive', async () => {
-  const tile = shell.getByTestId('mission-tile-0')
+test('making the page bigger and bringing the chat back keep the draft and the native page interactive', async () => {
   const first = browser.contexts()[0]!.pages().find((page) => page.url() === `${url}/?pane=0`)!
   const before = await first.evaluate(() => innerWidth)
-  const draft = tile.locator('.mini-chat-write textarea')
+  const draft = shell.getByTestId('bots-input')
   await draft.fill('Keep the conversation draft')
-  await shell.getByTestId('mission-chat-toggle-0').click()
-  await expect(tile.locator('.mission-chat-slot')).toBeHidden()
+  await shell.getByTestId('web-pane-expand').click()
+  await expect(draft).toBeHidden()
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeGreaterThan(before + 30)
-  await shell.getByTestId('mission-chat-toggle-0').click()
+  await shell.getByTestId('web-pane-expand').click()
   await expect(draft).toHaveValue('Keep the conversation draft')
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeLessThanOrEqual(before + 2)
-  await tile.locator('.mission-change').click()
-  await expect(shell.getByTestId('mission-add-menu')).toBeVisible()
-  await shell.keyboard.press('Escape')
-  await expect(tile.locator('.mission-add-menu')).toBeHidden()
+  // No chat picker stands over the page any more.
+  await expect(shell.getByTestId('mission-add-menu')).toHaveCount(0)
   await first.getByRole('textbox', { name: 'Entry' }).fill('Still interactive 한글')
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Still interactive 한글')
-  await expect.poll(() => tile.getByTestId('native-browser-surface').evaluate((node) => {
+  await expect.poll(() => pane().getByTestId('native-browser-surface').evaluate((node) => {
     const box = node.getBoundingClientRect()
     return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === node
   })).toBe(true)
   await first.goto('about:blank')
-  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-  await expect(tile.getByTestId('native-browser-surface')).toHaveCount(0)
+  await expect(pane()).toBeVisible()
+  await expect(pane().getByTestId('native-browser-surface')).toHaveCount(0)
   await expect(draft).toHaveValue('Keep the conversation draft')
   await first.goto(`${url}/?pane=0`)
-  await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
-  await expect(tile.getByTestId('native-browser-surface')).toBeVisible()
+  await expect(pane().getByTestId('native-browser-surface')).toBeVisible()
+  await draft.fill('')
 })
 
-test('split panes expose independent selected tabs and retain a blank new tab', async () => {
-  const tile = shell.getByTestId('mission-tile-0')
-  const tabs = tile.getByRole('tablist', { name: 'Browser tabs' })
-  await expect(tabs.getByRole('tab')).toHaveCount(1)
-  await tabs.getByRole('button', { name: 'New tab', exact: true }).click()
-  await expect(tabs.getByRole('tab')).toHaveCount(2)
-  await expect(tabs.getByRole('tab').last()).toHaveAttribute('aria-selected', 'true')
-  await expect(tile.locator('.browser-start')).toBeVisible()
-  await tabs.getByRole('tab').first().click()
-  await expect(tabs.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true')
-  await expect(tile.getByTestId('live-address')).toHaveValue(`${url}/?pane=0`)
-  await expect(shell.getByTestId('mission-tile-1').getByRole('tab')).toHaveCount(1)
-  await tabs.getByRole('button', { name: 'Close New tab' }).click()
-  await expect(tabs.getByRole('tab')).toHaveCount(1)
+test('the page pane has no browser tabs and each bot keeps its own address', async () => {
+  await openBot(0)
+  await expect(shell.getByRole('tablist')).toHaveCount(0)
+  await expect(shell.getByRole('tab')).toHaveCount(0)
+  await expect(shell.getByRole('button', { name: 'New tab', exact: true })).toHaveCount(0)
+  await expect(pane().getByTestId('native-browser-surface')).toHaveCount(1)
+  await openBot(1)
+  await expect(shell.getByRole('tab')).toHaveCount(0)
+  await openBot(0)
 })
 
 test('a background shell focus request does not raise the application', async () => {
@@ -297,55 +283,49 @@ test('a background shell focus request does not raise the application', async ()
   }
 })
 
-test('conversation deletion opens above the live browser without deleting on cancel', async () => {
+test('right-clicking a bot or a folder above the live browser opens no menu and deletes nothing', async () => {
   await shell.getByTestId(`bot-${ids[0]}`).click({ button: 'right' })
-  await shell.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete conversation?' })).toBeVisible()
-  await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete conversation?' })).toHaveCount(0)
+  await expect(shell.locator('.sidebar-menu')).toHaveCount(0)
+  await expect(shell.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
+  await expect(shell.getByRole('dialog')).toHaveCount(0)
   await expect(shell.getByTestId(`bot-${ids[0]}`)).toBeVisible()
   await shell.evaluate(() => window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Native fixture folder' } }))
   await shell.locator('.sidebar-folder-head', { hasText: 'Native fixture folder' }).click({ button: 'right' })
-  await shell.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete section?' })).toBeVisible()
-  await shell.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(shell.getByRole('dialog', { name: 'Delete section?' })).toHaveCount(0)
+  await expect(shell.locator('.sidebar-menu')).toHaveCount(0)
+  await expect(shell.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
+  await expect(shell.getByRole('dialog')).toHaveCount(0)
+  await expect(shell.locator('.sidebar-folder-head', { hasText: 'Native fixture folder' })).toBeVisible()
+  await expect(pane().getByTestId('native-browser-surface')).toBeVisible()
   await shell.screenshot({ path: join(tmp, 'release-0710-split.png') })
 })
 
-test('small split panes use a readable modal, minimize it and retain the page across handoff', async () => {
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
-  await openActivity(shell, 'mission')
-  const tile = shell.getByTestId('mission-tile-0')
-  await expect(tile.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
-  const preview = tile.locator('.preview-card, [data-testid=preview-card-collapsed]')
+test('a small window shows the page as a preview card, opens it full without a dialog and retains the page', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
+  await shell.getByTestId(`bot-${ids[0]}`).click()
+  const preview = shell.locator('.preview-card, [data-testid=preview-card-collapsed]')
+  await expect(preview).toBeVisible()
   await expect(shell.getByTestId('preview-card-collapsed')).toHaveCount(0)
-  await expect.poll(async () => (await preview.boundingBox())!.width).toBeLessThanOrEqual(264)
-  const tileBox = (await tile.boundingBox())!
   await preview.getByRole('button', { name: 'Collapse preview', exact: true }).click()
   await expect(preview.locator('canvas')).toHaveCount(0)
   expect((await preview.boundingBox())!.height).toBeLessThan(45)
-  await tile.getByTestId('preview-card-collapsed').click()
+  await shell.getByTestId('preview-card-collapsed').click()
   await preview.getByRole('button', { name: 'Open full browser', exact: true }).click()
-  const modal = shell.getByTestId('mission-browser-dialog')
-  await expect(modal).toBeVisible()
-  expect((await modal.boundingBox())!.width).toBeGreaterThan(tileBox.width + 200)
-  await expect(modal.getByTestId('native-browser-surface')).toBeVisible()
+  await expect(shell.getByTestId('mission-browser-dialog')).toHaveCount(0)
+  await expect(pane()).toHaveClass(/expanded/)
+  await expect(pane().getByTestId('native-browser-surface')).toBeVisible()
   const first = browser.contexts()[0]!.pages().find(page => page.url().startsWith(`${url}/?pane=0`))!
-  await first.getByRole('textbox', { name: 'Entry' }).fill('Modal keeps this 한글')
+  await first.getByRole('textbox', { name: 'Entry' }).fill('Full page keeps this 한글')
   await shell.screenshot({ path: join(tmp, 'split-browser-modal.png') })
-  await modal.getByRole('button', { name: 'Minimize browser', exact: true }).click()
-  await expect(modal).toHaveCount(0)
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
-  await shell.getByRole('button', { name: 'Open Native 1', exact: true }).first().click()
-  const single = shell.locator('.preview-card, [data-testid=preview-card-collapsed]')
-  await expect(single).toBeVisible()
+  // "Show the chat beside the page": in a small window the page goes back to its preview card.
+  await shell.getByTestId('web-pane-expand').click()
+  await expect(pane()).toHaveCount(0)
+  await expect(preview).toBeVisible()
   await expect(shell.getByTestId('preview-card-collapsed')).toHaveCount(0)
-  await expect(single.locator('canvas[data-painted]')).toBeVisible()
-  await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Modal keeps this 한글')
-  await expect.poll(() => single.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.width / canvas.height)).toBeCloseTo(await first.evaluate(() => innerWidth / innerHeight), 1)
-  await single.getByRole('button', { name: 'Collapse preview', exact: true }).click()
-  await expect(single.locator('canvas')).toHaveCount(0)
+  await expect(preview.locator('canvas[data-painted]')).toBeVisible()
+  await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Full page keeps this 한글')
+  await expect.poll(() => preview.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.width / canvas.height)).toBeCloseTo(await first.evaluate(() => innerWidth / innerHeight), 1)
+  await preview.getByRole('button', { name: 'Collapse preview', exact: true }).click()
+  await expect(preview.locator('canvas')).toHaveCount(0)
   await shell.screenshot({ path: join(tmp, 'browser-minimized.png') })
   await shell.getByTestId('preview-card-collapsed').click()
 })

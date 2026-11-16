@@ -47,10 +47,11 @@ test.afterEach(async () => {
 })
 
 test.describe('start over', () => {
-  test('the chat has no start-over button', async () => {
+  test('the chat has no start-over button and no title pill', async () => {
     const { page } = await launch()
     const chat = page.locator('[data-testid="bots-view"] .bots-chat')
-    await expect(chat.getByTestId('bots-title-pill')).toBeVisible()
+    await expect(chat.getByTestId('bots-thread')).toBeVisible()
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     await expect(chat.getByTestId('bots-input')).toBeVisible()
     await expect(page.getByTestId('bots-fresh')).toHaveCount(0)
     await expect(chat.getByRole('button', { name: 'New chat', exact: true })).toHaveCount(0)

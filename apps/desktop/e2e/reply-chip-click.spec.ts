@@ -32,7 +32,8 @@ test.beforeEach(async () => {
     ipcMain.handle('chat:say', () => ({ ok: false }))
   })
   await page.getByTestId(`bot-${botId}`).click()
-  await expect(page.getByTestId('reply-chip-0')).toHaveText(DEFER)
+  await expect(page.locator('.bubble-msg.assistant').last()).toContainText('몇 시로 할까요?')
+  await expect(chips()).toHaveCount(0)
   await turnsRendered()
 })
 test.afterEach(async () => { await app?.close() })
@@ -44,9 +45,11 @@ async function broadcast(event: Record<string, unknown>) {
 async function resolveFirst() { await app.evaluate(() => (globalThis as Fixture).pending.shift()!.resolve()) }
 async function done(text: string) { await broadcast({ type: 'chat:done', channel: `bot-${botId}`, text }) }
 const userBubbles = () => page.locator('.bubble-msg.user')
+// No reply chips are drawn under any answer: the person types the reply.
+const chips = () => page.locator('[data-testid="reply-chips"], [data-testid^="reply-chip-"]')
+async function say(text: string) { const input = page.getByTestId('bots-input'); await input.fill(text); await input.press('Enter') }
 // Settled turns use `content-visibility: auto`: until a rendering update marks them on-screen they lay out at their 80px
-// placeholder, so the chips under them sit ~70px lower than where they land. Measure the chips only once every turn's
-// contents rendered (the turn itself always reports visible; only what is inside it is skipped).
+// placeholder. Go on only once every turn's contents rendered (the turn itself always reports visible; only what is inside it is skipped).
 async function turnsRendered() {
   await expect.poll(() => page.evaluate(() => {
     const inner = [...document.querySelectorAll<HTMLElement>('.bots-thread .bubble-turn > *')]
@@ -54,11 +57,10 @@ async function turnsRendered() {
   }), { message: 'thread turns rendered' }).toBe(true)
 }
 
-test('a defer chip is the element under the pointer and sends its label once', async () => {
-  const chip = page.getByTestId('reply-chip-0')
-  const box = (await chip.boundingBox())!
-  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-testid="reply-chip-0"]') !== null, { x: box.x + box.width / 2, y: box.y + box.height / 2 })).toBe(true)
-  await chip.click()
+test('no chip sits under the answer: the defer words typed in the box are sent once', async () => {
+  await expect(chips()).toHaveCount(0)
+  await expect(page.getByTestId('bots-thread')).not.toContainText(DEFER)
+  await say(DEFER)
   await expect.poll(requests).toEqual([DEFER])
   await expect(userBubbles().last()).toHaveText(DEFER)
   await expect(userBubbles().filter({ hasText: DEFER })).toHaveCount(1)
@@ -66,12 +68,13 @@ test('a defer chip is the element under the pointer and sends its label once', a
   expect(await requests()).toEqual([DEFER])
 })
 
-test('a chip clicked while the previous chat:send is unresolved shows at once and is sent once, even after a reload', async () => {
-  await page.getByTestId('reply-chip-0').click()
+test('a reply typed while the previous chat:send is unresolved shows at once and is sent once, even after a reload', async () => {
+  await say(DEFER)
   await expect.poll(requests).toEqual([DEFER])
   await done('Done.\n\n```replies\nA\nB\n```')
-  await expect(page.getByTestId('reply-chip-0')).toHaveText('A')
-  await page.getByTestId('reply-chip-0').click()
+  await expect(page.locator('.bubble-msg.assistant').last()).toContainText('Done.')
+  await expect(chips()).toHaveCount(0)
+  await say('A')
   await expect(userBubbles().last()).toHaveText('A')
   expect(await requests()).toEqual([DEFER])
   await broadcast({ type: 'errand:logged' })
@@ -83,13 +86,13 @@ test('a chip clicked while the previous chat:send is unresolved shows at once an
   expect(await requests()).toEqual([DEFER, 'A'])
 })
 
-test('a chip and a typed message queued behind an unresolved send each show once, in order', async () => {
-  await page.getByTestId('reply-chip-0').click()
+test('two typed messages queued behind an unresolved send each show once, in order', async () => {
+  await say(DEFER)
   await done('Done.\n\n```replies\nA\nB\n```')
-  await expect(page.getByTestId('reply-chip-0')).toHaveText('A')
-  await page.getByTestId('reply-chip-0').click()
-  const input = page.getByTestId('bots-input')
-  await input.fill('typed next'); await input.press('Enter')
+  await expect(page.locator('.bubble-msg.assistant').last()).toContainText('Done.')
+  await expect(chips()).toHaveCount(0)
+  await say('A')
+  await say('typed next')
   await expect(userBubbles()).toHaveText(['다음 회의 리마인더 하나 만들어줘.', DEFER, 'A', 'typed next'])
   await resolveFirst()
   await expect.poll(requests).toEqual([DEFER, 'A'])
@@ -99,24 +102,18 @@ test('a chip and a typed message queued behind an unresolved send each show once
   await expect(userBubbles()).toHaveText(['다음 회의 리마인더 하나 만들어줘.', DEFER, 'A', 'typed next'])
 })
 
-test('a press held across a background busy blip still clicks the same chip', async () => {
-  // Broadcasts land in the renderer asynchronously: wait for each half of the blip, so a late one cannot move or hide
-  // the chip after it is measured or stand in for the busy state of the held press below.
+test('a draft typed before a background busy blip is kept, no chips come back after it, and it is sent once', async () => {
+  // Broadcasts land in the renderer asynchronously: wait for each half of the blip.
+  const input = page.getByTestId('bots-input')
+  await input.fill(DEFER)
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: true })
   await expect(page.getByTestId('bots-typing')).toBeVisible()
-  await expect(page.getByTestId('reply-chips')).toBeHidden()
+  await expect(chips()).toHaveCount(0)
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: false })
   await expect(page.getByTestId('bots-typing')).toBeHidden()
-  await expect(page.getByTestId('reply-chip-0')).toBeVisible()
-  await turnsRendered()
-  const box = (await page.getByTestId('reply-chip-0').boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.down()
-  await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: true })
-  await expect(page.getByTestId('reply-chips')).toBeHidden()
-  await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: false })
-  await expect(page.getByTestId('reply-chip-0')).toBeVisible()
-  await page.mouse.up()
+  await expect(chips()).toHaveCount(0)
+  await expect(input).toHaveValue(DEFER)
+  await input.press('Enter')
   await expect.poll(requests).toEqual([DEFER])
   await expect(userBubbles().filter({ hasText: DEFER })).toHaveCount(1)
 })

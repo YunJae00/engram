@@ -26,38 +26,41 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app?.close() })
 
-const search = () => page.getByRole('textbox', { name: 'Search conversations', exact: true })
+const sidebar = () => page.getByTestId('app-sidebar')
+async function expectNoSearch(): Promise<void> {
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(sidebar().locator('.sidebar-search, input, textarea')).toHaveCount(0)
+}
 
-test('typing without a click goes into the welcome composer', async () => {
+test('typing without a click goes into the welcome composer, and the sidebar has no search field to take it', async () => {
   await expect(page.getByTestId('welcome-input')).toBeFocused()
   await page.keyboard.type('hello')
   await expect(page.getByTestId('welcome-input')).toHaveValue('hello')
-  await page.getByTestId('sidebar-search-toggle').click(); await expect(search()).toHaveValue('')
+  await expectNoSearch()
   await page.getByTestId('welcome-input').fill('')
 })
 
-test('Escape clears the conversation search', async () => {
-  await page.getByTestId('sidebar-search-toggle').click();
-  await page.keyboard.type('stray text')
-  await expect(search()).toHaveValue('stray text')
+test('keys pressed on the sidebar reach no hidden search field, and Escape keeps the sidebar and the welcome', async () => {
+  await page.getByTestId('sidebar-create').focus()
+  await page.keyboard.type('straytext')
+  await expectNoSearch()
+  await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
   await page.keyboard.press('Escape')
-  await expect(search()).toHaveValue('')
+  await expect(sidebar()).toHaveAttribute('aria-hidden', 'false')
+  await expect(page.getByTestId('comet-welcome')).toBeVisible()
+  await page.getByTestId('welcome-input').fill('')
 })
 
-test('a thread started during a non-matching search keeps the query and appears once it is cleared', async () => {
-  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('nothing matches this')
-  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
+test('a thread started from the welcome is listed and active at once, with no search to hide it', async () => {
+  await expectNoSearch()
   const input = page.getByTestId('welcome-input')
   await input.fill('Plan the garden layout')
   await input.press('Enter')
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
   // The primary Engram bot always leads the list; the welcome send starts the newest other conversation.
   const created = await page.evaluate(() => window.engram.botsList().then(list => list.filter(bot => !bot.primary).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]!.id))
-  // A query found nowhere lists no conversation, even the open one (sidebar-search-open-chat, matchesSidebarSearch): the typed query stays and the new thread is filtered out until the search is cleared.
-  await expect(search()).toHaveValue('nothing matches this')
-  await expect(page.getByTestId(`bot-${created}`)).toHaveCount(0)
-  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
   await expect(page.getByTestId(`bot-${created}`)).toBeVisible()
+  await expect(page.getByTestId(`bot-${created}`)).toHaveClass(/active/)
   await expect(page.getByText('No matches found', { exact: true })).toHaveCount(0)
+  await expectNoSearch()
 })

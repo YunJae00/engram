@@ -71,12 +71,13 @@ test('a connected conversation preserves observed progress and steering while re
     for (const turn of transcript.filter(turn => turn.progress)) await expect(page.locator('.bubble-msg.assistant').filter({ hasText: turn.text })).toHaveCount(1)
     await page.screenshot({ path: join(data, 'reloaded.png') })
     const full = await page.locator('.bubble-msg').allTextContents()
-    await page.getByTestId('mission-layout-2').click()
-    const mini = page.getByTestId(`mini-chat-${bot.id}`)
-    await expect.poll(() => mini.locator('.bubble-msg').allTextContents()).toEqual(full)
-    await expect(mini.getByRole('textbox')).toBeVisible()
+    // One chat view: no split panes; the same thread and a ready composer come back after looking at the other bot.
+    for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+    await page.getByTestId(`bot-${other.id}`).click()
+    await page.getByTestId(`bot-${bot.id}`).click()
+    await expect.poll(() => page.locator('.bubble-msg').allTextContents()).toEqual(full)
+    await expect(page.getByTestId('bots-input')).toBeVisible()
     await page.screenshot({ path: join(data, 'split-result.png') })
-    await page.getByTestId('mission-layout-1').click()
     await writeFile(join(data, 'result.json'), JSON.stringify({ passed: true, candidate: process.env.ENGRAM_CANDIDATE_ID, requests, answer, transcript, input: 'Synthetic UI interaction; real configured Codex engine and registered browser tools' }, null, 2))
   } finally {
     await writeFile(join(data, 'events.json'), JSON.stringify(events, null, 2))

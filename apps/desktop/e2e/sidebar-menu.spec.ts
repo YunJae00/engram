@@ -6,7 +6,7 @@ import { closeTestApp } from './navigation.js'
 import { seedVisualVault } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
-const LONG = 'A very long section name that cannot fit inside the row menu at all'
+const LONG = 'A very long section name that cannot fit inside the sidebar header at all'
 const apps: ElectronApplication[] = []
 const dirs: string[] = []
 
@@ -33,9 +33,9 @@ async function launch(theme: 'light' | 'dark', prepare?: Prepare): Promise<{ pag
   return { page, cache }
 }
 
-const menu = (page: Page, name: string) => page.locator(`[role="dialog"][aria-label="Options for ${name}"]`)
-// Rows carry no options button: the menu is the row's right-click (or Shift+F10).
-const open = (page: Page, id: string) => page.locator('.app-sidebar').getByTestId(`bot-${id}`).click({ button: 'right' })
+// Rows and sections carry no menu of any kind: renaming, moving, hiding and deleting are asked for in chat.
+const menus = (page: Page) => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
+const row = (page: Page, id: string) => page.locator('.app-sidebar').getByTestId(`bot-${id}`)
 const bot = (page: Page, id: string) => page.evaluate(async one => (await window.engram.botsList()).find(item => item.id === one), id)
 const chatLayout = (page: Page) => page.evaluate(async () => (await window.engram.sidebarLayout('chat')).chat)
 
@@ -44,115 +44,99 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test.describe('sidebar bot menu', () => {
-  test('menu opens from right-click and Shift+F10, with no options button on the row', async () => {
+test.describe('sidebar bots without a menu', () => {
+  test('right-click, Shift+F10 and F2 open nothing, and the row has no options button and is not draggable', async () => {
     const { page } = await launch('light')
-    const dialog = menu(page, 'Budget review')
-    // Inside the tree, closing the menu returns focus to its row.
-    const row = page.locator('.app-sidebar [role="tree"] [data-tree-item="item:vis-budget"]')
+    const item = page.locator('.app-sidebar [role="tree"] [data-tree-item="item:vis-budget"]')
     await expect(page.locator('.app-sidebar [role="tree"] .sidebar-more')).toHaveCount(0)
-    await open(page, 'vis-budget')
-    await expect(dialog).toBeVisible()
-    // The menu hangs at the pointer, which is on the row.
-    const at = await dialog.boundingBox(), rowBox = await row.boundingBox()
-    expect(at!.x).toBeGreaterThanOrEqual(rowBox!.x); expect(at!.x).toBeLessThanOrEqual(rowBox!.x + rowBox!.width)
-    expect(at!.y).toBeGreaterThanOrEqual(rowBox!.y); expect(at!.y).toBeLessThanOrEqual(rowBox!.y + rowBox!.height)
-    await expect(dialog.getByRole('button')).toHaveText(['Rename', 'Change icon', 'Pin', 'Move to Home', 'Move to new section', 'Hide from sidebar', 'Make primary', 'Delete'])
-    await page.keyboard.press('Escape')
-    await expect(dialog).toHaveCount(0)
-    await expect(row).toBeFocused()
-    await page.getByTestId('bot-vis-budget').click({ button: 'right' })
-    await expect(dialog).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(dialog).toHaveCount(0)
-    await expect(row).toBeFocused()
-    await page.getByTestId('bot-vis-budget').focus()
-    await page.keyboard.press('Shift+F10')
-    await expect(dialog).toBeVisible()
-    await expect(page.locator('[role="dialog"][aria-label^="Options for"]')).toHaveCount(1)
-    // From the keyboard the menu sits just below the row.
-    expect(Math.abs((await dialog.boundingBox())!.y - ((await row.boundingBox())!.y + (await row.boundingBox())!.height) - 4)).toBeLessThanOrEqual(1)
-    await page.keyboard.press('Escape')
-    await expect(dialog).toHaveCount(0)
-    await expect(row).toBeFocused()
-    await open(page, 'vis-budget')
-    await dialog.getByRole('button', { name: 'Change icon' }).click()
-    await expect(dialog).toHaveCount(0)
-    await expect(page.getByTestId('bots-title-pill')).toContainText('Budget review')
-    await expect(page.getByTestId('bot-info-pane').getByTestId('avatar-picker')).toBeVisible()
+    await expect(item).not.toHaveAttribute('draggable')
+    await expect(row(page, 'vis-budget')).not.toHaveAttribute('draggable')
+    await row(page, 'vis-budget').click({ button: 'right' })
+    await expect(menus(page)).toHaveCount(0)
+    await item.focus()
+    for (const key of ['Shift+F10', 'ContextMenu', 'F2']) {
+      await page.keyboard.press(key)
+      await expect(menus(page)).toHaveCount(0)
+      await expect(page.locator('.app-sidebar [role="tree"] input')).toHaveCount(0)
+      await expect(item).toBeFocused()
+    }
+    await expect(row(page, 'vis-budget')).toHaveText(/Budget review/)
+    // The one thing a row does: open its chat. No title pill or info pane comes with it.
+    await row(page, 'vis-budget').click()
+    await expect(row(page, 'vis-budget')).toHaveClass(/active/)
+    await expect(page.getByTestId('bots-thread')).toContainText('January spending is within the plan')
+    for (const id of ['bots-title-pill', 'bot-info-pane', 'avatar-picker']) await expect(page.getByTestId(id)).toHaveCount(0)
   })
 
-  test('menu has 12px corners and 32px items in light and dark', async () => {
+  test('a long section name stays inside the sidebar and its header opens no menu, in light and dark', async () => {
     for (const theme of ['light', 'dark'] as const) {
       const { page } = await launch(theme, cache => writeFile(join(cache, 'sidebar-layout.json'), JSON.stringify({
         chat: { folders: [{ id: 'vis-folder-home', name: 'Home' }, { id: 'vis-folder-long', name: LONG }], items: [{ id: 'vis-chat', folder: 'vis-folder-home' }] },
         routine: { folders: [], items: [] },
       })))
-      await open(page, 'vis-budget')
-      await expect(menu(page, 'Budget review').getByRole('button', { name: `Move to ${LONG}` })).toBeVisible()
-      const geometry = await menu(page, 'Budget review').evaluate((box, long) => {
-        const rect = box.getBoundingClientRect()
-        const items = [...box.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
-        const overflow = items.flatMap(item => [item, ...item.querySelectorAll<HTMLElement>('*')])
-          .filter(el => el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow !== 'ellipsis').map(el => el.textContent)
+      const folder = page.getByTestId('sidebar-folder-vis-folder-long')
+      await expect(folder).toHaveAttribute('aria-label', LONG)
+      const geometry = await folder.evaluate(box => {
+        const rect = box.getBoundingClientRect(), side = box.closest('.app-sidebar')!
+        const name = box.querySelector<HTMLElement>('.sidebar-folder-head .sidebar-item-main > span')!
         return {
-          radius: getComputedStyle(box).borderTopLeftRadius, heights: items.map(item => item.getBoundingClientRect().height),
-          inside: rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight, overflow,
-          title: items.find(item => item.textContent?.includes(long))?.querySelector('[title]')?.getAttribute('title'),
+          inside: rect.left >= side.getBoundingClientRect().left && rect.right <= side.getBoundingClientRect().right && side.scrollWidth <= side.clientWidth,
+          clipped: name.scrollWidth > name.clientWidth, overflow: getComputedStyle(name).textOverflow,
         }
-      }, LONG)
-      expect(geometry.radius).toBe('12px')
-      expect(geometry.heights.length).toBeGreaterThan(0)
-      for (const height of geometry.heights) expect(Math.abs(height - 32)).toBeLessThanOrEqual(2)
-      expect(geometry.inside).toBe(true)
-      expect(geometry.overflow).toEqual([])
-      expect(geometry.title).toBe(`Move to ${LONG}`)
+      })
+      expect(geometry).toEqual({ inside: true, clipped: true, overflow: 'ellipsis' })
+      await folder.locator(':scope > .sidebar-folder-head').click({ button: 'right' })
+      await expect(menus(page)).toHaveCount(0)
+      await row(page, 'vis-budget').click({ button: 'right' })
+      await expect(menus(page)).toHaveCount(0)
       await closeTestApp(apps.pop())
     }
   })
 
-  test('hide and show round-trip through bots:update', async () => {
+  test('hide and show round-trip through bots:update, and a hidden bot opens from its group', async () => {
     const { page } = await launch('light')
-    await open(page, 'vis-budget')
-    await menu(page, 'Budget review').getByRole('button', { name: 'Hide from sidebar' }).click()
+    await page.evaluate(() => window.engram.botUpdate('vis-budget', { hidden: true }))
     await expect.poll(async () => (await bot(page, 'vis-budget'))?.hidden).toBe(true)
     const group = page.locator('.sidebar-hidden-group')
     await expect(group.locator('.sidebar-folder-head')).toHaveText('Hidden bots (2)')
+    await expect(group.getByTestId('bot-vis-budget')).toHaveCount(0)
     await group.locator('.sidebar-folder-head button').click()
     await expect(group.getByTestId('bot-vis-budget')).toBeVisible()
     await group.getByTestId('bot-vis-budget').click({ button: 'right' })
-    await expect(menu(page, 'Budget review').getByRole('button')).toHaveText(['Rename', 'Change icon', 'Show', 'Make primary', 'Delete'])
-    await menu(page, 'Budget review').getByRole('button', { name: 'Show' }).click()
+    await expect(menus(page)).toHaveCount(0)
+    await group.getByTestId('bot-vis-budget').click()
+    await expect(group.getByTestId('bot-vis-budget')).toHaveClass(/active/)
+    await expect(page.getByTestId('bots-thread')).toContainText('January spending is within the plan')
+    // Core clears hidden only on an own undefined; hidden: false is rejected.
+    await page.evaluate(() => window.engram.botUpdate('vis-budget', { hidden: undefined }))
     await expect.poll(async () => { const one = await bot(page, 'vis-budget'); return one && Object.hasOwn(one, 'hidden') }).toBe(false)
     await expect(group.getByTestId('bot-vis-budget')).toHaveCount(0)
-    const row = page.locator('.app-sidebar [role="tree"]').getByTestId('bot-vis-budget')
-    await expect(row).toBeVisible()
-    expect((await row.boundingBox())!.y).toBeLessThan((await group.boundingBox())!.y)
+    await expect(group.locator('.sidebar-folder-head')).toHaveText('Hidden bots (1)')
+    const shown = page.locator('.app-sidebar [role="tree"]').getByTestId('bot-vis-budget')
+    await expect(shown).toBeVisible()
+    expect((await shown.boundingBox())!.y).toBeLessThan((await group.boundingBox())!.y)
   })
 
-  test('move to new section files the bot in one new section', async () => {
+  test('a bot moved to a new section through the app is listed under it, and no row offers a new section', async () => {
     const { page } = await launch('light')
     const before = await chatLayout(page)
-    await open(page, 'vis-new')
-    await menu(page, 'New helper').getByRole('button', { name: 'Move to new section' }).click()
-    const input = page.getByTestId('sidebar-chat-folder-name')
-    await input.fill('Section N')
-    await input.press('Enter')
-    await expect.poll(async () => (await chatLayout(page)).folders.length).toBe(before.folders.length + 1)
+    await page.evaluate(async () => {
+      const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Section N' } })
+      const id = layout.chat.folders.find(folder => folder.name === 'Section N')!.id
+      await window.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id: 'vis-new', folder: id } })
+    })
     const after = await chatLayout(page)
     const added = after.folders.filter(folder => !before.folders.some(old => old.id === folder.id))
     expect(added.map(folder => folder.name)).toEqual(['Section N'])
     expect(after.items.find(item => item.id === 'vis-new')?.folder).toBe(added[0]!.id)
     await expect(page.getByTestId(`sidebar-folder-${added[0]!.id}`).getByTestId('bot-vis-new')).toBeVisible()
-    await open(page, 'vis-new')
-    await menu(page, 'New helper').getByRole('button', { name: 'Move to new section' }).click()
-    await input.fill('Never made')
-    await input.press('Escape')
-    await expect(input).toHaveCount(0)
+    await row(page, 'vis-new').click({ button: 'right' })
+    await expect(menus(page)).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-chat-folder-name')).toHaveCount(0)
     expect(await chatLayout(page)).toEqual(after)
   })
 
-  test('delete shows routine, fact and archived chat counts and keeps archives', async () => {
+  test('the delete summary counts routines, facts and archived chats; deleting through the app removes the row and keeps archives', async () => {
     let archive = ''
     const { page } = await launch('light', async cache => {
       const fact = (id: string) => ({ id, text: `fact ${id}`, at: '2026-01-02T00:00:00.000Z', touchedAt: '2026-01-02T00:00:00.000Z' })
@@ -162,14 +146,12 @@ test.describe('sidebar bot menu', () => {
       await writeFile(archive, `${JSON.stringify({ role: 'user', text: 'old', at: '2026-01-02T03:04:05.000Z' })}\n`)
     })
     await page.evaluate(() => window.engram.botTaskAdd('vis-new', { name: 'Daily check', goal: 'Check in.', schedule: { days: [1], hour: 9, minute: 0 } }))
-    await open(page, 'vis-new')
-    await menu(page, 'New helper').getByRole('button', { name: 'Delete' }).click()
-    const dialog = page.locator('dialog.delete-conversation-dialog')
-    await expect(dialog.getByTestId('delete-summary-routines')).toHaveAttribute('data-count', '1')
-    await expect(dialog.getByTestId('delete-summary-facts')).toHaveAttribute('data-count', '2')
-    await expect(dialog.getByTestId('delete-summary-archived')).toHaveAttribute('data-count', '1')
-    await expect(dialog).toContainText('Archived chats stay on disk.')
-    await dialog.getByRole('button', { name: 'Delete conversation' }).click()
+    await row(page, 'vis-new').click({ button: 'right' })
+    await expect(menus(page)).toHaveCount(0)
+    await expect(page.locator('dialog.delete-conversation-dialog')).toHaveCount(0)
+    expect(await page.evaluate(() => window.engram.botDeleteSummary('vis-new'))).toEqual({ routines: 1, facts: 2, archivedChats: 1 })
+    await expect(row(page, 'vis-new')).toBeVisible()
+    await page.evaluate(() => window.engram.botDelete('vis-new'))
     await expect.poll(async () => await bot(page, 'vis-new')).toBeUndefined()
     await expect(page.getByTestId('bot-vis-new')).toHaveCount(0)
     await access(archive)

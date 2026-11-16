@@ -1,7 +1,6 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
 import { writeFile } from 'node:fs/promises'
-import { openActivity } from './navigation.js'
 
 export function routinePortal(state: { gateUnlocked(): boolean; searchResult(): string; record(entry: string): void }): Server {
   return createServer((req, res) => {
@@ -54,16 +53,10 @@ export async function captureRoutine(app: ElectronApplication, name: string): Pr
   await writeFile(test.info().outputPath(name), Buffer.from(png, 'base64'))
 }
 
-export async function openRoutineView(page: Page, id?: string): Promise<void> {
-  await page.keyboard.press('Escape')
-  await openActivity(page, 'routines')
-  const view = page.getByTestId('routines-view')
-  await expect(view).toBeVisible()
-  expect(await view.evaluate(node => node.closest('.brief-overlay, [role="dialog"]') === null)).toBe(true)
-  if (!id) return
-  if (await page.getByTestId('app-sidebar').getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
-  await page.getByTestId(`sidebar-routine-run-${id}`).click()
-  await expect(page.getByTestId(`routine-detail-${id}`)).toBeVisible()
+// Routines are data now: no screen, no sidebar library, no menu entry lists them.
+export async function expectNoRoutineLibrary(page: Page): Promise<void> {
+  for (const id of ['routines-view', 'routines-overview', 'sidebar-routines', 'sidebar-routine-collection', 'activity-routines']) await expect(page.getByTestId(id)).toHaveCount(0)
+  await expect(page.locator('[data-testid^="sidebar-routine-"], [data-testid^="routine-detail-"], [data-testid^="routine-run-"]')).toHaveCount(0)
 }
 
 export async function expectRoutineControlReachable(page: Page, testId: string): Promise<void> {

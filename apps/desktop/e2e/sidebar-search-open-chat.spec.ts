@@ -35,73 +35,64 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app?.close() })
 
-const search = () => page.getByRole('textbox', { name: 'Search conversations', exact: true })
 const rows = () => page.locator('.sidebar-conversations .bots-row')
 const empty = () => page.getByText('No matches found', { exact: true })
 const row = (bot: Bot | string) => page.getByTestId(`bot-${typeof bot === 'string' ? bot : bot.id}`)
-const clear = () => page.getByRole('button', { name: 'Clear search', exact: true }).click()
-async function typeQuery(query: string): Promise<void> {
-  await page.getByTestId('sidebar-search-toggle').click();
-  // The field opens with a 160ms width transition (606ca42a); synthetic insertText of Hangul into the still zero-width input
-  // can leave the caret at 0 and reverse the text, so type once the field has finished opening, as a person would.
-  await expect(search()).toBeFocused()
-  await page.locator('.sidebar-search').evaluate(async (node) => { await Promise.all(node.getAnimations({ subtree: true }).map((animation) => animation.finished)) })
-  await page.keyboard.press('ControlOrMeta+A')
-  await page.keyboard.press('Backspace')
-  await page.keyboard.type(query)
+const order = () => rows().evaluateAll(nodes => nodes.map(node => node.getAttribute('data-testid')))
+const found = (query: string) => page.evaluate(q => window.engram.botsSearch(q).then(hits => hits.map(hit => hit.id)), query)
+async function expectNoSearch(): Promise<void> {
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('app-sidebar').locator('.sidebar-search, input, textarea')).toHaveCount(0)
+  await expect(empty()).toHaveCount(0)
 }
 
-test('a query found nowhere lists no conversation, even the open one', async () => {
+test('with no search field the open conversation stays listed, and words found nowhere match nothing in the store', async () => {
   await row(beta).click()
   await expect(row(beta)).toHaveClass(/active/)
-  for (const [query, typed] of [['qqqzzz', true], ['없는단어xyz', true], ['qqqzzz', false]] as const) {
-    expect(await page.evaluate(q => window.engram.botsSearch(q), query)).toEqual([])
-    if (typed) await typeQuery(query); else { await page.getByTestId('sidebar-search-toggle').click(); await search().fill(query) }
-    await expect(search()).toHaveValue(query)
-    await expect(rows()).toHaveCount(0)
-    await expect(row(beta)).toHaveCount(0)
-    await expect(empty()).toBeVisible()
-    await clear()
-  }
+  await expectNoSearch()
+  for (const query of ['qqqzzz', '없는단어xyz']) expect(await found(query)).toEqual([])
+  await expect(rows()).toHaveCount(2)
+  await expect(row(beta)).toBeVisible()
 })
 
-test('a query matching only the other chat lists exactly that row', async () => {
-  await typeQuery('tulip')
-  await expect(row(alpha)).toBeVisible()
-  await expect(rows()).toHaveCount(1)
-  await expect(row(beta)).toHaveCount(0)
-  await expect(empty()).toHaveCount(0)
+test('words from the other chat find exactly that chat in the store, and it opens with one click', async () => {
+  expect(await found('tulip')).toEqual([alpha.id])
+  await expectNoSearch()
+  await row(alpha).click()
+  await expect(row(alpha)).toHaveClass(/active/)
+  await expect(row(beta)).not.toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread')).toContainText('Tulip order placed.')
+  await expect(rows()).toHaveCount(2)
 })
 
-test('clearing the search restores both chats with the open one active', async () => {
-  await clear()
-  await expect(search()).toHaveValue('')
+test('both chats stay listed and the one opened last is the only active one', async () => {
+  await row(beta).click()
   await expect(rows()).toHaveCount(2)
   await expect(row(alpha)).toBeVisible()
   await expect(row(beta)).toHaveClass(/active/)
   await expect(row(alpha)).not.toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread')).toContainText('Numbers checked.')
 })
 
-test('a pinned open chat that does not match is hidden too', async () => {
-  await page.getByTestId(`bot-${beta.id}`).click({ button: 'right' })
-  await page.locator('.sidebar-organize-menu').getByRole('button', { name: 'Pin', exact: true }).click()
-  await expect(row(beta).locator('..')).toHaveAttribute('data-pinned', 'true')
-  const before = (await page.evaluate(() => window.engram.sidebarLayout())).chat
-  await typeQuery('qqqzzz')
-  await expect(rows()).toHaveCount(0)
-  await expect(empty()).toBeVisible()
-  await clear()
+test('an old pin on the open chat changes neither its place nor its row', async () => {
+  const before = await order()
+  await row(beta).click({ button: 'right' })
+  await expect(page.locator('.sidebar-organize-menu, [role="dialog"][aria-label^="Options for"]')).toHaveCount(0)
+  const pinned = (await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), beta.id)).chat
+  // The pin is kept as data and drawn nowhere.
+  expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(pinned)
+  await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
   await expect(rows()).toHaveCount(2)
+  await expect.poll(order).toEqual(before)
+  await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)
   await expect(row(beta)).toHaveClass(/active/)
-  await expect(row(beta).locator('..')).toHaveAttribute('data-pinned', 'true')
-  expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before)
+  await expectNoSearch()
 })
 
-test('a chat started during a non-matching search is not listed until the search is cleared', async () => {
+test('a chat started from the welcome is listed and active at once', async () => {
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
-  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('qqqzzz')
-  await expect(empty()).toBeVisible()
+  await expectNoSearch()
   // The v2 bot list seeded by the fixture also holds the primary 'Engram' bot (resetBotsToV2), so one new bot is counted against what existed before.
   const existing = await page.evaluate(() => window.engram.botsList().then(list => list.map(bot => bot.id)))
   expect(existing).toEqual(expect.arrayContaining([alpha.id, beta.id]))
@@ -111,12 +102,8 @@ test('a chat started during a non-matching search is not listed until the search
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(existing.length + 1)
   const created = await page.evaluate(ids => window.engram.botsList().then(list => list.find(bot => !ids.includes(bot.id))!.id), existing)
-  await expect(rows()).toHaveCount(0)
-  await expect(row(created)).toHaveCount(0)
-  await expect(empty()).toBeVisible()
-  await expect(search()).toHaveValue('qqqzzz')
-  await clear()
   await expect(row(created)).toBeVisible()
   await expect(row(created)).toHaveClass(/active/)
   await expect(rows()).toHaveCount(3)
+  await expect(empty()).toHaveCount(0)
 })

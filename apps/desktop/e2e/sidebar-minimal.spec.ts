@@ -55,19 +55,14 @@ test.describe.serial('minimal sidebar', () => {
       await expect(head.locator('small')).toHaveText(/^\d+$/)
     }
     await expect(heads.locator('span')).toHaveText(['Home', 'Money'])
-    // No header button: a new section starts from a right-click on empty sidebar space.
+    // No header button and no menu on empty space: sections are asked for in chat.
     await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
     const scroll = page.locator('.sidebar-scroll')
     await scroll.click({ button: 'right', position: { x: 20, y: (await scroll.boundingBox())!.height - 6 } })
-    const newSection = page.getByTestId('sidebar-space-new-folder')
-    await expect(newSection).toBeVisible()
-    await expect(newSection.locator('svg')).toHaveCount(1)
-    await newSection.click()
-    const create = page.locator('.sidebar-folder-create')
-    await expect(create.locator('input')).toBeFocused()
-    await expect(create.locator('svg')).toHaveCount(0)
-    await page.keyboard.press('Escape')
-    await expect(create).toHaveCount(0)
+    await expect(page.getByTestId('sidebar-space-new-folder')).toHaveCount(0)
+    await expect(page.locator('.sidebar-folder-create')).toHaveCount(0)
+    await expect(page.locator('.sidebar-menu')).toHaveCount(0)
+    await expect(page.locator('.app-sidebar [role="tree"] input')).toHaveCount(0)
     await expect(heads).toHaveCount(2)
   })
 

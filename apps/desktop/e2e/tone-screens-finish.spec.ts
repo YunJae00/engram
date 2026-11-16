@@ -136,24 +136,19 @@ test('cream+ink screen finish and empty state', async () => {
       expect(seen).toMatchObject({ color: 'rgb(110, 110, 115)', faces: 1, lines: 1 })
       expect(seen.faceSize).toBeGreaterThanOrEqual(76)
       expect(seen.faceSize).toBeLessThanOrEqual(84)
-      await expect(empty.getByTestId('bot-empty-chip').first()).toBeHidden()
+      await expect(empty.getByTestId('bot-empty-chip')).toHaveCount(0)
     }
     await emptyState(plain.id, '빈 대화')
     await shot('empty-plain.png')
     await emptyState(research.id, '자료 조사')
     await shot('empty-research.png')
 
-    await page.getByTestId('bots-title-pill').click()
-    const pane = page.getByTestId('bot-info-pane')
-    await expect(pane).toBeVisible()
-    await expect(pane.getByRole('tab')).toHaveCount(0)
-    expect(await pane.evaluate(node => getComputedStyle(node).animationTimingFunction)).toBe('ease')
-    expect(await pane.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(SURFACE)
-    const paneFace = (await pane.locator('.bot-avatar').first().boundingBox())!.width
-    expect(Math.abs(paneFace - 64), 'the info pane face is 64px').toBeLessThanOrEqual(1)
-    await shot('info-pane.png')
-    await page.getByTestId('bots-title-pill').click()
-    await expect(pane).toHaveCount(0)
+    // The title pill and its info pane are gone: the empty thread itself shows who is on the other side.
+    await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+    await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+    await expect(page.locator('[data-testid="bots-view"] [role="tab"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"] .bot-avatar')).toHaveCount(1)
+    await shot('empty-thread.png')
 
     await openActivity(page, 'settings')
     const settings = page.locator('[data-testid="settings-view"]')
@@ -208,34 +203,20 @@ test('cream+ink screen finish and empty state', async () => {
 
     await open(chat.id)
     await page.getByTestId('bots-input').fill(DRAFT)
-    const avatar = () => page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar').getAttribute('data-character')
-    const character = await avatar()
-    expect(character).toBeTruthy()
     const rowFace = page.locator(`[data-testid="bot-${chat.id}"] .sidebar-conversation-avatar > .bot-avatar`)
     const rowAvatar = async () => { await expect(rowFace).toBeVisible(); return rowFace.getAttribute('data-character') }
-    expect(await rowAvatar()).toBe(character)
-    const mini = page.getByTestId(`mini-chat-${chat.id}`).getByRole('textbox')
-    await page.getByTestId('mission-layout-2').click()
-    await expect(page.locator('.mission-tile')).toHaveCount(2)
-    await expect(mini).toHaveValue(DRAFT)
-    expect(await rowAvatar()).toBe(character)
-    await page.getByTestId('mission-layout-4').click()
-    await expect(page.locator('.mission-tile')).toHaveCount(4)
-    await expect(mini).toHaveValue(DRAFT)
-    expect(await rowAvatar()).toBe(character)
-    const split = await page.evaluate(() => ({
-      empty: [...document.querySelectorAll('.mission-tile-body')].map(node => getComputedStyle(node).backgroundColor),
-      motion: getComputedStyle(document.querySelector('.mission-tile-body')!).transitionTimingFunction,
-      duration: getComputedStyle(document.querySelector('.mission-tile-body')!).transitionDuration,
-    }))
-    for (const color of split.empty) expect(color, 'split tiles stay canvas, never black').toBe(CANVAS)
-    expect(split.motion.split(', ').every(one => one === 'ease')).toBe(true)
-    expect(split.duration.split(', ').every(one => one === '0s' || (parseFloat(one) >= 0.15 && parseFloat(one) <= 0.2))).toBe(true)
-    await shot('split-4.png')
-    await page.getByTestId('mission-layout-1').click()
+    const character = await rowAvatar()
+    expect(character).toBeTruthy()
+    // One chat view: no split buttons, and a draft waits in its own chat while another one is open.
+    for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
     await expect(page.getByTestId('mission-control')).toHaveCount(0)
+    await open(plain.id)
+    expect(await rowAvatar()).toBe(character)
+    await open(chat.id)
     await expect(page.getByTestId('bots-input')).toHaveValue(DRAFT)
-    expect(await avatar()).toBe(character)
+    expect(await rowAvatar()).toBe(character)
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'the chat stays canvas, never black').toBe(CANVAS)
+    await shot('single-chat.png')
   } finally {
     await closeTestApp(app)
     await rm(vault, { recursive: true, force: true })

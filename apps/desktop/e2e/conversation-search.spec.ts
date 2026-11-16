@@ -38,7 +38,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app?.close() })
 
-test('search finds a token from earlier messages of an old, unopened conversation in a collapsed folder', async () => {
+test('an old, unopened conversation in a collapsed folder opens from its folder without search, and its earlier words are still findable in the store', async () => {
   await page.evaluate(async id => {
     const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Archive' } })
     const folder = layout.chat.folders.find(one => one.name === 'Archive')!.id
@@ -55,38 +55,29 @@ test('search finds a token from earlier messages of an old, unopened conversatio
   const looseX = (await otherRow.boundingBox())!.x
   // With no 24h filter (bot sidebar redesign) the old conversation is listed, but its collapsed folder keeps it out of sight.
   await expect(targetRow).toBeHidden()
-  await expect(page.getByTestId(`sidebar-folder-${before.chat.folders.find(one => one.name === 'Archive')!.id}`).locator('.sidebar-folder-head .sidebar-item-main')).toHaveAttribute('aria-expanded', 'false')
-  const input = page.getByRole('textbox', { name: 'Search conversations', exact: true })
-  for (const query of ['QX-7731', 'qx-7731']) {
-    await page.getByTestId('sidebar-search-toggle').click(); await input.fill(query)
-    await expect(targetRow).toBeVisible()
-    await expect(otherRow).toHaveCount(0)
-    // S16: a row inside a folder sits to the right of a loose row, so membership shows.
-    expect((await targetRow.boundingBox())!.x).toBeGreaterThanOrEqual(looseX + 10)
-    // S17: the title and last message lack the token, so the row shows the earlier words that matched.
-    await expect(targetRow.locator('.sidebar-conversation-preview')).toContainText('QX-7731')
-    await expect(page.locator('.sidebar-conversations .bots-row')).toHaveCount(1)
+  const head = page.getByTestId(`sidebar-folder-${before.chat.folders.find(one => one.name === 'Archive')!.id}`).locator('.sidebar-folder-head .sidebar-item-main')
+  await expect(head).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(page.getByTestId('app-sidebar').locator('.sidebar-search, input, textarea')).toHaveCount(0)
+  // The words of earlier messages are found where the chat looks them up, whatever their case.
+  for (const query of ['QX-7731', 'qx-7731', '견적서']) {
+    const hits = await page.evaluate(q => window.engram.botsSearch(q), query)
+    expect(hits.map(hit => hit.id)).toEqual([target.id])
+    if (query !== '견적서') expect(hits[0]!.excerpt).toContain('QX-7731')
   }
-  // S17: the pill is the focus treatment; the input inside draws no ring of its own, in either theme.
-  for (const theme of ['light', 'dark']) {
-    expect(await input.evaluate((el, theme) => {
-      const root = document.documentElement, before = root.dataset['theme']
-      root.dataset['theme'] = theme
-      const style = getComputedStyle(el), ring = { focused: el.matches(':focus-visible'), outline: style.outlineStyle, shadow: style.boxShadow }
-      if (before === undefined) delete root.dataset['theme']; else root.dataset['theme'] = before
-      return ring
-    }, theme)).toEqual({ focused: true, outline: 'none', shadow: 'none' })
-  }
-  await input.fill('Weekly sy')
+  expect(await page.evaluate(q => window.engram.botsSearch(q), 'no such token')).toEqual([])
+  await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'true')
   await expect(targetRow).toBeVisible()
-  await input.fill('견적서')
-  await expect(targetRow).toBeVisible()
-  await expect(otherRow).toHaveCount(0)
-  await input.fill('no such token')
-  await expect(page.getByText('No matches found', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Clear search', exact: true }).click()
+  // S16: a row inside a folder sits to the right of a loose row, so membership shows.
+  expect((await targetRow.boundingBox())!.x).toBeGreaterThanOrEqual(looseX + 10)
+  await targetRow.click()
+  await expect(targetRow).toHaveClass(/active/)
+  await expect(page.getByTestId('bots-thread')).toContainText('QX-7731 agenda is drafted.')
+  await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'false')
   await expect(otherRow).toBeVisible()
   await expect(targetRow).toBeHidden()
   await expect(page.getByTestId('sidebar-earlier')).toHaveCount(0)
-  expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
+  await expect.poll(async () => (await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(before.chat)
 })

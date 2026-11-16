@@ -23,35 +23,32 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await closeTestApp(app) })
 
 const sidebar = () => page.getByTestId('app-sidebar')
-const search = () => page.getByRole('textbox', { name: 'Search conversations' })
 const conversations = () => sidebar().getByRole('region', { name: 'Conversations' })
+async function expectNoSearch(): Promise<void> {
+  await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
+  await expect(sidebar().locator('.sidebar-search, input, textarea')).toHaveCount(0)
+  await expect(conversations().getByText('No matches found')).toHaveCount(0)
+}
 
-test('Esc clears a sidebar search and restores the conversation list', async () => {
+test('there is no sidebar search to clear; Esc on a wide window leaves the conversation list as it is', async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
   if (await sidebar().getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   await expect(conversations().getByText('Alpha chat')).toBeVisible()
-  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('zzz-no-such-chat')
-  await expect(conversations().getByText('No matches found')).toBeVisible()
-  await search().press('Escape')
-  await expect(search()).toHaveValue('')
-  await expect(conversations().getByText('No matches found')).toHaveCount(0)
+  await expectNoSearch()
+  await page.getByTestId('sidebar-create').focus()
+  await page.keyboard.press('Escape')
+  await expect(sidebar()).toHaveAttribute('aria-hidden', 'false')
   await expect(conversations().getByText('Alpha chat')).toBeVisible()
   await expect(conversations().getByText('Beta chat')).toBeVisible()
 })
 
-test('in the narrow overlay the first Esc clears the query and the second closes the sidebar', async () => {
+test('in the narrow overlay, with no query to clear first, one Esc closes the sidebar', async () => {
   await page.setViewportSize({ width: 780, height: 720 })
   if (await sidebar().getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
   await expect(sidebar()).toHaveAttribute('aria-hidden', 'false')
-  await page.getByTestId('sidebar-search-toggle').click(); await search().fill('zzz-no-such-chat')
-  await expect(conversations().getByText('No matches found')).toBeVisible()
-  await search().press('Escape')
-  await expect(search()).toHaveValue('')
-  await expect(sidebar()).toHaveAttribute('aria-hidden', 'false')
+  await expectNoSearch()
   await expect(conversations().getByText('Alpha chat')).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('sidebar-search-toggle')).toBeFocused()
-  await expect(sidebar()).toHaveAttribute('aria-hidden', 'false')
+  await page.getByTestId('sidebar-create').focus()
   await page.keyboard.press('Escape')
   await expect(sidebar()).toHaveAttribute('aria-hidden', 'true')
 })

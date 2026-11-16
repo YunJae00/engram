@@ -110,16 +110,16 @@ test.describe('visual', () => {
     })
   })
 
-  test('info-overview', async () => {
+  test('info-overview: the chat alone, with no info pane or title pill', async () => {
     await capture('info-overview', async page => {
       const row = page.getByTestId(`bot-${CHAT_ID}`)
       const earlier = page.getByTestId('sidebar-earlier')
       if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
       await row.click()
       await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').first()).toBeVisible()
-      await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-      await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-      await expect(page.getByTestId('bot-info-pane').locator('[role=tablist], [role=tab]')).toHaveCount(0)
+      await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
+      await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+      await expect(page.getByTestId('bots-view').locator('[role=tablist], [role=tab]')).toHaveCount(0)
     })
   })
 
@@ -138,15 +138,16 @@ test.describe('visual', () => {
     })
   })
 
-  test('info-routines', async () => {
+  test('info-routines: a bot with a paused routine has no routines tab, only its chat and muted row', async () => {
     await capture('info-routines', async page => {
       const row = page.getByTestId('bot-vis-paused')
       const earlier = page.getByTestId('sidebar-earlier')
       if (!await row.isVisible() && await earlier.isVisible()) await earlier.click()
       await row.click()
-      await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-      await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-      await expect(page.getByTestId('bot-routine-vis-paused-task')).toBeVisible()
+      await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').first()).toBeVisible()
+      for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-routines', 'bot-routine-vis-paused-task']) await expect(page.getByTestId(id)).toHaveCount(0)
+      await expect(row.locator('.sidebar-bell-off')).toBeVisible()
+      expect(await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-paused')?.tasks?.map(task => task.id))).toEqual(['vis-paused-task'])
     })
   })
 
@@ -159,7 +160,8 @@ test.describe('visual', () => {
       await row.click()
       const empty = page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"]')
       await expect(empty).toBeVisible()
-      await expect(empty.getByTestId('bot-empty-chip')).toHaveCount(3)
+      await expect(empty.getByTestId('bot-empty-chip')).toHaveCount(0)
+      await expect(empty.locator('button')).toHaveCount(0)
       await expect(page.locator('[data-testid="bots-view"] [data-testid="bots-input"]')).toBeFocused()
       const avatar = (await empty.locator('.bot-avatar').first().boundingBox())!, thread = (await page.getByTestId('bots-thread').boundingBox())!
       expect(Math.abs(avatar.width - 64)).toBeLessThanOrEqual(1)

@@ -139,26 +139,26 @@ test('cream+ink tokens and chrome on key screens', async () => {
     await page.locator('.bots-thread').screenshot({ path: join(SHOTS, 'chat-light.png') })
     await write.screenshot({ path: join(SHOTS, 'input-light.png') })
 
-    await page.evaluate((ids) => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map(bot => bot.id))
-    for (const layout of ['mission-layout-2', 'mission-layout-4']) {
-      await page.getByTestId(layout).click()
-      await expect(page.locator('.mini-chat').first()).toBeVisible()
+    // One chat view: no split buttons, and every bot's chat stays canvas where it is empty.
+    for (const layout of ['mission-layout-2', 'mission-layout-4']) await expect(page.getByTestId(layout)).toHaveCount(0)
+    for (const bot of bots) {
+      await page.getByTestId(`bot-${bot.id}`).click()
+      await expect(page.getByTestId('bots-input')).toBeVisible()
       await page.waitForTimeout(400)
-      for (const selector of ['.mission-tile-body', '.mini-chat']) expect((await styleOf(page, selector, ['background-color']))['background-color'], `${layout} ${selector}`).toBe(CANVAS)
       const empty = await page.evaluate(() => {
-        const thread = document.querySelector('.mini-chat-thread')!.getBoundingClientRect()
+        const thread = document.querySelector('.bots-thread')!.getBoundingClientRect()
         for (let y = thread.bottom - 6; y > thread.top + 4; y -= 8) {
           for (let x = thread.left + 6; x < thread.right - 6; x += 8) {
             const hit = document.elementFromPoint(x, y)
-            if (hit?.classList.contains('mini-chat-thread')) return [x, y]
+            if (hit?.classList.contains('bots-thread')) return [x, y]
           }
         }
         return null
       })
-      expect(empty, `${layout} has an empty chat area`).not.toBeNull()
+      expect(empty, `${bot.name} has an empty chat area`).not.toBeNull()
       const seen = (await pixel(app, page, empty![0]!, empty![1]!)).match(/\d+/g)!.map(Number)
       // capturePage goes through the display colour profile, so allow a 2-level rounding drift.
-      expect(seen.map((value, index) => Math.abs(value - [255, 255, 255][index]!)).every(delta => delta <= 2), `${layout} empty pixel ${seen}`).toBe(true)
+      expect(seen.map((value, index) => Math.abs(value - [255, 255, 255][index]!)).every(delta => delta <= 2), `${bot.name} empty pixel ${seen}`).toBe(true)
     }
     await openActivity(page, 'bots')
 

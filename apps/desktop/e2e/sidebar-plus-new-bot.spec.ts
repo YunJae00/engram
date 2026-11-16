@@ -20,15 +20,7 @@ async function rightClickSpace(): Promise<void> {
   const box = (await scroll.boundingBox())!
   await scroll.click({ button: 'right', position: { x: 20, y: box.height - 6 } })
 }
-async function nameFolder(name: string): Promise<string> {
-  const before = new Set((await folders()).map(folder => folder.id))
-  const input = page.getByTestId('sidebar-chat-folder-name')
-  await expect(input).toBeFocused()
-  await input.fill(name)
-  await input.press('Enter')
-  await expect.poll(async () => (await folders()).filter(folder => !before.has(folder.id)).map(folder => folder.name)).toEqual([name])
-  return (await folders()).find(folder => !before.has(folder.id))!.id
-}
+const menus = () => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
 
 test.beforeEach(async () => {
   await mkdir(TMP, { recursive: true })
@@ -97,29 +89,27 @@ test('rapid presses from a non-empty bot open one dialog and create exactly one 
   expect((await botList()).length).toBe(before + 1)
 })
 
-test('folders are created only from the right-click menus, and a bot moves into one', async () => {
+test('right-clicking empty space or a bot opens no menu; a folder made through the app holds the bot moved into it', async () => {
   await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
   await expect(page.locator('.sidebar-tree-head')).toHaveCount(0)
   await rightClickSpace()
-  const item = page.getByTestId('sidebar-space-new-folder')
-  await expect(item).toBeFocused()
-  await expect(item).toHaveText('New folder')
-  await page.keyboard.press('Enter')
-  const plusFolder = await nameFolder('Plus folder')
-
-  await rightClickSpace()
-  await expect(item).toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(item).toHaveCount(0)
-  await rightClickSpace()
-  await item.click()
-  await expect(item).toHaveCount(0)
-  await nameFolder('Menu folder')
-
+  await expect(page.getByTestId('sidebar-space-new-folder')).toHaveCount(0)
+  await expect(page.getByTestId('sidebar-chat-folder-name')).toHaveCount(0)
+  await expect(menus()).toHaveCount(0)
   await page.getByTestId('bot-vis-new').click({ button: 'right' })
-  await page.locator('[role="dialog"][aria-label="Options for New helper"]').getByRole('button', { name: 'Move to Plus folder' }).click()
-  await expect.poll(() => page.evaluate(async () => (await window.engram.sidebarLayout('chat')).chat.items.find(one => one.id === 'vis-new')?.folder)).toBe(plusFolder)
+  await expect(menus()).toHaveCount(0)
+  expect((await folders()).map(folder => folder.name)).toEqual(['Home', 'Money'])
+
+  const plusFolder = await page.evaluate(async () => {
+    const layout = await window.engram.sidebarChange({ kind: 'chat', change: { action: 'create-folder', name: 'Plus folder' } })
+    const id = layout.chat.folders.find(folder => folder.name === 'Plus folder')!.id
+    await window.engram.sidebarChange({ kind: 'chat', change: { action: 'move-item', id: 'vis-new', folder: id } })
+    return id
+  })
+  expect(await page.evaluate(async () => (await window.engram.sidebarLayout('chat')).chat.items.find(one => one.id === 'vis-new')?.folder)).toBe(plusFolder)
   await expect(page.getByTestId(`sidebar-folder-${plusFolder}`).getByTestId('bot-vis-new')).toBeVisible()
+  await page.getByTestId(`sidebar-folder-${plusFolder}`).getByTestId('bot-vis-new').click()
+  await expect(page.getByTestId('bot-vis-new')).toHaveClass(/\bactive\b/)
   expect(await dialog().count()).toBe(0)
 })
 

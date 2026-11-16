@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Locator, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp } from './navigation.js'
 import { appendBotTurn, createBot, initVault, resetBotsToV2, type Bot } from 'core'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -53,9 +53,6 @@ test.beforeAll(async () => {
   page = await app.firstWindow({ timeout: 60_000 })
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
-  await page.evaluate((ids) => localStorage.setItem('engram.mission.slots', JSON.stringify(ids)), bots.map((bot) => bot.id))
-  await page.reload()
-  await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
 })
 
 test.afterAll(async () => {
@@ -66,7 +63,7 @@ test.afterAll(async () => {
 })
 
 async function expectAnswerClear(pane: Locator): Promise<void> {
-  await pane.locator('.mini-chat-thread').evaluate(async (thread) => {
+  await pane.getByTestId('bots-thread').evaluate(async (thread) => {
     thread.scrollTop = thread.scrollHeight
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   })
@@ -74,9 +71,9 @@ async function expectAnswerClear(pane: Locator): Promise<void> {
     const rect = (el: Element) => { const { top, bottom, left, right } = el.getBoundingClientRect(); return { top, bottom, left, right } }
     const paragraphs = [...node.querySelectorAll('.bubble-msg.assistant')].at(-1)!.querySelectorAll('p')
     return {
-      thread: rect(node.querySelector('.mini-chat-thread')!),
+      thread: rect(node.querySelector('[data-testid=bots-thread]')!),
       card: rect(node.querySelector('[data-testid=preview-deck]')!),
-      items: [paragraphs[paragraphs.length - 1]!, node.querySelector('[data-testid=reply-chip-0]')!, node.querySelector('[data-testid=reply-chip-1]')!].map(rect),
+      items: [paragraphs[paragraphs.length - 1]!].map(rect),
       lastText: paragraphs[paragraphs.length - 1]!.textContent,
     }
   })
@@ -86,18 +83,22 @@ async function expectAnswerClear(pane: Locator): Promise<void> {
     expect(item.bottom <= card.top || item.top >= card.bottom || item.right <= card.left || item.left >= card.right, JSON.stringify({ item, card })).toBe(true)
     expect(item.top >= thread.top - 0.5 && item.bottom <= thread.bottom + 0.5, JSON.stringify({ item, thread })).toBe(true)
   }
-  await expect(pane.getByTestId('reply-chip-0')).toBeVisible()
-  await expect(pane.getByTestId('reply-chip-1')).toBeVisible()
+  // Suggested replies are never buttons, and never text in the answer.
+  await expect(pane.getByTestId('reply-chips')).toHaveCount(0)
+  await expect(pane.getByTestId('reply-chip-0')).toHaveCount(0)
 }
 
-test('a finished web preview card in a 4-pane tile leaves the answer and its reply chips readable without moving the chat', async () => {
-  await openActivity(page, 'mission')
-  await page.getByTestId('mission-layout-4').click()
-  await expect(page.locator('.mission-tile')).toHaveCount(4)
-  const pane = page.getByTestId(`mini-chat-${bots[0]!.id}`)
-  await expect(pane.getByTestId('reply-chip-0')).toBeVisible()
+test('a finished web preview card in the single chat view leaves the answer readable without moving the chat; no reply chips or pane grid exist', async () => {
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  await expect(page.locator('.mission-tile')).toHaveCount(0)
+  const row = page.getByTestId(`bot-${bots[0]!.id}`)
+  await row.click()
+  await expect(row).toHaveClass(/active/)
+  const pane = page.locator('[data-testid="bots-view"] .bots-chat')
+  await expect(pane.locator('.bubble-msg.assistant').last()).toContainText('궤도 주기 74.7년')
+  await expect(pane.getByTestId('reply-chip-0')).toHaveCount(0)
   await expect(pane.getByTestId('preview-card')).toHaveCount(0)
-  const thread = pane.locator('.mini-chat-thread')
+  const thread = pane.getByTestId('bots-thread')
   // Since 025bc0e9 the card docks over the thread's top corner and bubbles in its band flow beside it, so the transcript may
   // re-wrap and scroll; "not moving the chat" means the thread box keeps its place and stays pinned to the latest answer.
   const threadBox = () => thread.evaluate((node) => { const { top, bottom, left, right } = node.getBoundingClientRect(); return { top, bottom, left, right } })
@@ -107,6 +108,8 @@ test('a finished web preview card in a 4-pane tile leaves the answer and its rep
   const before = await threadBox()
   const lane = `bot-${bots[0]!.id}`
 
+  // Page work shows as the small card over the chat, not the page pane beside it.
+  await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'read_open_page: Halley' }), lane)
   await page.evaluate(({ url, lane }) => window.engram.agentGo(url, lane), { url: siteUrl, lane })
   const card = pane.getByTestId('preview-card')
   await expect(card).toBeVisible({ timeout: 20_000 })

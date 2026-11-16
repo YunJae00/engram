@@ -1,5 +1,5 @@
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { closeTestApp, openActivity } from './navigation.js'
+import { closeTestApp, createBotFromPlus } from './navigation.js'
 import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication
 let page: Page
+let ids: string[]
 
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
@@ -23,38 +24,43 @@ test.beforeAll(async () => {
   page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.engram.botsList().then(() => true).catch(() => false))).toBe(true)
-  await page.evaluate(async () => {
+  ids = await page.evaluate(async () => {
     const ids: string[] = []
     for (const name of ['Research scout', 'Release planning']) ids.push((await window.engram.botCreate({ name, purpose: '' })).id)
-    localStorage.setItem('engram.mission.slots', JSON.stringify(ids))
+    return ids
   })
 })
 
 test.afterAll(async () => { await closeTestApp(app) })
 
-test('a new chat in an empty grid pane takes the keyboard and its body click returns focus to the composer', async () => {
+test('a new chat made with + takes the keyboard, another chat keeps its draft, and a click in the composer returns focus; no pane grid exists', async () => {
   await page.setViewportSize({ width: 1600, height: 900 })
-  await openActivity(page, 'mission')
-  await expect(page.locator('.mission-tile')).toHaveCount(4)
-  const tile = page.getByTestId('mission-tile-2')
-  await expect(tile).toHaveClass(/mission-open-seat/)
-  const other = page.getByTestId('mission-tile-0').locator('.mini-chat-write textarea')
-  await other.fill('Keep this draft')
+  for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
+  await expect(page.getByTestId('mission-add-menu')).toHaveCount(0)
+  const other = page.getByTestId(`bot-${ids[0]!}`)
+  const input = page.getByTestId('bots-input')
+  await other.click()
+  await expect(other).toHaveClass(/active/)
+  await input.fill('Keep this draft')
 
-  await page.getByTestId('mission-add-2').click()
-  await page.getByTestId('mission-add-menu').locator('.mission-add-new').click()
-  const input = tile.locator('.mini-chat-write textarea')
+  await createBotFromPlus(page, 'Fresh chat')
+  const fresh = page.getByTestId('app-sidebar').locator('.bots-row', { hasText: 'Fresh chat' })
+  await expect(fresh).toHaveClass(/active/)
+  await expect(input).toHaveValue('')
   await expect(input).toBeFocused()
   await page.keyboard.type('hello')
   await expect(input).toHaveValue('hello')
-  await expect(other).toHaveValue('Keep this draft')
 
   await page.locator('[data-testid="topbar"] .topbar-spacer').click()
   await expect(input).not.toBeFocused()
-  const body = tile.locator('.mission-tile-body')
-  const box = (await body.boundingBox())!
-  await page.mouse.click(box.x + 8, box.y + 8)
+  await input.click()
   await expect(input).toBeFocused()
   await expect(input).toHaveValue('hello')
-  await expect(other).not.toBeFocused()
+
+  // Each chat keeps its own draft across switches.
+  await other.click()
+  await expect(other).toHaveClass(/active/)
+  await expect(input).toHaveValue('Keep this draft')
+  await fresh.click()
+  await expect(input).toHaveValue('hello')
 })

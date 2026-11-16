@@ -1,10 +1,8 @@
 import { expect, test, chromium, type ElectronApplication, type Page } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { expandPreview, openActivity } from './navigation.js'
 
 export async function checkMissionLiveView(app: ElectronApplication, page: Page, siteUrl: string, browserPort: number, output: string): Promise<void> {
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
   const bots = await page.evaluate(async () => {
     // The watched conversation, not the primary Engram bot that a v2 list always starts with.
     const first = (await window.engram.botsList()).find((bot) => bot.name === 'Watching')!
@@ -25,35 +23,21 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
     return ready.every((preview) => Boolean(preview.data))
   }, { timeout: 30000 }).toBe(true)
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
-  await openActivity(page, 'mission')
-  await expect(page.locator('.mission-tile')).toHaveCount(4)
-  // The selected conversation occupies the first pane; replace it deliberately.
-  await page.getByTestId('mission-tile-0').locator('.mission-change').click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Parallel watch' }).click()
-  await page.getByTestId('mission-add-1').click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Third watch' }).click()
-  // Each tile shows its page as a corner preview until it is opened there.
-  const openTile = async (index: number) => {
-    const tile = page.getByTestId(`mission-tile-${index}`)
-    await expandPreview(tile)
-    await tile.getByRole('button', { name: 'Open full browser', exact: true }).click()
-    await expect(tile.locator('.mission-tile-body')).toHaveAttribute('data-web-open', 'true')
+  // One chat view: there is no split view to watch them side by side.
+  await expect(page.locator('[data-testid^="mission-"]')).toHaveCount(0)
+  await expect(page.locator('.mini-chat')).toHaveCount(0)
+  // Each bot's sidebar row opens its chat with its own page beside it, never another bot's.
+  const open = async (index: number, url: string) => {
+    const row = page.getByTestId(`bot-${bots[index]!.id}`)
+    await row.click()
+    await expect(row).toHaveClass(/active/)
+    await expect(page.getByTestId('bot-empty')).toContainText(bots[index]!.name)
+    await expect(page.getByTestId('bots-input')).toBeEditable()
+    await expect(page.getByTestId('live-address')).toHaveValue(url)
+    await expect(page.getByTestId('web-pane').locator('canvas[data-painted]')).toBeVisible({ timeout: 20000 })
   }
-  for (const index of [0, 1]) await openTile(index)
-  await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(2, { timeout: 15000 })
-  const previewsFit = () => page.locator('.mission-preview canvas').evaluateAll((nodes) => nodes.every(node => {
-    const width = node.closest('.mission-preview')!.getBoundingClientRect().width
-    return (node as HTMLCanvasElement).width === Math.max(360, Math.min(1920, Math.round(width / 8) * 8)) * 2
-  }))
-  await expect.poll(previewsFit, { timeout: 15000 }).toBe(true)
-  await expect(page.locator('.mini-chat')).toHaveCount(2)
-  await page.getByTestId('mission-add-2').click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Watching', exact: true }).click()
-  await page.getByTestId('mission-add-3').click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
-  for (const index of [2, 3]) await openTile(index)
-  await expect(page.locator('.mission-preview canvas[data-painted]')).toHaveCount(4, { timeout: 20000 })
-  await expect.poll(previewsFit, { timeout: 20000 }).toBe(true)
+  for (const index of [1, 2, 3]) await open(index, `${siteUrl}typed?q=${index + 1}`)
+  await open(0, `${siteUrl}clicked`)
   const simultaneous = await page.evaluate(async ({ url, ids }) => {
     const lanes = ids.map((id) => `bot-${id}`)
     const counts = lanes.map(() => 0)
@@ -64,8 +48,11 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
       if (index >= 0) counts[index]!++
     })
     try {
+      // No view watches several lanes any more, so the test holds the lease itself.
+      await window.engram.missionWatch(lanes)
       await Promise.all(lanes.map((lane) => window.engram.agentGo(`${url}motion`, lane)))
       await new Promise((resolve) => setTimeout(resolve, 1000))
+      await window.engram.missionWatch(lanes)
       measuring = true
       await new Promise((resolve) => setTimeout(resolve, 3000))
       return counts
@@ -84,41 +71,12 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
     await new Promise((resolve) => setTimeout(resolve, 400))
     return (await win.webContents.capturePage()).toPNG().toString('base64')
   })
-  await writeFile(join(output, 'mission-live.png'), Buffer.from(shot, 'base64'))
-  await page.getByTestId('mission-layout-2').click()
-  await expect(page.locator('.mission-tile')).toHaveCount(2)
-  // A title picker replaces this exact seat, not the first available one.
-  await page.getByRole('button', { name: 'Chat for panel 2', exact: true }).click()
-  await page.getByTestId('mission-add-menu').getByRole('button', { name: 'Fourth watch', exact: true }).click()
-  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
-  const motion = await page.evaluate(async ({ url, id }) => {
-    let count = 0
-    let ready!: () => void
-    const started = new Promise<void>(resolve => { ready = resolve })
-    const off = window.engram.onEvent((event) => {
-      if (event.type === 'mission:frame' && event.frame.lane === `bot-${id}` && event.frame.url === `${url}motion` && event.frame.data && ++count >= 2) ready()
-    })
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      await window.engram.agentGo(`${url}motion`, `bot-${id}`)
-      await Promise.race([started, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Replacement lane stream did not start')), 20000) })])
-      count = 0
-      await new Promise(resolve => setTimeout(resolve, 2500))
-      return count
-    } finally { clearTimeout(timer); off() }
-  }, { url: siteUrl, id: bots[3]!.id })
-  expect(motion).toBeGreaterThan(10)
-  await page.getByRole('button', { name: 'Open Parallel watch', exact: true }).first().click()
-  await expect(page.locator('[data-testid="bots-view"] .bots-title-pill-name')).toHaveText('Parallel watch')
-  await openActivity(page, 'mission')
-  await expect(page.getByTestId('mission-tile-0').locator('.mission-name')).toHaveText('Parallel watch')
-  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
+  await writeFile(join(output, 'single-live.png'), Buffer.from(shot, 'base64'))
+  await open(1, `${siteUrl}typed?q=1`)
+  // Selection is not restored on load; the chosen chat still opens from its row with its own page.
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
-  await openActivity(page, 'mission')
-  await expect(page.getByTestId('mission-tile-1').locator('.mission-name')).toHaveText('Fourth watch')
-  await page.getByRole('button', { name: 'Open Fourth watch', exact: true }).first().click()
-  await expect(page.locator('[data-testid="bots-view"] .bots-title-pill-name')).toHaveText('Fourth watch')
+  await open(3, `${siteUrl}typed?q=3`)
   await page.setViewportSize({ width: 1680, height: 950 })
   await page.evaluate(({ url, id }) => window.engram.agentGo(`${url}scroll`, `bot-${id}`), { url: siteUrl, id: bots[3]!.id })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}scroll`)

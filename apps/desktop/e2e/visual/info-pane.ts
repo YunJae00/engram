@@ -6,28 +6,15 @@ export interface InfoPaneTools { probe(selector: string): Promise<Box>; shellOve
 
 const PANE = '[data-testid="bot-info-pane"]'
 
-async function until(ok: () => Promise<boolean>): Promise<void> {
-  for (let i = 0; i < 40 && !await ok(); i++) await new Promise(done => setTimeout(done, 50))
-}
-
+// The info pane and its title pill were removed: row 15 now holds that neither exists and the chat column keeps its full width.
 export async function measureInfoPane(page: Page, { probe, shellOverflow, main, column, pill }: InfoPaneTools): Promise<Check[]> {
-  const pane = page.locator(PANE)
-  if (!await pane.isVisible()) return [deferred('row 15 info pane', '-', 'deferred: info pane is not open')]
-  const box = await probe(PANE), view = await probe(main), avatar = await probe(`${PANE} .bot-info-panel .bot-avatar`), col = await probe(column)
-  const checks = [
-    near('info pane width', PANE, box?.width ?? null, 320, 2),
-    near('info pane right edge offset', PANE, box && view ? box.right - view.right : null, 0, 2),
-    near('info avatar width', `${PANE} .bot-info-panel .bot-avatar`, avatar?.width ?? null, 96, 1),
-    near('info avatar height', `${PANE} .bot-info-panel .bot-avatar`, avatar?.height ?? null, 96, 1),
-    near('chat column width', column, col?.width ?? null, view ? Math.min(960, view.width - 320 - 48) : 0, 2),
+  const view = await probe(main), col = await probe(column)
+  if (!col) return [deferred('row 15 info pane', '-', 'deferred: no chat is open')]
+  return [
+    near('info pane count', PANE, await page.locator(PANE).count(), 0, 0),
+    near('title pill count', pill, await page.locator(pill).count(), 0, 0),
+    near('chat view tabs', `${main} [role="tab"]`, await page.locator(`${main} [role="tab"]`).count(), 0, 0),
+    near('chat column width', column, col.width, view ? Math.min(960, view.width - 48) : 0, 2),
+    near('overflow without a pane', '[data-testid="shell"], [data-testid="shell"] *', await shellOverflow(), 0, 0),
   ]
-  await page.locator(pill).click()
-  await until(async () => await pane.count() === 0)
-  const after = await probe(column)
-  checks.push(near('overflow after close', '[data-testid="shell"], [data-testid="shell"] *', await shellOverflow(), 0, 0),
-    near('chat column width after close', column, after?.width ?? null, view ? Math.min(960, view.width - 48) : 0, 2))
-  await page.locator(pill).click()
-  await until(() => pane.isVisible())
-  checks.push(near('info pane tabs', PANE, await page.locator(`${PANE} [role="tab"]`).count(), 0, 0))
-  return checks
 }

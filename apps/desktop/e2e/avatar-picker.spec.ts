@@ -68,34 +68,39 @@ test.describe('avatar picker', () => {
     await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', 'orb-amber')
   })
 
-  test('info pane: the avatar opens the picker, a pick is saved as a character, Default saves the id face', async () => {
+  test('no title pill or info pane: the picker lives in the new-bot dialog, a pick is saved as a character, and a saved face shows on the sidebar row', async () => {
     const page = await launch('light')
     await page.getByTestId(`bot-${CHAT_ID}`).click()
-    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-    await expect(page.getByTestId('bot-info-pane')).toBeVisible()
-    await expect(page.getByTestId('bot-info-pane').getByRole('tab')).toHaveCount(0)
-    await page.getByTestId('bot-info-avatar').click()
-    const picker = page.locator('#bot-info-avatar-picker [data-testid="avatar-picker"]')
-    await expect(picker).toBeVisible()
+    await expect(page.getByTestId('bots-thread')).toBeVisible()
+    for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-info-avatar', 'avatar-picker']) await expect(page.getByTestId(id)).toHaveCount(0)
+    const picker = await openPicker(page)
     // Each orb's glow is drawn on a transparent box half again as large as the orb, so the last column's box passes the picker's own edge by design.
-    // What must hold is what a person sees: every cell sits inside the picker, the picker sits inside the pane, and the pane cannot scroll sideways.
+    // What must hold is what a person sees: every cell sits inside the picker and the picker sits inside the dialog.
     expect(await picker.evaluate(node => {
-      const pane = node.closest('[data-testid="bot-info-pane"]')!
-      const box = node.getBoundingClientRect(), outer = pane.getBoundingClientRect()
+      const box = node.getBoundingClientRect(), outer = node.closest('dialog')!.getBoundingClientRect()
       const cells = [...node.querySelectorAll('.avatar-picker-cell')].map(cell => cell.getBoundingClientRect())
       return {
         cells: cells.length === 8 && cells.every(cell => cell.left >= box.left - 0.5 && cell.right <= box.right + 0.5),
         picker: box.left >= outer.left && box.right <= outer.right,
-        pane: pane.scrollWidth <= pane.clientWidth,
-        glow: node.scrollWidth - node.clientWidth,
       }
-    })).toEqual({ cells: true, picker: true, pane: true, glow: expect.any(Number) })
+    })).toEqual({ cells: true, picker: true })
     await picker.getByRole('radio', { name: 'orb-lilac', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-lilac' })
     await picker.getByRole('radio', { name: 'orb-teal', exact: true }).click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-teal' })
     await picker.getByTestId('avatar-picker-default').click()
-    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: expect.stringMatching(/^orb-[a-z]+$/) })
+    await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-picked', 'false')
+    await picker.getByRole('radio', { name: 'orb-lilac', exact: true }).click()
+    const ids = new Set(await page.evaluate(async () => (await window.engram.botsList()).map(bot => bot.id)))
+    await page.getByTestId('create-bot-name').fill('Lilac helper')
+    await page.getByTestId('create-bot-submit').click()
+    await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
+    await expect.poll(() => page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.name === 'Lilac helper')?.avatar ?? null)).toEqual({ character: 'orb-lilac' })
+    const made = await page.evaluate(async known => (await window.engram.botsList()).find(bot => !known.includes(bot.id))!.id, [...ids])
+    await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', 'orb-lilac')
+    await expect(page.locator(`[data-testid="bot-${made}"] .bot-avatar`)).toHaveAttribute('data-character', 'orb-lilac')
+    // An existing bot's face is changed through the app, not through a pane.
+    await page.evaluate(id => window.engram.botUpdate(id, { avatar: { character: 'orb-teal' } }), CHAT_ID)
+    await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-teal' })
+    await expect(page.locator(`[data-testid="bot-${CHAT_ID}"] .bot-avatar`)).toHaveAttribute('data-character', 'orb-teal')
     await expect.poll(() => page.evaluate(id => window.engram.botAvatarImage(id), CHAT_ID)).toBeNull()
   })
 
@@ -136,11 +141,8 @@ test.describe('avatar picker', () => {
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
     await page.getByTestId(`bot-${CHAT_ID}`).click()
-    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-    await page.getByTestId('bot-info-avatar').click()
-    const pane = page.locator('#bot-info-avatar-picker')
-    await expect(pane.getByTestId('avatar-picker')).toBeVisible()
-    await noUpload(pane)
+    await expect(page.getByTestId('bots-thread')).toBeVisible()
+    for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-info-avatar', 'avatar-picker']) await expect(page.getByTestId(id)).toHaveCount(0)
     await expect(page.evaluate(id => window.engram.botAvatarSet(id, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), CHAT_ID)).rejects.toThrow(/no longer supported/)
   })
 
@@ -160,11 +162,12 @@ test.describe('avatar picker', () => {
     await check(page.getByTestId('create-bot-dialog'), picker, 'new-bot-dialog')
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
-    await page.getByTestId(`bot-${CHAT_ID}`).click()
-    await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-    await page.getByTestId('bot-info-avatar').click()
-    const pane = page.getByTestId('bot-info-pane')
-    await expect(pane.getByTestId('avatar-picker')).toBeVisible()
-    await check(pane, pane.getByTestId('avatar-picker'), 'details-pane')
+    // No details pane to open a second picker in: an empty thread shows the bot's one large face.
+    const earlier = page.getByTestId('sidebar-earlier')
+    if (!await page.getByTestId('bot-vis-new').isVisible() && await earlier.isVisible()) await earlier.click()
+    await page.getByTestId('bot-vis-new').click()
+    await expect(page.getByTestId('bot-empty')).toBeVisible()
+    for (const id of ['bots-title-pill', 'bot-info-pane', 'avatar-picker']) await expect(page.getByTestId(id)).toHaveCount(0)
+    expect((await large(page.locator('[data-testid="bots-view"]'))).length, 'ONE-PREVIEW empty-thread').toBe(1)
   })
 })

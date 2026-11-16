@@ -42,13 +42,17 @@ test.afterAll(async () => {
   }
 })
 
-test('a manual empty browser offers address entry instead of indefinite loading', async () => {
+test('page work with no website open offers address entry instead of indefinite loading', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
-  // A conversation's composer no longer opens the page panel; an empty browser starts from the welcome composer's Web action.
+  // Neither composer opens the page panel by hand any more; it arrives as a card with a bot's page work, even before any site is open.
   await openWelcome(page)
-  await page.getByTestId('welcome-input-add').click()
-  await page.getByTestId('welcome-web').click()
+  await expect(page.getByTestId('welcome-input-add')).toBeVisible()
+  await expect(page.getByTestId('welcome-web')).toHaveCount(0)
+  // A bot of its own, so the work phase started here does not leak into the tests that follow.
+  const empty = await page.evaluate(async () => (await window.engram.botCreate({ name: 'Empty browser', purpose: '' })).id)
+  await page.getByTestId(`bot-${empty}`).click()
   await expect(page.getByTestId('composer-web')).toHaveCount(0)
+  await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'open_page: page' }), `bot-${empty}`)
   const expandEmpty = page.getByRole('button', { name: 'Expand preview', exact: true })
   if (await expandEmpty.isVisible()) await expandEmpty.click()
   await expect(page.locator('.preview-card-state')).toHaveText('No website open')
@@ -216,40 +220,37 @@ test('finished work keeps its preview expanded with the last screen', async () =
 })
 
 
-test('status notices leave full and split conversation composers unobscured', async () => {
+test('status notices leave the conversation composer unobscured', async () => {
   expect(await page.evaluate(() => CSS.supports('top', 'calc(anchor(--status-banner bottom, 44px) + 8px)'))).toBe(true)
   await page.addStyleTag({ content: '.connect-banner { min-height: 80px }' })
-  for (const layout of [1, 2]) {
+  await expect(page.locator('[data-testid^="mission-layout-"]')).toHaveCount(0)
+  for (const width of [1280, 620]) {
+    await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
     if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
-    await page.getByTestId(`mission-layout-${layout}`).click()
-    for (const width of [1280, 620]) {
-      await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
-      if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
-      console.info('NOTICE_VIEWPORT', { layout, requestedWidth: width, ...await page.evaluate(() => ({ actualWidth: innerWidth, actualHeight: innerHeight })) })
-      // A toast under a still pointer pauses until the pointer moves (AppNotices hover pause); the layout click can leave the
-      // pointer where the previous toast sits, so move it to a neutral corner before waiting for the toast to leave.
-      await page.mouse.move(1, await page.evaluate(() => innerHeight - 2))
-      await expect(page.locator('.toast')).toHaveCount(0)
-      await app.evaluate(({ BrowserWindow }, context) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
-        type: 'task:notice', message: `The current task is paused. Your work has been kept; continue when ready. (${context})`,
-      }), `${layout}/${width}`)
-      await expect(page.locator('.toast')).toBeVisible()
-      const composer = page.locator(layout === 1 ? '.bots-write' : '.mini-chat-write').first()
-      await expect(composer).toBeVisible()
-      await expect.poll(async () => {
-        const notice = (await page.locator('.toast').boundingBox())!
-        const input = (await composer.boundingBox())!
-        return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
-      }).toBe(true)
-      // Since the toast redesign the notice is a transient floating card pinned 16px from the top-right corner (above the
-      // banner row, pointer-transparent), not anchored below the banner; it must stay fully inside the window.
-      for (const banner of await page.locator('.connect-banner').all()) await expect(banner).toBeVisible()
-      const toast = (await page.locator('.toast').boundingBox())!
-      expect(Math.round(toast.y)).toBe(16)
-      expect(toast.x).toBeGreaterThanOrEqual(0)
-      expect(toast.x + toast.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth) + 1)
-      await expect(page.locator('.toast')).toHaveCSS('pointer-events', 'none')
-      await page.screenshot({ path: join(shots, `notice-${layout}-${width}.png`) })
-    }
+    console.info('NOTICE_VIEWPORT', { requestedWidth: width, ...await page.evaluate(() => ({ actualWidth: innerWidth, actualHeight: innerHeight })) })
+    // A toast under a still pointer pauses until the pointer moves (AppNotices hover pause); an earlier click can leave the
+    // pointer where the previous toast sits, so move it to a neutral corner before waiting for the toast to leave.
+    await page.mouse.move(1, await page.evaluate(() => innerHeight - 2))
+    await expect(page.locator('.toast')).toHaveCount(0)
+    await app.evaluate(({ BrowserWindow }, context) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
+      type: 'task:notice', message: `The current task is paused. Your work has been kept; continue when ready. (${context})`,
+    }), String(width))
+    await expect(page.locator('.toast')).toBeVisible()
+    const composer = page.locator('.bots-write')
+    await expect(composer).toBeVisible()
+    await expect.poll(async () => {
+      const notice = (await page.locator('.toast').boundingBox())!
+      const input = (await composer.boundingBox())!
+      return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
+    }).toBe(true)
+    // Since the toast redesign the notice is a transient floating card pinned 16px from the top-right corner (above the
+    // banner row, pointer-transparent), not anchored below the banner; it must stay fully inside the window.
+    for (const banner of await page.locator('.connect-banner').all()) await expect(banner).toBeVisible()
+    const toast = (await page.locator('.toast').boundingBox())!
+    expect(Math.round(toast.y)).toBe(16)
+    expect(toast.x).toBeGreaterThanOrEqual(0)
+    expect(toast.x + toast.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth) + 1)
+    await expect(page.locator('.toast')).toHaveCSS('pointer-events', 'none')
+    await page.screenshot({ path: join(shots, `notice-${width}.png`) })
   }
 })

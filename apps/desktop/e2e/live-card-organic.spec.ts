@@ -84,7 +84,7 @@ test('a live card resizes, swaps and re-flows without a jump, a blank stage or c
     await app.evaluate(({ BrowserWindow }) => { const win = BrowserWindow.getAllWindows()[0]!; win.setMinimumSize(600, 600); win.setContentSize(1280, 800) })
     await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([1280, 800])
     await openActivity(page, 'bots')
-    await page.getByTestId('mission-layout-1').click()
+    await expect(page.getByTestId('mission-layout-1')).toHaveCount(0)
     await page.getByTestId(`bot-${bot.id}`).dispatchEvent('click')
     await expect(page.locator('.bots-thread')).toBeVisible()
     const lane = `bot-${bot.id}`

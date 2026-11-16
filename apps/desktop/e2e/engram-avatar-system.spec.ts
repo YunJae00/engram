@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { initVault } from 'core'
 import { characterIndex, ORBS, defaultCharacter, resolveCharacter } from '../../../packages/core/src/bot-character.js'
-import { closeTestApp } from './navigation.js'
+import { closeTestApp, openCreateBotDialog } from './navigation.js'
 import { seedVisualVault, CHAT_ID } from './visual/seed.js'
 
 const TMP = join(fileURLToPath(new URL('../../../', import.meta.url)), 'tmp')
@@ -66,7 +66,7 @@ test.afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
 
-test('8-orb assignment and picker', async () => {
+test('8-orb assignment, and the picker in the new-bot dialog', async () => {
   const page = await launch()
 
   // Old drawn and photo avatars show one of the 8 orbs, hashed from the real id, with no photo and no restore entry.
@@ -99,34 +99,39 @@ test('8-orb assignment and picker', async () => {
   const target = made[2]!
   expect(await sharp(rowAvatar(page, target.id), 32)).toBe('static')
 
-  // Picking in the 4x2 updates the sidebar and the 36px header immediately, with an ink ring.
+  // There is no chat header face or info pane. The 4x2 picker is in the new-bot dialog: a pick wears an ink ring and is the new bot's stored face.
   await page.getByTestId(`bot-${target.id}`).click()
-  const header = page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"] .bot-avatar')
-  await expect(header).toHaveAttribute('data-character', (target.avatar as { character: string }).character)
-  expect(await sharp(header, 36)).not.toBe('static')
-  await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-  const pane = page.getByTestId('bot-info-pane')
-  await expect(pane).toBeVisible()
-  await expect(pane.getByRole('tab')).toHaveCount(0)
-  await page.getByTestId('bot-info-avatar').click()
-  const picker = pane.getByTestId('avatar-picker')
+  await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', (target.avatar as { character: string }).character)
+  expect(await sharp(page.locator('[data-testid="bot-empty"] .bot-avatar'), 80)).not.toBe('static')
+  for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-info-avatar']) await expect(page.getByTestId(id)).toHaveCount(0)
+  await expect(page.getByTestId('bots-view').getByRole('tab')).toHaveCount(0)
+  await openCreateBotDialog(page)
+  const dialog = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
+  await dialog.getByTestId('create-bot-avatar-change').click()
+  const picker = dialog.getByTestId('avatar-picker')
   await expect(picker.getByRole('radio')).toHaveCount(8)
   for (const id of ORBS) await expect(picker.getByRole('radio', { name: id, exact: true })).toHaveCount(1)
   const choice = ORBS.find(id => id !== (target.avatar as { character: string }).character)!
   await picker.getByRole('radio', { name: choice, exact: true }).click()
-  await expect(rowAvatar(page, target.id)).toHaveAttribute('data-character', choice)
-  await expect(header).toHaveAttribute('data-character', choice)
-  await expect.poll(async () => (await list(page)).find(b => b.id === target.id)?.avatar).toEqual({ character: choice })
   const ring = await picker.locator('[aria-checked="true"]').evaluate(node => { const s = getComputedStyle(node); return [s.outlineWidth, s.outlineStyle, s.outlineColor] })
   expect(ring).toEqual(['2px', 'solid', 'rgb(28, 28, 30)'])
+  await dialog.getByTestId('create-bot-name').fill('Picked')
+  await dialog.getByTestId('create-bot-submit').click()
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(async () => (await list(page)).find(b => b.name === 'Picked')?.avatar).toEqual({ character: choice })
+  const picked = (await list(page)).find(b => b.name === 'Picked')!
+  await expect(rowAvatar(page, picked.id)).toHaveAttribute('data-character', choice)
+  await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', choice)
+  // An existing bot's face changes through the app and its row follows immediately.
+  await page.evaluate(([id, character]) => window.engram.botUpdate(id!, { avatar: { character: character as never } }), [target.id, choice])
+  await expect(rowAvatar(page, target.id)).toHaveAttribute('data-character', choice)
+  await expect.poll(async () => (await list(page)).find(b => b.id === target.id)?.avatar).toEqual({ character: choice })
 
-  // An old photo bot has no photo, no upload and no restore entry in its settings.
-  await page.keyboard.press('Escape')
+  // An old photo bot has no photo, no upload and no restore entry anywhere in its chat.
   await page.getByTestId(`bot-${PHOTO_ID}`).click()
-  await page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]').click()
-  await expect(pane).toBeVisible()
-  await expect(pane.locator('input[type="file"]')).toHaveCount(0)
-  await expect(pane.getByText(/restore|photo|upload/i)).toHaveCount(0)
-  await expect(pane.locator('img[src*="bot-avatars"], img[src^="blob:"]')).toHaveCount(0)
-  await expect(pane.locator('[data-testid="bot-info-avatar"] .bot-avatar')).toHaveAttribute('data-character', defaultCharacter(PHOTO_ID))
+  const view = page.getByTestId('bots-view')
+  await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
+  await expect(view.getByText(/restore|photo|upload/i)).toHaveCount(0)
+  await expect(view.locator('img[src*="bot-avatars"], img[src^="blob:"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', defaultCharacter(PHOTO_ID))
 })

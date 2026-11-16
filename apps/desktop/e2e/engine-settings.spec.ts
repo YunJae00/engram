@@ -220,25 +220,18 @@ test('welcome and conversation footer controls align inside narrow composers wit
       const composer = page.locator('.chat-write').filter({ has: input })
       await expect(composer.getByTestId('model-picker')).toHaveCount(0)
       if (surface === 'conversation') {
-        // Memory left the composer for the bot's info pane; the + is the file picker itself.
+        // Memory is not a control anywhere in the chat; the + is the file picker itself.
         await expect(composer.getByTestId('bots-memory-toggle')).toHaveCount(0)
         const add = composer.getByRole('button', { name: 'Attach files', exact: true })
         await expect(add).toHaveAttribute('title', /\S/)
         await expect(add).not.toHaveAttribute('popovertarget')
         if (width === 1280) {
-          await page.getByTestId('bots-title-pill').click()
-          const memory = page.getByTestId('bot-info-pane').getByTestId('bots-memory')
-          await expect(memory).toBeVisible()
-          // What the toggle used to open is here: the remembered line, and forgetting it empties the list.
-          await expect(memory.locator('.bots-memory-title')).toHaveText('What Composer alignment remembers about you')
-          const fact = memory.locator('.bots-memory-fact', { hasText: 'Likes the composer footer aligned' })
-          await expect(fact).toBeVisible()
-          await fact.getByRole('button', { name: /\S/ }).click()
-          await expect(memory.locator('.bots-memory-fact')).toHaveCount(0)
-          await expect(memory.locator('.bots-memory-empty')).toBeVisible()
+          // No title pill, info pane or memory list: the remembered line is the bot's own data, and forgetting it empties the list.
+          for (const id of ['bots-title-pill', 'bot-info-pane', 'bots-memory']) await expect(page.getByTestId(id)).toHaveCount(0)
+          const facts = await page.evaluate(id => window.engram.botMemory(id), botId)
+          expect(facts.map(fact => fact.text)).toEqual(['Likes the composer footer aligned'])
+          await page.evaluate(([bot, fact]) => window.engram.botMemoryForget(bot!, fact!), [botId, facts[0]!.id])
           await expect.poll(() => page.evaluate(id => window.engram.botMemory(id), botId)).toEqual([])
-          await page.getByTestId('bots-title-pill').click()
-          await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
         }
       }
       const geometry = await composer.evaluate(node => {

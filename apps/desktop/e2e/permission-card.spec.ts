@@ -88,7 +88,7 @@ test('a missing permission shows one card with a settings button', async () => {
     await page.getByTestId('permission-card-open').click()
     await expect.poll(() => app.evaluate(() => (globalThis as Window).__opened)).toEqual([PANE])
 
-    await openActivity(page, 'notes').catch(() => openActivity(page, 'mission'))
+    await openActivity(page, 'list')
     await openActivity(page, 'bots')
     await expect(page.getByTestId('permission-card')).toHaveCount(1)
     const png = await app.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0]!.webContents.capturePage(undefined, { stayHidden: true })).toPNG().toString('base64'))

@@ -1,7 +1,7 @@
-// Bot info pane: seeds one bot ('Info Bot') through the running app, then runs checks P1-P6 in order: open the chat,
-// the title pill opens a 320px pane on the right beside the thread, the pane has no tab roles, one panel shows the
-// avatar, name, instructions and notification level, Escape closes and focus returns to the composer, and the pill
-// toggles the pane.
+// Bot info pane: the title pill and the pane it opened were removed. Seeds one bot ('Info Bot') through the running app,
+// then runs checks P1-P6 in order: open the chat, no title pill and no pane, no tab roles in the chat, the bot's name and
+// avatar show in the empty thread, the same in its sidebar row, and what the pane used to edit (instructions,
+// notification level) is changed through botUpdate and reads back through botsList and the row.
 const WAIT_MS = 5_000
 const ROW_WAIT_MS = 10_000
 const BOT = 'Info Bot'
@@ -33,11 +33,11 @@ export async function run(page) {
   const failures = []
   const evidence = { seeded: { id }, checks, failures }
   const ROW = page.locator(`[data-testid="bot-${id}"]`).first()
-  const PILL = page.locator('[data-testid="bots-view"] [data-testid="bots-title-pill"]')
+  const VIEW = page.locator('[data-testid="bots-view"]')
+  const PILL = page.locator('[data-testid="bots-title-pill"]')
   const INPUT = page.locator('[data-testid="bots-input"]')
   const PANE = page.locator(PANE_SEL)
-  const paneVisible = async () => await PANE.isVisible() ? '' : 'bot-info-pane not visible'
-  const paneClosed = async () => (await PANE.count()) === 0 || !await PANE.isVisible() ? '' : 'bot-info-pane still visible'
+  const EMPTY = page.locator('[data-testid="bots-thread"] [data-testid="bot-empty"]')
 
   let opened = false
   const check = async (checkId, body) => {
@@ -51,70 +51,49 @@ export async function run(page) {
     const row = await until(async () => await ROW.isVisible() ? '' : `${BOT} row not visible`, ROW_WAIT_MS)
     if (row) return row
     await ROW.click({ timeout: WAIT_MS })
-    return until(async () => {
-      if (!await PILL.isVisible()) return 'title pill not visible'
-      if (!(await PILL.innerText({ timeout: WAIT_MS })).includes(BOT)) return `title pill text lacks ${BOT}`
-      return await INPUT.isVisible() ? '' : 'bots-input not visible'
-    })
+    return until(async () => await INPUT.isVisible() ? '' : 'bots-input not visible')
   })
 
   // P2
-  await check('pill-opens', async () => {
-    await PILL.click({ timeout: WAIT_MS })
-    const shown = await until(paneVisible)
-    if (shown) return shown
-    return until(async () => {
-      const boxes = await page.evaluate((sel) => {
-        const doc = globalThis.document
-        const panes = doc.querySelectorAll(sel)
-        const rect = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } }
-        return { panes: panes.length, pane: rect(panes[0]), view: rect(doc.querySelector('[data-testid="bots-view"]')), thread: rect(doc.querySelector('[data-testid="bots-thread"]')) }
-      }, PANE_SEL)
-      const { pane: a, view, thread: b } = boxes
-      if (boxes.panes !== 1) return `${boxes.panes} bot-info-pane elements`
-      if (!a || !view || !b) return 'missing box for pane, bots-view or bots-thread'
-      if (Math.abs(a.w - 320) > 2) return `pane width ${a.w}, expected 320±2`
-      if (Math.abs((a.x + a.w) - (view.x + view.w)) > 2) return `pane right ${a.x + a.w} is not at bots-view right ${view.x + view.w}`
-      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) return 'pane overlaps bots-thread'
-      return ''
-    })
+  await check('no-pill-no-pane', async () => {
+    if (await PILL.count()) return `${await PILL.count()} bots-title-pill elements, expected 0`
+    if (await PANE.count()) return `${await PANE.count()} bot-info-pane elements, expected 0`
+    if (await page.locator('.bot-info-panel, [data-testid="bot-info-avatar"], [data-testid="bots-memory"], [data-testid="bot-routines"]').count()) return 'pane contents are still rendered'
+    // Escape used to close the pane; with none, the chat stays as it is.
+    await INPUT.focus({ timeout: WAIT_MS })
+    await page.keyboard.press('Escape')
+    return await INPUT.isVisible() ? '' : 'bots-input not visible after Escape'
   })
 
   // P3
   await check('no-tabs', async () => {
-    const count = await PANE.locator('[role="tablist"], [role="tab"], [role="tabpanel"]').count()
-    return count ? `${count} tab-role elements in the pane, expected 0` : ''
+    const count = await VIEW.locator('[role="tablist"], [role="tab"], [role="tabpanel"]').count()
+    return count ? `${count} tab-role elements in the chat, expected 0` : ''
   })
 
   // P4
-  await check('one-panel', async () => {
-    const panel = PANE.locator('.bot-info-panel')
-    if ((await panel.count()) !== 1) return `${await panel.count()} .bot-info-panel elements, expected 1`
-    if (!await panel.locator('[data-testid="bot-info-avatar"]').isVisible()) return 'avatar not visible'
-    if (!(await panel.locator('h2').innerText({ timeout: WAIT_MS })).includes(BOT)) return `name heading lacks ${BOT}`
-    const box = panel.locator('textarea')
-    if (!await box.isVisible()) return 'instructions box not visible'
-    if (await box.inputValue({ timeout: WAIT_MS }) !== 'Seeded info pane bot') return 'instructions box lacks the seeded purpose'
-    return await panel.locator('[role="radiogroup"]').isVisible() ? '' : 'notification level not visible'
-  })
+  await check('empty-thread', async () => until(async () => {
+    if (!await EMPTY.isVisible()) return 'bot-empty not visible'
+    if (!(await EMPTY.locator('h2').innerText({ timeout: WAIT_MS })).includes(BOT)) return `empty thread name lacks ${BOT}`
+    if (!await EMPTY.locator('.bot-avatar').first().isVisible()) return 'empty thread avatar not visible'
+    return await EMPTY.locator('button').count() ? 'the empty thread holds buttons (example chips), expected none' : ''
+  }))
 
   // P5
-  await check('esc-closes', async () => {
-    await PANE.locator('textarea').focus({ timeout: WAIT_MS })
-    await page.keyboard.press('Escape')
-    const closed = await until(paneClosed)
-    if (closed) return `after Escape: ${closed}`
-    return until(async () => await page.evaluate(() => globalThis.document.activeElement?.getAttribute('data-testid')) === 'bots-input' ? '' : 'focus is not on bots-input after Escape')
+  await check('sidebar-row', async () => {
+    if (!(await ROW.innerText({ timeout: WAIT_MS })).includes(BOT)) return `row text lacks ${BOT}`
+    return await ROW.locator('.bot-avatar').first().isVisible() ? '' : 'row avatar not visible'
   })
 
   // P6
-  await check('pill-toggles', async () => {
-    await PILL.click({ timeout: WAIT_MS })
-    const shown = await until(paneVisible)
-    if (shown) return `after first click: ${shown}`
-    await PILL.click({ timeout: WAIT_MS })
-    const closed = await until(paneClosed)
-    return closed ? `after second click: ${closed}` : ''
+  await check('edited-through-app', async () => {
+    await page.evaluate((bot) => globalThis.engram.botUpdate(bot, { purpose: 'Changed in chat', notify: 'off' }), id)
+    return until(async () => {
+      const bot = (await page.evaluate(() => globalThis.engram.botsList())).find((one) => one.id === id)
+      if (bot?.purpose !== 'Changed in chat') return `botsList purpose is ${JSON.stringify(bot?.purpose)}`
+      if (bot?.notify !== 'off') return `botsList notify is ${JSON.stringify(bot?.notify)}`
+      return await ROW.locator('.sidebar-bell-off').isVisible() ? '' : 'the row does not show notifications off'
+    })
   })
 
   return { ok: failures.length === 0, evidence }

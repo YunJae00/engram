@@ -56,61 +56,75 @@ async function openFull(): Promise<Locator> {
   await page.getByTestId(`bot-${botId}`).click()
   return page.getByTestId('bots-thread')
 }
-async function openTile(): Promise<Locator> {
+// The split-view tile is gone: the same conversation in a window as narrow as a tile was.
+async function openNarrow(): Promise<Locator> {
   await expect.poll(() => page.evaluate(() => window.engram.vaultReady()), { timeout: 60_000 }).toBe(true)
-  await page.evaluate(id => localStorage.setItem('engram.mission.slots', JSON.stringify([id, null, null, null])), botId)
-  await page.reload()
+  const scope = await openFull()
   await page.setViewportSize({ width: 950, height: 900 })
-  await page.getByTestId('mission-layout-2').click()
-  return page.getByTestId(`mini-chat-${botId}`)
+  await expect(page.getByTestId('mission-layout-2')).toHaveCount(0)
+  await expect(page.locator('.mini-chat')).toHaveCount(0)
+  return scope
 }
 
-async function clarifyThenAnswer(scope: Locator, kind: 'replies' | 'asked', input?: Locator) {
-  await expect(scope.getByTestId('reply-chip-0')).toHaveText(FIRST)
-  await scope.getByTestId('reply-chip-0').click()
+// Suggested replies are never buttons: the person types the words instead.
+async function say(scope: Locator, text: string) {
+  await expect(scope.getByTestId('reply-chips')).toHaveCount(0)
+  await expect(scope.getByTestId('reply-chip-0')).toHaveCount(0)
+  const input = page.getByTestId('bots-input')
+  await input.fill(text); await input.press('Enter')
+}
+
+async function clarifyThenAnswer(scope: Locator, kind: 'replies' | 'asked') {
+  const input = page.getByTestId('bots-input')
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('금요일 마감이에요.')
+  await say(scope, FIRST)
   await expect.poll(requests).toEqual([FIRST])
   await done(kind === 'replies' ? `${QUESTION}\n\n\`\`\`replies\n${SAME}\n다른 날로\n\`\`\`` : QUESTION)
   if (kind === 'asked') await offer([SAME, '다른 날로'])
   await resolveAll()
-  const chip = scope.getByTestId(kind === 'replies' ? 'reply-chip-0' : 'bots-choice-0')
-  await expect(chip).toContainText(SAME)
-  if (input) await input.fill('composer draft')
-  await chip.click()
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('다른 날로 할지')
+  if (kind === 'replies') await say(scope, SAME)
+  else {
+    const choice = scope.getByTestId('bots-choice-0')
+    await expect(choice).toContainText(SAME)
+    await input.fill('composer draft')
+    await choice.click()
+    await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
+    await expect(input).toHaveValue('composer draft')
+    if (await choice.count()) await choice.dispatchEvent('click')
+  }
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await expect.poll(requests).toEqual([FIRST, SAME])
-  if (kind === 'asked') await expect(scope.getByTestId('bots-choices')).toHaveCount(0)
-  if (input) await expect(input).toHaveValue('composer draft')
-  if (await chip.count()) await chip.dispatchEvent('click')
   await page.waitForTimeout(400)
   expect(await requests()).toEqual([FIRST, SAME])
   await expect(bubbles(scope, SAME)).toHaveCount(1)
   await done(`금요일로 맞췄어요.\n\n\`\`\`replies\n${NEXT}\n\`\`\``)
   await resolveAll()
-  await expect(scope.getByTestId('reply-chip-0')).toHaveText(NEXT)
-  await scope.getByTestId('reply-chip-0').click()
+  await expect(scope.locator('.bubble-msg.assistant').last()).toContainText('금요일로 맞췄어요.')
+  await say(scope, NEXT)
   await expect.poll(requests).toEqual([FIRST, SAME, NEXT])
   await expect(bubbles(scope, NEXT)).toHaveCount(1)
 }
 
-test('full view: a reply chip on a clarifying answer after a chip sends once', async () => {
-  await clarifyThenAnswer(await openFull(), 'replies', page.getByTestId('bots-input'))
+test('full view: a typed reply to a clarifying answer sends once; no reply chip exists', async () => {
+  await clarifyThenAnswer(await openFull(), 'replies')
 })
 
-test('full view: an asked choice after a chip sends once and leaves the composer alone', async () => {
-  await clarifyThenAnswer(await openFull(), 'asked', page.getByTestId('bots-input'))
+test('full view: an asked choice after a typed message sends once and leaves the composer alone', async () => {
+  await clarifyThenAnswer(await openFull(), 'asked')
 })
 
-test('tile: a reply chip on a clarifying answer after a chip sends once', async () => {
-  await clarifyThenAnswer(await openTile(), 'replies', page.getByTestId(`mini-input-${botId}`))
+test('narrow window: a typed reply to a clarifying answer sends once; no tile or reply chip exists', async () => {
+  await clarifyThenAnswer(await openNarrow(), 'replies')
 })
 
-test('tile: an asked choice after a chip sends once', async () => {
-  await clarifyThenAnswer(await openTile(), 'asked')
+test('narrow window: an asked choice after a typed message sends once and leaves the composer alone', async () => {
+  await clarifyThenAnswer(await openNarrow(), 'asked')
 })
 
 test('a choice behind an unresolved send, a repeated label, invalid options and a failed send are never silent', async () => {
   const scope = await openFull()
-  await scope.getByTestId('reply-chip-0').click()
+  await say(scope, FIRST)
   await expect.poll(requests).toEqual([FIRST])
   await done(QUESTION)
   await offer([SAME, '다른 날로'])

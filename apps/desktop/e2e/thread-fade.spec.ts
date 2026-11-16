@@ -59,18 +59,20 @@ test('an in-view message with empty space above it is fully opaque', async () =>
   for (let channel = 0; channel < 3; channel++) expect(Math.abs(first![channel]! - last![channel]!), `top bubble ${first} vs last bubble ${last}`).toBeLessThanOrEqual(3)
 })
 
-test('qa143 S24: scrolled messages are cut off below the title pill, never behind it', async () => {
+test('qa143 S24: with no title pill, scrolled messages are cut off at the thread top and nothing sits over them', async () => {
   const thread = page.locator('[data-testid="bots-view"] .bots-thread')
   const edges = await thread.evaluate(node => {
     node.scrollTop = 120
-    const pill = document.querySelector('[data-testid="bots-view"] [data-testid="bots-title-pill"]')!.getBoundingClientRect()
-    return { scrolled: node.scrollTop, threadTop: node.getBoundingClientRect().top, pillBottom: pill.bottom }
+    const box = node.getBoundingClientRect()
+    const at = document.elementFromPoint(box.left + box.width / 2, box.top + 4)
+    return { scrolled: node.scrollTop, threadTop: box.top, pills: document.querySelectorAll('[data-testid="bots-title-pill"]').length, own: !!at && node.contains(at) }
   })
   expect(edges.scrolled).toBeGreaterThan(0)
-  expect(edges.threadTop).toBeGreaterThanOrEqual(edges.pillBottom)
+  expect(edges.pills).toBe(0)
+  expect(edges.own).toBe(true)
   await thread.evaluate(node => { node.scrollTop = 0 })
   const first = await thread.locator('.bubble-msg').first().boundingBox()
-  expect(first!.y).toBeGreaterThanOrEqual(edges.pillBottom)
+  expect(first!.y).toBeGreaterThanOrEqual(edges.threadTop)
 })
 
 test('qa143 S04/S14: one answer is one bubble, and a file made in a turn is carded once', async () => {
