@@ -66,8 +66,6 @@ function Shell() {
     return () => { window.removeEventListener('engram:open-developers', open); window.removeEventListener('engram:open-developer-settings', settings) }
   }, [setActivity])
   const [diagOpen, setDiagOpen] = useState(false)
-  // "Back up to GitHub" — reachable from the workspace switcher, settings, and
-  // the command palette; they all raise this one window intent.
   // The weekly digest reads on demand from the command palette — it is not
   // part of the morning, so it is not mounted with Today.
   const [digestOpen, setDigestOpen] = useState(false)
