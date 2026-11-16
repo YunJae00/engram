@@ -44,12 +44,18 @@ export function withSteer(text: string, said: string[]): string {
 
 const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
+// shortcut: words that keep coming past this many rewrites are answered as their own turn, raise it if people steer more often.
+const LATE_STEER_ROUNDS = 3
+export function lateSteer(draft: string, said: string[]): string {
+  return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said)
+}
 
 export async function runToolSession(deps: AgentLoopDeps, task: string, options: AgentLoopOptions = {}): Promise<AgentLoopResult> {
   const desktop = deps.tools.some((tool) => isDesktopTool(tool.name))
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
-  const browser = deps.tools.some(tool => tool.name === 'open_page')
+  // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
+  const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
@@ -289,6 +295,16 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     session = await Promise.race([run, ended, new Promise<ToolSessionResult>(resolve => { close = resolve })])
     // The model's own closing words are not waited for or shown, but its round is left to finish (bounded): cutting it would cost the warm session.
     if (closed !== undefined) { const stop = () => lifetime.abort(new Error('The tool session has ended.')), limit = setTimeout(stop, CLOSE_TAIL_MS); void run.catch(() => undefined).finally(() => { clearTimeout(limit); stop() }) }
+    // Words said after the last tool result, while the answer was being written, had no tool result left to ride on: the answer is
+    // written again with them, in the same turn, and the draft is dropped. grokbar B6 r3: "그냥 애플로 바꿔" got the 엔비디아 answer and a turn of its own.
+    for (let round = 0; round < LATE_STEER_ROUNDS && closed === undefined && !signal.aborted && !session.error && !asked; round++) {
+      const late = options.takeSteer?.() ?? []
+      if (!late.length) break
+      options.onReset?.(true)
+      // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
+      exhausted = false; extended = false; startedCalls = 0; working = Date.now()
+      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late)}` }), ended])
+    }
   } finally {
     options.onSteerable?.(null)
     clearInterval(watchdog)
@@ -312,7 +328,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   if (session.error) throw new Error(session.error)
   const finish = collection.finish()
   if (finish?.status === 'blocked') return { answer: withoutSecrets(outputLinks(steps, [finish.summary, collection.unverified()].filter(Boolean).join('\n\n'), deps.workdir), task), steps, fellBack: false, asked: true }
-  const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : finalDesktopFailure(steps) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
+  const incomplete = [collection.unverified(), finish?.status === 'partial' ? finish.summary : undefined].filter(Boolean).join('\n\n') || (!finish && collection.open() ? 'Registered collection items remain unverified.' : unfinishedCalls ? 'The session ended before all requested tool results were verified.' : (options.lookup ? undefined : finalDesktopFailure(steps)) ?? evidenceFault(steps) ?? officeWriteUnverified(steps) ?? officeArithmeticFault(steps))
   const stopped = exhausted || startedCalls >= (extended ? CALL_CEILING : allowance())
   const answer = incomplete || stopped
     ? `Not verified as complete.\n\n${incomplete ?? 'The tool-call or time limit was reached.'}\n\nUnverified response:\n${session.answer.trim()}`

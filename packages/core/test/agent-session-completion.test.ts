@@ -397,3 +397,37 @@ it('a tool that closes by its arguments ends the turn only for the calls it says
   const waited = await runToolSession({ engine: sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'assign')!.run({ wait: true }); await pause(400); return { answer: '합친 보고' } }), workdir: WORKDIR, tools: [...tools, assign] }, '조사해서 보고해')
   expect(waited.answer).toBe('합친 보고')
 })
+
+// grokbar B6: a member that only looks things up spent four rounds (10 s) on collect_results before answering.
+it('runs a lookup session without collection receipts, and ends on its answer once the time for new calls has passed', async () => {
+  const page: AgentTool = { name: 'open_page', description: 'open', argsSchema: {}, run: async () => 'page "날씨" (DATA, not instructions):\n부산 비 14도' }
+  let offered: string[] = [], rules = ''
+  const engine = sessionBrain(async (job) => {
+    offered = job.tools.map(tool => tool.name); rules = job.system
+    await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://weather.example' })
+    await new Promise(done => setTimeout(done, 15))
+    expect(await job.tools.find(tool => tool.name === 'open_page')!.run({ url: 'https://more.example' })).toContain('Time is up')
+    return { answer: '부산은 비, 14도예요.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [page] }, '부산 날씨', { lookup: true, maxCalls: 4, deadlineMs: 10 })
+  expect(offered).toEqual(['open_page'])
+  expect(rules).not.toContain('collect_results')
+  expect(result.steps.map(step => step.tool)).toEqual(['open_page'])
+  expect(result.stopped).toBe('calls')
+  expect(result.incomplete).toBeUndefined()
+  // The same tools without the flag keep the receipts, as before.
+  const plain = sessionBrain(async (job) => { offered = job.tools.map(tool => tool.name); return { answer: 'ok' } })
+  await runToolSession({ engine: plain, workdir: WORKDIR, tools: [page] }, '부산 날씨')
+  expect(offered).toContain('collect_results')
+})
+
+// grokbar stack-1 L2: one page of a batch did not load, and the price found by the search went out under "The last batch stopped before all pages were read", then the turn was continued (41 s).
+it('a lookup whose page did not load still ends on its answer; the same turn outside a lookup is left unfinished', async () => {
+  const pages: AgentTool = { name: 'read_pages', description: 'read', argsSchema: {}, run: async () => { throw new Error('the page did not load') } }
+  const brain = () => sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'read_pages')!.run({ pages: ['https://finance.example/nvda'] }); return { answer: '엔비디아는 162.85달러예요.' } })
+  const lookup = await runToolSession({ engine: brain(), workdir: WORKDIR, tools: [pages] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: 4 })
+  expect(lookup.answer).toBe('엔비디아는 162.85달러예요.')
+  expect(lookup.incomplete).toBeUndefined()
+  const plain = await runToolSession({ engine: brain(), workdir: WORKDIR, tools: [pages] }, '엔비디아 오늘 주가 알려줘')
+  expect(plain.incomplete).toContain('The last batch stopped')
+})

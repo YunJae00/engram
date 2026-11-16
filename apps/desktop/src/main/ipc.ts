@@ -6,7 +6,7 @@ import { registerBrowserTabs } from './browser-tabs.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_TOOLS, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE } from './fast-lane.js'
+import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import type { EngineStatusDto } from '../shared/types.js'
@@ -142,7 +142,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -181,7 +181,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { beginFirstLine, endFirstLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, smallTalkAnswer, withFirstLine } from './first-line.js'
+import { beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, plainReply, smallTalkAnswer, withFirstLine } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2295,7 +2295,7 @@ export function registerIpc(ctx: VaultContext): void {
     turnGoals.set(entry.channel, request.message)
     offeredIn.delete(entry.channel)
     // The small model says the first line while the turn prepares; it races the answer and never holds it.
-    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
+    beginFirstLine({ channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || turn?.context ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { whole: quickQuestion(request.message) }), fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2680,7 +2680,7 @@ export function registerIpc(ctx: VaultContext): void {
       // The person is back: whatever wall was left open for them is theirs
       // to have cleared, and the window is the turn's again.
       releaseWallHold(channel)
-      // grokbar Q1: a greeting or thanks is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
+      // grokbar Q1, Q2: a greeting, thanks or a short general-knowledge question is answered whole by the quick voice, asked when the turn began; the main model is not asked, so there is one greeting.
       const greeted = turn?.context || request.attachments?.length ? undefined : await smallTalkAnswer(channel)
       if (signal.aborted) return
       if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }
@@ -2770,16 +2770,21 @@ export function registerIpc(ctx: VaultContext): void {
         const plainAsk = engine.id === 'claude' && !recovery && !savedRoutine && !request.scheduled && !turn?.quiet && !turn?.verification && (!turn?.context || turn.learned === true) && !attachments.paths.length && !request.attachments?.length && !studying.has(channel) && permission !== 'plan'
         // A lookup or a bots-research ask: smart tier, a menu small enough to be preloaded, no shell (fast-lane.ts).
         const lane = !company && fastLane(request.message, plainAsk) && everyTool.some(tool => tool.name === 'search_web')
-        const laneNote = company ? '' : lane ? LANE_NOTE : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
+        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : shortQuestion(request.message) ? SHORT_QUESTION_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
+        // A lookup turn shows its answer and its reply to words said mid-turn, never the notes it writes between calls.
+        let replying = false
+        const read = new Set<string>()
+        const quiet = lane ? quietRounds(text => broadcast({ type: 'chat:token', channel, text })) : undefined
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: [{ tool: 'assign', args: handoff!, observation: handed }], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)) : everyTool,
+            // A page that wants a sign-in is left unread on a lookup, as for a member (grokbar T2: one such page ended the turn on a question).
+            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : everyTool,
           },
           request.message,
           {
@@ -2791,8 +2796,8 @@ export function registerIpc(ctx: VaultContext): void {
             // Index only; bodies and current staleness are checked on open_skill.
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             ...(company ? { modelHint: 'smart' as const } : {}),
-            ...(lane ? { modelHint: 'smart' as const } : {}),
-            ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
+            ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),
+            ...(turn?.verification ? {} : { takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); replying ||= said.length > 0; return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
@@ -2815,8 +2820,8 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) broadcast({ type: 'chat:token', channel, text }) },
-            onReset: (drop, tool) => broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }),
+            onToken: (text) => { firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, replying); else broadcast({ type: 'chat:token', channel, text }) } },
+            onReset: (drop, tool) => { quiet?.reset(); replying = false; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
             onObservation: (tool: string, observation: string) => {
               observedProgress.push({ tool, args: {}, observation })
               if (observedProgress.length > 8) observedProgress.shift()
@@ -2832,6 +2837,11 @@ export function registerIpc(ctx: VaultContext): void {
         )
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
+        if (lane && !result.asked) {
+          // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
+          if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
+          result.answer = citeOwn(await team.cited(channel, result.answer), [...read], threadKorean(request.message, request.history ?? []))
+        }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)
