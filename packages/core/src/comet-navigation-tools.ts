@@ -154,10 +154,17 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
               : 'ASK: Where should I search? Paste the address of a results page from the search you use — I will remember the shape and use it from now on.'
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
-          const page = await courier.fetchPage(url, context.signal)
+          let page: Awaited<ReturnType<typeof courier.fetchPage>>
+          // perf146: a search that failed in 20 ms read like a search that found nothing. The two are told apart for the model.
+          try { page = await courier.fetchPage(url, context.signal) } catch (err) {
+            if (context.signal?.aborted) throw err
+            return `the search for "${query}" did not run: the results page could not be loaded (${err instanceof Error ? err.message.slice(0, 200) : String(err)}). Nothing was searched, so this says nothing about what exists — search again once, or open a site that would hold it with open_page`
+          }
           if (page.wall) return signInAsk(context.task, true)
           const links = rankLinks(await resolveResultLinks(page.links ?? [], page.url || url, courier.followRedirect?.bind(courier), context.signal), query, RESULTS_CAP, url)
           const found = [page.text, ...links.map((one) => `${one.text} ${one.url}`)].join(' ')
+          if (links.length === 0 && !page.text.trim())
+            return `the search for "${query}" returned an empty page: no results and no text${page.status ? ` (the search site answered ${page.status})` : ''}. The results did not load, which is not the same as nothing existing — search again once in other words, or open a site that would hold it with open_page`
           if (!answersTheQuestion(found, query))
             return `nothing that came back has anything to do with "${query}" — search again in other words, or open a site that would hold it; ask the person only if the request does not say what to work on`
           if (links.length === 0 && page.text.trim().length < PAGE_TEXT_MIN)
