@@ -378,6 +378,22 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(await say('아 지라도 추가해')).toBeUndefined()
   })
 
+  // stack-4 (c4b-381043c9 C3): the after-launch resume ran while a split's teammates were 0.35 s into their work and closed all three.
+  it('the after-launch resume leaves teammates that are at work in this run alone', async () => {
+    let go!: () => void
+    const gate = new Promise<void>(resolve => { go = resolve })
+    const w = await staffed(turn => new Promise((resolve, reject) => { turn.signal.addEventListener('abort', () => reject(new Error('aborted'))); void gate.then(() => resolve('새 기능이 나왔어요 https://example.com/a')) }))
+    await w.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
+    await vi.waitFor(async () => expect((await w.members()).map(m => m.state)).toEqual(['working', 'working']))
+    await updateTask(w.paths, w.id, t => { t.state = 'waiting' })
+    await w.team.resume()
+    expect((await w.members()).map(m => m.state)).toEqual(['working', 'working'])
+    expect(w.reported).toEqual([])
+    go()
+    await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`]))
+    expect((await w.members()).map(m => [m.state, m.result?.includes('새 기능')])).toEqual([['done', true], ['done', true]])
+  })
+
   it('a stop aborts background agents and no report follows', async () => {
     const w = await staffed(turn => new Promise((_resolve, reject) => turn.signal.addEventListener('abort', () => reject(new Error('aborted')))))
     await w.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })

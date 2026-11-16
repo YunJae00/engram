@@ -114,9 +114,14 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
   // c4 L3: the addresses the answer shows are checked before the citations are finished; c4 L1: the browser starts with the turn.
   // c4 r2: the check wraps the citing (a member's link was added after it and never asked), and no 4xx is let through.
-  expect(ipc).toContain('result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), (url, limit) => net.fetch(url, { signal: limit, credentials: \'omit\' })')
-  expect(ipc).toContain('return linkAnswers(response.status) }), korean)')
-  expect(ipc).not.toMatch(/401, 403, 429|await liveLinks\(/)
+  expect(ipc).toContain('result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)')
+  // The check sends the address alone: no cookies, no body.
+  expect(ipc).toContain('const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: \'omit\' })')
+  // stack-4: a host-made team answer links rows of a results page a teammate kept but never opened; those are asked too, and only a teammate's loaded page counts as loaded.
+  expect(ipc).toContain('if (members) result.answer = await liveLinks(result.answer, loaded, alive, threadKorean(request.message, request.history ?? []), LINK_CHECK_MS, members.filter(member => member.sources?.length).length === 1 ? loaded : [])')
+  expect(ipc).toContain('return linkAnswers(response.status) })')
+  // The lookup's own check is still the one that wraps the citing; liveLinks alone is only the team answer's (no citing step there).
+  expect(ipc).not.toMatch(/401, 403, 429|await liveLinks\(result\.answer, \[\.\.\.read\]/)
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
   expect(ipc.indexOf('team.cited(channel, answer)')).toBeGreaterThan(0)
   expect(ipc.indexOf('team.cited(channel, answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))

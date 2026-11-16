@@ -1024,6 +1024,31 @@ test('c4b r3: three events on one day are three items: the writer keeping one of
   for (const event of ['행사 A', '행사 B', '행사 C']) expect(shown).toContain(event)
 })
 
+// stack-4, from the c4b targeted run (runs/c4b-381043c9/C5.txt, C6.txt).
+test('stack-4: a written answer with raw addresses or a line that is only the name is not shown, and no dash is left where an address was', async () => {
+  const kim = part('m1', '지민', '다음 달 서울 IT 행사 일정 정리', { result: '- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금), 서울 코엑스 Hall A — https://www.coex.co.kr/a\n- ACC 2026: 12월 개최 — https://itsight.zdnet.co.kr/acc2026/main.html', sources: ['https://search.naver.com/search.naver?query=x'] })
+  const raw = '지민이 다음 달 서울 IT 행사 일정을 찾아봤어요.\n\n**지민**\n- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금) — https://www.coex.co.kr/a\n- ACC 2026: 12월 개최 — https://itsight.zdnet.co.kr/acc2026/main.html'
+  expect(checkedReport(raw, [kim])).toBeUndefined()
+  expect(checkedReport(raw.replace('**지민**\n', ''), [kim])).toBeUndefined()
+  expect(checkedReport('지민이 정리해 왔어요.\n\n- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금) [코엑스](https://www.coex.co.kr/a)\n- ACC 2026: 12월 개최 [ACC](https://itsight.zdnet.co.kr/acc2026/main.html)', [kim])).toContain('[코엑스](https://www.coex.co.kr/a)')
+  const shown = await writtenReport({ ask: '다음 달 서울 IT 행사 일정 정리', members: [kim], write: async () => raw })
+  expect(shown).toContain('서울 코엑스 Hall A')
+  expect(shown).toContain('](https://www.coex.co.kr/a)')
+  expect(shown).not.toMatch(/—\s*($|\n|·)|\*\*지민|(?<!\]\()https?:\/\//m)
+})
+
+// c4b review r3 #1 (stack-4): the count left out a teammate cut short, whose result is what it read.
+test('stack-4: a teammate cut short on a schedule job still has every dated item counted; a lookup that read a ten-day box does not', async () => {
+  const one = '지민이 정리했어요.\n\n- 12월 2일 행사 A [출처](https://example.com/a)'
+  const kim = part('m1', '지민', '서울 IT 행사 일정 정리', { read: true, result: '12월 2일 행사 A https://example.com/a\n12월 2일 행사 B https://example.com/b\n12월 2일 행사 C https://example.com/c', sources: ['https://example.com/a', 'https://example.com/b', 'https://example.com/c'] })
+  expect(checkedReport(one, [kim])).toBeUndefined()
+  const shown = await writtenReport({ ask: '서울 IT 행사 일정 정리', members: [kim], write: async () => one })
+  for (const event of ['행사 A', '행사 B', '행사 C']) expect(shown).toContain(event)
+  // Not a schedule or a list: the days of a forecast box nobody asked for are not required of the answer.
+  const box = part('m2', '지민', '이번 주말 서울 날씨 찾기', { read: true, result: '11월 21일 맑음 8도\n11월 22일 흐림 6도\n11월 23일 비 5도\nhttps://example.com/w', sources: ['https://example.com/w'] })
+  expect(checkedReport('지민이 찾아 왔어요.\n\n주말인 11월 21일은 맑고 8도예요. [출처](https://example.com/w)', [box])).toContain('맑고 8도')
+})
+
 test('c4b r3: a schedule cut short after its first event is still written with the events and addresses the teammate had read', () => {
   const kim = part('m1', '지민', '서울 IT 행사 일정 정리', { state: 'working' })
   settleMember(kim, { answer: '12월 2일 소프트웨이브', timedOut: true, read: '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c' }, 'now', true)

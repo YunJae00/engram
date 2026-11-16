@@ -645,6 +645,8 @@ function findings(text: string, links = false, marks = false, korean = HANGUL.te
   const cut = CUT_SHORT.test(text)
   const lines = text.replace(CUT_SHORT, '').replace(/\[([^\]]*)\]\([^)]*\)/g, links ? '$&' : '$1').replace(links ? /$^/ : ADDRESS, '').split('\n')
     .map(line => (marks ? line : line.replace(/^\s*(?:[-*•>#]+|\d+[.)])\s*/, '')).replace(/\*\*|`/g, '').replace(/\|/g, '/').replace(/\(\s*\)/g, '')
+      // stack-4 (c4b run, C6/H5): "…서울 코엑스 Hall A — · ACC 2026: 12월 개최 — ·": the dash that led to an address stayed when the address was taken out.
+      .replace(links ? /$^/ : /\s+[—–-]\s*$/, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
       .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '')
       // shortcut: a link's words are left alone where links are kept (the team record, which a model reads back, never the thread).
@@ -772,6 +774,9 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     .replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (link, words: string, url: string) => allowed.has(trimmed(url)) ? link : words)
     .replace(/(?<!\]\()https?:\/\/[^\s)\]>"'|]+/g, url => allowed.has(trimmed(url)) ? url : '').trim()
   if (!text || text.length > 3000 || !HANGUL.test(text) || NOT_SAID.test(text)) return undefined
+  // stack-4 (c4b run, C5): the written answer listed raw addresses ("… Hall A — https://www.coex.co.kr/…") under a line that was only the
+  // teammate's name. An address is shown as a named link or not at all, and a name is no line of its own: the host's own list stands in.
+  if (/https?:\/\//.test(text.replace(/\]\(https?:\/\/[^)\s]*\)/g, '')) || parts.some(m => text.split('\n').some(line => line.replace(/[*_#:\s-]/g, '') === m.role))) return undefined
   if (parts.some(m => !text.includes(m.role))) return undefined
   const table = parts.length > 1 && !parts.some(m => handedFrom(m.brief))
   // Every part that found something links a page it stands on, in its own row when there is a table (GROKBOT rule 7; c3b r1: a table with no link passed).
@@ -784,7 +789,9 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // A run of English nobody asked for (GROKBOT rule 12), quoted or not; only a link's words (the page's own name) are not counted.
   if (ENGLISH_RUN.test(text.replace(/\[[^\]]*\]\([^)]*\)/g, ''))) return undefined
   // c4b r2: one event of the three a teammate listed passed as the whole schedule. Every dated line a lone teammate wrote is still there by its day.
-  if (parts.length === 1 && !parts[0]!.read) {
+  // c4b review r3: a teammate cut short (read) was left out, so three events it had read passed as one. Its text is raw rows and page text
+  // whose dates were not all asked for (a weather box lists ten days), so it is counted only when the job itself asks for a schedule or a list.
+  if (parts.length === 1 && (!parts[0]!.read || /일정|목록|리스트|schedule|\blist\b/i.test(parts[0]!.brief))) {
     // c4b r3: counted per day, not as a set of days: three events on one day passed with one of them written.
     const gave = findings(delivered(parts[0]!), false, true).lines.map(dayOf).filter(Boolean), kept = daysIn(text)
     if (gave.length > 1 && gave.some(day => gave.filter(one => one === day).length > kept.filter(one => one === day).length)) return undefined

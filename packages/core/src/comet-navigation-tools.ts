@@ -182,7 +182,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
                 ]
               : []),
             // c4 R3: the page's own words carry the same ages ("1주 전") as its results; they read as dates too.
-            calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), new Date(), false),
+            calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), new Date(), false, /[가-힣]/.test(query) || undefined),
           ].join('\n')
         },
       },

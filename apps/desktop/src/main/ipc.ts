@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveCited, linkAnswers, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2939,19 +2939,31 @@ export function registerIpc(ctx: VaultContext): void {
         )
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
+        // Asks one shown address whether it answers: nothing is sent with it but the address itself.
+        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) })
         if (lane && !result.asked) {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
-          result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), (url, limit) => net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) }), korean)
+          result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)
+        }
+        // stack-4: a team answer made from what a teammate read links the rows of a kept results page, which nobody opened. Only a page a
+        // teammate loaded counts as loaded; the rest are asked like a lookup's. One teammate's dead link gives way to the page they read;
+        // with several, the link goes and its name stays, so no row is given another teammate's page.
+        if (company && !result.asked && /https?:\/\//.test(result.answer)) {
+          const members = (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members
+          const loaded = (members ?? []).flatMap(member => member.sources ?? [])
+          if (members) result.answer = await liveLinks(result.answer, loaded, alive, threadKorean(request.message, request.history ?? []), LINK_CHECK_MS, members.filter(member => member.sources?.length).length === 1 ? loaded : [])
         }
         // The thread gets the answer alone: why the host counts it unverified is for the log.
         const answered = answerOnly(result.answer)
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         // A short ask answered with no tool call shows the answer alone, without a line that only announces it (first-line.ts answerAlone).
         if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)
+        // A Korean thread's answer does not open with an English working note (first-line.ts withoutWorkNote).
+        if (!result.asked && threadKorean(request.message, request.history ?? [])) result.answer = withoutWorkNote(result.answer)
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)

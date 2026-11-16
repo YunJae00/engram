@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
-import { liveLinks, liveCited, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
+import { liveLinks, liveCited, localAddress, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
 
 const three = [{ role: '서울 조사', brief: 'Seoul weather', deliverable: 'summary' }, { role: '제주 조사', brief: 'Jeju weather', deliverable: 'summary' }, { role: '부산 조사', brief: 'Busan weather', deliverable: 'summary' }]
 
@@ -574,6 +574,29 @@ describe('team hire tools', () => {
     const before = asked.length
     expect(await liveLinks('부산은 맑아요.', read, alive([]), true)).toBe('부산은 맑아요.')
     expect(asked).toHaveLength(before)
+  })
+
+  // stack-4: a teammate cut short keeps the results page it read (c4b keepRead), and the host's answer links that page's rows. A row's
+  // address was never opened: it is asked, and only the results page itself counts as loaded.
+  it('asks a link taken from a kept results page, and gives a row no other teammate\'s page', async () => {
+    const results = 'https://search.naver.com/search.naver?query=서울 IT 행사'
+    const asked: string[] = []
+    const alive = async (url: string): Promise<boolean> => { asked.push(url); return !url.includes('gone.example') }
+    const answer = '지민이 서울 IT 행사 일정 정리해 왔어요.\n\n- 12월 2일 행사 A [a.example](https://a.example/a)\n- 12월 9일 행사 B [gone.example](https://gone.example/b)'
+    // One teammate: the dead row link gives way to the page that teammate did load.
+    expect(await liveLinks(answer, [results], alive, true, LINK_CHECK_MS, [results])).toBe(answer.replace('[gone.example](https://gone.example/b)', '[네이버 검색](https://search.naver.com/search.naver?query=서울%20IT%20행사)'))
+    expect(asked).toEqual(['https://a.example/a', 'https://gone.example/b'])
+    // Several teammates: the link goes, its name stays, and no page of someone else's is put in its place.
+    expect(await liveLinks(answer, [results, 'https://other.example/read'], alive, true, LINK_CHECK_MS, [])).toBe(answer.replace('[gone.example](https://gone.example/b)', 'gone.example'))
+  })
+
+  it('joins a lone closing link to its sentence when the address has a space in it', () => {
+    expect(citeOwn('1달러에 1,336.80원이에요.\n\n[네이버](https://search.naver.com/search.naver?query=원달러 환율)', [], true)).toBe('1달러에 1,336.80원이에요. [네이버](https://search.naver.com/search.naver?query=원달러 환율)')
+  })
+
+  it('never asks an address on this machine or its own network', () => {
+    for (const url of ['http://localhost:3000/x', 'http://127.0.0.1/admin', 'http://10.0.0.5/', 'http://192.168.0.1/reboot', 'http://172.20.1.1/', 'http://169.254.169.254/latest', 'http://[::1]/', 'http://printer/', 'http://nas.local/', 'not an address']) expect(localAddress(url), url).toBe(true)
+    for (const url of ['https://finance.naver.com/item/main.naver?code=005930', 'https://www.apple.com/kr/', 'https://172.217.0.1/']) expect(localAddress(url), url).toBe(false)
   })
 
   // c4 r2 finding 1: 401, 403 and 429 were counted as alive, so a link that fails the link check stayed the answer's only link.

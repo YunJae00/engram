@@ -198,6 +198,10 @@ const BOXES: [RegExp, string, string][] = [[/날씨|기온|강수|미세\s?먼�
 export const LINK_CHECK_MS = 1_500
 // c4 r2: 401, 403 and 429 were kept as "opens for a person"; the link check that grades the answer counts every 4xx and 5xx as dead.
 export const linkAnswers = (status: number): boolean => status >= 200 && status < 400
+// stack-4: the check is a request the host makes to an address a page's words can put in an answer. One on this machine or its own network is
+// never asked (it is kept as written): a GET there could reach a local service.
+// shortcut: by the address as written only; a public name that resolves to a private address is still asked. Resolve first if that matters.
+export const localAddress = (url: string): boolean => { try { const host = new URL(url).hostname.toLowerCase(); return host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.startsWith('[') || /^(127|10|0)\.|^192\.168\.|^169\.254\.|^172\.(1[6-9]|2\d|3[01])\./.test(host) || !host.includes('.') } catch { return true } }
 const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
 // The same address reads differently once its spaces and Korean are escaped for a link.
 const plainAddress = (url: string): string => { try { return decodeURI(url) } catch { return url } }
@@ -222,8 +226,9 @@ function withoutDead(answer: string, dead: readonly string[], read: readonly str
   }
   return out
 }
-export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS): Promise<string> {
-  return withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), read, korean)
+// swap: the pages a dead link may give way to (a team answer of several teammates passes none: a row never gets another teammate's page).
+export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS, swap: readonly string[] = read): Promise<string> {
+  return withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), swap, korean)
 }
 // c4 r2: the citations were finished after the check, so a link citeMembers put in a row or a closing line was never asked. `cite` finishes
 // the citations; every address it can add (seen by citing the answer with its own addresses taken out) is asked in the same one pass as the
@@ -248,7 +253,8 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
 export function citeOwn(answer: string, read: readonly string[], korean = false): string {
   // stack-3 (c3a run, L1/L2/T2): the model put its one link on a line of its own under the answer ("네이버 날씨"), which read as a stray label.
   // A lone closing link under a sentence joins that sentence, as in "…1,385원이에요. [네이버 금융](…)"; under a table or a list it stays.
-  const lone = /^([^]*\S)\s*\n\s*(\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))\s*$/.exec(answer)
+  // stack-4 (c4a run, L1/L4): the link still sat alone ("네이버") when its address was the results page's as given, with a space in it.
+  const lone = /^([^]*\S)\s*\n\s*(\[[^\]\n]+\]\(https?:\/\/[^)\n]+\))\s*$/.exec(answer)
   if (lone && !/^\s*([|>#*+-]|\d+[.)]\s|```)/.test(lone[1]!.split('\n').at(-1)!)) return `${lone[1]} ${lone[2]}`
   if (!answer.trim() || !read.length || /https?:\/\//.test(answer)) return answer
   const url = sourcesOf(read)[0]!, link = `[${siteName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`

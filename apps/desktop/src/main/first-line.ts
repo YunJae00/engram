@@ -206,6 +206,14 @@ export function answerAlone(answer: string): string {
   return said && said[2]!.replace(/```replies[^]*?(```|$)/g, '').trim() ? said[2]! : answer
 }
 
+// stack-4 (c4a-34ab7ad3 H6): a Korean answer opened with the model's own working note, "Found actual investment deal items: …" (U1).
+// In a Korean thread, a first paragraph that opens with four or more plain English words (a sentence, not a product's name, which is
+// capitalized) and is followed by the answer is dropped. An answer that is only that paragraph stays.
+export function withoutWorkNote(answer: string): string {
+  const said = /^\s*[A-Za-z][a-z'’]*(?:[ \t]+[a-z][a-z'’]*){3,}[^\n]*\n\s*\n([^]+)$/.exec(answer)
+  return said && /[가-힣]/.test(said[1]!) ? said[1]! : answer
+}
+
 export function firstLineSpoke(channel: string): void {
   const turn = turns.get(channel)
   if (turn?.shown && turn.carried) { turn.carried = false; log({ channel, outcome: 'replaced', canned: !!turn.canned }); turn.hide?.() }

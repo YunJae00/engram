@@ -107,7 +107,9 @@ const RESULT_SNIPPET = 160
 // words: also "어제" / "yesterday" (a result's date label); in running page text those are left, where "어제보다 2° 높아요" is not a date.
 const AGO = /(\d+)\s*(분|시간|일|주|개월|달|년)\s*전|(\d+)\s*(minute|min|hour|day|week|month|year)s?\s+ago|(그저께|어제|\byesterday\b)/gi
 const AGO_MINUTES: Record<string, number> = { 분: 1, minute: 1, min: 1, 시간: 60, hour: 60, 일: 1440, day: 1440, 주: 10080, week: 10080 }
-export function calendarDates(text: string, now = new Date(), words = true): string {
+// korean: the language of the ask. A Korean ask reads an English age ("2 days ago" on an English results page) as a Korean date too
+// (c4a review r3: "Nov 15" reached a Korean thread); without it the date follows the label's own language.
+export function calendarDates(text: string, now = new Date(), words = true, korean?: boolean): string {
   return text.replace(AGO, (whole: string, n?: string, unit?: string, n2?: string, unit2?: string, word?: string) => {
     if (word && !words) return whole
     const at = new Date(now), count = Number(n ?? n2 ?? (word === '그저께' ? 2 : 1)), per = (unit ?? unit2 ?? '일').toLowerCase()
@@ -116,12 +118,14 @@ export function calendarDates(text: string, now = new Date(), words = true): str
     else if (/년|year/.test(per)) { at.setFullYear(at.getFullYear() - count); if (at.getDate() !== now.getDate()) at.setDate(0) }
     else at.setTime(at.getTime() - count * AGO_MINUTES[per]! * 60_000)
     const sameYear = at.getFullYear() === now.getFullYear()
-    return /[가-힣]/.test(whole) ? `${sameYear ? '' : `${at.getFullYear()}년 `}${at.getMonth() + 1}월 ${at.getDate()}일` : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+    return (korean ?? /[가-힣]/.test(whole)) ? `${sameYear ? '' : `${at.getFullYear()}년 `}${at.getMonth() + 1}월 ${at.getDate()}일` : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
   })
 }
 export function searchResults(links: { text: string; url: string }[], text: string, query: string, from?: string, cap = 8, now = new Date()): SearchResult[] {
   let page: URL | null = null
   try { page = from ? new URL(from) : null } catch { page = null }
+  // A Korean query's dates are Korean whatever the page's language; any other query keeps the label's own.
+  const korean = /[가-힣]/.test(query) || undefined
   const groups = new Map<string, string[]>()
   for (const link of resultLinks(links, from)) {
     let url: URL
@@ -153,7 +157,7 @@ export function searchResults(links: { text: string; url: string }[], text: stri
     // Counted on the result's own words: the page text after a menu link is the next result's.
     const hay = `${title} ${own ?? ''} ${url}`.toLowerCase()
     const hits = words.filter(word => (isLatin(word) ? hay.includes(word) : gluedWord(word, hay))).length
-    return [{ result: { title: title.slice(0, 120), url, snippet: calendarDates(snippet, now, false), date: calendarDates(date, now) }, hits, score: hits * 100 + Math.min(title.length, 60) - order / 100 }]
+    return [{ result: { title: title.slice(0, 120), url, snippet: calendarDates(snippet, now, false, korean), date: calendarDates(date, now, true, korean) }, hits, score: hits * 100 + Math.min(title.length, 60) - order / 100 }]
   })
   // When the page has results that echo the question, what echoes none of it is furniture that got through (an outlet's home, a promo).
   const echoing = scored.filter(one => one.hits > 0)

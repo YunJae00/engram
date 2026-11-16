@@ -334,6 +334,9 @@ export function teamRunner(deps: {
     },
     async resume(): Promise<void> {
       for (const task of (await listTasks(paths)).filter(t => t.team)) {
+        // stack-4 (c4b run, C3): this runs 15 s after launch, and a split handed out at 14.6 s had its three teammates closed 0.35 s into
+        // their work ("이번엔 못 찾았어요" three times). Members at work in this run are not leftovers of the last one.
+        if (laterKits.has(task.id) || task.team!.members.some(m => live.has(`${task.id}/${m.id}`))) continue
         for (const m of task.team!.members) deps.closeSession(m.sessionKey)
         await change(task.id, t => { if (!t.team) return; if (TERMINAL.includes(t.state)) releaseAll(t.team, now()); else failOnRestart(t.team, now()) })
         // A task that was waiting only for its background members has nobody left to wake it: its lead reports what there is, lost work included.

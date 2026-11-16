@@ -98,6 +98,18 @@ it('turns a result\'s age into the calendar date it means and leaves a written d
   expect(calendarDates('2 days ago', now)).toBe('Nov 15')
   expect(calendarDates('5 hours ago', now)).toBe('Nov 17')
   expect(calendarDates('yesterday', now)).toBe('Nov 16')
+  // c4a review r3: under a Korean ask an English age is a Korean date ("Nov 15" reached a Korean thread), in a result's date and in its words.
+  expect(calendarDates('2 days ago', now, true, true)).toBe('11월 15일')
+  expect(calendarDates('yesterday', now, true, true)).toBe('11월 16일')
+  expect(calendarDates('1 year ago', now, true, true)).toBe('2025년 11월 17일')
+  const url = 'https://news.example/nvidia-ai-startup'
+  const anchors = [{ text: 'Nvidia invests in a Korean AI startup', url }, { text: '2 days ago', url }, { text: 'Nvidia said 5 hours ago that it will invest in a Korean AI startup this year', url }]
+  const english = searchResults(anchors, '', '엔비디아 AI 스타트업 투자 nvidia', 'https://www.bing.com/news/search?q=x', 8, now)
+  expect(english[0]!.date).toBe('11월 15일')
+  expect(english[0]!.snippet).toContain('11월 17일')
+  expect(`${english[0]!.snippet} ${english[0]!.date}`).not.toMatch(/Nov \d|ago/)
+  // An English ask keeps English dates.
+  expect(searchResults(anchors, '', 'nvidia ai startup', 'https://www.bing.com/news/search?q=x', 8, now)[0]!.date).toBe('Nov 15')
   // A written date stays as it is.
   expect(calendarDates('2026.11.10.', now)).toBe('2026.11.10.')
   expect(calendarDates('Nov 3, 2026', now)).toBe('Nov 3, 2026')
