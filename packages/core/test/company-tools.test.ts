@@ -1181,7 +1181,8 @@ test('c5 C3: a teammate who looked and found nothing new keeps what they read, a
   // The host's own table: nothing new, and the result that names the part as a named link. Never the unrelated row, never "못 찾았어요".
   const table = mergedReport([kim, doyun])
   // c7: the teammate says it, their part named in the sentence, and the link is named by the one rule (never the row's cut title).
-  expect(table).toContain('도윤: 리니어는 이번 주 새 소식이 안 보여요. [example](https://example.com/linear-oct)')
+  // c7b r2: and the latest result that names the part is said with its day.
+  expect(table).toContain('도윤: 리니어는 이번 주 새 소식이 안 보여요. 가장 가까운 건 10월 28일 거예요. 리니어 10월 업데이트 정리 · [example](https://example.com/linear-oct)')
   expect(table).not.toMatch(/못 찾았어요|공시|검색 결과/)
   // No result names the part: the page they searched on.
   const plain = part('m3', '도윤', '이번 주 리니어 신기능 조사해서 알려줘', { topic: '리니어', state: 'working' })
@@ -1777,8 +1778,16 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   for (const [i, part] of ['노션', '슬랙', '리니어'].entries()) { expect(lines[i]).toContain(part); expect(linksIn(lines[i]!), lines[i]).toHaveLength(1); expect(lines[i]).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
   expect(lines[0]).toMatch(/^지민: 노션 쪽은 1월 20일 게 제일 최근이에요\. 2026년 1월 20일\(Notion 3\.2\) 업데이트로 모바일 AI 노트 탭이 추가돼 /)
   expect(lines[1]).toMatch(/^서연: 4월 2일 게 제일 최근이에요\. 슬랙봇이 /)
-  expect(lines[2]).toMatch(/^도윤: 리니어는 이번 주 새 소식이 안 보여요\. \[/)
-  expect(lines.filter(line => /이번 주/.test(line))).toHaveLength(1)
+  // c7b r2: 도윤 found nothing new either, and the line was only "리니어는 이번 주 새 소식이 안 보여요." and a link. The latest result that
+  // names the part is said with its day, like the other two; the unrelated rows (motors, refrigerators) never are.
+  expect(lines[2]).toBe('도윤: 리니어 쪽은 작년 7월 9일 게 제일 최근이에요. 노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시 · [ditoday](https://ditoday.com/channel-talk-launches-mcp-host-feature/)')
+  expect(said).not.toMatch(/냉장고|리니어모터|아이폰/)
+  // Alone, or when the others found something, the line first says nothing is new, then the latest and its day; so does the table's cell.
+  expect(mergedReport([s6.c3[2]!], undefined, [], ctx)).toMatch(/^도윤: 리니어는 이번 주 새 소식이 안 보여요\. 가장 가까운 건 작년 7월 9일 거예요\. 노션·리니어 연동.+ · \[ditoday\]\(/)
+  expect(mergedReport(s6.c3, undefined, [], { now: NOV17, ask: '노션, 슬랙, 리니어 이번 주 신기능 표로 정리해줘' })).toMatch(/\| 리니어 \(도윤\) \| 이번 주 새 소식은 안 보여요\. 가장 가까운 건 작년 7월 9일 거예요\. 노션·리니어 연동.+\]\(https:\/\/ditoday/)
+  // The lead said nothing is new this week; no line says it again.
+  expect(said.match(/이번 주/g)).toHaveLength(1)
+  expect(lines.filter(line => /이번 주/.test(line))).toHaveLength(0)
   // A note on a page's date is not its name, and no link is named by a cut title.
   expect(said).not.toMatch(/\[[^\]]*(?:작성 글|…)[^\]]*\]\(/)
   // BAR C3 reads the last bubble: the three products, the three names, three links. One bubble: the lead and three lines.

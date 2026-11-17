@@ -862,13 +862,27 @@ const partPages = (m: TeamMember): string[] => m.empty ? [...new Set([...(m.sour
 // page searched on). "못 찾았어요" is only for a part that loaded no page at all.
 // c7: the link is named by the one rule (sourceName), never by the row's cut title. said: the teammate says it themselves, so the
 // sentence names their part ("리니어는 이번 주 새 소식이 안 보여요.").
-function nothingNew(m: TeamMember, said = false): string {
+// c7b r2: "도윤: 리니어는 이번 주 새 소식이 안 보여요. [ditoday]" left out the 2025년 7월 find the part had read. The latest result that
+// names the part is given with its day (the row's own date, written at its end), as the other teammates' lines give theirs.
+// quiet: the lead has already said nothing is new, so the line does not say it again.
+function nothingNew(m: TeamMember, said = false, now = new Date(), quiet = false): string {
   const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(m.brief)?.[0], topic = m.topic?.trim()
-  const row = topic ? delivered(m).split('\n').find(line => /https?:\/\//.test(line) && line.slice(0, line.indexOf('http')).split(': ')[0]!.includes(topic)) : undefined
-  const at = row?.match(ADDRESS)?.at(-1) ?? m.sources?.[0]
+  const rows = (topic ? delivered(m).split('\n') : []).flatMap(line => {
+    const head = /https?:\/\//.test(line) ? line.slice(0, line.indexOf('http')) : '', title = head.split(': ')[0]!
+    if (!title.includes(topic!)) return []
+    const at = [...head.matchAll(A_DATE)].at(-1), dated = at && head.slice(at.index + at[0].length).replace(/[.,\s]/g, '') === '' ? at : undefined
+    const year = dated ? Number(dated[1] ?? dated[4]) || undefined : undefined, month = dated ? Number(dated[2] ?? dated[5]) : 0, day = dated ? Number(dated[3] ?? dated[6]) || undefined : undefined
+    const ok = month >= 1 && month <= 12 && (day ?? 1) <= 31
+    return [{ line, title: clip(title.replace(/\|/g, '/').trim(), 80), ...(ok ? { day: dayWords(year, month, day, now), time: new Date(year ?? now.getFullYear(), month - 1, day ?? 1).getTime() } : {}) }]
+  })
+  const row = rows.reduce<typeof rows[number] | undefined>((best, one) => !best || (one.time ?? -Infinity) > (best.time ?? -Infinity) ? one : best, undefined)
+  const at = row?.line.match(ADDRESS)?.at(-1) ?? m.sources?.[0]
   const link = at ? named(sourceName(trimmed(at), true), trimmed(at)) : ''
+  if (!link) return `${said && topic ? `${topic} 쪽은 ` : ''}${NOTHING}`
+  if (row?.day && quiet && said) return withLink(`${topic} 쪽은 ${row.day} 게 제일 최근이에요. ${row.title}`, link)
   const about = said && topic ? `${josa(topic, '은', '는')} ` : ''
-  return link ? `${about}${when ? `${when} ` : ''}새 소식${about ? '이' : '은'} 안 보여요. ${link}` : `${said && topic ? `${topic} 쪽은 ` : ''}${NOTHING}`
+  const none = `${about}${when ? `${when} ` : ''}새 소식${about ? '이' : '은'} 안 보여요.`
+  return row?.day ? withLink(`${none} 가장 가까운 건 ${row.day} 거예요. ${row.title}`, link) : `${none} ${link}`
 }
 const FOREIGN = '영어로 된 자료만 찾았어요'
 // A result that was handed on is shown under the agent who finished it, not as a part of its own.
@@ -963,6 +977,11 @@ export function askedPeriod(ask: string, now = new Date()): Period | undefined {
 // shortcut: "12/11" is not read; c6a's dated task is what stops that.
 const A_DATE = /(\d{4})\s*(?:년\s*|[./-]\s?)(\d{1,2})\s*(?:월\s*|[./-]\s?)(\d{1,2})|(?:(\d{4})년\s*)?(?<!\d)(\d{1,2})월(?:\s*(\d{1,2})일)?/g
 const SAYS_NONE = /않았|없어요|없었|없습니다|안 보여|못 찾/u
+// A day as a colleague says it: "작년 7월 9일", "1월 20일" (this year), "2023년 5월".
+function dayWords(year: number | undefined, month: number, day: number | undefined, now: Date): string {
+  const thisYear = now.getFullYear(), other = year && year !== thisYear ? year : undefined
+  return `${!other ? '' : other === thisYear - 1 ? '작년 ' : other === thisYear + 1 ? '내년 ' : `${other}년 `}${month}월${day ? ` ${day}일` : ''}`
+}
 interface Outside { /** "올해 12월 일정은 아직 안 보여요." */ said: string; /** The nearest find's day: "작년 12월 11일". */ when: string; /** That find as the teammate wrote it, its year kept. */ line: string; /** Its year, when it is not this one. */ year?: number }
 /** A result whose every dated find lies outside the time its job asked about, or undefined (no time named, no date given, or one find inside). */
 function outsideOf(brief: string, result: string, now = new Date()): Outside | undefined {
@@ -986,10 +1005,10 @@ function outsideOf(brief: string, result: string, now = new Date()): Outside | u
     }
   }
   if (!nearest) return undefined
-  const y = nearest.year, thisYear = now.getFullYear(), other = y && y !== thisYear ? y : undefined
+  const y = nearest.year, other = y && y !== now.getFullYear() ? y : undefined
   return {
     said: `${period.label} ${/일정|행사|스케줄/u.test(asked) ? '일정은' : '새 소식은'} 아직 안 보여요.`,
-    when: `${!other ? '' : other === thisYear - 1 ? '작년 ' : other === thisYear + 1 ? '내년 ' : `${other}년 `}${nearest.month}월${nearest.day ? ` ${nearest.day}일` : ''}`,
+    when: dayWords(y, nearest.month, nearest.day, now),
     line: clip(nearest.line.replace(LIST_MARK, '').replace(/[,·\s]+$/, ''), 160), ...(other ? { year: other } : {}),
   }
 }
@@ -1050,7 +1069,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
       const rows = parts.map(m => {
         const said = delivered(m), found = said ? cellOf(read(m, said), partName(m, topics)) : '', out = outsideFor(m, now)
         // Two columns on purpose: the thread shows a table of three or more columns as a stack of cards, not as a table.
-        return `| ${partName(m, topics)} (${m.role}) | ${atWork(m) ? STILL : m.empty ? nothingNew(m) : out ? withLink(`${out.said} ${nearestSaid(out)} ${out.line.replace(/\|/g, '/')}`, partLink(m, said)) : found ? withLink(found, partLink(m, said)) : foreign(m, said) ? `${FOREIGN} · ${foreign(m, said)}` : m.late ? NEVER_CAME : NOTHING} |`
+        return `| ${partName(m, topics)} (${m.role}) | ${atWork(m) ? STILL : m.empty ? nothingNew(m, false, now) : out ? withLink(`${out.said} ${nearestSaid(out)} ${out.line.replace(/\|/g, '/')}`, partLink(m, said)) : found ? withLink(found, partLink(m, said)) : foreign(m, said) ? `${FOREIGN} · ${foreign(m, said)}` : m.late ? NEVER_CAME : NOTHING} |`
       })
       return `${lead(`${josa(parts.map(m => m.role).join(', '), '이', '가')} ${ledBy(jobForms(jobOf(parts[0]!), true).forms, previous)}.`)}\n\n| 맡은 일 (담당) | 내용과 출처 |\n|---|---|\n${rows.join('\n')}`
     }
@@ -1069,7 +1088,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
       : `${count} ${ledBy(jobForms(jobOf(parts[0]!), true).forms, previous)}.`
     const lines = spoke.map(({ m, topic, out, own, link, other, honest }) => {
       const about = (text: string): string => !topic || text.includes(topic) ? text : `${topic} 쪽은 ${text}`
-      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true)
+      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true, now, quiet)
         // c6: a find dated outside the time asked says so, in the teammate's own words when they already did. When the lead has said
         // nothing is new, the line gives the latest one and its day and does not say it again.
         : out && !honest ? withLink(about(quiet ? `${out.when} 게 제일 최근이에요. ${out.line}` : `${out.said} ${nearestSaid(out)} ${out.line}`), link)
@@ -1093,7 +1112,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const out = body && !from ? outsideFor(m, now) : undefined, gist = body && !out && !i ? gistOf(m) : undefined
     if (out) { const head = `${outsideHead(m, out)} ${nearestSaid(out)}`; return [i ? head : lead(head), withLink(out.line, partLink(m, said))] }
     if (gist) return [lead(`${m.role}: ${withLink(`${gist}${/[.!?]$/.test(gist) ? '' : '.'}`, partLink(m, said))}`)]
-    const head = body ? resultLead(m, i ? '' : previous, now) : atWork(m) ? `${m.role}: ${STILL}` : looked ? `${m.role}: ${nothingNew(m, true)}` : other ? `${m.role}: ${FOREIGN}. ${other}` : nothingLine(m, topics)
+    const head = body ? resultLead(m, i ? '' : previous, now) : atWork(m) ? `${m.role}: ${STILL}` : looked ? `${m.role}: ${nothingNew(m, true, now)}` : other ? `${m.role}: ${FOREIGN}. ${other}` : nothingLine(m, topics)
     // Where the giver's facts came from, in one closing sentence, unless the giver's own part is shown above.
     const facts = from && !parts.some(giver => giver !== m && giver.role === from.from) ? read(m, from.result).slice(0, 3) : []
     const close = from && facts.length && body ? closing(from, facts, pageLink(handedPages(m, members)[0], from.result, HANGUL.test(from.result) || HANGUL.test(m.brief)), now) : ''
