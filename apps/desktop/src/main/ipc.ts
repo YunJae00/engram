@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, koreanLead, talkOnly, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, asState, koreanLead, talkOnly, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2999,6 +2999,8 @@ export function registerIpc(ctx: VaultContext): void {
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         // A short ask answered with no tool call shows the answer alone, without a line that only announces it (first-line.ts answerAlone).
         if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)
+        // c7c M3: a fact about the person is a state ("…일하고 계세요."), not an instruction ("…일하세요.") (first-line.ts asState).
+        if (short && !result.asked) result.answer = asState(request.message, result.answer)
         // c5c Q3: a line asked for in another language is led by a few Korean words (first-line.ts koreanLead).
         if (kind === 'ask' && !result.asked) result.answer = koreanLead(request.message, result.answer, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)))
         // c5c Q1: small talk never asks how it can help (first-line.ts withoutHelpDesk).
@@ -3007,6 +3009,8 @@ export function registerIpc(ctx: VaultContext): void {
         if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(routed, result.answer)
         // c6c r2 H3: an open-form summary opens on what was chosen, without 일시 / 참석 / 논의 (desk-lane.ts shareReady).
         if (kind === 'note' && !result.asked) result.answer = shareReady(routed, result.answer)
+        // c7c D1: a note answer does not open with a promise of the summary it then gives ("회의록 요약해서 정리해볼게요."); H3's past-tense lead stays (first-line.ts answerAlone).
+        if (kind === 'note' && !result.asked) result.answer = answerAlone(result.answer)
         // stack-6 H4: "할 일만" gets the tasks only, no 미결 block under them (desk-lane.ts onlyAsked).
         if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)
         // c6c F1: a tidy job answers with the count per folder on one line, not twenty file names (desk-lane.ts tidyCounts).

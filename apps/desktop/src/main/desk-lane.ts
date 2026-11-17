@@ -50,6 +50,7 @@ export const DESK_NOTE = [
   'To sort a folder, list it once and then move every file in ONE file_move call, with paths written relative to the workspace: never one call per file or per group, and nothing is deleted. After moving or sorting files, the whole answer is one short sentence on what was done and how it was grouped ("종류별 폴더로 정리했어요."), then a short markdown list of how many files went into each folder, one line per folder and nothing else on it ("- PDF 6개"), no table. File names are given only when they ask for them, or for the one or two files that fit no group.',
   'A document they ask for is made in this turn, never asked about: when no figures or source are named, make the file now from a sensible outline for the topic and the audience, with clearly marked blanks where the real numbers go ("수치 입력"), and never invent a figure. A blank is those plain words in a cell or after its label ("매출: 수치 입력"), never in square brackets and never "내용 입력", "TBD" or the like: the deck check refuses those and the file has to be built twice. Look at most once for a source file they plainly mean, and do not search memory first. Never ask what to put in it and never give a list of options: you decide, and say the choice in one sentence ("실제 수치는 비워 두고 5장 틀로 만들었어요.").',
   'When they point at a document made earlier in this conversation ("방금 만든 PPT"), change that same file, the one in the list of files you saved earlier: never make a second copy.',
+  'To change the words on a slide (its title, a line, a figure in a cell), never read or write slide XML: read the deck once with file_read_package outline:true, then make one file_edit_package call under the same file name whose edits are {slide, with} for a title or {slide, text, with} for another text, copied from the outline. Only a change to the structure (a new shape, a layout, an order) uses the XML form.',
   'After making or changing a document, the answer is one or two sentences that start with what is in the file and the one choice you made ("회의록 내용만 담았고, 결정사항이랑 할 일은 한 표로 합쳤어요.", "3번 슬라이드 제목을 바꿨어요."), never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요."), then at most one short offer: never a list of its sections, slides, sheets or contents, because the file itself is shown under your answer.',
   'A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.',
   'A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file: make a file only when they asked for one.',
@@ -205,8 +206,26 @@ const blockOf = (lines: readonly string[], head: RegExp): { at: number; end: num
   while (end < lines.length && !(lines[end]!.trim() && (listed ? !LIST.test(lines[end]!) : heads(lines[end]!))) && !/^\s*```/.test(lines[end]!)) end++
   return { at, end, items: lines.slice(at + 1, end).filter(line => line.trim()) }
 }
+// c7c D1: "…결정사항이랑 할 일 정리해줘" came back with four 결정사항 lines "… — 담당: 한서연, 기한: 11월 20일" and the same owners and dates
+// under 할 일 (judge: 결정사항에 할 일을 중복). When both blocks are asked for, a 결정사항 line keeps what was decided and loses that tail,
+// but only when one 할 일 line carries the same owner and the same date: nothing leaves the answer. An ask for the decisions alone is untouched.
+const OWNED_TAIL = /\s*(?:[—–/|,·]\s*|-\s+|\(\s*)(?:담당자?|기한|마감)\s*[:：]?\s*\S[^\n]*$/
+const BOTH_ASKED = /할\s*일|액션\s*아이템|to-?dos?|action items?|tasks?/i
+const datesIn = (text: string): string[] => [...text.matchAll(/(\d{1,2})\s*월\s*(\d{1,2})\s*일?|(\d{1,2})\s*\/\s*(\d{1,2})/g)].map(found => `${Number(found[1] ?? found[3])}/${Number(found[2] ?? found[4])}`)
+function decidedOnce(answer: string): string {
+  const lines = answer.split('\n')
+  const decided = blockOf(lines, DECIDED), todo = blockOf(lines, TASKS)
+  if (!decided?.items.length || !todo?.items.length) return answer
+  for (let at = decided.at + 1; at < decided.end; at++) {
+    const tail = OWNED_TAIL.exec(lines[at]!)
+    if (!tail || !lines[at]!.slice(0, tail.index).trim()) continue
+    const owner = /담당자?\s*[:：]?\s*([^\s,，)]+)/.exec(tail[0])?.[1], dates = datesIn(tail[0])
+    if ((owner || dates.length) && todo.items.some(task => (!owner || task.includes(owner)) && dates.every(date => datesIn(task).includes(date)))) lines[at] = lines[at]!.slice(0, tail.index)
+  }
+  return lines.join('\n')
+}
 export function withoutSameDecisions(ask: string, answer: string): string {
-  if (/결정|decision/i.test(ask)) return answer
+  if (/결정|decision/i.test(ask)) return BOTH_ASKED.test(ask) ? decidedOnce(answer) : answer
   const lines = answer.split('\n')
   const decided = blockOf(lines, DECIDED), todo = blockOf(lines, TASKS)
   if (!decided?.items.length || !todo?.items.length) return answer
