@@ -1,0 +1,88 @@
+import { describe, expect, it } from 'vitest'
+import { checkedSearch, judgedItems } from '../src/item-check.js'
+import { kindChecked } from '../src/company-tools.js'
+import type { AgentTool } from '../src/agent-loop.js'
+
+// c15a (cause K, R3: three rows that were not funding news filled five, the loop ended 8 s into a 20 s deadline; cause L, R2: a café post
+// and a wiki cited where news pages existed). Wordings are in no harness row.
+const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
+const row = (n: number, title: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — x — 11월 ${n}일`
+function search(outs: string[]): AgentTool & { queries: string[] } {
+  const queries: string[] = []
+  return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
+}
+const urls = (out: string): string[] => out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
+const ASK = '요즘 국내 바이오 기업 인수 소식 4곳만'
+
+describe('c15a: a counted lookup shows only sure items and asks for other words while time is left', () => {
+  it('2 sure + 2 unsure, no words: the judge is asked again with the tried query, finds 2 more sure → 4 items, no unsure row', async () => {
+    const s = search([
+      page('바이오 기업 인수', [row(1, '셀젠, 진단기업 메디랩 인수'), row(2, '바이오원, 항체 벤처 합병'), row(3, '바이오 업계 M&A 활발'), row(4, '제약사 인수 검토설')]),
+      page('제약 바이오 지분 인수 계약', [row(5, '한올팜, 세포치료 기업 지분 60% 인수'), row(6, '지엔티, CDMO 업체 인수 완료')]),
+    ])
+    const prompts: string[] = []
+    const verdicts = ['{"keep":[1,2],"unsure":[3,4],"asked":4,"search":""}', '{"keep":[1,2],"unsure":[3,4],"asked":4,"search":"제약 바이오 지분 인수 계약"}', '{"keep":[1,2,5,6],"unsure":[3,4],"asked":4,"search":""}']
+    const out = await checkedSearch(s, { ask: () => ASK, write: async p => { prompts.push(p); return verdicts.shift() }, since: 0, now: () => 0 }).run({ query: '바이오 기업 인수' }, { task: ASK })
+    expect(s.queries).toEqual(['바이오 기업 인수', '제약 바이오 지분 인수 계약'])
+    // The retry is told every search already run.
+    expect(prompts[1]).toContain('unlike every search already run ("바이오 기업 인수")')
+    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/5', 'https://news.example/6'])
+    expect(out).toContain('They hold the 4 asked for: list 4 of them.')
+  })
+
+  it('with no more found: 2 items, the shortfall as data, the unsure rows absent', async () => {
+    const s = search([page('바이오 기업 인수', [row(1, '셀젠, 진단기업 메디랩 인수'), row(2, '바이오원, 항체 벤처 합병'), row(3, '바이오 업계 M&A 활발'), row(4, '제약사 인수 검토설')])])
+    const out = await checkedSearch(s, { ask: () => ASK, write: async () => '{"keep":[1,2],"unsure":[3,4],"asked":4,"search":""}', since: 0, now: () => 0 }).run({ query: '바이오 기업 인수' }, { task: ASK })
+    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2'])
+    expect(out).toContain('2 of the 4 asked for were found. Lead with the items')
+    expect(out).not.toMatch(/업계 M&A 활발|검토설|may not be quite/)
+  })
+
+  it('count by meaning: "책 2권", "맛집 5곳" are counted lists when the judge reads the number; no counter word is needed', async () => {
+    for (const [ask, n] of [['올겨울 읽을 만한 경제 책 2권 추천', 2], ['성수동 브런치 맛집 5곳 알려줘', 5]] as const) {
+      const rows = Array.from({ length: n + 1 }, (_, i) => row(i + 1, `항목 ${i + 1}`))
+      const keep = Array.from({ length: n }, (_, i) => i + 2)
+      const out = await checkedSearch(search([page('q', rows)]), { ask: () => ask, write: async () => JSON.stringify({ keep, unsure: [1], asked: n, search: '' }), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
+      expect(out, ask).toContain(`They hold the ${n} asked for: list ${n} of them.`)
+      expect(urls(out), ask).not.toContain('https://news.example/1')
+    }
+    // The judge's "asked" is parsed: a number, null, or absent.
+    const items = [{ text: 'a' }, { text: 'b' }]
+    expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":3}', 1000, { tried: [] }))?.asked).toBe(3)
+    expect((await judgedItems('x', items, async () => '{"keep":[1],"asked":null}', 1000, { tried: [] }))?.asked).toBeNull()
+    expect((await judgedItems('x', items, async () => '{"keep":[1]}', 1000, { tried: [] }))).not.toHaveProperty('asked')
+  })
+
+  it('second-hand: a wiki row and a news row for the same launch date: the news row comes first', async () => {
+    const rows = [row(1, '하늘폰 X 출시일 정리 - 위키', 'wiki.example'), row(2, '하늘전자, 하늘폰 X 12월 5일 출시', 'news.example')]
+    const out = await checkedSearch(search([page('하늘폰 X 출시일', rows)]), { ask: () => '하늘폰 X 출시일 알려줘', write: async () => '{"keep":[1,2],"secondhand":[1],"asked":null}', since: 0, now: () => 0 }).run({ query: '하늘폰 X 출시일' }, { task: '' })
+    expect(urls(out)).toEqual(['https://news.example/2', 'https://wiki.example/1'])
+    // The same on a teammate's facts.
+    const data = await kindChecked({ facts: [{ text: '하늘폰 X는 12월 5일 출시 (카페 글)', url: 'https://cafe.example/9', site: '카페' }, { text: '하늘전자, 하늘폰 X 12월 5일 출시', url: 'https://news.example/2', site: '뉴스' }] }, '하늘폰 X 출시일', async () => '{"keep":[1,2],"secondhand":[1]}', 1000)
+    expect(data?.facts.map(f => f.url)).toEqual(['https://news.example/2', 'https://cafe.example/9'])
+  })
+
+  it('"멈춰" during the judge retry halts at once; no further search starts', async () => {
+    const stop = new AbortController()
+    const s = search([page('q', [row(1, '셀젠, 메디랩 인수')]), page('more', [row(2, '바이오원 합병')])])
+    let calls = 0
+    const write = async (): Promise<string | undefined> => {
+      calls++
+      if (calls === 1) return '{"keep":[1],"asked":4,"search":""}'
+      // The retry hangs; the person says stop 50 ms in.
+      setTimeout(() => stop.abort(), 50)
+      return new Promise<string | undefined>(() => undefined)
+    }
+    const started = Date.now()
+    const out = await checkedSearch(s, { ask: () => ASK, write, since: 0, now: () => 0 }).run({ query: 'q' }, { task: ASK, signal: stop.signal })
+    expect(Date.now() - started).toBeLessThan(500)
+    expect(s.queries).toEqual(['q'])
+    expect(urls(out)).toEqual(['https://news.example/1'])
+  })
+
+  it('a helper\'s search reads its own deadline (due), and the judge gets what is left of it', async () => {
+    const given: number[] = []
+    await checkedSearch(search([page('q', [row(1, 'a'), row(2, 'b')])]), { ask: () => 'x', write: async (_p, ms) => { given.push(ms); return '{"keep":[1,2],"asked":null}' }, due: () => 9_000, now: () => 1_000 }).run({ query: 'q' }, { task: '' })
+    expect(given).toEqual([8_000])
+  })
+})

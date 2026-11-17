@@ -6,7 +6,7 @@ import { listTasks, SOURCE_TITLES_RULE, type DelegatedTask } from './delegated-t
 import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn, readBotTranscript } from './bots.js'
-import { ITEM_CHECK_MS, judgedItems } from './item-check.js'
+import { firstHand, ITEM_CHECK_MS, judgedItems } from './item-check.js'
 import { checkedWrite, type CheckOutcome } from './written-check.js'
 import { resultDay } from './search-template.js'
 import { datedText, logTask, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type MemberData, type MemberFact, type TeamMember } from './delegated-tasks.js'
@@ -270,6 +270,7 @@ const jobOf = (member: TeamMember): string => { const title = member.title?.trim
 const DOING_NOUN = /(정리|조사|요약|번역|분석|비교|검토|확인|작성|추천|계산|취합)$/u
 // How many short things a job asks for ("문구 3개", "세 줄", "3가지"): they come back as a numbered list of that many.
 const COUNT_WORDS: Record<string, number> = { 두: 2, 세: 3, 네: 4, 다섯: 5 }
+// shortcut: counter words read on the writer path only, where no item judge runs; the lookup's count is the judge's reading (item-check).
 export function askedCount(brief: string): number {
   const said = /(\d{1,2}|두|세|네|다섯)\s*(?:개|가지|줄|건|편|문장)(?![가-힣]*월)/u.exec((handedFrom(brief)?.brief ?? brief).split('\n')[0]!)?.[1]
   const n = said ? COUNT_WORDS[said] ?? Number(said) : 0
@@ -1051,6 +1052,7 @@ export function inAskedPeriod(data: MemberData | undefined, brief: string, now =
  * in (team-runner, before settle), so the writer, the host's own rendering and a hand-off all show the same items. One quick-model call
  * for a part with two or more facts. With no model, no answer in time or no usable one, nothing is judged here: the teammate's own
  * judgment stands and the writer pass judges kind again (stack-11, c11a r3 #2: a lexical stand-in dropped right items and kept wrong ones). */
+// c15a: the floor only; team-runner gives each call its time from the part's deadline (item-check judgeTime).
 export const KIND_CHECK_MS = ITEM_CHECK_MS
 // c12a B3 (C5: a listing page's summary and an item dated only "2026" were a list's items): the same call says which kept items are not one
 // single thing with what the job needs, judged by meaning; they are taken apart in one more round while the teammate has time
@@ -1068,12 +1070,13 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   // The verdict renumbered to the new items alone; a new item in a "same" group with one in hand is dropped.
   const off = inHand.length, again = new Set(raw.same.filter(group => group.some(n => n <= off)).flat())
   const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
-  const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
+  const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
   // c14a: an item the judge could not tell stays, as before for a teammate (there is no search loop here to look further); an item judged
   // a listing or aggregate is a page of several like one in `lists` (stack-13 "For cycle 14"): both go to the teammate's items rounds.
   const held = (n: number): boolean => said.keep.includes(n) || said.unsure.includes(n), several = (n: number): boolean => said.lists.includes(n) || said.listing.includes(n)
-  const facts = data.facts.flatMap((f, i) => held(i + 1) ? [{ ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}) }] : [])
+  // c15a (cause L): a fact passed on second-hand (a café post, a wiki) when another one reports it first-hand ranks after the first-hand ones.
+  const facts = firstHand(data.facts.flatMap((f, i) => held(i + 1) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n)).map(one => one.f)
   // None of the kind asked: said as a part that found nothing for it, with where it looked (partLines), never the wrong items.
   return facts.length ? { ...data, facts } : { ...data, facts: [], nothing: {} }
 }

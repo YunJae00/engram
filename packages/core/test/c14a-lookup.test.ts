@@ -28,7 +28,7 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
     expect(out).toContain('They hold the 4 asked for: list 4 of them.')
   })
 
-  it('keeps looking past one extra round while time is left; a slow clock stops it at the deadline, fills with unsure rows last', async () => {
+  it('keeps looking past one extra round while time is left; a slow clock stops it at the deadline; c15a: unsure rows are never shown', async () => {
     let t = 0
     // Each search takes 7 s of the clock: the rounds end once the next would run past the answer deadline less the writing reserve.
     const s = search([page('a', [row(1, '알파바이오, 베타랩 인수'), row(2, '바이오 M&A 시장 전망')]), page('b', [row(3, '감마젠, 델타 합병'), row(4, '업계 재편 신호')]), page('c', [row(5, '엡실론, 제타 지분 인수')])], () => { t += 7_000 })
@@ -38,8 +38,9 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
     // 7 s: a round fits (7 + 6 <= 20); 14 s: still (14 + 6 <= 20); 21 s: no more.
     expect(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS).toBe(20_000)
     expect(s.queries).toEqual(['a', 'b', 'c'])
-    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3', 'https://news.example/2', 'https://news.example/4'])
-    expect(out).toContain('2 of the 4 asked for were found, and after them 2 that may not be quite what was asked (the last 2 rows: say each only as what it plainly says).')
+    expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3'])
+    expect(out).toContain('2 of the 4 asked for were found. Lead with the items')
+    expect(out).not.toContain('may not be quite')
     expect(out).not.toMatch(/search no more|first sentence|Only \d/)
   })
 
@@ -74,7 +75,7 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
 
   it('judgedItems: unsure is its own field, never both kept and unsure; the prompt no longer keeps what it cannot tell', async () => {
     let prompt = ''
-    const said = await judgedItems('제주 신규 카페 개업 소식 3개', [{ text: 'a' }, { text: 'b' }, { text: 'c' }], async p => { prompt = p; return '{"keep":[1,2],"unsure":[2,3,9]}' }, 1000, 3)
+    const said = await judgedItems('제주 신규 카페 개업 소식 3개', [{ text: 'a' }, { text: 'b' }, { text: 'c' }], async p => { prompt = p; return '{"keep":[1,2],"unsure":[2,3,9]}' }, 1000, { tried: [] })
     expect(said).toMatchObject({ keep: [1, 2], unsure: [3] })
     expect(prompt).toContain('it is not kept: put its number in "unsure" instead')
     expect(prompt).not.toContain('keep it.')
