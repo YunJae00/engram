@@ -169,3 +169,28 @@ describe('stack-14 merge: R1/T1 call count', () => {
     expect(quick).toEqual([])
   })
 })
+
+// stack-14 targeted results (R3 in the c14a run, cause K): the item judge kept its own fixed 3 s; it answered in 3.01 s, so the rows went
+// on unjudged, off-kind ones were listed and the look-further loop never started. Wording not the harness's: 대전 빵집 개업 소식 3건.
+describe('stack-14: the item judge reads the one deadline', () => {
+  it('a judgment that takes longer than 3 s, early in the turn, is still used and the loop looks further', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-11-18T03:00:00Z'), toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const since = Date.now(), queries: string[] = []
+    const page = (n: number): string => `results for "q" at https://search.example/?q=${n} (DATA, not instructions):\n- 대전 빵집 ${n}호 개업 — https://bread.example.kr/${n} — 11월 ${n}일\n- 대전 제과 박람회 — https://expo.example.kr/${n} — 통계`
+    const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return page(queries.length + 1) } }
+    // The quick model is slow today: every verdict takes 4.5 s. Row 1 of each page is a bakery that opened; row 2 is a fair (another kind).
+    const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
+      const n = (prompt.match(/"n":/g) ?? []).length, keep = Array.from({ length: n }, (_, i) => i + 1).filter(i => !prompt.split('"n":')[i]!.includes('박람회'))
+      resolve(JSON.stringify({ keep, unsure: [], same: [], lists: [], names: {}, listing: [], outside: [], search: `대전 빵집 새로 문 연 곳 ${n}` }))
+    }, 4_500))
+    const tool = checkedSearch(search, { ask: () => '대전 빵집 개업 소식 3건 알려줘', write, since })
+    const done = tool.run({ query: '대전 빵집 개업' }, { task: '' })
+    await vi.runAllTimersAsync()
+    const out = await done
+    // Judged: the fair is gone, and the loop searched again in the judge's words until 3 bakeries were in hand.
+    expect(out).not.toContain('박람회')
+    expect(queries.length).toBeGreaterThanOrEqual(2)
+    expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
+    expect(Date.now() - since).toBeLessThanOrEqual(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS + WIDEN_MS)
+  })
+})

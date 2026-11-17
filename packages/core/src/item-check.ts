@@ -81,10 +81,13 @@ export interface CheckedSearchOptions {
   judgeMs?: number
 }
 export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentTool {
-  const now = by.now ?? Date.now
+  const now = by.now ?? Date.now, due = by.since + TEAM_ANSWER_MS - LOOKUP_RESERVE_MS
+  // stack-14 (cause K, R3 in the c14a run: the first judgment took 3.01 s, hit its own fixed 3 s cap, the rows went on unjudged and the
+  // loop never started): the judge reads the same deadline as the rounds, never less than its usual time.
+  const judgeMs = (): number => by.judgeMs ?? Math.max(ITEM_CHECK_MS, due - now())
   const judged = async (out: string, ask: string, count: number | undefined): Promise<{ sure: Row[]; unsure: Row[]; verdict?: ItemJudgment }> => {
     const rows = rowsOf(out)
-    const [dead, verdict] = await Promise.all([by.alive ? deadOf(rows.map(row => row.url), by.alive, by.linkMs ?? LINK_CHECK_MS) : Promise.resolve<string[]>([]), count && rows.length ? judgedItems(ask, rows.map(row => ({ text: row.text, link: row.url })), by.write, by.judgeMs ?? ITEM_CHECK_MS, count) : undefined])
+    const [dead, verdict] = await Promise.all([by.alive ? deadOf(rows.map(row => row.url), by.alive, by.linkMs ?? LINK_CHECK_MS) : Promise.resolve<string[]>([]), count && rows.length ? judgedItems(ask, rows.map(row => ({ text: row.text, link: row.url })), by.write, judgeMs(), count) : undefined])
     const { sure, unsure } = fitting(rows, verdict), live = (row: Row): boolean => !dead.includes(row.url)
     return { sure: sure.filter(live), unsure: unsure.filter(live), ...(verdict ? { verdict } : {}) }
   }
@@ -98,7 +101,6 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       const first = await judged(out, ask, count)
       let { sure, unsure } = first, words = first.verdict?.search
       const searched = new Set([String(args['query'] ?? '')]), seen = new Set(rowsOf(out).map(row => row.url))
-      const due = by.since + TEAM_ANSWER_MS - LOOKUP_RESERVE_MS
       while (count && words && sure.length < count && !searched.has(words) && now() + WIDEN_MS <= due && !context.signal?.aborted) {
         searched.add(words)
         const more = await tool.run({ ...args, query: words }, context).catch(() => '')
