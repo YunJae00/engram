@@ -5,7 +5,7 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { DESK_NOTE, deskKind, tidyCounts, withOffer, withoutSameDecisions } from '../src/main/desk-lane.js'
+import { DESK_NOTE, deskKind, shareReady, tidyCounts, withOffer, withoutSameDecisions } from '../src/main/desk-lane.js'
 import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { beginFirstLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
 
@@ -160,6 +160,31 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect(withoutSameDecisions(H3_ASK, none)).toBe(none)
   })
 
+  // c6c r2: the round 1 review replayed the stored answer and still found 20 lines, the promise lead, 일시, 참석 and 논의 내용.
+  it('turns the stored answer into a short one that opens on what was chosen', () => {
+    for (const answer of [H3, marked]) {
+      const out = shareReady(H3_ASK, withoutSameDecisions(H3_ASK, answer))
+      expect(out.split('\n')[0]).toBe('할 일이랑 미결 위주로 짧게 정리했어요.')
+      for (const gone of ['정리할게요', '일시', '참석', '3층 회의실', '논의 내용', '이탈률', '제품팀 주간 회의 공유', '결정사항']) expect(out, gone).not.toContain(gone)
+      for (const kept of ['한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '결제 모듈 후보 두 곳 중 선택은', '다음 회의: 11월 23일(월) 오전 10시']) expect(out, kept).toContain(kept)
+      expect(out.split('\n').filter(line => line.trim()).length).toBeLessThanOrEqual(9)
+      expect(out).not.toMatch(/\?/)
+    }
+    expect(shareReady(H3_ASK, withoutSameDecisions(H3_ASK, H3))).toBe(['할 일이랑 미결 위주로 짧게 정리했어요.', '', '할 일', '한서연 — 온보딩 화면 시안 확정 (11/20)', '오태민 — 결제 모듈 교체 일정 수립 (11/24)', '윤가은 — 베타 테스터 50명 모집 공지 발송 (11/27)', '백도현 — 4분기 마케팅 예산안 제출 (12/1)', '미결', '결제 모듈 후보 두 곳 중 선택은 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n'))
+    // A summary that opens on its heading gets the lead; one that already says its choice keeps it; suggested replies stay last.
+    expect(shareReady('회의록 보기 좋게 정리해줘', '## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```')).toBe('할 일 위주로 짧게 정리했어요.\n\n## 할 일\n- 한서연: 시안 확정 (11/20)\n\n```replies\n표로\n```')
+    const said = '담당자별 할 일만 추렸어요.\n\n할 일\n- 한서연: 시안 확정 (11/20)'
+    expect(shareReady(H3_ASK, said)).toBe(said)
+  })
+
+  it('leaves the shape alone when the ask is not open-form or names a part (D1, H4)', () => {
+    const D1 = `11월 16일 제품팀 주간 회의록을 결정사항과 할 일로 정리할게요.\n\n${H3.split('\n').slice(4).join('\n')}`
+    for (const ask of [D1_ASK, 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘', '회의록 요약해줘', '참석자랑 논의 내용까지 공유하기 좋게 정리해줘', '결정사항 위주로 보기 좋게 정리해줘']) expect(shareReady(ask, D1), ask).toBe(D1)
+    // Nothing to stand on: no 할 일 block, so nothing is cut.
+    const prose = '회의록을 정리할게요.\n\n일시: 11월 16일\n온보딩 시안은 B안으로 가기로 했어요.'
+    expect(shareReady(H3_ASK, prose)).toBe(prose)
+  })
+
   it('pins the open-form note and the order of the host fixes; H4 still gets its one offer', () => {
     expect(deskKind(H3_ASK)).toBe('note')
     expect(DESK_NOTE).toContain('the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요.")')
@@ -168,6 +193,8 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     const ipc = source('ipc.ts')
     expect(ipc.indexOf("result.answer = withoutSameDecisions(routed, result.answer)")).toBeGreaterThan(0)
     expect(ipc.indexOf("result.answer = withoutSameDecisions(routed, result.answer)")).toBeLessThan(ipc.indexOf('result.answer = withOffer(routed, result.answer, savedHistory'))
+    expect(ipc.indexOf('result.answer = withoutSameDecisions(routed, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = shareReady(routed, result.answer)'))
+    expect(ipc.indexOf('result.answer = shareReady(routed, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = withOffer(routed, result.answer, savedHistory'))
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
     expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 표로 묶어 드릴게요.`)

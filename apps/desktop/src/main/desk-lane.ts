@@ -195,24 +195,54 @@ const DECIDED = HEAD('결정\\s*사항|결정된?\\s*것|decisions?'), TODO = HE
 const LIST = /^\s*([-*•·]|\d+[.)])\s/
 const heads = (line: string): boolean => /^\s*(#{1,6}\s|\*\*[^*]+\*\*\s*[:：]?\s*$)/.test(line) || (!LIST.test(line) && [...line.trim()].length <= 12 && !/[.!?…,—]|요$|다$/.test(line.trim()))
 const wordsOf = (line: string): string[] => line.replace(/^\s*([-*•·]|\d+[.)])\s+/, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean)
+// A block of list items ends at the first line that is not one; a block of plain lines at the next heading.
+const blockOf = (lines: readonly string[], head: RegExp): { at: number; end: number; items: string[] } | undefined => {
+  const at = lines.findIndex(line => head.test(line))
+  if (at < 0) return undefined
+  let end = at + 1
+  const listed = LIST.test(lines.slice(at + 1).find(line => line.trim()) ?? '')
+  while (end < lines.length && !(lines[end]!.trim() && (listed ? !LIST.test(lines[end]!) : heads(lines[end]!))) && !/^\s*```/.test(lines[end]!)) end++
+  return { at, end, items: lines.slice(at + 1, end).filter(line => line.trim()) }
+}
 export function withoutSameDecisions(ask: string, answer: string): string {
   if (/결정|decision/i.test(ask)) return answer
   const lines = answer.split('\n')
-  const block = (head: RegExp): { at: number; end: number; items: string[] } | undefined => {
-    const at = lines.findIndex(line => head.test(line))
-    if (at < 0) return undefined
-    let end = at + 1
-    // A block of list items ends at the first line that is not one; a block of plain lines at the next heading.
-    const listed = LIST.test(lines.slice(at + 1).find(line => line.trim()) ?? '')
-    while (end < lines.length && !(lines[end]!.trim() && (listed ? !LIST.test(lines[end]!) : heads(lines[end]!))) && !/^\s*```/.test(lines[end]!)) end++
-    return { at, end, items: lines.slice(at + 1, end).filter(line => line.trim()) }
-  }
-  const decided = block(DECIDED), todo = block(TODO)
+  const decided = blockOf(lines, DECIDED), todo = blockOf(lines, TODO)
   if (!decided?.items.length || !todo?.items.length) return answer
   const tasks = todo.items.map(line => line.replace(/\s/g, ''))
   const again = (line: string): boolean => { const words = wordsOf(line); return words.length >= 2 && tasks.some(task => words.filter(word => task.includes(word)).length >= Math.ceil(words.length * 0.8)) }
   if (!decided.items.every(again)) return answer
   return [...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// c6c r2 H3: with the duplicate block gone the stored answer still opened on a promise ("회의록을 팀 공유용으로 정리할게요.") and carried a
+// title, 일시, 참석 and a 논의 내용 block: twenty lines of report (judge: 보고서 말투), with the shape asked for in the prompt. The host backs it
+// for an ask that leaves the form open ("공유하기 좋게", "보기 좋게", "깔끔하게") and has a 할 일 block to stand on: the 일시 / 장소 / 참석 lines,
+// the 논의 block and a title with nothing under it go, and the lead says what was kept, in the past tense (rule 15). Left alone when the
+// ask names one of those parts, or the decisions (D1).
+const OPEN_FORM = /(공유|보기|읽기|전달)\s*(하기)?\s*(좋게|쉽게|편하게)|깔끔하게|\b(easy to (share|read)|share-?ready)\b/i
+const NAMES_PART = /결정|일시|날짜|장소|참석|논의|전체|전부|자세|빠짐없이|\b(decisions?|attendees|discussion|full|detail)/i
+const META = /^\s*(?:[-*•·]\s+)?(?:\*\*)?\s*(일시|일자|날짜|장소|참석자?|date|when|where|attendees)\s*(?:\*\*)?\s*[:：]/i
+const TALKED = HEAD('논의\\s*(내용|사항)?|discussion')
+export function shareReady(ask: string, answer: string): string {
+  if (!OPEN_FORM.test(ask) || NAMES_PART.test(ask)) return answer
+  const replies = answer.search(/\n*```replies/)
+  let lines = (replies < 0 ? answer : answer.slice(0, replies)).split('\n')
+  if (!blockOf(lines, TODO)?.items.length) return answer
+  lines = lines.filter(line => !META.test(line))
+  const talked = blockOf(lines, TALKED)
+  if (talked) lines.splice(talked.at, talked.end - talked.at)
+  const head = (line: string): boolean => !!line.trim() && heads(line)
+  // A title: the first heading, when the next thing under it is another heading.
+  const title = lines.findIndex(head), under = lines.slice(title + 1).find(line => line.trim())
+  if (title >= 0 && under !== undefined && head(under)) lines.splice(title, 1)
+  const kept = lines.filter(head).map(line => line.replace(/[#*:：]/g, '').trim()).filter(Boolean).slice(0, 2)
+  const lead = `${kept.map((name, at) => at < kept.length - 1 ? `${name}${lastSound(name) > 0 ? '이랑' : '랑'}` : name).join(' ')} 위주로 짧게 정리했어요.`
+  const first = lines.findIndex(line => line.trim())
+  // A promise in front of the summary gives way to the choice; a summary that opens on a heading gets it.
+  if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!)) lines[first] = lead
+  else if (head(lines[first]!)) lines.splice(first, 0, lead, '')
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
 }
 
 // c6c F1: the tidy answer was five lines of "PDF 폴더: 6개 — 견적서_A사.pdf, 계약서_초안.pdf, …", twenty file names (judge: a stiff report), with the

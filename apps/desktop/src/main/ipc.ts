@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyTells, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -2993,6 +2993,8 @@ export function registerIpc(ctx: VaultContext): void {
         if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
         // c6c H3: a 결정사항 block that only repeats the 할 일 lines is dropped (desk-lane.ts withoutSameDecisions).
         if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(routed, result.answer)
+        // c6c r2 H3: an open-form summary opens on what was chosen, without 일시 / 참석 / 논의 (desk-lane.ts shareReady).
+        if (kind === 'note' && !result.asked) result.answer = shareReady(routed, result.answer)
         // c6c F1: a tidy job answers with the count per folder on one line, not twenty file names (desk-lane.ts tidyCounts).
         if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
