@@ -153,5 +153,5 @@ it('c11b r3: listShortfall names how many of the asked items met the ask, and no
   expect(listShortfall(answer, ['이번 달 해운 운임 기사 3개만 알려줘'], held, now)).toBe('기사 링크와 날짜까지 확인된 건 3개 중 1개예요.')
   expect(listShortfall('1. a [x](https://a.example/1)\n2. b [y](https://b.example/2)', ['캠핑 의자 추천 2개'], [], now)).toBeUndefined()
   expect(listShortfall('1. a [x](https://a.example/1)', ['top 2 camping chair reviews'], [], now)).toBe('1 of the 2 asked for are found with their own link.')
-  expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain('shortfall: (answer: string) => listShortfall(')
+  expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toMatch(/liveCited\([^]*?listShortfall\(result\.answer/)
 })

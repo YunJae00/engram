@@ -170,6 +170,20 @@ describe('an edit is saved to the file it read', () => {
     expect((await readFile(first.taskPath)).equals(before)).toBe(true)
     expect(await saved('.pptx')).toHaveLength(2)
   })
+  // stack-11 (review of placeInTask/composeOffice): a name with capital letters is still seen as taken (freeName asks in lower case).
+  it('a new build never overwrites an earlier turn\'s file whose name has capital letters', async () => {
+    const first = await use(turnTools('t1'), 'ppt_build', { slides: SLIDES, saveAs: 'Q4 Sales Kickoff.pptx', theme: THEME })
+    const before = await readFile(first.taskPath)
+    const second = await use(turnTools('t2'), 'ppt_build', { slides: SLIDES.slice(0, 2), saveAs: 'Q4 Sales Kickoff.pptx', theme: THEME })
+    expect(second.taskPath).not.toBe(first.taskPath)
+    expect((await readFile(first.taskPath)).equals(before)).toBe(true)
+    expect(await files('.pptx')).toHaveLength(2)
+    // Its own draft made again in one turn is still replaced in place.
+    const t3 = turnTools('t3')
+    const draft = await use(t3, 'ppt_build', { slides: SLIDES, saveAs: 'Board Update.pptx', theme: THEME })
+    const again = await use(t3, 'ppt_build', { slides: SLIDES.slice(0, 2), saveAs: 'Board Update.pptx', theme: THEME })
+    expect(again.taskPath).toBe(draft.taskPath)
+  })
 })
 
 describe('a garbled build is refused before any file exists', () => {

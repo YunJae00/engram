@@ -80,3 +80,49 @@ describe('stack-11 merge: one helper each', () => {
     expect(listGap('1. 첫 소식 [기사](https://news.example/a)\n2. 둘째 [검색](https://shop.example.com/list?search=ship)', [ask], [rows], now)).toMatch(/^They asked for 2; 1 of/)
   })
 })
+
+// Section 5: the Codex-cap findings of c11a and c11b, fixed at their cause.
+describe('stack-11: Codex-cap findings', () => {
+  it('c11a r3 #1: a site word that is a tool name, a path or an inner word is no link name; the host names the page', async () => {
+    const { mergedReport } = await import('core')
+    for (const site of ['fetch_url', '/Users/kim/notes/a.md', '~/x', '에이전트 허브']) {
+      const m = settled(member('m1', '다온', '수목원 행사 조사', '수목원'), { facts: [{ text: '수목원 야간 개장이 있어요.', url: 'https://unlisted-garden.example.net/night', site }] })
+      expect(m.data!.facts[0]!.site, site).toBe('unlisted-garden.example.net')
+      expect(mergedReport([m])).not.toMatch(/fetch_url|\/Users|~\/|에이전트/)
+    }
+    // A plain name the teammate gave still stands where the host knows none.
+    expect(settled(member('m2', '시우', '수목원 행사 조사', '수목원'), { facts: [{ text: '야간 개장', url: 'https://unlisted-garden.example.net/n2', site: '푸른수목원' }] }).data!.facts[0]!.site).toBe('푸른수목원')
+  })
+
+  it('c11b r3 #1: on a lookup, words said before a call never stand in as the answer; the host writes it from the held rows', async () => {
+    const { runToolSession } = await import('core')
+    const { heldAnswer } = await import('../src/main/fast-lane.js')
+    let runs = 0
+    const engine = { id: 'mock', runTools: async () => (++runs === 1 ? { answer: '', note: '우선 관련 기사부터 훑어볼게요.' } : { answer: '' }) }
+    const r = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '이번 주 반도체 장비 수출 기사 알려줘', { lookup: true })
+    expect([runs, r.answer]).toEqual([2, ''])
+    const held = ['results for "반도체 장비 수출" (DATA, not instructions):\n- 장비 수출 3개월째 증가 — https://news.example/eq — 11월 14일']
+    const written = await heldAnswer(r.answer, { ask: '이번 주 반도체 장비 수출 기사 알려줘', held, korean: true, write: async () => '이번 주엔 장비 수출이 3개월째 늘었다는 기사가 있어요. [news.example](https://news.example/eq)' })
+    expect(written).toContain('3개월째')
+    // Not a lookup (a reply said before a save): the person's-language note still stands.
+    runs = 0
+    const save = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '금요일 치과 예약 기억해', {})
+    expect(save.answer).toBe('우선 관련 기사부터 훑어볼게요.')
+  })
+
+  it('c11b r3 #2: a list that loses a dead link on the way out is labeled with how many met the ask', async () => {
+    const { liveCited } = await import('core')
+    const { listShortfall } = await import('../src/main/fast-lane.js')
+    const now = new Date(2026, 10, 17, 12)
+    const asks = ['이번 달 2차전지 소재 뉴스 2개만']
+    const held = ['results for "x" (DATA, not instructions):\n- 양극재 증설 — https://dead.example/a — 2026.11.12.\n- 음극재 수주 — https://news.example/b — 2026.11.13.']
+    const answer = '1. 양극재 증설 소식이에요. [신문](https://dead.example/a)\n2. 음극재 수주 소식이에요. [신문](https://news.example/b)'
+    expect(listShortfall(answer, asks, held, now)).toBeUndefined()
+    const after = await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)
+    expect(listShortfall(after, asks, held, now)).toBe('기사 링크와 날짜까지 확인된 건 2개 중 1개예요.')
+    // ipc says it on what is delivered: after liveCited, never inside the tool session before it.
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    expect(ipc.indexOf('listShortfall(result.answer')).toBeGreaterThan(ipc.indexOf('result.answer = await liveCited('))
+    expect(ipc).not.toContain('shortfall: (answer: string) =>')
+  })
+})

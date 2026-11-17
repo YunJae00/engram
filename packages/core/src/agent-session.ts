@@ -342,7 +342,9 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${UNSAID_NOTE}` }), ended])
       // c11b r3 (review #2): a note is the model's working words, written for itself; it stands in for an answer only when it is in the
       // person's own language (a reply said before a save, "…기억해 둘게요."), never as English narration in a Korean thread (rule 12).
-      if (!session.answer.trim() && !session.error && theirLanguage(note, task)) session = { answer: note }
+      // stack-11 (c11b r3 #1): on a lookup the answer is what was found, so words said before a call ("먼저 자료를 찾아볼게요.") never
+      // stand in, in any language: the answer stays empty and the host writes it from the rows it holds (desktop fast-lane heldAnswer).
+      if (!session.answer.trim() && !session.error && !options.lookup && theirLanguage(note, task)) session = { answer: note }
     }
     const gap = closed === undefined && !signal.aborted && !session.error && !asked ? options.recheck?.(session.answer) : undefined
     if (gap) {

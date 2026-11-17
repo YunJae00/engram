@@ -2971,7 +2971,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
-            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined, shortfall: (answer: string) => listShortfall(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) } : {}),
+            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -3036,6 +3036,10 @@ export function registerIpc(ctx: VaultContext): void {
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
           result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)
+          // stack-11 (c11b r3 #2): how many of the asked items met the ask is said under what is delivered, after dead links went, never
+          // before: a list that lost a link to liveCited is labeled like any other short one (GROKBOT rules 5, 7). Under a trailing replies block's place.
+          const short = solo && !signal.aborted && result.answer.trim() ? listShortfall(result.answer, [lookup.ask(), ...steered], heldFor(laneRead, laneSaid)) : undefined
+          if (short) result.answer = result.answer.replace(/((?:\s*\n-{3,})?\s*```replies[^]*)?$/, tail => `\n\n${short}${tail}`)
         }
         // stack-4: a team answer made from what a teammate read links the rows of a kept results page, which nobody opened. Only a page a
         // teammate loaded counts as loaded; the rest are asked like a lookup's. One teammate's dead link gives way to the page they read;
