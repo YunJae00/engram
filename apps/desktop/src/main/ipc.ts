@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -1121,8 +1121,11 @@ export function registerIpc(ctx: VaultContext): void {
     sendQuiet: (request) => sendChat(request, undefined, undefined, { quiet: true }),
     stop: (channel) => abortAllChat(channel),
   })
+  // c9a T2: a solo lookup that has not answered yet listens here for a change of ask said mid-work (aside-ipc changed).
+  const laneChanges = new Map<string, (said: string) => void>()
   registerAsideIpc({
     paths,
+    changed: (channel, said) => laneChanges.get(channel)?.(said),
     busy: (channel) => answering.has(channel) || tasks.activeChannels().includes(channel) || followingUp(channel),
     followUp: followUpFor,
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
@@ -2914,13 +2917,29 @@ export function registerIpc(ctx: VaultContext): void {
         const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
         const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
-        const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined
-        if (searched) flog('chat-phase', JSON.stringify({ channel, phase: 'lane-first-search', ran: !!searched.opening }))
-        // stack-7: a teammate hired in this turn with the same words starts from these results (team-runner laneSearches); every turn resets it.
-        if (searched?.query) laneSearches.set(channel, { query: searched.query, found: searched.found ?? '' }); else laneSearches.delete(channel)
+        // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
+        // the old ask), and the turn starts again on the new ask (fast-lane swappedAsk): the host's search for it, then one fresh round.
+        // An addition or anything the host cannot name for sure is taken by the running round at its next step, as before.
+        const lookup = swapRounds(request.message, signal), laneSearch = laneTools?.find(tool => tool.name === 'search_web')
+        if (solo && !handed && !fixed) laneChanges.set(channel, said => {
+          if (!lookup.change(said)) return
+          const taken = takeFollowUps(channel)
+          steered.push(...taken); laneSaid.push(...taken.map(text => ({ text, at: laneRead.length })))
+        })
+        const searchFor = async (ask: string, within: AbortSignal): Promise<Awaited<ReturnType<typeof firstSearch>>> => {
+          const found = await firstSearch(ask, laneSearch, within)
+          flog('chat-phase', JSON.stringify({ channel, phase: 'lane-first-search', ran: !!found.opening }))
+          // stack-7: a teammate hired in this turn with the same words starts from these results (team-runner laneSearches); every turn resets it.
+          if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? '' }); else laneSearches.delete(channel)
+          return found
+        }
+        let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined
+        if (!searched) laneSearches.delete(channel)
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
           : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : retitled ? { ...retitled, fellBack: false } : await runComet(
+          : retitled ? { ...retitled, fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {
+          if (again) { flog('chat-phase', JSON.stringify({ channel, phase: 'lane-swap', ms: Date.now() - nativeSince })); searched = await searchFor(laneAsk, roundSignal) }
+          return runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
@@ -2928,9 +2947,9 @@ export function registerIpc(ctx: VaultContext): void {
             // A page that wants a sign-in is left unread on a lookup, as for a member (grokbar T2: one such page ended the turn on a question).
             tools: lane ? laneTools! : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,
           },
-          request.message,
+          laneAsk,
           {
-            signal,
+            signal: roundSignal,
             tokenBudget: turn?.tokenBudget,
             onUsage: tokens => { tokensUsed += tokens },
             waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
@@ -2981,7 +3000,7 @@ export function registerIpc(ctx: VaultContext): void {
               audit('result', { tool, detail: observation })
             },
           },
-        )
+        ) }).finally(() => laneChanges.delete(channel))
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
         // Asks one shown address whether it answers: nothing is sent with it but the address itself.
@@ -2991,8 +3010,8 @@ export function registerIpc(ctx: VaultContext): void {
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
           // c7 L2: a lone lookup never ends on "가져오지 못했어요" while results are held; c7 R3: nothing follows a numbered news list (fast-lane.ts).
-          if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
-          if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))
+          if (solo) result.answer = await heldAnswer(result.answer, { ask: [lookup.ask(), ...steered].join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
           result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)

@@ -348,7 +348,8 @@ describe('team hire tools', () => {
     expect(LOOKUP_RULE).toContain("comes from a result or is the previous model's known launch price")
     expect(LOOKUP_RULE).toContain('never a number of your own, and never a line with no number in it')
     expect(LOOKUP_RULE).not.toContain('when the results hold one')
-    expect(LOOKUP_RULE).toContain('never "네이버 블로그" or "네이버 카페"')
+    // c9a R2: a post is named by its platform.
+    expect(LOOKUP_RULE).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리)')
     expect(LOOKUP_RULE).toContain('report at once from them, each fact with the address of the result it came from')
     expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
     expect(LOOKUP_RULE).toContain("Report in the person's language")
@@ -445,7 +446,7 @@ describe('team hire tools', () => {
     expect(out.note).toContain('markdown link')
     // grokbar c3 R1/R2: rows read "서울 (서울날씨봇)" and the closing line "출처: iPhone18 · GalaxyS27 · Pixel11".
     expect(out.note).toContain("the link text the site's or publication's own name")
-    expect(out.note).toContain('never "네이버 블로그" or "네이버 카페"')
+    expect(out.note).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리)')
     expect(out.note).toContain("never a member's role or name")
     expect(out.note).toContain('A row names a member only when the person named the members themselves')
     // One friendly lead and one table, no status sentence, and a plain line for a member that found nothing.
@@ -766,15 +767,15 @@ describe('team hire tools', () => {
     const member = (over: object) => ({ id: 'm1', parentId: null, depth: 1, role: '갤럭시 S27', brief: '갤럭시 S27 가격', sessionKey: 's', hiredAt: '2026-11-17T00:00:00Z', state: 'done' as const, ...over })
     const blog = 'https://blog.naver.com/example/1'
     // The reviewer's repro: only the address is known.
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({ sources: [blog] })], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [출처](${blog}) |`)
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({ sources: [blog] })], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`)
     // The member linked the post by its title: the row links that post, though the member's kept page is the search.
     // c7: a post's headline is not a site's name ("디자인 화면 출고가" in R2): the link is the plain word.
     const titled = member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'], result: `예상 130만 원이에요. [갤럭시 S27 출고가 총정리](${blog})` })
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [titled], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [출처](${blog}) |`)
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [titled], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`)
     // Only the search page is known: it is named as itself.
     expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 카페 |`, [member({ sources: ['https://search.naver.com/search.naver?query=갤럭시 S27 가격'] })], true)).toContain('| [네이버 검색](https://search.naver.com/search.naver?query=갤럭시%20S27%20가격) |')
     // A link the lead already wrote under that name, and a row whose member kept no page.
-    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`, [titled], true)).toContain(`| [출처](${blog}) |`)
+    expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | [네이버 블로그](${blog}) |`, [titled], true)).toContain(`| [네이버 블로그](${blog}) |`)
     expect(citeMembers(`${head}| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |`, [member({})], true)).toBe(`${head}| 갤럭시 S27 | 예상 130만 원 | 블로그 글 |`)
     // A real site's name is kept, and a blog platform that is the subject of a row is not a source cell.
     expect(citeMembers(`${head}| 갤럭시 S27 | 130만 원 | 삼성전자 뉴스룸 |`, [member({ sources: ['https://news.samsung.com/kr/1'] })], true)).toContain('[삼성전자 뉴스룸](https://news.samsung.com/kr/1)')
@@ -972,16 +973,17 @@ it('c6: a row links the result its figure was read from, a link is never named b
   expect(citeMembers('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | 네이버 날씨 |', [seoul], true)).toBe(`| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | [네이버 날씨](${search('서울 날씨').replace(/ /g, '%20')}) |`)
   // A results page the lead linked itself gives way to the result that holds the figure; a row with no figure in what was read keeps it.
   expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 999유로대 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).toContain('| [출처](https://ko.vidabytes.com/pixel-11/) |')
-  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 못 찾았어요 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).toContain('[네이버 검색](')
+  // c9a R2: a results page never stands for a row whose teammate cited a real page, figure or not.
+  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 못 찾았어요 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).not.toContain('[네이버 검색](')
   // A post named by where it was posted takes the title its search result came with ("appletouch 카페", "블로그 글").
   keepTitle('https://cafe.naver.com/appletouch/2303631', '아이폰 언팩 총정리, 아이폰18 프로 가격 20만원 인상과 첫 폴더블')
   const cafe = member('m5', '아이폰 18', { sources: [search('아이폰 18 가격 출시일')], result: '아이폰 언팩 총정리: 프로 256GB 199만원부터, 2026.09.10. https://cafe.naver.com/appletouch/2303631' })
-  expect(citeMembers('| 제품 | 가격 | 출처 |\n|---|---|---|\n| 아이폰 18 | 프로 기준 199만원부터 | appletouch 카페 |', [cafe], true)).toContain('| [출처](https://cafe.naver.com/appletouch/2303631) |')
+  expect(citeMembers('| 제품 | 가격 | 출처 |\n|---|---|---|\n| 아이폰 18 | 프로 기준 199만원부터 | appletouch 카페 |', [cafe], true)).toContain('| [네이버 카페](https://cafe.naver.com/appletouch/2303631) |')
   // The title's own site part names the link when it has one; a title that ends on the place does not.
   expect(sourceName('https://www.yna.co.kr/view/AKR1', true)).toBe('연합뉴스')
   keepTitle('https://blog.naver.com/a/1', '픽셀 11 출시일 총정리 : 네이버 블로그')
-  expect(sourceName('https://blog.naver.com/a/1', true)).toBe('출처')
-  expect(sourceName('https://blog.naver.com/none/9', true)).toBe('출처')
+  expect(sourceName('https://blog.naver.com/a/1', true)).toBe('네이버 블로그')
+  expect(sourceName('https://blog.naver.com/none/9', true)).toBe('네이버 블로그')
   expect(sourceName(search('서울 날씨'), true)).toBe('네이버 날씨')
   expect(sourceName('https://finance.naver.com/item/main.naver', true)).toBe('네이버')
   expect(sourceName('https://news.samsung.co.kr/x', true)).toBe('삼성전자')
@@ -1035,9 +1037,10 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
   expect(sourceName('https://blank.page/notes/1')).toBe('source')
   // A Naver blog post whose search title is a headline: not a name.
   keepTitle('https://blog.naver.com/cnpabc123/224479927352', '아이폰18 프로 맥스 디자인 화면 출고가', '아이폰 18 가격 출시일')
-  expect(sourceName('https://blog.naver.com/cnpabc123/224479927352', true)).toBe('출처')
+  // c9a R2: a post on a platform is named by the platform, never by its headline.
+  expect(sourceName('https://blog.naver.com/cnpabc123/224479927352', true)).toBe('네이버 블로그')
   keepTitle('https://blog.naver.com/yongyongvvv/224479063208', '갤럭시 S27 울트라 스펙 출시일 사생활 보호 화면 S...', '갤럭시 S27 가격 출시일')
-  expect(sourceName('https://blog.naver.com/yongyongvvv/224479063208', true)).toBe('출처')
+  expect(sourceName('https://blog.naver.com/yongyongvvv/224479063208', true)).toBe('네이버 블로그')
   // A title that ends on its publication: that is the name.
   keepTitle('https://www.chosun.com/economy/2026/11/17/x', '업스테이지, LS그룹서 1500억 투자 유치 - 조선일보', '국내 AI 스타트업 투자 유치')
   expect(sourceName('https://www.chosun.com/economy/2026/11/17/x', true)).toBe('조선일보')
@@ -1068,7 +1071,7 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
     expect(sourceName('https://phones.example/s27', true)).toBe('출처')
     expect(sourceName('https://www.etnews.com/s27', true)).toBe('전자신문')
     // A link the model named by a cut title, a piece of the address or a bare host is renamed the same way (citeOwn, team answers).
-    expect(citeOwn('갤럭시 S27은 130만 원대로 예상돼요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/yongyongvvv/224479063208)', [], true)).toBe('갤럭시 S27은 130만 원대로 예상돼요. [출처](https://blog.naver.com/yongyongvvv/224479063208)')
+    expect(citeOwn('갤럭시 S27은 130만 원대로 예상돼요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/yongyongvvv/224479063208)', [], true)).toBe('갤럭시 S27은 130만 원대로 예상돼요. [네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
     expect(citeOwn('픽셀 11은 899달러부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11/)', [], true)).toBe('픽셀 11은 899달러부터예요. [출처](https://ko.vidabytes.com/pixel-11/)')
     expect(citeOwn('주말엔 비 안 와요. [일별 기온·강수 예보](https://a.example/5)', [], true)).toBe('주말엔 비 안 와요. [출처](https://a.example/5)')
     expect(placeNamed('노션은 새 소식이 없어요. [blank](https://blank.page/notes/1)', [], true, true)).toBe('노션은 새 소식이 없어요. [출처](https://blank.page/notes/1)')
@@ -1099,9 +1102,9 @@ it('c7 R2: with the run\'s three stored results every row of the merged table en
   const cells = rows.map(row => row.split(' | ').at(-1)!.replace(/ \|$/, ''))
   // Every source cell is links only.
   for (const cell of cells) expect(cell).toMatch(/^\[[^\]]+\]\(https:\/\/[^)]+\)(?: · \[[^\]]+\]\(https:\/\/[^)]+\))*$/)
-  expect(cells[0]).toBe('[출처](https://blog.naver.com/cnpabc123/224479927352)')
+  expect(cells[0]).toBe('[네이버 블로그](https://blog.naver.com/cnpabc123/224479927352)')
   // No figure to place it by: the first page the teammate cited that is not a results page.
-  expect(cells[1]).toBe('[출처](https://blog.naver.com/yongyongvvv/224479063208)')
+  expect(cells[1]).toBe('[네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
   expect(cells[2]).toBe(`[출처 1](${vida}) · [출처 2](https://andxo.com/google-pixel-11-series-launch-specs-pric-2026)`)
   const hosts = new Set([...cited.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(([, url]) => new URL(url!).hostname))
   expect(hosts.size).toBeGreaterThanOrEqual(3)

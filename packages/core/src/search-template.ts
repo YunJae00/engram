@@ -260,28 +260,39 @@ export const withoutRepeats = (rows: SearchResult[], query: string): SearchResul
 // somebody (for an investment ask: a company with 유치 / 투자받 / 시리즈 A-C / an amount in 억 원), 0 when it only mentions it (a forum,
 // a visit, a portfolio, a plan to raise, an acquisition), 1 otherwise or when the ask is of a kind not listed here.
 // shortcut: one kind of event (investment), by title words and no name recognition; add a row here for another kind of counted news.
-const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp][] = [
-  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|추진|검토|나선다|목표|언급|사례/i],
+// own: the words the event is reported in, for one more search when the first page holds too few of it (c9a R3).
+const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp, own: string][] = [
+  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|추진|검토|나선다|목표|언급|사례|육성/i, '시리즈 투자 유치 억 원'],
 ]
+/** c9a R3: the search words for one more page of the event a counted news ask is about ("… 시리즈 투자 유치 억 원"), or undefined for an ask of a kind not listed. */
+export function eventQuery(query: string, ask: string): string | undefined {
+  const kind = EVENTS.find(([words]) => words.test(ask))
+  return kind ? [...new Set(`${query} ${kind[3]}`.split(/\s+/).filter(Boolean))].join(' ') : undefined
+}
 // c7a r2: "국내 AI 스타트업 미국 투자 유치" ranked first: "미국" was counted as the company funded. A country, a region or a word for who or
 // how much is nobody's name.
 // shortcut: a closed word list, no name recognition; a describing word it lacks still passes as a name. Use a tagger if that shows.
-const NO_NAME = /^(미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|역대급|역대|사상|최대|최고|최초|초대형|초기|누적|총|약|무려|단숨에|연쇄|추가|후속|신규|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
+// c9a R3: a company's value or size before an amount ("기업가치 1조") is nobody's name either.
+const NO_NAME = /^(올해|작년|지난해|내년|국내|해외|글로벌|업계|기업가치|가치|시가총액|시총|매출|예산|규모|미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|역대급|역대|사상|최대|최고|최초|초대형|초기|누적|총|약|무려|단숨에|연쇄|추가|후속|신규|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
 // c7a r3: "국내 AI 스타트업 연쇄 투자 유치" and "… 사상 최대 투자 유치" ranked first: any word the lists lacked was the company. A word is the
 // funded company only where the headline marks it as one: a comma or a middle dot after it ("뤼튼, …"), or the round right after it
 // ("리벨리온 620억 원", "아크 시리즈 B", "Wrtn raises"). The lists above only take words away from those.
-// shortcut: by headline form, no name recognition. A company named with neither mark ("업스테이지 투자 유치 성공") is rank 1: listed, behind
-// the marked ones; a describing word right before an amount ("역대급 300억") still passes. Use a tagger if either shows.
+// shortcut: by headline form, no name recognition. A company named with neither mark counts only as the headline's first word ("업스테이지
+// 투자 유치 성공"); a describing word right before an amount ("역대급 300억") or first ("깜짝 …") still passes. Use a tagger if either shows.
 const NAMED_BY = /^\s?[,·]|^\s*(?:\d[\d,.]*\s*(?:억|조)|시리즈|(?:raises?|secures?|closes?)\b)/i
+/** c9a R3: the words of a headline that can name who it is about (not the ask's words, not a place or a word of degree); a list item names one. */
+export const headlineNames = (title: string, ask: string): string[] => { const asked = nameWords(ask); return nameWords(title).filter(name => !NO_NAME.test(name) && !asked.some(one => alike(name, one))) }
 export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
   const kind = EVENTS.find(([words]) => words.test(ask))
   if (!kind) return 1
   if (kind[2].test(row.title)) return 0
   if (!kind[1].test(row.title)) return 1
   const asked = nameWords(ask)
-  const named = [...row.title.matchAll(/[\p{L}\p{N}]+/gu)].some(word => NAMED_BY.test(row.title.slice(word.index + word[0].length))
-    && nameWords(word[0]).some(name => !NO_NAME.test(name.replace(/(에서|서)$/, '')) && !asked.some(one => alike(name, one))))
-  return named ? 2 : 1
+  const party = (word: string): boolean => nameWords(word).some(name => !NO_NAME.test(name.replace(/(에서|서)$/, '')) && !asked.some(one => alike(name, one)))
+  const named = [...row.title.matchAll(/[\p{L}\p{N}]+/gu)].some(word => NAMED_BY.test(row.title.slice(word.index + word[0].length)) && party(word[0]))
+  // c9a r2: with the floor kept at 2 for a known kind, "리벨리온 AI 스타트업 투자 유치 620억" (the company first, no mark) would be background.
+  // A headline that opens on a party's name is about that party.
+  return named || party(/^[\p{L}\p{N}]+/u.exec(row.title)?.[0] ?? '') ? 2 : 1
 }
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']

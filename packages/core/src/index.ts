@@ -92,6 +92,7 @@ export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type Sideba
 export { recordBotSites } from './bots.js'
 export { isUntitledBotName, UNTITLED_BOT_NAMES } from './untitled-bot.js'
 export { cometTools, type CometToolDeps } from './comet-tools.js'
+export { BACKGROUND_ROWS, EVENT_ROWS } from './comet-navigation-tools.js'
 export { askText, choiceQuestion, cleanOptions, formatAsk, parseAsk, type Ask } from './ask.js'
 export { fingerprintOf, hostOf, parseRule, ruleCovers, ruleFor, type ApprovalRule, type GatedAction } from './approval.js'
 export { addReviewRule, evaluate, MAX_RULES_PER_KIND, parseReviewRules, ROUTINE_CARD_TTL_MS, routineCardExpired, serializeReviewRules, type ReviewAction, type ReviewDecision, type ReviewRule, type ReviewRuleKind } from './review-rules.js'
@@ -119,7 +120,7 @@ export {
   type BotFact,
   type BotMemoryFile,
 } from './bot-memory.js'
-export { askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventRank, inPeriod, newsPeriod, newsTemplate, rankLinks, resultDay, sameEvent, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
+export { askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventQuery, eventRank, headlineNames, inPeriod, newsPeriod, newsTemplate, rankLinks, resultDay, sameEvent, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 export { answerLanguageLine, scriptLanguage, parseProposal, proposalPrompt, routineDraftTool, PROPOSAL_TOKENS, type TaskProposal } from './task-proposal.js'
 export { updateRoutineGoal } from './routine-store.js'
 export { evidenceRegion } from './work-evidence.js'

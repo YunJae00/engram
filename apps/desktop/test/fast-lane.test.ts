@@ -194,7 +194,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).not.toContain('when the results hold one')
   expect(LANE_NOTE).toContain('never a number of your own, and never a cell with no number in it')
   expect(LANE_NOTE).toContain('labeled 예상 or 전작')
-  expect(LANE_NOTE).toContain('never "네이버 블로그" or "네이버 카페"')
+  expect(LANE_NOTE).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리)')
   // c5 R3/H6: a news list is numbered lines, never a table, with no paragraph about the search; a plan or a visit is not an investment.
   expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item, never a table, and nothing after the last item: no closing paragraph, no word about what the search did or did not have, no remark on an item')
   expect(LANE_NOTE).toContain('keeps one line per item with what happened, its date and the outlet as a named link')
@@ -388,9 +388,10 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('laneSaid.push(...said.map(text => ({ text, at: laneRead.length })))')
   // The host search is the lone lookup's only, never a correction's (its route is the ask before it) nor a team ask's.
-  expect(ipc).toContain("const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined")
+  expect(ipc).toContain("let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
+  expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
-  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
+  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [lookup.ask(), ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
   expect(ipc.indexOf('result.answer = await heldAnswer(')).toBeLessThan(ipc.indexOf('result.answer = await liveCited('))
 })
 
@@ -445,7 +446,7 @@ it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, a
   expect(newsAsk('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(true)
   expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
 })
 
 // stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
@@ -478,5 +479,5 @@ it('stack-7: a counted news list shorter than the count says so in its lead; a f
   expect(shortSaid(ask, three.replace(/^\d\. /gm, ''))).toBe(three.replace(/^\d\. /gm, ''))
   expect(shortSaid('요즘 AI 뉴스 알려줘', three)).toBe(three)
   const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
 })
