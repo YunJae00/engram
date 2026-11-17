@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, handoffShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, handoffShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, checkedLead, turnHelpers, TEAM_ANSWER_MS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2973,6 +2973,10 @@ export function registerIpc(ctx: VaultContext): void {
           answer = laneTidy(answer)
           // c10a T2: after a swap the answer names what it is now about (fast-lane namesSubject).
           if (solo && lookup.ask() !== request.message) answer = namesSubject(answer, lookup.ask())
+          // c15b (cause L, R2): the lead's own answer over the helpers it hired on this turn is checked against their results and the ask
+          // (what it said about how the work is done included), with one rewrite, inside the team's answer time plus the writer's.
+          const helpers = !solo && writer ? turnHelpers((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members, nativeSince) : []
+          if (helpers.length) answer = await checkedLead({ ask: asks.join('\n'), helpers, draft: answer, quick: writer, due: nativeSince + TEAM_ANSWER_MS + REPORT_WRITER_MS, signal, log: line => flog('team-report', line) })
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
           // c13b: a safety net only: the rows and a teammate's pages were checked where they entered, and those verdicts are reused here.

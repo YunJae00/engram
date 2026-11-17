@@ -1228,7 +1228,9 @@ test('c4b r3: with no written answer, a part that read only English pages is sai
     expect(shown).toBe(mergedReport([kim]))
     expectParts(shown, [['지민', 'https://www.notion.com/releases']])
     expect(shown).not.toMatch(/Agents rebuilt|New workspace/)
-    expect(asked).toHaveLength(1)
+    // c15b (cause F): a draft that breaks a rule gets one repair with that rule (here it breaks it again: the host's rendering).
+    expect(asked).toHaveLength(2)
+    expect(asked[1]).toContain('"kind":"shape"')
   }
   // Nobody brought data back: nobody is asked at all.
   asked.length = 0
@@ -1679,11 +1681,12 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   const c5 = [reported(s5.c5[0]!, { facts: [], nothing_in_period: { latest: { text: 'ACC 2025(AI & Cloud Conference)가 서울 신라호텔에서 열렸어요.', url: acc, site: '지디넷코리아', date: '2025년 12월 11일' } } })]
   const host = mergedReport(c5)
   // c12a B1: no job title as the head. c13a (cause H): the answer leads; whose it is follows.
-  expect(host).toMatch(/^이번엔 새로 나온 게 없어요\..* \(지민\) \[/)
+  // c15b: the latest is a row of its own under the one line that says nothing is new, never inside a host frame.
+  expect(host).toMatch(/^이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\n.* \(지민\) \[/)
   expect(host).not.toContain('일정 정리(')
   expect(host).toContain('2025년 12월 11일')
   expectParts(host, [['지민', acc]])
-  expect(host.split('\n')).toHaveLength(1)
+  expect(host.split('\n')).toHaveLength(2)
   // The writer is given that as nothing new, the latest with its year and its link; a message that drops that link is refused.
   const prompt = reportPrompt(stack5.c5.goal, c5, undefined, ctx)
   const data = JSON.parse(prompt.split('Data: ')[1]!) as { nothing?: { latest?: { text: string; link: string } } }[]
@@ -1859,7 +1862,7 @@ test('stack-6: a year that is only in the event\'s name dates its day: last year
   // The reviewer's input, as data: shown as nothing for next month, with last year's day said with its year.
   const m = reported(part('m1', '지민', '다음 달 서울 IT 행사 일정 정리'), { facts: [], nothing_in_period: { latest: { text: 'ACC 2025가 서울에서 열렸어요.', url: 'https://example.com/acc', date: '2025년 12월 11일' } } })
   const shown = mergedReport([m])
-  expect(shown).toMatch(/^이번엔 새로 나온 게 없어요\. 가장 최근엔 ACC 2025가 서울에서 열렸어요 \(2025년 12월 11일\)\. \(지민\) \[[^\]]+\]\(https:\/\/example\.com\/acc\)$/)
+  expect(shown).toMatch(/^이번엔 새로 나온 게 없어요\. 가장 최근 소식은 이래요\.\nACC 2025가 서울에서 열렸어요 \(2025년 12월 11일\)\. \(지민\) \[[^\]]+\]\(https:\/\/example\.com\/acc\)$/)
   // This year's event, named with its year, is next month's as before; a price is no year.
   const ok = reported(part('m1', '지민', '다음 달 서울 IT 행사 일정 정리'), { facts: [{ text: 'ACC 2026은 서울에서 열려요. 입장료는 2025원이에요.', url: 'https://example.com/acc', date: '12월 11일' }] })
   expect(mergedReport([ok])).not.toContain('새로 나온 게 없어요')
@@ -1961,10 +1964,15 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   const said = mergedReport(c3), blocks = said.split('\n\n')
   expect(said).not.toMatch(/^\s*\|/m)
   expect(said).not.toMatch(/맡은 일|담당|조사 결과|쉬고 있/)
-  // Each line says nothing is new for its own part (a line is read on its own), then the latest thing found, its day and its link.
-  expect(blocks.map(block => block.split(': ')[0])).toEqual(['노션(지민)', '슬랙(서연)', '리니어(도윤)'])
-  for (const block of blocks) { expect(block).toContain('이번엔 새로 나온 게 없어요.'); expect(linksIn(block), block).toHaveLength(1); expect(block).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
-  expect(blocks[2]).toContain('2025년 7월 9일')
+  // c15b (cause F, stack14 C3: the same frame three times): the state all three share is said once, then one row per part with its
+  // part, whose it is, the latest thing found, its day and its link.
+  expect(blocks).toHaveLength(1)
+  const [head, ...rows] = said.split('\n')
+  expect(head).toBe('셋 다 이번엔 새로 나온 게 없어요. 가장 최근 소식은 이래요.')
+  expect(said.match(/새로 나온 게 없/g)).toHaveLength(1)
+  expect(rows.map(row => row.split(': ')[0])).toEqual(['- 노션(지민)', '- 슬랙(서연)', '- 리니어(도윤)'])
+  for (const row of rows) { expect(linksIn(row), row).toHaveLength(1); expect(row).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
+  expect(rows[2]).toContain('2025년 7월 9일')
   expect(said).not.toMatch(/냉장고|리니어모터|아이폰/)
   // A piece of the host is never a link's name, nor a cut title; the host's own naming stands, never 출처.
   expect(said).not.toMatch(/\[(?:blank|ditoday|출처)\]|\[[^\]]*(?:작성 글|…)[^\]]*\]\(/)
@@ -1991,7 +1999,8 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   const waiting = [c3[0]!, c3[1]!, { ...s6.c3[2]!, state: 'working' as const, result: undefined, empty: undefined, read: undefined }]
   const early = mergedReport(waiting)
   // c13a (stack-12 risk "a part still at work carries no link"): with the page it has opened so far.
-  expect(early.split('\n\n')[2]).toMatch(/^리니어\(도윤\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[[^\]]+\]\(https:\/\/search\.naver\.com\/[^)]+\)$/)
+  // c15b: the two parts that found nothing new share one block (said once); the part at work is its own block after it.
+  expect(early.split('\n\n')[1]).toMatch(/^리니어\(도윤\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[[^\]]+\]\(https:\/\/search\.naver\.com\/[^)]+\)$/)
   expect(early.split('\n\n')[0]).toContain('1월 20일')
   expect(checkedReport(json(good.replace(/\n\n리니어는 .*/, '\n\n리니어는 도윤이 보고 있어요.')), waiting)).toBeUndefined()
   expect(checkedReport(json(good.replace(/\n\n리니어는 .*/, '\n\n리니어는 도윤이 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')), waiting)).toBeDefined()

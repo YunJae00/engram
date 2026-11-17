@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn, readBotTranscript } from './bots.js'
 import { ITEM_CHECK_MS, judgedItems } from './item-check.js'
-import { checkedWrite, type CheckOutcome } from './written-check.js'
+import { checkedWrite, type CheckOutcome, type ShapeProblem } from './written-check.js'
 import { resultDay } from './search-template.js'
 import { datedText, logTask, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type MemberData, type MemberFact, type TeamMember } from './delegated-tasks.js'
 import { datedQuery, foundNothing, periodSpans, placeNamed, pointQueries, isSearchPage, siteOf, sourceName, TEAM_ANSWER_MS, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
@@ -754,7 +754,8 @@ function spanSummary(jobs: readonly DoneJob[], span: string): string {
     }
     // "지우가 찾은 걸로 홍보 문구 3개를 했어요."
     for (const job of own.filter(one => one.from).slice(0, 2)) said.push(`${said.length ? '' : `${josa(who, '은', '는')} `}${josa(job.from!, '이', '가')} 찾은 걸로 ${josa(job.did, '을', '를')} ${doneAs(job)}.`)
-    const came = own.map(outcome).find(Boolean)
+    // c15b (C10: "…3개 찾았어요 서연은 …"): the result's own sentence gets its sentence mark before the next one starts.
+    const came = own.map(outcome).find(Boolean)?.replace(/[요다]$/u, '$&.')
     return [...said, ...(came ? [came] : [])].join(' ')
   })
   // "지우랑 도윤이 본 노션·리니어 신기능은 새로 나온 게 없었어요."
@@ -813,28 +814,52 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
     `The person asked: ${JSON.stringify(input.message.trim().slice(0, 200))}`,
     `Record: ${JSON.stringify(jobs)}`,
   ].join('\n')
-  const write = input.write, ms = input.timeoutMs ?? SUMMARY_WRITER_MS, due = Date.now() + ms
+  const write = input.write, ms = input.timeoutMs ?? SUMMARY_WRITER_MS, due = Date.now() + ms, began = Date.now()
+  const said = (raw: string | undefined): string => (raw ?? '').replace(/^```\w*\n?|\n?```$/g, '').trim()
+  // c15b: every fallback to the host's summary is logged with why (C10 showed the host's text and left no trace of the refusal).
+  const fallback = (why: string): string => { reportLog(`summary=${why} ms=${Date.now() - began} jobs=${jobs.length} left=${jobs.filter(job => job.left).length}`); return plainSummary(jobs, span) }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })
-    const draft = summaryOk(((await Promise.race([write(prompt, ms), late])) ?? '').replace(/^```\w*\n?|\n?```$/g, '').trim(), jobs, everyone, span)
-    if (!draft) return plainSummary(jobs, span)
+    const raw = await Promise.race([write(prompt, ms), late])
+    if (raw === undefined) return fallback('late')
+    if (!raw.trim()) return fallback('empty')
+    // c15b (cause F, C10): a draft that breaks a structural rule goes back to the writer with that rule for the one rewrite.
+    const first = summaryOk(said(raw), jobs, everyone, span)
+    const shape: ShapeProblem[] = 'text' in first ? [] : [{ kind: 'shape', quote: first.quote ?? '', why: first.why }]
+    let redone: string | undefined
     // c14b (cause W; C10 named 서연, who had left, as on the team): the summary is checked for meaning against the record it was written from,
     // inside the same writer time; a "left", "unfinished" or "working" flag the text does not say is a problem the host never matched words for.
     // stack-14: the outcome is logged like the team answer's (C10 left no trace of what its check said).
+    let outcome = 'unchecked' as CheckOutcome, kinds = ''
     const text = await checkedWrite({
-      data: jobs, ask: input.message, draft, check: write, due, log: (outcome, problems) => reportLog(`summary=${outcome}${problems.length ? `:${[...new Set(problems.map(p => p.kind))].join('+')}` : ''} jobs=${jobs.length} left=${jobs.filter(job => job.left).length}`),
-      redo: async (note, left) => summaryOk(((await write(prompt + note, left)) ?? '').replace(/^```\w*\n?|\n?```$/g, '').trim(), jobs, everyone, span),
+      data: jobs, ask: input.message, draft: 'text' in first ? first.text : said(raw), shape, check: write, due, log: (done, problems) => { outcome = done; kinds = [...new Set([...shape, ...problems].map(p => p.kind))].join('+') },
+      redo: async (note, left) => { const again = summaryOk(said(await write(prompt + note, left)), jobs, everyone, span); if ('text' in again) return again.text; redone = again.refused; return undefined },
     })
-    return text ?? plainSummary(jobs, span)
-  } catch { return plainSummary(jobs, span) } finally { clearTimeout(timer) }
+    if (text === undefined) return fallback(`${shape.length ? `fallback:${'refused' in first ? first.refused : ''}` : `refused:meaning:${kinds}`}${redone ? `>${redone}` : ''}`)
+    reportLog(`summary=${outcome}${kinds ? `:${kinds}` : ''}${'refused' in first ? `:${first.refused}` : ''} jobs=${jobs.length} left=${jobs.filter(job => job.left).length}`)
+    return text
+  } catch { return fallback('refused:error') } finally { clearTimeout(timer) }
 }
-/** The summary's structural check (Korean, no address, no list, everyone named, no clause chain): the text, or undefined. */
-function summaryOk(text: string, jobs: readonly DoneJob[], everyone: readonly string[], span: string): string | undefined {
-    const ok = !!text && text.length <= 700 && HANGUL.test(text) && !/https?:\/\/|\d{4}-\d\d-\d\d|오류/.test(text) && !NOT_SAID.test(text) && !ENGLISH_RUN.test(text) && !text.split('\n').some(line => /^\s*([|>#*+-]|\d+[.)]\s)/.test(line)) && everyone.every(who => text.includes(who)) && !misreported(text, jobs)
-      // c7 C10: "…조사했는데 이번 주 새 소식은 없었고, …살펴본 것도 새로운 발표는 없었어요." read as a status report: no clause chain, at most four sentences.
-      && text.split(/(?<=[.!?])\s+/).length <= 4 && !(span && span !== '오늘은' && /^\s*오늘/u.test(text)) && !/[했봤]는데[^.!?]*없었고|없었고,[^.!?]*없었/u.test(text)
-    return ok ? text : undefined
+/** The summary's structural check (Korean, no address, no list, everyone named, no clause chain): the text, or the rule it broke in words the writer can act on (c15b). */
+function summaryOk(text: string, jobs: readonly DoneJob[], everyone: readonly string[], span: string): { text: string } | ReportRefusal {
+  const no = (refused: string, why: string, quote = ''): ReportRefusal => ({ refused, why, ...(quote ? { quote } : {}) })
+  if (!text || text.length > 700 || !HANGUL.test(text)) return no('shape', 'two or three short Korean sentences, under 700 characters')
+  if (/https?:\/\/|\d{4}-\d\d-\d\d/.test(text)) return no('address', 'no address and no date written as digits with dashes: a day is said as 월 and 일 or as its weekday', /https?:\/\/\S+|\d{4}-\d\d-\d\d/.exec(text)?.[0])
+  const banned = /오류/.exec(text)?.[0] ?? NOT_SAID.exec(text)?.[0]
+  if (banned) return no('words', 'never write 보고, 실패, 오류, 턴 or 한도, nor anything about limits or time', banned)
+  const english = ENGLISH_RUN.exec(text)?.[0]
+  if (english) return no('english', 'no English sentence: keep only names of products, features, companies and people as written', english.trim())
+  if (text.split('\n').some(line => /^\s*([|>#*+-]|\d+[.)]\s)/.test(line))) return no('list', 'prose only: no list, no table, no heading')
+  const unnamed = everyone.filter(who => !text.includes(who))
+  if (unnamed.length) return no('unnamed', `everyone in the record is named by the name in "who": ${unnamed.join(', ')} ${unnamed.length > 1 ? 'are' : 'is'} missing`)
+  if (misreported(text, jobs)) return no('misreported', 'a job with "nothing" false found what is in "got": never put it in a sentence that says nothing was found or new')
+  // c7 C10: "…조사했는데 이번 주 새 소식은 없었고, …살펴본 것도 새로운 발표는 없었어요." read as a status report: no clause chain, at most four sentences.
+  if (text.split(/(?<=[.!?])\s+/).length > 4) return no('long', 'at most four short sentences')
+  if (span && span !== '오늘은' && /^\s*오늘/u.test(text)) return no('day', `start with exactly "${span}"`)
+  const chain = /[했봤]는데[^.!?]*없었고|없었고,[^.!?]*없었/u.exec(text)?.[0]
+  if (chain) return no('chain', 'one plain statement per sentence: jobs that found nothing take one short sentence together, never a chain of clauses', chain)
+  return { text }
 }
 
 // --- Handing work to agents (assign) ---
@@ -1146,8 +1171,27 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
  * plain rendering of each part's data, attributed and linked, with no voice imitation. topics: member id to the short name of its part.
  * hired: what the call said before the results ("도윤은 새로 넣었어요."). */
 export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap<string, string> = new Map(), hired: readonly string[] = []): string {
-  const parts = shownParts(members)
-  return [...(hired.length ? [hired.join(' ')] : []), ...parts.map(m => partLines(m, topics, members, parts.length > 1))].join('\n\n')
+  const parts = shownParts(members), quiet = parts.filter(m => !atWork(m) && !!m.data?.nothing)
+  return [...(hired.length ? [hired.join(' ')] : []), ...parts.flatMap(m => !quiet.includes(m) ? [partLines(m, topics, members, parts.length > 1)] : m === quiet[0] ? [quietLines(quiet, topics, parts.length)] : [])].join('\n\n')
+}
+// c15b (cause F, C3: "노션(지민): 이번엔 새로 나온 게 없어요. 가장 최근엔 노션은 이번 주엔 새로 낸 기능이 없고, …" three times): the parts that
+// found nothing new share that state, so it is said once for all of them, and each part's latest is a row of data under it (the
+// teammate's own sentence, never put inside a host frame that says it again). Rule 7: every row still names whose it is and links.
+const ALL_OF = ['', '', '둘 다', '셋 다', '넷 다', '다섯 다']
+function quietLines(quiet: readonly TeamMember[], topics: ReadonlyMap<string, string>, shown: number): string {
+  const side = shown > 1, part = (m: TeamMember): string => side && !handedFrom(m.brief) ? partName(m, topics) ?? '' : ''
+  // A row: "노션(지민): <latest> [link]" with a part name, else "<latest> (지민) [link]" (partLines' own two forms).
+  const row = (m: TeamMember): string => {
+    const latest = m.data?.nothing?.latest, looked = lookedAt(m), by = part(m) ? '' : ` (${m.role})`
+    const said = latest ? `${datedText({ text: factWords(latest), date: latest.date })}${by} ${linkOf(latest)}` : looked ? `살펴본 곳은 ${linkOf(looked)}${by}` : `따로 나온 최근 소식은 없어요${by}.`
+    return part(m) ? `${part(m)}(${m.role}): ${said}` : said
+  }
+  const newest = quiet.some(m => m.data?.nothing?.latest) ? ' 가장 최근 소식은 이래요.' : ''
+  // One part with no latest: its one line as before (nothing is repeated, no teammate sentence is framed).
+  if (quiet.length === 1 && !quiet[0]!.data?.nothing?.latest) { const m = quiet[0]!, at = lookedAt(m), head = part(m) ? `${part(m)}(${m.role}): ` : ''; return `${head}이번엔 새로 나온 게 없어요.${head ? '' : ` (${m.role})`}${at ? ` ${linkOf(at)}` : ''}` }
+  if (quiet.length === 1) { const m = quiet[0]!, one = row(m), head = part(m) ? `${part(m)}(${m.role}): ` : ''; return `${head}이번엔 새로 나온 게 없어요.${newest}\n${head ? one.slice(head.length) : one}` }
+  const names = quiet.map(m => part(m) || m.role), who = quiet.length === shown ? ALL_OF[quiet.length] ?? '모두' : josa(listed(names), '은', '는')
+  return [`${who} 이번엔 새로 나온 게 없어요.${newest}`, ...quiet.map(m => `- ${row(m)}`)].join('\n')
 }
 
 // The parts of a task as a report shows them. A part marked late is shown as still at work in the report made without it, whatever it has
@@ -1326,10 +1370,15 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   return 'text' in out ? out.text : undefined
 }
 /** The same check with the name of what refused it (c12a: the `[team-report]` log line, so a fallback can be traced). */
-export function reportCheck(raw: string | undefined, members: readonly TeamMember[]): { text: string } | { refused: string } {
+// c15b (cause F): a refusal says, in words the writer can act on, what the message must hold; it goes back to the writer for one repair
+// (checkedWrite `shape`) instead of being a verdict that sends the host's rendering.
+export type ReportRefusal = { refused: string; why: string; quote?: string }
+export function reportCheck(raw: string | undefined, members: readonly TeamMember[]): { text: string } | ReportRefusal {
   const all = shownParts(members), parts = all.filter(m => !missing(m)), gaps = all.filter(missing), ids = factIds(parts)
+  const no = (refused: string, why: string, quote = ''): ReportRefusal => ({ refused, why, ...(quote ? { quote } : {}) })
+  const names = (list: readonly TeamMember[]): string => list.map(m => m.role).join(', ')
   let said: unknown
-  try { said = JSON.parse((raw ?? '').replace(/^```\w*\n?|\n?```\s*$/g, '').trim()) } catch { return { refused: 'json' } }
+  try { said = JSON.parse((raw ?? '').replace(/^```\w*\n?|\n?```\s*$/g, '').trim()) } catch { return no('json', 'answer with the JSON object only: {"message": …, "kept": […]}') }
   const out = said && typeof said === 'object' ? said as Record<string, unknown> : {}
   const kept = new Set(Array.isArray(out['kept']) ? out['kept'].filter((one): one is string => typeof one === 'string') : [])
   const facts = new Map<string, MemberFact>([...ids.map(one => [one.fact.url, one.fact] as const), ...parts.flatMap(m => madeFrom(m, members).map(f => [f.url, f] as const)), ...parts.flatMap(m => m.data?.nothing && !m.data.nothing.latest && lookedAt(m) ? [[lookedAt(m)!.url, lookedAt(m)!] as const] : []), ...parts.flatMap(m => m.data?.nothing?.latest ? [[m.data.nothing.latest.url, m.data.nothing.latest] as const] : [])])
@@ -1340,34 +1389,41 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   // stack-11: so is an English run only when the data and the briefs (the person's own words) do not hold it: a product name or a title
   // a teammate found is content, refused nowhere on the way to the thread (the same rule as the jargon check, c11a 86e3f9a0).
   const given = members.flatMap(m => [m.brief, m.data?.note ?? '', ...(m.data?.items ?? []), ...[...(m.data?.facts ?? []), ...(m.data?.nothing?.latest ? [m.data.nothing.latest] : [])].map(f => f.text)]).join('\n').toLowerCase()
-  const addedEnglish = [...words.matchAll(new RegExp(ENGLISH_RUN.source, 'g'))].some(run => !given.includes(run[0].trim().toLowerCase()))
-  if (!text || text.length > 3000 || !HANGUL.test(text)) return { refused: 'shape' }
-  if (/https?:\/\//.test(words)) return { refused: 'address' }
-  if (addedEnglish) return { refused: 'english' }
+  const added = [...words.matchAll(new RegExp(ENGLISH_RUN.source, 'g'))].find(run => !given.includes(run[0].trim().toLowerCase()))?.[0]
+  if (!text || text.length > 3000 || !HANGUL.test(text)) return no('shape', 'the message is a Korean message under 3000 characters')
+  if (/https?:\/\//.test(words)) return no('address', 'an address appears only as a markdown link copied from the data, never as plain words', /https?:\/\/\S+/.exec(words)?.[0])
+  if (added) return no('english', 'no English words of your own: write them in Korean (names from the data stay as written)', added.trim())
   // c13a r2: GROKBOT rule 12 has no exemption: none of these words is shown, whatever the data holds. The writer was led to them by its
   // own prompt (an example said "에이전트 업데이트"; a name in the data was not said to stay as written): reportPrompt fixes that cause.
-  if (words.search(JARGON) >= 0) return { refused: 'jargon' }
-  if (parts.some(m => !words.includes(m.role))) return { refused: 'unnamed' }
-  if (parts.some(m => new RegExp(`^\\s*(?:[-*]\\s*)?${escapedRe(m.role)}\\s*[:：]`, 'mu').test(text))) return { refused: 'name-colon' }
+  if (words.search(JARGON) >= 0) return no('jargon', 'say it in plain everyday Korean, without technical words', words.match(JARGON)?.[0])
+  const unnamed = parts.filter(m => !words.includes(m.role))
+  if (unnamed.length) return no('unnamed', `every teammate is named in the message, in a natural sentence: ${names(unnamed)} ${unnamed.length > 1 ? 'are' : 'is'} missing`)
+  const colon = parts.find(m => new RegExp(`^\\s*(?:[-*]\\s*)?${escapedRe(m.role)}\\s*[:：]`, 'mu').test(text))
+  if (colon) return no('name-colon', `no line starts with a name and a colon: say ${colon.role}'s part in a sentence that names them`)
   // c12a A2: a part with nothing to show is the host's line alone; the writer neither says it found something nor that it found nothing.
-  if (gaps.some(m => words.includes(m.role))) return { refused: 'missing-said' }
+  const gapSaid = gaps.filter(m => words.includes(m.role))
+  if (gapSaid.length) return no('missing-said', `do not mention ${names(gapSaid)} at all: their own line follows the message`)
   const linked = (url: string): boolean => text.includes(`](${named('x', url).slice(4, -1)})`)
-  if (ids.some(one => kept.has(one.id) !== linked(one.fact.url) && !ids.some(other => other !== one && other.fact.url === one.fact.url && kept.has(other.id)))) return { refused: 'links' }
-  if (parts.some(m => shownFacts(m).length > 0 && !ids.some(one => one.m === m && kept.has(one.id)) && !atWork(m))) return { refused: 'part-dropped' }
+  if (ids.some(one => kept.has(one.id) !== linked(one.fact.url) && !ids.some(other => other !== one && other.fact.url === one.fact.url && kept.has(other.id)))) return no('links', '"kept" lists exactly the facts the message uses, and each of them is followed by its own "link", copied exactly')
+  const dropped = parts.filter(m => shownFacts(m).length > 0 && !ids.some(one => one.m === m && kept.has(one.id)) && !atWork(m))
+  if (dropped.length) return no('part-dropped', `every teammate's part is in the message with at least one of its facts and its link: ${names(dropped)}'s is missing`)
   // Rule 7's line is true only while a part is at work (c13a, C3: "아직 찾는 중" for parts that had ended): said for none other.
-  if (parts.some(atWork) ? parts.some(m => atWork(m) && !text.includes('아직 찾는 중')) : text.includes('아직 찾는 중')) return { refused: 'still' }
-  if (parts.some(m => !!m.data?.nothing?.latest && !linked(m.data.nothing.latest.url))) return { refused: 'latest' }
-  if (parts.some(m => !!m.data?.nothing && !m.data.nothing.latest && !!lookedAt(m) && !linked(lookedAt(m)!.url))) return { refused: 'looked' }
-  if (parts.some(m => m.data?.items?.length && madeFrom(m, members).length > 0 && !madeFrom(m, members).some(f => linked(f.url)))) return { refused: 'made-from' }
+  if (parts.some(atWork) ? parts.some(m => atWork(m) && !text.includes('아직 찾는 중')) : text.includes('아직 찾는 중')) return no('still', parts.some(atWork) ? `a part with "still" says exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요.": ${names(parts.filter(atWork))}` : 'no part is still being looked into: do not say "아직 찾는 중"')
+  const latest = parts.filter(m => !!m.data?.nothing?.latest && !linked(m.data.nothing.latest.url))
+  if (latest.length) return no('latest', `a part with "nothing" names its "latest" with that link, copied exactly: ${names(latest)}`)
+  const looked = parts.filter(m => !!m.data?.nothing && !m.data.nothing.latest && !!lookedAt(m) && !linked(lookedAt(m)!.url))
+  if (looked.length) return no('looked', `a part with "nothing" and no "latest" gives where they looked, with its "looked" link: ${names(looked)}`)
+  const unsourced = parts.filter(m => m.data?.items?.length && madeFrom(m, members).length > 0 && !madeFrom(m, members).some(f => linked(f.url)))
+  if (unsourced.length) return no('made-from', `a part with "items" says in one sentence that it was made from "madeFrom"'s find, with one of "madeFromLinks" copied exactly: ${names(unsourced)}`)
   // c12a B3 (C5: events and their links run on in one sentence): a part's two or more kept facts are one per line (a table row is one
   // thing's fields, so it may hold several). Link positions, not words.
   const lines = text.split('\n')
-  if (parts.some(m => { const urls = [...new Set(ids.filter(one => one.m === m && kept.has(one.id) && !one.fact.rest).map(one => one.fact.url))]; return urls.length > 1 && lines.some(line => !/^\s*\|/.test(line) && urls.filter(url => line.includes(`](${named('x', url).slice(4, -1)})`)).length > 1) })) return { refused: 'one-line' }
+  if (parts.some(m => { const urls = [...new Set(ids.filter(one => one.m === m && kept.has(one.id) && !one.fact.rest).map(one => one.fact.url))]; return urls.length > 1 && lines.some(line => !/^\s*\|/.test(line) && urls.filter(url => line.includes(`](${named('x', url).slice(4, -1)})`)).length > 1) })) return no('one-line', 'two or more facts of one teammate are a list, one fact per line, each line with its own link')
   const numberedLines = lines.map(line => /^\s*\d+[.)]\s+(.+)$/.exec(line)?.[1]?.trim()).filter((line): line is string => !!line)
   const items = parts.flatMap(m => m.data?.items ?? [])
   // stack-11 (c11a run H5: one line of copy, shown by the host's rendering): one item is that line on its own, numbered or not.
   const alone = items.length === 1 && !numberedLines.length && lines.some(line => line.trim() === items[0]!.trim())
-  if (items.length && !alone && (numberedLines.length !== items.length || items.some((item, i) => numberedLines[i] !== item.trim()))) return { refused: 'items' }
+  if (items.length && !alone && (numberedLines.length !== items.length || items.some((item, i) => numberedLines[i] !== item.trim()))) return no('items', `the "items" are a numbered list, each copied exactly as given, in order: ${JSON.stringify(items)}`)
   return { text: spaced(text) }
 }
 // c12a: where the conductor reads why a team answer was the writer's or the host's (the desktop sets it to its log).
@@ -1385,9 +1441,13 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   try {
     const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
     const raw = await Promise.race([write(prompt, ms), late])
+    // An empty answer is no draft to repair.
     if (raw === undefined) { log('late'); return fallback }
+    if (!raw.trim()) { log('empty'); return fallback }
+    // c15b (cause F: 4 of 5 team answers in stack14 were the host's frames, `refused:unnamed` / `made-from`): a draft that breaks a
+    // structural rule is not thrown away. What it broke goes back to the writer as a problem in the same one rewrite as meaning problems.
     const out = reportCheck(raw, members)
-    if (!('text' in out)) { log(`refused:${out.refused}`); return fallback }
+    const shape: ShapeProblem[] = 'text' in out ? [] : [{ kind: 'shape', quote: out.quote ?? '', why: out.why }]
     // c14b (cause W): the accepted message is checked for meaning against the same data, inside the writer's own time (began + ms).
     // c14b r2: the check reads what the person reads: the parts that brought nothing back too, with the host's own line for each that
     // follows the message ("세 곳 모두" over a part still missing is checkable; the message itself rightly leaves them to that line), and the
@@ -1399,12 +1459,14 @@ export async function writtenReport(input: { ask: string; members: readonly Team
       ...(gaps.length ? { broughtNothing: gaps.map(m => ({ name: m.role, ...(partName(m, topics) ? { part: partName(m, topics) } : {}), outcome: partOutcome(m) })), shownAfterMessage: after.join('\n\n') } : {}),
       ...(input.previous?.trim() ? { teamMessageBefore: clip(input.previous, 600) } : {}),
     }
+    let redone: string | undefined
     const text = await checkedWrite({
-      data, ask: input.ask, draft: out.text, check: write, due: began + ms, ...(input.signal ? { signal: input.signal } : {}), log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
-      redo: async (note, left) => { const again = reportCheck(await write(prompt + note, left), members); return 'text' in again ? again.text : undefined },
+      data, ask: input.ask, draft: 'text' in out ? out.text : raw, shape, check: write, due: began + ms, ...(input.signal ? { signal: input.signal } : {}), log: (outcome, problems) => { checked = outcome; kinds = [...new Set([...shape, ...problems].map(p => p.kind))].join('+') },
+      redo: async (note, left) => { const again = reportCheck(await write(prompt + note, left), members); if ('text' in again) return again.text; redone = again.refused; return undefined },
     })
-    if (text === undefined) { log(`refused:meaning:${kinds}`); return fallback }
-    log(checked === 'rewritten' ? `rewritten:${kinds}` : 'accepted')
+    // Every fallback says why (c15b): the rule the first draft broke, and the rule its repair broke too, or the meaning problems left.
+    if (text === undefined) { log(shape.length ? `fallback:${'refused' in out ? out.refused : ''}${redone ? `>${redone}` : ''}` : `refused:meaning:${kinds}${redone ? `>${redone}` : ''}`); return fallback }
+    log(checked === 'rewritten' ? `rewritten:${kinds}${'refused' in out ? `:${out.refused}` : ''}` : 'accepted')
     return [[...hired, text].join(' '), ...after].join('\n\n')
   } catch { log('refused:error'); return fallback } finally { clearTimeout(timer) }
 }

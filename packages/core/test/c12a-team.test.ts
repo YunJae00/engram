@@ -40,14 +40,14 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   const good = '이번 달엔 카카오톡이랑 텔레그램에 새 기능이 나왔어요.\n\n카카오톡은 민준이 봤는데 채팅방 폴더 정리 기능이 생겼어요. [카카오](https://www.kakaocorp.com/page/detail/11234)\n\n텔레그램은 하율이 봤는데 그룹 통화 인원이 늘었어요. [텔레그램](https://telegram.org/blog/group-calls-2026)'
   // "라인은 새 소식이 없어요" with no link: the writer invented a finding for a part that has none. Refused, by the name, not the words.
   const invented = good.replace('\n\n텔레그램은', '\n\n라인은 지아가 봤는데 새 소식이 없어요.\n\n텔레그램은')
-  expect(reportCheck(JSON.stringify({ message: invented, kept }), parts)).toEqual({ refused: 'missing-said' })
+  expect(reportCheck(JSON.stringify({ message: invented, kept }), parts)).toMatchObject({ refused: 'missing-said' })
   const lines: string[] = []
   setReportLog(line => lines.push(line))
   try {
     const refused = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: invented, kept }), timeoutMs: 500, now: NOW })
     expect(refused).toBe(mergedReport(parts))
-    // c13a: each part's outcome is on the line too.
-    expect(lines.at(-1)).toMatch(/^writer=refused:missing-said ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
+    // c13a: each part's outcome is on the line too. c15b: a refused draft is a fallback once its one repair has no time (500 ms here).
+    expect(lines.at(-1)).toMatch(/^writer=fallback:missing-said ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
     const shown = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: good, kept }), timeoutMs: 500, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=accepted ms=\d+/)
     // The writer's message, then the host's rule-7 line for 지아 with where they looked. All three parts are linked.
@@ -116,7 +116,7 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   expect(reportPrompt(brief, [as])).toContain('"listPage":true')
   // A writer message that runs one teammate's two items and links into one line is refused (link positions, not words).
   const run = JSON.stringify({ message: '서아가 찾았어요. 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206), 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
-  expect(reportCheck(run, [m])).toEqual({ refused: 'one-line' })
+  expect(reportCheck(run, [m])).toMatchObject({ refused: 'one-line' })
   const apart = JSON.stringify({ message: '서아가 찾았어요.\n- 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206)\n- 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
   expect(checkedReport(apart, [m])).toBeDefined()
 })

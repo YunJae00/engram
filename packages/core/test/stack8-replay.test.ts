@@ -19,12 +19,13 @@ test('C3: a teammate who found nothing new this week keeps their own sentence an
     withData(member('m3', '도윤', '이번 주 리니어 신기능 조사해서 알려줘', '', '리니어'), latest('리니어 대안/경쟁사 비교 글', 'https://clickup.com/ko/blog/67806/linear-alternatives')),
   ])
   expect(out).not.toMatch(/찾아봤어요|못 찾았어요|출처/)
-  const parts = blocks(out)
-  expect(parts).toHaveLength(3)
-  // Each part names its teammate, says nothing new came out, then its latest with its own link.
+  // c15b (cause F): one block; the nothing-new all three share is said once, then each part's row names its teammate, its latest and link.
+  expect(blocks(out)).toHaveLength(1)
+  const [head, ...parts] = out.split('\n')
+  expect(head).toMatch(/새로 나온 게 없/)
+  expect(out.match(/새로 나온 게 없/g)).toHaveLength(1)
   for (const [i, [name, words]] of ([['지민', '1월 20일'], ['서연', '라이팅 스타일'], ['도윤', '경쟁사 비교 글']] as const).entries()) {
     expect(parts[i]).toContain(`(${name})`)
-    expect(parts[i]).toMatch(/새로 나온 게 없/)
     expect(parts[i]).toContain(words)
     expect(parts[i]).toMatch(/\]\(https:\/\//)
   }
