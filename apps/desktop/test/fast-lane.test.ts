@@ -446,7 +446,7 @@ it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, a
   expect(newsAsk('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(true)
   expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
 })
 
 // stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
@@ -479,5 +479,5 @@ it('stack-7: a counted news list shorter than the count says so in its lead; a f
   expect(shortSaid(ask, three.replace(/^\d\. /gm, ''))).toBe(three.replace(/^\d\. /gm, ''))
   expect(shortSaid('요즘 AI 뉴스 알려줘', three)).toBe(three)
   const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
 })

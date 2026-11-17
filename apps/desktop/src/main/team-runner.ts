@@ -145,9 +145,11 @@ export function teamRunner(deps: {
           begun()
           // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
           const held = laneSearches.get(leadChannel), already = held && sameWords(held.query, me.query!) ? held.found : undefined
-          // c9a R2: words for a price and a date are one search per point, side by side, each list under its own heading (pointQueries).
-          const queries = already !== undefined ? [me.query!] : pointQueries(me.query!)
-          const founds = already !== undefined ? [await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')] : await Promise.all(queries.map(query => search.run({ query }, { task: prompt, signal: control.signal }).catch(() => '')))
+          // c9a R2: words for a price and a date are one search per point, each list under its own heading (pointQueries). One after the
+          // other: a member's searches share its one tab, and a second load cuts the first off (stack-6, comet-navigation-tools).
+          const queries = already !== undefined ? [me.query!] : pointQueries(me.query!), founds: string[] = []
+          if (already !== undefined) founds.push(await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => ''))
+          else for (const query of queries) founds.push(await search.run({ query }, { task: prompt, signal: control.signal }).catch(() => ''))
           for (const [at, found] of founds.entries()) if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${queries[at]}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
         }
         let priced = false
