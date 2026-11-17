@@ -24,7 +24,7 @@ export const AUTO_REVIEW = 'auto: sourced lookup'
 // c6 R2: three members cut at their time limit were not accepted, and three review_member calls took 3.3 s before the first word of the answer.
 const ACCEPTED_NOTE = 'Members with accepted true are lookups, already accepted and released: do not call review_member for them, and write the answer now. One that stopped at its time limit handed back what it had read: answer its part from that. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
-export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"): every row is the same tier - the base model unless the person named a tier - and another tier\'s figure (프로, 울트라, 플러스) never stands in a cell, not even in a bracket: a base model that is not announced is "미발표 (예상 …)" with the reported expectation or "미발표 (전작 …)" with the previous base model\'s launch price, a date cell says the named model\'s own date only ("2027년 봄 예상"), and a cell never holds another product\'s figure. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result ("셋이 하나씩 맡아 알아봤어요."); when "split" says someone joined mid-work, the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist and says only what the cells below show, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"). Every concrete value a member reported stays in its row, labeled as the member labeled it (출시가, 예상, 전작, or the model it belongs to: "상위 모델 출시가 199만 원부터"), never dropped or turned into "미발표"; a thing already out has its 출시가 and date. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result ("셋이 하나씩 맡아 알아봤어요."); when "split" says someone joined mid-work, the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value not out yet keeps the labeled figure its member reported ("예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
 const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id, a site you cannot name by its host as written in the address (store.google.com), never a piece of a title, never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
@@ -58,7 +58,7 @@ export function timeBoxed(tool: AgentTool, left: () => number): AgentTool {
 // The search now hands over the results themselves (title, address, words, date), so one search is the normal case.
 // c5 R2/C3: a member whose one search held no figure reported "미발표, 전작보다 인상 예상" at 3 s of its 8; "Search once" and "when the
 // results hold one" let it. It now looks once more inside the same limits, and a price that is not out still carries a number.
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and, when that does not hold the answer, one more search or one page. Search first with the query in the person\'s language (when the results of a first search come with your part, that search is done: start from them): the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report - the maker\'s or the product\'s English name ("Galaxy S27 price", "Linear changelog"), or a news search (kind "news") - and never a third time. A source is named by its site or publication (삼성전자 뉴스룸, 연합뉴스); a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id; a site whose name you do not know is named by its host as written in the address (store.google.com): never a piece of the page\'s title. When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. The thing is called by the name in your part ("아이폰 18"), never by a variant\'s: every value is the named model\'s own tier, the base model unless your part names a tier: another tier\'s figure (프로, 울트라, 플러스) is never the value, not even in a bracket; when the base model is not announced the value says so with the reported expectation ("미발표 (예상 130만 원대)") or the previous base model\'s launch price ("미발표 (전작 아이폰 17 129만 원)"), and a value never takes another product\'s figure. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A price point always carries a figure with its currency: an answer whose price has no digit is not finished. A price that is not announced yet says so and still gives a number with its currency, labeled 예상 or 전작: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"); when the results give no expected price, your one more search is for the previous model\'s launch price ("갤럭시 S26 출고가"), and that figure is the value, labeled 전작. A date is one thing: the named model\'s own, never a variant\'s and never two dates side by side; a date that is not announced is given the same way, the expected month with its year ("미발표, 2027년 2월 예상"). That number comes from a result or is the previous model\'s known launch price, labeled as what it is: never a number of your own, and never a line with no number in it ("전작보다 인상 예상" alone is not a price); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and, when that does not hold the answer, one more search or one page. Search first with the query in the person\'s language (when the results of a first search come with your part, that search is done: start from them): the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report - the maker\'s or the product\'s English name ("Galaxy S27 price", "Linear changelog"), or a news search (kind "news") - and never a third time. A source is named by its site or publication (삼성전자 뉴스룸, 연합뉴스); a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id; a site whose name you do not know is named by its host as written in the address (store.google.com): never a piece of the page\'s title. When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it, a price with its currency: an answer whose price has no digit is not finished. Every value says what it is and whose it is: a thing already out has its 출시가 and its date, never "미발표"; a value not out yet is the reported expectation, labeled 예상 ("예상 130만 원대", "2027년 2월 예상"); a value of anything other than exactly the name in your part (another model or edition of it, the one before it) names what it belongs to ("상위 모델 출시가 199만 원부터", "전작 출시가 115만 원"). When the named thing has no figure yet, give the closest real one, labeled that way, with what is known of the named thing itself; when the results hold none, your one more search is for the previous model\'s launch price (its name and "출고가"). A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A number comes from a result or is a previous model\'s known launch price, labeled as what it is: never a number of your own, and never a line with no number in it ("전작보다 인상 예상" alone is not a price); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -233,10 +233,9 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
       const own1 = /\[[^\]\n]*\]\((https?:\/\/[^)\s]+)\)\s*$/.exec(cells.at(-1)!), held = own1 && SEARCH_PAGE.test(own1[1]!) && !boxed(own1[1]!) ? figureSources(own.result ?? '', cells.slice(1, -1)) : []
       if (held.length) cells[cells.length - 1] = held.map(url => `[${sourceName(url, korean)}](${escaped(url)})`).join(' · ')
     }
-    // c10a R2: a helper made for the job compares one tier per row (oneTier); a named teammate's row is left as it wrote it.
-    const base = !own.botId && !TIER.test(`${cells[0]} ${own.brief}`)
-    if (base) for (let at = 1; at < cells.length - (sourceColumn ? 1 : 0); at++) cells[at] = oneTier(cells[at]!, `${cells[0]} ${own.brief}`, korean)
-    if (sourceColumn) cells[cells.length - 1] = rowSource(cells, own, used, korean, base)
+    // c12b (R2: the 18 프로's 199만 원 a helper found became "미발표"): a value is never cut from a cell for being another model's; the member
+    // and the lead label what each value belongs to (LOOKUP_RULE, MERGED_SHAPE), and every value a member reported stays.
+    if (sourceColumn) cells[cells.length - 1] = rowSource(cells, own, used, korean)
     lines[i] = `| ${cells.join(' | ')} |`
   }
   // The same for a link the lead wrote itself: "[네이버 블로그](…)" takes the title a member gave that address, else the address's own name.
@@ -252,25 +251,6 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   // grokbar c3 R2: "출처: iPhone18 · GalaxyS27 · Pixel11" - the link text is the site's name, never a member's role.
   return `${fixed.trimEnd()}\n\n${korean ? '출처' : 'Sources'}: ${[...new Map(missing.map(m => [href(m), `[${sourceName(m.sources![0]!, korean)}](${href(m)})`])).values()].join(' · ')}`
 }
-// c10a R2: "아이폰 18 | 미발표, 프로 기준 199만 원부터" and "갤럭시 S27 | …, 울트라 약 187만 원부터" compared the base models with other tiers'
-// prices (human 3). In a row whose thing and brief name no tier, a part of a cell (a bracket, or a piece between commas) that names one goes.
-// A cell left with nothing says the base model was not found.
-// shortcut: tier words by a closed list (프로, 울트라, 플러스, 맥스, "S27+"); a tier the list lacks stays.
-const TIER = /프로|울트라|플러스|맥스|\b(?:pro|ultra|plus|max)\b|[a-z]*\d+\s?\+/i
-const ASIDE = new RegExp(`(?:${TIER.source})\\s*[은는이가도](?=[\\s)]|$)`, 'i')
-export function oneTier(cell: string, row: string, korean = true): string {
-  if (TIER.test(row) || !TIER.test(cell) || /\]\(https?:/.test(cell)) return cell
-  // stack-10 (c10a r3, Codex: "199만 원부터 (프로 기준)" kept the Pro price): a tier bracket that only names the tier ("프로 기준", "울트라 모델")
-  // labels the figure before it, so its whole piece is that tier's and goes. One that says something of its own about that tier, with its own
-  // figure or with the tier as its subject ("(울트라 159만 원)", "(프로는 이미 출시)"), is an aside: only the bracket goes.
-  const piece = (part: string): string => {
-    let labels = false
-    const rest = part.replace(/\s*\([^()]*\)/g, bracket => !TIER.test(bracket) ? bracket : /\d/.test(bracket) || ASIDE.test(bracket) ? '' : (labels = true, ''))
-    return labels || TIER.test(rest) ? '' : rest
-  }
-  const out = cell.split(/(?:,\s+|\s+\/\s+|;\s*)(?![^()]*\))/).map(piece).filter(Boolean).join(', ').trim()
-  return out || (korean ? '기본형은 못 찾았어요' : 'base model not found')
-}
 // c9a R2: the rows linked cafe.naver.com, cafe.naver.com and a search page, named 출처 three times, while the 갤럭시 helper had also cited
 // a store page. A source cell with one link takes, among the pages its own teammate cited (never another's, never one it did not cite),
 // one that holds the row's figure (all of them when its figures sit on several), then the maker's or a publication's page before a store,
@@ -278,28 +258,16 @@ export function oneTier(cell: string, row: string, korean = true): string {
 // shortcut: only the lead's search-page link or one of the teammate's own pages is replaced; another link the lead wrote stays (liveCited checks it).
 const SECONDARY = /youtube\.com|youtu\.be|tv\.naver\.com|\/shorts\b|smartstore\.|shopping\.naver|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com/i
 const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return url } }
-// c10a r2 (Codex r1): a base-model row kept the iphone-18-pro page after its Pro price went. In a row of one tier (base), a page is
-// another tier's when its address names a tier, or when every line of the teammate's result that cites it is about another tier only
-// (oneTier would leave nothing of it). Such a page is never the row's source; with no other page the teammate's search page is.
-const otherTier = (url: string, result: string): boolean => {
-  let path = url
-  try { path = decodeURIComponent(new URL(url).pathname) } catch { /* the address as written */ }
-  if (TIER.test(path)) return true
-  const says = result.split('\n').filter(line => line.includes(url)).map(line => line.replace(ADDRESS, ' ').replace(/[()\s—–-]+$/, '').trim()).filter(Boolean)
-  return says.length > 0 && says.every(line => oneTier(line, '', false) === 'base model not found')
-}
-function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean, base = false): string {
+function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean): string {
   let cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
   // c9a r3 (Codex r2): a cell with a search page beside an article kept the search page. Beside a real page it goes; a cell of search pages
   // only is taken as its first, which the teammate's own page then replaces below.
-  // c10a r3 (Codex r2): in a base row a real link of another tier went out here before the tier check below; it is checked first.
-  const off = (url: string | undefined): boolean => base && !!url && !SEARCH_PAGE.test(url) && otherTier(url, own.result ?? '')
   if (links.length > 1) {
-    const real = links.filter(link => (!SEARCH_PAGE.test(link[2]!) || boxed(link[2]!)) && !off(link[2]))
+    const real = links.filter(link => (!SEARCH_PAGE.test(link[2]!) || boxed(link[2]!)))
     if (real.length) { for (const link of real) used.add(hostOf(link[2]!)); return real.length === links.length ? cell : real.map(link => link[0]).join(' · ') }
     links = links.slice(0, 1); cell = links[0]![0]
   }
-  const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url) && !off(url))
+  const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url))
   // c9a r2 (Codex r1): a press page with only the date outranked the blog post that alone held the price, and the price lost its source.
   // A page holding a row's figure comes first; when its figures sit on several pages, the row links each of them.
   const holds = new Set(figureSources(own.result ?? '', cells.slice(1, -1)))
@@ -307,10 +275,10 @@ function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>,
   const order = cited.map((url, at) => ({ url, at })).sort((a, b) => rank(a.url) - rank(b.url) || a.at - b.at).map(one => one.url), best = order[0]
   const name = (url: string): string => `[${linked(own.result ?? '').get(url) ?? sourceName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
   // A results page whose own box holds the figure stays (네이버 날씨); a link the lead gave that its teammate did not list is left as it is.
-  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) || off(now)
+  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now)
   const each = order.filter(url => holds.has(url))
   if (replace && each.length > 1) { for (const url of each) used.add(hostOf(url)); return each.map(name).join(' · ') }
-  const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || off(now) || cited.includes(now) && rank(best) < rank(now)) ? best : off(now) ? own.sources?.find(one => SEARCH_PAGE.test(one)) ?? now : now
+  const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) && rank(best) < rank(now)) ? best : now
   if (!url) return cell
   used.add(hostOf(url))
   if (url === now) return /^\s*\[(?:출처|source)\]/i.test(cell) ? cell.replace(/\[(?:출처|source)\]/i, `[${sourceName(now, korean)}]`) : cell
@@ -459,13 +427,20 @@ async function deadOf(shown: readonly string[], alive: (url: string, signal: Abo
   limit.abort()
   return dead
 }
+// c12b (stack-11 R2: "vidabytes" left as words in a source cell): in a table row a dead link's name is no claim of its own, only the
+// label of a link that is gone, so it goes with the link and the cell keeps the other live links it had; in a sentence the name stays.
+const TABLE_ROW = /^\s*\|.*\|\s*$/
+const tidyCell = (line: string): string => line.replace(/\|[ \t]*(?:·[ \t]*)+/g, '| ').replace(/(?:[ \t]*·)+[ \t]*\|/g, ' |').replace(/·[ \t]*(?:·[ \t]*)+/g, '· ')
 function withoutDead(answer: string, dead: readonly string[], read: readonly string[], korean: boolean, named = true): string {
   const own = sourcesOf(read)[0], literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   let out = answer
   for (const url of dead) {
     const swap = own && !plainAddress(out).includes(plainAddress(own)) ? own.replace(/\)/g, '%29').replace(/ /g, '%20') : ''
-    out = out.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), (_whole, name: string) => swap ? `[${sourceName(own!, korean)}](${swap})` : named ? name : '')
-      .replace(new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g'), swap)
+    const link = new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}[.,;:!?]*\\)`, 'g'), bare = new RegExp(`${literal(url)}(?![^\\s)\\]>"'|])`, 'g')
+    out = out.split('\n').map(line => {
+      const row = TABLE_ROW.test(line), done = line.replace(link, (_whole, name: string) => swap ? `[${sourceName(own!, korean)}](${swap})` : named && !row ? name : '').replace(bare, swap)
+      return row && done !== line ? tidyCell(done) : done
+    }).join('\n')
   }
   return out
 }
@@ -682,7 +657,7 @@ export function figurePages(answer: string, read: string): string {
     return page ? `${line.replace(/\s*[—–-]\s*(?:출처|source)\s*$/i, '')} — ${page}` : line
   }).join('\n')
 }
-export const PRIOR_PRICE_NOTE = 'Your price has no figure. Results of a search for the previous model\'s launch price follow. Write your whole answer again, the same lines, with the price line now carrying that figure with its currency, labeled 전작 ("미발표, 전작 S26 115만 원"), and the address it came from; change nothing else, and write no word about searching again.'
+export const PRIOR_PRICE_NOTE = 'Your price has no figure. Results of a search for the previous model\'s launch price follow. Write your whole answer again, the same lines, with the price line now carrying that figure with its currency, labeled 전작 ("전작 출시가 115만 원"), and the address it came from; change nothing else, and write no word about searching again.'
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`
 

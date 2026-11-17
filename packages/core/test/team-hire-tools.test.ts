@@ -343,9 +343,10 @@ describe('team hire tools', () => {
     expect(LOOKUP_RULE).toContain('"Linear changelog"')
     expect(LOOKUP_RULE).toContain('or a news search (kind "news")')
     expect(LOOKUP_RULE).toContain('never a third time')
-    expect(LOOKUP_RULE).toContain('still gives a number with its currency, labeled 예상 or 전작')
-    expect(LOOKUP_RULE).toContain('"미발표, 2027년 2월 예상"')
-    expect(LOOKUP_RULE).toContain("comes from a result or is the previous model's known launch price")
+    // c12b: a value not out yet is labeled 예상 with its figure; no fixed "미발표, …" frame.
+    expect(LOOKUP_RULE).toContain('a value not out yet is the reported expectation, labeled 예상 ("예상 130만 원대", "2027년 2월 예상")')
+    expect(LOOKUP_RULE).not.toMatch(/"미발표[,(]|"미발표 \(/)
+    expect(LOOKUP_RULE).toContain("comes from a result or is a previous model's known launch price")
     expect(LOOKUP_RULE).toContain('never a number of your own, and never a line with no number in it')
     expect(LOOKUP_RULE).not.toContain('when the results hold one')
     // c9a R2: a post is named by its platform.
@@ -353,8 +354,8 @@ describe('team hire tools', () => {
     expect(LOOKUP_RULE).toContain('report at once from them, each fact with the address of the result it came from')
     expect(LOOKUP_RULE).toContain('open a page only for a number none of them shows')
     expect(LOOKUP_RULE).toContain("Report in the person's language")
-    // c4 R2: a value that is not announced still carries a labeled figure; each point asked is its own short line; a maker or news page before a blog.
-    expect(LOOKUP_RULE).toContain('"미발표, 예상 130만 원대"')
+    // c4 R2: a value that is not announced still carries a labeled figure (c12b: labeled 예상, not framed as 미발표); each point asked is its own short line; a maker or news page before a blog.
+    expect(LOOKUP_RULE).toContain('"예상 130만 원대"')
     expect(LOOKUP_RULE).toContain('report each on a line of its own, "가격: …", "출시일: …"')
     expect(LOOKUP_RULE).toContain("the maker's own page or a news article when the list has one, before a café or blog post")
     // c4 R1/L3: a figure from the results page's own box is cited to that service at the address that was loaded.
@@ -450,7 +451,7 @@ describe('team hire tools', () => {
     expect(out.note).toContain("never a member's role or name")
     expect(out.note).toContain('A row names a member only when the person named the members themselves')
     // One friendly lead and one table, no status sentence, and a plain line for a member that found nothing.
-    expect(out.note).toContain('one friendly lead sentence that already gives the gist, then one table')
+    expect(out.note).toContain('one friendly lead sentence that already gives the gist and says only what the cells below show, then one table')
     expect(out.note).toContain('nothing after the table')
     expect(out.note).toContain('No other sentence about bots, members or collecting results')
     expect(out.note).toContain('"못 찾았어요"')
@@ -672,8 +673,9 @@ describe('team hire tools', () => {
     expect(await liveLinks(dead, [], alive(['korea247.kr']), true)).toBe('부산은 맑고 18도예요. 강수 소식은 없네요. korea247.kr')
     expect(await liveLinks(`${live} [블로그](https://korea247.kr/x)`, read, alive(['korea247.kr']), true)).toBe(`${live} 블로그`)
     // One dead row of a table leaves the live rows alone; a longer address that starts the same is not touched.
+    // c12b: in a table cell the dead link's name goes with it (a bare site name in a source cell is no source).
     const table = '| 서울 | 12도 | [a](https://dead.example/a) |\n| 부산 | 18도 | [b](https://dead.example/a/b) |\n| 제주 | 20도 | [c](https://ok.example/c) |'
-    expect(await liveLinks(table, [], async url => url !== 'https://dead.example/a', true)).toBe(table.replace('[a](https://dead.example/a)', 'a'))
+    expect(await liveLinks(table, [], async url => url !== 'https://dead.example/a', true)).toBe(table.replace('[a](https://dead.example/a)', ''))
     // Slow: kept, and the wait is the one budget for all of them together, never longer.
     const started = Date.now()
     const slow = '[느린 곳](https://slow.example/1) [또 느린 곳](https://slow.example/2) [죽은 곳](https://gone.example/3)'
@@ -734,9 +736,9 @@ describe('team hire tools', () => {
     expect(out).not.toMatch(/gone\.example|dead\.example/)
     // c4 r3: the dead link's name ("블로그") does not become the name of the member's page; words that do name the linked site are kept.
     expect(out).not.toContain('블로그')
-    // A row no teammate's page can take keeps the dead link's name as plain words; a name the lead wrote for a live page is kept as written.
+    // A row no teammate's page can take loses the dead link with its name (c12b: never a bare name in a cell); a name the lead wrote for a live page is kept as written.
     expect(await liveCited('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | [블로그](https://dead.example/blog) |\n| 부산 | 비 | 부산 기상 |', [], answer => citeMembers(answer, members.slice(1, 2), true), async url => !/dead\.example/.test(url), true))
-      .toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 | 블로그 |\n| 부산 | 비 | [부산 기상](https://ok.example/busan) |')
+      .toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 대구 | 맑음 |  |\n| 부산 | 비 | [부산 기상](https://ok.example/busan) |')
     // One pass: each address asked once, the ones only the citing would add among them.
     expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
     // The closing line: a dead member page is not listed, a live one is.
@@ -951,9 +953,9 @@ it('c6: a row links the result its figure was read from, a link is never named b
   const table = ['셋이 하나씩 맡아 알아봤어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|', '| 아이폰 18 | 프로 기준 179만 원부터 | 일반형은 내년 봄 예상 | apple.com |', '| 갤럭시 S27 | 미발표, 전작 S26 115만 원 | 미발표, 2027년 2월 예상 | 블로그 글 |', '| 픽셀 11 | 미발표, 999유로대 | 8월 12일 예상 | 네이버 검색 |', '', '출처: 네이버 검색'].join('\n')
   const cited = citeMembers(table, [iphone, galaxy, pixel], true)
   const cell = (row: number): string => cited.split('\n')[4 + row]!.split(' | ').at(-1)!.replace(/ \|$/, '')
-  // c10a r2: the row is the base 아이폰 18 (its Pro price goes, oneTier), so the iphone-18-pro page is not its source; the page on the
-  // base model's date is, named by its outlet. The bare host is not the link's name.
-  expect(cell(0)).toBe('[연합뉴스](https://www.yna.co.kr/view/AKR1)')
+  // c12b: the row shows the Pro price, labeled (no host tier filter), so the page that holds that figure is its source, named by the
+  // site. The bare host the lead wrote is not the link's name.
+  expect(cell(0)).toBe('[Apple](https://www.apple.com/kr/iphone-18-pro/)')
   // Only a video holds the figure: it is the source rather than the page searched on.
   expect(cell(1)).toBe('[유튜브](https://www.youtube.com/watch?v=fDITkuO6iTc)')
   // Two kept rows hold "999": the shorts clip is passed over, and the article is named by its title, cut to twenty characters.
@@ -1006,16 +1008,19 @@ it('c6: a lone lookup\'s link is never named by its bare host: the result\'s tit
   expect(citeOwn('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)', [], true)).toBe('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)')
 })
 
-it('c6: the member rule and the merged shape keep a row to the thing the person named', () => {
-  expect(LOOKUP_RULE).toContain('The thing is called by the name in your part ("아이폰 18"), never by a variant\'s')
-  // c10a R2: one tier per row; an unannounced base model is "미발표 (예상 …)" or "미발표 (전작 …)".
-  expect(LOOKUP_RULE).toContain('another tier\'s figure (프로, 울트라, 플러스) is never the value, not even in a bracket')
-  expect(LOOKUP_RULE).toContain('("미발표 (전작 아이폰 17 129만 원)")')
-  expect(MERGED_SHAPE).toContain('every row is the same tier - the base model unless the person named a tier')
-  expect(LOOKUP_RULE).toContain('a value never takes another product\'s figure')
+it('c6: the member rule and the merged shape keep a row to the thing the person named (c12b: every value says whose it is, none is banned)', () => {
+  expect(LOOKUP_RULE).toContain('a value of anything other than exactly the name in your part (another model or edition of it, the one before it) names what it belongs to')
+  // c12b (R2: the 18 프로 price became "미발표"): no tier ban and no fixed "미발표 (…)" frame; a released thing has its 출시가.
+  expect(LOOKUP_RULE).not.toContain('another tier\'s figure (프로, 울트라, 플러스) is never the value, not even in a bracket')
+  expect(LOOKUP_RULE).not.toContain('("미발표 (전작 아이폰 17 129만 원)")')
+  expect(LOOKUP_RULE).toContain('a thing already out has its 출시가 and its date, never "미발표"')
+  expect(MERGED_SHAPE).not.toContain('every row is the same tier - the base model unless the person named a tier')
+  expect(MERGED_SHAPE).toContain('Every concrete value a member reported stays in its row, labeled as the member labeled it')
+  expect(LOOKUP_RULE).toContain('When the named thing has no figure yet, give the closest real one, labeled that way')
   expect(LOOKUP_RULE).toContain('when the results of a first search come with your part, that search is done: start from them')
   expect(MERGED_SHAPE).toContain('A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로")')
-  expect(MERGED_SHAPE).toContain('a cell never holds another product\'s figure')
+  expect(MERGED_SHAPE).not.toContain('a cell never holds another product\'s figure')
+  expect(MERGED_SHAPE).toContain('one friendly lead sentence that already gives the gist and says only what the cells below show')
   expect(MERGED_SHAPE).toContain('nothing after the table')
 })
 
@@ -1138,8 +1143,9 @@ it('c7 R2: a price point with no figure asks for one more search, for the previo
   expect(priorPriceQuery(galaxy, '아직 아무 정보가 없어요.')).toBe('')
   expect(priorPriceQuery({ brief: '맥북 에어의 가격 조사', query: '맥북 에어 가격' }, '가격: 미발표')).toBe('')
   // The rule says the same, and the date rule with it.
-  expect(LOOKUP_RULE).toContain('A price point always carries a figure with its currency: an answer whose price has no digit is not finished.')
-  expect(LOOKUP_RULE).toContain('your one more search is for the previous model\'s launch price ("갤럭시 S26 출고가"), and that figure is the value, labeled 전작')
-  expect(LOOKUP_RULE).toContain('A date is one thing: the named model\'s own, never a variant\'s')
+  expect(LOOKUP_RULE).toContain('a price with its currency: an answer whose price has no digit is not finished.')
+  expect(LOOKUP_RULE).toContain('your one more search is for the previous model\'s launch price (its name and "출고가")')
+  // c12b: a date is labeled like any value (the asked thing's own, 예상, or whose it is); the one-tier date ban is gone.
+  expect(LOOKUP_RULE).not.toContain('A date is one thing: the named model\'s own, never a variant\'s')
   expect(LOOKUP_RULE).toContain('a site whose name you do not know is named by its host as written in the address (store.google.com)')
 })
