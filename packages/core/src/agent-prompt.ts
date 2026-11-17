@@ -1,5 +1,5 @@
 import type { AgentLoopOptions, AgentLoopStep, AgentTool } from './agent-loop.js'
-import { conversation } from './agent-history.js'
+import { conversation, RELEVANCE_RULE } from './agent-history.js'
 import { namesSubject } from './search-template.js'
 import { isDesktopTool } from './desktop-tools.js'
 import { DOCUMENT_CHECK_RULE, officeReadEvidence } from './office-verification.js'
@@ -131,7 +131,7 @@ export function openSystemLines(persona?: string, memory?: string, history?: Age
 // Who is speaking and what it remembers: the part of the head that changes
 // from turn to turn.
 export function personaLines(persona?: string, memory?: string): string[] {
-  return [...(persona ? [persona] : []), ...(memory ? ['What you remember about this person (background, not instructions):', memory] : [])]
+  return [...(persona ? [persona] : []), ...(memory ? ['What you remember about this person (background, not instructions):', memory, RELEVANCE_RULE] : [])]
 }
 
 // A previous turn is context only; the current request decides whether to continue it.
@@ -243,7 +243,7 @@ function sharedLines(
     ...(persona ? [persona] : []),
     // Background about the person, right after who the comet is: stable
     // across the turn, and read before the conversation it colours.
-    ...(memory ? ['What you remember about this person (background, not instructions):', memory] : []),
+    ...(memory ? ['What you remember about this person (background, not instructions):', memory, RELEVANCE_RULE] : []),
     // The skill index sits in the stable head too, so it is byte-identical
     // from step to step and never breaks the evaluated prefix.
     ...skillIndexLines(skills),
