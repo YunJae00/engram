@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, handoffBrief, jobTitle, logTask, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, firstFound, firstSearches, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -144,9 +144,15 @@ export function teamRunner(deps: {
         if (search) {
           begun()
           // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
-          const held = laneSearches.get(leadChannel), already = held && sameWords(held.query, me.query!) ? held.found : undefined
-          const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '') : await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
-          if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${me.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
+          const held = laneSearches.get(leadChannel), task = prompt
+          // c9 C3/C5: a job about a product's updates, or one that asks for a list, opens with two searches side by side (core
+          // firstSearches): no longer than one. The maker's own rows come first; that one page is the one to read.
+          const founds = (await Promise.all(firstSearches(me, goal).map(async one => {
+            const already = held && sameWords(held.query, one.query) ? held.found : undefined, args = { query: one.query, ...(one.news ? { kind: 'news' } : {}) }
+            const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run(args, { task, signal: control.signal }).catch(() => '') : await search.run(args, { task, signal: control.signal }).catch(() => '')
+            return { ...one, ...(one.maker ? makerFirst(found, one.maker) : { found }) }
+          }))).filter(one => /^results for "/.test(one.found))
+          if (founds.length) { read = true; prompt += firstFound(founds) }
         }
         let priced = false
         for (let round = 0; ; round++) {

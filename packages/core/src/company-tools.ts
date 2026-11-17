@@ -198,6 +198,65 @@ export function searchWords(brief: string, now = new Date(), about = ''): string
   }
   return Array.from(words).length < 4 ? undefined : datedQuery(words, brief, now)
 }
+// c9 C3 (stack-8 run): "슬랙 앱 새 기능 업데이트" found how-to posts and "리니어" found linear motors; two of three links were Naver search
+// pages. Notion, Slack and Linear each keep a dated page of their own updates. A job about a named product's updates opens with two
+// searches side by side: the news in the job's words (inside the period the job names, when it names one), and the maker's own updates
+// page searched by the product's Latin name. A job that asks for a list is searched twice, the second time in the kind's other words.
+// shortcut: closed list, upgrade when a miss shows up in a run.
+const MAKERS: [RegExp, string, string][] = [[/노션/u, 'Notion', 'Notion releases'], [/슬랙/u, 'Slack', 'Slack release notes'], [/리니어/u, 'Linear', 'Linear changelog'], [/피그마/u, 'Figma', 'Figma release notes'], [/지라/u, 'Jira', 'Jira Cloud release notes'], [/깃허브|깃헙/u, 'GitHub', 'GitHub changelog'], [/디스코드/u, 'Discord', 'Discord patch notes'], [/(?<![가-힣])줌(?![가-힣])/u, 'Zoom', 'Zoom release notes'], [/트렐로/u, 'Trello', 'Trello what\'s new'], [/아사나/u, 'Asana', 'Asana what\'s new'], [/챗지피티|챗GPT/u, 'ChatGPT', 'ChatGPT release notes'], [/클로드/u, 'Claude', 'Claude release notes'], [/커서(?![가-힣])/u, 'Cursor', 'Cursor changelog'], [/팀즈/u, 'Microsoft Teams', 'Microsoft Teams what\'s new'], [/드롭박스/u, 'Dropbox', 'Dropbox release notes'], [/에어테이블/u, 'Airtable', 'Airtable what\'s new']]
+const PERIOD_JOB = /(?:이번|지난|저번)\s?(?:주|달)|요즘|최근|오늘|어제/u
+const LIST_JOB = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
+// shortcut: a closed list of other words for a kind; a kind not on it is searched again as "… 모음".
+const OTHER_WORDS: [RegExp, string][] = [[/행사/u, '컨퍼런스 세미나 밋업'], [/맛집/u, '식당 추천'], [/전시회?/u, '박람회 전시'], [/공연/u, '콘서트 뮤지컬'], [/축제/u, '페스티벌'], [/카페/u, '카페 추천 모음']]
+export interface FirstSearch { query: string; /** A news search: the search tool keeps it inside the period the teammate's task names. */ news?: true; /** The maker's Latin name: this search looks for their own updates page. */ maker?: string }
+/** The maker a job is about and the words for their own updates page, from the person's own "리니어(Linear)" first, else the closed list. */
+export function makerOf(words: string, about = ''): { name: string; query: string } | undefined {
+  for (const text of [words, about]) {
+    const given = /([가-힣]{2,})\s*\(\s*([A-Za-z][A-Za-z0-9.&' -]{1,30}?)\s*\)/u.exec(text)
+    if (given && words.includes(given[1]!)) return { name: given[2]!, query: `${given[2]!} changelog` }
+  }
+  const known = MAKERS.find(([ko]) => ko.test(words))
+  if (known) return { name: known[1], query: known[2] }
+  const latin = /(?<![A-Za-z])([A-Z][A-Za-z0-9]{2,})(?![A-Za-z])/.exec(words)?.[1]
+  return latin ? { name: latin, query: `${latin} changelog` } : undefined
+}
+/** The searches the host runs side by side before a teammate's first round: the stored words alone, or two for a job about a product's updates or for a list. At most two, never the same words twice. about: the person's whole ask. */
+export function firstSearches(member: Pick<TeamMember, 'brief' | 'query'>, about = ''): FirstSearch[] {
+  const query = member.query?.trim(), line = (handedFrom(member.brief)?.brief ?? member.brief).split('\n')[0]!
+  if (!query || handedFrom(member.brief)) return []
+  const title = jobTitle(member.brief)
+  if (UPDATES.test(title)) {
+    const maker = makerOf(withoutRelativeTime(title.replace(new RegExp(UPDATES.source, 'gu'), ' ')), about)
+    const news: FirstSearch = { query, ...(PERIOD_JOB.test(line) ? { news: true as const } : {}) }
+    return maker && maker.query.toLowerCase() !== query.toLowerCase() ? [news, { query: maker.query, maker: maker.name }] : [news]
+  }
+  if (!LIST_JOB.test(line)) return [{ query }]
+  const plain = query.replace(/\s*(?:일정|목록|리스트)(?=\s|$)/u, '').trim(), other = OTHER_WORDS.find(([kind]) => kind.test(plain))
+  const second = other ? plain.replace(other[0], other[1]) : `${plain} 모음`
+  return second.toLowerCase() === query.toLowerCase() ? [{ query }] : [{ query }, { query: second }]
+}
+// A results row from the maker's own site: its site is called the product (sourceName), or a label of its host is the Latin name.
+const makersOwn = (row: string, maker: string): boolean => {
+  const url = row.slice(2).split(' — ')[1] ?? ''
+  try {
+    const host = new URL(url).hostname.toLowerCase(), name = maker.toLowerCase().replace(/\s+/g, '')
+    return host.split('.').includes(name) || [sourceName(url), sourceName(url, true)].some(said => said.toLowerCase() === maker.toLowerCase())
+  } catch { return false }
+}
+/** A search's results with the maker's own rows first. own: there is such a row. */
+export function makerFirst(found: string, maker: string): { found: string; own: boolean } {
+  const lines = found.split('\n'), at = lines.flatMap((line, i) => line.startsWith('- ') ? [i] : []), rows = at.map(i => lines[i]!)
+  const own = rows.filter(row => makersOwn(row, maker)), sorted = [...own, ...rows.filter(row => !own.includes(row))]
+  at.forEach((i, k) => { lines[i] = sorted[k]! })
+  return { found: lines.join('\n'), own: own.length > 0 }
+}
+/** What a teammate is told about the first searches' results, each under its words. */
+export function firstFound(founds: readonly (FirstSearch & { found: string; own?: boolean })[]): string {
+  if (founds.length === 1) return `\n\nResults of the search already run for you ("${founds[0]!.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${founds[0]!.found}`
+  const maker = founds.find(one => one.own)
+  return `\n\nResults of the searches already run for you, side by side. Answer from them; search again only when none holds what your part asks.${maker ? ` The first row under "${maker.query}" is ${maker.maker}'s own updates page: read that one page (read_pages) and answer from its newest dated entry, ${MAKER_NOTE}` : ''}${founds.map(one => `\n\n[${one.query}]\n${one.found}`).join('')}`
+}
+const MAKER_NOTE = 'in Korean, with its date and that page as your one address. When the entry is inside the time your part asks about, say it as the news. When it is not, say that, then the newest one: "이번 주엔 새로 낸 게 없어요. 최근엔 <date>에 <thing>이 나왔어요." with that page\'s address.'
 // A title that was still cut short is not said as a job ("…를 했어요"): the part's own short name stands in when there is one.
 const jobOf = (member: TeamMember): string => { const title = member.title?.trim() || jobTitle(member.brief); return title.endsWith('…') && member.topic?.trim() ? member.topic.trim() : title }
 // A job's short name as the lead of its result: "…일정 정리" → "정리해 왔어요" (brought back) / "정리했어요" (did, from a teammate's work).
@@ -771,7 +830,7 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date)
 // grokbar C3 (stack2): the memos were pasted into the answer and read "이번 턴 안에 내용을 읽어오지 못했습니다", "소스 접근 실패", "This week's main items…".
 // c7: "Answer like a short memo" made every teammate write the same memo. A teammate answers as themselves, the way they would message
 // a colleague, and the host keeps their words (spoken).
-const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list every dated item your results give, three or more when they are there and at most eight, one line each starting with its date and ending with the address it came from. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, and nothing about time, limits or attempts. No preamble, no headings, no offers.'
+const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list the items your results give, three to five when they are there, one line each starting with its date and ending with the address it came from, and nothing about what you left out; with only one item, write "확실한 건 하나예요." and then that item. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, never the search or what its results page held ("검색 결과가 …뿐이었어요", "검색에서 무관한 … 나왔어요", "찾아봤는데"): say what is true about the thing itself, and nothing about time, limits or attempts. A search-results page is never your address while you read or cite a real page. No preamble, no headings, no offers.'
 /** Added to the persona of someone who writes from what was handed over: they have no tools and need none. */
 export const WRITER_RULE = 'Everything this part needs is in the brief: you have no tools and look nothing up. Write the deliverable itself at once, in the person\'s language, and nothing else: no preamble, no account of what you did, no question. When the job asks for a number of short things ("문구 3개", "3가지", "세 줄"), write exactly that many as a numbered markdown list, one per line.'
 
@@ -818,7 +877,7 @@ const pagesOf = (text: string, read: readonly string[] = []): string[] => {
 // settleMember's closing note for a result cut short is the host's own wording for the lead ("시간 한도에서 멈춤"); the person never reads it.
 const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]*)\)$/
 // A line about the looking and not about what was found: time, limits, attempts, what could not be opened or confirmed.
-const META = /시간\s*(?:한도|초과|내에|안에|이\s*(?:다|부족|모자))|한도|이번 턴|턴\s*안|시도|확인 불가|누락|실패|읽어오지 못|가져오지 못|열어보지 못|받지 못|확인하지 못|찾지 못|못 찾|열람|추가\s*(?:확인|검색)|검색\s*결과(?:에|와|는|\s*페이지)|조회\)|timed? ?out|could not|couldn't|unable to|failed/iu
+const META = /시간\s*(?:한도|초과|내에|안에|이\s*(?:다|부족|모자))|한도|이번 턴|턴\s*안|시도|확인 불가|누락|실패|읽어오지 못|가져오지 못|열어보지 못|받지 못|확인하지 못|찾지 못|못 찾|열람|추가\s*(?:확인|검색)|검색\s*결과(?:가|에|와|는|로|만|뿐|\s*페이지)|검색에서\s*(?:무관|안\s*(?:잡|나|보)|나온\s*건|찾은\s*건)|결과\s*페이지|조회\)|timed? ?out|could not|couldn't|unable to|failed/iu
 // c6 C3: "Slack 공식 업데이트 페이지에서 11월 소식 확인했어요.", "이번 주(11월 10~16일) 범위에 해당하는 항목이 확인됐어요." and the heading "리니어 신기능 조사
 // 결과" led their rows. A sentence that only says something was looked at or found, and a heading the teammate repeated, are no finding.
 // stack-8 (R2 replay): "갤럭시 S27 가격과 출시일 조사 결과를 보고드려요." opened the line: a sentence that only hands the result over is none either.

@@ -415,7 +415,7 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
   return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }
 }
 // An answer that only says nothing was found: short, no address of its own (a found fact carries one).
-const NOTHING_SAID = /찾지 못|못 찾|찾을 수 ?없|(?:소식|내용|정보|발표|결과|업데이트|자료|기능)[은는이가도]?\s*(?:전혀\s*|따로\s*|아직\s*)?(?:없|안 보|보이지 않)|확인되지 않|\b(?:no (?:new|recent|relevant)|nothing (?:new|relevant|found)|could ?n[o']t find|did ?n[o']t find)\b/iu
+const NOTHING_SAID = /찾지 못|못 찾|찾을 수 ?없|(?:소식|내용|정보|발표|결과|업데이트|자료|기능)[은는이가도]?\s*(?:전혀\s*|따로\s*|아직\s*)?(?:없|안 보|보이지 않)|확인되지 않|안\s*잡히|(?:나오지|잡히지)\s*않|\b(?:no (?:new|recent|relevant)|nothing (?:new|relevant|found)|could ?n[o']t find|did ?n[o']t find)\b/iu
 export const foundNothing = (answer: string): boolean => !!answer && answer.length <= 400 && !/https?:\/\//.test(answer) && NOTHING_SAID.test(answer)
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 // c6 C3: 도윤's stored result was its answer, a rule line, the same answer again under a heading, its suggested replies, and a shopping row
