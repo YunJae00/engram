@@ -28,7 +28,9 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
 
   it('reads an ending as the last two words', () => {
     expect(saidBefore('3분기 실적 내용부터 정리할게요.', ['회의록 내용부터 정리할게요.'])).toBe(true)
-    expect(saidBefore('매출 파일부터 살펴볼게요.', ['회의록 내용부터 정리할게요.', '3분기 실적 내용부터 정리할게요.'])).toBe(false)
+    // c7c: a second "…부터" line is a repeat whatever its ending (D4: 매번 '~부터 할게요'); a line built another way is not.
+    expect(saidBefore('매출 파일부터 살펴볼게요.', ['회의록 내용부터 정리할게요.', '3분기 실적 내용부터 정리할게요.'])).toBe(true)
+    expect(saidBefore('매출 파일 바로 살펴볼게요.', ['회의록 내용부터 정리할게요.', '3분기 실적 내용부터 정리할게요.'])).toBe(false)
     expect(saidBefore('슬라이드 순서부터 잡을게요.', [])).toBe(false)
   })
 
