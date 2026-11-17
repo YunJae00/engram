@@ -10,7 +10,7 @@ const table = ['셋이 하나씩 맡아서 알아봤어요.', '', '| 제품 | �
   '| 픽셀 11 | 999유로부터(기본 모델) | 2026년 8월 12일 | [위키백과](https://ko.wikipedia.org/wiki/%ED%94%BD%EC%85%80_11_%ED%94%84%EB%A1%9C) |'].join('\n')
 const rows = (text: string): string[][] => text.split('\n').filter(line => /^\| (아이폰|갤럭시|픽셀)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
 
-test('c10a R2: the stored helpers through the merge give one tier per row and no link named 출처 on a known host', () => {
+test('c10a R2: the stored helpers through the merge give one tier per row and no link named 출처 on a known host (c11a: an unknown host by its host)', () => {
   const out = citeMembers(table, r2.members, true), [iphone, galaxy, pixel] = rows(out)
   for (const row of [iphone!, galaxy!, pixel!]) for (const cell of row.slice(1, -1)) expect(cell, row[0]).not.toMatch(/프로|울트라|플러스|S27\+/)
   expect(galaxy![1]).toBe('미발표, 예상 기본형 999달러(약 134만 원)부터')
@@ -21,11 +21,12 @@ test('c10a R2: the stored helpers through the merge give one tier per row and no
   // c10a r2 (Codex r1): the row is the base model, so the Pro pages (apple.com/…/iphone-18-pro, the blog and the short that only give the
   // Pro price) are not its source; the page that says the base model comes in spring 2027 is.
   expect(iphone!.at(-1)).toBe('[네이버 카페](https://cafe.naver.com/hiric)')
-  // 출처 stays only for a host nothing knows (vidabytes: a piece of the address is never a name, c7).
-  expect([...out.matchAll(/\[출처\]\((https?:\/\/[^/)]+)/g)].map(found => found[1])).toEqual(['https://ko.vidabytes.com'])
+  // c11a: no link is named 출처; a host nothing knows is named by its host as written (vidabytes: a piece of the address is never a name, c7).
+  expect(out).not.toMatch(/\[출처\]/)
+  expect([...out.matchAll(/\[ko\.vidabytes\.com\]\((https?:\/\/[^/)]+)/g)].map(found => found[1])).toEqual(['https://ko.vidabytes.com'])
 })
 
-test('c10a R2: a tier the person named stays; a cell of another tier only says the base model was not found; a known outlet is named', () => {
+test('c10a R2: a tier the person named stays; a cell of another tier only says the base model was not found; a known outlet is named (c11a: an unknown site by its host)', () => {
   expect(oneTier('프로 기준 199만 원부터', '아이폰 18 프로 아이폰 18 프로의 가격 조사')).toBe('프로 기준 199만 원부터')
   expect(oneTier('프로 기준 199만 원부터', '아이폰 18 아이폰 18의 가격 조사')).toBe('기본형은 못 찾았어요')
   expect(oneTier('미발표 (전작 아이폰 17 129만 원)', '아이폰 18')).toBe('미발표 (전작 아이폰 17 129만 원)')
@@ -33,8 +34,8 @@ test('c10a R2: a tier the person named stays; a cell of another tier only says t
   expect(oneTier('140만 3,600원', '갤럭시 S27')).toBe('140만 3,600원')
   for (const [url, name] of [['https://news.mt.co.kr/mtview.php?no=1', '머니투데이'], ['https://www.asiae.co.kr/article/1', '아시아경제'], ['https://biz.chosun.com/it/1', '조선비즈'], ['https://www.chosun.com/economy/1', '조선일보'], ['https://www.yna.co.kr/view/1', '연합뉴스']] as const)
     expect(sourceName(url, true), url).toBe(name)
-  // With nothing known of the site, the plain word stays.
-  expect(sourceName('https://unknown-site.example/a', true)).toBe('출처')
+  // c11a: with nothing known of the site, its host names it, never the word 출처.
+  expect(sourceName('https://unknown-site.example/a', true)).toBe('unknown-site.example')
 })
 
 // c10a r2 (Codex r1): a source of another tier never stands beside a base-model row. Wordings and products not in the harness.
@@ -53,15 +54,16 @@ test('c10a r2: a base-model row links a page about the base model; a page only a
 const rows2 = (text: string): string[][] => text.split('\n').filter(line => /^\| (갤럭시|아이패드|맥북)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
 
 // c10a r2 (Codex r1): a site on no list is named by what it calls itself in its page head, read while its link is checked. Hosts not in the harness.
-test('c10a r2: a site\'s declared name names its link; nothing declared, or no name-like declaration, stays 출처', async () => {
+test('c10a r2: a site\'s declared name names its link; nothing declared, or no name-like declaration, stays 출처 (c11a: the host, never 출처)', async () => {
   keepDeclaredName('https://www.gadgetnara.example/a/1', '<head><title>x</title><meta content="가젯나라" property="og:site_name"></head>')
   keepDeclaredName('https://m.techpulse.example/p', "<meta name='application-name' content='TechPulse'>")
   keepDeclaredName('https://longname.example/', '<meta property="og:site_name" content="2026 최고의 리뷰 사이트 모음 그리고 더">')
   keepDeclaredName('https://home.example/', '<meta property="og:site_name" content="Home">')
   expect(sourceName('https://gadgetnara.example/a/2', true)).toBe('가젯나라')
   expect(sourceName('https://techpulse.example/p', true)).toBe('TechPulse')
-  expect(sourceName('https://longname.example/x', true)).toBe('출처')
-  expect(sourceName('https://home.example/x', true)).toBe('출처')
+  // c11a: no name-like declaration: the host, never 출처.
+  expect(sourceName('https://longname.example/x', true)).toBe('longname.example')
+  expect(sourceName('https://home.example/x', true)).toBe('home.example')
   // The check reads only the head, and a link the citing named 출처 takes the declared name once its page answered.
   const html = new Response('<html><head><meta property="og:site_name" content="폰리뷰랩"></head><body>' + 'x'.repeat(200_000) + '</body></html>')
   const answer = '픽셀 12는 899달러부터예요. [출처](https://phonelab.example/pixel-12)'

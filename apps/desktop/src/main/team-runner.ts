@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, kindChecked, reportData, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -117,7 +117,8 @@ export function teamRunner(deps: {
       // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
       // An agent on the team works as themselves: their role and what they remember ride with the member rules.
-      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
+      // c11a: a lookup or a writer on the team hands back data (core REPORT_RULE / WRITER_RULE); a writer's deliverable carries no temperament.
+      const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : me.lookup ? 'lookup' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
@@ -193,12 +194,19 @@ export function teamRunner(deps: {
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
       if (timedOut && !signal?.aborted) outcome = whole ?? { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
+      // c11a: a teammate's result is the report block it wrote; with none (or a broken one) it is null, and its prose is never parsed.
+      // Its list keeps only items of the kind asked, judged here once by the quick model (core kindChecked), before anything shows it.
+      const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
+      const quick = kit.engine.id === 'claude' && kit.engine.quick && !control.signal.aborted ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      const report = structured ? await kindChecked(reportData(outcome.answer, me, [...sources], isKorean(goal)), me.brief, quick) ?? null : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
         // c9a R2: a fact the teammate gave with no address is tied to the row it read it from (figurePages).
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
-        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}) }, now(), isKorean(goal))
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
+          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
+        }
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
         if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
@@ -229,7 +237,7 @@ export function teamRunner(deps: {
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
       // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return { to, background: !!m.background }

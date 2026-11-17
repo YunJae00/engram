@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, mergedReport, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, listTasks, mergedReport, reportData, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // perf146: "봇 3개 생성해서 서울 부산 제주 날씨 조사" ran three opus members with 65 tools each for 118-213 s; the lead waited for the slowest.
@@ -260,14 +260,18 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   // Cut short with its finding and the address it came from: the answer once, no replies block, nothing it only read (c6b settleMember).
   expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
   expect(seoyeon!.read).toBeUndefined()
-  // The host's own table: the found-nothing row says so and links where it looked, by name; no bare host anywhere.
+  // The host's own table (c11a: from each part's report data): the found-nothing row says so plainly; no bare host anywhere.
+  const block = (o: object) => '```report\n' + JSON.stringify(o) + '\n```'
+  doyun!.data = reportData(block({ facts: [], nothing_in_period: {} }), doyun!, doyun!.sources, true)!
+  seoyeon!.data = reportData(block({ facts: [{ text: '슬랙이 Huddles 요약을 냈어요.', url: 'https://slack.com/blog/huddles' }] }), seoyeon!, seoyeon!.sources, true)!
   const table = mergedReport([doyun!, seoyeon!])
-  expect(table).toContain(`도윤: 새 소식은 안 보여요. [네이버 검색](${address('리니어 신기능').replace(/ /g, '%20')})`)
+  expect(table).toContain('리니어 신기능 조사(도윤): 이번엔 새로 나온 게 없어요.')
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
-  // The cut-short part's link is named as a source, never by the host's own "시간 한도" line under the address.
-  expect(table).toContain('서연: 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
+  // The cut-short part's link is named by its site, never by the host's own "시간 한도" line under the address.
+  expect(table).toContain('슬랙 신기능 조사(서연): 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
   expect(table).not.toContain('한도')
+  expect(table).not.toContain('출처')
 })
 
 // c7 R2: m2 reported "가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상", a price with no figure, and LOOKUP_RULE alone did not hold.
