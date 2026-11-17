@@ -906,11 +906,12 @@ export async function employeeWriteBack(paths: VaultPaths, job: { botId: string;
 }
 const WRITE_BACK_POLL_MS = 500
 // What came of a job in one clause: the deliverable's count, nothing new, or the count with the first item's short name (kindChecked).
+// stack-12: a listing page or the full-list line is not an item, so it is not counted (the same rule as partLines).
 const brought = (d: MemberData): string => {
-  const first = d.facts[0]?.name?.trim()
+  const items = d.facts.filter(f => !f.listing && !f.rest), first = items[0]?.name?.trim()
   if (d.items?.length) return `${d.items.length}개 써 왔어요`
   if (d.nothing || !d.facts.length) return d.nothing ? '새로 나온 게 없었어요' : '못 찾았어요'
-  return d.facts.length > 1 ? `${first ? `${first} 등 ` : ''}${d.facts.length}개 찾았어요` : first ? `${josa(first, '을', '를')} 찾았어요` : '찾았어요'
+  return items.length > 1 ? `${first ? `${first} 등 ` : ''}${items.length}개 찾았어요` : first ? `${josa(first, '을', '를')} 찾았어요` : '찾았어요'
 }
 
 // --- One merged answer (GROKBOT rule 7) ---
