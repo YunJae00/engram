@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, handoffShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2858,6 +2858,8 @@ export function registerIpc(ctx: VaultContext): void {
               : aboutEmployee(request.message, everyone, await listTasks(paths))
         // GROKBOT rule 7: this report was made without the parts still at work and the next one is theirs, or it was theirs (company-tools lateShown).
         if (reporting && lateOwed(reporting)) await updateTask(paths, reporting.id, lateShown)
+        // c9 H5: a hand-off's first teammate was shown alone; the next report is the second's.
+        if (reporting) await updateTask(paths, reporting.id, handoffShown)
         // The hand-off's own line is the whole answer: a quick first line still on its way would be a second one.
         if (handed) firstLineSpoke(channel)
         if (company && !handed && !summing) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))

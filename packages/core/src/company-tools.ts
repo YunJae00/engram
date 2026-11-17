@@ -346,7 +346,15 @@ function statusSaid(bots: readonly Bot[], tasks: readonly DelegatedTask[], now: 
   if (!did.length) return again ? `${listed(names)}한테 맡긴 일이 아직 없어요.` : `아직 ${listed(names)}한테 맡긴 일이 없어요.`
   // Everyone is named once: by what they did, or else in the sentence that says nobody is on anything.
   const everyone = did.length < idle.length ? `${listed(names)} 모두 ` : names.length > 2 ? '다들 ' : names.length === 2 ? '둘 다 ' : ''
-  return `${finished(jobs, did.some(one => now - Date.parse(one.last!.at) < 3_600_000))} ${again ? `아직 ${everyone}새로 맡은 일은 없어요.` : `지금은 ${everyone}하는 일 없어요.`}`
+  const recent = did.some(one => now - Date.parse(one.last!.at) < 3_600_000)
+  // c9 C4 (USER-NOTES): "지민은 노션, 서연은 슬랙, 도윤은 리니어 신기능 조사를 방금 끝냈어요. 지금은 다들 하는 일 없어요." read as a roster. When
+  // everyone just finished parts of one kind of job, they are said together, each name once, and that they are free in a few words.
+  // What the jobs share around the one word that differs ("이번 주 노션 신기능 조사" / "이번 주 슬랙 신기능 조사": 노션, 슬랙), said once.
+  const words = jobs.map(group => group.job.split(' ')), at = words[0]!.findIndex((word, i) => words.some(one => one[i] !== word))
+  const same = jobs.length > 1 && at >= 0 && words.every(one => one.length === words[0]!.length && one.every((word, i) => i === at || word === words[0]![i]))
+  const tail = same ? words[0]!.slice(at + 1).join(' ') : ''
+  if (!again && recent && tail && did.length === idle.length && jobs.every(group => group.names.length === 1)) return `${jobs.map(group => group.names[0]!).join(', ')} 모두 방금 ${words.map(one => one[at]!).join('·')} ${tail} 끝냈어요. 지금은 ${everyone || '다들 '}한가해요.`
+  return `${finished(jobs, recent)} ${again ? `아직 ${everyone}새로 맡은 일은 없어요.` : `지금은 ${everyone}${did.length === idle.length && everyone ? '한가해요.' : '하는 일 없어요.'}`}`
 }
 
 export function companyStatusTool(paths: VaultPaths): AgentTool {
@@ -832,7 +840,7 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date)
 // a colleague, and the host keeps their words (spoken).
 const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list the items your results give, three to five when they are there, one line each starting with its date and ending with the address it came from, and nothing about what you left out; with only one item, write "확실한 건 하나예요." and then that item. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, never the search or what its results page held ("검색 결과가 …뿐이었어요", "검색에서 무관한 … 나왔어요", "찾아봤는데"): say what is true about the thing itself, and nothing about time, limits or attempts. A search-results page is never your address while you read or cite a real page. No preamble, no headings, no offers.'
 /** Added to the persona of someone who writes from what was handed over: they have no tools and need none. */
-export const WRITER_RULE = 'Everything this part needs is in the brief: you have no tools and look nothing up. Write the deliverable itself at once, in the person\'s language, and nothing else: no preamble, no account of what you did, no question. When the job asks for a number of short things ("문구 3개", "3가지", "세 줄"), write exactly that many as a numbered markdown list, one per line.'
+export const WRITER_RULE = 'Everything this part needs is in the brief: you have no tools and look nothing up. Write the deliverable itself at once, in the person\'s language, and nothing else: no preamble, no account of what you did, no line on where the facts came from, no question. Work made from a teammate\'s find uses at least one of its facts as it is (a figure, a date or a name: "낮 2~6도", "12월 2일 코엑스"). When the job asks for a number of short things ("문구 3개", "3가지", "세 줄"), write exactly that many as a numbered markdown list, one per line.'
 
 /** A finished job goes on the agent's own record: the brief and the result in their conversation, one dated line in their memory and in the team's. No model is asked. A job that found nothing leaves its line too ("… → 못 찾았어요"), and a job done from a teammate's work says whose. */
 export async function employeeWriteBack(paths: VaultPaths, job: { botId: string; brief: string; result: string; title?: string }, now = new Date(), /** The agent's own conversation has a turn under way. */ busy: () => boolean = () => false): Promise<void> {
@@ -975,33 +983,41 @@ const aboutJob = (job: string, now: Date): string => {
   const next = periodSpans(job, now).find(span => span.name === '다음 달')
   return sought(job).replace(/\s*(?:조사|정리)$/u, '').replace(/다음\s?달|내달/u, next ? `${next.from.getMonth() + 1}월` : '$&').replace(/\s*(?:일정|목록|리스트)$/u, '').trim()
 }
-const LOOKED = ['찾아봤어요', '알아봤어요', '찾아 왔어요']
-/** The first sentence over one teammate's result, said by them (c7). previous: the result before it in the thread, whose lead it does not end like. */
-function resultLead(m: TeamMember, previous = '', now = new Date()): string {
+// c9 C5/C6/C10 (USER-NOTES): "지민: 12월 서울 IT 행사 찾아봤어요.", "서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑았어요." read as status
+// reports. A result opens with the thing: what a lookup found ("…는 세 개 있어요.", "확실한 건 하나예요."), or, for work made from a
+// teammate's find, that find in one clause and how many ("지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요."). Never the job's name and a
+// verb of having done it. (The writer opens a lookup's result in the teammate's own words when it can: reportPrompt, checkedReport.)
+const COUNTED_KO = ['', '하나', '두 개', '세 개', '네 개', '다섯 개', '여섯 개', '일곱 개', '여덟 개']
+const LIST_ASKED = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
+// A teammate's own line in front of their list that only says a list follows ("확인해 보니 다음 달 서울 IT 행사 일정은 이래요.").
+const INTRO_LINE = /^[^\d\n]{0,60}(?:이래요|다음과\s*같아요|아래와\s*같아요|정리해\s*봤어요|정리했어요)[.:!]?$/u
+// The items a list job brought back, as the host shows them (mergedReport): its lines, less one that only says a list follows.
+const listItems = (m: TeamMember): string[] => { if (m.read) return []; const lines = findings(delivered(m), false, true).lines.map(line => line.replace(LIST_MARK, '')); return lines.length > 1 ? lines.filter((line, k) => !SOURCE_SENTENCE.test(line) && !(k === 0 && INTRO_LINE.test(line))) : lines }
+/** The first sentence over one teammate's result, said by them. previous: the result before it in the thread, whose lead it does not end like. link: the page the handed-over find came from, on the opener. */
+function resultLead(m: TeamMember, previous = '', now = new Date(), link = ''): string {
   const from = handedFrom(m.brief), job = jobOf(m)
   if (!from) {
-    // Someone who looked something up says so ("찾아봤어요"); a job with a verb of its own keeps it ("골라 왔어요").
     const looked = !!m.lookup && (OPENERS.test(job) || !(JOB_VERBS.some(([ending]) => ending.test(job)) || DOING_NOUN.test(job)))
-    const { what, forms } = looked ? { what: job.endsWith('…') ? '' : aboutJob(job, now), forms: LOOKED } : jobForms(job, true)
-    return `${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.`
+    if (!looked) { const { what, forms } = jobForms(job, true); return `${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.` }
+    const what = job.endsWith('…') ? '' : aboutJob(job, now), items = listItems(m).length, list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
+    // Two ways each, so a lead never ends like the one before it (ledBy).
+    const count = COUNTED_KO[items] ?? `${items}개`, said = list && items === 1 ? '확실한 건 하나예요.' : `${ledBy(list && items >= 2 ? [`${count} 있어요`, `${count} 나와요`] : ['이래요', '이렇게 나와요'], previous)}.`
+    return `${m.role}: ${what ? `${josa(what, '은', '는')} ${said}` : `찾은 건 ${said}`}`
   }
-  // What was handed over, in a word: "지민이 찾은 일정으로".
-  const thing = handedThing(from.job), { what, forms } = jobForms(job, false)
   // c6b r3: what was handed over lay outside the time asked, and the year was said only in the last line, under copy that sold it as next
   // month's. The lead says it before anything made from it is read.
-  const out = outsideOf(from.job, from.result, now)
-  return `${m.role}: ${josa(from.from, '이', '가')} 찾은 ${ro(thing)} ${[what, ledBy([forms[1]!, forms[0]!, forms[2]!], previous)].filter(Boolean).join(' ')}.${out ? ` ${out.said.replace(/보여요\.$/u, '보여서')} ${out.when} 걸로 썼어요.` : ''}`
+  const out = outsideOf(from.job, from.result, now), { forms } = jobForms(job, false), n = askedCount(m.brief)
+  const thing = aboutJob(jobTitle(from.job), now), found = thing && !thing.endsWith('…') ? thing : handedThing(from.job)
+  const opener = `${m.role}: ${josa(from.from, '이', '가')} 찾은 ${ro(found)} ${n ? COUNTED_KO[n] ?? `${n}개` : '이렇게'} ${ledBy([forms[1]!, forms[0]!, forms[2]!], previous)}.`
+  return withLink(`${opener}${out ? ` ${out.said.replace(/보여요\.$/u, '보여서')} ${out.when} 걸로 썼어요.` : ''}`, link)
 }
 // The last word of what the giver looked for ("이번 주말 서울 날씨 찾기" → "날씨"), or "내용".
 const handedThing = (job: string): string => { const word = sought(jobTitle(job)).replace(/\s*(?:조사|정리)$/u, '').trim().split(' ').at(-1) ?? ''; return word && !word.endsWith('…') && /^[가-힣]{1,6}$/u.test(word) ? word : '내용' }
-// c7 C6: "지민이 찾은 내용: …" was a label line. Where the facts came from is one plain closing sentence with the link.
-function closing(from: NonNullable<ReturnType<typeof handedFrom>>, facts: readonly string[], link: string, now: Date): string {
-  // stack-7 (c7b run, C6 and H5 replayed): "지민이 찾아보니 확인해 보니 다음 달 …", "지민이 찾아보니 이번 주말 서울 날씨 찾아봤는데, …": the
-  // teammate's own sentence opened on having looked, and the host said it again in front. Their opener goes; the host's stays.
-  const first = (facts[0] ?? '').replace(LIST_MARK, '').replace(/^[^.,\n]{0,40}?(?:찾아봤는데|찾아보니|확인해\s?보니|알아봤는데|알아보니|조사해\s?보니)[,\s]*/u, ''), what = aboutJob(jobTitle(from.job), now)
-  if (/요[.!]?$/u.test(first) && Array.from(first).length <= 200) return withLink(`${josa(from.from, '이', '가')} 찾아보니 ${first}`, link)
-  return withLink(`${what && !what.endsWith('…') ? josa(what, '은', '는') : '내용은'} ${josa(from.from, '이', '가')} 찾은 걸 따랐어요.`, link)
-}
+// c9 C6/H5: "지민이가 찾은 소프트웨이브 2026 행사 일정으로 뽑았어요. 코엑스(링크)", "…날씨 정보는 기상청(링크)에서 나온 거예요." closed the bubble
+// and said the opener again. Where the facts came from is said once, in the opener with its link; such a closing line is not shown.
+const SOURCE_SENTENCE = /에서\s*(?:나온|온|가져온)\s*(?:거|것|정보|내용)(?:예요|이에요|입니다)|(?:찾은|찾아\s*준)\s*[^.!?\n]{0,40}(?:으로|로)\s*(?:뽑았|썼|써\s*봤|만들었)어요/u
+// A writer's opening on what they did ("…로 홍보 문구 3개 뽑았어요.") when the host's opener already says it.
+const OWN_OPENER = /(?:뽑았|썼|써\s*봤|만들었|작성했|정리했|찾아봤|찾았)어요[.!]?$/u
 // c6 C5: one finding under "…정리해 왔어요." made the person read two bubbles' worth for one fact. A lookup that came back with one sentence
 // is the whole answer: the teammate's own sentence after their name.
 function gistOf(m: TeamMember): string | undefined {
@@ -1181,7 +1197,9 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
   }
   const blocks = parts.flatMap((m, i) => {
     const from = handedFrom(m.brief), looked = !!m.empty && !from && !m.then
-    const said = looked ? '' : delivered(m), korean = HANGUL.test(said) || HANGUL.test(m.brief), all = said ? read(m, said, true, true) : [], handed = from && outsideOf(from.job, from.result, now)
+    const said = looked ? '' : delivered(m), korean = HANGUL.test(said) || HANGUL.test(m.brief), handed = from && outsideOf(from.job, from.result, now)
+    // c9: a line that only says a list follows, says where the facts came from, or says again what the opener says is not shown.
+    const lined = said ? read(m, said, true, true) : [], all = lined.length > 1 ? lined.filter((line, k) => !SOURCE_SENTENCE.test(line) && !(k === 0 && (INTRO_LINE.test(line.replace(LIST_MARK, '')) || (!!from && OWN_OPENER.test(line))))) : lined
     const kept = handed ? all.filter(line => !soldAsSoon(line, handed, now)) : all, cut = all.length - kept.length
     // Each item takes its own page on its line's end; when no line names one, the last line takes the part's page.
     const linked = itemLines(kept, said, korean), bare = !from && !!linked.length && !linked.some(line => /\]\(https?:/.test(line))
@@ -1194,11 +1212,10 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const out = body && !from ? outsideFor(m, now) : undefined, gist = body && !out && !i ? gistOf(m) : undefined
     if (out) { const head = `${outsideHead(m, out)} ${nearestSaid(out)}`; return [i ? head : lead(head), withLink(out.line, partLink(m, said))] }
     if (gist) return [lead(`${m.role}: ${withLink(`${gist}${/[.!?]$/.test(gist) ? '' : '.'}`, partLink(m, said))}`)]
-    const head = body ? resultLead(m, i ? '' : previous, now) : atWork(m) ? `${m.role}: ${STILL}` : looked ? `${m.role}: ${nothingNew(m, true, now)}` : other ? `${m.role}: ${FOREIGN}. ${other}` : nothingLine(m, topics)
-    // Where the giver's facts came from, in one closing sentence, unless the giver's own part is shown above.
-    const facts = from && !parts.some(giver => giver !== m && giver.role === from.from) ? read(m, from.result).slice(0, 3) : []
-    const close = from && facts.length && body ? closing(from, facts, pageLink(handedPages(m, members)[0], from.result, HANGUL.test(from.result) || HANGUL.test(m.brief)), now) : ''
-    return [i ? head : lead(head), body, close].filter(Boolean)
+    // c9: the page the handed-over find came from goes on the opener, unless the giver's own part is shown above.
+    const given = from && !parts.some(giver => giver !== m && giver.role === from.from) ? pageLink(handedPages(m, members)[0], from.result, HANGUL.test(from.result) || HANGUL.test(m.brief)) : ''
+    const head = body ? resultLead(m, i ? '' : previous, now, given) : atWork(m) ? `${m.role}: ${STILL}` : looked ? `${m.role}: ${nothingNew(m, true, now)}` : other ? `${m.role}: ${FOREIGN}. ${other}` : nothingLine(m, topics)
+    return [i ? head : lead(head), body].filter(Boolean)
   })
   return blocks.join('\n\n')
 }
@@ -1206,10 +1223,21 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
 // The parts of a task as a report shows them. A part marked late is shown as still at work in the report made without it, whatever it has
 // done since (it was promised a line of its own), and is alone in the one after (TaskTeam.lateTold).
 function partsOf(task: DelegatedTask | undefined, background: boolean): TeamMember[] {
-  const all = (task?.team?.members ?? []).filter(m => (!background || m.background) && !!m.botId && !(m.state === 'released' && !m.result))
+  const posted = task?.team?.posted ?? []
+  const all = (task?.team?.members ?? []).filter(m => (!background || m.background) && !!m.botId && !(m.state === 'released' && !m.result) && !posted.includes(m.id))
+  // c9 H5: a hand-off's first teammate finished and the one they handed to is at work: their own bubble comes now, alone (handoffShown).
+  const givers = background ? handingOn(all) : []
+  if (givers.length) return givers
   if (!all.some(m => m.late)) return all
   if (task!.team!.lateTold) return all.filter(m => m.late)
   return all.map(m => { if (!m.late) return m; const still: TeamMember = { ...m, state: 'working' }; delete still.result; return still })
+}
+// Who finished and handed their result on to someone still at work in this task.
+const handingOn = (members: readonly TeamMember[]): TeamMember[] => members.filter(m => !!m.then && !!delivered(m) && members.some(next => atWork(next) && handedFrom(next.brief)?.from === m.role))
+/** c9 H5: a report was made while a hand-off was under way: the first teammate's bubble is in the thread, and the next report is the second's alone. */
+export function handoffShown(task: DelegatedTask): void {
+  const team = task.team, givers = handingOn((team?.members ?? []).filter(m => m.background && !team?.posted?.includes(m.id)))
+  if (team && givers.length) team.posted = [...(team.posted ?? []), ...givers.map(m => m.id)]
 }
 const handsIn = (members: readonly TeamMember[]): boolean => members.some(m => m.state === 'waiting' || !!m.files?.length || /\]\(engram-artifact:/.test(m.result ?? ''))
 const reportable = (task: DelegatedTask | undefined): TeamMember[] | undefined => {
@@ -1326,9 +1354,9 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
       : several
         ? 'Shape: one short lead sentence that already gives the gist, said plainly the way a colleague passes it on, with no list of names and never "조사 결과". Then, each after a blank line, one line per teammate in the order given: exactly their name and a colon ("<name>: "), then their own sentence or two, then one source as a markdown link on the end of that same line. Their sentences are theirs: copy their wording and their sentence endings as they wrote them (each teammate speaks in their own way, and that must stay different from the others). You may only drop a sentence that says something was searched or checked, keep at most two sentences, and add the name of their part (the product, the place) when their sentence does not say it. Never rewrite them into one voice. No table, no list marks, no headings, no bold. When nobody found anything new for the time asked, the lead says that once and each line gives only the latest thing that teammate did find, with its month. Nothing after the last line.'
         : handoff
-          ? `Shape: ${first}. Then, after a blank line, the teammate's own lines exactly as they wrote them: do not rewrite, reorder or drop any, and a numbered list stays a numbered list, one item per line. Then, after a blank line, one plain closing sentence that says where the facts came from: it names ${giver ? giver.from : 'the teammate'} and what they found in a few words, and ends with their source as a markdown link. It is a sentence a colleague would say, never a label followed by a colon, and never the words "찾은 내용".`
+          ? `Shape: ${first}. Then, after a blank line, the teammate's own lines exactly as they wrote them: do not rewrite, reorder or drop any, and a numbered list stays a numbered list, one item per line. Nothing after them: no closing sentence about where ${giver ? giver.from : 'the teammate'}'s facts came from.`
           : out ? `Shape: one short paragraph. It starts with exactly ${JSON.stringify(outsideHead(only!, out))} Then one sentence that gives the nearest item as what it is, with its year in words ("작년엔 M월 D일에 …가 있었어요."), and its source as a markdown link right after it. Nothing else.`
-          : `Shape: ${first}. Then, after a blank line, what they found: every item they gave and none dropped, one short line each as a markdown list when there are several, starting with its date when the text gives one, and each ending with the page that item came from as a markdown link. Never a line that holds only links.`,
+          : `Shape: the first line starts with exactly ${JSON.stringify(`${parts[0]!.role}: `)} and is one short sentence (at most 60 characters) said the way that teammate talks in their text, that leads with what they found: the main item itself with its date ("다음 달엔 12월 2~4일 코엑스 소프트웨이브가 제일 커요."), never the name of the job followed by 찾아봤어요, 정리했어요 or 알아봤어요, and no link. When the job asks for a schedule or a list and only one item is there, it is exactly ${JSON.stringify(`${parts[0]!.role}: 확실한 건 하나예요.`)} Then, after a blank line, what they found: every item they gave and none dropped, one short line each as a markdown list when there are several, starting with its date when the text gives one, and each ending with the page that item came from as a markdown link. Never a line that holds only links.`,
     'A link is always written "[출처](address)": the chat names it itself.',
     'Use only what is in the data; add no fact. An address comes only from that teammate\'s "pages", copied exactly, and is written only as a markdown link, each address once. Say nothing about searching, opening pages, time, limits, attempts or errors, and never write 보고, 결과예요, 실패, 턴 or 한도. No English sentence: say it in Korean and keep only names of products, features, companies and people as written, never four English words in a row. Nothing about how anyone speaks. A teammate whose text is empty or holds no finding gets exactly "이번엔 못 찾았어요." as their content. A teammate with "read" true ran out of time: their text is whatever they had written, then the search results and page text they read (each result as title: what it says, its date, its address). Write their part from all of it exactly as from a memo: the facts the person asked for, each from one result and linked to it, and every dated item when a schedule or a list was asked for. Never say that anything was cut short, that there may be more, or that someone ran out of time. A teammate with "nothing" true looked and found nothing new: their text is their own note, then the search results they read. Their content is one short sentence that names their part and says nothing new shows up for the time asked ("… 이번 주 새 소식은 안 보여요."), then, only when one of those results is really about their part, the nearest one in a few words with its date ("가장 최근은 M월 D일 …"), and exactly one named link: that result, or else the first of their pages (where they searched). When they have "latest", that is the nearest one and it is always given: what it is in a few words, its "day" in exactly those words, and its "page" as their one link. Never "못 찾았어요" for them. A teammate with "working" true is still at it: their content is their part and exactly these words, "<part> 쪽은 아직 찾는 중이에요. 끝나면 이어서 올릴게요." Never write "검색 결과": say what is or is not there ("이번 주 새 발표는 없었어요"). No offer, no question, no closing line.',
     `Today is ${ymd(now)}. A year that is not ${now.getFullYear()} is always kept as written, wherever its item is mentioned: an item of another year is never said as if it were coming up. A teammate with "outside" found only items dated outside the time they were asked about ("outside" is the nearest one's day): their content first says plainly that nothing shows for the time asked yet ("… 아직 안 보여요."), then gives that nearest item as what it is, with its year in words ("작년엔 M월 D일에 …가 있었어요."), and its link. A "from" with "outside" is the same: the line about what they found says the year in words.`,
@@ -1411,12 +1439,17 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   if (parts.length === 1 && delivered(parts[0]!)) {
     const m = parts[0]!, [head = '', ...rest] = text.split('\n'), out = outsideFor(m, now)
     if (out) { if (!head.startsWith(outsideHead(m, out))) return undefined }
-    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head)) text = [resultLead(m, context.previous, now), ...rest].join('\n')
+    // c9 C5: the writer's opener stands when it is the teammate leading with the thing (short, no link, not "<job> 찾아봤어요").
+    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head) && !ownLead(head, m)) text = [resultLead(m, context.previous, now), ...rest].join('\n')
   }
   // c5 C6: "[소프트웨이브 2026](…) [ACC 2026](…)" read as one name, "소프트웨이브 2026 ACC 2026".
   return spaced(text)
 }
 
+const ownLead = (head: string, m: TeamMember): boolean => {
+  const said = head.startsWith(`${m.role}: `) ? head.slice(m.role.length + 2).trim() : ''
+  return !!said && Array.from(said).length <= 80 && !/\]\(|https?:/.test(said) && /[요다][.!]?$/u.test(said) && !(OWN_OPENER.test(said) && !/\d/.test(said)) && !SOURCE_SENTENCE.test(said) && !/(?:알아봤|정리해\s*왔|찾아\s*왔)어요[.!]?$/u.test(said)
+}
 /** The one answer for the person's thread: written by the quick model from the agents' results when it answers in time and passes the host's check, else the host's own table. */
 export async function writtenReport(input: { ask: string; members: readonly TeamMember[]; topics?: ReadonlyMap<string, string>; hired?: readonly string[]; write?: ReportWriter; timeoutMs?: number; /** The team result before this one in the thread. */ previous?: string | undefined; now?: Date }): Promise<string> {
   const { members, topics = new Map<string, string>(), hired = [] } = input, context: ReportContext = { previous: input.previous, now: input.now, ask: input.ask }
@@ -1425,7 +1458,8 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   // words, and no writer is asked to say it again.
   // stack-8: when every teammate says first that nothing new was found, the host's answer (their own lines under one lead) stands.
   const quietAll = shown.length > 1 && shown.every(m => !atWork(m) && (!!m.empty || saysNoneFirst(m)))
-  if (!input.write || quietAll || !shown.some(m => findings(delivered(m)).lines.length) || (shown.length === 1 && !outsideFor(shown[0]!, context.now) && gistOf(shown[0]!))) return fallback
+  // c9 C6/H5: a hand-off's result is the teammate's own lines under the host's opener; the writer only added a closing source sentence.
+  if (!input.write || quietAll || shown.some(m => handedFrom(m.brief)) || !shown.some(m => findings(delivered(m)).lines.length) || (shown.length === 1 && !outsideFor(shown[0]!, context.now) && gistOf(shown[0]!))) return fallback
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })

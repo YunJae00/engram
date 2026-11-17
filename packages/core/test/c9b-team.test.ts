@@ -61,3 +61,43 @@ test('c9 fix 1: a teammate who describes the results page is not shown saying it
   // The record reads "안 잡히더라고요" as found-nothing too (c9 C10: the summary writer was refused for saying so).
   expect(foundNothing('이번 주 기준으로는 슬랙 신기능 관련 구체적인 소식이 안 잡히더라고요!')).toBe(true)
 })
+
+// This run's stored C5 and C6 members (stack8-67507b42, tasks.json), cut to what the path reads.
+const C5_RESULT = '확인해 보니 다음 달 서울 IT 행사 일정은 이래요.\n\n- 12월 2일(수)~4일(금): 제11회 대한민국 소프트웨어 대전 \'소프트웨이브 2026\', 코엑스(COEX) Hall A — https://www.coex.co.kr/exhibitions/sw2026/\n- 12월 9일(수): AI 서밋 서울 2026, 그랜드 인터컨티넨탈 — https://example.com/aisummit\n- 12월 16일(수): 클라우드 데이 서울, 코엑스 — https://example.com/cloudday'
+const C6_RESULT = '1. 12월 2일부터 4일까지, 코엑스에서 소프트웨이브 2026이 열려요! SW업계 신제품과 비즈니스 기회를 한자리에서 만나보세요!\n2. 일반 관람은 12월 3일, 4일이 딱 좋더라고요! 다음 달 서울 IT 트렌드, 소프트웨이브 2026에서 눈으로 확인해보세요!\n3. 올해 마지막 대형 SW 박람회, 소프트웨이브 2026이 코엑스 Hall A에서 기다리고 있더라고요! 놓치면 아쉬운 다음 달 IT 행사, 지금 일정 체크해보세요!'
+
+test('c9 fix 2/3: C5 and C6 open with the thing, in two different ways, with no closing source sentence', async () => {
+  const { handoffBrief } = await import('../src/company-tools.js')
+  const kim = member({ role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', title: '다음 달 서울 IT 행사 일정 정리', background: true, result: C5_RESULT })
+  const c5 = mergedReport([kim], new Map(), [], { ask: '이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리' })
+  const c5lead = c5.split('\n')[0]!
+  expect(c5lead).toBe('지민: 12월 서울 IT 행사는 세 개 있어요.')
+  expect(c5lead).not.toMatch(/(?:찾아봤|정리해 왔|정리했|알아봤)어요\.$/u)
+  // The teammate's own "…은 이래요." intro line is not an item; the three are, each with its link. BAR C5: 행사 and a date.
+  expect(c5).not.toContain('확인해 보니')
+  expect(c5.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
+  expect(c5).toMatch(/행사/); expect(c5).toMatch(/12월 2일/)
+
+  const park = member({ id: 'm2', role: '서연', lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT })
+  const c6 = mergedReport([park], new Map(), [], { ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', previous: c5 })
+  const c6lead = c6.split('\n')[0]!
+  expect(c6lead).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요\. \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  expect(c6lead).not.toMatch(/홍보 문구 3개/u)
+  // BAR C6: three list lines, 서연 and 행사; nothing after the list.
+  expect(c6.match(/^\d\. /gm)).toHaveLength(3)
+  expect(c6).toMatch(/행사/)
+  expect(c6.split('\n\n').at(-1)!.startsWith('1. ')).toBe(true)
+  expect(c6).not.toMatch(/에서 나온 거예요|찾아보니|찾은 걸 따랐어요|으로 뽑았어요\./u)
+  // Two teammates never open the same way.
+  expect(c6lead.split(': ')[1]!.slice(0, 5)).not.toBe(c5lead.split(': ')[1]!.slice(0, 5))
+  // A list job that brought one item says so.
+  expect(mergedReport([{ ...kim, result: '12월 2일(수)~4일(금): 소프트웨이브 2026, 코엑스 — https://www.coex.co.kr/x' }]).split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 확실한 건 하나예요.')
+})
+
+test('c9 fix 2: a writer\'s own closing line on where the facts came from is not shown', async () => {
+  const { handoffBrief } = await import('../src/company-tools.js')
+  const kim = '이번 주말 서울은 토요일 아침 영하 6도, 낮 2~6도에 대체로 맑대요. https://www.weather.go.kr/w/a'
+  const park = member({ role: '서연', lookup: undefined, writer: true, background: true, brief: handoffBrief('주말 나들이 추천 문구 한 줄 써줘', '지민', kim, '이번 주말 서울 날씨 찾기'), result: '맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!\n\n지민이가 찾아준 이번 주말 서울 날씨 정보는 기상청에서 나온 거예요.' })
+  const h5 = mergedReport([park])
+  expect(h5).toBe('서연: 지민이 찾은 이번 주말 서울 날씨로 이렇게 써 봤어요. [기상청](https://www.weather.go.kr/w/a)\n\n맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!')
+})

@@ -361,7 +361,8 @@ test('a handoff with no new brief joins the job the agent is on, or takes their 
   const kim = (await o.named('지민'))!
   await updateTask(o.paths, earlier.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '행사', botId: kim.id, state: 'released', result: '11월 20일 서울 AI 서밋 https://example.com/summit', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
   // grokbar B7 (C6): the report is 서연's own result, then the facts it was made from, under whose they were and what that job was.
-  expect(await o.assign(hand)).toBe('서연: 지민이 찾은 행사로 홍보 문구 3개를 만들어 봤어요.\n\n서연 결과 · [출처](https://example.com/m1)\n\n행사는 지민이 찾은 걸 따랐어요. [출처](https://example.com/summit)')
+  // c9 fix 2: the opener says what it was made from, with that page; no closing source sentence.
+  expect(await o.assign(hand)).toBe('서연: 지민이 찾은 행사로 세 개 만들어 봤어요. [출처](https://example.com/summit)\n\n서연 결과 · [출처](https://example.com/m1)')
   // grokbar C6: writing from what was handed over is a writer's job (no web), not a lookup.
   expect(o.task.team!.members[0]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
   expect(o.task.team!.members[0]!.lookup).toBeUndefined()
@@ -481,17 +482,16 @@ test('the merged report is one table: a row per agent, their link, a missing par
 })
 
 test('one agent\'s result stands as they wrote it, and a handoff keeps the facts it was made from', () => {
-  expect(mergedReport([part('m1', '지민', '행사', { result: '12월 2일 소프트웨이브\nhttps://example.com/a' })])).toBe('지민: 행사 찾아봤어요.\n\n12월 2일 소프트웨이브 · [출처](https://example.com/a)')
+  expect(mergedReport([part('m1', '지민', '행사', { result: '12월 2일 소프트웨이브\nhttps://example.com/a' })])).toBe('지민: 행사는 이래요.\n\n12월 2일 소프트웨이브 · [출처](https://example.com/a)')
   // Nothing written out as an address: the page they read is added as a link.
-  expect(mergedReport([part('m1', '지민', '행사', { result: '12월 2일 소프트웨이브', sources: ['https://example.com/a'] })])).toBe('지민: 행사 찾아봤어요.\n\n12월 2일 소프트웨이브 · [출처](https://example.com/a)')
+  expect(mergedReport([part('m1', '지민', '행사', { result: '12월 2일 소프트웨이브', sources: ['https://example.com/a'] })])).toBe('지민: 행사는 이래요.\n\n12월 2일 소프트웨이브 · [출처](https://example.com/a)')
   // C6 as it ran: 지민 worked first, his result went on to 서연 (TeamMember.then), and the task holds both.
   const kim = part('m1', '지민', '다음 달 서울 IT 행사 일정 정리', { background: true, then: { botId: 'bot-m2', who: '서연', brief: '홍보 문구 3개' }, result: '소프트웨이브 2026: 12월 2일~4일, 코엑스 https://example.com/sw' })
   const park = part('m2', '서연', handoffBrief('홍보 문구 3개', '지민', kim.result!, kim.brief), { background: true, result: '1. 12월, 코엑스에서 만나요\n2. 참가비 무료\n3. 지금 사전등록' })
   const task = { id: 't', goal: 'g', botId: 'chief', state: 'running', turns: 1, createdAt: '', updatedAt: '', approvals: [], log: [], team: { members: [kim, park], hires: 2, maxHires: 8, maxDepth: 3, big: false } } as DelegatedTask
   expect(employeesReport(task)).toBe([
-    // c7 C6: 서연 speaks, the lines stay a numbered list, and where the facts came from is one plain closing sentence, never a label.
-    '서연: 지민이 찾은 일정으로 홍보 문구 3개를 만들어 봤어요.', '', '1. 12월, 코엑스에서 만나요', '2. 참가비 무료', '3. 지금 사전등록', '',
-    '12월 서울 IT 행사는 지민이 찾은 걸 따랐어요. [출처](https://example.com/sw)',
+    // c7 C6: 서연 speaks, the lines stay a numbered list. c9 fix 2: where the facts came from is a clause and a link on the opener, never a closing sentence.
+    '서연: 지민이 찾은 12월 서울 IT 행사로 세 개 만들어 봤어요. [출처](https://example.com/sw)', '', '1. 12월, 코엑스에서 만나요', '2. 참가비 무료', '3. 지금 사전등록',
   ].join('\n'))
   // The first one found nothing at all, so nothing was handed on: one line names both and says what is missing (c4 H5).
   expect(employeesReport({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'failed', result: 'Failed: it was stopped.' }] } })).toBe('지민이 다음 달 서울 IT 행사 일정을 아직 못 찾아서, 서연한테는 못 넘겼어요.')
@@ -560,7 +560,8 @@ test('the host\'s own table on the results as they were stored: no notes on the 
   // C5, one person: who brought it, what they found, the link once, and no "출처:" label for the thread to show twice.
   const one = mergedReport(c5)
   // c4 C5: the lead says what the result is. c7 C5: the teammate says it, and the job's title is not said back.
-  expect(one.split('\n')[0]).toBe('지민: 12월 서울 IT 행사 찾아봤어요.')
+  // c9 fix 3: a list job with one item says so.
+  expect(one.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 확실한 건 하나예요.')
   expect(one.split('\n').some(line => /^\s*(?:\[[^\]]+\]\([^)]+\)[\s·]*)+$/.test(line))).toBe(false)
   expect(one).toContain('2026-12-02~04')
   expect(one).not.toMatch(/출처|시간 초과|확인하지 못|\(여기까지|결과예요|습니다\.\n\n\(/)
@@ -581,7 +582,9 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   expect(prompt).toContain('exactly their name and a colon')
   expect(prompt).toContain('copy their wording and their sentence endings')
   expect(prompt).not.toContain('"맡은 일 (담당)"')
-  expect(reportPrompt(stored.c5.goal, c5)).toContain('지민: 12월 서울 IT 행사 찾아봤어요.')
+  // c9 fix 2: the writer opens with the thing in the teammate's words, never the job's name and 찾아봤어요.
+  expect(reportPrompt(stored.c5.goal, c5)).toContain('the first line starts with exactly "지민: "')
+  expect(reportPrompt(stored.c5.goal, c5)).toContain('never the name of the job followed by 찾아봤어요')
   const good = ['노션은 에이전트를 크게 손봤고, 리니어는 자체 키 연결을 넣었어요.', '',
     '지민: 노션은 이번 주 새 소식이 아직 안 보여요. 10월 19일에 Notion Agent가 크게 개선됐어요. [출처](https://www.bing.com/search?q=Notion%20new%20features%20November%202026)', '',
     '서연: 슬랙은 이번엔 못 찾았어요.', '',
@@ -641,16 +644,17 @@ test('a hand-off result is written in the hand-off shape, and the background rep
   expect(prompt).toContain('"from":{"name":"지민","job":"노션 신기능 조사"')
   expect(prompt).toContain('https://www.notion.com/releases/2026-10-19')
   // c7 C6: the one who made it speaks, and where the facts came from is a closing sentence. The link is named by the host's one rule.
-  expect(prompt).toContain('one plain closing sentence')
+  // c9 fix 2: no closing source sentence.
+  expect(prompt).toContain('no closing sentence about where 지민\'s facts came from')
   expect(prompt).not.toContain('찾은 내용:')
   const written = '서연: 지민이 찾은 신기능으로 홍보 문구 3개 뽑아 봤어요.\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로\n\n지민이 찾아보니 Notion Agent가 크게 개선됐어요. [Notion 릴리스 노트](https://www.notion.com/releases/2026-10-19)'
-  expect(await employeesAnswer(task, async () => written)).toBe(written.replace('Notion 릴리스 노트', '노션'))
-  // The label line of before is refused: the host's own lines stand in.
-  expect(await employeesAnswer(task, async () => written.replace('지민이 찾아보니', '지민이 찾은 내용:'))).toBe(written.replace('Notion 릴리스 노트', '노션'))
+  // c9 fix 2: a hand-off is the host's own answer whatever the writer would say: the opener names the find with its page, and no closing sentence.
+  expect(await employeesAnswer(task, async () => written)).toBe('서연: 지민이 찾은 노션 신기능으로 세 개 뽑아 봤어요. [노션](https://www.notion.com/releases/2026-10-19)\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로')
+  expect(await employeesAnswer(task, async () => written.replace('지민이 찾아보니', '지민이 찾은 내용:'))).toBe('서연: 지민이 찾은 노션 신기능으로 세 개 뽑아 봤어요. [노션](https://www.notion.com/releases/2026-10-19)\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로')
   // No model, or a text that fails the check: the host's own lines, with both names, the three lines and the link.
   const own = await employeesAnswer(task)
   expect(own).toBe(employeesReport(task))
-  expect(own).toBe('서연: 지민이 찾은 신기능으로 홍보 문구 3개 뽑아 봤어요.\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로\n\n지민이 찾아보니 Notion Agent가 크게 개선됐어요. [노션](https://www.notion.com/releases/2026-10-19)')
+  expect(own).toBe('서연: 지민이 찾은 노션 신기능으로 세 개 뽑아 봤어요. [노션](https://www.notion.com/releases/2026-10-19)\n\n1. 일은 에이전트에게\n2. 하루를 맡기세요\n3. 더 적은 비용으로')
   expect(await employeesAnswer(task, async () => '서연 결과예요.')).toBe(own)
   expect(await employeesAnswer({ ...task, team: { ...task.team!, members: [{ ...kim, state: 'waiting' }] } }, async () => written)).toBeUndefined()
 })
@@ -661,6 +665,8 @@ test('a hand-off carries the pages the first teammate read when the memo names n
   const uncited = '서연: 지민이 찾은 날씨로 나들이 문구 써 봤어요.\n\n맑은 토요일, 가볍게 나들이 가요.\n\n지민이 찾아보니 토요일 서울은 맑고 20도예요.'
   const cited = `${uncited} [날씨 예보](https://weather.example/seoul)`
   const own = `${uncited} [출처](https://weather.example/seoul)`
+  // c9 fix 2: the host's own answer (a hand-off is never the writer's): the opener names what it was made from, with that page, and nothing closes it.
+  const hostOwn = '서연: 지민이 찾은 서울 날씨로 이렇게 써 봤어요. [출처](https://weather.example/seoul)\n\n맑은 토요일, 가볍게 나들이 가요.'
   // The brief carries them (the one handing over may be in another task: assign's "last finished job"); a memo with its own address is left as it is.
   const carried = handoffBrief('나들이 문구 쓰기', '지민', kim.result!, kim.brief, kim.sources)
   expect(carried.endsWith('토요일 서울은 맑고 20도예요.\nhttps://weather.example/seoul')).toBe(true)
@@ -668,12 +674,12 @@ test('a hand-off carries the pages the first teammate read when the memo names n
   // And a brief written without them still finds the pages on the one who handed over.
   for (const brief of [carried, handoffBrief('나들이 문구 쓰기', '지민', kim.result!, kim.brief)]) {
     const members = [kim, part('m2', '서연', brief, { background: true, lookup: undefined, writer: true, result: '맑은 토요일, 가볍게 나들이 가요.' })]
-    expect(mergedReport(members)).toBe(own)
+    expect(mergedReport(members)).toBe(hostOwn)
     expect(reportPrompt('날씨 보고 문구 써줘', members)).toContain('"pages":["https://weather.example/seoul"]')
     expect(checkedReport(uncited, members)).toBeUndefined()
     // c7: whatever the writer called the link, the host names it by its one rule.
-    expect(checkedReport(cited, members)).toBe(own)
-    expect(await writtenReport({ ask: '날씨 보고 문구 써줘', members, write: async () => uncited })).toBe(own)
+    expect(checkedReport(cited, members)).toBe(own.replace('서연: 지민이 찾은 날씨로 나들이 문구 써 봤어요.', '서연: 지민이 찾은 서울 날씨로 이렇게 써 봤어요.'))
+    expect(await writtenReport({ ask: '날씨 보고 문구 써줘', members, write: async () => uncited })).toBe(hostOwn)
   }
 })
 
@@ -690,7 +696,7 @@ test('a hand-off whose memo names only a search-results address still carries th
     expect(mergedReport(members)).toContain(`[출처](${page})`)
     expect(mergedReport(members)).not.toContain('search.naver.com')
     expect(reportPrompt('문구 써줘', members)).toContain(page)
-    const text = '서연: 지민이 찾은 날씨로 문구 써 봤어요.\n\n맑은 서울로 떠나요.\n\n지민이 찾아보니 서울은 맑아요.'
+    const text = '서연: 지민이 찾은 서울 날씨로 이렇게 써 봤어요.\n\n맑은 서울로 떠나요.\n\n지민이 찾아보니 서울은 맑아요.'
     expect(checkedReport(`${text} [네이버 검색](${search})`, members)).toBeUndefined()
     expect(checkedReport(`${text} [날씨 예보](${page})`, members)).toBe(`${text} [출처](${page})`)
   }
@@ -808,7 +814,7 @@ test('who someone is and what everyone is doing, on the tasks as they were store
     { ...task({ id: 'c5', botId: c.chief.id, state: 'done' as const, goal: stored.c5.goal }), team: { members: own(c5, [id('지우')]), hires: 1, maxHires: 8, maxDepth: 3, big: false } },
   ]
   expect(aboutEmployee('지우 무슨 일 하는 사람이야?', bots, tasks)).toBe('지우는 리서치 담당이에요. 요즘은 다음 달 서울 IT 행사 일정 정리랑 노션의 이번 주 신기능 조사를 했어요.')
-  expect(companyStatus(bots, tasks)).toBe('지우는 다음 달 서울 IT 행사 일정 정리, 서연은 슬랙의 이번 주 신기능 조사, 도윤은 리니어의 이번 주 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 하는 일 없어요.')
+  expect(companyStatus(bots, tasks)).toBe('지우는 다음 달 서울 IT 행사 일정 정리, 서연은 슬랙의 이번 주 신기능 조사, 도윤은 리니어의 이번 주 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 한가해요.')
   expect(`${aboutEmployee('지우 무슨 일 하는 사람이야?', bots, tasks)}${companyStatus(bots, tasks)}`).not.toMatch(/해줘|최근에 한 일:|^- |—/m)
   // stack-3 (c3b run C4): a title stored cut short is never said as a job ("…업데이트를 …를 했어요."): the part's short name stands in.
   const cut = [{ ...tasks[0]!, team: { ...tasks[0]!.team, members: tasks[0]!.team.members.map((m, i) => i === 1 ? { ...m, title: '슬랙(Slack)의 이번 주(최근 7일 내) 신기능 발표나 업데이트를 조…', topic: '슬랙 신기능 조사' } : m) } }, tasks[1]!]
@@ -917,7 +923,7 @@ test('c4 C3/H5: a teammate whose time ran out with results in hand has their par
   settleMember(first, { answer: '검색 결과를 열 수 없었습니다.', timedOut: true, read: '토요일 서울 맑음, 최고 12도: 2026.11.21. https://weather.example/seoul' }, 'now', true)
   expect(first.state).toBe('done')
   const second = part('m2', '서연', handoffBrief(first.then!.brief, '지민', first.result!, first.brief, first.sources), { background: true, lookup: undefined, writer: true, result: '맑은 토요일, 가볍게 한강 나들이 어때요?' })
-  expect(mergedReport([first, second])).toBe('서연: 지민이 찾은 날씨로 주말 나들이 추천 문구 한 줄 써 봤어요.\n\n맑은 토요일, 가볍게 한강 나들이 어때요?\n\n이번 주말 서울 날씨는 지민이 찾은 걸 따랐어요. [출처](https://weather.example/seoul)')
+  expect(mergedReport([first, second])).toBe('서연: 지민이 찾은 이번 주말 서울 날씨로 이렇게 써 봤어요. [출처](https://weather.example/seoul)\n\n맑은 토요일, 가볍게 한강 나들이 어때요?')
   // Nothing read at all: one line that names both and says what is missing, once.
   const empty = { ...first, read: undefined, state: 'failed' as const, result: 'Failed: it ran out of time before it reported anything.' }
   expect(mergedReport([empty])).toBe('지민이 이번 주말 서울 날씨를 아직 못 찾아서, 서연한테는 못 넘겼어요.')
@@ -935,15 +941,16 @@ test('c4 C6: N short things asked for come back as a numbered list of N, from th
   const lines = ['"12월 2일, 서울에서 만나요"', '"비즈니스 데이부터 참관객의 날까지"', '"올해 서울 IT 행사의 하이라이트"']
   const park = part('m2', '서연', handoffBrief('홍보 문구 3개 뽑기', '지민', kim.result!, kim.brief), { background: true, lookup: undefined, writer: true, result: lines.join('\n\n') })
   const own = mergedReport([kim, park])
-  expect(own.split('\n\n')[0]).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑아 봤어요.')
+  expect(own.split('\n\n')[0]).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요\. \[[^\]]+\]\(https:\/\/example\.com\/sw\)$/u)
   expect(own.split('\n').filter(line => /^\d\. /.test(line))).toEqual(lines.map((line, i) => `${i + 1}. ${line}`))
-  expect(own.split('\n\n').at(-1)).toBe('12월 서울 IT 행사는 지민이 찾은 걸 따랐어요. [출처](https://example.com/sw)')
+  // c9 fix 2: nothing closes the list.
+  expect(own.split('\n\n').at(-1)).toBe(lines.map((line, i) => `${i + 1}. ${line}`).join('\n'))
   // The writer is handed the list as a list, and three bare paragraphs back from it are refused (the host's list stands in).
   expect(reportPrompt('문구 뽑아줘', [kim, park])).toContain('1. \\"12월 2일, 서울에서 만나요\\"\\n2. ')
   const tail = '지민이 찾아보니 12월 2일~4일에 열려요. [소프트웨이브](https://example.com/sw)'
   expect(checkedReport(['서연이 뽑았어요.', ...lines, tail].join('\n\n'), [kim, park])).toBeUndefined()
   // A numbered answer passes, and opens with the host's own sentence whatever the writer put first.
-  expect(checkedReport(['서연이 뽑았어요.', lines.map((line, i) => `${i + 1}. ${line}`).join('\n'), tail].join('\n\n'), [kim, park])?.split('\n')[0]).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑아 봤어요.')
+  expect(checkedReport(['서연이 뽑았어요.', lines.map((line, i) => `${i + 1}. ${line}`).join('\n'), tail].join('\n\n'), [kim, park])?.split('\n')[0]).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요\./u)
 })
 
 test('c4 C7: "내 일정 뭐 있어?" is answered from the stored schedules, and "그거 취소해" right after means that one', () => {
@@ -1004,7 +1011,7 @@ test('c4b r2: a written answer that drops a dated item the teammate listed is re
   const one = '지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)'
   expect(checkedReport(one, [kim])).toBeUndefined()
   const all = '지민이 정리했어요.\n\n- 12/2 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사\n- 2026-12-09 AI 행사'
-  expect(checkedReport(all, [kim])).toBe(all.replace('지민이 정리했어요.', '지민: 12월 서울 IT 행사 찾아봤어요.'))
+  expect(checkedReport(all, [kim])).toBe(all.replace('지민이 정리했어요.', '지민: 12월 서울 IT 행사는 세 개 있어요.'))
   const said = await writtenReport({ ask: kim.brief, members: [kim], write: async () => one })
   for (const day of ['12월 2일', '12월 5일', '12월 9일']) expect(said).toContain(day)
   // One dated line, or lines with no day, are not counted.
@@ -1137,7 +1144,7 @@ test('c5 C5: an address ending in .html is not a file, so the result is the host
   const asked: string[] = []
   const said = (await employeesAnswer(teamTask([kim]), async prompt => { asked.push(prompt); return undefined }))!
   expect(asked).toHaveLength(1)
-  expect(said.split('\n')[0]).toBe('지민: 12월 서울 IT 행사 찾아봤어요.')
+  expect(said.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 두 개 있어요.')
   expect(said).toContain('소프트웨이브 2026')
   expect(said).toContain('](https://itsight.zdnet.co.kr/acc2026/main.html)')
   expect(unlinked(said)).not.toMatch(/https?:\/\//)
@@ -1225,10 +1232,10 @@ test('c5 C4: "다들 뭐 하고 있어?" is a sentence or two: people in the sam
   // Everyone idle: what the jobs share is said once.
   const idle = companyStatus(bots, [split], now)
   // c7 C4 (USER-NOTES): what they just did first, idle once and plainly, and nobody is "쉬고 있".
-  expect(idle).toBe('지민은 노션, 서연은 슬랙, 도윤은 리니어 신기능 조사를 방금 끝냈어요. 지금은 다들 하는 일 없어요.')
+  expect(idle).toBe('지민, 서연, 도윤 모두 방금 노션·슬랙·리니어 신기능 조사 끝냈어요. 지금은 다들 한가해요.')
   expect(idle).not.toContain('\n')
   // Later the same work is not "방금".
-  expect(companyStatus(bots, [split], now + 5 * 3_600_000)).toBe('지민은 노션, 서연은 슬랙, 도윤은 리니어 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 하는 일 없어요.')
+  expect(companyStatus(bots, [split], now + 5 * 3_600_000)).toBe('지민은 노션, 서연은 슬랙, 도윤은 리니어 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 한가해요.')
   // Mixed: who is on what first, the rest in one clause.
   const busy = teamTask([member({ id: 'm1', botId: id('지민'), state: 'working', brief: '다음 달 서울 IT 행사 일정 정리' })], { id: 'next', state: 'waiting' })
   expect(companyStatus(bots, [split, busy], now)).toBe('지민은 다음 달 서울 IT 행사 일정 정리하고 있고, 서연이랑 도윤은 지금 하는 일 없어요.')
@@ -1237,7 +1244,7 @@ test('c5 C4: "다들 뭐 하고 있어?" is a sentence or two: people in the sam
   expect(companyStatus(bots, [shared], now)).toBe('지민이랑 서연은 경쟁사 조사하고 있고, 도윤은 홍보 문구 3개 뽑고 있어요.')
   // Everyone finished the same job.
   const same = teamTask([member({ id: 'm1', botId: id('지민'), state: 'done', brief: '경쟁사 조사', finishedAt: '2026-11-16T01:05:00.000Z' }), member({ id: 'm2', botId: id('서연'), state: 'done', brief: '경쟁사 조사', finishedAt: '2026-11-16T01:05:00.000Z' })], { state: 'done' })
-  expect(companyStatus(bots.filter(bot => bot.name !== '도윤'), [same], now)).toBe('지민이랑 서연은 경쟁사 조사를 방금 끝냈어요. 지금은 둘 다 하는 일 없어요.')
+  expect(companyStatus(bots.filter(bot => bot.name !== '도윤'), [same], now)).toBe('지민이랑 서연은 경쟁사 조사를 방금 끝냈어요. 지금은 둘 다 한가해요.')
   // Every name and a word for the state are always there.
   const every = [idle, companyStatus(bots, [], now), companyStatus(bots, [split, busy], now), companyStatus(bots, [shared], now), companyStatus(bots, [split], now + 5 * 3_600_000)]
   for (const said of every) for (const name of ['지민', '서연', '도윤']) expect(said).toContain(name)
@@ -1457,7 +1464,7 @@ test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s,
   // The time is counted from the earliest hand-out, and the writer is told it (the engine's own timeout is that long too).
   expect(writerMs([...hired(REPORT_CAP_MS - 20_000), ...hired(REPORT_CAP_MS - 5000)], at)).toBe(5000)
   const given: (number | undefined)[] = []
-  const members = hired(5000), good = '지민: 노션 신기능 찾아봤어요.\n\n- 노션이 AI 회의록을 냈어요. [노션](https://notion.so/releases)\n- 노션 메일도 나왔어요.'
+  const members = hired(5000), good = '지민: 노션이 이번 주에 AI 회의록을 냈어요.\n\n- 노션이 AI 회의록을 냈어요. [노션](https://notion.so/releases)\n- 노션 메일도 나왔어요.'
   expect(await writtenReport({ ask: '노션 신기능 조사해줘', members, now: new Date(at), write: async (_prompt, ms) => { given.push(ms); return good } })).toBe(good)
   expect(given).toEqual([8000])
   // A writer that does not make it: the host's own list stands in, as before.
@@ -1547,11 +1554,13 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   expect(checkedReport(`${bare}\n\n${lines}\n\n${last}`, s5.c6, ctx)).toBeUndefined()
   expect(checkedReport(`${lead}\n\n${lines}\n\n${last}`, s5.c6, ctx)).toBeUndefined()
   const c6host = mergedReport(s5.c6, undefined, [], ctx)
-  expect(c6host.startsWith(`${lead}\n\n1. `)).toBe(true)
+  // c9 fix 2: the host's opener names the find, with its page, before the year.
+  expect(c6host).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요\. 올해 12월 일정은 아직 안 보여서 작년 12월 11일 걸로 썼어요\. \[[^\]]+\]\([^)]+\)\n\n1\. /u)
   expect(c6host).not.toContain('올해를 마무리')
-  expect(c6host).toContain('\n\n지금 일정처럼 쓴 1줄은 날짜가 안 맞아서 뺐어요.\n\n')
-  expect(mergedReport(s5.c6, undefined, [], ctx)).toContain('\n\n지민이 찾아보니 ACC 2025(AI & Cloud Conference)는 2025년 12월 11일 서울 신라호텔에서 열려요')
-  expect(reportPrompt(stack5.c6.goal, s5.c6, undefined, ctx)).toContain('one plain closing sentence that says where the facts came from: it names 지민')
+  expect(c6host).toContain('\n\n지금 일정처럼 쓴 1줄은 날짜가 안 맞아서 뺐어요.')
+  // c9 fix 2: no closing sentence; the writer is told so too.
+  expect(mergedReport(s5.c6, undefined, [], ctx)).not.toContain('지민이 찾아보니')
+  expect(reportPrompt(stack5.c6.goal, s5.c6, undefined, ctx)).toContain('no closing sentence about where 지민\'s facts came from')
   expect(mergedReport(s5.c6, undefined, [], ctx)).not.toContain('찾은 내용:')
 })
 
@@ -1604,19 +1613,20 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
 test('c6 item 6 (C4, C7, C8, H5): a result\'s lead follows the job\'s own verb, answers in its first sentence when there is one finding, and never ends like the lead before it', async () => {
   const lead = (brief: string, result: string, previous?: string, more: Partial<TeamMember> = {}): string => mergedReport([part('m1', '지민', brief, { result, ...more })], undefined, [], { now: NOV17, previous }).split('\n')[0]!
   const two = '12월 2일 소프트웨이브\n12월 9일 AI 서밋\nhttps://a.example/sw'
-  // c7: the teammate speaks (their name, a colon), and the job's title is not said back: someone who looked something up says
-  // "찾아봤어요" about what it was ("다음 달 … 일정 정리" is "12월 …"), a job with a verb of its own keeps it ("써 왔어요").
-  expect(lead('서울 IT 행사 조사', two)).toBe('지민: 서울 IT 행사 찾아봤어요.')
-  expect(lead('서울 IT 행사 일정 정리', two)).toBe('지민: 서울 IT 행사 찾아봤어요.')
-  expect(lead('다음 달 서울 IT 행사 일정 정리', two)).toBe('지민: 12월 서울 IT 행사 찾아봤어요.')
+  // c7: the teammate speaks (their name, a colon), and the job's title is not said back ("다음 달 … 일정 정리" is "12월 …"), a job with a
+  // verb of its own keeps it ("써 왔어요"). c9 fix 2: a lookup leads with what came back ("…는 두 개 있어요."), never "<job> 찾아봤어요".
+  expect(lead('서울 IT 행사 조사', two)).toBe('지민: 서울 IT 행사는 이래요.')
+  expect(lead('서울 IT 행사 일정 정리', two)).toBe('지민: 서울 IT 행사는 두 개 있어요.')
+  expect(lead('다음 달 서울 IT 행사 일정 정리', two)).toBe('지민: 12월 서울 IT 행사는 두 개 있어요.')
   expect(lead('홍보 문구 3개 써줘', '1. 가\n2. 나\n3. 다', undefined, { lookup: false, writer: true })).toBe('지민: 홍보 문구 3개 써 왔어요.')
   // Never the ending of the result before it: two or three ways to turn through.
-  expect(lead('서울 IT 행사 일정 정리', two, '셋 다 정리해 왔어요.\n\n지민: 노션은 조용해요.')).toBe('지민: 서울 IT 행사 찾아봤어요.')
-  expect(lead('서울 IT 행사 조사', two, '도윤: 리니어 신기능 찾아봤어요.')).toBe('지민: 서울 IT 행사 알아봤어요.')
-  expect(lead('서울 IT 행사 조사', two, '도윤: 리니어 신기능 알아봤어요.')).toBe('지민: 서울 IT 행사 찾아봤어요.')
+  expect(lead('서울 IT 행사 일정 정리', two, '셋 다 정리해 왔어요.\n\n지민: 노션은 조용해요.')).toBe('지민: 서울 IT 행사는 두 개 있어요.')
+  expect(lead('서울 IT 행사 일정 정리', two, '도윤: 리니어 행사는 세 개 있어요.')).toBe('지민: 서울 IT 행사는 두 개 나와요.')
+  expect(lead('서울 IT 행사 조사', two, '도윤: 리니어 신기능은 이래요.')).toBe('지민: 서울 IT 행사는 이렇게 나와요.')
+  expect(lead('서울 IT 행사 조사', two, '도윤: 리니어 신기능은 이렇게 나와요.')).toBe('지민: 서울 IT 행사는 이래요.')
   expect(lead('홍보 문구 3개 써줘', '1. 가\n2. 나\n3. 다', '서연: 한 줄 써 왔어요.', { lookup: false, writer: true })).toBe('지민: 홍보 문구 3개 썼어요.')
   // Only the lead (the first line) of the result before counts, not a word somewhere in its body.
-  expect(lead('서울 IT 행사 조사', two, '지민: 알아봤어요.\n\n도윤: 리니어 신기능 찾아봤어요.')).toBe('지민: 서울 IT 행사 찾아봤어요.')
+  expect(lead('서울 IT 행사 조사', two, '지민: 이렇게 나와요.\n\n도윤: 리니어 신기능은 이래요.')).toBe('지민: 서울 IT 행사는 이래요.')
   // The table's lead too.
   const pair = [part('m1', '지민', '노션 신기능 조사', { topic: '노션', result: '노션이 AI 회의록을 냈어요. https://notion.so/a' }), part('m2', '서연', '슬랙 신기능 조사', { topic: '슬랙', result: '슬랙이 허들 요약을 냈어요. https://slack.com/b' })]
   expect(mergedReport(pair).split('\n')[0]).toBe('둘 다 찾아봤어요.')
@@ -1658,10 +1668,11 @@ test('c6b r3: copy made from last year\'s event says the year in its first line 
   const seoyeon = part('m1', '서연', brief, { result: '1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.\n3. 다음 달 서울에서 만나요.' })
   const host = mergedReport([seoyeon], new Map(), [], { now: NOV17 })
   const [lead, list, left, facts] = host.split('\n\n')
-  expect(lead).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑아 봤어요. 올해 12월 일정은 아직 안 보여서 작년 12월 11일 걸로 썼어요.')
+  // c9 fix 2: the opener says what it was made from (no page was handed with it here) and the year; nothing closes the bubble.
+  expect(lead).toBe('서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요. 올해 12월 일정은 아직 안 보여서 작년 12월 11일 걸로 썼어요. [출처](https://example.com/acc)')
   expect(list).toBe('1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.')
   expect(left).toBe('지금 일정처럼 쓴 1줄은 날짜가 안 맞아서 뺐어요.')
-  expect(facts).toContain('2025년 12월 11일')
+  expect(facts).toBeUndefined()
   expect(host).not.toContain('다음 달 서울에서 만나요')
   // The writer's text: "작년" only in the last line, or the line kept, is refused; the host's list stands in.
   const tail = '지민이 찾아보니 작년 12월 11일에 ACC 2025가 서울에서 열렸어요. [ACC](https://example.com/acc)'
@@ -1675,7 +1686,7 @@ test('c6b r3: copy made from last year\'s event says the year in its first line 
   const inside = part('m1', '서연', handoffBrief('홍보 문구 3개 뽑기', '지민', 'ACC 2026은 2026년 12월 10일 서울에서 열려요. https://example.com/acc', '다음 달 서울 IT 행사 일정 정리', [], NOV17), { result: seoyeon.result! })
   const plain = mergedReport([inside], new Map(), [], { now: NOV17 })
   expect(plain).toContain('3. 다음 달 서울에서 만나요.')
-  expect(plain.split('\n')[0]).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑아 봤어요.')
+  expect(plain.split('\n')[0]).toBe('서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요. [출처](https://example.com/acc)')
 })
 
 // stack-6: c6b-review.r3 finding 3, the reviewer's own input.
@@ -1836,7 +1847,7 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   // C5 as stored. The run showed "지민이 다음 달 서울 IT 행사 일정 정리해 왔어요." and a last line of two links named by cut titles.
   expect(stack6.c5.shown).toContain('지민이 다음 달 서울 IT 행사 일정 정리해 왔어요.')
   const c5 = mergedReport(s6.c5, undefined, [], { now: NOV17, ask: stack6.c5.goal })
-  expect(c5.split('\n')[0]).toBe('지민: 12월 서울 IT 행사 찾아봤어요.')
+  expect(c5.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 두 개 있어요.')
   expect(c5).not.toMatch(/다음 달 서울 IT 행사 일정 정리|정리해 왔어요/)
   expect(c5.split('\n').some(onlyLinks)).toBe(false)
   const items = c5.split('\n').filter(line => line.startsWith('- '))
@@ -1850,21 +1861,21 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   // C6 as stored, right after it in the thread: 서연 speaks, three numbered lines, no "…이 찾은 내용:" label, one closing sentence with the link.
   expect(stack6.c6.shown).toContain('지민이 찾은 내용:')
   const c6 = mergedReport(s6.c6, undefined, [], { now: NOV17, ask: stack6.c6.goal, previous: c5 }), blocks = c6.split('\n\n')
-  expect(blocks).toHaveLength(3)
-  // Its lead does not end like the one before it ("…찾아봤어요.").
-  expect(blocks[0]).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑았어요.')
-  expect(mergedReport(s6.c6, undefined, [], { now: NOV17 }).split('\n')[0]).toBe('서연: 지민이 찾은 일정으로 홍보 문구 3개 뽑아 봤어요.')
+  // c9 fix 2: the opener and the list, nothing closing it; the opener carries the find's page.
+  expect(blocks).toHaveLength(2)
+  expect(blocks[0]).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\//)
+  // Its lead does not open like the one before it.
+  expect(blocks[0]!.split(': ')[1]!.slice(0, 6)).not.toBe(c5.split('\n')[0]!.split(': ')[1]!.slice(0, 6))
   expect(blocks[1]!.split('\n').map(line => line.slice(0, 3))).toEqual(['1. ', '2. ', '3. '])
-  expect(blocks[2]).toMatch(/^12월 서울 IT 행사는 지민이 찾은 걸 따랐어요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\//)
   expect(c6).not.toMatch(/찾은 내용\s*:|다음 달 서울 IT 행사 일정 정리로/)
   expect(c6.split('\n').some(onlyLinks)).toBe(false)
   // BAR C6: three list items, 서연 named, 행사.
   expect(c6.match(/^\d+[.)]\s+\S/gm)).toHaveLength(3); expect(c6).toMatch(/서연/); expect(c6).toMatch(/행사/)
   // H5 as stored: one bubble that names both, carries the weather and its link, and has no label line.
   const h5 = mergedReport(s6.h5, undefined, [], { now: NOV17, ask: stack6.h5.goal })
-  expect(h5.split('\n\n')).toHaveLength(3)
-  expect(h5.split('\n')[0]).toBe('서연: 지민이 찾은 날씨로 주말 나들이 추천 문구 한 줄 써 봤어요.')
-  expect(h5.split('\n\n')[2]).toMatch(/^지민이 찾아보니 11월 21일\(토\)은 전국이 대체로 맑으나 .*이어져요\. \[[^\]]+\]\(https?:\/\/[^)\s]+\)$/)
+  // c9 fix 2: the opener names 지민 and the weather, with its page; the copy follows and nothing closes it.
+  expect(h5.split('\n\n')).toHaveLength(2)
+  expect(h5.split('\n')[0]).toMatch(/^서연: 지민이 찾은 이번 주말 서울 날씨로 이렇게 써 봤어요\. \[[^\]]+\]\(https?:\/\/[^)\s]+\)$/u)
   expect(h5).not.toMatch(/찾은 내용\s*:/)
   // Every bubble here is 해요체 where it is the host's own words, with no 반말 and no report wording.
   for (const text of [c5, c6, h5]) expect(text).not.toMatch(/보고|완료되었|습니다|결과예요/)
@@ -1890,11 +1901,15 @@ test('stack-7: a team result names every link by the one rule, also when the tea
 })
 
 // stack-7 (c7b run, C6 and H5 replayed through the merged host lines): "지민이 찾아보니 확인해 보니 다음 달 …".
-test('stack-7: a hand-off\'s closing sentence says once that the first teammate looked', () => {
+test('stack-7, c9 fix 2: a hand-off says once, on its opener, whose find it was made from; no closing sentence', () => {
   for (const [found, closes] of [['확인해 보니 다음 달 서울 IT 행사로는 소프트웨이브 2026이 있어요. https://www.coex.co.kr/sw', '지민이 찾아보니 다음 달 서울 IT 행사로는 소프트웨이브 2026이 있어요. [코엑스](https://www.coex.co.kr/sw)'], ['이번 주말 서울 날씨 찾아봤는데, 토요일은 맑고 낮 기온 2~6℃예요. https://www.weather.go.kr/w/a', '지민이 찾아보니 토요일은 맑고 낮 기온 2~6℃예요. [기상청](https://www.weather.go.kr/w/a)'], ['토요일 서울은 맑고 20도예요. https://www.weather.go.kr/w/a', '지민이 찾아보니 토요일 서울은 맑고 20도예요. [기상청](https://www.weather.go.kr/w/a)']] as const) {
     const kim = part('m1', '지민', '서울 조사', { background: true, then: { botId: 'bot-m2', who: '서연', brief: '문구 쓰기' }, result: found })
     const park = part('m2', '서연', handoffBrief('문구 쓰기', '지민', kim.result!, kim.brief), { background: true, lookup: undefined, writer: true, result: '가볍게 나가 봐요.' })
-    expect(mergedReport([kim, park]).split('\n\n').at(-1)).toBe(closes)
+    // c9: the closing sentence is gone; the page it carried is on the opener, and nobody is said to have looked.
+    const shown = mergedReport([kim, park])
+    expect(shown.split('\n\n').at(-1)).toBe('가볍게 나가 봐요.')
+    expect(shown.split('\n\n')[0]).toContain(closes.slice(closes.lastIndexOf('](')))
+    expect(shown).not.toMatch(/찾아보니|확인해 보니|찾은 걸 따랐어요/u)
   }
 })
 

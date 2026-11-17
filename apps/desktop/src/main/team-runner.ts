@@ -228,9 +228,11 @@ export function teamRunner(deps: {
       team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
-      return to
+      return { to, background: !!m.background }
     })
-    if (next) await runOne(taskId, leadChannel, next, signal, kit, budget)
+    // c9 H5: work nobody waits on shows the first teammate's own find the moment they hand it on: one bubble, then the next one's (company-tools handoffShown).
+    if (next?.background && !halting.has(leadChannel)) report?.(leadChannel, taskId)
+    if (next) await runOne(taskId, leadChannel, next.to, signal, kit, budget)
   }
 
   // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.

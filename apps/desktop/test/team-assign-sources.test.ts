@@ -60,7 +60,9 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   // c7: nobody asked for a table, so the thread shows none: a paragraph per teammate that opens on their name and ends on their link.
   expect(shown).not.toContain('<table>')
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(shown).toMatch(new RegExp(`<p>${who}: ${topic}[^<]*<a href="https://search\\.naver\\.com/`))
-  expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 새 기능 업데이트`), address(`${topic} 신기능`)]))
+  // c9 fix 1: the maker's own updates page is searched beside the job's words.
+  const makers: Record<string, string> = { 노션: 'Notion releases', 슬랙: 'Slack release notes', 리니어: 'Linear changelog' }
+  expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 새 기능 업데이트`), address(makers[topic]!), address(`${topic} 신기능`)]))
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
   // The agents are held 15 s at most inside the 35 s answer.
   expect(LOOKUP_HARD_MS).toBe(15_000)
