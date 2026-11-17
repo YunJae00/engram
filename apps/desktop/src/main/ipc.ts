@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -1825,13 +1825,13 @@ export function registerIpc(ctx: VaultContext): void {
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
     reviewRules: () => approvals.reviewRules(),
-    deliver: async (channel, text, since, trail, evidence) => {
+    deliver: async (channel, text, since, trail, evidence, asked) => {
       const { text: body, captures } = extractChatCaptures(finishProgress(channel, text))
       // A held answer's "remember this" notes are saved like a posted answer's.
       for (const item of captures) await writeCapture(paths.inbox, item).catch(error => flog('chat-capture-write', error))
       if (captures.length) runPipelineSoon(ctx, 'librarian: chat capture')
       const cleaned = await newestRevisions(artifactDirectory(paths), body, since, latestResultOutputs(trail, []).map(output => output.path))
-      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
+      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}), ...(asked ? { asked: withoutSecrets(asked, asked) } : {}) })
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
@@ -2732,7 +2732,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, work: progressWork(channel), at }).catch(() => undefined)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, work: progressWork(channel), at, ...(turn?.asked ? { asked: withoutSecrets(turn.asked, turn.asked) } : {}) }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
         if (firstTitle) {
@@ -2864,7 +2864,7 @@ export function registerIpc(ctx: VaultContext): void {
         const reporting = !direct && company && turn?.report ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
           : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer, lastTeamResult(await listTasks(paths), reporting))
-            : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: SUMMARY_WRITER_MS }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
+            : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string, ms = SUMMARY_WRITER_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
               : aboutEmployee(request.message, everyone, await listTasks(paths))
         // GROKBOT rule 7: this report was made without the parts still at work and the next one is theirs, or it was theirs (company-tools lateShown).
         if (reporting && lateOwed(reporting)) await updateTask(paths, reporting.id, lateShown)
@@ -2886,7 +2886,7 @@ export function registerIpc(ctx: VaultContext): void {
         // c10c Q4: "방금 말한 거 더 짧게" reshapes the last reply (desk-lane.ts reshapeAsk). c10c r3: the quick voice judges it from the message and
         // the last reply; only a plain ask no other route took is asked, and only after the first line. stack-10: the voice writes it, no session.
         const reshaped = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message) && !plainReply(request.message) && !onlyTells(request.message) && !quickQuestion(request.message)
-          && await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: RESHAPE_MS }) : undefined)
+          && await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? (prompt, ms = RESHAPE_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) : undefined, askedBefore(savedHistory.filter(one => !one.progress && !one.error)))
         if (reshaped) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'reshape' })) }
         const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))

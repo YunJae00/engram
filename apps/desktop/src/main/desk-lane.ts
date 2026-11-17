@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { isOutsideAsk } from 'core'
+import { checkedWrite, isOutsideAsk } from 'core'
 
 // grokbar B7 (stack1-f4f6844c): everyday desk work ran on the work model with 73 tools and a 40k-char prompt, and most of the time was
 // that model's rounds: M1-M3 (remember, correct, recall) 9-12 s for one keep_in_mind call or none, F2 9 s with no call, F1 41 s (20 s
@@ -499,33 +499,55 @@ export const reshapeCandidate = (message: string, lastReply: string | undefined)
 // c13c Q4: "the same facts and nothing else" made the explanation line a fact, so "더 짧게" came back as long as before (42 vs 42) and
 // nothing checked it. The voice names the form it wrote and the asked thing it reshaped; the host checks the form where it is structural.
 export const RESHAPE_FORMS = ['shorter', 'longer', 'simpler', 'language', 'tone', 'table', 'other'] as const
-export const reshapePrompt = (message: string, lastReply: string): string => [
+// c14b (cause W, Q4: "정중한 영어 이메일 한 줄로" → "더 짧게" came back as "Sorry I'm late."): the voice read only its last reply, never the ask
+// that set its constraints. It now reads that ask, and its rewrite is checked for meaning against both (written-check "dropped").
+export const reshapePrompt = (message: string, lastReply: string, ask?: string): string => [
+  ...(ask?.trim() ? [`The person had asked: "${ask.trim().slice(0, 400)}"`] : []),
   'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
   'If they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject, write it again as asked and answer with one line of JSON: {"form": one of "shorter" (any ask for less: shorter, fewer lines, only the key point), "longer", "simpler", "language", "tone", "table", "other"; "was": the thing they asked for in your last reply, copied exactly, without its lead-in or any line about it; "reply": the new reply}.',
   'The new reply is the asked thing in the asked form and nothing else: in the language and the polite register of your last reply (in Korean the -요 form), no lead-in about what you changed, and no line on what it means or why.',
+  ...(ask?.trim() ? ['It still keeps every constraint of what the person had asked that the new form does not change (register such as polite or formal, audience, format, language, what it is for): "shorter" makes it shorter, not more casual.'] : []),
   'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
+/** The person's message the last reply answered (the reshape voice keeps its constraints). c14b r2: a task's result posted later (after
+ * other turns) carries its own ask (`asked`); only a reply without one answers the person's message before it. */
+export const askedBefore = (history: readonly { role: string; text: string; asked?: string }[]): string | undefined => {
+  const last = history.map(one => one.role).lastIndexOf('assistant')
+  return last < 0 ? undefined : history[last]!.asked ?? history.slice(0, last).reverse().find(one => one.role === 'user')?.text
+}
+// c14b: the whole reshape (voice, meaning check, one rewrite and its check) answers within this; Q4 has 8 s and took 3.1 s.
+export const RESHAPE_DUE_MS = 2 * RESHAPE_MS
 // stack-10 (c10c run Q4: 9.2 s of 8): the voice said YES in 1.3 s, then a fresh session with a 34.8k-char prompt on a cold cache took 7.3 s to
 // its first token for one short line. The voice that judges it reads the last reply and the message already, so it writes the reshaped reply
-// itself: the reply, or undefined (NO, nothing, late or failed, not the asked form), and the turn keeps its usual route.
-export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<string | undefined> {
+// itself: the reply, or undefined (NO, nothing, late or failed, not the asked form, or c14b: a constraint of the earlier ask dropped and not
+// mended in one rewrite), and the turn keeps its usual route.
+export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string, ms?: number) => Promise<string>) | undefined, ask?: string, now: () => number = Date.now): Promise<string | undefined> {
   if (!quick || !reshapeCandidate(message, lastReply)) return undefined
-  const raw = await quick(reshapePrompt(message, lastReply!)).catch(() => '')
+  const due = now() + RESHAPE_DUE_MS, prompt = reshapePrompt(message, lastReply!, ask)
+  const draft = reshaped(await quick(prompt, RESHAPE_MS).catch(() => ''), lastReply!)
+  if (!draft) return undefined
+  return checkedWrite({
+    data: { earlierAsk: ask?.trim() ?? '', earlierReply: lastReply! }, ask: message, rewrite: true, draft, check: quick, due, now,
+    redo: async (note, ms) => reshaped(await quick(prompt + note, ms).catch(() => ''), lastReply!),
+  })
+}
+/** The voice's answer as a reply in the asked form, or undefined. */
+function reshaped(raw: string, lastReply: string): string | undefined {
   let said: { form?: unknown; was?: unknown; reply?: unknown }
   try { said = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) } catch { return undefined }
   const reply = typeof said.reply === 'string' ? said.reply.trim() : ''
-  if (!reply || !RESHAPE_FORMS.includes(said.form as typeof RESHAPE_FORMS[number]) || squash(reply) === squash(lastReply!)) return undefined
+  if (!reply || !RESHAPE_FORMS.includes(said.form as typeof RESHAPE_FORMS[number]) || squash(reply) === squash(lastReply)) return undefined
   if (said.form !== 'shorter') return reply
   // "Shorter" is checked against the asked thing, not the commentary around it: a "was" not found in the last reply cannot be checked.
   // c13c r3: "was" is the voice's own word, so dropping lines is not taken as shortening: a reply found word for word in the last reply
   // (quotes aside) cut only the commentary around the asked thing and left the thing itself as it was.
   const was = typeof said.was === 'string' ? squash(said.was) : '', bare = (text: string): string => squash(text).replace(/["'“”‘’「」]/g, '')
-  if (bare(lastReply!).includes(bare(reply))) return undefined
+  if (bare(lastReply).includes(bare(reply))) return undefined
   // stack-13 (c13c r3 #1): nor is "was" the measure: a voice that names the whole reply as "was" passes a same-length respelling once the
   // line about it is dropped. The host finds what the reply rewrites itself: for each sentence or line of the reply, the one of the last
   // reply it shares the most letter pairs with. The reply must be shorter than those together; a line it rewrites nothing of is not counted.
-  return was && squash(lastReply!).includes(was) && [...squash(reply)].length < Math.min([...was].length, rewritten(reply, lastReply!)) ? reply : undefined
+  return was && squash(lastReply).includes(was) && [...squash(reply)].length < Math.min([...was].length, rewritten(reply, lastReply)) ? reply : undefined
 }
 const units = (text: string): string[] => text.split(/\n+|(?<=[.!?。！？]["'”’」]?)\s+/u).map(squash).filter(Boolean)
 const pairs = (text: string): Set<string> => { const flat = [...text.toLowerCase().replace(/[\s"'“”‘’「」]/g, '')]; return new Set(flat.slice(1).map((c, i) => flat[i]! + c)) }

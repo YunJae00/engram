@@ -76,6 +76,8 @@ export interface BotTurn {
   error?: boolean
   errorKind?: string
   provider?: string
+  // c14b r2: a reply that answers an ask other than the turn before it (a task's result posted later): that ask.
+  asked?: string
 }
 
 export interface BotSuggestion {

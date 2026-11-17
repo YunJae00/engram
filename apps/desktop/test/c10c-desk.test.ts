@@ -131,7 +131,8 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   it('is the voice\'s own reply: no session, no tools, no shell (stack-10)', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('const reshaped = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message)')
-    expect(ipc).toContain('&& await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: RESHAPE_MS }) : undefined)')
+    // c14b: with the ask the last reply answered (its constraints are kept), and each call given what is left of the reshape's time.
+    expect(ipc).toContain('&& await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? (prompt, ms = RESHAPE_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) : undefined, askedBefore(savedHistory.filter(one => !one.progress && !one.error)))')
     expect(ipc).toContain(': sorted ? { ...sorted, fellBack: false } : reshaped ? { answer: reshaped, steps: [], fellBack: false } : await lookup.run(')
   })
 })
