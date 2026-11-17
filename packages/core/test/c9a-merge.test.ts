@@ -51,6 +51,16 @@ test('c9a R2: a search page never stands for a row whose helper cited a real pag
   expect(apart).toContain('[유튜브](https://www.youtube.com/watch?v=x1)')
 })
 
+test('c9a r3 (Codex r2): a source cell with a search page beside an article keeps the article only', () => {
+  const head = '| 모델 | 가격 | 출처 |\n|---|---|---|\n'
+  const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: 'tesla', brief: '테슬라 모델 2 가격', lookup: true, state: 'done', sessionKey: 's1', hiredAt: '', sources: [search('테슬라 모델 2 가격')], result: '가격: 2만 5천 달러 — https://www.hankyung.com/article/2026111700001' }
+  const out = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [한국경제](https://www.hankyung.com/article/2026111700001) |`, [m], true)
+  expect(links(out)).toEqual(['https://www.hankyung.com/article/2026111700001'])
+  // Two search pages only: the teammate's real page takes their place.
+  const two = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | [네이버 검색](${search('테슬라 모델 2 가격')}) · [네이버 검색](${search('모델 2')}) |`, [m], true)
+  expect(links(two)).toEqual(['https://www.hankyung.com/article/2026111700001'])
+})
+
 test('c9a R2: platforms are named by the platform; a search page and an unknown site keep their names', () => {
   expect(sourceName('https://cafe.naver.com/appletouch/2303631', true)).toBe('네이버 카페')
   expect(sourceName('https://m.blog.naver.com/a/1', true)).toBe('네이버 블로그')

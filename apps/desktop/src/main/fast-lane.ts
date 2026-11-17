@@ -195,12 +195,15 @@ export function newsItems(answer: string, held: readonly string[], ask: string):
   let at = 0
   const numbered = lines.some(item) ? lines : lines.filter(plain).length >= 2 ? lines.map(line => plain(line) ? `${++at}. ${line.replace(/^\s*[-*•·]\s*/, '')}` : line) : lines
   const marked = held.filter(text => text.includes(EVENT_ROWS)), items = numbered.filter(item)
-  const rounds = marked.flatMap(text => { const at = text.indexOf(EVENT_ROWS), count = parseInt(text.slice(at + EVENT_ROWS.length), 10) || 0; return text.split('\n').filter(line => line.startsWith('- ')).slice(0, count) })
+  const split = marked.map(text => { const at = text.indexOf(EVENT_ROWS), count = parseInt(text.slice(at + EVENT_ROWS.length), 10) || 0, rows = text.split('\n').filter(line => line.startsWith('- ')); return [rows.slice(0, count), rows.slice(count)] as const })
+  const rounds = split.flatMap(([event]) => event), background = split.flatMap(([, rest]) => rest).map(row => / — (https?:\/\/\S+)/.exec(row)?.[1]).filter(Boolean) as string[]
   if (!marked.length || !items.length) return numbered.join('\n')
   // c9a r2: with no round among the results, an item is never a statistic or a plan made to stand in for one.
   if (!rounds.length) return '찾아봤는데 확실한 건 아직 없어요.'
   const names = rounds.flatMap(row => headlineNames(row.split(' — ')[0]!.slice(2), ask)), urls = rounds.map(row => / — (https?:\/\/\S+)/.exec(row)?.[1]).filter(Boolean) as string[]
-  const real = (line: string): boolean => urls.some(url => line.includes(url)) || names.some(name => line.toLowerCase().includes(name))
+  // c9a r3 (Codex r2): a background article on a funded company (메디인테크's government support) named that company, so it stayed. An item
+  // linking a background row is background whatever it names; one linking an unknown page counts by name.
+  const real = (line: string): boolean => urls.some(url => line.includes(url)) || !background.some(url => line.includes(url)) && names.some(name => line.toLowerCase().includes(name))
   const kept = items.filter(real)
   if (kept.length === items.length) return numbered.join('\n')
   // c9a r2: no item names a round though the results hold some: the rounds themselves are the list, each with its date and its own page.

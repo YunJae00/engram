@@ -257,8 +257,14 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 const SECONDARY = /youtube\.com|youtu\.be|tv\.naver\.com|smartstore\.|shopping\.naver|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com/i
 const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return url } }
 function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean): string {
-  const cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
-  if (links.length > 1) { for (const link of links) used.add(hostOf(link[2]!)); return cell }
+  let cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
+  // c9a r3 (Codex r2): a cell with a search page beside an article kept the search page. Beside a real page it goes; a cell of search pages
+  // only is taken as its first, which the teammate's own page then replaces below.
+  if (links.length > 1) {
+    const real = links.filter(link => !SEARCH_PAGE.test(link[2]!) || boxed(link[2]!))
+    if (real.length) { for (const link of real) used.add(hostOf(link[2]!)); return real.length === links.length ? cell : real.map(link => link[0]).join(' · ') }
+    links = links.slice(0, 1); cell = links[0]![0]
+  }
   const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url))
   // c9a r2 (Codex r1): a press page with only the date outranked the blog post that alone held the price, and the price lost its source.
   // A page holding a row's figure comes first; when its figures sit on several pages, the row links each of them.
