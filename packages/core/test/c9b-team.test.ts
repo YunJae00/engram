@@ -136,3 +136,14 @@ test('c9b r2 finding 2: C5 and C6 openers are said in each teammate\'s own store
   expect(voiced('지민: 확실한 건 하나예요.', '담백하고 짧게')).toBe('지민: 확실한 건 하나네요.')
   expect(voiced('지민: 확실한 건 하나예요.', '밝고 시원시원하게')).toBe('지민: 확실한 건 하나예요!')
 })
+
+test('c9b r3: the writer\'s own C5 opener is said in the teammate\'s stored voice, not passed through plain', async () => {
+  const { checkedReport } = await import('../src/company-tools.js')
+  const ctx = { ask: '서울 IT 행사 일정 정리', now: new Date('2026-11-17T00:00:00Z') }
+  const seo = (voice: string) => member({ role: '서연', voice, brief: '서울 IT 행사 일정 정리', lookup: true, result: '12월 2일 행사 A https://example.com/a', sources: ['https://example.com/a'] })
+  const raw = '서연: 12월 2일 행사 A가 열려요.\n\n- 12월 2일 행사 A [출처](https://example.com/a)'
+  const head = (voice: string) => checkedReport(raw, [seo(voice)], ctx)?.split('\n')[0]
+  expect(head('밝고 시원시원하게')).toBe('서연: 12월 2일 행사 A가 열려요!')
+  expect(head('담백하고 짧게')).toBe('서연: 12월 2일 행사 A가 열리네요.')
+  expect(head('차분하고 또박또박')).toBe('서연: 12월 2일 행사 A가 열려요.')
+})

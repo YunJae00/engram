@@ -1029,7 +1029,7 @@ const listItems = (m: TeamMember): string[] => { if (m.read) return []; const li
 // one "…있더라고요!", the plain one "…있네요.", the calm one as it is. Only the last sentence's ending changes; the words stay.
 const VOICED: Record<string, [RegExp, string][]> = {
   [VOICES[1]![0]]: [[/있어요\.$/u, '있더라고요!'], [/나와요\.$/u, '나오더라고요!'], [/이래요\.$/u, '이렇더라고요!'], [/요\.$/u, '요!']],
-  [VOICES[2]![0]]: [[/있어요\.$/u, '있네요.'], [/나와요\.$/u, '나오네요.'], [/이래요\.$/u, '이렇네요.'], [/(?:이)?예요\.$/u, '네요.'], [/([았었했왔봤랐썼렸켰났갔졌쳤웠])어요\.$/u, '$1네요.']],
+  [VOICES[2]![0]]: [[/있어요\.$/u, '있네요.'], [/나와요\.$/u, '나오네요.'], [/이래요\.$/u, '이렇네요.'], [/(?:이)?예요\.$/u, '네요.'], [/없어요\.$/u, '없네요.'], [/해요\.$/u, '하네요.'], [/돼요\.$/u, '되네요.'], [/려요\.$/u, '리네요.'], [/([았었했왔봤랐썼렸켰났갔졌쳤웠])어요\.$/u, '$1네요.']],
 }
 export const voiced = (said: string, voice?: string): string => { const rule = voice ? VOICED[voice]?.find(([end]) => end.test(said)) : undefined; return rule ? said.replace(rule[0], rule[1]) : said }
 /** The first sentence over one teammate's result, said by them. previous: the result before it in the thread, whose lead it does not end like. link: the page the handed-over find came from, on the opener. */
@@ -1479,7 +1479,8 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     const m = parts[0]!, [head = '', ...rest] = text.split('\n'), out = outsideFor(m, now)
     if (out) { if (!head.startsWith(outsideHead(m, out))) return undefined }
     // c9 C5: the writer's opener stands when it is the teammate leading with the thing (short, no link, not "<job> 찾아봤어요").
-    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head) && !ownLead(head, m)) text = [resultLead(m, context.previous, now), ...rest].join('\n')
+    // c9b r3 (Codex): the writer's own opener is held to the teammate's voice too, as the host's is.
+    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head)) text = [ownLead(head, m) ? voiced(head, m.voice) : resultLead(m, context.previous, now), ...rest].join('\n')
   }
   // c5 C6: "[소프트웨이브 2026](…) [ACC 2026](…)" read as one name, "소프트웨이브 2026 ACC 2026".
   return spaced(text)
