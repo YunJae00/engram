@@ -1,8 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
-import { deskKind, kindSortAsk, sortByKind } from '../src/main/desk-lane.js'
+import { DESK_NOTE, deskKind, kindSortAsk, reshapeAsk, sortByKind } from '../src/main/desk-lane.js'
 import { fileMoveTool } from '../src/main/file-move.js'
 
 // The harness fixture tmp/grokbar/fixtures/inbox-dump, by name: 6 PDF, 4 PNG, 3 XLSX, 3 DOCX, 4 TXT.
@@ -76,5 +77,32 @@ describe('c10c F1: the host sorts one folder by kind', () => {
     await writeFile(join(tasks, 'x.pdf'), 'x')
     expect(await sortByKind('tasks/bot-one 종류별로 정리해줘', workspace, move(), context)).toBeUndefined()
     expect(await readdir(tasks)).toEqual(['x.pdf'])
+  })
+})
+
+describe('c10c Q4: reshaping the last reply is quick', () => {
+  it('matches a short reshape of the last reply and not new work', () => {
+    for (const ask of ['방금 말한 거 더 짧게', '더 짧게', '짧게 줄여줘', '다시 써줘', '더 정중하게', '영어로', '한 줄로', '방금 말한 거 한 줄로 줄여줘', '좀 더 부드럽게 다시 써줘', 'make it shorter'])
+      expect(reshapeAsk(ask), ask).toBe(true)
+    for (const ask of ['더 짧은 회의록 만들어줘', '영어로 메일 보내줘', '민호한테 더 정중하게 보내줘', 'fixtures/meeting-notes.md 짧게 정리해줘', '엔비디아 주가 다시 찾아줘', '이거 영어로 워드 파일 만들어줘', '1년은 몇 초야?', '고마워'])
+      expect(reshapeAsk(ask), ask).toBe(false)
+    // The global file-name pattern is matched without carrying state from one call to the next.
+    expect([reshapeAsk('더 짧게'), reshapeAsk('더 짧게')]).toEqual([true, true])
+  })
+
+  it('runs on the fast tier at low effort, with no tools, no shell and only the recent turns', () => {
+    const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+    expect(ipc).toContain('const reshape = !company && !lane && plainAsk && !handed && reshapeAsk(request.message) && !!lastReplyOf(')
+    expect(ipc).toContain('deskMenu = reshape ? new Set<string>() : kind && DESK_TOOLS[kind]')
+    expect(ipc).toMatch(/\.\.\.\(desk \? \{ modelHint: 'smart' as const[^\n]*\n[^\n]*\n\s*\.\.\.\(reshape \? \{ modelHint: 'fast' as const, light: true \} : \{\}\),/)
+    expect(ipc).toContain('history: (reshape ? savedHistory.slice(-RESHAPE_TURNS) : savedHistory)')
+    expect(ipc).toContain('...(native && !lane && !company && !reshape ? { native } : {}),')
+  })
+})
+
+describe('c10c D3: the desk note no longer expects a second build', () => {
+  it('tells the model a saved file is not read back or built again', () => {
+    expect(DESK_NOTE).not.toContain('built twice')
+    expect(DESK_NOTE).toContain('After ppt_build, word_write or file_create_workbook says the file is saved, do not read it back or build it again')
   })
 })

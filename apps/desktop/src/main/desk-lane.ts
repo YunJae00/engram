@@ -456,3 +456,13 @@ export async function sortByKind(message: string, workspace: string, move: MoveT
     return { answer, steps: [{ tool: 'file_move', args, observation }] }
   } catch { return undefined }
 }
+
+// c10c Q4 (stack9): "방금 말한 거 더 짧게" took 8.2 s of 8: the work model at the settings' effort with 7 tools and a 42k-char prompt, first token
+// at 7.1 s, to shorten one line it had just written. A short message that only reshapes the last reply runs on the fast tier at low effort,
+// with no tools and only the recent turns (ipc.ts). Something that makes a file, sends, searches or names a file is other work.
+// shortcut: a closed word list; a reshape it misses only keeps the slower route.
+const RESHAPE = /(?:더\s*)?(?:짧게|길게|간단하게|간단히|간략하게|짧고|쉽게|자세하게|자세히|정중하게|공손하게|부드럽게|친근하게|편하게|캐주얼하게|격식\s*있게)|다시\s*(?:써|작성|말해|정리)|(?:영어|한국어|한글|일본어|중국어)로|한\s*(?:줄|문장)로|두\s*(?:줄|문장)로|줄여|\b(?:shorter|longer|simpler|more (?:polite|formal|casual)|rephrase|rewrite|in (?:english|korean))\b/i
+const RESHAPE_OUT = /만들|보내|메일|전송|파일|저장|검색|찾아|알아봐|조사|올려|게시|슬랙|카톡|한테|에게|피피티|ppt|워드|엑셀|문서|회의록|보고서|슬라이드|맡겨|시켜|기억|\bmake (?:a|an|the|me)\b|\b(?:send|mail|save|search|find|file|post)\b/i
+export const RESHAPE_MAX = 40
+export const reshapeAsk = (message: string): boolean => { const text = message.trim(); return !!text && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && RESHAPE.test(text) && !RESHAPE_OUT.test(text) && !text.match(NAMED_FILE) }
+export const RESHAPE_NOTE = 'They want your last reply in another shape. Write it again as asked, with the same facts and nothing else: no tools, no lead-in about what you changed.'
