@@ -301,7 +301,7 @@ export function sourceName(url: string, korean = false): string {
 // What a person calls the site an address is on: "네이버 검색", "apple.com".
 // shortcut: a short closed list; a site that is not on it is named by its search title's site part, else "출처" (sourceName).
 const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing'],
-  [/(^|\.)apple\.com$/, 'Apple', 'Apple'], [/(^|\.)samsung\.(com|co\.kr)$/, '삼성전자', 'Samsung'], [/(^|\.)(youtube\.com|youtu\.be)$/, '유튜브', 'YouTube'], [/(^|\.)slack\.com$/, '슬랙', 'Slack'], [/(^|\.)notion\.(so|com)$/, '노션', 'Notion'], [/(^|\.)linear\.app$/, '리니어', 'Linear']]
+  [/(^|\.)apple\.com$/, 'Apple', 'Apple'], [/(^|\.)samsung\.(com|co\.kr)$/, '삼성전자', 'Samsung'], [/(^|\.)(youtube\.com|youtu\.be)$/, '유튜브', 'YouTube'], [/(^|\.)slack\.com$/, '슬랙', 'Slack'], [/(^|\.)notion\.(so|com)$/, '노션', 'Notion'], [/(^|\.)linear\.app$/, '리니어', 'Linear'], [/(^|\.)(weather|kma)\.go\.kr$/, '기상청', 'KMA'], [/(^|\.)coex\.co\.kr$/, '코엑스', 'COEX']]
 export function siteName(url: string, korean = false): string {
   let host: string
   try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -545,6 +545,12 @@ export function dateLine(text: string, now = new Date()): string {
   const named = periodsIn(text, now)
   return `Today is ${now.toLocaleDateString('sv-SE')} (${now.toLocaleDateString('en-US', { weekday: 'long' })}).${named.length ? ` Here ${named.map(([name, means]) => `${name} = ${means}`).join('; ')}: search and answer for that period, and say a year that is not this one.` : ''}`
 }
+// stack-7: one treatment of a time said relative to today in search words, for a lone lookup (fast-lane laneQuery) and a teammate's part
+// (company-tools searchWords). c7 C3: "이번 주 리니어 신기능" was searched as written and found linear motors. Such a word is never a
+// search word: the period is read from the ask (search_web's news period, askedPeriod). A month or a year is written out by datedQuery.
+// shortcut: a closed list, with the particle that follows ("요즘엔", "오늘의").
+const RELATIVE_TIME = /(?<![가-힣])(?:(?:이번|다음|지난|저번)\s?주말?|금주|주말|요즘|요새|최근|오늘|내일|모레|어제|지금|현재|방금|실시간)(?:에는|[은는엔에도의])?(?![가-힣])/gu
+export const withoutRelativeTime = (words: string): string => words.replace(RELATIVE_TIME, ' ').replace(/\s+/g, ' ').trim()
 /** Search words with a month or a year said relative to today written out ("다음 달" and a bare "12월" that means it become "2026년 12월"). about: the brief and the person's words. */
 export function datedQuery(query: string, about: string, now = new Date()): string {
   let out = query

@@ -1063,7 +1063,7 @@ test('stack-4: a written answer with raw addresses or a line that is only the na
   const raw = '지민이 다음 달 서울 IT 행사 일정을 찾아봤어요.\n\n**지민**\n- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금) — https://www.coex.co.kr/a\n- ACC 2026: 12월 개최 — https://itsight.zdnet.co.kr/acc2026/main.html'
   expect(checkedReport(raw, [kim])).toBeUndefined()
   expect(checkedReport(raw.replace('**지민**\n', ''), [kim])).toBeUndefined()
-  expect(checkedReport('지민이 정리해 왔어요.\n\n- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금) [코엑스](https://www.coex.co.kr/a)\n- ACC 2026: 12월 개최 [ACC](https://itsight.zdnet.co.kr/acc2026/main.html)', [kim])).toContain('[출처](https://www.coex.co.kr/a)')
+  expect(checkedReport('지민이 정리해 왔어요.\n\n- 소프트웨이브 2026: 12월 2일(수)~12월 4일(금) [코엑스](https://www.coex.co.kr/a)\n- ACC 2026: 12월 개최 [ACC](https://itsight.zdnet.co.kr/acc2026/main.html)', [kim])).toContain('[코엑스](https://www.coex.co.kr/a)')
   const shown = await writtenReport({ ask: '다음 달 서울 IT 행사 일정 정리', members: [kim], write: async () => raw })
   expect(shown).toContain('서울 코엑스 Hall A')
   expect(shown).toContain('](https://www.coex.co.kr/a)')
@@ -1157,7 +1157,7 @@ test('c5 C5: a team result the main model wrote with raw addresses, a name-only 
   const raw = '지민이 다음 달 서울 IT 행사를 조사했어요.\n\n지민\n\n소프트웨이브 2026 — 12/2(수)~12/4(금)\nhttps://www.coex.co.kr/sw\n\nACC 2026은 정확한 날짜를 못 찾았다고 해요.\n\ncoex.co.kr\nitsight.zdnet.co.kr'
   const shown = teamAnswer(raw, job)
   expect(shown).toBe(mergedReport([kim]))
-  expect(shown).toContain('[출처](https://www.coex.co.kr/sw)')
+  expect(shown).toContain('[코엑스](https://www.coex.co.kr/sw)')
   expect(unlinked(shown)).not.toMatch(/https?:\/\//)
   expect(shown).not.toContain('못 찾았다고')
   expect(shown.split('\n')).not.toContain('지민')
@@ -1351,7 +1351,7 @@ test('c5b r2 C5: an address written without its scheme is not a file and never r
   // Inside a sentence the main model wrote, with a file the host's list cannot carry: repaired where it stands, the full stop kept.
   const park = part('m2', '서연', '보고서 만들기', { state: 'working', background: true, lookup: false })
   settleMember(park, { answer: '보고서를 만들었어요. reports/3분기.docx 에 있어요.' }, 'now', true)
-  expect(teamAnswer('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 www.coex.co.kr/sw.', teamTask([park]))).toBe('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 [출처](https://www.coex.co.kr/sw).')
+  expect(teamAnswer('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 www.coex.co.kr/sw.', teamTask([park]))).toBe('서연이 만들었어요. [3분기.docx](engram-artifact:a.docx) 참고는 [코엑스](https://www.coex.co.kr/sw).')
   // Words with a dot and a slash that are no address, a named link and a workspace file stand.
   for (const fine of ['node.js/express 로 만들었어요.', '[coex.co.kr/sw](https://www.coex.co.kr/sw) 에 있어요.', 'reports/q3.docx 에 있어요.']) expect(teamAnswer(fine, teamTask([park]))).toBe(fine)
 })
@@ -1867,3 +1867,57 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   // Every bubble here is 해요체 where it is the host's own words, with no 반말 and no report wording.
   for (const text of [c5, c6, h5]) expect(text).not.toMatch(/보고|완료되었|습니다|결과예요/)
 })
+
+// stack-7: the three branches of cycle 7 met here. One rule names a link (c7a sourceName) in every team result (c7b): a site's own
+// name or the plain word, never a cut title, "…", a digit note or a piece of the host, whoever put the words beside the address.
+test('stack-7: a team result names every link by the one rule, also when the teammate or the writer wrote a cut title beside it', () => {
+  const kim = part('m1', '지민', '갤럭시 S27 가격 조사', { topic: '갤럭시 S27', result: '갤럭시 S27은 전작 S26 출고가 115만 5천 원 선으로 예상돼요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/a/1)' })
+  const lee = part('m2', '서연', '픽셀 11 가격 조사', { topic: '픽셀 11', result: '픽셀 11은 999유로부터예요. https://ko.vidabytes.com/pixel-11 (vidabytes)' })
+  const park = part('m3', '도윤', '서울 날씨 조사', { topic: '서울 날씨', result: '서울 날씨는 토요일 맑고 12도예요. [기상청 날씨누리](https://www.weather.go.kr/w/index.do)' })
+  const said = mergedReport([kim, lee, park])
+  const names = [...said.matchAll(/\[([^\]]+)\]\(/g)].map(found => found[1])
+  // A cut title and a piece of the host give way to the plain word; a name that passes as one stays as the teammate wrote it.
+  expect(names).toEqual(['출처', '출처', '기상청 날씨누리'])
+  expect(said).not.toMatch(/…|\.{3,}\]|\[vidabytes\]|\[blank\]/)
+  // The writer's own words for a link never stand: the host names it again by the same rule.
+  const written = `셋 다 찾아봤어요.\n\n지민: 갤럭시 S27은 전작 기준 115만 5천 원 선이래요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/a/1)\n\n서연: 픽셀 11은 999유로부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11)\n\n도윤: 서울 날씨는 토요일 맑고 12도예요. [weather](https://www.weather.go.kr/w/index.do)`
+  expect([...checkedReport(written, [kim, lee, park])!.matchAll(/\[([^\]]+)\]\(/g)].map(found => found[1])).toEqual(['출처', '출처', '기상청 날씨누리'])
+  // A part is named in its line's own words: the link's name ("[슬랙](…)") does not stand in for them.
+  const slack = part('m1', '지민', '슬랙 신기능 조사', { topic: '슬랙', result: '슬랙이 허들 요약을 냈어요. https://slack.com/blog/huddles' }), notion = part('m2', '서연', '노션 신기능 조사', { topic: '노션', result: '노션이 AI 회의록을 냈어요. https://notion.so/a' })
+  expect(checkedReport('둘 다 찾아봤어요.\n\n지민: 허들 요약이 나왔어요. [슬랙](https://slack.com/blog/huddles)\n\n서연: 노션이 AI 회의록을 냈어요. [노션](https://notion.so/a)', [slack, notion])).toBeUndefined()
+})
+
+// stack-7 (c7b run, C6 and H5 replayed through the merged host lines): "지민이 찾아보니 확인해 보니 다음 달 …".
+test('stack-7: a hand-off\'s closing sentence says once that the first teammate looked', () => {
+  for (const [found, closes] of [['확인해 보니 다음 달 서울 IT 행사로는 소프트웨이브 2026이 있어요. https://www.coex.co.kr/sw', '지민이 찾아보니 다음 달 서울 IT 행사로는 소프트웨이브 2026이 있어요. [코엑스](https://www.coex.co.kr/sw)'], ['이번 주말 서울 날씨 찾아봤는데, 토요일은 맑고 낮 기온 2~6℃예요. https://www.weather.go.kr/w/a', '지민이 찾아보니 토요일은 맑고 낮 기온 2~6℃예요. [기상청](https://www.weather.go.kr/w/a)'], ['토요일 서울은 맑고 20도예요. https://www.weather.go.kr/w/a', '지민이 찾아보니 토요일 서울은 맑고 20도예요. [기상청](https://www.weather.go.kr/w/a)']] as const) {
+    const kim = part('m1', '지민', '서울 조사', { background: true, then: { botId: 'bot-m2', who: '서연', brief: '문구 쓰기' }, result: found })
+    const park = part('m2', '서연', handoffBrief('문구 쓰기', '지민', kim.result!, kim.brief), { background: true, lookup: undefined, writer: true, result: '가볍게 나가 봐요.' })
+    expect(mergedReport([kim, park]).split('\n\n').at(-1)).toBe(closes)
+  }
+})
+
+// stack-7: c7b gives a teammate a way of speaking (employeeNote), c7a makes a price always carry a figure (LOOKUP_RULE). A named
+// teammate on a lookup gets both in one prompt (team-runner: memberPersona + employeeNote), and neither sentence cancels the other;
+// the anonymous helpers of R1 / R2 / T1 (no botId) get the lookup rule alone and still answer in short values.
+test('stack-7: a named teammate on a lookup keeps both their way of speaking and the lookup rule; an anonymous helper gets no way of speaking', async () => {
+  const { paths, run, named } = await company()
+  await run({ add: [{ name: '지민', role: '리서치 담당' }] })
+  const kim = (await named('지민'))!
+  const member = part('m1', '지민', '갤럭시 S27 가격이랑 출시일 조사', { botId: kim.id })
+  const persona = memberPersona(member) + await employeeNote(paths, kim.id)
+  // Both rules are there, whole.
+  expect(persona).toContain(LOOKUP_RULE)
+  expect(persona).toContain('A price point always carries a figure with its currency')
+  expect(persona).toContain('Your way of speaking, in every sentence you write:')
+  // The teammate's "one or two short sentences" names the value lines as its exception, so the lookup rule's lines stand.
+  const memo = persona.slice(persona.indexOf('Answer as yourself'))
+  expect(memo).toMatch(/So is a part that names the points to find about a thing[^.]*: keep the "가격: …", "출시일: …" lines the lookup rule asks for/)
+  expect(memo.indexOf('So is a part that names the points')).toBeGreaterThan(memo.indexOf('one or two short sentences'))
+  // The way of speaking is endings and rhythm only: it does not touch figures, lines or links.
+  expect(persona).toContain('It shows in your endings and rhythm only')
+  // A helper the lead hired by role (R1, R2, T1): the lookup rule and nothing about a way of speaking or a chat message.
+  const helper = memberPersona(part('m2', 'galaxyS27', '갤럭시 S27의 가격과 출시일 조사', { botId: undefined }))
+  expect(helper).toContain(LOOKUP_RULE)
+  expect(helper).not.toMatch(/way of speaking|Answer as yourself/)
+})
+import { LOOKUP_RULE, memberPersona } from '../src/team-hire-tools.js'

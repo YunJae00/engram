@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn } from './bots.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
-import { datedQuery, foundNothing, givenName, periodSpans, placeNamed, sourceName, type TeamHost } from './team-hire-tools.js'
+import { datedQuery, foundNothing, givenName, periodSpans, placeNamed, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { plainSchedule, scheduleWordsKo } from './schedule-tools.js'
 
@@ -181,7 +181,6 @@ export function jobTitle(brief: string): string {
 // search's own filter (it reads the teammate's task), never search words; a month or a year is still written out ("2026년 12월"). A
 // product's new features are searched as its updates, with the kind of thing it is when the person's ask says one.
 // shortcut: the words stay for what the results page's own box answers by them ("이번 주말 서울 날씨"); a closed list of such boxes.
-const RELATIVE = /(?<![가-힣])(?:(?:이번|다음|지난|저번)\s?주말?|금주|요즘|최근|오늘|내일|어제|지금|현재)(?![가-힣])/gu
 const OWN_BOX = /날씨|기온|미세먼지|환율|주가|시세/u
 const UPDATES = /\s*(?:신기능|새(?:로운)?\s*기능|(?:기능\s*)?업데이트)(?:\s*(?:발표|소식))?/u
 const KIND = /앱|어플|서비스|툴|도구|플랫폼|프로그램|소프트웨어|사이트/u
@@ -190,7 +189,7 @@ export function searchWords(brief: string, now = new Date(), about = ''): string
   const title = jobTitle(brief)
   if (title.endsWith('…') || handedFrom(brief)) return undefined
   let words = title.replace(/\s*(?:조사|정리|찾기|알아보기|확인|검색)$/u, '').trim()
-  if (!OWN_BOX.test(words)) words = words.replace(RELATIVE, ' ').replace(/\s+/g, ' ').trim()
+  if (!OWN_BOX.test(words)) words = withoutRelativeTime(words)
   if (UPDATES.test(words)) {
     const what = words.replace(new RegExp(UPDATES.source, 'gu'), ' ').replace(/([가-힣A-Za-z])의(?=\s|$)/gu, '$1').replace(/\s+/g, ' ').trim()
     if (!what) return undefined
@@ -771,7 +770,7 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date)
 // grokbar C3 (stack2): the memos were pasted into the answer and read "이번 턴 안에 내용을 읽어오지 못했습니다", "소스 접근 실패", "This week's main items…".
 // c7: "Answer like a short memo" made every teammate write the same memo. A teammate answers as themselves, the way they would message
 // a colleague, and the host keeps their words (spoken).
-const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list every dated item your results give, three or more when they are there and at most eight, one line each starting with its date and ending with the address it came from. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, and nothing about time, limits or attempts. No preamble, no headings, no offers.'
+const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list every dated item your results give, three or more when they are there and at most eight, one line each starting with its date and ending with the address it came from. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, and nothing about time, limits or attempts. No preamble, no headings, no offers.'
 /** Added to the persona of someone who writes from what was handed over: they have no tools and need none. */
 export const WRITER_RULE = 'Everything this part needs is in the brief: you have no tools and look nothing up. Write the deliverable itself at once, in the person\'s language, and nothing else: no preamble, no account of what you did, no question. When the job asks for a number of short things ("문구 3개", "3가지", "세 줄"), write exactly that many as a numbered markdown list, one per line.'
 
@@ -931,7 +930,9 @@ function resultLead(m: TeamMember, previous = '', now = new Date()): string {
 const handedThing = (job: string): string => { const word = sought(jobTitle(job)).replace(/\s*(?:조사|정리)$/u, '').trim().split(' ').at(-1) ?? ''; return word && !word.endsWith('…') && /^[가-힣]{1,6}$/u.test(word) ? word : '내용' }
 // c7 C6: "지민이 찾은 내용: …" was a label line. Where the facts came from is one plain closing sentence with the link.
 function closing(from: NonNullable<ReturnType<typeof handedFrom>>, facts: readonly string[], link: string, now: Date): string {
-  const first = (facts[0] ?? '').replace(LIST_MARK, ''), what = aboutJob(jobTitle(from.job), now)
+  // stack-7 (c7b run, C6 and H5 replayed): "지민이 찾아보니 확인해 보니 다음 달 …", "지민이 찾아보니 이번 주말 서울 날씨 찾아봤는데, …": the
+  // teammate's own sentence opened on having looked, and the host said it again in front. Their opener goes; the host's stays.
+  const first = (facts[0] ?? '').replace(LIST_MARK, '').replace(/^[^.,\n]{0,40}?(?:찾아봤는데|찾아보니|확인해\s?보니|알아봤는데|알아보니|조사해\s?보니)[,\s]*/u, ''), what = aboutJob(jobTitle(from.job), now)
   if (/요[.!]?$/u.test(first) && Array.from(first).length <= 200) return withLink(`${josa(from.from, '이', '가')} 찾아보니 ${first}`, link)
   return withLink(`${what && !what.endsWith('…') ? josa(what, '은', '는') : '내용은'} ${josa(from.from, '이', '가')} 찾은 걸 따랐어요.`, link)
 }

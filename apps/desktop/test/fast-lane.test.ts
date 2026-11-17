@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import { keepRead, runToolSession, type AgentTool } from 'core'
@@ -208,7 +209,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('"업스테이지가 LS그룹에서 1,500억 원 투자받았대요. [글로벌경제](address)"')
   expect(LANE_NOTE).toContain('never "sentence (date) — outlet"')
   // c7 L1: weather in a person's words, not a forecast's.
-  expect(LANE_NOTE).toContain('"저녁부터 비 와요. 지금은 13.6도예요."')
+  expect(LANE_NOTE).toContain('"오늘(11월 17일)은 저녁부터 비 와요. 지금은 13.6도예요."')
   expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
   // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
   expect(LANE_NOTE).toContain('is named by the plain word 출처')
@@ -434,4 +435,21 @@ it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, a
   expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = listOnly(result.answer)')
+})
+
+// stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
+// One helper does it for both (team-hire-tools withoutRelativeTime).
+it('stack-7: a time said relative to today is taken out of search words the same way for a lone lookup and a teammate\'s part', async () => {
+  const { searchWords, withoutRelativeTime } = await import('core')
+  expect(withoutRelativeTime('이번 주 리니어 신기능')).toBe('리니어 신기능')
+  expect(withoutRelativeTime('요즘엔 국내 AI 스타트업 투자')).toBe('국내 AI 스타트업 투자')
+  expect(withoutRelativeTime('지난주 실시간 반응')).toBe('반응')
+  // A name that only starts like a time word is left alone.
+  expect(withoutRelativeTime('오늘의집 매출')).toBe('오늘의집 매출')
+  expect(laneQuery('요즘 리니어 새 기능 뭐 나왔는지 알려줘')!.query).toBe(withoutRelativeTime(laneQuery('요즘 리니어 새 기능 뭐 나왔는지 알려줘')!.query))
+  expect(laneQuery('요즘 리니어 새 기능 뭐 나왔는지 알려줘')!.query).not.toMatch(/요즘/)
+  expect(searchWords('이번 주 리니어 신기능 조사', new Date(2026, 10, 17))).toBe('리니어 새 기능 업데이트')
+  const read = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
+  expect(read('../src/main/fast-lane.ts')).toContain('withoutRelativeTime(datedQuery(')
+  expect(read('../../../packages/core/src/company-tools.ts')).toContain('words = withoutRelativeTime(words)')
 })

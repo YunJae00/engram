@@ -10,8 +10,8 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('../src/main/task-notify.js', () => ({ taskQueued: vi.fn(), clientTaskQueued: vi.fn(), clearClientTaskQueues: vi.fn() }))
 import { registerAsideIpc } from '../src/main/aside-ipc.js'
 import { turnGoals } from '../src/main/turn-state.js'
-import { quickAnswerPrompt } from '../src/main/first-line.js'
-import { tapBroadcast } from '../src/main/engine-health.js'
+import { beginFirstLine, endFirstLine, firstLineCarried, firstLineReady, firstLineSaw, quickAnswerPrompt } from '../src/main/first-line.js'
+import { broadcast, tapBroadcast } from '../src/main/engine-health.js'
 import type { EngramEvent } from '../src/shared/types.js'
 import { acknowledgeHanded, readCheckpoint } from '../src/main/comet-checkpoint.js'
 
@@ -272,4 +272,30 @@ it('hands a change to the running turn before the reply is written, keeps a rema
       else expect((await readCheckpoint(paths, 'reply')).pending).toEqual([])
     }
   } finally { turnGoals.delete('bot-reply'); await rm(cache, { recursive: true, force: true }) }
+})
+
+// stack-7 (c7a run, T2): "엔비디아 오늘 주가 알려줘" / "그냥 애플로 바꿔" / "애플로 바꿔서 볼게요." / "지금 시세 확인할게요." / answer. With the
+// host running the first search no tool call had frozen the lookup's first line when the person spoke, so it was drawn under the reply.
+it('stack-7: a lookup\'s first line still live when the person speaks mid-work is closed as its own line before their words are saved', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-first-line-'))
+  const paths = { cache } as VaultPaths
+  const resets = (): unknown[] => vi.mocked(broadcast).mock.calls.map(([event]) => event).filter(event => (event as { reset?: boolean }).reset)
+  registerAsideIpc({ paths, busy: () => true, followUp: () => () => {}, setOffersAside: async () => {} })
+  try {
+    vi.mocked(broadcast).mockClear()
+    // The broadcast is mocked here; in the app every event passes firstLineSaw (ipc.ts tapBroadcast).
+    vi.mocked(broadcast).mockImplementation(event => { firstLineSaw(event as { type: string; channel?: string; reset?: boolean }) })
+    beginFirstLine({ host: false, channel: 'bot-t2', message: '엔비디아 오늘 주가 알려줘', korean: true, interactive: true, engine: async () => ({ id: 'claude' as const, quick: async () => '' }) as never, workdir: '' as never, signal: new AbortController().signal, show: () => {}, line: '지금 시세 확인할게요.' })
+    firstLineReady('bot-t2')
+    await vi.waitFor(() => expect(firstLineCarried('bot-t2')).toBeDefined())
+    expect(firstLineCarried('bot-t2')).toBe('지금 시세 확인할게요.')
+    await handlers.get('chat:say')!({}, 'bot-t2', '그냥 애플로 바꿔')
+    expect(resets()).toEqual([{ type: 'chat:token', channel: 'bot-t2', text: '', reset: true }])
+    expect(firstLineCarried('bot-t2')).toBeUndefined()
+    // Already closed (a tool call froze it, as before): nothing more is sent.
+    await handlers.get('chat:say')!({}, 'bot-t2', '아 왜 이렇게 느려')
+    expect(resets()).toHaveLength(1)
+  } finally { vi.mocked(broadcast).mockReset(); endFirstLine('bot-t2'); await rm(cache, { recursive: true, force: true }) }
 })

@@ -2,10 +2,10 @@ import { conversationProgress } from './conversation-progress.js'
 import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-notify.js'
 import { ipcMain } from 'electron'
 import { appendBotTurn, engineCwd, readBotTranscript, withoutSecrets, type Engine, type VaultPaths } from 'core'
-import { cleanLine, quickAnswerPrompt } from './first-line.js'
+import { cleanLine, firstLineCarried, firstLineWaiting, quickAnswerPrompt } from './first-line.js'
 import { asideShape, quickQuestion, teamAsk, type AsideShape } from './fast-lane.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
-import { tapBroadcast } from './engine-health.js'
+import { broadcast, tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import { asides, STEER_CAP, turnGoals, workSoFar } from './turn-state.js'
 
@@ -154,6 +154,11 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     if (!busy || deps.answered?.(channel) || saving.has(channel)) return { ok: false }
     const hold = deps.followUp?.(channel)
     const said = text.trim()
+    // stack-7 (c7a run, T2 and H6): the host now runs a lookup's first search, so no tool call of the model's had frozen the first line
+    // when the person spoke; it stayed live text, was drawn under their words and the reply ("애플로 바꿔서 볼게요." then "지금 시세
+    // 확인할게요."), or gave way to the answer and left the reply first. A first line still live when the person speaks is closed as a
+    // line of its own before their words are saved (its time is when it was shown). The host's canned waiting line is never kept.
+    if (firstLineCarried(channel) && !firstLineWaiting(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
     const botId = channel.slice('bot-'.length)
     // A remark (impatience, thanks) changes nothing in the job: it is answered here and never handed to the running turn,
     // which would otherwise drop and rewrite its answer for it (grokbar c3 H6).
