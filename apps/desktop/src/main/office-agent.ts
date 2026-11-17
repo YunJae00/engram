@@ -23,8 +23,10 @@ const COMMON_HANGUL = ((): Set<string> => {
 // grokbar D3 (stack9): the first deck read "수시 입력", "대믱", "변류̈은", the second "결맠". c11c (stack10 "전놙0대름"): text a person never
 // types, judged by its characters alone, never a word list: a Hangul syllable outside the common 2,350 (skipped where no decoder exists), a
 // combining mark on Hangul, a loose conjoining jamo, a replacement character (U+FFFD) or a control character. Each word is named with where it is.
-export function mistypedWords(texts: readonly { where: string; text: string }[]): string[] {
-  const odd = (one: string) => /[\uFFFD\u1100-\u11FF]/.test(one) || (one < ' ' && !'\t\n\r'.includes(one)) || (COMMON_HANGUL.size > 0 && /[가-힣]/.test(one) && !COMMON_HANGUL.has(one))
+// c11c r2: a rare syllable is real only where the person typed it themselves (personal: their words in this thread, e.g. a name); the
+// model resending its own slip proves nothing, and the other marks are never typed by anyone, so nothing lets them through.
+export function mistypedWords(texts: readonly { where: string; text: string }[], personal = ''): string[] {
+  const odd = (one: string) => /[\uFFFD\u1100-\u11FF]/.test(one) || (one < ' ' && !'\t\n\r'.includes(one)) || (COMMON_HANGUL.size > 0 && /[가-힣]/.test(one) && !COMMON_HANGUL.has(one) && !personal.includes(one))
   return texts.flatMap(({ where, text }) => (text.match(/[^\s,.:;()[\]"'“”‘’·/|-]+/g) ?? [])
     .filter(word => /[가-힣\u1100-\u11FF][\u0300-\u036f]/.test(word) || [...word].some(odd))
     .map(word => `${word} (${where})`)).slice(0, 8)
@@ -78,7 +80,7 @@ const written = (op: 'ppt.build' | 'word.write', args: Record<string, unknown>):
 
 // A new deck or document is built headlessly and handed in; no Office window
 // opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
-async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, refused: Set<string>, signal?: AbortSignal, assertActive?: () => void, proofread?: Proofread): Promise<unknown> {
+async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, personal: string, signal?: AbortSignal, assertActive?: () => void, proofread?: Proofread): Promise<unknown> {
   signal?.throwIfAborted()
   assertActive?.()
   if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
@@ -86,10 +88,9 @@ async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<strin
   const fixes = proofread && said.some(text => /[가-힣]/.test(text)) ? await proofread(proofPrompt(said)).then(raw => proofFixes(raw, said), () => []) : []
   const args = fixes.length ? withFixes(asked, fixes) as Record<string, unknown> : asked
   // c11c (D3 stack10: a garbled deck was saved, then fixed in three more rounds and forked a second file): broken text is refused before any
-  // file exists, with the exact words, so the fix is one rebuild. The same words written again are taken as meant (a rare syllable in a name).
-  const odd = mistypedWords(written(op, args).texts)
-  if (odd.some(word => !refused.has(word))) {
-    for (const word of odd) refused.add(word)
+  // file exists, with the exact words, so the fix is one rebuild. A rare syllable the person typed (a name) is theirs (mistypedWords).
+  const odd = mistypedWords(written(op, args).texts, personal)
+  if (odd.length) {
     throw new Error(`Nothing was built: these words are garbled (a character nobody types): ${odd.join(', ')}. Write each as the word meant and call ${op === 'ppt.build' ? 'ppt_build' : 'word_write'} again with everything else the same.`)
   }
   signal?.throwIfAborted()
@@ -143,7 +144,8 @@ export async function showOfficePreview(lane: string, op: OfficeOp, window?: str
 }
 let workQueue: Promise<unknown> = Promise.resolve()
 // proofread: the quick voice, which reads a new document's text for garbled words before it is built (composeOffice).
-export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread): AgentTool[] {
+// personal: the person's own words in this thread, where a rare syllable in a document is theirs, not a slip (mistypedWords).
+export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread, personal = ''): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
   // The same deck or document built again in this session is the file already
@@ -151,13 +153,11 @@ export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofrea
   const composed = new Map<string, unknown>()
   // The names this tool set's builds saved (one turn's: ipc.ts makes the set per turn), which a later build here may replace.
   const own = new Set<string>()
-  // Garbled words a build was refused for (composeOffice).
-  const refused = new Set<string>()
   const tools = officeTools({ run: async (op, args, signal) => {
     if (op === 'ppt.build' || op === 'word.write') {
       const key = `${op}\0${JSON.stringify(args)}`
       if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
-      const receipt = await composeOffice(op, args, outputs, own, refused, signal, () => assertDesktopTurnNotStopped(lane), proofread)
+      const receipt = await composeOffice(op, args, outputs, own, personal, signal, () => assertDesktopTurnNotStopped(lane), proofread)
       // Another build under this name replaced the file an earlier receipt names: that receipt is no longer the file to hand back.
       const named = (one: unknown): string | undefined => /^\[([^\]]+)\]/.exec(String((one as { markdownLink?: unknown }).markdownLink ?? ''))?.[1]?.toLowerCase()
       for (const [held, earlier] of composed) if (named(earlier) === named(receipt)) composed.delete(held)

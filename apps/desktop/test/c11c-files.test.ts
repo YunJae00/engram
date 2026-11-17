@@ -35,9 +35,9 @@ beforeEach(async () => {
 afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
 // One turn's tools, the way ipc.ts makes them: the office builders and the file tools share the turn id and the set of what it saved.
-const turnTools = (turn: string, attached: string[] = []) => {
+const turnTools = (turn: string, attached: string[] = [], personal = '') => {
   const made = new Set<string>()
-  return [...officeAgentTools('bot-sales', taskOutputs(paths(), async () => task, made, turn)), ...cometFileTools(paths(), 'bot-sales', attached, [task], { turn, made })]
+  return [...officeAgentTools('bot-sales', taskOutputs(paths(), async () => task, made, turn), undefined, personal), ...cometFileTools(paths(), 'bot-sales', attached, [task], { turn, made })]
 }
 const use = async (tools: ReturnType<typeof turnTools>, name: string, args: Record<string, unknown>) => JSON.parse(await tools.find(tool => tool.name === name)!.run(args, { task: 'x' })) as Record<string, unknown> & { path: string; taskPath: string; artifact: string; sha256: string }
 const files = async (ext: string) => (await readdir(task)).filter(file => file.endsWith(ext)).sort()
@@ -158,10 +158,26 @@ describe('a garbled build is refused before any file exists', () => {
     expect(await files('.docx')).toEqual([])
   })
 
-  it('takes the same rare word written again as meant (a name), so a real word is never blocked for good', async () => {
-    const build = turnTools('t1').find(tool => tool.name === 'ppt_build')!
-    const slides = [{ title: '똠양꿍 놙 가게 소개' }, { title: '메뉴', bullets: ['국물 요리'] }]
-    await expect(build.run({ slides, theme: THEME }, { task: 'x' })).rejects.toThrow('Nothing was built')
-    expect(JSON.parse(await build.run({ slides, theme: THEME }, { task: 'x' })).markdownLink).toContain('.pptx')
+  // c11c r2 (Codex r1): resending the same garbled text used to be taken as meant, so a model repeating its own slip saved it.
+  it('refuses the same garbled text however often it is resent; nothing is ever written', async () => {
+    const tools = turnTools('t1')
+    const build = tools.find(tool => tool.name === 'ppt_build')!, word = tools.find(tool => tool.name === 'word_write')!
+    const slides = [{ title: '하반기 채용 계횓' }, { title: '일정', bullets: ['서류 마감 �월 3일'] }]
+    for (let round = 0; round < 3; round++) {
+      await expect(build.run({ slides, saveAs: '채용.pptx', theme: THEME }, { task: 'x' })).rejects.toThrow('계횓 (slide 1)')
+      await expect(word.run({ blocks: [{ kind: 'title', text: '주간 회의 결괉' }], saveAs: '회의.docx', theme: THEME }, { task: 'x' })).rejects.toThrow('결괉 (block 1)')
+    }
+    expect(await readdir(task)).toEqual([])
+    expect(await saved('.pptx')).toEqual([])
+  })
+
+  it('builds a rare syllable the person typed themselves (a name) first time; their typing never lets broken marks through', async () => {
+    const tools = turnTools('t1', [], '똠양꿍 맛집 소개 자료 만들어줘. 사장님 이름은 김뷁이야')
+    const deck = await use(tools, 'ppt_build', { slides: [{ title: '똠양꿍 맛집 소개' }, { title: '사장님', bullets: ['김뷁 대표'] }], saveAs: '맛집.pptx', theme: THEME })
+    expect(deck.markdownLink).toContain('맛집.pptx')
+    const build = tools.find(tool => tool.name === 'ppt_build')!
+    await expect(build.run({ slides: [{ title: '김뷁 대\uFFFD표' }], saveAs: '맛집2.pptx', theme: THEME }, { task: 'x' })).rejects.toThrow('Nothing was built')
+    // A rare syllable the person never typed is still the model's slip.
+    expect(mistypedWords([{ where: 'slide 1', text: '똠양꿍 놙집' }], '똠양꿍 맛집')).toEqual(['놙집 (slide 1)'])
   })
 })
