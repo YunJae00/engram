@@ -19,7 +19,8 @@ export const setJudgeLog = (log: (line: string) => void): void => { judgeLog = l
  * look: the judge also reads how many the ask wants ("asked") and, when fewer than that fit, gives other search words ("search"),
  * different from every search in `look.tried`. round: the caller's round number, for the log line. */
 export async function judgedItems(ask: string, items: readonly { text: string; link?: string }[], write?: (prompt: string, ms: number) => Promise<string | undefined>, ms = ITEM_CHECK_MS, look?: { tried: readonly string[] }, round = 1): Promise<ItemJudgment | undefined> {
-  if (!write || !items.length) return undefined
+  // c15a r2: a counted lookup with nothing held still asks the judge (with no items) for other words; without `look` there is nothing to judge.
+  if (!write || (!items.length && !look)) return undefined
   const prompt = [
     // stack-13 (R3: a demo day, an exhibition and a sales event were kept as investment news): "that kind" was read as the topic. An item is
     // the thing asked on every part the ask names of it; an item that clearly lacks one is another kind, whatever its topic.
@@ -87,7 +88,9 @@ const rowsOf = (out: string): Row[] => out.split('\n').flatMap(line => {
 function fitting(rows: readonly Row[], verdict: ItemJudgment | undefined): { sure: Row[]; unsure: Row[] } {
   if (!verdict) return { sure: [...rows], unsure: [] }
   const held = (n: number): boolean => verdict.keep.includes(n) || verdict.unsure.includes(n)
-  const lead = (group: number[]): number => group.find(n => verdict.keep.includes(n)) ?? group.find(held) ?? group[0]!
+  // c15a r2 (cause L: the first kept row of a same-event group led, so a café post listed before the official report was the one cited):
+  // the group's lead is its first-hand row when it has one, then a sure row before an unsure one.
+  const lead = (group: number[]): number => { const g = firstHand(group, n => verdict.secondhand.includes(n)); return g.find(n => verdict.keep.includes(n)) ?? g.find(held) ?? g[0]! }
   const out = new Set([...verdict.listing, ...verdict.lists, ...verdict.outside, ...verdict.same.flatMap(group => group.filter(n => n !== lead(group)))])
   const pick = (of: number[]): Row[] => firstHand(rows.filter((_, i) => of.includes(i + 1) && !out.has(i + 1)), row => verdict.secondhand.includes(rows.indexOf(row) + 1))
   return { sure: pick(verdict.keep), unsure: pick(verdict.unsure) }
@@ -116,7 +119,7 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
     // "멈춰" ends a judgment under way at once: no verdict, so no further round.
     const stopped = new Promise<undefined>(resolve => { if (signal?.aborted) resolve(undefined); else signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
     const ask1 = write && (async (prompt: string, ms: number) => Promise.race([write(prompt, ms), stopped]))
-    const [dead, verdict] = await Promise.all([by.alive ? deadOf(rows.map(row => row.url), by.alive, by.linkMs ?? LINK_CHECK_MS) : Promise.resolve<string[]>([]), rows.length && !signal?.aborted ? judgedItems(ask, rows.map(row => ({ text: row.text, link: row.url })), ask1, judgeMs(), { tried }, ++round) : undefined])
+    const [dead, verdict] = await Promise.all([by.alive ? deadOf(rows.map(row => row.url), by.alive, by.linkMs ?? LINK_CHECK_MS) : Promise.resolve<string[]>([]), !signal?.aborted ? judgedItems(ask, rows.map(row => ({ text: row.text, link: row.url })), ask1, judgeMs(), { tried }, ++round) : undefined])
     const live = (row: Row): boolean => !dead.includes(row.url)
     // An ask with no set number is not a counted list: its rows are only put first-hand first, none left out by the judge.
     if (verdict && !counted(verdict, ask)) return { sure: firstHand(rows, row => verdict.secondhand.includes(rows.indexOf(row) + 1)).filter(live), unsure: [], verdict }
