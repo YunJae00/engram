@@ -191,7 +191,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const ranked = news && count !== undefined, own = ranked ? eventQuery(query, asked) : undefined
           const rank = (one: Parameters<typeof eventRank>[0]): number => ranked ? eventRank(one, asked) : 1
           let listed = list(page, at)
-          const eventUrl = own && listed.filter(one => rank(one) === 2).length < count! ? searchUrlFor(template, own) : null, left = EVENT_GATHER_MS - (Date.now() - started)
+          const eventUrl = own && listed.filter(one => rank(one) === 2 && (!period || inPeriod(one.date, period, now))).length < count! ? searchUrlFor(template, own) : null, left = EVENT_GATHER_MS - (Date.now() - started)
           if (eventUrl && left > 1_000) {
             const extra = await courier.fetchPage(eventUrl, AbortSignal.any([...(context.signal ? [context.signal] : []), AbortSignal.timeout(left)])).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null })
             const have = new Set(listed.map(one => one.url))
@@ -205,8 +205,9 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           // c7 R3: for a counted news ask the rows whose title names the event asked for come first, and the ones that only mention it
           // (a forum, a plan, an acquisition) go last, after the older real ones (search-template eventRank). Order only: nothing is dropped.
           // c9a R3: for a kind the host knows, only a row that names the event beside somebody (rank 2) is a list item; the rest (a statistic,
-          // a plan, an opinion piece) is handed over after them as background. With no such row at all the ranks only order, as before.
-          const floor = own && [...listed, ...(more && !more.wall ? list(more, more.url || wideUrl!) : [])].some(one => rank(one) === 2) ? 2 : 1
+          // a plan, an opinion piece) is handed over after them as background. c9a r2: also with no such row at all — the statistic came back
+          // as an item when the floor fell to 1 there. Only a kind the host does not know keeps the ranks as order.
+          const floor = own ? 2 : 1
           const real = (rows: typeof listed): typeof listed => rows.filter(one => rank(one) >= floor).sort((a, b) => rank(b) - rank(a))
           const recent = real(every)
           let older: typeof listed = []
@@ -236,7 +237,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
               ? [
                   'Results, each as title — its own address — what it says — its date. Answer from them when they hold the fact and cite that result\'s address; open one (read_pages for several) only for a number none of them shows.',
                   ...(period && older.length ? [`${recent.length ? `The first ${recent.length} are from the last ${period}; the ones after them are` : `None is from the last ${period}: these are`} older, most recent first, and say their year. Each row is a different event. When the recent ones hold fewer of what the person asked for than the number they asked for, the next most recent older ones fill that number, each with its own date and year.`] : []),
-                  ...(aside.length && picked.length > recent.length + older.length ? [floor === 2 ? `${EVENT_ROWS} ${recent.length + older.length}. ${BACKGROUND_ROWS} the last ${picked.length - recent.length - older.length} (a statistic, a plan, an opinion piece, a forum, a mention, nobody named as funded): never one of them is a list item, and with fewer real ones the list is shorter.` : `The last ${picked.length - recent.length - older.length} only mention it (a forum, a visit, a plan, an acquisition, nobody named): never use one of them to reach the number asked for; with fewer real ones the list is shorter.`] : []),
+                  ...(aside.length && picked.length > recent.length + older.length ? [floor === 2 ? `${EVENT_ROWS} ${recent.length + older.length}.${recent.length + older.length ? '' : ' None is: say in one sentence that none was found, and list nothing.'} ${BACKGROUND_ROWS} the last ${picked.length - recent.length - older.length} (a statistic, a plan, an opinion piece, a forum, a mention, nobody named as funded): never one of them is a list item, and with fewer real ones the list is shorter.` : `The last ${picked.length - recent.length - older.length} only mention it (a forum, a visit, a plan, an acquisition, nobody named): never use one of them to reach the number asked for; with fewer real ones the list is shorter.`] : []),
                   ...links.map(one => `- ${[one.title.slice(0, RESULT_TITLE_CAP), one.url, one.snippet, one.date].filter(Boolean).join(' — ')}`),
                   '',
                 ]

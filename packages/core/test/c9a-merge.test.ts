@@ -32,14 +32,23 @@ test('c9a R2: a search page never stands for a row whose helper cited a real pag
   const out = citeMembers(`${head}| 테슬라 모델 2 | 예상 2만 5천 달러 | 2027년 상반기 예상 | [출처](${search('테슬라 모델 2 가격 출시일')}) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://blog.naver.com/ev/2) |`, [tesla, byd], true)
   const shown = links(out)
   expect(shown.some(isSearchPage)).toBe(false)
-  // A publication comes before a blog post, even on a host an earlier row uses.
-  expect(shown).toEqual(['https://www.hankyung.com/article/2026111700001', 'https://www.hankyung.com/article/2026111700009'])
+  // A publication comes before a blog post, even on a host an earlier row uses (테슬라: no figure on either page).
+  // c9a r2 (Codex r1): BYD's price 2,450만 원 is only on the blog post, its date only in the paper: the row links both, so the price keeps its source.
+  expect(shown).toEqual(['https://www.hankyung.com/article/2026111700001', 'https://www.hankyung.com/article/2026111700009', 'https://blog.naver.com/ev/2'])
+  expect(out.split('\n').at(-1)).toMatch(/\]\(https:\/\/www\.hankyung\.com\/article\/2026111700009\) · \[[^\]]+\]\(https:\/\/blog\.naver\.com\/ev\/2\) \|$/)
+  // One page holding every figure is the row's one source, before a publication that holds none.
+  const one: TeamMember = { ...byd, result: '가격: 2,450만 원부터, 2025년 4월 15일 출시 — https://blog.naver.com/ev/2\n소식 — https://www.hankyung.com/article/2026111700009' }
+  expect(links(citeMembers(`${head}| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://www.hankyung.com/article/2026111700009) |`, [one], true))).toEqual(['https://blog.naver.com/ev/2'])
   // Between equals, a host no earlier row uses: two posts, one on the earlier row's host.
   const a: TeamMember = { ...tesla, sources: [], result: '가격: 2만 5천 달러 — https://cafe.naver.com/ev/1' }
   const b: TeamMember = { ...byd, sources: [], result: '가격: 2,450만 원부터 — https://cafe.naver.com/ev/2\n출시일: 2025년 4월 15일 — https://www.youtube.com/watch?v=x1' }
   const spread = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 2,450만 원부터 | 2025년 4월 15일 | [출처](https://cafe.naver.com/ev/2) |`, [a, b], true)
-  expect(links(spread)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1'])
-  expect(spread).toContain('[유튜브](https://www.youtube.com/watch?v=x1)')
+  // c9a r2: the price is only on the cafe post, the date only in the video: the row links both.
+  expect(links(spread)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1', 'https://cafe.naver.com/ev/2'])
+  const c: TeamMember = { ...byd, sources: [], result: '소식 — https://cafe.naver.com/ev/2\n소식 — https://www.youtube.com/watch?v=x1' }
+  const apart = citeMembers(`${head}| 테슬라 모델 2 | 2만 5천 달러 | 미정 | [출처](https://cafe.naver.com/ev/1) |\n| BYD 돌핀 | 미정 | 미정 | [출처](https://cafe.naver.com/ev/2) |`, [a, c], true)
+  expect(links(apart)).toEqual(['https://cafe.naver.com/ev/1', 'https://www.youtube.com/watch?v=x1'])
+  expect(apart).toContain('[유튜브](https://www.youtube.com/watch?v=x1)')
 })
 
 test('c9a R2: platforms are named by the platform; a search page and an unknown site keep their names', () => {

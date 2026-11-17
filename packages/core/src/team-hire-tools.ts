@@ -251,8 +251,8 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 }
 // c9a R2: the rows linked cafe.naver.com, cafe.naver.com and a search page, named 출처 three times, while the 갤럭시 helper had also cited
 // a store page. A source cell with one link takes, among the pages its own teammate cited (never another's, never one it did not cite),
-// the maker's or a publication's page before a store, a video or a community post, then a host no earlier row of the table uses, then
-// one that holds the row's figure. A teammate that cited no real page keeps what the row has (its search page, the last resort).
+// one that holds the row's figure (all of them when its figures sit on several), then the maker's or a publication's page before a store,
+// a video or a community post, then a host no earlier row of the table uses. A teammate that cited no real page keeps what the row has (its search page, the last resort).
 // shortcut: only the lead's search-page link or one of the teammate's own pages is replaced; another link the lead wrote stays (liveCited checks it).
 const SECONDARY = /youtube\.com|youtu\.be|tv\.naver\.com|smartstore\.|shopping\.naver|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com/i
 const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return url } }
@@ -260,16 +260,20 @@ function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>,
   const cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
   if (links.length > 1) { for (const link of links) used.add(hostOf(link[2]!)); return cell }
   const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url))
+  // c9a r2 (Codex r1): a press page with only the date outranked the blog post that alone held the price, and the price lost its source.
+  // A page holding a row's figure comes first; when its figures sit on several pages, the row links each of them.
   const holds = new Set(figureSources(own.result ?? '', cells.slice(1, -1)))
-  const rank = (url: string): number => (communityPost(url) || SECONDARY.test(url) ? 4 : 0) + (used.has(hostOf(url)) ? 2 : 0) + (holds.has(url) ? 0 : 1)
-  const best = cited.map((url, at) => ({ url, at })).sort((a, b) => rank(a.url) - rank(b.url) || a.at - b.at)[0]?.url
+  const rank = (url: string): number => (holds.has(url) ? 0 : 8) + (communityPost(url) || SECONDARY.test(url) ? 4 : 0) + (used.has(hostOf(url)) ? 2 : 0)
+  const order = cited.map((url, at) => ({ url, at })).sort((a, b) => rank(a.url) - rank(b.url) || a.at - b.at).map(one => one.url), best = order[0]
+  const name = (url: string): string => `[${linked(own.result ?? '').get(url) ?? sourceName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
   // A results page whose own box holds the figure stays (네이버 날씨); a link the lead gave that its teammate did not list is left as it is.
+  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now)
+  if (replace && holds.size > 1) { const each = order.filter(url => holds.has(url)); for (const url of each) used.add(hostOf(url)); return each.map(name).join(' · ') }
   const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) && rank(best) < rank(now)) ? best : now
   if (!url) return cell
   used.add(hostOf(url))
   if (url === now) return /^\s*\[(?:출처|source)\]/i.test(cell) ? cell.replace(/\[(?:출처|source)\]/i, `[${sourceName(now, korean)}]`) : cell
-  const name = linked(own.result ?? '').get(url) ?? sourceName(url, korean)
-  return `[${name}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
+  return name(url)
 }
 // A results page whose own box holds the figure (weather, a quote, a rate): the one results page a row may cite.
 const boxed = (url: string): boolean => { try { return BOXES.some(([words]) => words.test(new URL(url).searchParams.get('query') ?? '')) } catch { return false } }

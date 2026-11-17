@@ -242,7 +242,8 @@ it('search_web searches recent news with the period, drops rows outside it and f
   // c6: a counted ask always has the older rows behind the recent ones (the rows may be fewer events than they look), never a 2024 one.
   asked.length = 0
   const two = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 AI 스타트업 투자 뉴스 2개만', steps: [], read: '' } as never)
-  expect(asked).toHaveLength(3)
+  // c9a r2: the month holds the two rounds asked for (the company first counts as named), so no search in the event's own words.
+  expect(asked).toHaveLength(2)
   expect(rowsOf(two).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2026년 9월 17일'])
   expect(two).not.toContain('2024')
   // No count said and the recent rows are few: the wider page is loaded after the count, as before.
@@ -309,8 +310,10 @@ it('c6: a counted news ask loads the period page and then the wider page, never 
   expect(together).toBe(1)
   const rows = out.split('\n').filter(line => line.startsWith('- '))
   // One row for the event of the month, then the older rounds, most recent first, each with its year; nothing from 2024.
-  expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.businesspost.co.kr/2', '11월 10일'], ['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.']])
-  expect(out).toContain('The first 1 are from the last month')
+  // c9a r2: the month's one event names no round (an investor's portfolio list), so with the floor kept at 2 it goes after the rounds, as background.
+  expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.'], ['https://www.businesspost.co.kr/2', '11월 10일']])
+  expect(out).toContain('None is from the last month')
+  expect(out).toContain(`${EVENT_ROWS} 2. ${BACKGROUND_ROWS} the last 1`)
 })
 
 // ---- cycle 7 (c7a) ----
@@ -367,8 +370,8 @@ it('c7 R3: a counted news ask gets the rows whose title names the event first, t
   const urls = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1])
   // The month's round, then the year's rounds most recent first, then the two that only mention it; the one from over a year back is gone.
   expect(urls).toEqual(['https://www.globalnews.example/2', 'https://www.viva.example/4', 'https://www.smart.example/5', 'https://www.forum.example/1', 'https://www.economist.example/3'])
-  // c9a R3: only the round that names its company is an item; the rest is handed over after it as background.
-  expect(out).toContain(`${EVENT_ROWS} 1. ${BACKGROUND_ROWS} the last 4 (a statistic, a plan, an opinion piece, a forum, a mention, nobody named as funded): never one of them is a list item`)
+  // c9a R3: only the rounds that name their company are items (c9a r2: the company first counts); the rest is handed over after them as background.
+  expect(out).toContain(`${EVENT_ROWS} 3. ${BACKGROUND_ROWS} the last 2 (a statistic, a plan, an opinion piece, a forum, a mention, nobody named as funded): never one of them is a list item`)
   expect(out).not.toContain('token.example')
   // With no period said, a counted news list still takes nothing dated over twelve months back; a list that was not counted is left as it was.
   const counted = await tool.run({ query: 'AI 스타트업 투자 유치', kind: 'news' }, { task: 'AI 스타트업 투자 뉴스 5개 찾아줘', steps: [], read: '' } as never)

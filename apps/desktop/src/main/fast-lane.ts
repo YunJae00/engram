@@ -186,7 +186,7 @@ export function listOnly(answer: string): string {
 }
 // c9a R3/H6: the list came as plain lines, so listOnly and shortSaid never acted, and two of its four items were a statistic and a
 // government plan though the search had handed them over as background. The host numbers plain item lines (a line with a link each),
-// and drops an item that names nobody from the rows the search marked as the event (search_web EVENT_ROWS) while one item stays; the
+// and drops an item that names nobody from the rows the search marked as the event (search_web EVENT_ROWS); the
 // model's lead then goes, as its count no longer holds, and shortSaid says how many there are.
 // shortcut: an item is matched to a round by its link or by a headline word; an item that names its company in other words is dropped.
 export function newsItems(answer: string, held: readonly string[], ask: string): string {
@@ -194,12 +194,17 @@ export function newsItems(answer: string, held: readonly string[], ask: string):
   const plain = (line: string): boolean => /\]\(https?:\/\//.test(line) && !/^\s*(?:\||#|>)/.test(line)
   let at = 0
   const numbered = lines.some(item) ? lines : lines.filter(plain).length >= 2 ? lines.map(line => plain(line) ? `${++at}. ${line.replace(/^\s*[-*•·]\s*/, '')}` : line) : lines
-  const rounds = held.flatMap(text => { const at = text.indexOf(EVENT_ROWS), count = at < 0 ? 0 : parseInt(text.slice(at + EVENT_ROWS.length), 10) || 0; return text.split('\n').filter(line => line.startsWith('- ')).slice(0, count) })
-  if (!rounds.length) return numbered.join('\n')
+  const marked = held.filter(text => text.includes(EVENT_ROWS)), items = numbered.filter(item)
+  const rounds = marked.flatMap(text => { const at = text.indexOf(EVENT_ROWS), count = parseInt(text.slice(at + EVENT_ROWS.length), 10) || 0; return text.split('\n').filter(line => line.startsWith('- ')).slice(0, count) })
+  if (!marked.length || !items.length) return numbered.join('\n')
+  // c9a r2: with no round among the results, an item is never a statistic or a plan made to stand in for one.
+  if (!rounds.length) return '찾아봤는데 확실한 건 아직 없어요.'
   const names = rounds.flatMap(row => headlineNames(row.split(' — ')[0]!.slice(2), ask)), urls = rounds.map(row => / — (https?:\/\/\S+)/.exec(row)?.[1]).filter(Boolean) as string[]
   const real = (line: string): boolean => urls.some(url => line.includes(url)) || names.some(name => line.toLowerCase().includes(name))
-  const items = numbered.filter(item), kept = items.filter(real)
-  if (!kept.length || kept.length === items.length) return numbered.join('\n')
+  const kept = items.filter(real)
+  if (kept.length === items.length) return numbered.join('\n')
+  // c9a r2: no item names a round though the results hold some: the rounds themselves are the list, each with its date and its own page.
+  if (!kept.length) return rounds.map((row, i) => { const [title, ...rest] = row.slice(2).split(' — '), url = rest.find(part => /^https?:\/\//.test(part)), date = rest.slice(1).reverse().find(part => part.length <= 20 && /\d\s*(?:월|일|년|시간|분)|\d{4}[.-]/.test(part)); return `${i + 1}. ${title}${date ? ` — ${date}` : ''}${url ? ` [${sourceName(url, true)}](${url})` : ''}` }).join('\n')
   const first = numbered.findIndex(item)
   let n = 0
   return numbered.slice(first).filter(line => !item(line) || real(line)).map(line => item(line) ? line.replace(/^\s*\d+[.)]/, `${++n}.`) : line).join('\n').trim()
