@@ -149,6 +149,19 @@ it('adds a card for every saved output, and hands in raw files only from a finis
   expect(asked.answer).toBe('Which month? plot.py')
 })
 
+// c10c review r1: a workbook this turn made and then changed with file_edit_package is one file: the answer links the edit, and the
+// first version is not handed over beside it under another name.
+it('does not hand over a file this turn made and then edited', async () => {
+  const cwd = await workFolderFor(paths, 'bot-x')
+  const made = async (tool: string, args: Record<string, unknown>, bytes: string): Promise<TurnStep> => ({ tool, args, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'spend.xlsx', Buffer.from(bytes)), completeReadback: true }) })
+  const book = await made('file_create_workbook', { name: 'spend.xlsx', sheet: 'Spend', rows: [['Cost'], [1]] }, 'PK-first')
+  const edit = await made('file_edit_package', { name: 'spend.xlsx', sourcePath: join(cwd, 'spend.xlsx'), edits: [] }, 'PK-fixed')
+  const link = (JSON.parse(edit.observation) as { markdownLink: string }).markdownLink
+  const result = { answer: `고쳤어요. ${link}`, steps: [book, edit] }
+  await deliverOutputs(paths, cwd, result, 0, 'ask')
+  expect(result.answer).toBe(`고쳤어요. ${link}`)
+})
+
 it('keeps the write, command and web gates', async () => {
   const cwd = join(root, 'task')
   await mkdir(cwd)

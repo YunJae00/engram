@@ -275,6 +275,23 @@ it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name i
   expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(b)}`)).not.toContain(link(copy))
 })
 
+// c10c review r1: the deck check names a garbled word, the fix is one file_edit_package on the deck just built, and the answer links the
+// edited deck. The first build was shown beside it: two cards of one deck. The edit is that file now; only it is shown.
+it('shows only the edited file when this turn builds a file and then edits it', () => {
+  const a = '[deck.pptx](engram-artifact:11111111-1111-1111-1111-111111111111-deck.pptx)', b = '[deck.pptx](engram-artifact:22222222-2222-2222-2222-222222222222-deck.pptx)', c = '[deck.pptx](engram-artifact:33333333-3333-3333-3333-333333333333-deck.pptx)'
+  const build = { tool: 'ppt_build', args: {}, observation: JSON.stringify({ markdownLink: a }) }
+  const edit = (path: string, link: string) => ({ tool: 'file_edit_package', args: { sourcePath: path }, observation: JSON.stringify({ markdownLink: link }) })
+  const steps = [build, edit('/task/deck.pptx', b)] as unknown as Parameters<typeof outputLinks>[0]
+  expect(outputLinks(steps, `수정했어요. ${b}`, '/task')).toBe(`수정했어요. ${b}`)
+  expect(outputLinks(steps, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${b}`)
+  expect(outputLinks(steps, '수정했어요.', '/task')).toBe(`수정했어요.\n\n${b}`)
+  // Edited twice, the second time through its saved output's id: the last edit is the one file.
+  const twice = [build, edit('deck.pptx', b), edit('/outputs/22222222-2222-2222-2222-222222222222-deck.pptx', c)] as unknown as Parameters<typeof outputLinks>[0]
+  expect(outputLinks(twice, `수정했어요. ${a}`, '/task')).toBe(`수정했어요. ${c}`)
+  // An edit of another file leaves the deck shown.
+  expect(outputLinks([build, edit('/task/other.pptx', b.replace('[deck', '[other').replace('-deck', '-other'))] as unknown as Parameters<typeof outputLinks>[0], '끝', '/task')).toContain(a)
+})
+
 // qa143 p2 r4 #2 (S19a): a budget stop or an unfinished turn links nothing, and what outputLinks attaches then the host cannot take back.
 // The same source copied again under one name is a revision there too (the last one counts); two sources under one name are two files.
 it('attaches only the last copy of one source when the answer links nothing, and still both of two sources', () => {

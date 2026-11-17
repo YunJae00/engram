@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { parseReadBatch } from './browser-read-batch.js'
 import type { AgentLoopStep } from './agent-loop.js'
 
@@ -23,18 +23,24 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
   // (a deck, a document, a workbook with no input) and made again under its name later in the turn is that turn's own draft, replaced by
   // the later one (office-agent.ts composeOffice, file-work.ts placeInTask): only the last is shown, and a link to an earlier one is the last one's.
   const fresh = (step: AgentLoopStep): boolean => COMPOSED.includes(step.tool) || (step.tool === 'file_create_workbook' && ![step.args['source'], step.args['sourcePath'], step.args['path']].some(value => typeof value === 'string'))
-  let outputs: { link: string; id: string; name: string; source: string; composed: boolean; fresh: boolean }[] = []
+  // c10c r1: the file a file_edit_package changes, by name (a task path or a saved output's id both end in it).
+  const edits = (step: AgentLoopStep): string | undefined => step.tool === 'file_edit_package' && typeof step.args['sourcePath'] === 'string' ? fileName(basename(step.args['sourcePath'])).toLowerCase() : undefined
+  let outputs: { link: string; id: string; name: string; source: string; composed: boolean; fresh: boolean; edits?: string | undefined }[] = []
   for (const step of steps) {
     if (!['file_create_copy', 'file_create_workbook', 'file_edit_package', 'capture_evidence', ...COMPOSED].includes(step.tool)) continue
     try {
       const result = JSON.parse(step.observation) as { markdownLink?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
-      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: sourceOf(step, result.markdownLink as string), composed: COMPOSED.includes(step.tool), fresh: fresh(step) })
+      if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: sourceOf(step, result.markdownLink as string), composed: COMPOSED.includes(step.tool), fresh: fresh(step), edits: edits(step) })
     } catch { /* Failed writes have no output receipt. */ }
   }
   const last = new Map(outputs.filter(output => output.fresh).map(output => [output.name.toLowerCase(), output]))
   const replaced = new Map(outputs.filter(output => output.fresh && last.get(output.name.toLowerCase())!.id !== output.id).map(output => [output.id, last.get(output.name.toLowerCase())!]))
-  answer = answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g, (whole, id: string) => replaced.get(id)?.link ?? whole)
+  // c10c r1: a file this turn made (or edited) and then changed with file_edit_package is that file, now edited: only the last edit is shown,
+  // and a link to an earlier version is the edit's (a deck built, then its garbled word fixed, is one card).
+  outputs.forEach((output, at) => { const edit = outputs.slice(at + 1).filter(one => one.edits === output.name.toLowerCase()).at(-1); if (edit && (output.fresh || output.edits)) replaced.set(output.id, edit) })
+  const final = (id: string) => { let now = replaced.get(id); for (let hops = 0; now && replaced.has(now.id) && hops < 50; hops++) now = replaced.get(now.id); return now }
+  answer = answer.replace(/\[[^\]\r\n]*\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g, (whole, id: string) => final(id)?.link ?? whole)
   outputs = outputs.filter(output => !replaced.has(output.id))
   const selected = new Set([...answer.matchAll(/\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g)].map(match => match[1]!))
   // The answer's link sets aside the other versions of the input it quotes, not another input's file of that name: two different inputs under
