@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
 // QA 0.8.142 B5/B11: Word and PowerPoint output went to the person's real
@@ -87,13 +87,24 @@ it('replaces this turn\'s own file when a second input is built under its name, 
   }
 })
 
-// A turn that only names the file an earlier turn made does not touch it: a new turn's build under that name keeps the earlier one as its
-// previous version (placeInTask), and the earlier saved output stays.
+// A turn that only names the file an earlier turn made does not touch it (c10c review r1: the brief's "a name taken by an earlier turn still
+// gets -2"): a new turn's build under that name is saved as "-2", the earlier task file keeps its bytes, and the earlier saved output stays.
+// Built twice in that later turn, the "-2" file is that turn's own draft, replaced in place.
 it('keeps the file an earlier turn made when a later turn builds under its name', async () => {
   const first = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-1')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
-  const later = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-2')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '4분기 계획' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
+  const before = await readFile(first.taskPath)
+  const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-2')).find(t => t.name === 'ppt_build')!
+  const later = JSON.parse(await tool.run({ slides: [{ title: '4분기 계획' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
   expect(later.artifact).not.toBe(first.artifact)
+  expect(later.markdownLink).toMatch(/^\[3분기 실적 보고-2\.pptx\]/)
+  expect(later.verification).toContain('Saved as 3분기 실적 보고-2.pptx')
+  expect(basename(later.taskPath)).toBe('3분기 실적 보고-2.pptx')
+  expect((await readFile(first.taskPath)).equals(before)).toBe(true)
   expect((await readFile(first.path)).subarray(0, 2).toString()).toBe('PK')
+  const again = JSON.parse(await tool.run({ slides: [{ title: '4분기 계획 수정' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
+  expect(again.taskPath).toBe(later.taskPath)
+  expect((await readdir(task)).filter(file => file.endsWith('.pptx')).sort()).toEqual(['3분기 실적 보고-2.pptx', '3분기 실적 보고.pptx'])
+  expect((await readFile(first.taskPath)).equals(before)).toBe(true)
 })
 
 // grokbar D3 (stack9): the first deck the model built read "수시 입력", "대믱", "변류̈은", "거실론" (the stored 3분기 실적 보고.pptx); with only

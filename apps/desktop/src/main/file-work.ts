@@ -267,6 +267,8 @@ const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 // turn: this turn's id, which lets a later turn's remake replace the task-folder copy (placeInTask).
 export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>, turn?: string) {
   return {
+    // c10c r1: the names the task folder already holds (lower case), so a build does not take over an earlier turn's file (office-agent.ts).
+    async held(): Promise<Set<string>> { const task = await folder?.(); return new Set(task ? (await readdir(task).catch(() => [] as string[])).map(file => file.normalize('NFC').toLowerCase()) : []) },
     async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
       made?.add(receipt.path)

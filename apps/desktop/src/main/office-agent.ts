@@ -5,13 +5,14 @@ import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { bindDesktopForLane } from './desktop-access.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
+import { freeName } from './file-work.js'
 
 // A new deck or document is composed as a file with a designed layout, not
 // clicked into a blank template; everything else on Office goes through the
 // application's own commands. The person keeps the mouse either way.
 // Where a composed document is handed in: the workspace's saved outputs and
 // the task folder, linked in the chat.
-export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>> }
+export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>>; held?(): Promise<Set<string>> }
 
 // Hangul a person writes, KS X 1001's 2,350 syllables; empty where the runtime has no EUC-KR decoder (the check is then skipped).
 const COMMON_HANGUL = ((): Set<string> => {
@@ -47,7 +48,7 @@ const written = (op: 'ppt.build' | 'word.write', args: Record<string, unknown>):
 
 // A new deck or document is built headlessly and handed in; no Office window
 // opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
-async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
   signal?.throwIfAborted()
   assertActive?.()
   if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
@@ -59,14 +60,19 @@ async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string
   // grokbar D3 (stack9): a second build under the name this turn already saved got "-2", a third "-3", and all three were shown. The same name
   // in one turn is that turn's own file made again: it keeps the name and replaces it (file-work.ts placeInTask, agent-session-result.ts
   // outputLinks). A file an earlier turn made is not this tool's to rename: placeInTask keeps that one as the earlier version.
-  const receipt = await outputs.save(built.name, built.data)
+  // c10c r1: a name this turn built is its own draft, replaced in place; a name the task folder held before (an earlier turn's file) is
+  // never overwritten: this build takes the next free name (deck-2.pptx).
+  const held = await outputs.held?.() ?? new Set<string>()
+  const name = freeName(built.name, free => held.has(free.normalize('NFC')) && !own.has(free))
+  own.add(name.toLowerCase())
+  const receipt = await outputs.save(name, built.data)
   const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
   const { titles, texts } = written(op, args), odd = mistypedWords(texts)
   const listed = titles.length ? ` ${op === 'ppt.build' ? 'Slides' : 'Headings'}: ${titles.map((title, at) => `${at + 1}. ${title}`).join(' / ')}.` : ''
   return {
     ...receipt, ...count, ...(titles.length ? { titles } : {}),
-    verification: `Saved as ${built.name} and compared byte for byte by the host; no Office window was opened.${listed} It is done: do not read it back or build it again. Answer now with its markdownLink.`,
-    ...(odd.length ? { mistyped: `These words are not Korean anyone types, so they were garbled while writing: ${odd.join(', ')}. Fix only those with ONE file_edit_package call on this file (sourcePath: its path, expectedSha256: its sha256, name: ${built.name}, edits {slide, text, with}), then answer.` } : {}),
+    verification: `Saved as ${name} and compared byte for byte by the host; no Office window was opened.${listed} It is done: do not read it back or build it again. Answer now with its markdownLink.`,
+    ...(odd.length ? { mistyped: `These words are not Korean anyone types, so they were garbled while writing: ${odd.join(', ')}. Fix only those with ONE file_edit_package call on this file (sourcePath: its path, expectedSha256: its sha256, name: ${name}, edits {slide, text, with}), then answer.` } : {}),
   }
 }
 
@@ -101,11 +107,13 @@ export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTo
   // The same deck or document built again in this session is the file already
   // handed in, not a twin: built bytes carry a timestamp (QA 0.8.142 B11 duplicates).
   const composed = new Map<string, unknown>()
+  // The names this tool set's builds saved (one turn's: ipc.ts makes the set per turn), which a later build here may replace.
+  const own = new Set<string>()
   const tools = officeTools({ run: async (op, args, signal) => {
     if (op === 'ppt.build' || op === 'word.write') {
       const key = `${op}\0${JSON.stringify(args)}`
       if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
-      const receipt = await composeOffice(op, args, outputs, signal, () => assertDesktopTurnNotStopped(lane))
+      const receipt = await composeOffice(op, args, outputs, own, signal, () => assertDesktopTurnNotStopped(lane))
       // Another build under this name replaced the file an earlier receipt names: that receipt is no longer the file to hand back.
       const named = (one: unknown): string | undefined => /^\[([^\]]+)\]/.exec(String((one as { markdownLink?: unknown }).markdownLink ?? ''))?.[1]?.toLowerCase()
       for (const [held, earlier] of composed) if (named(earlier) === named(receipt)) composed.delete(held)
