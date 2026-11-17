@@ -393,6 +393,17 @@ describe('team hire tools', () => {
     const other: TeamMember = { ...m, state: 'working' }
     settleMember(other, { answer: `${first}\n\n---\n\n모바일에서도 변경 내용을 볼 수 있어요.\nhttps://linear.app/changelog/2026-11-04-mobile-diffs` }, 'now', true)
     expect(other.result).toContain('mobile-diffs')
+    // c6b r2: two different events from one page, a rule line between them: both are kept (the second was dropped for naming no new address).
+    const two: TeamMember = { ...m, brief: '다음 달 행사 일정 2개 정리', state: 'working' }
+    delete two.result
+    settleMember(two, { answer: '12월 2일 행사 A가 열려요. https://example.com/events\n---\n12월 9일 행사 B가 열려요. https://example.com/events' }, 'now', true)
+    expect(two.result).toContain('12월 2일 행사 A')
+    expect(two.result).toContain('12월 9일 행사 B')
+    // Under a heading too, when it gives a day the first half does not.
+    const headed: TeamMember = { ...m, state: 'working' }
+    delete headed.result
+    settleMember(headed, { answer: '12월 2일 행사 A가 열려요. https://example.com/events\n\n---\n\n**다른 행사**\n\n12월 9일 행사 B가 열려요. https://example.com/events' }, 'now', true)
+    expect(headed.result).toContain('12월 9일 행사 B')
     // The paths this does not touch: an answer with no address keeps what it read; a found-nothing answer keeps it and is marked; no answer is what was read.
     const bare: TeamMember = { ...m, state: 'working' }
     settleMember(bare, { answer: 'BYOK가 11월 12일에 나왔어요.', timedOut: true, read }, 'now', true)

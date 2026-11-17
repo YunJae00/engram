@@ -315,12 +315,15 @@ const NOTHING_SAID = /찾지 못|못 찾|찾을 수 ?없|(?:소식|내용|정보
 export const foundNothing = (answer: string): boolean => !!answer && answer.length <= 400 && !/https?:\/\//.test(answer) && NOTHING_SAID.test(answer)
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
 // c6 C3: 도윤's stored result was its answer, a rule line, the same answer again under a heading, its suggested replies, and a shopping row
-// it had only read. A teammate's answer is kept once: the replies block is for a person's thread, and a half after a rule line that names
-// no address the first half does not is the first half again.
+// it had only read. A teammate's answer is kept once: the replies block is for a person's thread, and the same answer again under a heading goes.
 const addressesIn = (text: string): string[] => (text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
 function saidOnce(answer: string): string {
   const plain = answer.replace(/\s*```replies[^]*?(?:```|$)/g, '').trim(), [first = '', ...more] = plain.split(/\n\s*-{3,}\s*\n/), named = addressesIn(first)
-  const kept = more.filter(half => { const again = addressesIn(half); return !again.length || again.some(url => !named.includes(url)) })
+  // c6b r2: "12월 2일 행사 A … /events", a rule line, "12월 9일 행사 B … /events": the second event was dropped for citing the same page. A half is
+  // the first again only in the shape that was seen: it opens on a heading and gives no address and no number the first does not.
+  // shortcut: a different item under a heading with the same page and the same numbers is still dropped; compare the wording if that shows up.
+  const numbers: string[] = first.match(/\d+/g) ?? []
+  const kept = more.filter(half => !/^\s*(?:#{1,6}\s|\*\*[^*\n]+\*\*\s*(?:\n|$))/.test(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
   return kept.length === more.length ? plain : [first.trim(), ...kept.map(half => half.trim())].join('\n\n---\n\n')
 }
 // A job that asks for a schedule, a list or a number of things, and a line that carries a day.

@@ -1463,6 +1463,10 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   for (const result of ['소프트웨이브 2026은 12월 2일 코엑스에서 열려요. https://a.example/sw', '소프트웨이브 2026은 2026년 12월 2일 코엑스에서 열려요. https://a.example/sw', 'ACC 2026은 12월에 열려요(11월 10일 기사). https://a.example/acc', '코엑스에서 큰 행사가 열려요. https://a.example/x', 'ACC는 2025년 12월 11일에 열렸고, 소프트웨이브는 12월 2일에 열려요. https://a.example/x'])
     expect(inside(result), result).not.toContain('안 보여요')
   expect(inside('토요일(11/21)은 맑고 일요일(11/22)은 흐려요. https://w.example/seoul', '이번 주말 서울 날씨 찾기')).not.toContain('안 보여요')
+  // c6b r2: last year's event and "nothing for this year" on one line: only the second sentence is set aside, so the answer still opens on what is missing.
+  expect(inside('ACC 2025는 2025년 12월 11일 서울에서 열려요. 그 외 올해 12월 행사는 확인되지 않았어요. https://example.com/acc')).toBe('지민이 찾아봤는데, 올해 12월 일정은 아직 안 보여요. 가장 가까운 건 작년 12월 11일 거예요.\n\nACC 2025는 2025년 12월 11일 서울에서 열려요. [example.com](https://example.com/acc)')
+  // Two events from one page, as settleMember now keeps them, are both shown.
+  expect(inside('12월 2일 행사 A가 열려요. https://example.com/events\n---\n12월 9일 행사 B가 열려요. https://example.com/events', '다음 달 행사 일정 2개 정리')).toMatch(/1\. 12월 2일 행사 A가 열려요\.\n2\. 12월 9일 행사 B가 열려요\./)
   // In a table the part's row says it (C3's 노션 row: an offline mode of 2025.08.19 under "이번 주").
   const row = mergedReport(s5.c3, undefined, [], ctx).split('\n').find(line => line.startsWith('| 노션'))!
   expect(row).toContain('| 노션 (지민) | 이번 주 새 소식은 아직 안 보여요. 가장 가까운 건 작년 8월 19일 거예요. 노션, 네트워크 없이도 작업 가능한 \'오프라인 모드\' 출시 (2025.08.19.)')

@@ -874,7 +874,9 @@ function outsideOf(brief: string, result: string, now = new Date()): Outside | u
   const asked = (handedFrom(brief)?.brief ?? brief).split('\n')[0]!, period = askedPeriod(asked, now)
   if (!period || !result.trim() || result.startsWith('Failed: ')) return undefined
   let nearest: { away: number; year?: number; month: number; day?: number; line: string } | undefined
-  for (const line of findings(result).lines) {
+  // c6b r2: "ACC 2025는 2025년 12월 11일 … 열려요. 그 외 올해 12월 행사는 확인되지 않았어요." on one line was skipped whole, and last year's event led
+  // the answer. Only the sentence that says nothing was found is skipped.
+  for (const line of findings(result).lines.flatMap(one => one.split(/(?<=[^\d\s][.!?])\s+/))) {
     if (SAYS_NONE.test(line)) continue
     for (const at of line.matchAll(A_DATE)) {
       const year = Number(at[1] ?? at[4]) || undefined, month = Number(at[2] ?? at[5]), day = Number(at[3] ?? at[6]) || undefined
