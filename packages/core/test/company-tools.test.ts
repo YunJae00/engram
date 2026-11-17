@@ -958,9 +958,10 @@ test('c4 C7: "내 일정 뭐 있어?" is answered from the stored schedules, and
   const weekly = kept('a', '지난주 팀이 한 일 요약해줘', [1], 9)
   for (const ask of ['내 일정 뭐 있어?', '일정 뭐 있어', '내 스케줄 알려줘']) expect(isDutyListAsk(ask), ask).toBe(true)
   for (const ask of ['내일 일정 정리해줘', '매주 월요일 9시에 요약해줘', '일정표 만들어줘']) expect(isDutyListAsk(ask), ask).toBe(false)
-  expect(dutyList([])).toBe('아직 없어요.')
-  expect(dutyList([weekly, { id: 'r', name: 'x', goal: 'x', routineId: 'r1', schedule: { days: [1], hour: 8, minute: 0 } } as BotTask, { id: 'n', name: 'y', goal: 'y' } as BotTask])).toBe('매주 월요일 9시에 지난주 팀이 한 일 요약하는 거 하나 있어요.')
-  expect(dutyList([weekly, kept('b', 'AI 뉴스 정리해줘', [0, 1, 2, 3, 4, 5, 6], 18)])).toBe('일정은 2개 있어요.\n\n- 매주 월요일 9시: 지난주 팀이 한 일 요약\n- 매일 오후 6시: AI 뉴스 정리')
+  // c9 fix 5: whose schedule it is is said (Engram's, not the person's calendar).
+  expect(dutyList([])).toBe('제가 따로 챙기는 일정은 아직 없어요.')
+  expect(dutyList([weekly, { id: 'r', name: 'x', goal: 'x', routineId: 'r1', schedule: { days: [1], hour: 8, minute: 0 } } as BotTask, { id: 'n', name: 'y', goal: 'y' } as BotTask])).toBe('제가 챙기는 건 매주 월요일 9시에 지난주 팀이 한 일 요약해 드리는 거 하나예요.')
+  expect(dutyList([weekly, kept('b', 'AI 뉴스 정리해줘', [0, 1, 2, 3, 4, 5, 6], 18)])).toBe('제가 챙기는 정기 일정은 2개예요.\n\n- 매주 월요일 9시: 지난주 팀이 한 일 요약\n- 매일 오후 6시: AI 뉴스 정리')
   // Cancel: only one schedule, and the reply just before named it (the list above, or the line that confirmed it).
   expect(dutyToCancel('그거 취소해', [weekly], dutyList([weekly]))).toBe(weekly)
   expect(dutyToCancel('그 일정 없애줘', [weekly], '매주 월요일 9시에 지난주 팀이 한 일 요약해 드릴게요.')).toBe(weekly)
@@ -1283,22 +1284,24 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   const good = '월요일에 지우가 노션 신기능을 살펴봤는데 새 발표는 없었어요. 서연은 슬랙에서 세일즈포스 에이전트 스워밍 기능을 찾았어요. 지우 조사로 홍보 문구 3개도 썼고요.'
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return good } })).toBe(good)
   expect(asked[0]).toContain('two or three short sentences')
-  // One small ask: the jobs of this week only, each with who and the day in words, no address.
+  // One small ask: the jobs of this week only, each with who and the day in words, no address. c9 fix 5: the span is not said again in a job.
   expect(asked).toHaveLength(1)
   expect(asked[0]!.length).toBeLessThan(3000)
   const record = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; got: string; day: string; from?: string }[]
-  expect(record.map(job => [job.who, job.did, job.day])).toEqual([['지우', '이번 주 노션 신기능 조사', '월요일'], ['서연', '이번 주 슬랙 신기능 조사', '월요일'], ['서연', '홍보 문구 3개 뽑기', '월요일']])
+  expect(record.map(job => [job.who, job.did, job.day])).toEqual([['지우', '노션 신기능 조사', '월요일'], ['서연', '슬랙 신기능 조사', '월요일'], ['서연', '홍보 문구 3개 뽑기', '월요일']])
   expect(record[2]!.from).toBe('지우')
   expect(asked[0]).not.toMatch(/https?:\/\/|2026-11/)
-  expect(asked[0]).toContain('say that day once')
+  // c9 fix 5: asked about this week, the summary speaks in it, with no day word per job (C10 opened "오늘").
+  expect(asked[0]).toContain('start with exactly "이번 주엔" and use no other day or time word')
   // A text the person should not read gives way to the host's own sentence: a list, a raw day, an address, someone left out, nothing at all.
-  const plain = '월요일에 지우는 이번 주 노션 신기능 조사를 했어요. 서연은 이번 주 슬랙 신기능 조사랑 홍보 문구 3개 뽑기를 했어요.'
+  // c9 fix 5: the host's own summary speaks in the span asked, says the span once, and puts the found-nothing jobs in one sentence of their own.
+  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 지우가 찾은 걸로 홍보 문구 3개 뽑았어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요.'
   // c7 C10: the clause chain the run showed ("…했는데 …없었고, …도 …없었어요") and five sentences are refused too.
   for (const bad of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.', '', undefined]) expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => bad })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, timeoutMs: 10, write: () => new Promise(() => undefined) })).toBe(plain)
   // Nothing in the time asked is said by the host; the kept weekly ask ("지난주 …") reads last week.
-  expect(await teamSummary(c.paths, { bots, message: '지난주 팀이 한 일 요약해줘', now, write: async () => good })).toBe('지난주에는 아직 팀이 끝낸 일이 없어요.')
+  expect(await teamSummary(c.paths, { bots, message: '지난주 팀이 한 일 요약해줘', now, write: async () => good })).toBe('지난주엔 아직 팀이 끝낸 일이 없어요.')
   const later = JSON.parse((await (async () => { const seen: string[] = []; await teamSummary(c.paths, { bots, message: '매주 월요일 아침 9시에 지난주 팀이 한 일 요약해줘', now: new Date(2026, 10, 23, 9), write: async prompt => { seen.push(prompt); return good } }); return seen[0]! })()).split('Record: ')[1]!) as { day: string }[]
   expect(later.map(job => job.day)).toEqual(['11월 16일', '11월 16일', '11월 16일'])
   // With no quick model the lead answers from the record in its prompt.
@@ -1580,18 +1583,21 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   expect(asked[0]).not.toMatch(/노션이랑 리니어|서연이 지민/)
   expect(asked[0]).toContain('"A랑 B 쪽은 새 소식이 없었어요."')
   const jobs = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; nothing: boolean }[]
-  expect(jobs.map(job => [job.who, job.did, job.nothing])).toEqual([['서연', '이번 주 슬랙 신기능 조사', false], ['지우', '이번 주 노션 신기능 조사', false], ['도윤', '이번 주 리니어 신기능 조사', false], ['지우', '다음 달 서울 IT 행사 일정 정리', false], ['서연', '홍보 문구 3개 뽑기', false], ['지우', '이번 주말 서울 날씨 찾기', false], ['서연', '주말 나들이 추천 문구 한 줄 쓰기', false]])
+  expect(jobs.map(job => [job.who, job.did, job.nothing])).toEqual([['서연', '슬랙 신기능 조사', false], ['지우', '노션 신기능 조사', false], ['도윤', '리니어 신기능 조사', false], ['지우', '다음 달 서울 IT 행사 일정 정리', false], ['서연', '홍보 문구 3개 뽑기', false], ['지우', '이번 주말 서울 날씨 찾기', false], ['서연', '주말 나들이 추천 문구 한 줄 쓰기', false]])
   // The same summary with the Linear job said as found passes.
-  const right = '오늘 서연이 슬랙 신기능을 조사해서 Salesforce 에이전트 스워밍 기능을 확인했어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았고, 지우는 노션이랑 다음 달 서울 IT 행사를 살펴봤어요. 서연이 그 조사로 홍보 문구 3개를 썼어요.'
+  const right = '이번 주엔 서연이 슬랙 신기능을 조사해서 Salesforce 에이전트 스워밍 기능을 확인했어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았고, 지우는 노션이랑 다음 달 서울 IT 행사를 살펴봤어요. 서연이 그 조사로 홍보 문구 3개를 썼어요.'
   expect(await sum(right)).toBe(right)
   // A job that did find nothing may sit in such a clause, alone; a found one beside it may not.
   const d = await company()
   await recordFacts(d.paths, TEAM_MEMORY, ['이번 주 노션 신기능 조사 → 못 찾았어요 (지우, 2026-11-17)', '이번 주 리니어 신기능 조사 → BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. (도윤, 2026-11-17)'], now)
   const two = (text: string) => teamSummary(d.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return text } })
-  const fine = '오늘 지우가 노션 쪽을 봤는데 새 소식은 없었어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았어요.'
+  const fine = '이번 주엔 지우가 노션 쪽을 봤는데 새 소식은 없었어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았어요.'
   expect(await two(fine)).toBe(fine)
   expect((JSON.parse(asked.at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, false])
-  expect(await two('오늘 지우랑 도윤이 노션이랑 리니어 쪽은 새 소식이 없었어요.')).not.toContain('없었')
+  // Refused; the host's own summary keeps the found job out of its found-nothing sentence (c9: that sentence names only 지우's part).
+  const kept = (await two('오늘 지우랑 도윤이 노션이랑 리니어 쪽은 새 소식이 없었어요.'))!
+  expect(kept).toBe('이번 주엔 도윤은 리니어 신기능 조사를 했어요. BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요.')
+  expect(kept.split(/(?<=[.!?])\s+/).filter(one => one.includes('없었')).join(' ')).not.toMatch(/리니어|도윤/u)
   expect(await two('오늘 지우는 노션을 봤고, 도윤 쪽은 못 찾았어요.')).not.toContain('못 찾았')
   // The record line keeps the finding: the sentence that only says something was confirmed goes before the line is cut to length.
   const e = await company()
@@ -1938,3 +1944,24 @@ test('stack-7: a named teammate on a lookup keeps both their way of speaking and
   expect(helper).not.toMatch(/way of speaking|Answer as yourself/)
 })
 import { LOOKUP_RULE, memberPersona } from '../src/team-hire-tools.js'
+
+// c9 fix 5 (C10, USER-NOTES): "…나눠 맡겼어요." → "지민한테 맡겼어요." → "…넘겼어요." read as a run of status lines.
+test('c9 fix 5: a later hand-off in one thread is said another way, each one sentence that names who has it, never 보고', async () => {
+  const said = async (o: Awaited<ReturnType<typeof office>>, args: Record<string, unknown>): Promise<string> => {
+    const line = String(await o.assign(args))
+    expect(Array.from(line).length, line).toBeLessThanOrEqual(60)
+    expect(line).not.toMatch(/보고/u)
+    await appendBotTurn(o.paths, o.chief.id, { role: 'assistant', text: line, at: new Date().toISOString() })
+    return line
+  }
+  const o = await office()
+  expect(await said(o, { wait: false, to: [{ who: '지민', brief: '다음 달 서울 IT 행사 일정 정리' }] })).toBe('지민한테 맡겼어요.')
+  expect(await said(o, { wait: false, to: [{ who: '서연', brief: '홍보 문구 3개 써줘' }] })).toBe('서연한테 넘겨 놨어요.')
+  expect(await said(o, { wait: false, to: [{ who: '지민', brief: '부산 맛집 목록 정리' }] })).toBe('지민이 바로 볼 거예요.')
+  // A split after a split; a hand-off with a then after one.
+  const p = await office()
+  expect(await said(p, { wait: false, to: [{ who: '지민', brief: '노션 신기능 조사' }, { who: '서연', brief: '슬랙 신기능 조사' }] })).toBe('지민, 서연한테 나눠 맡겼어요.')
+  expect(await said(p, { wait: false, to: [{ who: '지민', brief: '피그마 신기능 조사' }, { who: '서연', brief: '지라 신기능 조사' }] })).toBe('지민, 서연한테 하나씩 넘겨 놨어요.')
+  expect(await said(p, { wait: false, to: [{ who: '지민', brief: '이번 주말 서울 날씨 찾기', then: { who: '서연', brief: '문구 한 줄 써줘' } }] })).toBe('지민한테 맡기고, 끝나면 서연한테 넘길게요.')
+  expect(await said(p, { wait: false, to: [{ who: '지민', brief: '이번 주말 부산 날씨 찾기', then: { who: '서연', brief: '문구 한 줄 써줘' } }] })).toBe('지민이 먼저 하고 서연이 이어서 할 거예요.')
+})
