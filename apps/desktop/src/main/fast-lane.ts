@@ -1,4 +1,4 @@
-import { askedCount, datedQuery, defaultSearchTemplate, EVENT_ROWS, headlineNames, isOutsideAsk, searchUrlFor, sourceName, withoutRelativeTime, type AgentTool } from 'core'
+import { askedCount, datedQuery, defaultSearchTemplate, EVENT_ROWS, eventRank, headlineNames, isOutsideAsk, searchUrlFor, sourceName, withoutRelativeTime, type AgentTool } from 'core'
 // grokbar: a web lookup, or a "have bots research this" ask, ran on the work model with ~72 tools and a 38k-char prompt:
 // 13 s to plan a hire, 8 s to merge, 30-45 s for one weather or stock lookup. Such a turn runs on the smart tier with a
 // menu small enough to be put in the prompt whole (PRELOADED_TOOLS_MAX). The match is a closed word list, no model:
@@ -230,7 +230,15 @@ export function newsItems(answer: string, held: readonly string[], ask: string):
   // c9a r2: with no round among the results, an item is never a statistic or a plan made to stand in for one.
   // stack-9: an item is dropped only when another remains (rule 7: what is missing is labeled, never hidden). With no round the items stay,
   // under a lead that says none is one ("찾아봤는데 확실한 건 아직 없어요." alone read as no work done: c9a run R3, human 1).
-  if (!rounds.length) { let n = 0; return `딱 맞는 소식은 아직 없어서, 가까운 소식만 모았어요.\n\n${numbered.filter(item).map(line => line.replace(/^\s*\d+[.)]/, `${++n}.`)).join('\n')}` }
+  // c10a R3/H6: "딱 맞는 소식은 아직 없어서" stood over a real round (메디인테크 338억 시리즈C) the search had not ranked as one. With no round
+  // marked, an item whose own words rank as a round is one: those are the list (shortSaid says how many). Only with none at all do the
+  // items follow that lead, unnumbered, as related news (a statistic or a plan is never a numbered item).
+  if (!rounds.length) {
+    const own = items.filter(line => eventRank({ title: line.replace(/^\s*\d+[.)]\s*/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '').trim(), url: '', snippet: '', date: '' }, ask) === 2)
+    let n = 0
+    if (own.length) return own.map(line => line.replace(/^\s*\d+[.)]/, `${++n}.`)).join('\n')
+    return `딱 맞는 소식은 아직 없어서, 가까운 소식만 모았어요.\n\n${items.map(line => line.replace(/^\s*\d+[.)]/, '-')).join('\n')}`
+  }
   const names = rounds.flatMap(row => headlineNames(row.split(' — ')[0]!.slice(2), ask)), urls = rounds.map(row => / — (https?:\/\/\S+)/.exec(row)?.[1]).filter(Boolean) as string[]
   // c9a r3 (Codex r2): a background article on a funded company (메디인테크's government support) named that company, so it stayed. An item
   // linking a background row is background whatever it names; one linking an unknown page counts by name.
@@ -258,7 +266,8 @@ export function shortSaid(ask: string, answer: string): string {
   const asked = askedCount(ask), lines = answer.split('\n'), first = lines.findIndex(line => /^\s*\d+[.)]\s/.test(line)), items = lines.filter(line => /^\s*\d+[.)]\s/.test(line)).length
   if (!asked || first < 0 || items >= asked || !/[가-힣]/.test(answer)) return answer
   if (/(?:개|건|가지)\s?(?:만|뿐|밖에)|뿐이|밖에\s?(?:없|안|못)|아직\s?없/.test(lines.slice(0, first).join(' '))) return answer
-  return `확실한 건 ${items}건이라 ${items}개만 넣었어요.\n\n${answer.trimStart()}`
+  // c10a R3/H6: the count said plainly, of the kind asked ("확실한 투자 유치 건은 2개예요.").
+  return `확실한 ${/투자|펀딩/.test(ask) ? '투자 유치 ' : ''}건은 ${items}개예요.\n\n${answer.trimStart()}`
 }
 // c4 R2: "봇들한테 나눠 맡길게요." was said to a person who never said 봇. The line says 봇 only after them; otherwise it names the split.
 const SPLIT_INTO = ['둘로', '셋으로', '넷으로'], SPLIT_COUNT = /([2-4])\s*(개|곳|명|가지|군데|종)/

@@ -80,7 +80,7 @@ it('stack-9 (c9a Codex r3): a held round the list left out joins it; "깜짝 …
   const items = out.split('\n').filter(line => /^\d+\. /.test(line))
   expect(items).toHaveLength(5)
   expect(items[4]).toBe('5. 아크, 100억 원 투자 유치 — 11월 5일 [출처](https://news.example/4)')
-  expect(out).not.toMatch(/확실한 건 \d건이라|네 개예요/)
+  expect(out).not.toMatch(/확실한 (?:투자 유치 )?건은 \d개예요|네 개예요/)
   // A round already in the list under another article is not added again; nothing is added past the count.
   const other = answer.replace('https://news.example/0', 'https://other.example/medi')
   const again = newsItems(other, [held], ask).split('\n').filter(line => /^\d+\. /.test(line))

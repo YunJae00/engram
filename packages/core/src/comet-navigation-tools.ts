@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventQuery, eventRank, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
+import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventQuery, eventRank, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, ROUND_UP_QUERY, ROUND_UP_TITLE, roundUpRows, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -23,6 +23,8 @@ const NEWS_COUNTED_CAP = 16
 const NEWS_FEW = 3
 // c9a R3: the whole search of a counted news ask, its extra page for the event included, stays inside this.
 const EVENT_GATHER_MS = 6_000
+// c10a R3/H6: the second pass of a counted list still short after the first: at most three more loads, inside this.
+const SECOND_PASS_MS = 12_000
 /** c9a R3: the words that tell the event rows of a counted news list from its background rows (fast-lane newsItems reads them). */
 export const EVENT_ROWS = 'The rows that are the event asked for, each a list item:', BACKGROUND_ROWS = 'Background only:'
 // A results page often holds the answer itself (weather, a price, a rate) a few hundred characters in.
@@ -220,8 +222,34 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
             older = withoutRepeats([...every, ...rest], query).slice(every.length).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
           }
           const aside = [...every, ...older].filter(one => rank(one) < floor).sort((a, b) => rank(b) - rank(a))
+          const olderRows = older.length
           older = real(older)
+          // c10a R3/H6: one pass (three searches in 1.8 s) held one round of five asked, and 25 s of the budget went unused. While the rounds held
+          // are fewer than asked, a second pass runs before the model writes: the event's own words over three months, then one weekly
+          // round-up of funding rounds (searched, its first such page read), whose rounds join as rows with their own links. One after the
+          // other: one tab. A round inside the period joins the recent rows; an older one joins the older rows with its year.
+          const counts = [{ pass: 1, recent: every.length, older: olderRows, rounds: recent.length + older.length }]
+          if (own && floor === 2 && recent.length + older.length < count! && !context.signal?.aborted) {
+            const until = Date.now() + SECOND_PASS_MS, found: typeof listed = [], before = [...recent, ...older]
+            const load = (address: string | null): Promise<typeof page | null> => !address || until - Date.now() < 1_000 ? Promise.resolve(null)
+              : courier.fetchPage(address, AbortSignal.any([...(context.signal ? [context.signal] : []), AbortSignal.timeout(until - Date.now())])).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null })
+            const newRounds = (): typeof listed => withoutRepeats([...before, ...found.filter(one => rank(one) === 2 && !before.some(held => held.url === one.url))], query).slice(before.length)
+            const quarter = searchUrlFor(newsTemplate(general, 'quarter'), own), wider = await load(quarter !== eventUrl ? quarter : null)
+            if (wider && !wider.wall) found.push(...list(wider, wider.url || quarter!).filter(one => inPeriod(one.date, 'quarter', now)))
+            if (before.length + newRounds().length < count!) {
+              const upUrl = searchUrlFor(newsTemplate(general, 'month'), ROUND_UP_QUERY), up = await load(upUrl)
+              const top = up && !up.wall ? searchResults((up.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), up.text, ROUND_UP_QUERY, up.url || upUrl!, NEWS_CAP, now).find(one => ROUND_UP_TITLE.test(one.title)) : undefined
+              const read = top ? await load(top.url) : null
+              if (read && !read.wall && top) found.push(...roundUpRows(read, asked, query, top.date))
+            }
+            const added = newRounds()
+            recent.push(...added.filter(one => !period || inPeriod(one.date, period, now)))
+            older.push(...added.filter(one => period && !inPeriod(one.date, period, now)).map(one => ({ ...one, date: datedWithYear(one.date, now) })))
+            counts.push({ pass: 2, recent: recent.length, older: older.length, rounds: recent.length + older.length })
+          }
           const picked = [...recent, ...older, ...aside].slice(0, cap)
+          // So that the next short list is explained by the log: the rows and rounds of each pass, and what the model is handed.
+          if (ranked && own) for (const one of counts) deps.onMetric?.({ kind: 'tool', operation: 'news-pass', ms: Date.now() - started, counts: { ...one, kept: picked.length } })
           const behind = await resolveResultLinks(picked.map(one => ({ text: one.title, url: one.url })), at, courier.followRedirect?.bind(courier), context.signal)
           const links = picked.map((one, index) => ({ ...one, url: behind[index]?.url ?? one.url }))
           const found = [page.text, ...links.map((one) => `${one.title} ${one.url}`)].join(' ')

@@ -190,16 +190,17 @@ export function newsTemplate(template: string, period?: NewsPeriod): string {
     const url = new URL(template.replace('{q}', 'QQ'))
     if (url.host !== 'search.naver.com') return template
     url.searchParams.set('where', 'news')
-    if (period) url.searchParams.set('nso', `so:r,p:${{ day: '1d', week: '1w', month: '1m', year: '1y' }[period]},a:all`)
+    if (period) url.searchParams.set('nso', `so:r,p:${{ day: '1d', week: '1w', month: '1m', quarter: '3m', year: '1y' }[period]},a:all`)
     return url.toString().replace('QQ', '{q}')
   } catch { return template }
 }
 // grokbar c5 R3/H6: "요즘 … 투자 뉴스" was searched by relevance over all time and came back as three 2024 rounds, a plan and a visit.
 // A news ask that says when is searched for that period: a day for 오늘, a week for 이번 주, a month for 요즘 / 최근 / 이번 달.
 // year: never asked for by a word; it bounds the wider page that fills a counted list (c6 R3), so a 2024 article is not "요즘" news.
-export type NewsPeriod = 'day' | 'week' | 'month' | 'year'
+// quarter: never asked for by a word either; the second pass of a counted list that is still short searches it (c10a R3).
+export type NewsPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year'
 const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\s?주|금주|\bthis week\b/i, 'week'], [/요즘|요새|최근|이번\s?달|\b(recent|recently|lately|these days|this month)\b/i, 'month']]
-const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, year: 366 }
+const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, quarter: 92, year: 366 }
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 // The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
@@ -260,9 +261,11 @@ export const withoutRepeats = (rows: SearchResult[], query: string): SearchResul
 // somebody (for an investment ask: a company with 유치 / 투자받 / 시리즈 A-C / an amount in 억 원), 0 when it only mentions it (a forum,
 // a visit, a portfolio, a plan to raise, an acquisition), 1 otherwise or when the ask is of a kind not listed here.
 // shortcut: one kind of event (investment), by title words and no name recognition; add a row here for another kind of counted news.
+// c10a R3: a round whose headline goes on to a plan ("메디인테크, 338억 시리즈C 유치…해외 진출 추진") was a mention: a plan word now
+// marks one only right after the event's word ("투자 유치 추진", "투자 검토").
 // own: the words the event is reported in, for one more search when the first page holds too few of it (c9a R3).
 const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp, own: string][] = [
-  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|추진|검토|나선다|목표|언급|사례|육성/i, '시리즈 투자 유치 억 원'],
+  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|(?:유치|투자|펀딩|조달)\s*(?:를|을)?\s*(?:추진|검토|나선다|나서|목표)|언급|사례|육성/i, '시리즈 투자 유치 억 원'],
 ]
 /** c9a R3: the search words for one more page of the event a counted news ask is about ("… 시리즈 투자 유치 억 원"), or undefined for an ask of a kind not listed. */
 export function eventQuery(query: string, ask: string): string | undefined {
@@ -294,6 +297,28 @@ export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
   // c9a r2: with the floor kept at 2 for a known kind, "리벨리온 AI 스타트업 투자 유치 620억" (the company first, no mark) would be background.
   // A headline that opens on a party's name is about that party.
   return named || party(/^[\p{L}\p{N}]+/u.exec(row.title)?.[0] ?? '') ? 2 : 1
+}
+// c10a R3/H6: a counted list still short after the first pass reads one weekly round-up of funding rounds. Its rounds are the lines (or
+// the links) that rank as a round (eventRank 2) and carry the ask's own topic words ("AI"), each with its own article link when the page
+// links one, else the round-up's address; each is dated with the round-up's date.
+// shortcut: line by line, no layout reading; a round-up that lists rounds in a table with the company in one cell and the amount in another yields nothing.
+export const ROUND_UP_QUERY = '스타트업 투자 유치 주간 리포트'
+export const ROUND_UP_TITLE = /주간|위클리|weekly|이번\s?주|한\s?주|투자\s?(?:동향|리포트|브리핑|소식|정리|라운드업)|라운드업/i
+const TOPIC_PLAIN = /^(?:국내|해외|글로벌|스타트업|벤처|투자|유치|뉴스|기사|소식|기업|업계|요즘|최근|이번|시리즈|억|원|받은|받|곳)$/
+export function roundUpRows(page: { url: string; text: string; links?: { text: string; url: string }[] }, ask: string, query: string, date: string): SearchResult[] {
+  const topic = query.split(/\s+/).filter(word => word.length >= 2 && !TOPIC_PLAIN.test(word)).map(word => word.toLowerCase())
+  const about = (line: string): boolean => !topic.length || topic.some(word => line.toLowerCase().includes(word))
+  const row = (title: string, url: string): SearchResult => ({ title: title.replace(/^[\s▲△▶►•·\-*\d.)]+/, '').replace(/\s+/g, ' ').trim().slice(0, 100), url, snippet: '', date })
+  const linked = (page.links ?? []).filter(link => /^https?:/.test(link.url) && link.url !== page.url && link.text.trim().length >= 8).map(link => row(link.text, link.url))
+  const lines = page.text.split(/\n|(?<=[.!?。]|다\.)\s+/).map(line => line.trim()).filter(line => line.length >= 8 && line.length <= 200).map(line => row(line, page.url))
+  const out: SearchResult[] = []
+  for (const one of [...linked, ...lines]) {
+    if (!one.title || eventRank(one, ask) !== 2 || !about(`${one.title} ${one.snippet}`)) continue
+    // A line that is a linked headline's own words is that article.
+    if (out.some(seen => seen.title.includes(one.title.slice(0, 20)) || one.title.includes(seen.title.slice(0, 20)))) continue
+    out.push(one)
+  }
+  return out
 }
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']

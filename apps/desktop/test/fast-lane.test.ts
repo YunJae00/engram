@@ -474,7 +474,7 @@ it('stack-7: a counted news list shorter than the count says so in its lead; a f
   const { shortSaid } = await import('../src/main/fast-lane.js')
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
   const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. [비바100](https://v.example/3)'
-  expect(shortSaid(ask, three)).toBe(`확실한 건 3건이라 3개만 넣었어요.\n\n${three}`)
+  expect(shortSaid(ask, three)).toBe(`확실한 투자 유치 건은 3개예요.\n\n${three}`)
   for (const lead of ['확실한 건 세 건이라 세 개만 넣었어요.', '이번 달 건 3개뿐이라 그것만 넣었어요.']) expect(shortSaid(ask, `${lead}\n\n${three}`)).toBe(`${lead}\n\n${three}`)
   const five = `${three}\n4. 넷째예요. [a](https://a.example/4)\n5. 다섯째예요. [b](https://b.example/5)`
   expect(shortSaid(ask, five)).toBe(five)
