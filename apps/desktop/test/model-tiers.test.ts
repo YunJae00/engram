@@ -672,8 +672,8 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
     expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),")
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
-    // The Korean lead and the appended offer hang on the desk kind, so a team result or a lookup never gets either.
-    expect(ipc).toContain("if (kind === 'ask' && !result.asked) result.answer = koreanLead(")
+    // The appended offer hangs on the desk kind, so a team result or a lookup never gets it. c11b: the host adds no Korean lead at all (koreanLead went).
+    expect(ipc).not.toContain('koreanLead(')
     expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = withOffer(")
   })
 })

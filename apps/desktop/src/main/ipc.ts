@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, listOnly, namesSubject, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, listShortfall, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, asState, koreanLead, talkOnly, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, talkOnly, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -2970,6 +2970,8 @@ export function registerIpc(ctx: VaultContext): void {
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
+            // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
+            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined, shortfall: (answer: string) => listShortfall(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -3031,7 +3033,6 @@ export function registerIpc(ctx: VaultContext): void {
           result.answer = laneTidy(result.answer)
           // c10a T2: after a swap the answer names what it is now about (fast-lane namesSubject).
           if (solo && lookup.ask() !== request.message) result.answer = namesSubject(result.answer, lookup.ask())
-          if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
           result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)
@@ -3053,10 +3054,6 @@ export function registerIpc(ctx: VaultContext): void {
         if (answered !== result.answer) { flog('chat-phase', JSON.stringify({ channel, phase: 'unverified', reason: (result.incomplete ?? 'limit').slice(0, 400) })); result.answer = answered }
         // A short ask answered with no tool call shows the answer alone, without a line that only announces it (first-line.ts answerAlone).
         if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)
-        // c7c M3: a fact about the person is a state ("…일하고 계세요."), not an instruction ("…일하세요.") (first-line.ts asState).
-        if (short && !result.asked) result.answer = asState(request.message, result.answer)
-        // c5c Q3: a line asked for in another language is led by a few Korean words (first-line.ts koreanLead).
-        if (kind === 'ask' && !result.asked) result.answer = koreanLead(request.message, result.answer, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)))
         // c5c Q1: small talk never asks how it can help (first-line.ts withoutHelpDesk).
         if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
         // c6c H3: a 결정사항 block that only repeats the 할 일 lines is dropped (desk-lane.ts withoutSameDecisions).
@@ -3072,8 +3069,6 @@ export function registerIpc(ctx: VaultContext): void {
         if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
         if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
-        // A Korean thread's answer does not open with an English working note (first-line.ts withoutWorkNote).
-        if (!result.asked && threadKorean(request.message, request.history ?? [])) result.answer = withoutWorkNote(result.answer)
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)

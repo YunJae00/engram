@@ -260,75 +260,8 @@ export function sameEvent(a: SearchResult, b: SearchResult, query: string): bool
   return held(mine, b) >= 2 || held(theirs, a) >= 2 || shared.some(word => word.length >= 3) && !!a.date && a.date === b.date && (held(mine, b) === mine.length || held(theirs, a) === theirs.length)
 }
 export const withoutRepeats = (rows: SearchResult[], query: string): SearchResult[] => rows.filter((row, i) => !rows.slice(0, i).some(earlier => sameEvent(earlier, row, query)))
-// c7 R3: five were asked for, the results held three funding rounds, and the list was filled with an acquisition mention and a row that
-// named no company. For a counted news ask the host orders the rows by their titles: 2 when the title names the event asked for beside
-// somebody (for an investment ask: a company with 유치 / 투자받 / 시리즈 A-C / an amount in 억 원), 0 when it only mentions it (a forum,
-// a visit, a portfolio, a plan to raise, an acquisition), 1 otherwise or when the ask is of a kind not listed here.
-// shortcut: one kind of event (investment), by title words and no name recognition; add a row here for another kind of counted news.
-// c10a R3: a round whose headline goes on to a plan ("메디인테크, 338억 시리즈C 유치…해외 진출 추진") was a mention: a plan word now
-// marks one only right after the event's word ("투자 유치 추진", "투자 검토").
-// own: the words the event is reported in, for one more search when the first page holds too few of it (c9a R3).
-const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp, own: string][] = [
-  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|(?:유치|투자|펀딩|조달)\s*(?:를|을)?\s*(?:추진|검토|나선다|나서|목표)|언급|사례|육성/i, '시리즈 투자 유치 억 원'],
-]
-/** c9a R3: the search words for one more page of the event a counted news ask is about ("… 시리즈 투자 유치 억 원"), or undefined for an ask of a kind not listed. */
-export function eventQuery(query: string, ask: string): string | undefined {
-  const kind = EVENTS.find(([words]) => words.test(ask))
-  return kind ? [...new Set(`${query} ${kind[3]}`.split(/\s+/).filter(Boolean))].join(' ') : undefined
-}
-// c7a r2: "국내 AI 스타트업 미국 투자 유치" ranked first: "미국" was counted as the company funded. A country, a region or a word for who or
-// how much is nobody's name.
-// shortcut: a closed word list, no name recognition; a describing word it lacks still passes as a name. Use a tagger if that shows.
-// c9a R3: a company's value or size before an amount ("기업가치 1조") is nobody's name either.
-// stack-9 (c9a Codex r3 #2): "깜짝 300억 투자 유치, 스타트업 업계 들썩" ranked as a round: a word of surprise or attention first is nobody's name.
-const NO_NAME = /^(올해|작년|지난해|내년|국내|해외|글로벌|업계|기업가치|가치|시가총액|시총|매출|예산|규모|미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|역대급|역대|사상|최대|최고|최초|초대형|초기|누적|총|약|무려|단숨에|연쇄|추가|후속|신규|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|깜짝|돌연|화제|속보|단독|주목|눈길|파격|거액|잭팟|급등|급성장|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
-// c7a r3: "국내 AI 스타트업 연쇄 투자 유치" and "… 사상 최대 투자 유치" ranked first: any word the lists lacked was the company. A word is the
-// funded company only where the headline marks it as one: a comma or a middle dot after it ("뤼튼, …"), or the round right after it
-// ("리벨리온 620억 원", "아크 시리즈 B", "Wrtn raises"). The lists above only take words away from those.
-// shortcut: by headline form, no name recognition. A company named with neither mark counts only as the headline's first word ("업스테이지
-// 투자 유치 성공"); a describing word right before an amount ("역대급 300억") or first ("깜짝 …") still passes. Use a tagger if either shows.
-const NAMED_BY = /^\s?[,·]|^\s*(?:\d[\d,.]*\s*(?:억|조)|시리즈|(?:raises?|secures?|closes?)\b)/i
-/** c9a R3: the words of a headline that can name who it is about (not the ask's words, not a place or a word of degree); a list item names one. */
-export const headlineNames = (title: string, ask: string): string[] => { const asked = nameWords(ask); return nameWords(title).filter(name => !NO_NAME.test(name) && !asked.some(one => alike(name, one))) }
-export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
-  const kind = EVENTS.find(([words]) => words.test(ask))
-  if (!kind) return 1
-  if (kind[2].test(row.title)) return 0
-  if (!kind[1].test(row.title)) return 1
-  const asked = nameWords(ask)
-  const party = (word: string): boolean => nameWords(word).some(name => !NO_NAME.test(name.replace(/(에서|서)$/, '')) && !asked.some(one => alike(name, one)))
-  const named = [...row.title.matchAll(/[\p{L}\p{N}]+/gu)].some(word => NAMED_BY.test(row.title.slice(word.index + word[0].length)) && party(word[0]))
-  // c9a r2: with the floor kept at 2 for a known kind, "리벨리온 AI 스타트업 투자 유치 620억" (the company first, no mark) would be background.
-  // A headline that opens on a party's name is about that party.
-  return named || party(/^[\p{L}\p{N}]+/u.exec(row.title)?.[0] ?? '') ? 2 : 1
-}
-// c10a R3/H6: a counted list still short after the first pass reads one weekly round-up of funding rounds. Its rounds are the lines (or
-// the links) that rank as a round (eventRank 2) and carry the ask's own topic words ("AI"), each with its own article link when the page
-// links one, else the round-up's address.
-// c10a r2 (Codex r1): every round was dated with the round-up's own date, a date none of those articles has. A row's date is one written
-// in its own words (its line, or the page line that holds its linked headline), else none: no date beats a wrong one.
-// shortcut: line by line, no layout reading; a round-up that lists rounds in a table with the company in one cell and the amount in another yields nothing.
-export const ROUND_UP_QUERY = '스타트업 투자 유치 주간 리포트'
-export const ROUND_UP_TITLE = /주간|위클리|weekly|이번\s?주|한\s?주|투자\s?(?:동향|리포트|브리핑|소식|정리|라운드업)|라운드업/i
-const TOPIC_PLAIN = /^(?:국내|해외|글로벌|스타트업|벤처|투자|유치|뉴스|기사|소식|기업|업계|요즘|최근|이번|시리즈|억|원|받은|받|곳)$/
-const WRITTEN_DAY = /\d{4}(?:\.\s?|-)\d{1,2}(?:\.\s?|-)\d{1,2}|(?:\d{4}년\s*)?\d{1,2}월\s*\d{1,2}일|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}(?:,? \d{4})?/i
-export function roundUpRows(page: { url: string; text: string; links?: { text: string; url: string }[] }, ask: string, query: string): SearchResult[] {
-  const textLines = page.text.split('\n')
-  const dateOf = (words: string): string => { const own = WRITTEN_DAY.exec(words)?.[0] ?? WRITTEN_DAY.exec(textLines.find(line => words.length >= 8 && line.includes(words.slice(0, 20))) ?? '')?.[0]; return own && resultDay(own) ? own : '' }
-  const topic = query.split(/\s+/).filter(word => word.length >= 2 && !TOPIC_PLAIN.test(word)).map(word => word.toLowerCase())
-  const about = (line: string): boolean => !topic.length || topic.some(word => line.toLowerCase().includes(word))
-  const row = (title: string, url: string): SearchResult => ({ title: title.replace(/^[\s▲△▶►•·\-*\d.)]+/, '').replace(/\s+/g, ' ').trim().slice(0, 100), url, snippet: '', date: dateOf(title.trim()) })
-  const linked = (page.links ?? []).filter(link => /^https?:/.test(link.url) && link.url !== page.url && link.text.trim().length >= 8).map(link => row(link.text, link.url))
-  const lines = page.text.split(/\n|(?<=[.!?。]|다\.)\s+/).map(line => line.trim()).filter(line => line.length >= 8 && line.length <= 200).map(line => row(line, page.url))
-  const out: SearchResult[] = []
-  for (const one of [...linked, ...lines]) {
-    if (!one.title || eventRank(one, ask) !== 2 || !about(`${one.title} ${one.snippet}`)) continue
-    // A line that is a linked headline's own words is that article.
-    if (out.some(seen => seen.title.includes(one.title.slice(0, 20)) || one.title.includes(seen.title.slice(0, 20)))) continue
-    out.push(one)
-  }
-  return out
-}
+// c11b: the host no longer judges by a headline which rows are the event asked for (eventRank, its word lists and the round-up
+// reading went): the model picks from every dated, deduped row, and the host checks only the shape of its list (fast-lane listGap).
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 export function askedCount(ask: string): number | undefined {

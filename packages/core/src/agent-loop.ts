@@ -139,6 +139,11 @@ export interface AgentLoopOptions {
   onStart?(): void
   // The host already answered words said mid-turn with a line of its own: the model takes them in without writing another.
   steerReplied?: boolean
+  // c11b: the host's check of the finished answer against the ask's shape (a count, a link and a date per item): a gap it names gets one
+  // more round, with the draft and the gap said, and its calls and time again. undefined: the answer stands.
+  recheck?(answer: string): string | undefined
+  // c11b r3: the same check on the answer that is delivered, whatever rounds ran: a line that says what it still lacks, put under it.
+  shortfall?(answer: string): string | undefined
 }
 
 export interface AgentLoopStep {

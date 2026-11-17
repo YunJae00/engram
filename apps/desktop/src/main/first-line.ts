@@ -253,37 +253,9 @@ export function answerAlone(answer: string): string {
   return said && said[2]!.replace(/```replies[^]*?(```|$)/g, '').trim() ? said[2]! : answer
 }
 
-// c7c M3: "나 누구랑 일하지?" was answered "민호 님과 함께 일하세요." (judge: 권유하는 말처럼 들려 어색). The bare -하세요 on a fact about the
-// person reads as telling them to. On a who / what / where / when question about themselves, a closing "<noun>하세요." becomes "…하고 계세요.".
-// Advice they asked for ("어떻게 해?", "뭐 하면 좋아?") and a spaced "… 하세요." are instructions and stay; so do 말씀하세요 and a greeting.
-const ABOUT_ME = /(^|\s)(나|난|내|내가|나는|저|전|제|제가|저는|우리)(?=\s|[?？]|$)/, WH_FACT = /누구|누가|뭐|무슨|어디|언제/, ADVICE = /어떻게|방법|좋아|좋을|할까|될까|해야|하면|추천/
-export function asState(ask: string, answer: string): string {
-  if (!ABOUT_ME.test(ask) || !WH_FACT.test(ask) || ADVICE.test(ask)) return answer
-  return answer.replace(/(?<!말씀|안녕)(?<=[가-힣])하세요(?=[.!~]*\s*(\n|$))/g, '하고 계세요')
-}
-
-// c5c Q3: "…정중한 영어 이메일 한 줄로 써줘" was answered with the English line alone, although the note asks for a few Korean words before it.
-// A short ask written in Korean whose answer has words but no Hangul gets that lead on the same line; a rewording ask ("더 짧게") gets a
-// different one, and never the lead the reply before it opened with. Nothing is added to an answer with Korean in it or to an English ask.
-const LEADS = ['이렇게 쓰면 돼요.', '이건 어때요?'] as const
-const REWORD = /더\s|다시|말고|한\s*번\s*더/
-export function koreanLead(ask: string, answer: string, lastReply = ''): string {
-  // stack-5 (c5c run, Q4): the model wrote the lead itself, the one its reply before opened with ("이렇게 쓰면 돼요." twice running). Its own lead is swapped the same way.
-  const own = LEADS.findIndex(lead => answer.trimStart().startsWith(lead))
-  if (own >= 0) return lastReply.trimStart().startsWith(LEADS[own]!) ? answer.trimStart().replace(LEADS[own]!, LEADS[1 - own]!) : answer
-  const body = answer.replace(/```replies[^]*?(```|$)/g, '').trim()
-  if (!/[가-힣]/.test(ask) || /[가-힣]/.test(body) || !/\p{L}{2,}/u.test(body)) return answer
-  const wanted = REWORD.test(ask) ? 1 : 0, lead = LEADS[lastReply.trimStart().startsWith(LEADS[wanted]) ? 1 - wanted : wanted]!
-  return `${lead}${body.includes('\n') ? '\n\n' : ' '}${answer.trimStart()}`
-}
-
-// stack-4 (c4a-34ab7ad3 H6): a Korean answer opened with the model's own working note, "Found actual investment deal items: …" (U1).
-// In a Korean thread, a first paragraph that opens with four or more plain English words (a sentence, not a product's name, which is
-// capitalized) and is followed by the answer is dropped. An answer that is only that paragraph stays.
-export function withoutWorkNote(answer: string): string {
-  const said = /^\s*[A-Za-z][a-z'’]*(?:[ \t]+[a-z][a-z'’]*){3,}[^\n]*\n\s*\n([^]+)$/.exec(answer)
-  return said && /[가-힣]/.test(said[1]!) ? said[1]! : answer
-}
+// c11b: asState, koreanLead and withoutWorkNote went: each reworded or cut the model's answer by its wording, without knowing the ask
+// (withoutWorkNote cut the English line Q3 asked for). A Korean lead and a plain state are the model's to write (SHORT_QUESTION_NOTE);
+// words written before a tool call never become the answer (engine-claude-session, codex-native).
 
 export function firstLineSpoke(channel: string): void {
   const turn = turns.get(channel)

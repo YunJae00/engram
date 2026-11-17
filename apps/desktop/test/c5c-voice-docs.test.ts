@@ -10,7 +10,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE, withOffer } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
-import { cleanLine, firstLinePrompt, koreanLead, smallTalkPrompt, talkOnly, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
+import { answerAlone, cleanLine, firstLinePrompt, smallTalkPrompt, talkOnly, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
@@ -170,24 +170,27 @@ describe('small talk never sounds like a help desk (Q1)', () => {
   })
 })
 
-describe('a line in another language is led by a few Korean words (Q3)', () => {
+// c11b: koreanLead went (it rewrote the model's answer by its wording). The Korean lead is the model's, asked for in SHORT_QUESTION_NOTE;
+// the host passes a foreign line through untouched.
+describe('a line in another language is led by a few Korean words (Q3, c11b)', () => {
   const ask = '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', line = 'I apologize for being late to the meeting.'
-  it('puts the lead on the same line when the answer has no Hangul', () => {
-    expect(koreanLead(ask, line)).toBe(`이렇게 쓰면 돼요. ${line}`)
-    expect(koreanLead(ask, `${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``)).toBe(`이렇게 쓰면 돼요. ${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``)
-    expect(koreanLead('이걸 영어 메일로 써줘', 'Hi Minho,\n\nSorry for the delay.')).toBe('이렇게 쓰면 돼요.\n\nHi Minho,\n\nSorry for the delay.')
+  it('puts the lead on the same line when the answer has no Hangul (c11b: asked of the model)', () => {
+    expect(SHORT_QUESTION_NOTE).toContain('A line they asked for in another language is led by those few words in their own language, on the same line')
+    expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
+    // Whatever the model wrote stays: no host lead is glued on, nothing is cut.
+    for (const answer of [line, `${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``, 'Hi Minho,\n\nSorry for the delay.']) {
+      expect(answerAlone(answer), answer).toBe(answer)
+      expect(talkOnly(ask, answer, true), answer).toBe(answer)
+    }
   })
-  it('opens a rewording differently, and never twice the same way in a row', () => {
-    expect(koreanLead('더 짧게', 'I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
-    expect(koreanLead('더 정중하게', 'My sincere apologies for the delay.', '이건 어때요? I apologize for being late.')).toBe('이렇게 쓰면 돼요. My sincere apologies for the delay.')
-    expect(koreanLead(ask, line, `이렇게 쓰면 돼요. ${line}`)).toBe(`이건 어때요? ${line}`)
-    // stack-5 (c5c run, Q4): the model wrote the same lead itself; its own lead is swapped too, and left alone when the reply before opened otherwise.
-    expect(koreanLead('방금 말한 거 더 짧게', '이렇게 쓰면 돼요. I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
-    expect(koreanLead('방금 말한 거 더 짧게', '이건 어때요? I apologize for being late.', `이렇게 쓰면 돼요. ${line}`)).toBe('이건 어때요? I apologize for being late.')
+  it('opens a rewording differently, and never twice the same way in a row (c11b: asked of the model)', () => {
+    expect(SHORT_QUESTION_NOTE).toContain('those words are not the ones your reply before this one opened with')
+    expect(SHORT_QUESTION_NOTE).toContain('what the earlier line means and its register stay')
+    for (const answer of ['이건 어때요? I apologize for being late.', '이렇게 쓰면 돼요. My sincere apologies for the delay.']) expect(answerAlone(answer), answer).toBe(answer)
   })
-  it('adds nothing when the answer has Korean, has no words, or the person wrote in English', () => {
-    for (const [said, answer] of [[ask, `이렇게 쓰면 돼요. ${line}`], [ask, '정중하게는 "I apologize"가 좋아요.'], ['Write a one-line apology email', line], ['1년은 몇 초야 숫자만 알려줘', '31,536,000'], [ask, '']] as const) expect(koreanLead(said, answer), said).toBe(answer)
-    expect(source('ipc.ts')).toContain("if (kind === 'ask' && !result.asked) result.answer = koreanLead(request.message, result.answer, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)))")
+  it('adds nothing when the answer has Korean, has no words, or the person wrote in English (c11b: the host adds nothing at all)', () => {
+    for (const answer of [`이렇게 쓰면 돼요. ${line}`, '정중하게는 "I apologize"가 좋아요.', line, '31,536,000', '']) expect(answerAlone(answer), answer).toBe(answer)
+    expect(source('ipc.ts')).not.toContain('koreanLead')
   })
 })
 

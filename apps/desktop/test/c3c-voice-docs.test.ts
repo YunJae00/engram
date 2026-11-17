@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: (event: { type: string }) => { bus.sent.push(event) } }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { answerAlone, withoutWorkNote, beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
+import { answerAlone, beginFirstLine, endFirstLine, fallbackLine, firstLineCarried, firstLineNote, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, greeting, heldRounds, plainReply, smallTalkAnswer, toldPrompt, wantsFirstLine, type FirstLineAsk } from '../src/main/first-line.js'
 import { conversationProgress } from '../src/main/conversation-progress.js'
 import { turnGoals } from '../src/main/turn-state.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, isCorrection, routeAsk, onlyTells, TOLD_NOTE } from '../src/main/desk-lane.js'
@@ -82,7 +82,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(ipc).toContain("if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
     const aside = source('aside-ipc.ts')
-    expect(aside).toContain('asideReply(')
+    expect(aside).toContain('asideVoice(') // c11b r2: asideReply now wraps asideVoice (line + verdict)
     expect(aside).not.toContain('heldRounds')
   })
 
@@ -161,10 +161,13 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(source('ipc.ts')).toContain('if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)')
     // stack-4 (c4c run, Q3): the reply was the English line alone; a few Korean words lead it (GROKBOT rule 12's own example).
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
-    // stack-4 (c4a run, H6): an English working note opened a Korean answer.
-    expect(withoutWorkNote('Found actual investment deal items: 엔비디아의 국내 AI 스타트업 4곳 투자 소식이 담겨 있어요.\n\n11월 10~16일 사이 나온 소식 3개예요.')).toBe('11월 10~16일 사이 나온 소식 3개예요.')
-    for (const kept of ['Apple Vision Pro 2 가격은 아직 안 나왔어요.\n\n출시는 내년이에요.', 'I apologize for being late to the meeting.', 'Here is the line you asked for.\n\nI apologize for being late.', '이렇게 쓰면 돼요.\n\nI apologize for being late to the meeting.']) expect(withoutWorkNote(kept), kept).toBe(kept)
-    expect(source('ipc.ts')).toContain('if (!result.asked && threadKorean(request.message, request.history ?? [])) result.answer = withoutWorkNote(result.answer)')
+    // stack-4 (c4a run, H6): an English working note opened a Korean answer. c11b: the engines take the model's last message as the
+    // answer (a later message replaces an earlier one; c11b-answers.test.ts runs it), and the lane note keeps every line in the person's
+    // language, so the host cuts nothing by wording and an asked-for English line stays (Q3).
+    expect(answerAlone('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')).toBe('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')
+    expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
+    expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
+    expect(source('ipc.ts')).not.toContain('withoutWorkNote')
     expect(SHORT_QUESTION_NOTE).toContain('what the earlier line means and its register stay')
     expect(SHORT_QUESTION_NOTE).toContain('"I apologize for being late."')
   })

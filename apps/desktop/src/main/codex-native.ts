@@ -45,6 +45,8 @@ type NativeResult = ToolSessionResult & { commandsDenied?: true }
 interface Turn {
   job: Job
   answer: string
+  // Words written before a tool call (c11b r2): kept apart, never the answer.
+  note?: string
   turnId: string
   settled: boolean
   // Until command use is approved, the runtime asks before each command and
@@ -195,7 +197,7 @@ class CodexSession {
     if (method === 'item/started') {
       if (type === 'agentMessage' && turn.answer) job.onReset?.()
       // Words before an action were thinking aloud, not the reply.
-      if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') job.onReset?.(undefined, text(item['tool']) || undefined)
+      if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') { job.onReset?.(undefined, text(item['tool']) || undefined); if (turn.answer) { turn.note = turn.answer; turn.answer = '' } }
       if (type === 'fileChange') turn.changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
       if (type === 'commandExecution' || type === 'fileChange') {
         recorded.add(id)
@@ -225,7 +227,7 @@ class CodexSession {
           .catch((error: unknown) => { this.finish(turn, { answer: turn.answer, error: error instanceof Error ? error.message : String(error) }); this.close() })
         return
       }
-      if (status === 'completed') { this.finish(turn, { answer: turn.answer }); return }
+      if (status === 'completed') { this.finish(turn, { answer: turn.answer, ...(!turn.answer && turn.note ? { note: turn.note } : {}) }); return }
       this.finish(turn, { answer: turn.answer, error: status === 'interrupted' ? 'canceled' : text(object(object(params['turn'])['error'])['message']) || 'The ChatGPT turn failed.' })
       this.close()
       return

@@ -26,9 +26,9 @@ it('hands a message said as the turn completes to the follow-up queue once', asy
   expect(handlers.has('chat:steer')).toBe(false)
   try {
     // grokbar c3: the host answers the words at once with one line, kept under them as a line of the running turn.
-    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit', reply: 'Working that into this now.' })
+    expect(await handlers.get('chat:say')!({}, 'bot-late', 'Do not submit')).toEqual({ ok: true, action: 'relay', instruction: 'Do not submit', reply: 'Taking that in, posting it shortly.' })
     expect(held).toEqual(['Do not submit'])
-    expect((await readBotTranscript(paths, 'late')).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', 'Do not submit', true, false], ['assistant', 'Working that into this now.', true, true]])
+    expect((await readBotTranscript(paths, 'late')).map(turn => [turn.role, turn.text, !!turn.aside, !!turn.progress])).toEqual([['user', 'Do not submit', true, false], ['assistant', 'Taking that in, posting it shortly.', true, true]])
     const next = await readCheckpoint(paths, 'late')
     expect(next.pending).toEqual(['Do not submit'])
     await acknowledgeHanded(paths, 'late', next.pending)
@@ -151,7 +151,7 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   expect(fixedAsideReply('그냥 애플로 바꿔', true)).toBe('바꿔서 볼게요.')
   expect(fixedAsideReply('아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
   // Never a bare yes (rule 1).
-  expect(fixedAsideReply('표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
+  expect(fixedAsideReply('표로 보여줘', true)).toBe('하신 말씀까지 챙겨서 금방 올릴게요.')
   expect([asideShape('내 일정 뭐 있어?'), fixedAsideReply('내 일정 뭐 있어?', true)]).toEqual(['question', '그것도 같이 챙길게요.'])
   for (const words of ['아 대구도 추가해', '그냥 애플로 바꿔', '아 왜 이렇게 느려', '표로 보여줘', '내 일정 뭐 있어?']) {
     const line = fixedAsideReply(words, true)
@@ -193,7 +193,7 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   expect(await asideReply(new Promise(found => setTimeout(() => found(quick('대구도 넣을게요.')), 400)), 'tmp', goal, '아 대구도 추가해', true, 30)).toBe('그것도 한 명 더 붙여서 볼게요.')
   expect(Date.now() - began).toBeLessThan(300)
   expect(await asideReply(Promise.reject(new Error('no voice')), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 한 명 더 붙여서 볼게요.')
-  expect(await asideReply(quick('NONE'), 'tmp', goal, '표로 보여줘', true)).toBe('지금 하는 일에 반영할게요.')
+  expect(await asideReply(quick('NONE'), 'tmp', goal, '표로 보여줘', true)).toBe('하신 말씀까지 챙겨서 금방 올릴게요.')
   // What the voice is asked for.
   const prompt = asideReplyPrompt(goal, '아 왜 이렇게 느려', true)
   expect(prompt).toContain(`at most ${ASIDE_REPLY_MAX} characters`)
@@ -210,14 +210,14 @@ it('hands a change to the running turn before the reply is written, keeps a rema
   const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const held: string[] = [], order: string[] = [], stopped: string[] = []
   const asked: string[] = [], answers: string[] = []
-  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return answers.shift() ?? (prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 한 명 더 붙여서 볼게요.') } }
+  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return answers.shift() ?? (prompt.includes('느려') ? 'REMARK: 거의 다 찾았어요, 금방 올릴게요.' : 'CHANGE: 대구도 한 명 더 붙여서 볼게요.') } }
   turnGoals.set('bot-reply', '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
   registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text); order.push('held') }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) }, voice: async () => voice })
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-reply', text) as Promise<{ ok: boolean; reply?: string; action?: string; instruction?: string }>
   try {
     expect(await say('아 대구도 추가해')).toEqual({ ok: true, action: 'relay', instruction: '아 대구도 추가해', reply: '대구도 한 명 더 붙여서 볼게요.' })
-    // The work has the words before the line is written: the reply never delays the change.
-    expect(order).toEqual(['held', 'voice'])
+    // c11b r2: the voice's verdict decides the hand-over, so the work has the words right after that one quick call.
+    expect(order).toEqual(['voice', 'held'])
     // A complaint is answered and the work goes on unchanged: nothing is handed to the running turn, nothing waits for a turn of its own.
     expect(await say('아 왜 이렇게 느려')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
     expect(held).toEqual(['아 대구도 추가해'])
@@ -309,12 +309,77 @@ it('offers handed words to the running lookup after queueing them, and never a r
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const cache = await mkdtemp(join(temporary, 'aside-changed-'))
-  const paths = { cache } as VaultPaths
+  const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const order: string[] = []
-  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), changed: (_channel, said) => order.push(`changed ${said}`), setOffersAside: async () => {} })
+  const voice = { id: 'claude', quick: async (prompt: string) => prompt.includes('느려') ? 'REMARK: 거의 다 찾았어요.' : 'CHANGE: 애플로 바꿔서 볼게요.' }
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), changed: (_channel, said) => order.push(`changed ${said}`), setOffersAside: async () => {}, voice: async () => voice })
   try {
     await handlers.get('chat:say')!({}, 'bot-swap', '그냥 애플로 바꿔')
     await handlers.get('chat:say')!({}, 'bot-swap', '아 왜 이렇게 느려')
     expect(order).toEqual(['held 그냥 애플로 바꿔', 'changed 그냥 애플로 바꿔'])
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
+
+// c11b r2 (review #1): "아 너무 답답한데" fell outside the word-ending rule and was handed to the running work as a change. Whether words
+// said mid-work change the job is the quick voice's verdict, for any wording: none of the words below is in the harness or in a host list.
+it('c11b r2: the voice\'s verdict, not the wording, decides whether words said mid-work reach the running work', async () => {
+  const { asideVoice, asideReplyPrompt } = await import('../src/main/aside-ipc.js')
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-verdict-'))
+  const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
+  const held: string[] = []
+  // A stand-in for the model: it reads the meaning (here: a fixed table of meanings), the host only obeys the tag.
+  const meaning: Record<string, string> = {
+    '아 너무 답답한데': 'REMARK: 거의 다 찾았어요, 금방 올릴게요.',
+    '와 진짜 하세월이네': 'remark - 조금만 기다려 주세요, 금방 올릴게요.',
+    '기다리다 지치겠다 ㅠ': 'REMARK: 거의 다 됐어요, 조금만요.',
+    '울산 것도 같이': 'CHANGE: 울산도 넣을게요.',
+    '환율은 엔화 기준으로': 'CHANGE: 엔화 기준으로 볼게요.',
+  }
+  const voice = { id: 'claude', quick: async (prompt: string) => Object.entries(meaning).find(([said]) => prompt.includes(JSON.stringify(said)))?.[1] ?? '' }
+  turnGoals.set('bot-verdict', '요즘 국내 핀테크 투자 뉴스 3개만 찾아줘')
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {}, voice: async () => voice })
+  const say = (text: string) => handlers.get('chat:say')!({}, 'bot-verdict', text) as Promise<{ ok: boolean; reply?: string; instruction?: string }>
+  try {
+    expect(await say('아 너무 답답한데')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
+    expect(await say('와 진짜 하세월이네')).toEqual({ ok: true, action: 'relay', reply: '조금만 기다려 주세요, 금방 올릴게요.' })
+    expect((await say('기다리다 지치겠다 ㅠ')).instruction).toBeUndefined()
+    expect(held).toEqual([])
+    expect((await readCheckpoint(paths, 'verdict')).pending).toEqual([])
+    expect(await say('울산 것도 같이')).toEqual({ ok: true, action: 'relay', instruction: '울산 것도 같이', reply: '울산도 넣을게요.' })
+    expect((await say('환율은 엔화 기준으로')).instruction).toBe('환율은 엔화 기준으로')
+    expect(held).toEqual(['울산 것도 같이', '환율은 엔화 기준으로'])
+  } finally { turnGoals.delete('bot-verdict'); await rm(cache, { recursive: true, force: true }) }
+  // A verdict with a line that fails the checks still decides; the stand-in line follows the verdict, not the wording.
+  expect(await asideVoice({ id: 'claude', quick: async () => 'REMARK: Almost done, hang on.' }, 'tmp', '서울 날씨 알려줘', '표로 보여줘', true)).toEqual({ line: '거의 다 됐어요, 금방 올릴게요.', changes: false })
+  expect(await asideVoice({ id: 'claude', quick: async () => 'CHANGE: 표로 정리할게요.' }, 'tmp', '서울 날씨 알려줘', '아 진짜', true)).toEqual({ line: '표로 정리할게요.', changes: true })
+  // No verdict (absent, late or untagged voice): changes is unset; the line is the host's stand-in.
+  expect(await asideVoice(undefined, '', '서울 날씨 알려줘', '아 진짜', true)).toEqual({ line: '거의 다 됐어요, 금방 올릴게요.' })
+  expect(asideReplyPrompt('서울 날씨 알려줘', '아 진짜', true)).toContain('Judge by what it means, not by its words.')
+})
+
+// c11b r3 (review #1): with no verdict (no voice, a late one, an untagged line) the host used to read the words' meaning from their wording,
+// and "아 너무 답답한데" went to the work as a change. Now it never reads meaning: unjudged words go to the running work, whose model is told
+// that a remark leaves the job unchanged. Wordings below are in no harness row and no host list.
+it('c11b r3: words no voice judged are handed to the running work, whose model judges them; the host never decides from wording', async () => {
+  const { withSteer } = await import('core/src/agent-session')
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-unjudged-'))
+  const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
+  const held: string[] = []
+  const untagged = { id: 'claude', quick: async () => '조금만 더 기다려 주세요.' }
+  for (const [bot, voice] of [['bot-novoice', undefined], ['bot-untagged', untagged], ['bot-late', { id: 'claude', quick: () => new Promise<string>(() => {}) }]] as const) {
+    registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {}, ...(voice ? { voice: async () => voice } : {}) })
+    for (const words of ['아 너무 답답한데', '이거 언제 끝나는 거예요 대체', '부산 말고 광주로']) {
+      const said = await handlers.get('chat:say')!({}, bot, words) as { instruction?: string; reply?: string }
+      expect(said.instruction).toBe(words)
+      expect(said.reply).toMatch(/[가-힣]/)
+    }
+  }
+  await rm(cache, { recursive: true, force: true })
+  expect(held).toHaveLength(9)
+  // What the running model is told with them: a remark changes nothing.
+  expect(withSteer('result', ['아 너무 답답한데'], true)).toContain('when it is only a remark (a complaint, thanks), go on unchanged')
+}, 15_000)

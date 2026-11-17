@@ -8,7 +8,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { DESK_NOTE, DESK_TOOLS, onlyAsked, shareReady, withOffer, withoutSameDecisions } from '../src/main/desk-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
-import { ACK_MAX, answerAlone, asState, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
+import { ACK_MAX, answerAlone, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 // What ipc.ts does to a desk note answer, in its order.
@@ -125,24 +125,21 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
   })
 })
 
-describe('a fact about the person is a state, not an instruction (M3)', () => {
-  it('turns a closing -하세요 on a who / what / where question about them into -하고 계세요', () => {
-    expect(asState('나 누구랑 일하지?', '민호 님과 함께 일하세요.')).toBe('민호 님과 함께 일하고 계세요.')
-    expect(asState('내가 어디서 근무하지?', '판교 사무실에서 근무하세요')).toBe('판교 사무실에서 근무하고 계세요')
-    expect(asState('나 누구랑 일하지?', '민호 님이랑 같이 일하고 계세요.')).toBe('민호 님이랑 같이 일하고 계세요.')
+// c11b: asState went (it rewrote "…하세요." into "…하고 계세요." and made M3's stiff phrase). How to say a fact about the person is the
+// model's, asked in SHORT_QUESTION_NOTE with no template phrase to copy; the host passes the model's wording through.
+describe('a fact about the person is a state, not an instruction (M3, c11b)', () => {
+  it('turns a closing -하세요 on a who / what / where question about them into -하고 계세요 (c11b: asked of the model, no host rewrite)', () => {
+    expect(SHORT_QUESTION_NOTE).toContain('never with an ending that reads as telling them to do it')
+    for (const answer of ['민호 님이랑 일하세요.', '판교 사무실에서 근무하시죠', '민호 님이요.']) expect(answerAlone(answer), answer).toBe(answer)
   })
-  it('leaves an instruction they asked for, an offer and a question about someone else', () => {
-    expect(asState('스트레칭 어떻게 해?', '목을 천천히 돌리면서 시작하세요.')).toBe('목을 천천히 돌리면서 시작하세요.')
-    expect(asState('나 스트레칭 뭐 하면 좋아?', '목 돌리기부터 시작하세요.')).toBe('목 돌리기부터 시작하세요.')
-    expect(asState('나 누구랑 일하지?', '민호 님이랑 일하고 계세요. 더 궁금한 거 있으면 말씀하세요.')).toBe('민호 님이랑 일하고 계세요. 더 궁금한 거 있으면 말씀하세요.')
-    expect(asState('민호는 뭐 해?', '디자인을 담당하세요.')).toBe('디자인을 담당하세요.')
-    expect(asState('나 뭐 먹지?', '칼국수를 하세요.')).toBe('칼국수를 하세요.')
+  it('leaves an instruction they asked for, an offer and a question about someone else (c11b: every answer is left as written)', () => {
+    for (const answer of ['목을 천천히 돌리면서 시작하세요.', '목 돌리기부터 시작하세요.', '민호 님이랑 일하고 계세요. 더 궁금한 거 있으면 말씀하세요.', '디자인을 담당하세요.', '칼국수를 하세요.']) expect(answerAlone(answer), answer).toBe(answer)
   })
-  it('is said that way in the note and checked on short answers, with no word about memory', () => {
-    expect(SHORT_QUESTION_NOTE).toContain('"민호 님이랑 같이 일하고 계세요."')
-    expect(SHORT_QUESTION_NOTE).toContain('never with a bare -세요 ending that reads as telling them to')
+  it('is said that way in the note and checked on short answers, with no word about memory (c11b: no template phrase)', () => {
+    expect(SHORT_QUESTION_NOTE).toContain('in one short, plain sentence the way a colleague would say it back')
     expect(SHORT_QUESTION_NOTE).toContain('with no word about remembering or looking it up')
-    expect(source('ipc.ts')).toContain('if (short && !result.asked) result.answer = asState(request.message, result.answer)')
+    for (const template of ['같이 일하고 계세요', '살고 계세요']) expect(SHORT_QUESTION_NOTE).not.toContain(template)
+    expect(source('ipc.ts')).not.toContain('asState')
   })
 })
 
@@ -155,6 +152,5 @@ describe('a pick comes with its reason, recommendations with what they went by (
   it('keeps a recommendation\'s lead: only a promise is taken off a short answer', () => {
     const picks = '아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.\n\n1. 제주 가시면 해안도로 드라이브가 좋아요.\n2. 오설록 티뮤지엄은 실내라 편해요.\n3. 함덕 해변 카페에서 쉬어 가세요.'
     expect(answerAlone(picks)).toBe(picks)
-    expect(asState('아 그 여행 가서 할 만한 거 세 개만 추천해줘', picks)).toBe(picks)
   })
 })
