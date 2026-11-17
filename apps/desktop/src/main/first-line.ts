@@ -300,7 +300,8 @@ export const laneLine = (message: string, korean: boolean): string => {
   const said = message.trim()
   const asks = ASKS.test(said)
   if (!korean) return asks ? 'Let me check.' : 'On it.'
-  if (asks) return '지금 확인해 볼게요.'
+  // stack-6 (c6c r3): "지민이랑 서연한테 나눠서 조사해줄래?" is a split asked as a question: the line still says the split.
+  if (asks && !SPLIT.test(said)) return '지금 확인해 볼게요.'
   return LANE_KO.find(([ask]) => ask.test(said))?.[1] ?? '지금 바로 할게요.'
 }
 // The line said when the small model has none: the first step, from the words of the request alone.

@@ -403,10 +403,14 @@ function saidOnce(answer: string, job: string): string {
   // c6b r3: "행사 B" of the same day from the same page, under "**다른 행사**", was still dropped: no new address, no new number. A half is the
   // first again only in the shape that was seen: its heading is the job's own name ("리니어 신기능 조사 결과" for "리니어 신기능 조사"), and it
   // gives no address and no number the first does not. Under any other heading it is another item.
-  // shortcut: another item under the job's own name with the same page and numbers is still dropped; ask the quick model if that shows up.
+  // shortcut: another item under the job's own name with the same page, numbers and a shared latin name is still dropped; ask the quick model if that shows up.
   const numbers: string[] = first.match(/\d+/g) ?? []
   const titled = (half: string): boolean => { const head = /^\s*(?:#{1,6}\s+(.+)|\*\*([^*\n]+)\*\*\s*(?:\n|$))/.exec(half); return !!head && (head[1] ?? head[2])!.replace(/[*_:：]/g, ' ').split(/\s+/).filter(Boolean).every(word => job.includes(word) || /^(?:결과|정리|요약|내용|조사)$/u.test(word)) }
-  const kept = more.filter(half => !titled(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
+  // stack-6 (c6b r3): "행사 B" under the job's own name, same day, same page, was still dropped. A half is the first again only when it
+  // also carries a name the first has (a latin word of two letters or more that the job does not say: "BYOK"); with none in common it is kept.
+  const names = (text: string): string[] => (text.replace(/https?:\/\/\S+/g, ' ').match(/[A-Za-z]{2,}/g) ?? []).filter(word => !job.includes(word))
+  const again = (half: string): boolean => { const mine = names(first); return names(half).some(word => mine.includes(word)) }
+  const kept = more.filter(half => !titled(half) || !again(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
   return kept.length === more.length ? plain : [first.trim(), ...kept.map(half => half.trim())].join('\n\n---\n\n')
 }
 // A job that asks for a schedule, a list or a number of things, and a line that carries a day.
@@ -467,7 +471,7 @@ export function withoutExtras(brief: string, personSaid: string): string {
 // c6 C5: "다음 달 서울 IT 행사" was searched as "12월 서울 IT 행사 일정" with no year and came back with a 2025 event. A period said
 // relative to today is resolved by the host, in the member's task and in the search words the lead gave for it.
 // shortcut: a closed list of Korean and English period words, weeks from Monday to Sunday; another wording reaches the member unresolved, with today's date beside it.
-type Period = [words: RegExp, name: string, means: string, inQuery: boolean]
+type Period = [words: RegExp, name: string, means: string, inQuery: boolean, from: Date, to: Date]
 function periods(now: Date): Period[] {
   const day = (offset: number): Date => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset)
   const full = (at: Date): string => `${at.getFullYear()}년 ${at.getMonth() + 1}월 ${at.getDate()}일`
@@ -475,18 +479,23 @@ function periods(now: Date): Period[] {
   const pair = (from: Date, to: Date, between: string, tags: [string, string] = ['', '']): string => `${full(from)}${tags[0]}${between}${to.getFullYear() === from.getFullYear() ? full(to).replace(/^\d+년 /, '') : full(to)}${tags[1]}`
   const month = (offset: number): string => { const at = new Date(now.getFullYear(), now.getMonth() + offset, 1); return `${at.getFullYear()}년 ${at.getMonth() + 1}월` }
   const monday = -((now.getDay() + 6) % 7)
+  const months = (offset: number): [Date, Date] => [new Date(now.getFullYear(), now.getMonth() + offset, 1), new Date(now.getFullYear(), now.getMonth() + offset + 1, 0)]
+  const years = (offset: number): [Date, Date] => [new Date(now.getFullYear() + offset, 0, 1), new Date(now.getFullYear() + offset, 11, 31)]
   return [
-    [/다음\s?달|내달|\bnext month\b/i, '다음 달', month(1), true],
-    [/이번\s?달|이달|\bthis month\b/i, '이번 달', month(0), true],
-    [/지난\s?달|\blast month\b/i, '지난달', month(-1), true],
-    [/내년|\bnext year\b/i, '내년', `${now.getFullYear() + 1}년`, true],
-    [/올해|금년|\bthis year\b/i, '올해', `${now.getFullYear()}년`, true],
-    // A week or a weekend stays as typed in search words: the results page's own boxes and the news period read those words.
-    [/이번\s?주말|\bthis weekend\b/i, '이번 주말', pair(day(monday + 5), day(monday + 6), ', ', ['(토)', '(일)']), false],
-    [/다음\s?주(?!말)|\bnext week\b/i, '다음 주', pair(day(monday + 7), day(monday + 13), '~'), false],
-    [/이번\s?주(?!말)|금주|\bthis week\b/i, '이번 주', pair(day(monday), day(monday + 6), '~'), false],
+    [/다음\s?달|내달|\bnext month\b/i, '다음 달', month(1), true, ...months(1)],
+    [/이번\s?달|이달|\bthis month\b/i, '이번 달', month(0), true, ...months(0)],
+    [/지난\s?달|\blast month\b/i, '지난달', month(-1), true, ...months(-1)],
+    [/내년|\bnext year\b/i, '내년', `${now.getFullYear() + 1}년`, true, ...years(1)],
+    [/올해|금년|\bthis year\b/i, '올해', `${now.getFullYear()}년`, true, ...years(0)],
+    // A week, a weekend or a day stays as typed in search words: the results page's own boxes and the news period read those words.
+    [/이번\s?주말|\bthis weekend\b/i, '이번 주말', pair(day(monday + 5), day(monday + 6), ', ', ['(토)', '(일)']), false, day(monday + 5), day(monday + 6)],
+    [/다음\s?주(?!말)|\bnext week\b/i, '다음 주', pair(day(monday + 7), day(monday + 13), '~'), false, day(monday + 7), day(monday + 13)],
+    [/이번\s?주(?!말)|금주|\bthis week\b/i, '이번 주', pair(day(monday), day(monday + 6), '~'), false, day(monday), day(monday + 6)],
+    [/내일|\btomorrow\b/i, '내일', full(day(1)), false, day(1), day(1)],
   ]
 }
+/** stack-6: the same periods as days, for what is shown (company-tools askedPeriod): one resolution for the teammate's task and for the check of its dates. */
+export const periodSpans = (text: string, now = new Date()): { name: string; from: Date; to: Date }[] => periods(now).filter(([words]) => words.test(text)).map(([, name, , , from, to]) => ({ name, from, to }))
 /** The relative periods a text names, each with what it means today: [["다음 달", "2026년 12월"]]. */
 export const periodsIn = (text: string, now = new Date()): [string, string][] => periods(now).filter(([words]) => words.test(text)).map(([, name, means]) => [name, means])
 /** One line for a member's task: today's date, and what each relative period in its part or the job means. */

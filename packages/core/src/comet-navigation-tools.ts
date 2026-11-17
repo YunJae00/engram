@@ -166,11 +166,13 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const wideUrl = period ? searchUrlFor(newsTemplate(general, 'year'), query) : null
           const wide = async (): Promise<typeof page | null> => wideUrl && wideUrl !== url ? courier.fetchPage(wideUrl, context.signal).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null }) : null
           // c6 R3/H6: the wider page was loaded only after the period's rows were counted short, and they were not short: one event filled them
-          // twice. For a counted ask ("5개") both pages are loaded at the same time, so the older rows cost no wall time.
+          // twice. For a counted ask ("5개") the wider page is always loaded, whatever the period's rows count.
           const count = askedCount(asked), together = !!period && count !== undefined
           let more: typeof page | null | undefined
           // perf146: a search that failed in 20 ms read like a search that found nothing. The two are told apart for the model.
-          try { [page, more] = await Promise.all([courier.fetchPage(url, context.signal), together ? wide() : undefined]) } catch (err) {
+          // stack-6 (c6a run, R3/H6): loaded together, the two pages shared the one tab, the second load cut the first off in ~130 ms and every
+          // counted news search "did not run". One after the other: the older rows cost about a second and are always there.
+          try { page = await courier.fetchPage(url, context.signal); if (together && !page.wall) more = await wide() } catch (err) {
             if (context.signal?.aborted) throw err
             return `the search for "${query}" did not run: the results page could not be loaded (${err instanceof Error ? err.message.slice(0, 200) : String(err)}). Nothing was searched, so this says nothing about what exists — search again once, or open a site that would hold it with open_page`
           }

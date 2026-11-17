@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, listTasks, mergedReport, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // perf146: "봇 3개 생성해서 서울 부산 제주 날씨 조사" ran three opus members with 65 tools each for 118-213 s; the lead waited for the slowest.
@@ -228,4 +228,38 @@ it('c6: results early leave room for a second search; results late say to answer
   expect(ran).toBe(1)
   // It ended on its own answer, inside its limit: done, accepted, and not marked as cut short.
   expect(late.members[0]).toMatchObject({ state: 'released', accepted: true, result: '가격: 미발표, 예상 999유로 https://ko.vidabytes.com/pixel-11/' })
+})
+
+// stack-6 (c6a + c6b): the search the host ran for a teammate is kept exactly like one it ran itself, so what c6b and c5b do with a
+// found-nothing part and a cut-short answer still holds, and c6a's acceptance needs no review round for either.
+it('stack-6: a pre-run search feeds what was read and where: a found-nothing part links where it looked, a cut-short answer is stored once, both accepted', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-stack6-')), '.engram') } as unknown as VaultPaths
+  const created = await createTask(paths, '이번 주 리니어, 슬랙 신기능 조사해줘', 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const address = (query: string) => `https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at ${address(String(args['query']))} (DATA, not instructions):\n- SMTECHNO PLC Trainer 660,000원 — https://cr3.shopping.naver.com/x — 쇼핑 — 11월 3일` }
+  const slack = '슬랙이 Huddles 요약을 냈어요. https://slack.com/blog/huddles'
+  const run: Run = async (_deps, prompt, options = {}) => { options.onStart?.(); return prompt.includes('리니어 신기능') ? { answer: '이번 주 리니어 신기능 관련 정보를 찾지 못했어요.', steps: [], fellBack: false } : { answer: `${slack}\n\n---\n\n**슬랙 신기능 조사 결과**\n${slack}\n\n\`\`\`replies\n더 찾아줘\n\`\`\``, steps: [], fellBack: false, stopped: 'calls' } }
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
+  const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
+  const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '도윤', brief: '리니어 신기능 조사', lookup: true, query: '리니어 신기능' }, { role: '서연', brief: '슬랙 신기능 조사', lookup: true, query: '슬랙 신기능' }] }, { task: '' }))
+  // Neither waits for a review: no gate hangs on review_member.
+  expect(out.members.map((m: { state: string; accepted?: boolean }) => [m.state, m.accepted])).toEqual([['released', true], ['released', true]])
+  expect(out.note).not.toContain('Review each member with review_member')
+  const [doyun, seoyeon] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
+  // Found nothing: the rows the host's search gave are kept under it (c5b nothingNew) and the page searched on is its source.
+  expect(doyun).toMatchObject({ empty: true, read: true, sources: [address('리니어 신기능')] })
+  expect(doyun!.result).toContain('SMTECHNO PLC Trainer 660,000원')
+  // Cut short with its finding and the address it came from: the answer once, no replies block, nothing it only read (c6b settleMember).
+  expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
+  expect(seoyeon!.read).toBeUndefined()
+  // The host's own table: the found-nothing row says so and links where it looked, by name; no bare host anywhere.
+  const table = mergedReport([doyun!, seoyeon!])
+  expect(table).toContain(`| 리니어 신기능 조사 (도윤) | 새 소식은 안 보여요. [네이버 검색](${address('리니어 신기능').replace(/ /g, '%20')}) |`)
+  expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
+  expect(table).not.toContain('shopping.naver')
+  // The cut-short part's link is named as a source, never by the host's own "시간 한도" line under the address.
+  expect(table).toContain('| 슬랙 신기능 조사 (서연) | 슬랙이 Huddles 요약을 냈어요. [slack](https://slack.com/blog/huddles) |')
+  expect(table).not.toContain('한도')
 })

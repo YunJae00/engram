@@ -134,6 +134,7 @@ export function teamRunner(deps: {
         // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
         // The time counts against the member's limit. A search that did not run, or met a wall, leaves the task as it was.
         // shortcut: the search runs before the session opens, not beside it (~1.2 s of start-up is not overlapped); warm the session first if that matters.
+        // stack-6: a teammate that runs the same search again after it keeps those rows once (settleMember below).
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
         if (search) {
           begun()
@@ -168,7 +169,7 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: kept.join('\n\n') } : {}) }, now(), isKorean(goal))
+        if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}) }, now(), isKorean(goal))
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
         if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }

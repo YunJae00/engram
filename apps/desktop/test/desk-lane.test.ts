@@ -140,8 +140,10 @@ describe('document and tidy answers', () => {
     expect(DESK_NOTE).toContain('the same sentence never appears under both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
     // c6c F1: the count per folder is one sentence now, not a list (GROKBOT rule 6).
-    expect(DESK_NOTE).toContain('PDF 6개, 이미지 4개, 문서 3개')
-    expect(DESK_NOTE).toContain('what was done and how it was grouped, then how many files went into each folder')
+    // stack-6: BAR F1 asks for a summary list, so the counts are a short list again, without file names.
+    expect(DESK_NOTE).toContain('"- PDF 6개"')
+    expect(DESK_NOTE).toContain('what was done and how it was grouped')
+    expect(DESK_NOTE).toContain('how many files went into each folder')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them')
   })
 })

@@ -289,7 +289,7 @@ it('c6: a news row that names the same parties as an earlier one is the same eve
   expect(withoutRepeats([first, a, second, b], query)).toEqual([first, a, b])
 })
 
-it('c6: a counted news ask loads the period page and the wider page at the same time, and a repeat of a recent event does not fill the list', async () => {
+it('c6: a counted news ask loads the period page and then the wider page, never both in the one tab at once, and a repeat of a recent event does not fill the list', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
   const menu = Array.from({ length: 8 }, (_, i) => ({ text: `메뉴 ${i}`, url: `https://search.naver.com/search.naver?where=tab${i}&query=x` }))
@@ -303,8 +303,8 @@ it('c6: a counted news ask loads the period page and the wider page at the same 
   const fetchPage = async (url: string) => { open.push(url); together = Math.max(together, open.length); await new Promise(resolve => setTimeout(resolve, 5)); open.splice(open.indexOf(url), 1); const rows = /p:1m/.test(new URL(url).searchParams.get('nso') ?? '') ? fresh : wide; return { url, text: body(rows), links: [...menu, ...rows] } }
   const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!
   const out = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', steps: [], read: '' } as never)
-  // Both pages were open at once: the older rows cost no wall time.
-  expect(together).toBe(2)
+  // stack-6 (c6a run, R3/H6): the two loads share one tab; opened together the second cut the first off and the search "did not run".
+  expect(together).toBe(1)
   const rows = out.split('\n').filter(line => line.startsWith('- '))
   // One row for the event of the month, then the older rounds, most recent first, each with its year; nothing from 2024.
   expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.businesspost.co.kr/2', '11월 10일'], ['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.']])

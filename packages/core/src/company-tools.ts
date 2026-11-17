@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn } from './bots.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
-import { foundNothing, placeNamed, siteName, type TeamHost } from './team-hire-tools.js'
+import { datedQuery, foundNothing, periodSpans, placeNamed, sourceName, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { plainSchedule, scheduleWordsKo } from './schedule-tools.js'
 
@@ -147,6 +147,14 @@ export function jobTitle(brief: string): string {
   for (const [verb, noun] of VERB_NOUNS) line = line.replace(verb, noun)
   // "신기능을 조사" reads "신기능 조사"; two-syllable words that end in 을/를 themselves (가을, 마을) are left alone.
   return clip(line.replace(/([가-힣]{2,})[을를]\s+(\S+)$/u, '$1 $2'), 40)
+}
+// stack-6 (c6b run, C3): three teammates handed a part from chat took 11.4 s to make their first search call, past the limit for starting one,
+// and each came back "이번엔 못 찾았어요." with no page read. c6a's search-before-the-first-round needs search words, and only the lead's
+// hire_members gave any. A part handed out by the host gets them from the job's own short name ("이번 주 노션 신기능 조사" → "이번 주 노션 신기능"),
+// its month written out; a name that was cut short gives none and the teammate searches itself, as before.
+export function searchWords(brief: string, now = new Date()): string | undefined {
+  const title = jobTitle(brief), words = title.replace(/\s*(?:조사|정리|찾기|알아보기|확인|검색)$/u, '').trim()
+  return title.endsWith('…') || handedFrom(brief) || Array.from(words).length < 4 ? undefined : datedQuery(words, brief, now)
 }
 // A title that was still cut short is not said as a job ("…를 했어요"): the part's own short name stands in when there is one.
 const jobOf = (member: TeamMember): string => { const title = member.title?.trim() || jobTitle(member.brief); return title.endsWith('…') && member.topic?.trim() ? member.topic.trim() : title }
@@ -445,7 +453,7 @@ export function steerSplit(task: DelegatedTask, steer: SplitSteer, at = new Date
   if (old) { old.state = 'released'; old.finishedAt ??= at; delete old.result }
   if (!steer.add) return { ids: [], stop: old ? [old.id] : [] }
   const id = `m${team.members.length + 1}`
-  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief) ? { query: searchWords(steer.add.brief)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
   team.hires++
   logTask(task, `Changed while working: ${steer.said}`)
   return { ids: [id], stop: old ? [old.id] : [] }
@@ -798,7 +806,7 @@ function nothingNew(m: TeamMember): string {
   const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(m.brief)?.[0], topic = m.topic?.trim()
   const row = topic ? delivered(m).split('\n').find(line => /https?:\/\//.test(line) && line.slice(0, line.indexOf('http')).split(': ')[0]!.includes(topic)) : undefined
   const at = row?.match(ADDRESS)?.at(-1), title = row ? clip(row.slice(0, row.indexOf('http')).split(': ')[0]!, 40) : '', where = m.sources?.[0]
-  const link = at ? named(ENGLISH_RUN.test(title) ? hostOf(at) : title, trimmed(at)) : where ? named(siteName(where, true), where) : ''
+  const link = at ? named(ENGLISH_RUN.test(title) ? hostOf(at) : title, trimmed(at)) : where ? named(sourceName(where, true), where) : ''
   return link ? `${when ? `${when} ` : ''}새 소식은 안 보여요. ${link}` : NOTHING
 }
 const FOREIGN = '영어로 된 자료만 찾았어요'
@@ -833,12 +841,13 @@ function gistOf(m: TeamMember, previous = ''): { open: string; line: string } | 
   return lines.length === 1 && /요[.!]?$/u.test(line) && Array.from(line).length <= 140 ? { open: `${josa(m.role, '이', '가')} ${ledBy(forms, previous)}`, line } : undefined
 }
 // c6 C3: "· slack.com · agenda.linearcollider.org". A part shows one link, the page its finding came from, under the name the teammate
-// gave it ("https://… (헬로티)", "[이름](…)"), else what the site is called (team-hire-tools siteName, never copied here).
+// gave it ("https://… (헬로티)", "[이름](…)"), else what the site is called (team-hire-tools sourceName, never copied here: never a bare host).
 const BARE_HOST = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i
 function pageLink(url: string | undefined, said: string, korean: boolean): string {
   if (!url) return ''
-  const at = said.indexOf(url), given = at < 0 ? undefined : /\[([^\]\n]+)\]\($/.exec(said.slice(0, at))?.[1] ?? /^[.,;:!?]*\s*\(([^()\n]{2,40})\)/.exec(said.slice(at + url.length))?.[1]
-  return named(given?.trim() && !BARE_HOST.test(given.trim()) ? given : siteName(url, korean), url)
+  // stack-6: the name stands on the address's own line: the next line of a cut-short result is the host's "(시간 한도에서 멈춤: …)", never a name.
+  const at = said.indexOf(url), given = at < 0 ? undefined : /\[([^\]\n]+)\]\($/.exec(said.slice(0, at))?.[1] ?? /^[.,;:!?]*[ \t]*\(([^()\n]{2,40})\)/.exec(said.slice(at + url.length))?.[1]
+  return named(given?.trim() && !BARE_HOST.test(given.trim()) ? given : sourceName(url, korean), url)
 }
 const partLink = (m: TeamMember, said: string): string => pageLink(pagesOf(said, m.sources)[0], said, HANGUL.test(said) || HANGUL.test(m.brief))
 // A sentence takes its link after a space, a fragment after a dot.
@@ -854,21 +863,18 @@ function cellOf(lines: readonly string[], part: string): string {
 
 // --- c6 C5/C6: a date outside the time asked is never shown as inside it ---
 // Today is 2026-11-17; 지민 was asked for next month's events and brought "ACC 2025 … 2025년 12월 11일", and the thread read "12월 11일, ACC 2025".
-// shortcut: the time asked is resolved here, for what is shown; c6a resolves it for the teammate's task (team-hire-tools). One function
-// for both when the stack joins them.
+// stack-6: the days come from the one resolution the teammate's task uses (team-hire-tools periodSpans).
 interface Period { from: Date; to: Date; label: string }
 /** The time a job asks about, when it names one of 다음 달, 이번 주말, 이번 주, 내일. Read widely on purpose: a find is called outside only when it clearly is. */
 export function askedPeriod(ask: string, now = new Date()): Period | undefined {
-  const day = (offset: number): Date => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset), toSunday = (7 - now.getDay()) % 7
-  if (/다음\s*달|내달/u.test(ask)) { const from = new Date(now.getFullYear(), now.getMonth() + 1, 1); return { from, to: new Date(now.getFullYear(), now.getMonth() + 2, 0), label: `${from.getFullYear() === now.getFullYear() ? '올해' : '내년'} ${from.getMonth() + 1}월` } }
-  if (/이번\s*주말/u.test(ask)) return { from: day(toSunday - 1), to: day(toSunday), label: '이번 주말' }
-  // "이번 주" is asked for what is recent: the last seven days count, up to this Sunday.
-  if (/이번\s*주|금주/u.test(ask)) return { from: day(-7), to: day(toSunday), label: '이번 주' }
-  if (/내일/u.test(ask)) return { from: day(1), to: day(1), label: '내일' }
-  return undefined
+  const spans = periodSpans(ask, now), at = ['다음 달', '이번 주말', '이번 주', '내일'].map(name => spans.find(span => span.name === name)).find(Boolean)
+  if (!at) return undefined
+  // "이번 주" is asked for what is recent: the last seven days count too, up to this Sunday.
+  const from = at.name === '이번 주' ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7) : at.from
+  return { from, to: at.to, label: at.name === '다음 달' ? `${from.getFullYear() === now.getFullYear() ? '올해' : '내년'} ${from.getMonth() + 1}월` : at.name }
 }
 // A day with its year ("2025년 12월 11일", "2025.08.19"), a day without ("12월 11일"), or a month ("12월", "2025년 12월").
-// shortcut: "12/11" and a year that is only in an event's name ("ACC 2025 — 12월 11일") are not read; c6a's dated task is what stops those.
+// shortcut: "12/11" is not read; c6a's dated task is what stops that.
 const A_DATE = /(\d{4})\s*(?:년\s*|[./-]\s?)(\d{1,2})\s*(?:월\s*|[./-]\s?)(\d{1,2})|(?:(\d{4})년\s*)?(?<!\d)(\d{1,2})월(?:\s*(\d{1,2})일)?/g
 const SAYS_NONE = /않았|없어요|없었|없습니다|안 보여|못 찾/u
 interface Outside { /** "올해 12월 일정은 아직 안 보여요." */ said: string; /** The nearest find's day: "작년 12월 11일". */ when: string; /** That find as the teammate wrote it, its year kept. */ line: string; /** Its year, when it is not this one. */ year?: number }
@@ -881,8 +887,10 @@ function outsideOf(brief: string, result: string, now = new Date()): Outside | u
   // the answer. Only the sentence that says nothing was found is skipped.
   for (const line of findings(result).lines.flatMap(one => one.split(/(?<=[^\d\s][.!?])\s+/))) {
     if (SAYS_NONE.test(line)) continue
+    // stack-6 (c6b r3): "ACC 2025는 12월 11일 서울에서 열려요": the one year the sentence names beside a day with none is that day's year.
+    const inName = [...new Set(line.match(/(?<![\d.,/-])20\d\d(?![\d.,/-]|\s*(?:년|원|만|억|개|명|달러|%))/g) ?? [])]
     for (const at of line.matchAll(A_DATE)) {
-      const year = Number(at[1] ?? at[4]) || undefined, month = Number(at[2] ?? at[5]), day = Number(at[3] ?? at[6]) || undefined
+      const year = Number(at[1] ?? at[4]) || (inName.length === 1 ? Number(inName[0]) : undefined), month = Number(at[2] ?? at[5]), day = Number(at[3] ?? at[6]) || undefined
       if (month < 1 || month > 12 || (day ?? 1) > 31) continue
       // A day with no year is read in the asked time's own year.
       const spans = (year ? [year] : [...new Set([period.from.getFullYear(), period.to.getFullYear()])]).map(y => [new Date(y, month - 1, day ?? 1), day ? new Date(y, month - 1, day) : new Date(y, month, 0)] as const)
@@ -1006,7 +1014,8 @@ const hostLinked = (text: string): string => text.replace(HOST_PATH, (all: strin
 export function teamAnswer(answer: string, task: DelegatedTask | undefined): string {
   const members = partsOf(task, false)
   // stack-5: a team result's link is never named "네이버 블로그" either (team-hire-tools placeNamed, c5a's rule for a lookup's table).
-  return members.length ? linkJoined(placeNamed(shownAnswer(answer, members), members, HANGUL.test(answer))) : answer
+  // stack-6: nor by a bare host ("slack.com"): the same naming as a lookup's link (sourceName).
+  return members.length ? linkJoined(placeNamed(shownAnswer(answer, members), members, HANGUL.test(answer), true)) : answer
 }
 // c6 C5: "… 신라호텔에서 개최" and then "ACC 2025" on a line of its own read as a stray label. A line that is only a link joins the line
 // before it, as a lone lookup's does (team-hire-tools citeOwn); under a table, a list or a code block it stays.
@@ -1267,7 +1276,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         const at = new Date().toISOString()
         const ids = wanted.map(one => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, title: jobTitle(one.brief), ...(one.topic ? { topic: one.topic } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, title: jobTitle(one.brief), ...(one.topic ? { topic: one.topic } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const, ...(searchWords(one.brief) ? { query: searchWords(one.brief)! } : {}) }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += ids.length

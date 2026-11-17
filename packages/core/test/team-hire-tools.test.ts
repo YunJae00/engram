@@ -1012,3 +1012,15 @@ it('c6: the member rule and the merged shape keep a row to the thing the person 
   expect(MERGED_SHAPE).toContain('a cell never holds another product\'s figure')
   expect(MERGED_SHAPE).toContain('nothing after the table')
 })
+
+// stack-6: c6b-review.r3 finding 1, the reviewer's own input.
+it('stack-6: a different find under the job\'s own heading, same day and page, is kept; the same find reworded under it is still said once', () => {
+  const member = (brief: string): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '지민', brief, botId: 'b', lookup: true, state: 'working', sessionKey: 's', hiredAt: '2026-11-17T00:00:00Z' })
+  const two = member('다음 달 행사 일정 2개 정리')
+  settleMember(two, { answer: '12월 2일 행사 A가 열려요. https://example.com/events\n---\n**다음 달 행사 일정 정리**\n12월 2일 행사 B가 열려요. https://example.com/events' }, 'now', true)
+  expect(two.result).toContain('행사 A가')
+  expect(two.result).toContain('행사 B가')
+  const once = member('리니어 신기능 조사')
+  settleMember(once, { answer: '리니어 신기능: BYOK - 2026년 11월 12일, 자체 API 키를 쓸 수 있게 됨.\nhttps://linear.app/changelog/byok\n\n---\n\n**리니어 신기능 조사 결과**\n\n- 2026년 11월 12일: Bring Your Own Key(BYOK) - 자체 API 키 연동.\n- https://linear.app/changelog/byok' }, 'now', true)
+  expect(once.result).toBe('리니어 신기능: BYOK - 2026년 11월 12일, 자체 API 키를 쓸 수 있게 됨.\nhttps://linear.app/changelog/byok')
+})

@@ -124,25 +124,30 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
 
   it('pins the shape and the one move call', () => {
     expect(deskKind(F1_ASK)).toBe('tidy')
-    expect(DESK_NOTE).toContain('"종류별 폴더로 정리했어요. PDF 6개, 이미지 4개, 문서 3개, 엑셀 3개, 텍스트 4개예요."')
+    // stack-6: BAR F1 asks for a summary list; the counts are one line per folder, still with no file names.
+    expect(DESK_NOTE).toContain('one line per folder and nothing else on it ("- PDF 6개"), no table')
     expect(DESK_NOTE).toContain('move every file in ONE file_move call')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
     expect(source('ipc.ts')).toContain("if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)")
   })
 
-  it('turns the stored F1 answer into one line of counts, with every count kept for F2', () => {
+  it('turns the stored F1 answer into a short list of counts, with every count kept for F2', () => {
     const answer = tidyCounts(F1_ASK, F1)
-    expect(answer).toBe('inbox-dump 폴더를 종류별로 정리했어요. PDF 6개, 이미지 4개, 문서 3개, 엑셀 3개, 텍스트 4개예요.')
+    expect(answer).toBe('inbox-dump 폴더를 종류별로 정리했어요.\n\n- PDF 6개\n- 이미지 4개\n- 문서 3개\n- 엑셀 3개\n- 텍스트 4개')
+    // stack-6 (c6c run, F1): the one sentence the run showed failed BAR's "summary list"; it becomes the same list.
+    expect(tidyCounts(F1_ASK, 'inbox-dump 폴더를 파일 종류별로 정리했어요. PDF 6개, 이미지 4개, 문서 3개, 엑셀 3개, 텍스트 4개예요.')).toBe(answer.replace('종류별로', '파일 종류별로'))
+    expect(answer.split('\n').filter(line => /^- /.test(line))).toHaveLength(5)
+    expect(answer).not.toMatch(/\.(pdf|png|docx|xlsx|txt)/)
     // The thread's plain-text form (no list marks) and a list with counts only come out the same.
     expect(tidyCounts(F1_ASK, F1.replace(/^- /gm, ''))).toBe(answer)
-    expect(tidyCounts(F1_ASK, '종류별 폴더로 정리했어요.\n- PDF 폴더: 6개\n- 이미지 폴더: 4개')).toBe('종류별 폴더로 정리했어요. PDF 6개, 이미지 4개예요.')
+    expect(tidyCounts(F1_ASK, '종류별 폴더로 정리했어요.\n- PDF 폴더: 6개\n- 이미지 폴더: 4개')).toBe('종류별 폴더로 정리했어요.\n\n- PDF 6개\n- 이미지 4개')
   })
 
   it('leaves names they asked for, the odd file out, and an answer already in shape', () => {
     expect(tidyCounts('fixtures/inbox-dump 폴더 정리하고 파일 이름도 알려줘', F1)).toBe(F1)
     const odd = '종류별 폴더로 정리했어요. PDF 6개, 이미지 4개예요.\n기타: 2개 — 메모.hwp, 백업.zip'
     expect(tidyCounts(F1_ASK, odd)).toBe(odd)
-    const done = '종류별 폴더로 정리했어요. PDF 6개, 이미지 4개, 문서 3개예요.'
+    const done = '종류별 폴더로 정리했어요.\n\n- PDF 6개\n- 이미지 4개\n- 문서 3개'
     expect(tidyCounts(F1_ASK, done)).toBe(done)
   })
 })
@@ -219,4 +224,27 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
     expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 표로 묶어 드릴게요.`)
   })
+})
+
+// stack-6: c6c-review.r3 finding 1, the reviewer's own input.
+it('stack-6: a split asked as a question still gets a line that says the split; a plain question keeps its own', async () => {
+  const { laneLine } = await import('../src/main/first-line.js')
+  expect(laneLine('지민이랑 서연한테 나눠서 조사해줄래?', true)).toBe('누가 뭘 맡을지 나눠 볼게요.')
+  expect(laneLine('다들 뭐 하고 있어?', true)).toBe('지금 확인해 볼게요.')
+})
+
+// stack-6 (c6c run, H4): the row passed in stack-5 and came back with a 미결 block under "할 일만".
+it('stack-6: "할 일만" gets the tasks only: the 미결 block and the lone heading go, every task stays, other asks are left alone', async () => {
+  const { onlyAsked } = await import('../src/main/desk-lane.js')
+  const tasks = ['한서연: 신규 온보딩 화면 시안 확정 — 11월 20일까지', '오태민: 결제 모듈 교체 일정 수립 — 11월 24일까지', '윤가은: 베타 테스터 50명 모집 공지 발송 — 11월 27일까지', '백도현: 4분기 마케팅 예산안 제출 — 12월 1일까지']
+  const shown = ['회의록에서 할 일을 뽑아봤어요.', '', '할 일', '', ...tasks, '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의에서 결정', '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
+  const ask = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
+  expect(onlyAsked(ask, shown)).toBe(['회의록에서 할 일을 뽑아봤어요.', '', ...tasks].join('\n'))
+  // The bold-heading, list-marked form, with suggested replies kept last.
+  const marked = ['**할 일**', ...tasks.map(line => `- ${line}`), '', '**미결**', '- 결제 모듈 후보 선택', '', '```replies', '담당자별로 나눠줘', '```'].join('\n')
+  expect(onlyAsked(ask, marked)).toBe([...tasks.map(line => `- ${line}`), '', '```replies', '담당자별로 나눠줘', '```'].join('\n'))
+  // No 미결 block, or an ask that does not say "only": untouched (H3, D1).
+  expect(onlyAsked(ask, tasks.join('\n'))).toBe(tasks.join('\n'))
+  expect(onlyAsked('fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', shown)).toBe(shown)
+  expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)")
 })
