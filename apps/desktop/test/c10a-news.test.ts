@@ -11,7 +11,7 @@ const quarter = [...article('리벨리온, AI 반도체 620억 원 투자 유치
 const roundUpList = article('스타트업 투자 동향 주간 리포트 11월 셋째 주', 'https://platum.kr/weekly/47', '2일 전')
 const roundUpPage = {
   url: 'https://platum.kr/weekly/47',
-  text: ['11월 셋째 주 스타트업 투자 동향', '▲ 업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치 (11월 13일)', '▲ 뤼튼, AI 에이전트 플랫폼 300억 원 투자 유치', '▲ 푸드테크 키친랩, 50억 원 시리즈A 유치', '이번 주 투자 건수는 21건이에요.'].join('\n'),
+  text: ['11월 셋째 주 스타트업 투자 동향', '▲ 업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치 (11월 13일)', '▲ 뤼튼, AI 에이전트 플랫폼 300억 원 투자 유치', '▲ 마키나락스, 산업용 AI 200억 원 시리즈C 유치 (11월 12일)', '▲ 푸드테크 키친랩, 50억 원 시리즈A 유치', '이번 주 투자 건수는 21건이에요.'].join('\n'),
   links: [{ text: '업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치', url: 'https://platum.kr/archives/1' }, { text: '플래텀 홈', url: 'https://platum.kr/' }],
 }
 function courier(second: boolean) {
@@ -57,10 +57,10 @@ test('c10a R3: a first pass with 1 round and a second pass with 4 gives 5 rounds
     expect(items).toHaveLength(5)
     expect(list.split('\n')[0]).toMatch(/^1\. 메디인테크/)
     for (const item of items) expect(item, item).toMatch(/\]\(https?:\/\//)
-    // c10a r2: a round-up item carries only a date its own words give (업스테이지 11월 13일); 뤼튼's line gives none, so it has none,
-    // and the round-up's own date (2일 전, 11월 15일) is on no item.
-    for (const item of items.filter(one => !/뤼튼/.test(one))) expect(item, item).toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/)
-    expect(items.find(one => /뤼튼/.test(one))).not.toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/)
+    // c10a r2: a round-up item carries only a date its own words give (업스테이지 11월 13일, 마키나락스 11월 12일), and the round-up's own
+    // date (2일 전, 11월 15일) is on no item. c10a r3 (Codex r2): 뤼튼's line gives none, so it is no item: each of the five has its date.
+    for (const item of items) expect(item, item).toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/)
+    expect(out).not.toContain('뤼튼')
     expect(out.split('\n').find(line => /업스테이지/.test(line))).toMatch(/11월 13일$/)
     expect(out).not.toMatch(/11월 15일|2026\.11\.15/)
     expect(list).not.toMatch(/벤처투자|딱 맞는|확실한/)
@@ -105,4 +105,21 @@ test('c10a r2: a round-up row is dated only by its own words, never by the round
     links: [{ text: '딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치', url: 'https://example.kr/a/2' }] }
   const rows = roundUpRows(page, 'AI 스타트업 투자 뉴스 4건 알려줘', 'AI 스타트업 투자 유치')
   expect(rows.map(one => [one.title.slice(0, 5), one.date])).toEqual([['딥노트, ', ''], ['[2026', '2026.11.10'], ['뉴런웍스 ', '']])
+})
+
+// c10a r3 (Codex r2): nothing dated an undated round as recent but inPeriod. Any source, any wording: a round with no date is no counted item.
+test('c10a r3: in a counted news list of a known kind a round with no date of its own is never counted, from any page', async () => {
+  vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
+  try {
+    const asked2 = '바이오 스타트업 투자 유치 소식 두 건만 링크 달아서 알려줘'
+    const rows = [...article('지놈랩, 신약 플랫폼으로 120억 원 시리즈B 투자 유치', 'https://www.example-news.kr/a', '3일 전'), { text: '하모니셀, 세포치료제 80억 원 투자 유치', url: 'https://www.other-daily.kr/b' }]
+    // The undated round stands far from any date on the page, as a row whose date the page never printed.
+    const text = ['지놈랩, 신약 플랫폼으로 120억 원 시리즈B 투자 유치', '3일 전', ' .'.repeat(200), '하모니셀, 세포치료제 80억 원 투자 유치', ' .'.repeat(200)].join('\n')
+    const fetchPage = async (url: string) => ({ url, text, links: rows })
+    const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!
+    const out = await tool.run({ query: '바이오 스타트업 투자 유치', kind: 'news' }, { task: asked2, steps: [], read: '' } as never)
+    const items = out.split('\n').filter(line => line.startsWith('- '))
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatch(/^- 지놈랩.* — 11월 14일/)
+  } finally { vi.useRealTimers() }
 })

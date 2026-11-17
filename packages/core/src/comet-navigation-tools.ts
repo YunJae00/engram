@@ -210,8 +210,10 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           // a plan, an opinion piece) is handed over after them as background. c9a r2: also with no such row at all — the statistic came back
           // as an item when the floor fell to 1 there. Only a kind the host does not know keeps the ranks as order.
           // stack-9 (c9a run R3: "찾아봤는데 확실한 건 아직 없어요." and nothing else, human 1): with no round, the background may follow as related news, labeled.
-          const floor = own ? 2 : 1
-          const real = (rows: typeof listed): typeof listed => rows.filter(one => rank(one) >= floor).sort((a, b) => rank(b) - rank(a))
+          // c10a r3 (Codex r2): a round-up line with no date of its own filled a place of five asked "each with its date". inPeriod keeps an
+          // undated row (nothing says it is old), so for a kind the host knows an item must also carry a date: undated, it is not counted.
+          const floor = own ? 2 : 1, dated = (one: typeof listed[number]): boolean => floor < 2 || !!resultDay(one.date, now)
+          const real = (rows: typeof listed): typeof listed => rows.filter(one => rank(one) >= floor && dated(one)).sort((a, b) => rank(b) - rank(a))
           const recent = real(every)
           let older: typeof listed = []
           if (period && (together || recent.length < NEWS_FEW)) {
@@ -233,7 +235,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
             const until = Date.now() + SECOND_PASS_MS, found: typeof listed = [], before = [...recent, ...older]
             const load = (address: string | null): Promise<typeof page | null> => !address || until - Date.now() < 1_000 ? Promise.resolve(null)
               : courier.fetchPage(address, AbortSignal.any([...(context.signal ? [context.signal] : []), AbortSignal.timeout(until - Date.now())])).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null })
-            const newRounds = (): typeof listed => withoutRepeats([...before, ...found.filter(one => rank(one) === 2 && !before.some(held => held.url === one.url))], query).slice(before.length)
+            const newRounds = (): typeof listed => withoutRepeats([...before, ...found.filter(one => rank(one) === 2 && dated(one) && !before.some(held => held.url === one.url))], query).slice(before.length)
             const quarter = searchUrlFor(newsTemplate(general, 'quarter'), own), wider = await load(quarter !== eventUrl ? quarter : null)
             if (wider && !wider.wall) found.push(...list(wider, wider.url || quarter!).filter(one => inPeriod(one.date, 'quarter', now)))
             if (before.length + newRounds().length < count!) {

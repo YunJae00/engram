@@ -68,3 +68,18 @@ test('c10a r2: a site\'s declared name names its link; nothing declared, or no n
   const out = await liveLinks(answer, [], async url => { keepDeclaredName(url, await pageHead(html.body, 4_096)); return true }, true)
   expect(out).toBe('픽셀 12는 899달러부터예요. [폰리뷰랩](https://phonelab.example/pixel-12)')
 })
+
+// c10a r3 (Codex r2): a source cell with two real links returned before the tier check, so another tier's page stayed beside a base row.
+test('c10a r3: a base row\'s source cell of several links drops each page of another tier; all of another tier falls back like one link', () => {
+  const member = (role: string, brief: string, result: string): TeamMember => ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-17T00:00:00Z', state: 'released', lookup: true, sources: ['https://search.naver.com/search.naver?query=y'], result })
+  const buds = member('buds', '갤럭시 버즈 5 가격', '버즈 5는 22만 원부터 — https://news.example.kr/buds5\n버즈 5 프로는 31만 원 — https://review.example.kr/buds-5-pro')
+  const ipad = member('ipad', '아이패드 에어 8 가격', '에어 8 울트라 모델 129만 원 — https://blog.example.kr/air8-a\n에어 8 맥스는 139만 원 — https://blog.example.kr/air8-b')
+  const table = ['| 제품 | 가격 | 출처 |', '|---|---|---|',
+    '| 갤럭시 버즈 5 | 22만 원부터 | [뉴스](https://news.example.kr/buds5) · [리뷰](https://review.example.kr/buds-5-pro) |',
+    '| 아이패드 에어 8 | 미발표 | [블로그](https://blog.example.kr/air8-a) · [블로그](https://blog.example.kr/air8-b) |'].join('\n')
+  const out = rows2(citeMembers(table, [buds, ipad], true))
+  expect(out[0]![2]).toContain('https://news.example.kr/buds5')
+  expect(out[0]![2]).not.toContain('buds-5-pro')
+  expect(out[1]![2]).not.toMatch(/air8-a|air8-b/)
+  expect(out[1]![2]).toContain('https://search.naver.com/search.naver?query=y')
+})
