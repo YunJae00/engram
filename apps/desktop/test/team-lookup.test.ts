@@ -172,15 +172,16 @@ it('c6: a lookup member with search words starts with that search already run: r
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '아이폰 18', brief: '아이폰 18의 가격과 출시일', lookup: true, query: '아이폰 18 가격 출시일' }, { role: '갤럭시 S27', brief: '갤럭시 S27의 가격과 출시일', lookup: true }] }, { task: '' }))
-  // One search, the lead's words, run by the host with the member's task as its context (the news period reads the person's words there).
-  expect(searched.map(one => one.query)).toEqual(['아이폰 18 가격 출시일'])
+  // The lead's words, run by the host with the member's task as its context (the news period reads the person's words there).
+  // c9a R2: words for a price and a date are one search per point, side by side, the price one as 출고가.
+  expect(searched.map(one => one.query)).toEqual(['아이폰 18 출고가', '아이폰 18 출시일'])
   expect(searched[0]!.task).toContain('Your part:\n아이폰 18의 가격과 출시일')
   const [withQuery, without] = [prompts.find(prompt => prompt.includes('아이폰 18의'))!, prompts.find(prompt => prompt.includes('갤럭시 S27의'))!]
-  expect(withQuery).toContain('Results of the search already run for you ("아이폰 18 가격 출시일"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\nresults for "아이폰 18 가격 출시일" at ')
+  for (const words of ['아이폰 18 출고가', '아이폰 18 출시일']) expect(withQuery).toContain(`Results of the search already run for you ("${words}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\nresults for "${words}" at `)
   expect(withQuery).toContain('- 아이폰 18 프로 179만 원부터 — https://www.apple.com/kr/iphone-18-pro/')
   expect(withQuery).toMatch(/^Today is \d{4}-\d{2}-\d{2} \(\w+\)\./)
   // The search page is on record as read (keepSources), as if the member had searched itself.
-  expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, sources: [address('아이폰 18 가격 출시일')] })
+  expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, sources: [address('아이폰 18 출고가'), address('아이폰 18 출시일')] })
   // No search words: nothing is run for it and its task is the task alone.
   expect(without).not.toContain('Results of the search already run')
   expect(out.members[1]).toMatchObject({ state: 'failed' })
@@ -285,7 +286,8 @@ it('c7 R2: a price reported with no figure gets one host-run search for the prev
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'iphone18', brief: '아이폰 18의 가격과 출시일 조사', lookup: true, query: '아이폰 18 가격 출시일' }, { role: 'galaxyS27', brief: '갤럭시 S27의 가격과 출시일 조사', lookup: true, query: '갤럭시 S27 가격 출시일' }] }, { task: '' })
   // One more search, for the member whose price had no figure only, under the previous model's name.
-  expect(searched.sort()).toEqual(['갤럭시 S26 출고가', '갤럭시 S27 가격 출시일', '아이폰 18 가격 출시일'])
+  // c9a R2: each member's first search is one per point (출고가, 출시일).
+  expect(searched.sort()).toEqual(['갤럭시 S26 출고가', '갤럭시 S27 출고가', '갤럭시 S27 출시일', '아이폰 18 출고가', '아이폰 18 출시일'])
   const again = prompts.filter(prompt => prompt.startsWith('Your price has no figure.'))
   expect(again).toHaveLength(1)
   expect(again[0]).toContain('labeled 전작')

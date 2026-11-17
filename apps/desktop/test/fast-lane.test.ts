@@ -194,7 +194,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).not.toContain('when the results hold one')
   expect(LANE_NOTE).toContain('never a number of your own, and never a cell with no number in it')
   expect(LANE_NOTE).toContain('labeled 예상 or 전작')
-  expect(LANE_NOTE).toContain('never "네이버 블로그" or "네이버 카페"')
+  expect(LANE_NOTE).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리)')
   // c5 R3/H6: a news list is numbered lines, never a table, with no paragraph about the search; a plan or a visit is not an investment.
   expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item, never a table, and nothing after the last item: no closing paragraph, no word about what the search did or did not have, no remark on an item')
   expect(LANE_NOTE).toContain('keeps one line per item with what happened, its date and the outlet as a named link')

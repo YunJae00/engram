@@ -1407,8 +1407,10 @@ test('stack-5: a team result never names a link "네이버 블로그", whoever w
   const written = '지민이랑 서연이 알아봤어요.\n\n| 항목 | 내용 |\n| --- | --- |\n| 서울 (지민) | 주말은 맑아요. [네이버 블로그](https://blog.naver.com/traveltrap/1) |\n| 부산 (서연) | 흐려요. [네이버 카페](https://cafe.naver.com/busan/2) |'
   const shown = teamAnswer(written, teamTask([kim, lee]))
   expect(shown).toContain('[주말 나들이 날씨 정리](https://blog.naver.com/traveltrap/1)')
-  expect(shown).toContain('[출처](https://cafe.naver.com/busan/2)')
-  for (const text of [shown, mergedReport([kim, lee])]) expect(text).not.toMatch(/네이버 (?:블로그|카페)/)
+  // c9a R2: a post is named by its platform.
+  expect(shown).toContain('[네이버 카페](https://cafe.naver.com/busan/2)')
+  // c9a R2: the platform is now the link's own name; never as plain words beside a link.
+  for (const text of [shown, mergedReport([kim, lee])]) expect(text).not.toMatch(/(?<!\[)네이버 (?:블로그|카페)(?!\])/)
   // stack-5 (c5a run, R2): the place with the writer's id after it is still only the place.
   expect(teamAnswer(written.replace('[네이버 블로그]', '[네이버 블로그 traveltrap]'), teamTask([kim, lee]))).toContain('[주말 나들이 날씨 정리](https://blog.naver.com/traveltrap/1)')
   // A clean answer passes as it was.
@@ -1430,8 +1432,8 @@ import { citeMembers } from '../src/team-hire-tools.js'
 test('stack-5: a row whose member named a blog post by its address alone cites that post, not the search page', () => {
   const m = part('m1', '갤럭시 S27', '갤럭시 S27 가격', { botId: undefined as never, sources: ['https://search.naver.com/search.naver?query=Galaxy+S27+price'], result: '예상 130만 원 (https://blog.naver.com/example/1)' })
   const out = citeMembers('| 제품 | 가격 | 출처 |\n|---|---|---|\n| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |', [m], true)
-  expect(out).toContain('| [출처](https://blog.naver.com/example/1) |')
-  expect(out).not.toMatch(/네이버 (?:검색|블로그)/)
+  expect(out).toContain('| [네이버 블로그](https://blog.naver.com/example/1) |')
+  expect(out).not.toMatch(/네이버 검색|(?<!\[)네이버 블로그(?!\])/)
   // No post named: the member's page, as before.
   expect(citeMembers('| 제품 | 가격 | 출처 |\n|---|---|---|\n| 갤럭시 S27 | 예상 130만 원 | 네이버 블로그 |', [{ ...m, result: '예상 130만 원' }], true)).toContain('[네이버 검색](https://search.naver.com/search.naver?query=Galaxy+S27+price)')
 })
@@ -1879,11 +1881,12 @@ test('stack-7: a team result names every link by the one rule, also when the tea
   const said = mergedReport([kim, lee, park])
   const names = [...said.matchAll(/\[([^\]]+)\]\(/g)].map(found => found[1])
   // A cut title and a piece of the host give way to the plain word; a name that passes as one stays as the teammate wrote it.
-  expect(names).toEqual(['출처', '출처', '기상청 날씨누리'])
+  // c9a R2: a blog post is named by its platform.
+  expect(names).toEqual(['네이버 블로그', '출처', '기상청 날씨누리'])
   expect(said).not.toMatch(/…|\.{3,}\]|\[vidabytes\]|\[blank\]/)
   // The writer's own words for a link never stand: the host names it again by the same rule.
   const written = `셋 다 찾아봤어요.\n\n지민: 갤럭시 S27은 전작 기준 115만 5천 원 선이래요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/a/1)\n\n서연: 픽셀 11은 999유로부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11)\n\n도윤: 서울 날씨는 토요일 맑고 12도예요. [weather](https://www.weather.go.kr/w/index.do)`
-  expect([...checkedReport(written, [kim, lee, park])!.matchAll(/\[([^\]]+)\]\(/g)].map(found => found[1])).toEqual(['출처', '출처', '기상청 날씨누리'])
+  expect([...checkedReport(written, [kim, lee, park])!.matchAll(/\[([^\]]+)\]\(/g)].map(found => found[1])).toEqual(['네이버 블로그', '출처', '기상청 날씨누리'])
   // A part is named in its line's own words: the link's name ("[슬랙](…)") does not stand in for them.
   const slack = part('m1', '지민', '슬랙 신기능 조사', { topic: '슬랙', result: '슬랙이 허들 요약을 냈어요. https://slack.com/blog/huddles' }), notion = part('m2', '서연', '노션 신기능 조사', { topic: '노션', result: '노션이 AI 회의록을 냈어요. https://notion.so/a' })
   expect(checkedReport('둘 다 찾아봤어요.\n\n지민: 허들 요약이 나왔어요. [슬랙](https://slack.com/blog/huddles)\n\n서연: 노션이 AI 회의록을 냈어요. [노션](https://notion.so/a)', [slack, notion])).toBeUndefined()

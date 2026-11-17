@@ -1,5 +1,5 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, pointQueries, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -145,8 +145,10 @@ export function teamRunner(deps: {
           begun()
           // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
           const held = laneSearches.get(leadChannel), already = held && sameWords(held.query, me.query!) ? held.found : undefined
-          const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '') : await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
-          if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${me.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
+          // c9a R2: words for a price and a date are one search per point, side by side, each list under its own heading (pointQueries).
+          const queries = already !== undefined ? [me.query!] : pointQueries(me.query!)
+          const founds = already !== undefined ? [await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')] : await Promise.all(queries.map(query => search.run({ query }, { task: prompt, signal: control.signal }).catch(() => '')))
+          for (const [at, found] of founds.entries()) if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${queries[at]}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
         }
         let priced = false
         for (let round = 0; ; round++) {
@@ -188,6 +190,8 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
+        // c9a R2: a fact the teammate gave with no address is tied to the row it read it from (figurePages).
+        if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}) }, now(), isKorean(goal))
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.

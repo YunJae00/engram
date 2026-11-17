@@ -1,0 +1,72 @@
+{
+ "goal": "아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜",
+ "members": [
+  {
+   "id": "m1",
+   "parentId": null,
+   "depth": 1,
+   "role": "iphone18",
+   "brief": "아이폰 18의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "아이폰 18 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkblk6o-5d7fac-m1",
+   "hiredAt": "2026-11-17T06:37:36.169Z",
+   "finishedAt": "2026-11-17T06:37:44.413Z",
+   "result": "가격: 프로 기준 199만원 (출고가, 카페 출처, 2026.09.10 기준 256GB 329만원~2TB 509만원으로도 언급됨) / 일반형은 미발표\n출시일: 프로·듀오 모델은 10월 23일 이미 출시 / 일반형 아이폰 18은 내년 봄 예상 (출처: https://cafe.naver.com/appletouch/2303631, 출처: https://www.youtube.com/watch?v=s3wLAIMQpPs)",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EA%B0%80%EA%B2%A9%20%EC%B6%9C%EC%8B%9C%EC%9D%BC"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  },
+  {
+   "id": "m2",
+   "parentId": null,
+   "depth": 1,
+   "role": "galaxyS27",
+   "brief": "갤럭시 S27의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "갤럭시 S27 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkblk6o-5d7fac-m2",
+   "hiredAt": "2026-11-17T06:37:36.169Z",
+   "finishedAt": "2026-11-17T06:37:49.398Z",
+   "result": "갤럭시 S27 조사 결과예요.\n\n가격: 미발표, 전작 S26 140만 3,600원 — https://smartstore.naver.com/main/products/12990053235\n출시일: 미발표, 2027년 1~2월 공개설 (프로 모델은 2027년 1월 초/2월 공개설) — https://cafe.naver.com/sm2022sf/1328949",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EA%B0%A4%EB%9F%AD%EC%8B%9C%20S27%20%EA%B0%80%EA%B2%A9%20%EC%B6%9C%EC%8B%9C%EC%9D%BC",
+    "https://search.naver.com/search.naver?query=%EA%B0%A4%EB%9F%AD%EC%8B%9C%20S26%20%EC%B6%9C%EA%B3%A0%EA%B0%80"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  },
+  {
+   "id": "m3",
+   "parentId": null,
+   "depth": 1,
+   "role": "pixel11",
+   "brief": "픽셀 11의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "구글 픽셀 11 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkblk6o-5d7fac-m3",
+   "hiredAt": "2026-11-17T06:37:36.169Z",
+   "finishedAt": "2026-11-17T06:37:42.575Z",
+   "result": "가격: 899달러부터 (기본형, 미국 기준) — 출처\n출시일: 2026년 8월 12일 공개, 8월 20일 판매 시작 — 출처",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EA%B5%AC%EA%B8%80%20%ED%94%BD%EC%85%80%2011%20%EA%B0%80%EA%B2%A9%20%EC%B6%9C%EC%8B%9C%EC%9D%BC"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  }
+ ]
+}
