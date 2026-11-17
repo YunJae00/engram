@@ -234,8 +234,9 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
       if (held.length) cells[cells.length - 1] = held.map(url => `[${sourceName(url, korean)}](${escaped(url)})`).join(' · ')
     }
     // c10a R2: a helper made for the job compares one tier per row (oneTier); a named teammate's row is left as it wrote it.
-    if (!own.botId) for (let at = 1; at < cells.length - (sourceColumn ? 1 : 0); at++) cells[at] = oneTier(cells[at]!, `${cells[0]} ${own.brief}`, korean)
-    if (sourceColumn) cells[cells.length - 1] = rowSource(cells, own, used, korean)
+    const base = !own.botId && !TIER.test(`${cells[0]} ${own.brief}`)
+    if (base) for (let at = 1; at < cells.length - (sourceColumn ? 1 : 0); at++) cells[at] = oneTier(cells[at]!, `${cells[0]} ${own.brief}`, korean)
+    if (sourceColumn) cells[cells.length - 1] = rowSource(cells, own, used, korean, base)
     lines[i] = `| ${cells.join(' | ')} |`
   }
   // The same for a link the lead wrote itself: "[네이버 블로그](…)" takes the title a member gave that address, else the address's own name.
@@ -268,7 +269,17 @@ export function oneTier(cell: string, row: string, korean = true): string {
 // shortcut: only the lead's search-page link or one of the teammate's own pages is replaced; another link the lead wrote stays (liveCited checks it).
 const SECONDARY = /youtube\.com|youtu\.be|tv\.naver\.com|\/shorts\b|smartstore\.|shopping\.naver|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com/i
 const hostOf = (url: string): string => { try { return new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return url } }
-function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean): string {
+// c10a r2 (Codex r1): a base-model row kept the iphone-18-pro page after its Pro price went. In a row of one tier (base), a page is
+// another tier's when its address names a tier, or when every line of the teammate's result that cites it is about another tier only
+// (oneTier would leave nothing of it). Such a page is never the row's source; with no other page the teammate's search page is.
+const otherTier = (url: string, result: string): boolean => {
+  let path = url
+  try { path = decodeURIComponent(new URL(url).pathname) } catch { /* the address as written */ }
+  if (TIER.test(path)) return true
+  const says = result.split('\n').filter(line => line.includes(url)).map(line => line.replace(ADDRESS, ' ').replace(/[()\s—–-]+$/, '').trim()).filter(Boolean)
+  return says.length > 0 && says.every(line => oneTier(line, '', false) === 'base model not found')
+}
+function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>, korean: boolean, base = false): string {
   let cell = cells.at(-1)!, links = [...cell.matchAll(/\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g)]
   // c9a r3 (Codex r2): a cell with a search page beside an article kept the search page. Beside a real page it goes; a cell of search pages
   // only is taken as its first, which the teammate's own page then replaces below.
@@ -277,7 +288,8 @@ function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>,
     if (real.length) { for (const link of real) used.add(hostOf(link[2]!)); return real.length === links.length ? cell : real.map(link => link[0]).join(' · ') }
     links = links.slice(0, 1); cell = links[0]![0]
   }
-  const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url))
+  const off = (url: string | undefined): boolean => base && !!url && !SEARCH_PAGE.test(url) && otherTier(url, own.result ?? '')
+  const now = links[0]?.[2], cited = [...new Set([...(own.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')), ...(own.sources ?? [])])].filter(url => !SEARCH_PAGE.test(url) && !off(url))
   // c9a r2 (Codex r1): a press page with only the date outranked the blog post that alone held the price, and the price lost its source.
   // A page holding a row's figure comes first; when its figures sit on several pages, the row links each of them.
   const holds = new Set(figureSources(own.result ?? '', cells.slice(1, -1)))
@@ -285,9 +297,10 @@ function rowSource(cells: readonly string[], own: TeamMember, used: Set<string>,
   const order = cited.map((url, at) => ({ url, at })).sort((a, b) => rank(a.url) - rank(b.url) || a.at - b.at).map(one => one.url), best = order[0]
   const name = (url: string): string => `[${linked(own.result ?? '').get(url) ?? sourceName(url, korean)}](${url.replace(/\)/g, '%29').replace(/ /g, '%20')})`
   // A results page whose own box holds the figure stays (네이버 날씨); a link the lead gave that its teammate did not list is left as it is.
-  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now)
-  if (replace && holds.size > 1) { const each = order.filter(url => holds.has(url)); for (const url of each) used.add(hostOf(url)); return each.map(name).join(' · ') }
-  const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) && rank(best) < rank(now)) ? best : now
+  const replace = !now || SEARCH_PAGE.test(now) && !boxed(now) || cited.includes(now) || off(now)
+  const each = order.filter(url => holds.has(url))
+  if (replace && each.length > 1) { for (const url of each) used.add(hostOf(url)); return each.map(name).join(' · ') }
+  const url = best && (!now || SEARCH_PAGE.test(now) && !boxed(now) || off(now) || cited.includes(now) && rank(best) < rank(now)) ? best : off(now) ? own.sources?.find(one => SEARCH_PAGE.test(one)) ?? now : now
   if (!url) return cell
   used.add(hostOf(url))
   if (url === now) return /^\s*\[(?:출처|source)\]/i.test(cell) ? cell.replace(/\[(?:출처|source)\]/i, `[${sourceName(now, korean)}]`) : cell
@@ -344,9 +357,37 @@ export function sourceName(url: string, korean = false): string {
   const platform = SEARCH_PAGE.test(url) ? undefined : PLATFORMS.find(([hosts]) => hosts.test(host))
   if (platform) return platform[korean ? 1 : 2]
   if (plain !== host && !(communityPost(url) && !SEARCH_PAGE.test(url))) return plain
+  const declared = DECLARED.get(host.replace(/^m\./, ''))
+  if (declared) return declared
   const [title, found] = TITLES.get(url) ?? TITLES.get(plainAddress(url)) ?? []
   return title && sitePart(title, found) || word
 }
+// c10a r2 (Codex r1): a site on no list was "출처" unless its search title happened to end in its name; the outlet list only moved the
+// edge. A site says its own name in its page head (og:site_name, else application-name). The link check already loads each shown address
+// the turn did not read (liveCited / liveLinks); it hands the head here, and the name is kept by host. It passes as a name like any other
+// (nameLike), and is the site's own word for itself, so it may echo its address ("Vidabytes").
+// shortcut: in memory, the newest 400 hosts, for this run of the app.
+const DECLARED = new Map<string, string>()
+export function keepDeclaredName(url: string, head: string): void {
+  let host: string
+  try { host = new URL(url).hostname.replace(/^(www|m)\./, '') } catch { return }
+  const meta = (key: string): string | undefined => [...head.matchAll(/<meta\b[^>]*>/gi)].map(tag => tag[0]).filter(tag => new RegExp(`(?:property|name)\\s*=\\s*["']${key}["']`, 'i').test(tag)).map(tag => /content\s*=\s*(["'])([^"']*)\1/i.exec(tag)?.[2]).find(Boolean)
+  const name = (meta('og:site_name') ?? meta('application-name') ?? '').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim()
+  if (!name || !nameLike(name) || /\uFFFD|^(?:home|홈|index|untitled)$/i.test(name)) return
+  DECLARED.delete(host); DECLARED.set(host, name); if (DECLARED.size > 400) DECLARED.delete(DECLARED.keys().next().value!)
+}
+/** The page head of a checked link's response, read up to </head> or max bytes (the rest is never read). */
+export async function pageHead(body: ReadableStream<Uint8Array> | null, max = 65_536): Promise<string> {
+  if (!body) return ''
+  const reader = body.getReader(), decoder = new TextDecoder()
+  let text = ''
+  try {
+    for (let bytes = 0; bytes < max && !/<\/head>/i.test(text);) { const { done, value } = await reader.read(); if (done) break; bytes += value.length; text += decoder.decode(value, { stream: true }) }
+  } finally { void reader.cancel().catch(() => undefined) }
+  return text
+}
+// A link the citing left as the plain word takes the name its site declared while the link was checked.
+const declaredNamed = (text: string, korean: boolean): string => text.replace(/\[(출처|source)\]\((https?:\/\/[^)\s]+)\)/gi, (whole, _word: string, url: string) => { const name = sourceName(url, korean); return name === (korean ? '출처' : 'source') ? whole : `[${name}](${url})` })
 // c9a R2: a link column read 출처 / 출처 / 출처. A post on a platform is named by the platform, the way a person says where they saw it.
 const PLATFORMS: [RegExp, string, string][] = [[/^(m\.)?cafe\.naver\.com$/, '네이버 카페', 'Naver Cafe'], [/^(m\.)?blog\.naver\.com$/, '네이버 블로그', 'Naver Blog'], [/^(m\.)?post\.naver\.com$/, '네이버 포스트', 'Naver Post'],
   [/^(m\.)?smartstore\.naver\.com$/, '스마트스토어', 'Smart Store'], [/(^|\.)tistory\.com$/, '티스토리', 'Tistory'], [/(^|\.)brunch\.co\.kr$/, '브런치', 'Brunch'], [/^(m\.)?cafe\.daum\.net$/, '다음 카페', 'Daum Cafe'], [/(^|\.)velog\.io$/, '벨로그', 'velog']]
@@ -410,7 +451,7 @@ function withoutDead(answer: string, dead: readonly string[], read: readonly str
 }
 // swap: the pages a dead link may give way to (a team answer of several teammates passes none: a row never gets another teammate's page).
 export async function liveLinks(answer: string, read: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, korean = false, ms = LINK_CHECK_MS, swap: readonly string[] = read): Promise<string> {
-  return withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), swap, korean)
+  return declaredNamed(withoutDead(answer, await deadOf(unloaded(answer, read), alive, ms), swap, korean), korean)
 }
 // c4 r2: the citations were finished after the check, so a link citeMembers put in a row or a closing line was never asked. `cite` finishes
 // the citations; every address it can add (seen by citing the answer with its own addresses taken out) is asked in the same one pass as the
@@ -426,7 +467,7 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
     if (had === undefined || !row.test(had) || !row.test(line)) return line
     return dead.some(url => line.includes(url) && !had.includes(url)) || bare[i] !== had && !/https?:\/\//.test(cells(line).at(-1)!) ? `| ${[...cells(line).slice(0, -1), cells(had).at(-1)!].join(' | ')} |` : line
   })
-  const out = withoutDead(rows.join('\n'), dead, read, korean)
+  const out = declaredNamed(withoutDead(rows.join('\n'), dead, read, korean), korean)
   // A closing source line lists links only: a member's dead page leaves no bare name there.
   return out.replace(/\n\n(출처|Sources): ([^\n]*)$/, (_whole, label: string, items: string) => { const kept = items.split(' · ').filter(item => /\]\(https?:\/\//.test(item)); return kept.length ? `\n\n${label}: ${kept.join(' · ')}` : '' })
 }

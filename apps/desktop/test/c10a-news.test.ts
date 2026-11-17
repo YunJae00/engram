@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { cometTools, EVENT_ROWS, eventRank, type HarnessMetric } from 'core'
+import { cometTools, EVENT_ROWS, eventRank, roundUpRows, type HarnessMetric } from 'core'
 import { listOnly, newsItems, shortSaid } from '../src/main/fast-lane.js'
 
 const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
@@ -11,7 +11,7 @@ const quarter = [...article('리벨리온, AI 반도체 620억 원 투자 유치
 const roundUpList = article('스타트업 투자 동향 주간 리포트 11월 셋째 주', 'https://platum.kr/weekly/47', '2일 전')
 const roundUpPage = {
   url: 'https://platum.kr/weekly/47',
-  text: ['11월 셋째 주 스타트업 투자 동향', '▲ 업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치', '▲ 뤼튼, AI 에이전트 플랫폼 300억 원 투자 유치', '▲ 푸드테크 키친랩, 50억 원 시리즈A 유치', '이번 주 투자 건수는 21건이에요.'].join('\n'),
+  text: ['11월 셋째 주 스타트업 투자 동향', '▲ 업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치 (11월 13일)', '▲ 뤼튼, AI 에이전트 플랫폼 300억 원 투자 유치', '▲ 푸드테크 키친랩, 50억 원 시리즈A 유치', '이번 주 투자 건수는 21건이에요.'].join('\n'),
   links: [{ text: '업스테이지, AI 문서 인식으로 1500억 원 시리즈C 투자 유치', url: 'https://platum.kr/archives/1' }, { text: '플래텀 홈', url: 'https://platum.kr/' }],
 }
 function courier(second: boolean) {
@@ -56,7 +56,13 @@ test('c10a R3: a first pass with 1 round and a second pass with 4 gives 5 rounds
     const items = list.split('\n').filter(line => /^\d+\. /.test(line))
     expect(items).toHaveLength(5)
     expect(list.split('\n')[0]).toMatch(/^1\. 메디인테크/)
-    for (const item of items) { expect(item, item).toMatch(/\]\(https?:\/\//); expect(item, item).toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/) }
+    for (const item of items) expect(item, item).toMatch(/\]\(https?:\/\//)
+    // c10a r2: a round-up item carries only a date its own words give (업스테이지 11월 13일); 뤼튼's line gives none, so it has none,
+    // and the round-up's own date (2일 전, 11월 15일) is on no item.
+    for (const item of items.filter(one => !/뤼튼/.test(one))) expect(item, item).toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/)
+    expect(items.find(one => /뤼튼/.test(one))).not.toMatch(/\d+월 \d+일|\d{4}\.\d{2}\.\d{2}/)
+    expect(out.split('\n').find(line => /업스테이지/.test(line))).toMatch(/11월 13일$/)
+    expect(out).not.toMatch(/11월 15일|2026\.11\.15/)
     expect(list).not.toMatch(/벤처투자|딱 맞는|확실한/)
   } finally { vi.useRealTimers() }
 })
@@ -91,4 +97,12 @@ test('c10a R3: a plan word marks a mention only right after the event\'s word', 
   expect(eventRank(row('뤼튼, 시리즈B 투자 유치 추진'), ask)).toBe(0)
   expect(eventRank(row('업스테이지, 500억 투자 검토'), ask)).toBe(0)
   expect(eventRank(row('정부, 기업가치 1조 AI 스타트업 20곳 육성'), ask)).toBe(0)
+})
+
+// c10a r2 (Codex r1): a weekly round-up's own date is no article's date. Wordings not in the harness.
+test('c10a r2: a round-up row is dated only by its own words, never by the round-up page', () => {
+  const page = { url: 'https://example.kr/weekly/9', text: ['[2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치', '딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치', '뉴런웍스 AI 칩 설계로 450억 원 투자 유치 — 지난달 28일'].join('\n'),
+    links: [{ text: '딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치', url: 'https://example.kr/a/2' }] }
+  const rows = roundUpRows(page, 'AI 스타트업 투자 뉴스 4건 알려줘', 'AI 스타트업 투자 유치')
+  expect(rows.map(one => [one.title.slice(0, 5), one.date])).toEqual([['딥노트, ', ''], ['[2026', '2026.11.10'], ['뉴런웍스 ', '']])
 })

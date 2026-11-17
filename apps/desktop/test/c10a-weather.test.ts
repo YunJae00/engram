@@ -31,3 +31,11 @@ test('c10a L3: a weekend answer that lumps the days is written once more from th
   expect(await weekendAnswer('a', { ask: '주말에 볼 영화 뉴스 알려줘', held, write }, now)).toBe('a')
   expect(called).toBe(0)
 })
+
+// c10a r2 (Codex r1): naming both days is not saying each. Wordings not in the harness.
+test('c10a r2: a weekend answer counts as day by day only when each day has a clause of its own', () => {
+  for (const lumped of ['토요일과 일요일은 대체로 맑아요.', '토요일, 일요일 모두 맑아요.', '토·일요일 모두 비 소식은 없어요.', '이번 토요일이랑 일요일 둘 다 흐리대요.', '토요일 일요일 다 쌀쌀해요.'])
+    expect(perDay(lumped), lumped).toBe(false)
+  for (const each of ['토요일은 맑고 일요일은 오후에 비가 와요.', '토요일엔 구름이 많지만 일요일은 개요.', '아니요. 토요일은 흐리고, 일요일은 맑아요.', '| 토요일 | 흐림, 8/15도 |\n| 일요일 | 맑음 |', '21일(토)은 맑고 22일(일)은 흐려요.'])
+    expect(perDay(each), each).toBe(true)
+})

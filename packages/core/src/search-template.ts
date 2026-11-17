@@ -300,15 +300,20 @@ export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
 }
 // c10a R3/H6: a counted list still short after the first pass reads one weekly round-up of funding rounds. Its rounds are the lines (or
 // the links) that rank as a round (eventRank 2) and carry the ask's own topic words ("AI"), each with its own article link when the page
-// links one, else the round-up's address; each is dated with the round-up's date.
+// links one, else the round-up's address.
+// c10a r2 (Codex r1): every round was dated with the round-up's own date, a date none of those articles has. A row's date is one written
+// in its own words (its line, or the page line that holds its linked headline), else none: no date beats a wrong one.
 // shortcut: line by line, no layout reading; a round-up that lists rounds in a table with the company in one cell and the amount in another yields nothing.
 export const ROUND_UP_QUERY = '스타트업 투자 유치 주간 리포트'
 export const ROUND_UP_TITLE = /주간|위클리|weekly|이번\s?주|한\s?주|투자\s?(?:동향|리포트|브리핑|소식|정리|라운드업)|라운드업/i
 const TOPIC_PLAIN = /^(?:국내|해외|글로벌|스타트업|벤처|투자|유치|뉴스|기사|소식|기업|업계|요즘|최근|이번|시리즈|억|원|받은|받|곳)$/
-export function roundUpRows(page: { url: string; text: string; links?: { text: string; url: string }[] }, ask: string, query: string, date: string): SearchResult[] {
+const WRITTEN_DAY = /\d{4}(?:\.\s?|-)\d{1,2}(?:\.\s?|-)\d{1,2}|(?:\d{4}년\s*)?\d{1,2}월\s*\d{1,2}일|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}(?:,? \d{4})?/i
+export function roundUpRows(page: { url: string; text: string; links?: { text: string; url: string }[] }, ask: string, query: string): SearchResult[] {
+  const textLines = page.text.split('\n')
+  const dateOf = (words: string): string => { const own = WRITTEN_DAY.exec(words)?.[0] ?? WRITTEN_DAY.exec(textLines.find(line => words.length >= 8 && line.includes(words.slice(0, 20))) ?? '')?.[0]; return own && resultDay(own) ? own : '' }
   const topic = query.split(/\s+/).filter(word => word.length >= 2 && !TOPIC_PLAIN.test(word)).map(word => word.toLowerCase())
   const about = (line: string): boolean => !topic.length || topic.some(word => line.toLowerCase().includes(word))
-  const row = (title: string, url: string): SearchResult => ({ title: title.replace(/^[\s▲△▶►•·\-*\d.)]+/, '').replace(/\s+/g, ' ').trim().slice(0, 100), url, snippet: '', date })
+  const row = (title: string, url: string): SearchResult => ({ title: title.replace(/^[\s▲△▶►•·\-*\d.)]+/, '').replace(/\s+/g, ' ').trim().slice(0, 100), url, snippet: '', date: dateOf(title.trim()) })
   const linked = (page.links ?? []).filter(link => /^https?:/.test(link.url) && link.url !== page.url && link.text.trim().length >= 8).map(link => row(link.text, link.url))
   const lines = page.text.split(/\n|(?<=[.!?。]|다\.)\s+/).map(line => line.trim()).filter(line => line.length >= 8 && line.length <= 200).map(line => row(line, page.url))
   const out: SearchResult[] = []

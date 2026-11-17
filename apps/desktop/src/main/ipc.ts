@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, keepDeclaredName, pageHead, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -3006,7 +3006,11 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
         // Asks one shown address whether it answers: nothing is sent with it but the address itself.
-        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) })
+        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(async response => {
+          // c10a r2: the head of a page that answers holds the site's own name (og:site_name); kept so its link is named by it, not "출처".
+          if (linkAnswers(response.status) && /html/i.test(response.headers.get('content-type') ?? '')) keepDeclaredName(url, await pageHead(response.body).catch(() => ''))
+          else void response.body?.cancel().catch(() => undefined)
+          return linkAnswers(response.status) })
         if (lane && !result.asked) {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }

@@ -951,8 +951,9 @@ it('c6: a row links the result its figure was read from, a link is never named b
   const table = ['셋이 하나씩 맡아 알아봤어요.', '', '| 제품 | 가격 | 출시일 | 출처 |', '|---|---|---|---|', '| 아이폰 18 | 프로 기준 179만 원부터 | 일반형은 내년 봄 예상 | apple.com |', '| 갤럭시 S27 | 미발표, 전작 S26 115만 원 | 미발표, 2027년 2월 예상 | 블로그 글 |', '| 픽셀 11 | 미발표, 999유로대 | 8월 12일 예상 | 네이버 검색 |', '', '출처: 네이버 검색'].join('\n')
   const cited = citeMembers(table, [iphone, galaxy, pixel], true)
   const cell = (row: number): string => cited.split('\n')[4 + row]!.split(' | ').at(-1)!.replace(/ \|$/, '')
-  // The row's own figure ("179만") is beside apple.com's address in the member's result; the bare host is not the link's name.
-  expect(cell(0)).toBe('[Apple](https://www.apple.com/kr/iphone-18-pro/)')
+  // c10a r2: the row is the base 아이폰 18 (its Pro price goes, oneTier), so the iphone-18-pro page is not its source; the page on the
+  // base model's date is, named by its outlet. The bare host is not the link's name.
+  expect(cell(0)).toBe('[연합뉴스](https://www.yna.co.kr/view/AKR1)')
   // Only a video holds the figure: it is the source rather than the page searched on.
   expect(cell(1)).toBe('[유튜브](https://www.youtube.com/watch?v=fDITkuO6iTc)')
   // Two kept rows hold "999": the shorts clip is passed over, and the article is named by its title, cut to twenty characters.

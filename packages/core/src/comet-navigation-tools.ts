@@ -240,7 +240,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
               const upUrl = searchUrlFor(newsTemplate(general, 'month'), ROUND_UP_QUERY), up = await load(upUrl)
               const top = up && !up.wall ? searchResults((up.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), up.text, ROUND_UP_QUERY, up.url || upUrl!, NEWS_CAP, now).find(one => ROUND_UP_TITLE.test(one.title)) : undefined
               const read = top ? await load(top.url) : null
-              if (read && !read.wall && top) found.push(...roundUpRows(read, asked, query, top.date))
+              if (read && !read.wall && top) found.push(...roundUpRows(read, asked, query))
             }
             const added = newRounds()
             recent.push(...added.filter(one => !period || inPeriod(one.date, period, now)))

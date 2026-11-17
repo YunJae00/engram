@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { citeMembers, oneTier, sourceName, type TeamMember } from '../src/index.js'
+import { citeMembers, keepDeclaredName, liveLinks, oneTier, pageHead, sourceName, type TeamMember } from '../src/index.js'
 
 // The stack-9 run's R2 helpers (runs/stack9-b685945e tasks.json, t-mwkfyhd4-586409) and the table the lead wrote from them.
 const r2 = JSON.parse(readFileSync(new URL('./fixtures/c10a-r2-helpers.json', import.meta.url), 'utf8')) as { members: TeamMember[] }
@@ -18,8 +18,9 @@ test('c10a R2: the stored helpers through the merge give one tier per row and no
   expect(iphone![2]).toBe('일반형은 2027년 봄 예상')
   expect(pixel![1]).toBe('999유로부터(기본 모델)')
   expect(out).toContain('[머니투데이](https://www.mt.co.kr/tech/2026/10/20/2026101915464770051)')
-  // A short video ranks below the maker's page (c10a: Naver shorts are videos too).
-  expect(iphone!.at(-1)).toBe('[Apple](https://www.apple.com/kr/iphone-18-pro/)')
+  // c10a r2 (Codex r1): the row is the base model, so the Pro pages (apple.com/…/iphone-18-pro, the blog and the short that only give the
+  // Pro price) are not its source; the page that says the base model comes in spring 2027 is.
+  expect(iphone!.at(-1)).toBe('[네이버 카페](https://cafe.naver.com/hiric)')
   // 출처 stays only for a host nothing knows (vidabytes: a piece of the address is never a name, c7).
   expect([...out.matchAll(/\[출처\]\((https?:\/\/[^/)]+)/g)].map(found => found[1])).toEqual(['https://ko.vidabytes.com'])
 })
@@ -34,4 +35,36 @@ test('c10a R2: a tier the person named stays; a cell of another tier only says t
     expect(sourceName(url, true), url).toBe(name)
   // With nothing known of the site, the plain word stays.
   expect(sourceName('https://unknown-site.example/a', true)).toBe('출처')
+})
+
+// c10a r2 (Codex r1): a source of another tier never stands beside a base-model row. Wordings and products not in the harness.
+test('c10a r2: a base-model row links a page about the base model; a page only about another tier never; a named tier keeps its page', () => {
+  const member = (role: string, brief: string, result: string): TeamMember => ({ id: role, parentId: null, depth: 1, role, brief, sessionKey: role, hiredAt: '2026-11-17T00:00:00Z', state: 'released', lookup: true, sources: ['https://search.naver.com/search.naver?query=x'], result })
+  const watch = member('watch', '갤럭시 워치 9 가격', '가격: 워치 9 울트라 89만 원부터 — https://news.example.kr/watch9-ultra\n워치 9 기본형은 39만 원부터예요 — https://shop.example.kr/item/77')
+  const pad = member('pad', '아이패드 13 가격', '아이패드 13 맥스 모델이 149만 원이에요. — https://blog.example.kr/p/1')
+  const named = member('pro', '맥북 프로 15 가격', '맥북 프로 15는 299만 원부터 — https://www.example.com/macbook-pro-15')
+  const table = ['| 제품 | 가격 | 출처 |', '|---|---|---|', '| 갤럭시 워치 9 | 39만 원부터, 울트라 89만 원 | [출처](https://news.example.kr/watch9-ultra) |', '| 아이패드 13 | 맥스 149만 원 | [블로그](https://blog.example.kr/p/1) |', '| 맥북 프로 15 | 299만 원부터 | 출처 |'].join('\n')
+  const out = rows2(citeMembers(table, [watch, pad, named], true))
+  expect(out[0]).toEqual(['갤럭시 워치 9', '39만 원부터', expect.stringContaining('(https://shop.example.kr/item/77)')])
+  // The only page is about another tier: the teammate's search page stands instead.
+  expect(out[1]![2]).toContain('https://search.naver.com/search.naver?query=x')
+  expect(out[2]![2]).toContain('https://www.example.com/macbook-pro-15')
+})
+const rows2 = (text: string): string[][] => text.split('\n').filter(line => /^\| (갤럭시|아이패드|맥북)/.test(line)).map(line => line.slice(1, -1).split('|').map(cell => cell.trim()))
+
+// c10a r2 (Codex r1): a site on no list is named by what it calls itself in its page head, read while its link is checked. Hosts not in the harness.
+test('c10a r2: a site\'s declared name names its link; nothing declared, or no name-like declaration, stays 출처', async () => {
+  keepDeclaredName('https://www.gadgetnara.example/a/1', '<head><title>x</title><meta content="가젯나라" property="og:site_name"></head>')
+  keepDeclaredName('https://m.techpulse.example/p', "<meta name='application-name' content='TechPulse'>")
+  keepDeclaredName('https://longname.example/', '<meta property="og:site_name" content="2026 최고의 리뷰 사이트 모음 그리고 더">')
+  keepDeclaredName('https://home.example/', '<meta property="og:site_name" content="Home">')
+  expect(sourceName('https://gadgetnara.example/a/2', true)).toBe('가젯나라')
+  expect(sourceName('https://techpulse.example/p', true)).toBe('TechPulse')
+  expect(sourceName('https://longname.example/x', true)).toBe('출처')
+  expect(sourceName('https://home.example/x', true)).toBe('출처')
+  // The check reads only the head, and a link the citing named 출처 takes the declared name once its page answered.
+  const html = new Response('<html><head><meta property="og:site_name" content="폰리뷰랩"></head><body>' + 'x'.repeat(200_000) + '</body></html>')
+  const answer = '픽셀 12는 899달러부터예요. [출처](https://phonelab.example/pixel-12)'
+  const out = await liveLinks(answer, [], async url => { keepDeclaredName(url, await pageHead(html.body, 4_096)); return true }, true)
+  expect(out).toBe('픽셀 12는 899달러부터예요. [폰리뷰랩](https://phonelab.example/pixel-12)')
 })
