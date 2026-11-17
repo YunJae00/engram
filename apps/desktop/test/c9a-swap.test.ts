@@ -62,3 +62,15 @@ test('c9a T2: a stop of the whole turn still ends it', async () => {
 test('c9a T2: the lookup answer names its subject first', () => {
   expect(LANE_NOTE).toContain('That first sentence opens on what the figure is about, by the name the person used ("애플은 어제 종가 기준 …"')
 })
+
+test('c10a T2: after a swap the answer\'s first sentence names the new subject, and one that already names it is left alone', async () => {
+  const { namesSubject } = await import('../src/main/fast-lane.js')
+  const ask = '애플 오늘 주가 알려줘'
+  expect(namesSubject('미국 장이 아직 개장 전이라 전일 종가 기준 352.78달러예요. [네이버 증권](https://search.naver.com/search.naver?query=애플+주가)', ask, now))
+    .toBe('애플은 미국 장이 아직 개장 전이라 전일 종가 기준 352.78달러예요. [네이버 증권](https://search.naver.com/search.naver?query=애플+주가)')
+  const named = '애플은 미국 장이 아직 개장 전이라 전일 종가 기준 352.78달러예요.'
+  expect(namesSubject(named, ask, now)).toBe(named)
+  expect(namesSubject('AAPL은 어제 종가 기준 352.78달러예요.', ask, now)).toBe('AAPL은 어제 종가 기준 352.78달러예요.')
+  expect(namesSubject('지금 비 오고 13도예요.', '부산 날씨 알려줘', now)).toBe('부산은 지금 비 오고 13도예요.')
+  expect(namesSubject('어제 종가 기준 80,000원이에요.', '삼성전자 주가 알려줘', now)).toBe('삼성전자는 어제 종가 기준 80,000원이에요.')
+})
