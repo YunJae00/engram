@@ -180,7 +180,7 @@ function readable(step: TurnStep): boolean {
   if (step.tool.startsWith('file_')) return !!value && typeof value.path === 'string' && typeof value.sha256 === 'string'
     && HASH.test(value.sha256) && (value.offset === undefined || value.offset === 0)
     && (value.nextOffset === undefined || value.nextOffset === null)
-    && (typeof value.content === 'string' || typeof value.xml === 'string' || Array.isArray(value.parts) || Array.isArray(value.rows))
+    && (typeof value.content === 'string' || typeof value.xml === 'string' || Array.isArray(value.parts) || Array.isArray(value.rows) || Array.isArray(value.slides))
   if (step.tool === 'verify') return !!value && object(value.verification) && value.verification.status === 'passed'
   if (step.tool === 'read_pages') return parseReadBatch(step.observation)?.pages.some(page => page.ready && !/\[Page extract truncated;/.test(page.observation)) ?? (/^Batch read:/.test(step.observation) && !/\[Page extract truncated;/.test(step.observation))
   return !/that did not work:|could not|no longer matches|was not found|has not exposed readable content|extract is incomplete|A dialog is open|\[Page extract truncated;|This model reads text only/i.test(step.observation)
@@ -260,7 +260,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
   const observedSource = ({ step, value }: Read): boolean => {
     const path = value?.path
     if (typeof path === 'string' && generated(path)) return false
-    if (step.tool === 'file_read_package') return typeof path === 'string' && packageCoverage(reads, path)
+    // A deck's outline that the host marked complete is every word of it (document-tools.ts deckWords), the same evidence as all its parts.
+    if (step.tool === 'file_read_package') return typeof path === 'string' && (value?.completeReadback === true && readable(step) || packageCoverage(reads, path))
     if (step.tool !== 'file_read') return readable(step)
     return typeof path === 'string' && !invalidSources.has(path) && textCoverage(reads, path)?.hash === value?.sha256
   }
@@ -292,7 +293,7 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
       && typeof step.args.content === 'string' && !/^that did not work/.test(step.observation) && !(value && badReceipt(value))
       && createHash('sha256').update(step.args.content).digest('hex') === output.hash)
     if (!textCovered && !wroteWhole && (!fullReads.length || !sheetsCovered)) {
-      issues.push(`Reread every final part of ${output.name} (${output.path}) after its last write: the whole text at one revision, every sheet of a workbook, or every listed textParts entry of a document package.`)
+      issues.push(`Reread every final part of ${output.name} (${output.path}) after its last write: the whole text at one revision, every sheet of a workbook, every listed textParts entry of a document package, or a PPTX's outline that returns completeReadback.`)
       if (output.source) readbacks.push({ name: output.name, path: output.path })
     }
     if (reads.some(({ step, value }) => !step.seeded && step.tool === 'file_read' && value?.path === output.path && object(value.tableValidation) && value.tableValidation.valid === false)) {

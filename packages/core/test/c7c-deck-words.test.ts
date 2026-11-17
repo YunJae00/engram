@@ -96,3 +96,21 @@ it('keeps outline and slide edits to decks', async () => {
   const output = await call('file_edit_package', { sourcePath: input.path, expectedSha256: outline.sha256, name: 'copy.pptx', edits: [{ part: 'ppt/slides/slide3.xml', expectedSha256: part.partSha256, before: '<a:t>주요 지표</a:t>', after: '<a:t>핵심 지표</a:t>' }] })
   expect((await readPackage(await readFile(output.path))).get('ppt/slides/slide3.xml')!.toString()).toContain('핵심 지표')
 })
+
+// Round 2: the outline is the readback of an edited deck only when it is the whole deck.
+it('says an outline is the whole deck only when it shows every character of text in every content part', async () => {
+  const input = await deck(), call = caller()
+  const whole = await call('file_read_package', { path: input.path, outline: true })
+  expect(whole.completeReadback).toBe(true)
+  expect(whole.textParts).toBeUndefined()
+  // A slide with text the outline cannot show (here outside any paragraph run it knows) is not a whole read, and the parts to read are named.
+  const zip = await JSZip.loadAsync(input.bytes)
+  const xml = await zip.file('ppt/slides/slide2.xml')!.async('string')
+  zip.file('ppt/slides/slide2.xml', xml.replace('</p:spTree>', `<p:graphicFrame><a:graphic xmlns:x="${A}"><x:t>숨은 글</x:t></a:graphic></p:graphicFrame></p:spTree>`))
+  const hidden = join(root, 'hidden.pptx')
+  await writeFile(hidden, await zip.generateAsync({ type: 'nodebuffer' }))
+  const partly = await call('file_read_package', { path: hidden, outline: true })
+  expect(partly.completeReadback).toBeUndefined()
+  expect(partly.textParts).toContain('ppt/slides/slide2.xml')
+  expect(partly.slides).toHaveLength(5)
+})
