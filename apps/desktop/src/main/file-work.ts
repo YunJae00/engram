@@ -94,16 +94,20 @@ const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): str
 }
 
 // Never overwrites a file it did not place: a different file of the same name gets a numbered twin.
-// The one exception is the same deliverable made again (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx"). It is replaced
-// in place only when both hold:
+// c11c (grokbar D3/D5): an edit is saved to the file it read, never to whatever holds its name. file_edit_package's source is a task file or
+// a saved output; the task file that output's row names is the target, written in place, and the output it replaces is retired. That holds
+// for any file kind and any wording: a same-turn fix of a new deck (D3 forked it to "(2)") and a later edit of the delivered copy (D5 edited
+// a stale draft of the same name). Only a file still holding the bytes on record is written, and an edit saved under another name is a new file.
+// Otherwise, the same deliverable made again (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx") is replaced in place only
+// when both hold:
 // - the file still has the bytes of the LATEST placement on record at that path. An earlier version's bytes do not count: a person who put
 //   v1 back by hand has a file of their own (qa145 r2 #1). Nor does a file never on record, or one changed since.
-// - the new file is that deliverable again: made from the same source, or made in a later turn under the name (the fix the person asked
-//   for, which the chat links as the file with its "(이전)" version). Two different inputs under one name in one turn are two files, and so
-//   are two different task files copied under one name in any turn (qa143 S19a, qa145 r2 #2). With no turn named, only the same source counts.
-//   The source comes first: while another copy of this name is on record as made from this source, that copy is the deliverable and the
-//   later-turn rule replaces no other (qa145 r3: remaking "a (2).xlsx" replaced the other workbook's "a.xlsx").
-// The earlier version stays in the saved outputs, where the "(이전)" link points.
+// - the new file is that deliverable again: made from the same source, or (anything but an edit) made in a later turn under the name. Two
+//   different inputs under one name in one turn are two files, and so are two different task files copied under one name in any turn
+//   (qa143 S19a, qa145 r2 #2). With no turn named, only the same source counts. The source comes first: while another copy of this name is on
+//   record as made from this source, that copy is the deliverable and the later-turn rule replaces no other (qa145 r3).
+// The earlier version stays in the saved outputs, where the "(이전)" link points, unless the file itself was changed (an edit, or this turn's
+// own draft made again): then there is one file.
 // record (a twinsFile) notes the file only when this call created or replaced it: one found already there with the same bytes came from
 // elsewhere, or is on record from the receipt that placed it (qa143 S19a r12).
 export async function placeInTask(folder: string, name: string, data: Buffer, record?: string, made?: Placement): Promise<string> {
@@ -111,8 +115,31 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.'), source = JSON.stringify(made?.source ?? null)
   const note = async (path: string) => { if (record) await mkdir(dirname(record), { recursive: true }).then(() => appendFile(record, `${sha(data)}\0${path}\0${made?.turn ?? ''}\0${source}\0${made?.artifact ?? ''}\n`)).catch(error => flog('file-work', `twin not recorded: ${error instanceof Error ? error.message : String(error)}`)) }
   const spot = (count: number) => join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
+  const rows = record && made ? (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0')) : []
+  const last = (at: string) => rows.filter(line => line[1] === at).at(-1)
+  // The saved output this file held is gone or kept as its "(이전)" version. whole: the file itself was changed, so it goes (unless another chat's folder holds it).
+  const retire = async (was: string | undefined, whole: boolean) => {
+    if (!record || !made?.artifact || !was || was === made.artifact) return
+    const others = whole ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
+    if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).then(() => appendFile(replacedFile(dirname(record)), `${was}\0${made.artifact}\n`)).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
+    else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
+  }
+  const edited = made?.source.startsWith('file_edit_package\0') ? await realpath(made.source.split('\0')[1]!).catch(() => made.source.split('\0')[1]!) : ''
+  // The task file the edit read: itself, or the one whose latest row is the saved output it read.
+  const target = !edited ? undefined : last(edited) ? edited : rows.filter(row => row[4] === basename(edited)).map(row => row[1]!).filter(path => last(path)?.[4] === basename(edited)).at(-1)
+  const plainName = (file: string) => basename(file).replace(/ \(\d+\)(?=\.[^.]+$)/, '').normalize('NFC').toLowerCase()
   await writeFile(tmp, data, { flag: 'wx' })
   try {
+    if (target && dirname(target) === folder && plainName(target) === plainName(name)) {
+      const held = await readFile(target).catch(() => null), [hash, , , , was] = last(target)!
+      if (held?.equals(data)) return target
+      if (held && hash === sha(held)) {
+        await renameWithRetry(tmp, target)
+        await note(target)
+        await retire(was, true)
+        return target
+      }
+    }
     for (let count = 1; count < 100; count += 1) {
       const path = spot(count)
       try {
@@ -126,25 +153,16 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         const held = await readFile(path)
         if (held.equals(data)) return path
         if (!record || !made) continue
-        const rows = (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
-        const last = (at: string) => rows.filter(line => line[1] === at).at(-1)
         const [hash, , turn, from, was] = last(path) ?? []
         if (hash !== sha(held) || !from) continue
         const copies = (value: string) => value.startsWith('"path\\u0000')
-        if (from !== source && !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source)))) continue
+        // An edit takes no file by its name: one it read was handled above.
+        if (from !== source && (edited || !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source))))) continue
         if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
-        if (was && made.artifact && was !== made.artifact) {
-          // A change to the file itself (file_edit_package on this task file or on its saved output) leaves one file, not the file and its
-          // earlier bytes: the person asked for that file to be changed, and a second deck in the store is a duplicate (grokbar D5).
-          // A file made again from scratch keeps its earlier version, as does one another task folder also holds.
-          // grokbar D3: the same file made again in the turn that made it is that turn's own draft, never shown on its own: it goes the same way.
-          const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : '', again = !!made.turn && turn === made.turn
-          const others = again || edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
-          if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).then(() => appendFile(replacedFile(dirname(record)), `${was}\0${made.artifact}\n`)).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
-          else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
-        }
+        // grokbar D3: the same file made again in the turn that made it is that turn's own draft, never shown on its own: it goes.
+        await retire(was, !!made.turn && turn === made.turn)
         return path
       }
     }

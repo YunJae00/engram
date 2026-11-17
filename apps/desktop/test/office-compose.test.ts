@@ -111,8 +111,8 @@ it('keeps the file an earlier turn made when a later turn builds under its name'
 
 // grokbar D3 (stack9): the first deck the model built read "수시 입력", "대믱", "변류̈은", "거실론" (the stored 3분기 실적 보고.pptx); with only
 // "saved" in the receipt it read the deck back, built it again ("수지", "결맠") and once more. The receipt now lists the slides, says not to
-// read it back, and names the garbled words with their slide so they are fixed from the receipt.
-it('says a built deck is done, lists its slides and names garbled words (the stored stack-9 deck)', async () => {
+// read it back; a garbled build is refused before it is saved, naming the words with their slide (c11c).
+it('says a built deck is done and lists its slides; refuses the garbled stored stack-9 deck before saving it', async () => {
   const stored = [
     { title: '3분기 실적 보고', subtitle: '팀 회의 자리' },
     { title: '3분기 요약', bullets: ['매출: 수시 입력 (전분기 대믱 수시 입력)', '영업이익: 수시 입력', '목표 대매출: 수시 입력', '전사적인 추이: 수시 입력'] },
@@ -120,13 +120,20 @@ it('says a built deck is done, lists its slides and names garbled words (the sto
     { title: '변류\u0308은 달성 요인과 고전 요인', bullets: ['달성 요인: 내역 입력', '고전 요인: 내역 입력', '거실론: 내역 입력'] },
     { title: '4분기 개선 계획', bullets: ['다음 분기 목표: 수시 입력'] },
   ]
-  const receipt = JSON.parse(await tools().find(t => t.name === 'ppt_build')!.run({ slides: stored, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }))
+  // c11c: the garbled build is refused before any file exists, naming the words, so the fix is one rebuild (not a saved file and edit rounds).
+  const build = tools().find(t => t.name === 'ppt_build')!
+  const refusal = await build.run({ slides: stored, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }).then(() => '', (error: Error) => error.message)
+  expect(refusal).toContain('대믱 (slide 2)')
+  expect(refusal).toContain('변류\u0308은 (slide 4)')
+  expect(refusal).toContain('ppt_build again')
+  expect(await readdir(task)).toEqual([])
+  const fixed = stored.map(slide => JSON.parse(JSON.stringify(slide).replaceAll('대믱', '대비').replaceAll('변류\u0308은', '분류')) as typeof slide)
+  const receipt = JSON.parse(await build.run({ slides: fixed, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }))
   expect(receipt.verification).toContain('do not read it back or build it again')
   expect(receipt.verification).toContain('1. 3분기 실적 보고 / 2. 3분기 요약 / 3. 주요 지표')
   expect(receipt.titles).toHaveLength(5)
-  expect(receipt.mistyped).toContain('대믱 (slide 2)')
-  expect(receipt.mistyped).toContain('변류\u0308은 (slide 4)')
-  expect(receipt.mistyped).toContain('file_edit_package')
+  expect(receipt.mistyped).toBeUndefined()
+  expect(await readdir(task)).toEqual(['3분기 실적 보고.pptx'])
   const clean = JSON.parse(await tools().find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적 보고' }, { title: '요약', bullets: ['매출: 수치 입력 (전분기 대비 수치 입력)', '결론: 내역 입력'] }], theme: THEME }, { task: 'PPT' }))
   expect(clean.mistyped).toBeUndefined()
 })

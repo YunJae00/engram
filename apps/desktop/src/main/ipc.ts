@@ -2384,7 +2384,7 @@ export function registerIpc(ctx: VaultContext): void {
     await loadBrainConnections()
     // The documents and decks this turn composes: its own outputs, which its file tools read back without a card.
     const composed = new Set<string>(), turnId = randomUUID()
-    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) : undefined), ...desktopAgentTools(channel)], {
+    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) : undefined, input.named), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
       ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),

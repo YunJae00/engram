@@ -153,8 +153,9 @@ it('adds a card for every saved output, and hands in raw files only from a finis
 // first version is not handed over beside it under another name.
 it('does not hand over a file this turn made and then edited', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
-  const made = async (tool: string, args: Record<string, unknown>, bytes: string): Promise<TurnStep> => ({ tool, args, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'spend.xlsx', Buffer.from(bytes)), completeReadback: true }) })
-  const book = await made('file_create_workbook', { name: 'spend.xlsx', sheet: 'Spend', rows: [['Cost'], [1]] }, 'PK-first')
+  // c11c: the edit is known by the file it read (the workbook's task-folder twin, which its receipt names), not by the shared name.
+  const made = async (tool: string, args: Record<string, unknown>, bytes: string, taskPath?: string): Promise<TurnStep> => ({ tool, args, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'spend.xlsx', Buffer.from(bytes)), completeReadback: true, ...(taskPath ? { taskPath } : {}) }) })
+  const book = await made('file_create_workbook', { name: 'spend.xlsx', sheet: 'Spend', rows: [['Cost'], [1]] }, 'PK-first', join(cwd, 'spend.xlsx'))
   const edit = await made('file_edit_package', { name: 'spend.xlsx', sourcePath: join(cwd, 'spend.xlsx'), edits: [] }, 'PK-fixed')
   const link = (JSON.parse(edit.observation) as { markdownLink: string }).markdownLink
   const result = { answer: `고쳤어요. ${link}`, steps: [book, edit] }
