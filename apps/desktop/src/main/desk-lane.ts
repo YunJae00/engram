@@ -1,6 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { shortAsk, shortQuestion } from './fast-lane.js'
+import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
+import { isOutsideAsk } from 'core'
 
 // grokbar B7 (stack1-f4f6844c): everyday desk work ran on the work model with 73 tools and a 40k-char prompt, and most of the time was
 // that model's rounds: M1-M3 (remember, correct, recall) 9-12 s for one keep_in_mind call or none, F2 9 s with no call, F1 41 s (20 s
@@ -488,6 +489,8 @@ export const RESHAPE_MS = 2500
 export const reshapeCandidate = (message: string, lastReply: string | undefined): boolean => {
   const text = message.trim()
   return !!text && !!lastReply?.trim() && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && !text.match(NAMED_FILE) && !/[\w-]+\/[\w.-]+/.test(text)
+    // stack-10: a send or post outside and a team ask keep their own routes and gates whatever the voice says (the lanes' own checks).
+    && !isOutsideAsk(text) && !teamAsk(text)
 }
 export const reshapePrompt = (message: string, lastReply: string): string => [
   'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
