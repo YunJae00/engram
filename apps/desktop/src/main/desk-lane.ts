@@ -191,7 +191,7 @@ export function withOffer(ask: string, answer: string, earlier: readonly { role:
 // prompt. The host drops a 결정사항 block (heading and all) when each of its lines is said again by a 할 일 line: at least four in five of
 // its words are in that line, which also carries the owner and the date. An ask that names the decisions ("결정사항이랑 할 일 정리해줘") is left alone.
 const HEAD = (words: string): RegExp => new RegExp(`^\\s*(#{1,6}\\s*)?(\\*\\*)?\\s*(${words})\\s*(\\*\\*)?\\s*[:：]?\\s*(\\*\\*)?\\s*$`, 'i')
-const DECIDED = HEAD('결정\\s*사항|결정된?\\s*것|decisions?'), TODO = HEAD('할\\s*일|액션\\s*아이템|to-?dos?|action items?')
+const DECIDED = HEAD('결정\\s*사항|결정된?\\s*것|decisions?'), TASKS = HEAD('할\\s*일|액션\\s*아이템|to-?dos?|action items?')
 // A line that opens a block: a markdown heading, a bold line, or a few words with no list mark and no sentence end.
 const LIST = /^\s*([-*•·]|\d+[.)])\s/
 const heads = (line: string): boolean => /^\s*(#{1,6}\s|\*\*[^*]+\*\*\s*[:：]?\s*$)/.test(line) || (!LIST.test(line) && [...line.trim()].length <= 12 && !/[.!?…,—]|요$|다$/.test(line.trim()))
@@ -208,7 +208,7 @@ const blockOf = (lines: readonly string[], head: RegExp): { at: number; end: num
 export function withoutSameDecisions(ask: string, answer: string): string {
   if (/결정|decision/i.test(ask)) return answer
   const lines = answer.split('\n')
-  const decided = blockOf(lines, DECIDED), todo = blockOf(lines, TODO)
+  const decided = blockOf(lines, DECIDED), todo = blockOf(lines, TASKS)
   if (!decided?.items.length || !todo?.items.length) return answer
   const tasks = todo.items.map(line => line.replace(/\s/g, ''))
   const again = (line: string): boolean => { const words = wordsOf(line); return words.length >= 2 && tasks.some(task => words.filter(word => task.includes(word)).length >= Math.ceil(words.length * 0.8)) }
@@ -229,7 +229,7 @@ export function shareReady(ask: string, answer: string): string {
   if (!OPEN_FORM.test(ask) || NAMES_PART.test(ask)) return answer
   const replies = answer.search(/\n*```replies/)
   let lines = (replies < 0 ? answer : answer.slice(0, replies)).split('\n')
-  if (!blockOf(lines, TODO)?.items.length) return answer
+  if (!blockOf(lines, TASKS)?.items.length) return answer
   lines = lines.filter(line => !META.test(line))
   const talked = blockOf(lines, TALKED)
   if (talked) lines.splice(talked.at, talked.end - talked.at)
@@ -257,7 +257,7 @@ export function onlyAsked(ask: string, answer: string): string {
   const open = blockOf(lines, OPEN_ITEMS)
   if (!open) return answer
   lines.splice(open.at, open.end - open.at)
-  const todo = lines.findIndex(line => TODO.test(line))
+  const todo = lines.findIndex(line => TASKS.test(line))
   if (todo >= 0) lines.splice(todo, 1)
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
 }
