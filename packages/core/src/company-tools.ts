@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn, readBotTranscript } from './bots.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
-import { datedQuery, foundNothing, givenName, keptItems, periodSpans, placeNamed, pointQueries, isSearchPage, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
+import { DATED_LINE, datedQuery, foundNothing, givenName, keptItems, periodSpans, placeNamed, pointQueries, isSearchPage, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { plainSchedule, scheduleWordsKo } from './schedule-tools.js'
 
@@ -1059,7 +1059,10 @@ function resultLead(m: TeamMember, previous = '', now = new Date(), link = '', k
   if (!from) {
     const looked = !!m.lookup && (OPENERS.test(job) || !(JOB_VERBS.some(([ending]) => ending.test(job)) || DOING_NOUN.test(job)))
     if (!looked) { const { what, forms } = jobForms(job, true); return voiced(`${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.`, m.voice) }
-    const what = job.endsWith('…') ? '' : aboutJob(job, now), items = kept ?? listItems(m).length, list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
+    // stack-10 (c10b run C5: "12월 서울 IT 행사는 세 개 있어요." over one dated event and two that said their day was not out): a schedule counts
+    // the items that give a day; the others stay listed under it, uncounted.
+    const lines = listItems(m), schedule = /일정|schedule/i.test(job)
+    const what = job.endsWith('…') ? '' : aboutJob(job, now), items = kept ?? (schedule ? lines.filter(line => DATED_LINE.test(line)).length : lines.length), list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
     // Two ways each, so a lead never ends like the one before it (ledBy).
     const count = COUNTED_KO[items] ?? `${items}개`, said = list && items === 1 ? '확실한 건 하나예요.' : `${ledBy(list && items >= 2 ? [`${count} 있어요`, `${count} 나와요`] : ['이래요', '이렇게 나와요'], previous)}.`
     return voiced(`${m.role}: ${what ? `${josa(what, '은', '는')} ${said}` : `찾은 건 ${said}`}`, m.voice)

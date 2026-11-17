@@ -546,7 +546,7 @@ function saidOnce(answer: string, job: string): string {
 }
 // A job that asks for a schedule, a list or a number of things, and a line that carries a day.
 const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|네|다섯)\s*(?:개|가지|건|편)(?![가-힣]*월)/iu
-const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
+export const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
 const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
 // c10b (C5-C10, H5: "12월 24일, … 카즈미 타테이시 트리오 내한공연" in "다음 달 서울 IT 행사"): a list job keeps only items of the kind asked, and
 // an item whose only link is a search page while another item has a real page. The last item is never dropped for its link; one of

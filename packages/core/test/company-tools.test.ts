@@ -1146,7 +1146,7 @@ test('c5 C5: an address ending in .html is not a file, so the result is the host
   const asked: string[] = []
   const said = (await employeesAnswer(teamTask([kim]), async prompt => { asked.push(prompt); return undefined }))!
   expect(asked).toHaveLength(1)
-  expect(said.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 두 개 있어요.')
+  expect(said.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 확실한 건 하나예요.')  // stack-10: ACC's day is not out (일자 미확인), so it is listed, not counted
   expect(said).toContain('소프트웨이브 2026')
   expect(said).toContain('](https://itsight.zdnet.co.kr/acc2026/main.html)')
   expect(unlinked(said)).not.toMatch(/https?:\/\//)
@@ -1861,7 +1861,7 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   // C5 as stored. The run showed "지민이 다음 달 서울 IT 행사 일정 정리해 왔어요." and a last line of two links named by cut titles.
   expect(stack6.c5.shown).toContain('지민이 다음 달 서울 IT 행사 일정 정리해 왔어요.')
   const c5 = mergedReport(s6.c5, undefined, [], { now: NOV17, ask: stack6.c5.goal })
-  expect(c5.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 두 개 있어요.')
+  expect(c5.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 확실한 건 하나예요.')  // stack-10: ACC's day is not out (일자 미확인), so it is listed, not counted
   expect(c5).not.toMatch(/다음 달 서울 IT 행사 일정 정리|정리해 왔어요/)
   expect(c5.split('\n').some(onlyLinks)).toBe(false)
   const items = c5.split('\n').filter(line => line.startsWith('- '))
