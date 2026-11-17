@@ -563,11 +563,14 @@ const offKind = (brief: string, line: string): boolean => { const plain = line.r
 // under an IT item starts its own item, as it did when the filter read lines).
 const ITEM_MARK = /^(?:[-*•·]|\d{1,2}[.)])\s/
 const datesIn = (line: string): string[] => (line.match(new RegExp(DATED_LINE.source, 'g')) ?? []).map(day => day.replace(/\s+/g, ''))
+// stack-10 (c10b r3, Codex: "- 12월 24일 재즈 공연\n- 장소: 강동아트센터 https://…" kept the venue bullet as a second event): a bullet that
+// is a field of the item above, a short label and a colon with no day of its own ("- 장소: …", "- 요금: …"), belongs to that item.
+const detail = (line: string): boolean => /^[-*•·]\s+[가-힣]{1,4}\s*[:：]/.test(line) && !datesIn(line).length
 function itemsOf(lines: string[], apart: (line: string) => boolean): string[][] {
   const items: string[][] = []
   for (const line of lines) {
     const item = items.at(-1), days = datesIn(line), known = new Set(item?.flatMap(datesIn))
-    if (!item || ITEM_MARK.test(line) || apart(line) || /https?:\/\/\S+\s*$/.test(item.at(-1)!) || days.length > 0 && !days.some(day => known.has(day))) items.push([line])
+    if (!item || !(detail(line) && !apart(line)) && (ITEM_MARK.test(line) || apart(line) || /https?:\/\/\S+\s*$/.test(item.at(-1)!) || days.length > 0 && !days.some(day => known.has(day)))) items.push([line])
     else item.push(line)
   }
   return items

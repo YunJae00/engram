@@ -117,3 +117,13 @@ test('c10b r2 (Codex): a line for a part with nothing new in the time asked open
   expect(harin).toMatch(/^하린: 피그마는 이번 주엔 새로 낸 게 없어요\./)
   expect(harin).toContain('11월 3일')
 })
+
+test('stack-10 (c10b r3 Codex #2): a field bullet under an item ("- 장소: …") goes or stays with it, and is no item of its own', () => {
+  const brief = '다음 달 부산 AI 행사 목록 정리'
+  const kept = keptItems(brief, '- 12월 3일 부산 AI 해커톤 https://ai.example/hack\n- 장소: 벡스코 제2전시장\n- 12월 18일 겨울 클래식 콘서트\n- 장소: 부산문화회관 https://example.com/concert\n- 요금: 3만 원')
+  expect(kept).toBe('- 12월 3일 부산 AI 해커톤 https://ai.example/hack\n- 장소: 벡스코 제2전시장')
+  // Codex's own repro.
+  expect(keptItems('다음 달 서울 IT 행사 일정 정리', '- 12월 2일 소프트웨이브 https://www.coex.co.kr/a\n- 12월 24일 재즈 공연\n- 장소: 강동아트센터 https://example.com/concert')).toBe('- 12월 2일 소프트웨이브 https://www.coex.co.kr/a')
+  // A bullet with its own day is its own item, label or not.
+  expect(keptItems(brief, '- 12월 3일 부산 AI 해커톤 https://ai.example/hack\n- 밋업: 12월 10일 클라우드 보안 밋업 https://sec.example/m')).toContain('클라우드 보안 밋업')
+})
