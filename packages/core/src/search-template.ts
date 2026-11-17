@@ -188,15 +188,16 @@ export function newsTemplate(template: string, period?: NewsPeriod): string {
     const url = new URL(template.replace('{q}', 'QQ'))
     if (url.host !== 'search.naver.com') return template
     url.searchParams.set('where', 'news')
-    if (period) url.searchParams.set('nso', `so:r,p:${{ day: '1d', week: '1w', month: '1m' }[period]},a:all`)
+    if (period) url.searchParams.set('nso', `so:r,p:${{ day: '1d', week: '1w', month: '1m', year: '1y' }[period]},a:all`)
     return url.toString().replace('QQ', '{q}')
   } catch { return template }
 }
 // grokbar c5 R3/H6: "요즘 … 투자 뉴스" was searched by relevance over all time and came back as three 2024 rounds, a plan and a visit.
 // A news ask that says when is searched for that period: a day for 오늘, a week for 이번 주, a month for 요즘 / 최근 / 이번 달.
-export type NewsPeriod = 'day' | 'week' | 'month'
+// year: never asked for by a word; it bounds the wider page that fills a counted list (c6 R3), so a 2024 article is not "요즘" news.
+export type NewsPeriod = 'day' | 'week' | 'month' | 'year'
 const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\s?주|금주|\bthis week\b/i, 'week'], [/요즘|요새|최근|이번\s?달|\b(recent|recently|lately|these days|this month)\b/i, 'month']]
-const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31 }
+const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, year: 366 }
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 // The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
@@ -219,6 +220,26 @@ export function datedWithYear(date: string, now = new Date()): string {
   const at = /\d{4}/.test(date) ? null : resultDay(date, now)
   return !at ? date : /월/.test(date) ? `${at.getFullYear()}년 ${date}` : `${date}, ${at.getFullYear()}`
 }
+// c6 R3/H6: one announcement reported by two outlets filled two of five places ("엔비디아 … 포인트투테크놀로지 … 투자" twice), and the
+// refill never ran because the rows were there. A news row that names the same parties as an earlier one is the same event and is dropped.
+// Measured on the saved news page for this ask (test fixture naver-news): 7 of its 12 rows are that one announcement.
+// shortcut: no name recognition. A party is a title word that is not the query's, not a number and not a common news word; two rows are one
+// event when their titles share one and either one row's title has two that the other's title or words under it also hold, or the two
+// carry the same date. Two different rounds by one investor on one day are read as one; use a tagger if that drops real items.
+const PARTICLE = /(으로|에서|에도|에게|까지|부터|이|가|은|는|을|를|의|에|와|과|도|로)$/
+const NEWS_WORD = /^(투자|유치|발표|공개|계획|추가|규모|시리즈\w*|라운드|단독|종합|속보|국내|한국|해외|글로벌|스타트업|기업|업체|회사|올해|내년|최대|신규|완료|성공|확대|진출|체결|내역|펀드|자금|조달|뉴스|기사|관련|기술|협력|강화|추진|한다|논란|기반|사업|서비스|개발|지원|시장|산업|플랫폼|솔루션|인공지능|ai|news|startups?|funding|raises?|invest\w*|series|round|million|billion|korean?)$/i
+const nameWords = (text: string): string[] => [...new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).map(word => word.length >= 3 ? word.replace(PARTICLE, '') : word).filter(word => word.length >= 2 && !/^\d/.test(word) && !NEWS_WORD.test(word)))]
+// An ending the particle list missed still matches by its start ("포인트투테크놀로지" in "포인트투테크놀로지스"), from three characters.
+const alike = (a: string, b: string): boolean => a === b || Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))
+export function sameEvent(a: SearchResult, b: SearchResult, query: string): boolean {
+  const asked = nameWords(query), parties = (row: SearchResult): string[] => nameWords(row.title).filter(word => !asked.some(one => alike(word, one)))
+  const mine = parties(a), theirs = parties(b)
+  const shared = mine.filter(word => theirs.some(one => alike(word, one)))
+  if (!shared.length) return false
+  const held = (words: string[], other: SearchResult): number => { const hay = nameWords(`${other.title} ${other.snippet}`); return words.filter(word => hay.some(one => alike(word, one))).length }
+  return held(mine, b) >= 2 || held(theirs, a) >= 2 || shared.some(word => word.length >= 3) && !!a.date && a.date === b.date
+}
+export const withoutRepeats = (rows: SearchResult[], query: string): SearchResult[] => rows.filter((row, i) => !rows.slice(0, i).some(earlier => sameEvent(earlier, row, query)))
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 export function askedCount(ask: string): number | undefined {

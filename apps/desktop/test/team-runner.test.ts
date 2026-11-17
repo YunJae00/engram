@@ -55,7 +55,8 @@ describe('team runner', () => {
   it('runs the lookup members of one hire side by side in the lead\'s slot even when the pool target is 1', async () => {
     const w = await world(1, async turn => { await new Promise(resolve => setTimeout(resolve, 20)); return `${turn.role} is sunny` })
     const out = JSON.parse(await w.lead('hire_members', { members: three.members.map(m => ({ ...m, lookup: true })) }))
-    expect(out.members.map((m: { state: string }) => m.state)).toEqual(['done', 'done', 'done'])
+    // c6: every settled lookup member is accepted and released by the host.
+    expect(out.members.map((m: { state: string }) => m.state)).toEqual(['released', 'released', 'released'])
     expect(w.peak.top).toBe(3)
     expect(w.peak.running).toBe(1)
     expect(w.pool.running).toBe(0)
