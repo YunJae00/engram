@@ -209,7 +209,9 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('"업스테이지가 LS그룹에서 1,500억 원 투자받았대요. [글로벌경제](address)"')
   expect(LANE_NOTE).toContain('never "sentence (date) — outlet"')
   // c7 L1: weather in a person's words, not a forecast's.
-  expect(LANE_NOTE).toContain('"오늘(11월 17일)은 저녁부터 비 와요. 지금은 13.6도예요."')
+  // c10a L1/L3: a colleague's words, whole degrees, each weekend day by name.
+  expect(LANE_NOTE).toContain('"지금 비 오고 13도예요. 저녁까지 오다가 밤엔 그친대요."')
+  expect(LANE_NOTE).toContain('"토요일은 맑고, 일요일은 구름만 조금 껴요."')
   expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
   // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
   expect(LANE_NOTE).toContain('is named by the plain word 출처')
