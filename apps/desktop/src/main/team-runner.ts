@@ -436,7 +436,7 @@ export function teamRunner(deps: {
         live: id => [...live.keys()].some(key => key.endsWith(`/${id}`) && live.get(key)!.channel === leadChannel),
         tokensLeft: async () => { const task = await load(); return task ? tokensLeft(task.id) : 0 },
         personSaid: kit.said,
-        ...(kit.alive ? { alive: kit.alive } : {}),
+        ...(kit.alive ? { alive: kit.alive, due: async () => { const task = await load(); return task ? taskDue(task) : undefined } } : {}),
         ...(self === null && deps.steered ? { steered: (signal: AbortSignal) => deps.steered!(leadChannel, signal) } : {}),
       }
       if (!staffChanged || self !== null) return teamHireTools(host)

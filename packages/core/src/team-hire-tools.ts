@@ -89,6 +89,8 @@ export interface TeamHost {
   tokensLeft(): Promise<number>
   // c13b: asks one address whether it answers (a page a member cites is checked when its result is handed over); no check without it.
   alive?(url: string, signal: AbortSignal): Promise<boolean>
+  // stack-13 (one clock): when the task's answer is due (team-runner taskDue); the hand-over link check never runs past it.
+  due?(): Promise<number | undefined>
   // The message that started the lead's current turn.
   personSaid(): string
 }
@@ -820,7 +822,8 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     // c13b (cause J, R2): a page a member cites that does not open is swapped or labeled here, as its result is handed over, before the lead
     // writes a row around it (and before citeMembers can put it back in that row from the record).
     const looked = host.alive ? ended.filter(m => m.lookup && m.state === 'done') : []
-    if (looked.length && await withLiveSources(looked, host.alive!)) await host.change(task => { for (const m of task.team?.members ?? []) { const fixed = looked.find(one => one.id === m.id); if (fixed) { m.result = fixed.result; if (fixed.sources?.length) m.sources = fixed.sources; else delete m.sources } } })
+    const due = looked.length ? await host.due?.() : undefined
+    if (looked.length && await withLiveSources(looked, host.alive!, due === undefined ? LINK_CHECK_MS : Math.max(0, Math.min(LINK_CHECK_MS, due - Date.now())))) await host.change(task => { for (const m of task.team?.members ?? []) { const fixed = looked.find(one => one.id === m.id); if (fixed) { m.result = fixed.result; if (fixed.sources?.length) m.sources = fixed.sources; else delete m.sources } } })
     const auto = ended.filter(accepted).map(m => m.id)
     // The record every task end checks (teamReviewIssue): the host's acceptance is written on the member, here and not in settleMember.
     if (auto.length) await host.change(task => { for (const m of task.team?.members ?? []) if (auto.includes(m.id) && !m.review) m.review = { ok: true, note: AUTO_REVIEW } })
