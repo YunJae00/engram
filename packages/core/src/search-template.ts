@@ -204,7 +204,7 @@ const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, qu
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 // c13a (C3: a teammate's "이번 주" news was searched over one day): a period the ask names that has begun picks the period button by date
 // arithmetic, the smallest one that reaches back to its start. News about a time is written up to a day before it (a Friday forecast
-// for the weekend), so the reach starts PERIOD_LEAD_MS earlier; the same lead holds where a teammate's dates are checked (inAskedPeriod).
+// for the weekend), so the search reaches PERIOD_LEAD_MS earlier. Only the search: a fact's own day is checked with no lead (inAskedPeriod).
 export const PERIOD_LEAD_MS = 86_400_000
 export function periodSince(from: Date, now = new Date()): NewsPeriod {
   const days = (now.getTime() - from.getTime() + PERIOD_LEAD_MS) / 86_400_000

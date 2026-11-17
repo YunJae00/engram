@@ -467,7 +467,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(w.reported).toHaveLength(2)
   })
 
-  it('nothing is reported early when everyone is back before the cap, when nothing is back, or for a hand-off under way', async () => {
+  it('nothing is reported early when everyone is back before the cap; with nothing back at the cap every part is labeled and follows', async () => {
     const quick = await staffed(async turn => `${turn.role} 새 기능이 나왔어요 https://example.com/a`, { answerMs: 40 })
     await quick.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
     await updateTask(quick.paths, quick.id, t => { t.state = 'waiting' })
@@ -478,9 +478,11 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const slow = await staffed(turn => new Promise((_resolve, reject) => turn.signal.addEventListener('abort', () => reject(new Error('aborted')))), { answerMs: 30 })
     await slow.assign({ wait: false, to: [{ who: '지민', brief: 'a' }, { who: '서연', brief: 'b' }] })
     await updateTask(slow.paths, slow.id, t => { t.state = 'waiting' })
-    await new Promise(resolve => setTimeout(resolve, 90))
-    expect(slow.reported).toEqual([])
-    expect((await slow.members()).some(m => m.late)).toBe(false)
+    // c13a r2: nothing back at the cap is no reason to hold the answer or cut the parts: both are labeled in it once and follow.
+    await vi.waitFor(() => expect(slow.reported).toHaveLength(1))
+    await new Promise(resolve => setTimeout(resolve, 60))
+    expect(slow.reported).toHaveLength(1)
+    expect((await slow.members()).map(m => [m.state, m.late])).toEqual([['working', true], ['working', true]])
     await slow.team.stop('bot-b1')
   })
 

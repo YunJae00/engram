@@ -1454,8 +1454,8 @@ test('c5 rule 7: a part still at work when the others are reported is labeled th
   expectParts(late, [['도윤', 'https://linear.app/changelog']])
   expect(late).not.toContain('지민')
   expect(late).toContain('리니어가 새 보기를 냈어요')
-  // Nothing back yet, or a hand-off under way: nothing to report early.
-  expect(lateParts(teamTask([{ ...kim, state: 'working', result: undefined }, { ...doyun, state: 'working', late: undefined }]))).toEqual([])
+  // c13a r2: nothing back yet: every part at work follows (none is cut for want of another's result). A hand-off under way: none.
+  expect(lateParts(teamTask([{ ...kim, state: 'working', result: undefined }, { ...doyun, state: 'working', late: undefined }]))).toEqual(['m1', 'm3'])
   expect(lateParts(teamTask([{ ...kim, then: { botId: 'b', who: '서연', brief: '문구' } }, part('m2', '서연', handoffBrief('문구 쓰기', '지민', 'x'), { background: true, state: 'working' })]))).toEqual([])
 })
 

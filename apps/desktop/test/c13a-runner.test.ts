@@ -80,6 +80,24 @@ it('a slow part (40 s) is labeled working at the deadline with the page it opene
   expect(w.reported).toHaveLength(2)
 })
 
+it('r2: every part still at work at the deadline (34 s and 38 s): none is cut, all are labeled in one answer, and they follow in the same thread', async () => {
+  const w = await world({ 하람: 34, 이든: 38 }, [['하람', '피그마'], ['이든', '캔바']])
+  await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
+  expect(w.reported[0]! - started).toBeLessThan(33 * S)
+  const at = await w.task()
+  expect(at.team!.members.map(m => [m.state, m.late])).toEqual([['working', true], ['working', true]])
+  const first = employeesReport(at)!
+  for (const [who, topic] of [['하람', '피그마'], ['이든', '캔바']]) expect(first).toContain(`${topic}(${who}): 아직 찾는 중이에요. 끝나면 이어서 올릴게요.`)
+  await updateTask(w.paths, w.id, lateShown)
+  await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })
+  expect(w.reported[1]! - started).toBeGreaterThanOrEqual(37 * S)
+  const last = employeesReport(await w.task())!
+  for (const who of ['하람', '이든']) expect(last).toContain(`${who}의 업데이트 소식이에요.`)
+  expect(last).not.toContain('끝까지 못 봤어요')
+  await wait(60)
+  expect(w.reported).toHaveLength(2)
+})
+
 it('stop during a late part halts it within 3 s and nothing is posted after', async () => {
   const w = await world({ 하람: 10, 이든: 'stall' }, [['하람', '피그마'], ['이든', '캔바']])
   await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })

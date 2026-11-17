@@ -42,14 +42,19 @@ test('the writer is given who, how many and each part\'s outcome as data, and le
   expect(prompt).toContain('lead with the answer itself')
 })
 
-test('rule 7\'s "still looking" is the writer\'s only while a part is at work; a word that renders the data (Agents) is no jargon', () => {
+test('rule 7\'s "still looking" is the writer\'s only while a part is at work; a rule-12 word is refused whatever the data holds', () => {
   const found = member({ id: 'm1', role: '소율', brief: '이번 주 미로 업데이트 조사', data: { facts: [fact('미로 Agents가 보드를 요약해 줘요.', 'https://miro.com/changelog/agents')] } })
   const json = (message: string) => JSON.stringify({ message, kept: ['f1'] })
   const link = '[미로](https://miro.com/changelog/agents)'
   // Nothing is at work: a message that still says it is being looked into is refused.
-  expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toEqual({ refused: 'still' })
-  // The data holds "Agents": its Korean is content. A jargon word the data does not hold is still refused.
-  expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toHaveProperty('text')
+  expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}\n나머지는 아직 찾는 중이에요.`), [found])).toEqual({ refused: 'still' })
+  // c13a r2: rule 12 has no exemption: the data holding "Agents" does not let 에이전트 through; the name kept as written passes.
+  expect(reportCheck(json(`소율이 보니 미로 에이전트가 보드를 요약해 줘요. ${link}`), [found])).toEqual({ refused: 'jargon' })
+  expect(reportCheck(json(`소율이 보니 미로 Agents가 보드를 요약해 줘요. ${link}`), [found])).toHaveProperty('text')
+  // The cause: the writer is told to keep a name as the data writes it, and its own example holds none of the words.
+  const prompt = reportPrompt('미로 이번 주 업데이트', [found])
+  expect(prompt).toContain('stays exactly as the data writes it')
+  expect(prompt.split('Data: ')[0]).not.toMatch(/에이전트|세션|토큰|프롬프트|런타임|컨텍스트/)
   expect(reportCheck(json(`소율이 보니 미로가 보드를 요약해 줘요. 세션도 길어졌어요. ${link}`), [found])).toEqual({ refused: 'jargon' })
 })
 
@@ -118,7 +123,11 @@ test('the period searched matches the period asked, by date arithmetic, and the 
   const task = `${dateLine('이번 주 미로 업데이트 조사', WED)}\nYour part:\n이번 주 미로 업데이트 조사`
   expect(newsPeriod(task)).toBe('day')
   expect(newsPeriod(task.replace(HOST_TODAY, ' '))).toBe('week')
-  // The same lead where a teammate's dates are checked: a Friday forecast for the weekend read on Saturday is a find; Thursday's is not.
-  const fri = fact('토요일 대전 야외 공연은 비 소식에 실내로 옮겨요.', 'https://news.example/1', '11월 20일'), thu = fact('대전 공연 할인 행사가 끝났어요.', 'https://news.example/2', '11월 19일')
-  expect(inAskedPeriod({ facts: [fri, thu] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [fri] })
+  // c13a r2: a fact's date is its own day, so no lead where dates are checked: the weekend show (its own day Saturday) is a find, a
+  // Friday item is not, and on a Wednesday last Sunday's launch is not this week's; a coming Friday (no year written) is this week's.
+  const sat = fact('대전 야외 공연은 비 소식에 실내로 옮겨요.', 'https://news.example/1', '11월 21일'), fri = fact('대전 공연 할인 행사가 끝났어요.', 'https://news.example/2', '11월 20일')
+  expect(inAskedPeriod({ facts: [sat, fri] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [sat] })
+  const sun = fact('캔바가 새 영상 편집기를 냈어요.', 'https://www.canva.com/newsroom/9', '11월 15일'), mon = fact('캔바 표 기능이 나왔어요.', 'https://www.canva.com/newsroom/10', '11월 16일'), coming = fact('캔바 행사가 금요일에 열려요.', 'https://www.canva.com/newsroom/11', '11월 20일')
+  expect(inAskedPeriod({ facts: [sun, mon, coming] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [mon, coming] })
+  expect(inAskedPeriod({ facts: [sun] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: { latest: sun } })
 })
