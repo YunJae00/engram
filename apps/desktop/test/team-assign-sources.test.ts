@@ -39,12 +39,14 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   const began = Date.now()
   const answer = await w.assign()
   expect(Date.now() - began).toBeLessThan(2_000)
-  const rows = answer.split('\n').filter(line => line.startsWith('| ')).slice(1)
+  // c7: each teammate's own line after their name (no table nobody asked for).
+  const rows = answer.split('\n').filter(line => /^(?:지민|서연|도윤): /.test(line))
   expect(rows).toHaveLength(3)
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) {
-    const row = rows.find(line => line.startsWith(`| ${topic} (${who}) |`))!
+    const row = rows.find(line => line.startsWith(`${who}: `))!
     expect(row).toContain(`${topic}이 AI 요약 기능을 냈다`)
-    expect(row).toContain(`[네이버 검색](${address(`${topic} 신기능`)})`)
+    // c7: the host's own search for the part is its updates, never "이번 주 …" as written.
+    expect(row).toContain(`[네이버 검색](${address(`${topic} 새 기능 업데이트`)})`)
   }
   // Codex cap (b7 r3): the row of an agent cut at the limit says so the way a colleague would, never with the host's limit note.
   expect(answer).not.toMatch(/한도|멈춤|stopped at/)
@@ -55,10 +57,10 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   // Review r2: the thread turns a table of three or more columns into cards, so the person never saw a table. It must stay one.
   const shown = answerHtml(answer)
   expect(shown).not.toContain('answer-card')
-  expect(shown.match(/<table>/g)).toHaveLength(1)
-  expect(shown.match(/<tr>/g)).toHaveLength(4)
-  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(shown).toMatch(new RegExp(`<td>${topic} \\(${who}\\)</td>\\s*<td>[^<]*<a href="https://search\\.naver\\.com/`))
-  expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 신기능`)]))
+  // c7: nobody asked for a table, so the thread shows none: a paragraph per teammate that opens on their name and ends on their link.
+  expect(shown).not.toContain('<table>')
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(shown).toMatch(new RegExp(`<p>${who}: ${topic}[^<]*<a href="https://search\\.naver\\.com/`))
+  expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 새 기능 업데이트`), address(`${topic} 신기능`)]))
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
   // The agents are held 15 s at most inside the 35 s answer.
   expect(LOOKUP_HARD_MS).toBe(15_000)
@@ -68,7 +70,7 @@ it('agents that reached no page are said so in their rows, and that answer is no
   // stack-6: the host runs each part's search before its first round, so "no page" is now a search that did not run.
   const w = await world(async (_deps, _prompt, options = {}) => { options.onStart?.(); return stuck(options, '') }, query => `the search for "${query}" did not run: the results page could not be loaded (offline).`)
   const answer = await w.assign()
-  expect(answer.split('\n').filter(line => line.endsWith(') | 이번엔 못 찾았어요. |'))).toHaveLength(3)
+  expect(answer.split('\n').filter(line => /^(?:지민|서연|도윤): (?:노션|슬랙|리니어) 쪽은 이번엔 못 찾았어요\.$/.test(line))).toHaveLength(3)
   expect(answer).not.toMatch(/https?:/)
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
 })
@@ -85,7 +87,7 @@ it('c4: agents stopped before they wrote anything still fill their rows from wha
   })
   const answer = await w.assign()
   expect(answer).not.toMatch(/못 찾았어요|한도|멈춤|여기까지|더 있을 수/)
-  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`| ${topic} (${who}) |`))).toBe(`| ${topic} (${who}) | 새 기능 · [네이버 검색](${address(`${topic} 신기능`)}) |`)
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`${who}: `))).toBe(`${who}: ${topic} 쪽은 새 기능 · [네이버 검색](${address(`${topic} 새 기능 업데이트`)})`)
   expect((await w.task()).team!.members.map(m => [m.state, m.read])).toEqual([['released', true], ['released', true], ['released', true]])
 })
 
@@ -95,6 +97,6 @@ it('stack-6: teammates that never got to search still fill their rows, from the 
   const w = await world(async (_deps, _prompt, options = {}) => { options.onStart?.(); return stuck(options, '') })
   const answer = await w.assign()
   expect(answer).not.toMatch(/못 찾았어요|한도|멈춤/)
-  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`| ${topic} (${who}) |`))).toBe(`| ${topic} (${who}) | 새 기능 · [네이버 검색](${address(`${topic} 신기능`)}) |`)
-  expect((await w.task()).team!.members.map(m => [m.query, m.read])).toEqual([['노션 신기능', true], ['슬랙 신기능', true], ['리니어 신기능', true]])
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`${who}: `))).toBe(`${who}: ${topic} 쪽은 새 기능 · [네이버 검색](${address(`${topic} 새 기능 업데이트`)})`)
+  expect((await w.task()).team!.members.map(m => [m.query, m.read])).toEqual([['노션 새 기능 업데이트', true], ['슬랙 새 기능 업데이트', true], ['리니어 새 기능 업데이트', true]])
 })

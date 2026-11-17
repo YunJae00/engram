@@ -256,11 +256,11 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   expect(seoyeon!.read).toBeUndefined()
   // The host's own table: the found-nothing row says so and links where it looked, by name; no bare host anywhere.
   const table = mergedReport([doyun!, seoyeon!])
-  expect(table).toContain(`| 리니어 신기능 조사 (도윤) | 새 소식은 안 보여요. [네이버 검색](${address('리니어 신기능').replace(/ /g, '%20')}) |`)
+  expect(table).toContain(`도윤: 새 소식은 안 보여요. [네이버 검색](${address('리니어 신기능').replace(/ /g, '%20')})`)
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
   // The cut-short part's link is named as a source, never by the host's own "시간 한도" line under the address.
-  expect(table).toContain('| 슬랙 신기능 조사 (서연) | 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles) |')
+  expect(table).toContain('서연: 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
   expect(table).not.toContain('한도')
 })
 

@@ -277,6 +277,8 @@ const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '�
 const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title, url]) => nameLike(title!) && !hostPiece(title!, url!)).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim()]))
 // "vidabytes" on ko.vidabytes.com, "blank" on blank.page: a piece of the address is not a name.
 const hostPiece = (words: string, url: string): boolean => { try { const name = words.trim().toLowerCase(); return /^[\w.-]+$/.test(name) && new URL(url).hostname.toLowerCase().includes(name) } catch { return false } }
+/** stack-7: words a teammate put beside an address are its link's name only when they pass as a name (the one rule: no cut title, no digit, no "…", no piece of the address). company-tools pageLink asks here. */
+export const givenName = (words: string, url: string): boolean => nameLike(words) && !hostPiece(words, url)
 /** A link named only after where anyone posts ("[네이버 블로그](…)") takes the title a member gave that address, else what the address is. Also for a team result (company-tools teamAnswer). hosts (a lookup's answer): a link named by its bare host ("[korea247.kr](…)") is renamed too, by sourceName. */
 export function placeNamed(text: string, members: readonly TeamMember[], korean = false, hosts = false): string {
   const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))

@@ -2589,7 +2589,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     // "다들 뭐 하고 있어?" on the person's own thread is answered from stored state: no model round.
     if (bot?.primary && !recovery && !savedRoutine && !turn?.verification && isStatusAsk(request.message)) {
-      const said = companyStatus(await loadBots(paths), await listTasks(paths))
+      const said = companyStatus(await loadBots(paths), await listTasks(paths), Date.now(), lastReplyOf(savedHistory))
       await appendBotTurn(paths, bot.id, { role: 'assistant', text: said, at: new Date().toISOString() })
       turnOutcomes.set(channel, { answer: said, asked: false, unfinished: false, steps: 0 })
       answering.delete(channel)
