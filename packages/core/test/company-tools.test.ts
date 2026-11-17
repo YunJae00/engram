@@ -1950,7 +1950,7 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   // BAR C3 reads the last bubble: the three products, the three names, three links.
   expect(linksIn(said)).toEqual([notion, slack, linear])
   // The writer is handed each part's latest with its day and link.
-  const data = JSON.parse(reportPrompt(stack6.c3.goal, c3, undefined, ctx).split('Data: ')[1]!) as { nothing?: { latest?: { date?: string; link: string } } }[]
+  const data = JSON.parse(reportPrompt(stack6.c3.goal, c3, undefined, ctx).split('Data: ')[1]!) as { nothing?: { latest?: { text: string; date?: string; link: string } } }[]
   // c12a B2: each day is in its text once (none of these texts states its own), never a field put in front of it again.
   expect(data.map(one => one.nothing?.latest?.text)).toEqual(['Notion 3.2 업데이트로 모바일 AI 노트 탭이 추가됐어요 (1월 20일).', '슬랙봇이 채널을 읽고 거래·연락처·통화 기록을 분석하는 기능이 나왔어요 (4월 2일).', '채널톡이 리니어와 연동되는 MCP 호스트 기능을 냈어요 (2025년 7월 9일).'])
   expect(data.map(one => one.nothing?.latest?.date)).toEqual([undefined, undefined, undefined])

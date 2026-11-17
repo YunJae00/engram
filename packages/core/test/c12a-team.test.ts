@@ -120,7 +120,7 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
 })
 
 test('B4: the record line holds the job and one short clause; the summary prompt carries the job lines only', async () => {
-  const paths = await initVault(await tmpVaultRoot())
+  const paths = await initVault(await tmpVaultRoot('c12a-record'))
   const bot = await createBot(paths, { name: '서아' })
   const data = { facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://a.example/1', site: 'a', name: '둔산동 보드게임 모임' }, { text: '12월 20일 유성에서 모임이 열려요.', url: 'https://a.example/2', site: 'a' }, { text: 'c', url: 'https://a.example/3', site: 'a' }, { text: 'd', url: 'https://a.example/4', site: 'a' }] }
   await employeeWriteBack(paths, { botId: bot.id, brief: '다음 달 대전 보드게임 모임 일정', result: '12월 6일 둔산동에서 보드게임 모임이 열려요. — https://a.example/1', title: '다음 달 대전 보드게임 모임 일정', data }, NOW)
