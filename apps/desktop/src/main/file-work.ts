@@ -89,7 +89,8 @@ const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): str
   if (tool === 'file_create_copy' && typeof args.fromPath === 'string') return `path\0${resolve(cwd, args.fromPath)}`
   if (tool === 'file_create_copy' && typeof args.content === 'string') return 'content'
   const input = [args.source, args.sourcePath, args.path].find(value => typeof value === 'string') as string | undefined
-  return `${tool}\0${input ? resolve(cwd, input) : sha(JSON.stringify(args))}`
+  // grokbar D3: a workbook made fresh under one name is one file however often it is made (agent-session-result.ts freshName).
+  return `${tool}\0${input ? resolve(cwd, input) : tool === 'file_create_workbook' && typeof args.name === 'string' ? `name\0${args.name.toLowerCase()}` : sha(JSON.stringify(args))}`
 }
 
 // Never overwrites a file it did not place: a different file of the same name gets a numbered twin.
@@ -138,8 +139,9 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
           // A change to the file itself (file_edit_package on this task file or on its saved output) leaves one file, not the file and its
           // earlier bytes: the person asked for that file to be changed, and a second deck in the store is a duplicate (grokbar D5).
           // A file made again from scratch keeps its earlier version, as does one another task folder also holds.
-          const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : ''
-          const others = edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
+          // grokbar D3: the same file made again in the turn that made it is that turn's own draft, never shown on its own: it goes the same way.
+          const edited = made.source.startsWith('file_edit_package\0') ? made.source.split('\0')[1]! : '', again = !!made.turn && turn === made.turn
+          const others = again || edited === path || basename(edited) === was ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
           if (made.outputs && others && !others.some(rows => rows.includes(`\0${was}\n`))) await resolveOutput(made.outputs, was).then(unlink).then(() => appendFile(replacedFile(dirname(record)), `${was}\0${made.artifact}\n`)).catch(error => flog('file-work', `earlier version not removed: ${error instanceof Error ? error.message : String(error)}`))
           else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
         }
@@ -265,6 +267,8 @@ const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 // turn: this turn's id, which lets a later turn's remake replace the task-folder copy (placeInTask).
 export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>, turn?: string) {
   return {
+    // c10c r1: the names the task folder already holds (lower case), so a build does not take over an earlier turn's file (office-agent.ts).
+    async held(): Promise<Set<string>> { const task = await folder?.(); return new Set(task ? (await readdir(task).catch(() => [] as string[])).map(file => file.normalize('NFC').toLowerCase()) : []) },
     async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
       made?.add(receipt.path)

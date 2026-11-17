@@ -255,7 +255,8 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
   // The same tool on the same input under the same name is one file made again (a report re-rendered after a fix): a revision, where the last one counts.
   // Two different inputs under one name are two files, inline html or markdown included: nothing says one replaces the other, and a file is never dropped on a guess.
   // qa143 S19: three renders of one report were handed over as report, report-2 and report-3.
-  const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : createHash('sha256').update(JSON.stringify(step.args)).digest('hex')}` : '' }
+  // grokbar D3: a workbook made fresh (no input) under one name in this turn is that file made again, whatever its cells.
+  const madeFrom = (step: TurnStep) => { const input = [step.args['source'], step.args['sourcePath'], step.args['path']].find(value => typeof value === 'string') as string | undefined; return ownArtifact(step) ? `\0${step.tool}\0${input ? resolve(cwd, input) : step.tool === 'file_create_workbook' && typeof step.args['name'] === 'string' ? `name\0${step.args['name'].toLowerCase()}` : createHash('sha256').update(JSON.stringify(step.args)).digest('hex')}` : '' }
   const sourceOf = (step: TurnStep) => { const copy = step.tool === 'file_create_copy', from = copy && typeof step.args['fromPath'] === 'string' ? resolve(cwd, step.args['fromPath']) : copy && typeof step.args['content'] === 'string' ? CONTENT : madeFrom(step); return twins.has(from) ? CONTENT : from }
   const receipts = new Map([...new Set(result.steps.map(sourceOf))].flatMap(source => latestResultOutputs(result.steps.map(step => sourceOf(step) === source ? step : { ...step, seeded: true }), [])).map(output => [output.path, output]))
   // The sources whose artifact the answer itself already links, by name: where the comet quoted one version of a file, that source's other
@@ -271,6 +272,8 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
     const revisions = new Set(result.steps.filter(one => sourceOf(one) === sourceOf(step) && ownArtifact(one)).flatMap(one => [artifactHref(basename(ownArtifact(one))), encodeURIComponent(basename(ownArtifact(one)))]))
     if (own && !others.slice(0, others.indexOf(own)).some(href => !revisions.has(href))) continue
     if (!own && quoted.has(`${output.name}\0${sourceOf(step)}`)) continue
+    // c10c r1: a file this turn made and then changed with file_edit_package is that file, now edited: its earlier version is not handed over.
+    if (!own && result.steps.slice(output.after! + 1).some(later => later.tool === 'file_edit_package' && ownArtifact(later) && typeof later.args['sourcePath'] === 'string' && basename(later.args['sourcePath']).replace(SAVED_ID, '').toLowerCase() === output.name.toLowerCase())) continue
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.

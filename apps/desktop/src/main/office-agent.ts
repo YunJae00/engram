@@ -4,33 +4,111 @@ import { screen } from 'electron'
 import { officeApps, officeRequest, officeSupported } from './office-host.js'
 import { assertDesktopTurnNotStopped } from './desktop-control.js'
 import { bindDesktopForLane } from './desktop-access.js'
-import { freeName } from './file-work.js'
 import { applicationWork, clearApplicationWork } from './application-work.js'
+import { freeName } from './file-work.js'
 
 // A new deck or document is composed as a file with a designed layout, not
 // clicked into a blank template; everything else on Office goes through the
 // application's own commands. The person keeps the mouse either way.
 // Where a composed document is handed in: the workspace's saved outputs and
 // the task folder, linked in the chat.
-export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>> }
+export interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<string, unknown>>; held?(): Promise<Set<string>> }
+
+// Hangul a person writes, KS X 1001's 2,350 syllables; empty where the runtime has no EUC-KR decoder (the check is then skipped).
+const COMMON_HANGUL = ((): Set<string> => {
+  const found = new Set<string>()
+  try { const decode = new TextDecoder('euc-kr'); for (let lead = 0xb0; lead <= 0xc8; lead++) for (let trail = 0xa1; trail <= 0xfe; trail++) found.add(decode.decode(Uint8Array.of(lead, trail))) } catch { /* No decoder: nothing is flagged. */ }
+  return found
+})()
+// grokbar D3 (stack9): the first deck read "수시 입력", "대믱", "변류̈은", the second "결맠"; the model read each back and built it again, three
+// files in one 91 s turn. A word with a syllable nobody types (outside the common 2,350) or a combining mark on Hangul is named in the receipt,
+// with where it is, so it is fixed from the receipt and nothing is read back. A rare real syllable is only named, never refused.
+export function mistypedWords(texts: readonly { where: string; text: string }[]): string[] {
+  if (!COMMON_HANGUL.size) return []
+  return texts.flatMap(({ where, text }) => (text.match(/[^\s,.:;()[\]"'“”‘’·/|-]+/g) ?? [])
+    .filter(word => /[가-힣][\u0300-\u036f]/.test(word) || [...word].some(one => /[가-힣]/.test(one) && !COMMON_HANGUL.has(one)))
+    .map(word => `${word} (${where})`)).slice(0, 8)
+}
+// c10c r3 (D3): the garbled words of the stack-9 deck were the model's own sampling slips, one UTF-8 byte off (결→거, 말→맠): most land on
+// syllables people do type ("거실론", "수시 입력"), so no syllable list can catch them. Before the file is built, the quick voice reads the
+// document's text once and names each garbled word with the word meant; the host puts those in and builds once. The syllable check above
+// stays the backstop for when the voice is late or absent. A reply is used only where it is safe: the word is in the text, both are
+// Korean, no digit changes, and the length stays close, so a proofread can fix a slip but never rewrite content.
+export type Proofread = (prompt: string) => Promise<string>
+export const PROOF_MS = 5000
+export const proofPrompt = (texts: readonly string[]): string => [
+  'Below are lines of a Korean document, one per line. Some words may have been garbled while typing: a wrong or stray syllable, a stray mark, a word nobody writes or that does not fit its sentence.',
+  'For each garbled word write one line: garbled => intended. Change nothing else: not the style, spacing, numbers, names, English or anything correct.',
+  'If nothing is garbled, reply with exactly NONE.',
+  '',
+  ...texts,
+].join('\n')
+export function proofFixes(raw: string, texts: readonly string[]): [string, string][] {
+  const whole = texts.join('\n'), digits = (text: string): string => text.replace(/\D/g, '')
+  const fixes = new Map<string, string>()
+  for (const line of raw.split('\n')) {
+    const found = /^\s*(?:[-*•]\s+|\d+[.)]\s+)?["'“‘]?(.+?)["'”’]?\s*(?:=>|->|→)\s*["'“‘]?(.+?)["'”’]?\s*$/.exec(line)
+    if (!found) continue
+    const [, wrong = '', right = ''] = found
+    if (wrong === right || !whole.includes(wrong) || !/[가-힣]/.test(wrong) || !/[가-힣]/.test(right) || digits(wrong) !== digits(right) || Math.abs([...wrong].length - [...right].length) > 2) continue
+    fixes.set(wrong, right)
+  }
+  return [...fixes]
+}
+const withFixes = (value: unknown, fixes: readonly [string, string][]): unknown =>
+  typeof value === 'string' ? fixes.reduce((text, [wrong, right]) => text.split(wrong).join(right), value)
+    : Array.isArray(value) ? value.map(one => withFixes(one, fixes))
+      : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, one]) => [key, withFixes(one, fixes)])) : value
+const written = (op: 'ppt.build' | 'word.write', args: Record<string, unknown>): { titles: string[]; texts: { where: string; text: string }[] } => {
+  if (op === 'ppt.build') {
+    const slides = (Array.isArray(args['slides']) ? args['slides'] : []) as { title?: unknown; subtitle?: unknown; bullets?: unknown; table?: { rows?: unknown } }[]
+    return {
+      titles: slides.map(slide => String(slide.title ?? '')),
+      texts: slides.flatMap((slide, at) => [slide.title, slide.subtitle, ...(Array.isArray(slide.bullets) ? slide.bullets : []), ...(Array.isArray(slide.table?.rows) ? (slide.table.rows as unknown[]).flat() : [])]
+        .filter((one): one is string => typeof one === 'string').map(text => ({ where: `slide ${at + 1}`, text }))),
+    }
+  }
+  const blocks = (Array.isArray(args['blocks']) ? args['blocks'] : []) as { kind?: unknown; text?: unknown; items?: unknown; table?: { rows?: unknown } }[]
+  return {
+    titles: blocks.filter(block => ['title', 'heading'].includes(String(block.kind)) && typeof block.text === 'string').map(block => block.text as string),
+    texts: blocks.flatMap((block, at) => [block.text, ...(Array.isArray(block.items) ? block.items : []), ...(Array.isArray(block.table?.rows) ? (block.table.rows as unknown[]).flat() : [])]
+      .filter((one): one is string => typeof one === 'string').map(text => ({ where: `block ${at + 1}`, text }))),
+  }
+}
 
 // A new deck or document is built headlessly and handed in; no Office window
 // opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
-async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, names: Set<string>, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, signal?: AbortSignal, assertActive?: () => void, proofread?: Proofread): Promise<unknown> {
   signal?.throwIfAborted()
   assertActive?.()
   if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
+  const said = written(op, asked).texts.map(one => one.text)
+  const fixes = proofread && said.some(text => /[가-힣]/.test(text)) ? await proofread(proofPrompt(said)).then(raw => proofFixes(raw, said), () => []) : []
+  const args = fixes.length ? withFixes(asked, fixes) as Record<string, unknown> : asked
+  signal?.throwIfAborted()
+  assertActive?.()
   const built = op === 'ppt.build'
     ? await (await import('./deck-render.js')).buildDeck(args as unknown as Parameters<typeof import('./deck-render.js').buildDeck>[0])
     : await (await import('./doc-render.js')).buildDoc(args as unknown as Parameters<typeof import('./doc-render.js').buildDoc>[0])
   signal?.throwIfAborted()
   assertActive?.()
-  // Another input built under a name this session already handed in is another file, known by name: report.docx, report-2.docx (qa143 S19a).
-  const name = freeName(built.name, held => names.has(held))
+  // grokbar D3 (stack9): a second build under the name this turn already saved got "-2", a third "-3", and all three were shown. The same name
+  // in one turn is that turn's own file made again: it keeps the name and replaces it (file-work.ts placeInTask, agent-session-result.ts
+  // outputLinks). A file an earlier turn made is not this tool's to rename: placeInTask keeps that one as the earlier version.
+  // c10c r1: a name this turn built is its own draft, replaced in place; a name the task folder held before (an earlier turn's file) is
+  // never overwritten: this build takes the next free name (deck-2.pptx).
+  const held = await outputs.held?.() ?? new Set<string>()
+  const name = freeName(built.name, free => held.has(free.normalize('NFC')) && !own.has(free))
+  own.add(name.toLowerCase())
   const receipt = await outputs.save(name, built.data)
-  names.add(name.toLowerCase())
   const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
-  return { ...receipt, ...count, verification: 'Built as a file, saved and compared byte for byte by the host; no Office window was opened. Answer now with its markdownLink.' }
+  const { titles, texts } = written(op, args), odd = mistypedWords(texts)
+  const listed = titles.length ? ` ${op === 'ppt.build' ? 'Slides' : 'Headings'}: ${titles.map((title, at) => `${at + 1}. ${title}`).join(' / ')}.` : ''
+  return {
+    ...receipt, ...count, ...(titles.length ? { titles } : {}),
+    verification: `Saved as ${name} and compared byte for byte by the host; no Office window was opened.${listed} It is done: do not read it back or build it again. Answer now with its markdownLink.`,
+    ...(odd.length ? { mistyped: `These words are not Korean anyone types, so they were garbled while writing: ${odd.join(', ')}. Fix only those with ONE file_edit_package call on this file (sourcePath: its path, expectedSha256: its sha256, name: ${name}, edits {slide, text, with}), then answer.` } : {}),
+  }
 }
 
 async function officeRun(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {
@@ -58,18 +136,23 @@ export async function showOfficePreview(lane: string, op: OfficeOp, window?: str
   catch { /* The activity card remains available when no readable window exists. */ }
 }
 let workQueue: Promise<unknown> = Promise.resolve()
-export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTool[] {
+// proofread: the quick voice, which reads a new document's text for garbled words before it is built (composeOffice).
+export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
   // The same deck or document built again in this session is the file already
   // handed in, not a twin: built bytes carry a timestamp (QA 0.8.142 B11 duplicates).
   const composed = new Map<string, unknown>()
-  const names = new Set<string>()
+  // The names this tool set's builds saved (one turn's: ipc.ts makes the set per turn), which a later build here may replace.
+  const own = new Set<string>()
   const tools = officeTools({ run: async (op, args, signal) => {
     if (op === 'ppt.build' || op === 'word.write') {
       const key = `${op}\0${JSON.stringify(args)}`
       if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
-      const receipt = await composeOffice(op, args, outputs, names, signal, () => assertDesktopTurnNotStopped(lane))
+      const receipt = await composeOffice(op, args, outputs, own, signal, () => assertDesktopTurnNotStopped(lane), proofread)
+      // Another build under this name replaced the file an earlier receipt names: that receipt is no longer the file to hand back.
+      const named = (one: unknown): string | undefined => /^\[([^\]]+)\]/.exec(String((one as { markdownLink?: unknown }).markdownLink ?? ''))?.[1]?.toLowerCase()
+      for (const [held, earlier] of composed) if (named(earlier) === named(receipt)) composed.delete(held)
       composed.set(key, receipt)
       return receipt
     }

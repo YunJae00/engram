@@ -1,5 +1,5 @@
-import { lstat, readFile, realpath } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion } from './fast-lane.js'
 
 // grokbar B7 (stack1-f4f6844c): everyday desk work ran on the work model with 73 tools and a 40k-char prompt, and most of the time was
@@ -49,7 +49,7 @@ export const DESK_NOTE = [
   'Do exactly what was asked in as few steps as it takes: when the request itself names what to work on, start on it without searching memory or notes first.',
   'Something to remember or to correct is ONE keep_in_mind call (a correction replaces the old fact) and a one-line reply that says what is now true, never that it was saved.',
   'To sort a folder, list it once and then move every file in ONE file_move call, with paths written relative to the workspace: never one call per file or per group, and nothing is deleted. After moving or sorting files, the whole answer is one short sentence on what was done and how it was grouped ("종류별 폴더로 정리했어요."), then a short markdown list of how many files went into each folder, one line per folder and nothing else on it ("- PDF 6개"), no table. File names are given only when they ask for them, or for the one or two files that fit no group.',
-  'A document they ask for is made in this turn, never asked about: when no figures or source are named, make the file now from a sensible outline for the topic and the audience, with clearly marked blanks where the real numbers go ("수치 입력"), and never invent a figure. A blank is those plain words in a cell or after its label ("매출: 수치 입력"), never in square brackets and never "내용 입력", "TBD" or the like: the deck check refuses those and the file has to be built twice. Look at most once for a source file they plainly mean, and do not search memory first. Never ask what to put in it and never give a list of options: you decide, and say the choice in one sentence ("실제 수치는 비워 두고 5장 틀로 만들었어요.").',
+  'A document they ask for is made in this turn, never asked about: when no figures or source are named, make the file now from a sensible outline for the topic and the audience, with clearly marked blanks where the real numbers go ("수치 입력"), and never invent a figure. A blank is those plain words in a cell or after its label ("매출: 수치 입력"), never in square brackets and never "내용 입력", "TBD" or the like: the deck check refuses those. After ppt_build, word_write or file_create_workbook says the file is saved, do not read it back or build it again; a word it names as garbled is fixed with one file_edit_package on that same file. Look at most once for a source file they plainly mean, and do not search memory first. Never ask what to put in it and never give a list of options: you decide, and say the choice in one sentence ("실제 수치는 비워 두고 5장 틀로 만들었어요.").',
   'When they point at a document made earlier in this conversation ("방금 만든 PPT"), change that same file, the one in the list of files you saved earlier: never make a second copy.',
   'To change the words on a slide (its title, a line, a figure in a cell), never read or write slide XML: read the deck once with file_read_package outline:true, then make one file_edit_package call under the same file name whose edits are {slide, with} for a title or {slide, text, with} for another text, copied from the outline. Only a change to the structure (a new shape, a layout, an order) uses the XML form.',
   'After making or changing a document, the answer is one or two sentences that start with what is in the file and the one choice you made ("회의록 내용만 담았고, 결정사항이랑 할 일은 한 표로 합쳤어요.", "3번 슬라이드 제목을 바꿨어요."), never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요."), then at most one short offer: never a list of its sections, slides, sheets or contents, because the file itself is shown under your answer.',
@@ -400,3 +400,103 @@ const MAKES = /만들|작성|새로|\b(make|create|build|write)\b/i
 const ANY_OFFICE_FILE = /\.(pptx?|docx?|xlsx?)(?![a-z0-9])/i
 export const deskLight = (kind: DeskKind | undefined, ask: string, has: { given?: boolean; made?: boolean }): boolean =>
   kind === 'keep' || kind === 'tidy' || (kind === 'note' && !!has.given) || (kind === 'deck' && CHANGES.test(ask) && !MAKES.test(ask) && (!!has.made || ANY_OFFICE_FILE.test(ask)))
+
+// c10c F1 (stack9): "fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘" took 41.1 s of 30: one model round of 43k prompt chars spent 26.8 s before
+// its single file_move, then 13 s writing the counts. Sorting one folder by kind is fixed work: the host lists the folder's top level, groups
+// by extension into fixed Korean folder names and moves everything in ONE call of the same file_move tool (its gate: inside the workspace,
+// never Engram's folders, nothing deleted, nothing overwritten). A name already taken in a kind folder gets "-2", so both files stay.
+// c10c r3: the first matcher took one sentence shape (the folder as the first word), so "fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘"
+// went to the model. The ask is read by its parts, in any order: the folder is whichever word names ONE real folder in the workspace (looked up
+// on disk, a Korean particle after it trimmed off: "inbox-dump에"), the criterion is Korean grouping "<기준>별" and must be kind (none given
+// means kind), nothing restricts it to some files ("PDF만"), and the sort is the sentence's last verb, so a second job after it ("…정리해서
+// 보내줘", "…정리하고 지워줘") goes to the model. A miss only costs speed; anything file_move refuses, or a folder of folders, goes to the model.
+const KIND_FOLDERS: readonly [string, RegExp][] = [
+  ['PDF', /^pdf$/], ['이미지', /^(png|jpe?g|gif|bmp|webp|heic|svg|tiff?)$/], ['문서', /^(docx?|hwpx?|odt|rtf|pages)$/], ['엑셀', /^(xlsx?|csv|numbers|ods)$/],
+  ['텍스트', /^(txt|md)$/], ['발표 자료', /^(pptx?|key|odp)$/], ['압축 파일', /^(zip|7z|rar|tar|gz)$/],
+]
+const OTHER_FOLDER = '기타'
+export const kindFolder = (file: string): string => KIND_FOLDERS.find(([, ext]) => ext.test(extname(file).slice(1).toLowerCase()))?.[0] ?? OTHER_FOLDER
+const CRITERION = /([가-힣]+)별(?=로|\s|$|[.,!~])/g
+const BY_KIND = /^(?:종류|형식|확장자|유형|포맷|타입|형태)$/
+const ONLY_SOME = /[가-힣a-z0-9]만(?=\s|$|[.,!~])/i
+const SORT_LAST = /(?:정리|분류|나눠|나누어)\s*(?:좀\s*)?(?:해|하)?\s*(?:줘|주세요|줄래|줘요|주라|봐|주실래요|주시겠어요)?\s*(?:요)?\s*[.!~]*\s*$/
+// The words of a sort-by-kind ask that may name its folder (sortByKind looks each up), or undefined when the ask is not one.
+export function kindSortAsk(message: string): string[] | undefined {
+  const text = message.trim()
+  if (text.includes('\n') || [...text].length > ASK_MAX || !SORT_LAST.test(text) || ONLY_SOME.test(text)) return undefined
+  if ([...text.matchAll(CRITERION)].some(([, criterion]) => !BY_KIND.test(criterion!.replace(/^파일/, '')))) return undefined
+  const words = text.split(/[\s"'`“”‘’()[\]<>,]+/).map(word => word.replace(/[.!~?]+$/, '')).filter(word => word && !word.startsWith('~'))
+  return words.length ? words : undefined
+}
+// The one folder inside the workspace the words name: a word as written, or with up to four trailing Hangul letters (a particle) trimmed.
+async function namedFolder(words: readonly string[], root: string): Promise<string | undefined> {
+  const found = new Set<string>()
+  for (const word of words) {
+    for (let cut = 0; cut <= 4; cut++) {
+      const tail = word.slice(word.length - cut)
+      if (cut && (cut > word.length - 1 || !/^[가-힣]+$/.test(tail))) break
+      const path = await realpath(resolve(root, cut ? word.slice(0, -cut) : word)).catch(() => undefined)
+      if (path && path !== root && inside(root, path) && (await lstat(path)).isDirectory()) { found.add(path); break }
+    }
+  }
+  return found.size === 1 ? [...found][0] : undefined
+}
+// The first of name, name-2, name-3 … not taken (file-work.ts freeName, which this module cannot import: it loads electron).
+const freeIn = (name: string, taken: ReadonlySet<string>): string => { for (let count = 1; ; count++) { const one = count === 1 ? name : `${basename(name, extname(name))}-${count}${extname(name)}`; if (!taken.has(one.toLowerCase())) return one } }
+type MoveTool = { run(args: Record<string, unknown>, context: { task: string; signal?: AbortSignal }): Promise<string> }
+export async function sortByKind(message: string, workspace: string, move: MoveTool | undefined, context: { task: string; signal?: AbortSignal }): Promise<{ answer: string; steps: { tool: string; args: Record<string, unknown>; observation: string }[] } | undefined> {
+  const words = kindSortAsk(message)
+  if (!words || !move) return undefined
+  try {
+    const root = await realpath(workspace), folder = await namedFolder(words, root)
+    // The chats' task folders are Engram's (namedText's box); file_move refuses the rest of its own folders.
+    if (!folder || inside(join(root, 'tasks'), folder)) return undefined
+    const entries = await readdir(folder, { withFileTypes: true })
+    const kinds = new Set([...KIND_FOLDERS.map(([name]) => name), OTHER_FOLDER])
+    // A folder that already holds folders of its own is sorted some other way: the model looks at it.
+    if (entries.some(entry => entry.isDirectory() && !kinds.has(entry.name))) return undefined
+    const files = entries.filter(entry => entry.isFile() && !entry.name.startsWith('.')).map(entry => entry.name).sort()
+    if (!files.length) return undefined
+    const held = new Map<string, Set<string>>()
+    for (const name of kinds) held.set(name, new Set(await readdir(join(folder, name)).then(names => names.map(one => one.toLowerCase()), () => [] as string[])))
+    let clashed = 0
+    const moves = files.map(file => {
+      const kind = kindFolder(file), taken = held.get(kind)!, to = freeIn(file, taken)
+      if (to !== file) clashed++
+      taken.add(to.toLowerCase())
+      return { from: relative(root, join(folder, file)), to: relative(root, join(folder, kind, to)) }
+    })
+    const args = { moves }, observation = await move.run(args, context)
+    const counts = new Map<string, number>()
+    for (const file of files) counts.set(kindFolder(file), (counts.get(kindFolder(file)) ?? 0) + 1)
+    const order = [...KIND_FOLDERS.map(([name]) => name), OTHER_FOLDER]
+    const lines = [...counts].sort((a, b) => b[1] - a[1] || order.indexOf(a[0]) - order.indexOf(b[0])).map(([name, count]) => `- ${name} ${count}개`)
+    const answer = ['종류별 폴더로 옮겼어요.', '', ...lines, ...(clashed ? ['', '이름이 같은 파일이 이미 있던 건 뒤에 -2를 붙여서 둘 다 남겼어요.'] : [])].join('\n')
+    return { answer, steps: [{ tool: 'file_move', args, observation }] }
+  } catch { return undefined }
+}
+
+// c10c Q4 (stack9): "방금 말한 거 더 짧게" took 8.2 s of 8: the work model at the settings' effort with 7 tools and a 42k-char prompt, first token
+// at 7.1 s, to shorten one line it had just written. A message that only reshapes the last reply runs on the fast tier at low effort, with no
+// tools and only the recent turns (ipc.ts).
+// c10c r3: a closed word list decided which messages those were, and "방금 답을 압축해줘" was not one. Whether a message only asks for the last
+// reply in another form is a question about its meaning next to that reply, so the quick voice answers it (reshapePrompt), reading both. The host
+// only keeps out what cannot be one: no reply yet, a long or multi-line message, a slash command, a named file. A late or failed voice is a no:
+// the turn keeps its usual route. The reshape turn has no tools, so a wrong yes can only write text, never send, save or search.
+export const RESHAPE_MAX = 40
+export const RESHAPE_MS = 2500
+export const reshapeCandidate = (message: string, lastReply: string | undefined): boolean => {
+  const text = message.trim()
+  return !!text && !!lastReply?.trim() && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && !text.match(NAMED_FILE) && !/[\w-]+\/[\w.-]+/.test(text)
+}
+export const reshapePrompt = (message: string, lastReply: string): string => [
+  'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
+  'Reply YES if they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject.',
+  'Reply NO if they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or if you cannot tell.',
+  'Reply with exactly YES or NO.',
+].join('\n')
+export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<boolean> {
+  if (!quick || !reshapeCandidate(message, lastReply)) return false
+  return quick(reshapePrompt(message, lastReply!)).then(raw => /^\W*yes\b/i.test(raw.trim()), () => false)
+}
+export const RESHAPE_NOTE = 'They want your last reply in another shape. Write it again as asked, with the same facts and nothing else: no tools, no lead-in about what you changed.'

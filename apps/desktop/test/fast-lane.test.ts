@@ -70,7 +70,7 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
   // A correction takes the route of the ask before it (desk-lane.ts routeAsk); any other message is routed by its own words.
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
-  expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
+  expect(ipc).toContain('...(native && !lane && !company && !reshape ? { native } : {}),')
   // grokbar c3: the host answers mid-turn words itself (aside-ipc), so the turn is told they were answered and writes no line of its own.
   // c7 T2, c7a r3: the turn notes how much was held when it took the words; only a change of the ask makes those results old (heldFor).
   expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said }')
