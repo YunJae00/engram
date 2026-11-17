@@ -299,3 +299,19 @@ it('stack-7: a lookup\'s first line still live when the person speaks mid-work i
     expect(resets()).toHaveLength(1)
   } finally { vi.mocked(broadcast).mockReset(); endFirstLine('bot-t2'); await rm(cache, { recursive: true, force: true }) }
 })
+
+// c9a T2: words handed to the running turn are also offered to it as a possible change of ask, after they are queued (so the lane can take them);
+// a remark is never handed and never offered.
+it('offers handed words to the running lookup after queueing them, and never a remark', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-changed-'))
+  const paths = { cache } as VaultPaths
+  const order: string[] = []
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => order.push(`held ${text}`), changed: (_channel, said) => order.push(`changed ${said}`), setOffersAside: async () => {} })
+  try {
+    await handlers.get('chat:say')!({}, 'bot-swap', '그냥 애플로 바꿔')
+    await handlers.get('chat:say')!({}, 'bot-swap', '아 왜 이렇게 느려')
+    expect(order).toEqual(['held 그냥 애플로 바꿔', 'changed 그냥 애플로 바꿔'])
+  } finally { await rm(cache, { recursive: true, force: true }) }
+})

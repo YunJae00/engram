@@ -322,8 +322,9 @@ it('stack-7: a teammate hired in a turn whose own first search already ran the s
   } finally { laneSearches.delete('bot-b1') }
   // ipc.ts resets what is held on every turn, so words from an earlier turn are never reused.
   const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
-  expect(ipc).toContain('if (searched?.query) laneSearches.set(channel, { query: searched.query, found: searched.found ?? \'\' }); else laneSearches.delete(channel)')
+  expect(ipc).toContain('if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? \'\' }); else laneSearches.delete(channel)')
+  expect(ipc).toContain('if (!searched) laneSearches.delete(channel)')
   // And the lone lookup's own search is never run for an ask that hands work to a team.
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
-  expect(ipc).toContain('const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(')
+  expect(ipc).toContain('let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(')
 })

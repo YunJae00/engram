@@ -388,9 +388,10 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain('laneSaid.push(...said.map(text => ({ text, at: laneRead.length })))')
   // The host search is the lone lookup's only, never a correction's (its route is the ask before it) nor a team ask's.
-  expect(ipc).toContain("const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined")
+  expect(ipc).toContain("let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
+  expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
-  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
+  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [lookup.ask(), ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
   expect(ipc.indexOf('result.answer = await heldAnswer(')).toBeLessThan(ipc.indexOf('result.answer = await liveCited('))
 })
 

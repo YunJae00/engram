@@ -94,7 +94,7 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(ipc).toContain("const retitle = !handed && kind === 'deck' ? slideTitleFix(request.message) : undefined")
     expect(ipc).toContain('retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool,')
     expect(ipc).toContain("if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }")
-    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : await runComet(')
+    expect(ipc).toContain(': retitled ? { ...retitled, fellBack: false } : await lookup.run(')
   })
 })
 

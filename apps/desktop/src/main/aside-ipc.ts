@@ -22,6 +22,8 @@ export interface AsideIpcDeps {
   stop?(channel: string, said: string): Promise<void>
   // The quick voice that writes the one-line reply to words said mid-work; without one the reply is the host's fixed line.
   voice?(channel: string): Promise<Pick<Engine, 'id' | 'quick'> | undefined>
+  // c9a T2: words handed to the running turn, for a lookup that has not answered yet to stop its round on a change of ask (ipc laneChanges).
+  changed?(channel: string, said: string): void
 }
 
 // grokbar c3 T1/H6: the reply to words said mid-work was the main model's, so it came with its next tool result (6.7 s) or never.
@@ -178,6 +180,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
       asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
       // Handed over before the reply is written: the work must not wait for the line.
       hold?.(said)
+      deps.changed?.(channel, said)
     }
     void deps.setOffersAside(botId).catch(error => flog('study', error))
     // A quick question the voice had no answer for has used the budget: it gets the fixed line, not a second wait.
