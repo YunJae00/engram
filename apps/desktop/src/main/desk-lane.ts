@@ -522,5 +522,17 @@ export async function reshapeAsk(message: string, lastReply: string | undefined,
   // (quotes aside) cut only the commentary around the asked thing and left the thing itself as it was.
   const was = typeof said.was === 'string' ? squash(said.was) : '', bare = (text: string): string => squash(text).replace(/["'“”‘’「」]/g, '')
   if (bare(lastReply!).includes(bare(reply))) return undefined
-  return was && squash(lastReply!).includes(was) && [...squash(reply)].length < [...was].length ? reply : undefined
+  // stack-13 (c13c r3 #1): nor is "was" the measure: a voice that names the whole reply as "was" passes a same-length respelling once the
+  // line about it is dropped. The host finds what the reply rewrites itself: for each sentence or line of the reply, the one of the last
+  // reply it shares the most letter pairs with. The reply must be shorter than those together; a line it rewrites nothing of is not counted.
+  return was && squash(lastReply!).includes(was) && [...squash(reply)].length < Math.min([...was].length, rewritten(reply, lastReply!)) ? reply : undefined
+}
+const units = (text: string): string[] => text.split(/\n+|(?<=[.!?。！？]["'”’」]?)\s+/u).map(squash).filter(Boolean)
+const pairs = (text: string): Set<string> => { const flat = [...text.toLowerCase().replace(/[\s"'“”‘’「」]/g, '')]; return new Set(flat.slice(1).map((c, i) => flat[i]! + c)) }
+const shared = (a: Set<string>, b: Set<string>): number => a.size + b.size ? 2 * [...a].filter(pair => b.has(pair)).length / (a.size + b.size) : 0
+/** The length of the last reply's sentences or lines that the reply rewrites (each of its own matched to the closest one). */
+function rewritten(reply: string, last: string): number {
+  const before = units(last).map(text => ({ text, pairs: pairs(text) }))
+  const matched = new Set(units(reply).map(unit => { const own = pairs(unit); return before.reduce((best, one) => shared(own, one.pairs) > shared(own, best.pairs) ? one : best) }))
+  return [...matched].reduce((sum, one) => sum + [...one.text].length, 0)
 }

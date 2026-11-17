@@ -139,3 +139,30 @@ test('the period searched matches the period asked, by date arithmetic, and the 
   const sunShow = fact('대전 공연 마지막 회차예요.', 'https://news.example/3', '11월 22일'), monShow = fact('대전 공연 추가 회차가 열려요.', 'https://news.example/4', '11월 23일')
   expect(inAskedPeriod({ facts: [sat, sunShow, monShow] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [sat, sunShow] })
 })
+
+test('stack-13 (c13a r3 #1): a part added by a steer after the deadline answer is owed in the report after it, with the late ones', async () => {
+  const { employeesReport, lateShown, lateOwed, markLate, plainSteer, steerSplit } = await import('../src/company-tools.js')
+  const brief = (thing: string) => `이번 주 ${thing} 업데이트 조사`
+  const team = { hires: 2, maxHires: 8, maxDepth: 2, big: false, members: [
+    member({ id: 'm1', role: '하람', brief: brief('피그마'), topic: '피그마', data: { facts: [fact('피그마에 슬라이드 자동 정렬이 생겼어요.', 'https://www.figma.com/release-notes/1', '11월 17일')] } }),
+    member({ id: 'm2', role: '이든', brief: brief('캔바'), topic: '캔바', state: 'working' }),
+  ] }
+  const job = { id: 't9', goal: '피그마, 캔바 이번 주 업데이트 알아봐줘', botId: 'lead', state: 'waiting', turns: 1, createdAt: at, updatedAt: at, approvals: [], log: [], team } as DelegatedTask
+  // At the deadline 이든 is still at work: labeled in the answer made then.
+  expect(markLate(job)).toEqual(['m2'])
+  lateShown(job)
+  // Then "미로도 넣어줘" while 이든 still works.
+  const steer = plainSteer('미로도 넣어줘', [job], 'lead')!
+  expect(steerSplit(job, steer, at)?.ids).toEqual(['m3'])
+  const added = job.team!.members[2]!
+  expect(added.late).toBe(true)
+  // Both end: the report after holds the late part and the added one; nothing is owed after it.
+  Object.assign(job.team!.members[1]!, { state: 'done', data: { facts: [fact('캔바가 표로 차트를 만드는 기능을 냈어요.', 'https://www.canva.com/newsroom/1', '11월 18일')] } })
+  Object.assign(added, { state: 'done', data: { facts: [fact('미로에 회의 요약이 생겼어요.', 'https://miro.com/changelog/1', '11월 17일')] } })
+  const after = employeesReport(job)!
+  expect(after).toContain('https://www.canva.com/newsroom/1')
+  expect(after).toContain('https://miro.com/changelog/1')
+  expect(after).not.toContain('https://www.figma.com/release-notes/1')
+  lateShown(job)
+  expect(lateOwed(job)).toBe(false)
+})

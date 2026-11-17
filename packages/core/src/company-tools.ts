@@ -554,7 +554,9 @@ export function steerSplit(task: DelegatedTask, steer: SplitSteer, at = new Date
   if (old) { old.state = 'released'; old.finishedAt ??= at; delete old.result }
   if (!steer.add) return { ids: [], stop: old ? [old.id] : [] }
   const id = `m${team.members.length + 1}`
-  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, ...(steer.add.voice ? { voice: steer.add.voice } : {}), title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief, undefined, task.goal) ? { query: searchWords(steer.add.brief, undefined, task.goal)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+  // stack-13 (c13a r3 #1, rule 3): once the answer at the deadline is out, the report after it holds only the parts owed then (partsOf);
+  // a part joining now is owed the same way, so its result lands in that one report instead of being left out.
+  team.members.push({ id, parentId: null, depth: 1, ...(team.lateTold && !team.lateDone ? { late: true as const } : {}), role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, ...(steer.add.voice ? { voice: steer.add.voice } : {}), title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief, undefined, task.goal) ? { query: searchWords(steer.add.brief, undefined, task.goal)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
   team.hires++
   logTask(task, `Changed while working: ${steer.said}`)
   return { ids: [id], stop: old ? [old.id] : [] }

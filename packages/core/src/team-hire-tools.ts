@@ -494,7 +494,11 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
       // c13b r3: a figure alone is no fact ("태블릿 B 가격: 749,000원" is not "태블릿 A"'s price): the stand-in line holds the figure and
       // every word the dead line states (a Korean ending may follow: "XM6의", "가격은"), so it says the same thing of the same thing.
       const said = (text: string): string[] => figures.reduce((rest, figure) => rest.split(figure).join(' '), words(text)).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
-      const claim = said(line), same = (other: string): boolean => { const has = said(other); return claim.every(w => has.some(t => t.startsWith(w) && /^[가-힣]*$/.test(t.slice(w.length)))) }
+      const claim = said(line), stem = (w: string) => (t: string): boolean => t.startsWith(w) && /^[가-힣]*$/.test(t.slice(w.length))
+      // stack-13 (c13b r3 #1): and nothing more about what the figure belongs to: every word before the figure on the stand-in is the dead
+      // line's or the member's own asked thing's ("태블릿 A Pro" adds "Pro": another model). Words after the figure only describe the fact.
+      const subject = [...claim, ...said(m.brief)], head = (other: string): string => { const text = words(other), at = Math.min(...figures.map(figure => text.indexOf(figure)).filter(i => i >= 0)); return text.slice(0, at) }
+      const same = (other: string): boolean => { const has = said(other); return claim.every(w => has.some(stem(w))) && said(head(other)).every(t => subject.some(w => stem(w)(t) || stem(t)(w))) }
       const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) && same(other) ? live(other) : undefined).find(Boolean) : undefined
       return gone.reduce((text, url) => text.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}\\)`, 'g'), to ? `[${sourceName(to, /[가-힣]/.test(m.brief))}](${to})` : NO_LIVE_SOURCE).split(url).join(to ?? NO_LIVE_SOURCE), line)
     }).join('\n')

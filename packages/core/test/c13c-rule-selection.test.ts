@@ -104,7 +104,8 @@ describe('c13c r2: rules follow the turn kind, not just the tools offered', () =
   const fileTools = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'open_page', 'read_open_page']
   it('a short ask or lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
     const work = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: fileTools })
-    const make = (text: string): boolean => /file_create_copy|file_move|Commands (run|are not)/.test(text)
+    // stack-13: the approval mode line ("Commands run without asking.") is a gate and stays with the file tools; the how-to lines go.
+    const make = (text: string): boolean => /file_create_copy|file_move|Commands are not|short script/.test(text)
     expect(make(work)).toBe(true)
     expect(count(work, PAGE_DELTA_RULE)).toBe(1)
     for (const kind of ['short', 'lookup'] as const) {
@@ -146,7 +147,8 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
       const off = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
       expect(on).toBe(off)
       for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(on, rule)).toBe(0)
-      expect(on).not.toContain('file download')
+      // stack-13: the download approval line is a gate: it follows the page tool, whatever the turn kind.
+      expect(count(on, 'For a requested file download')).toBe(1)
     }
     const work = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind: 'work', tools: every })
     for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(work, rule)).toBe(1)
@@ -158,5 +160,27 @@ describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and 
     await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '이 링크 제목만 말해줘', { short: true })
     expect(count(jobs[0]!.system, COLLECTION_RULE)).toBe(0)
     expect(jobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
+  })
+})
+
+// stack-13: a small-talk or told turn is short yet is offered every tool and the person's files (ipc: no desk menu, native on). The act
+// how-to goes, the gates of what it holds stay: sandbox, command approval, delete, desktop send and approval, download approval.
+describe('stack-13: a gate follows the tools a session holds, never the turn kind', () => {
+  const every = ['file_read', 'file_create_copy', 'file_move', 'open_page', 'app_press', 'app_set', 'desktop_sequence', 'search_web']
+  it('a short or lookup session holding files and desktop tools keeps their gates; one holding neither gets none', async () => {
+    const { DESKTOP_GATE_RULE } = await import('../src/agent-prompt.js')
+    for (const kind of ['short', 'lookup'] as const) {
+      const holds = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
+      expect(count(holds, DESKTOP_GATE_RULE), kind).toBe(1)
+      expect(holds).toContain('Deleting a file of theirs is never done without asking first.')
+      expect(holds).toContain(`make new files only inside ${native.cwd}`)
+      expect(count(holds, DESKTOP_TASK_RULE)).toBe(0)
+      expect(holds).not.toContain('file_create_copy (name plus fromPath)')
+      const bare = sessionRules({ engineId: 'claude', desktop: false, browser: false, pageSteps: false, workflow: false, planned: false, kind, tools: ['search_web', 'read_pages'] })
+      expect(count(bare, DESKTOP_GATE_RULE)).toBe(0)
+      expect(bare).not.toContain('Deleting a file of theirs')
+    }
+    // Every gate sentence is DESKTOP_TASK_RULE's own, so a work session that has the whole rule loses nothing.
+    for (const sentence of DESKTOP_GATE_RULE.split(/(?<=\.) /)) expect(DESKTOP_TASK_RULE.toLowerCase()).toContain(sentence.replace(/;.*$/, '').toLowerCase().replace(/\.$/, ''))
   })
 })

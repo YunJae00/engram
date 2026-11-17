@@ -45,6 +45,17 @@ describe('c13c: reshape returns the asked form and "shorter" is checked', () => 
     for (const reply of [line, `"${line}"`, `이렇게 보내면 돼요. "${line}"`]) expect(await reshapeAsk('조금만 줄여줘', last, voice({ form: 'shorter', was: last, reply }))).toBeUndefined()
     expect(await reshapeAsk('조금만 줄여줘', last, voice({ form: 'shorter', was: last, reply: '"明日休みます。"' }))).toBe('"明日休みます。"')
   })
+  it('stack-13 (c13c r3 #1): "shorter" is measured against the part of the last reply the new one rewrites, found by the host, not the voice', async () => {
+    // A respelling of the asked line as long as it was, with only the line about it dropped, is not shorter; "was" claims the whole reply.
+    const asked = 'Thanks again for covering my shift on Friday.'
+    const last = `${asked}\n금요일 근무를 대신해 줘서 고맙다는 뜻이에요.`
+    expect(await reshapeAsk('좀 줄여봐', last, voice({ form: 'shorter', was: last, reply: 'Thanks again for covering my shift on Friday!' }))).toBeUndefined()
+    // The same with the line about it in the same line, before or after.
+    const inline = `이렇게 쓰면 돼요. "${asked}" 고맙다는 뜻을 담았어요.`
+    expect(await reshapeAsk('좀 줄여봐', inline, voice({ form: 'shorter', was: inline, reply: '"Thanks again for covering my shift on Friday!"' }))).toBeUndefined()
+    // A really shorter rewrite of the line passes either way.
+    for (const before of [last, inline]) expect(await reshapeAsk('좀 줄여봐', before, voice({ form: 'shorter', was: before, reply: 'Thanks for covering Friday.' }))).toBe('Thanks for covering Friday.')
+  })
   it('a table is not length-checked, and an unknown form or plain text is no reshape', async () => {
     const table = '| 내용 |\n|---|\n| 출시 도움 감사 |'
     expect(await reshapeAsk('표로 바꿔줘', LAST, voice({ form: 'table', was: LAST, reply: table }))).toBe(table)

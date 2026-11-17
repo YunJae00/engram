@@ -190,4 +190,15 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
     await withLiveSources([same], alive)
     expect(same.result!.split('\n')[0]).toBe('소니 WF-1000XM6 가격: 359,000원 — https://live.example/sony')
   })
+  it('stack-13 (c13b r3 #1): a line naming a longer model (one more word of its own before the figure) is another thing, not a stand-in', async () => {
+    const alive = async (url: string): Promise<boolean> => !url.includes('gone')
+    const helper = (brief: string, result: string): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '청소기', brief, lookup: true, state: 'done', sessionKey: 's', hiredAt: 'now', result, sources: [] })
+    const plus = helper('로보락 S9 가격', '로보락 S9 가격: 1,290,000원 — https://gone.example/s9\n로보락 S9 MaxV 가격: 1,290,000원 — https://live.example/maxv')
+    await withLiveSources([plus], alive)
+    expect(plus.result!.split('\n')[0]).toBe(`로보락 S9 가격: 1,290,000원 — ${NO_LIVE_SOURCE}`)
+    // The member's own asked thing named on the stand-in ("로보락 S9" for a dead "가격:" line) is the same thing; words after the figure describe it.
+    const own = helper('로보락 S9 가격', '가격: 1,290,000원 — https://gone.example/s9\n로보락 S9 가격 1,290,000원부터 예약 판매 — https://live.example/s9')
+    await withLiveSources([own], alive)
+    expect(own.result!.split('\n')[0]).toBe('가격: 1,290,000원 — https://live.example/s9')
+  })
 })
