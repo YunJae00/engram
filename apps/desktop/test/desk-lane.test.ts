@@ -42,13 +42,13 @@ describe('desk lane', () => {
   it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
-    expect(ipc).toContain('const desk = !!kind, deskMenu = reshape ? new Set<string>() : kind && DESK_TOOLS[kind]')
+    expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
     // The shell is the normal lead's; the menu is the kind's own when it has one (c3c-voice-docs.test.ts), and every tool otherwise.
     expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
     expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
-    expect(ipc).toContain('...(native && !lane && !company && !reshape ? { native } : {}),')
+    expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   })
 })
 

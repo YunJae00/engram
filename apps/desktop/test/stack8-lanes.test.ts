@@ -32,9 +32,8 @@ it('stack-8: a slide title for a teammate goes to the team lane, and a remember-
 // document, a lookup and a team ask keep the effort they had on b3ddda26 (light is set only inside the desk branch).
 it('stack-8: light effort is for small changes only', () => {
   expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
-  // c10c Q4: the one other light turn is a reshape of the last reply (desk-lane.ts reshapeAsk), on the fast tier with no tools.
-  expect(ipc.match(/light: true/g)).toHaveLength(2)
-  expect(ipc).toContain("...(reshape ? { modelHint: 'fast' as const, light: true } : {}),")
+  // stack-10: a reshape of the last reply is written by the quick voice (desk-lane.ts reshapeAsk) and opens no session.
+  expect(ipc.match(/light: true/g)).toHaveLength(1)
   for (const ask of ['다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', '위 회의록으로 워드 보고서 만들어줘', '매출 데이터로 엑셀 표 만들어줘'])
     expect(deskLight(deskKind(ask), ask, { made: true }), ask).toBe(false)
   for (const ask of ['엔비디아 오늘 주가 알려줘', '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜'])

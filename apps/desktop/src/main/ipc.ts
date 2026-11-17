@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, listOnly, namesSubject, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, RESHAPE_NOTE, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -203,8 +203,6 @@ import { asBackground, withTurnPriority } from './worker-pool.js'
 import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 // The reply just before this message: "그거 취소해" means what that reply named (core dutyToCancel).
-// c10c Q4: the turns a reshape of the last reply is given: that reply, the ask it answered and a little before.
-const RESHAPE_TURNS = 6
 const lastReplyOf = (history?: readonly { role: string; text: string }[]): string | undefined => [...(history ?? [])].reverse().find(one => one.role === 'assistant')?.text
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
@@ -2878,17 +2876,17 @@ export function registerIpc(ctx: VaultContext): void {
         // Everyday desk work (remember, a short question or ask, tidy a folder, a slide deck): the smart tier, and for a plain kind only that kind's tools (desk-lane.ts).
         const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined
         const short = kind === 'ask' || kind === 'question'
-        // c10c Q4: "방금 말한 거 더 짧게" reshapes the last reply: fast tier, low effort, no tools, only the recent turns (desk-lane.ts reshapeAsk).
-        // c10c r3: the quick voice judges it from the message and the last reply; only a plain ask no other route took is asked, and only after the first line.
-        const reshape = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message) && !plainReply(request.message) && !onlyTells(request.message) && !quickQuestion(request.message)
+        // c10c Q4: "방금 말한 거 더 짧게" reshapes the last reply (desk-lane.ts reshapeAsk). c10c r3: the quick voice judges it from the message and
+        // the last reply; only a plain ask no other route took is asked, and only after the first line. stack-10: the voice writes it, no session.
+        const reshaped = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message) && !plainReply(request.message) && !onlyTells(request.message) && !quickQuestion(request.message)
           && await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: RESHAPE_MS }) : undefined)
-        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : reshape ? RESHAPE_NOTE : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
-        if (reshape) flog('chat-phase', JSON.stringify({ channel, phase: 'reshape' }))
+        if (reshaped) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'reshape' })) }
+        const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))
         // c4 L1: the first lookup after the browser was closed paid its launch inside search_web (7.5 s of a 7.9 s search). It is started
         // here, while the model writes its first call (~6 s), and loads nothing: no address is opened until the search itself.
         if (lane) void agentContext().then(() => armIdleClose()).catch(error => flog('browser', `warm: ${error instanceof Error ? error.message : String(error)}`))
-        const desk = !!kind, deskMenu = reshape ? new Set<string>() : kind && DESK_TOOLS[kind]
+        const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]
         // A small text file the person named in the ask (or in the ask this one corrects) is read here, so the turn has no read round (desk-lane.ts namedText).
         const given = kind === 'note' || kind === 'file' ? await namedText(routed, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(routed, path)) : undefined
         const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\n\n') : ''
@@ -2950,7 +2948,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (!searched) laneSearches.delete(channel)
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
           : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {
+          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : reshaped ? { answer: reshaped, steps: [], fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {
           if (again) { flog('chat-phase', JSON.stringify({ channel, phase: 'lane-swap', ms: Date.now() - nativeSince })); searched = await searchFor(laneAsk, roundSignal) }
           return runComet(
           {
@@ -2968,7 +2966,7 @@ export function registerIpc(ctx: VaultContext): void {
             waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
             onToolStart: () => { toolStarted = true },
             // Index only; bodies and current staleness are checked on open_skill.
-            skills: company || lane || reshape ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
+            skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
@@ -2977,8 +2975,6 @@ export function registerIpc(ctx: VaultContext): void {
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             // A note the host already read, something to remember, a folder to sort, a change to a document that exists: no long thinking (desk-lane.ts deskLight).
             ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
-            // c10c Q4: a reshape of the last reply is the fast tier at low effort, after the desk's own tier so it wins.
-            ...(reshape ? { modelHint: 'fast' as const, light: true } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
@@ -2990,10 +2986,10 @@ export function registerIpc(ctx: VaultContext): void {
             // their own screen; without this the turn starts blind and goes
             // hunting for a page it is already holding open.
             ...(onScreen ? { onScreen } : {}),
-            history: (reshape ? savedHistory.slice(-RESHAPE_TURNS) : savedHistory).map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),
+            history: savedHistory.map((turn) => ({ role: turn.role, text: turn.text, at: turn.at, attachments: turn.attachments })),
             // A cloud brain keeps this comet's session open between turns.
             session: company ? `company:${bot.id}` : bot.id,
-            ...(native && !lane && !company && !reshape ? { native } : {}),
+            ...(native && !lane && !company ? { native } : {}),
             onStep: (line) => {
               broadcast({ type: 'comet:step', channel, line })
               const said = /^([a-z_]+): ([^]*)$/.exec(line)

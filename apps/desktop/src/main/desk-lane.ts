@@ -486,9 +486,9 @@ export async function sortByKind(message: string, workspace: string, move: MoveT
 // c10c r3: a closed word list decided which messages those were, and "방금 답을 압축해줘" was not one. Whether a message only asks for the last
 // reply in another form is a question about its meaning next to that reply, so the quick voice answers it (reshapePrompt), reading both. The host
 // only keeps out what cannot be one: no reply yet, a long or multi-line message, a slash command, a named file. A late or failed voice is a no:
-// the turn keeps its usual route. The reshape turn has no tools, so a wrong yes can only write text, never send, save or search.
+// the turn keeps its usual route. The voice has no tools, so a wrong yes can only write text, never send, save or search.
 export const RESHAPE_MAX = 40
-export const RESHAPE_MS = 2500
+export const RESHAPE_MS = 3500
 export const reshapeCandidate = (message: string, lastReply: string | undefined): boolean => {
   const text = message.trim()
   return !!text && !!lastReply?.trim() && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && !text.match(NAMED_FILE) && !/[\w-]+\/[\w.-]+/.test(text)
@@ -497,12 +497,14 @@ export const reshapeCandidate = (message: string, lastReply: string | undefined)
 }
 export const reshapePrompt = (message: string, lastReply: string): string => [
   'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
-  'Reply YES if they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject.',
-  'Reply NO if they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or if you cannot tell.',
-  'Reply with exactly YES or NO.',
+  'If they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject, write that reply again as asked: only the new reply, in the language and the polite register of your last reply (in Korean the -요 form), the same facts and nothing else, no lead-in about what you changed.',
+  'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
-export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<boolean> {
-  if (!quick || !reshapeCandidate(message, lastReply)) return false
-  return quick(reshapePrompt(message, lastReply!)).then(raw => /^\W*yes\b/i.test(raw.trim()), () => false)
+// stack-10 (c10c run Q4: 9.2 s of 8): the voice said YES in 1.3 s, then a fresh session with a 34.8k-char prompt on a cold cache took 7.3 s to
+// its first token for one short line. The voice that judges it reads the last reply and the message already, so it writes the reshaped reply
+// itself: the reply, or undefined (NO, nothing, late or failed), and the turn keeps its usual route.
+export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<string | undefined> {
+  if (!quick || !reshapeCandidate(message, lastReply)) return undefined
+  const said = await quick(reshapePrompt(message, lastReply!)).then(raw => raw.trim().replace(/^yes[.!]?\s*\n/i, '').trim(), () => '')
+  return !said || /^\W*(?:yes|no|none)\W*$/i.test(said) ? undefined : said
 }
-export const RESHAPE_NOTE = 'They want your last reply in another shape. Write it again as asked, with the same facts and nothing else: no tools, no lead-in about what you changed.'

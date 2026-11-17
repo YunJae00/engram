@@ -420,7 +420,7 @@ describe('desk tool menus', () => {
     // c5c r2: a Word or Excel ask takes the document menu (c5c-voice-docs.test.ts); one that is also sent somewhere keeps every tool.
     for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
-    expect(ipc).toContain('const desk = !!kind, deskMenu = reshape ? new Set<string>() : kind && DESK_TOOLS[kind]')
+    expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
     expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
   })
 
