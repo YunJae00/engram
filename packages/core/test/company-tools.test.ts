@@ -1793,6 +1793,17 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   // BAR C3 reads the last bubble: the three products, the three names, three links. One bubble: the lead and three lines.
   expect(linksIn(said)).toHaveLength(3)
   expect(said.split('\n').filter(Boolean)).toHaveLength(4)
+  // c7b r3: the written answer comes first, and its check passed 도윤's line with the find and its day left out (the reviewer's repro).
+  const [u0, u1, u2] = linksIn(said), written = (doyun: string): string => `이번 주는 셋 다 새로 나온 게 없대요.\n\n지민: 노션은 1월 모바일 AI 노트가 최근이에요. [출처](${u0})\n\n서연: 슬랙은 4월 AI 업데이트가 최근이에요. [출처](${u1})\n\n도윤: ${doyun}`
+  const bare = written(`리니어는 새 발표 없네요. [출처](${u2})`)
+  expect(checkedReport(bare, s6.c3, ctx)).toBeUndefined()
+  // The day with no year reads as this year's; the find linked to another page is not the find.
+  expect(checkedReport(written(`리니어는 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx)).toBeUndefined()
+  expect(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${s6.c3[2]!.sources![0]})`), s6.c3, ctx)).toBeUndefined()
+  expect(nameLed(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx) ?? '')[2]).toBe(`도윤: 리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [ditoday](${u2})`)
+  // So the bubble the person gets from the bare one is the host's own, and the writer is handed the find to say.
+  expect(nameLed(await writtenReport({ ask: ctx.ask, members: s6.c3, now: NOV17, write: async () => bare }))[2]).toBe(lines[2])
+  expect(reportPrompt(ctx.ask, s6.c3, undefined, ctx)).toContain(`"latest":{"day":"작년 7월 9일","what":"노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시","page":"${u2}"}`)
   // One part still at work: the milestone line, and its own labeled line (GROKBOT rules 7, 8).
   const waiting = s6.c3.map((m, i) => i === 2 ? { ...m, state: 'working' as const, result: undefined, empty: undefined, read: undefined } : m) as TeamMember[]
   const early = mergedReport(waiting, undefined, [], ctx)
@@ -1807,12 +1818,12 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   // The writer's text in the same shape passes, its links named by the host; a table nobody asked for, a missing teammate, a missing
   // link, a part not named and English are refused, and the host's own lines stand in.
   const pages = s6.c3.map(m => linksIn(nameLed(said).find(line => line.startsWith(`${m.role}: `))!)[0]!)
-  const good = ['이번 주는 셋 다 새로 나온 게 없대요.', '', `지민: 노션은 이번 주엔 조용해요. 제일 최근 건 1월에 나온 모바일 AI 노트예요. [출처](${pages[0]})`, '', `서연: 슬랙도 이번 주 소식은 없더라고요! 4월 AI 업데이트가 마지막이에요. [출처](${pages[1]})`, '', `도윤: 리니어는 새 발표 없네요. [출처](${pages[2]})`].join('\n')
+  const good = ['이번 주는 셋 다 새로 나온 게 없대요.', '', `지민: 노션은 이번 주엔 조용해요. 제일 최근 건 1월에 나온 모바일 AI 노트예요. [출처](${pages[0]})`, '', `서연: 슬랙도 이번 주 소식은 없더라고요! 4월 AI 업데이트가 마지막이에요. [출처](${pages[1]})`, '', `도윤: 리니어는 새 발표 없네요. 작년 7월 채널톡 연동 소식이 마지막이에요. [출처](${pages[2]})`].join('\n')
   const passed = checkedReport(good, s6.c3, ctx)!
   expect(nameLed(passed).map(line => line.replace(/\[[^\]]+\]\(/, '[출처]('))).toEqual(nameLed(good))
   expect(passed).not.toContain('[출처](')
   expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => good })).toBe(passed)
-  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace('이번 주는 셋 다 새로 나온 게 없대요.\n\n', '')])
+  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace(' 작년 7월 채널톡 연동 소식이 마지막이에요.', ''), good.replace('이번 주는 셋 다 새로 나온 게 없대요.\n\n', '')])
     expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => bad }), bad.slice(0, 60)).toBe(said)
 })
 
