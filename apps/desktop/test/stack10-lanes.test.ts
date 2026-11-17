@@ -11,8 +11,13 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
   it('the desk folder sort needs a desk kind, which needs no lane; the lane tidy runs only inside the lane block', () => {
     expect(ipc).toMatch(/const kind = !company && !lane && deskLane\(/)
     expect(ipc).toMatch(/const sorted = !handed && kind === 'tidy'/)
+    // c12b r3: the tidy is one of the lane's shaping steps (shapeLane), run as a lane session's deliver step or inside the lane block.
+    expect(ipc).toContain('answer = laneTidy(answer)')
+    expect(ipc.indexOf('answer = laneTidy(answer)')).toBeGreaterThan(ipc.indexOf('const shapeLane = async'))
+    expect(ipc).toContain('...(lane ? { deliver: shapeLane } : {})')
     const laneBlock = ipc.slice(ipc.indexOf('if (lane && !result.asked) {'))
-    expect(laneBlock.indexOf('result.answer = laneTidy(result.answer)')).toBeGreaterThan(0)
+    expect(laneBlock.indexOf('if (!laneShaped) result.answer = await shapeLane(result.answer)')).toBeGreaterThan(0)
+    expect(ipc.split('shapeLane(').length - 1).toBe(1)
     expect(ipc.split('laneTidy(').length - 1).toBe(1)
     expect(ipc.split('sortByKind(').length - 1).toBe(1)
   })

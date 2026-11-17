@@ -120,7 +120,7 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   expect(ipc).toContain("if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }")
   // c4 L3: the addresses the answer shows are checked before the citations are finished; c4 L1: the browser starts with the turn.
   // c4 r2: the check wraps the citing (a member's link was added after it and never asked), and no 4xx is let through.
-  expect(ipc).toContain('result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)')
+  expect(ipc).toContain('answer = await liveCited(answer, [...read], async cited => citeOwn(await team.cited(channel, cited), [...read], korean), alive, korean)')
   // The check sends the address alone: no cookies, no body.
   expect(ipc).toContain('const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: \'omit\' })')
   // stack-4: a host-made team answer links rows of a results page a teammate kept but never opened; those are asked too, and only a teammate's loaded page counts as loaded.
@@ -129,8 +129,8 @@ it('bounds a lone lookup like a member, leaves a team turn to its members\' limi
   // The lookup's own check is still the one that wraps the citing; liveLinks alone is only the team answer's (no citing step there).
   expect(ipc).not.toMatch(/401, 403, 429|await liveLinks\(result\.answer, \[\.\.\.read\]/)
   expect(ipc).toContain('if (lane) void agentContext().then(() => armIdleClose())')
-  expect(ipc.indexOf('team.cited(channel, answer)')).toBeGreaterThan(0)
-  expect(ipc.indexOf('team.cited(channel, answer)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
+  expect(ipc.indexOf('team.cited(channel, cited)')).toBeGreaterThan(0)
+  expect(ipc.indexOf('team.cited(channel, cited)')).toBeLessThan(ipc.indexOf('turnOutcomes.set(channel, { tokensUsed'))
   expect(ipc).toContain('fastLane(request.message, true) ? { line: laneFirstLine(request.message, ')
   // Beside it, something the person only told gets its one line from the same voice (desk-lane.ts onlyTells).
   expect(ipc).toContain('whole: quickQuestion(request.message) }')
@@ -398,8 +398,8 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   expect(ipc).toContain("let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
-  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [lookup.ask(), ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
-  expect(ipc.indexOf('result.answer = await heldAnswer(')).toBeLessThan(ipc.indexOf('result.answer = await liveCited('))
+  expect(ipc).toContain("if (solo) answer = await heldAnswer(answer, { ask: asks.join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
+  expect(ipc.indexOf('answer = await heldAnswer(answer')).toBeLessThan(ipc.indexOf('answer = await liveCited(answer'))
 })
 
 // H6: "아 왜 이렇게 느려" 4 s into a lookup. c7a r3 (review r2 #1): any words said mid-work emptied the held results.

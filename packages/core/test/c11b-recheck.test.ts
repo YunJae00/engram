@@ -135,3 +135,37 @@ it('c12b r2: words said while the draft is judged or while its extra round runs 
   expect(seen[2]).toContain('경남 소식도 하나 넣어줘')
   expect(r2.answer).toContain('3. 창원 항만')
 })
+
+// c12b r3 (review #1): after the session's last round the host still shaped the answer (writes from held rows, the item verdict, link
+// checks) before it went out; words said in that window were never taken and became a turn of their own after the old-scope answer.
+// The host's shaping now runs as the session's deliver step, inside the late-words drain. Wordings are in no harness row.
+it('c12b r3: words said while the host shapes the answer rewrite it, and only the rewrite, shaped again, is delivered', async () => {
+  const waiting: string[] = [], prompts: string[] = [], shaped: string[] = []
+  const engine = brain(async job => {
+    prompts.push(job.prompt)
+    return { answer: prompts.length === 1 ? '1. 김포 맛집 [g](https://g.example/1)' : '1. 일산 맛집 [i](https://i.example/1)' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '김포 맛집 하나 알려줘', {
+    lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
+    deliver: async answer => {
+      shaped.push(answer)
+      // The words land while the link check on the 김포 answer is still out.
+      if (shaped.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('김포 말고 일산으로 찾아줘') }
+      return `${answer} (확인됨)`
+    },
+  })
+  expect(shaped).toEqual(['1. 김포 맛집 [g](https://g.example/1)', '1. 일산 맛집 [i](https://i.example/1)'])
+  // The rewrite is asked with the raw draft, never the shaped one, and with the words said.
+  expect(prompts[1]).toContain('김포 말고 일산으로 찾아줘')
+  expect(prompts[1]).not.toContain('(확인됨)')
+  expect(result.answer).toBe('1. 일산 맛집 [i](https://i.example/1) (확인됨)')
+  expect(waiting).toEqual([])
+
+  // With no words said, deliver runs once, also on an empty answer (the host writes it from what it holds).
+  const once: string[] = []
+  const r2 = await runToolSession({ engine: brain(async () => ({ answer: '' })), workdir: WORKDIR, tools: [search] }, '파주 카페', {
+    lookup: true, takeSteer: () => [], deliver: async answer => { once.push(answer); return '파주 카페는 [p](https://p.example/1)' },
+  })
+  expect(once).toEqual([''])
+  expect(r2.answer).toBe('파주 카페는 [p](https://p.example/1)')
+})

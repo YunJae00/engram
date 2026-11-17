@@ -122,7 +122,7 @@ describe('stack-11: Codex-cap findings', () => {
     expect(listShortfall(after, asks, held, now)).toBe('기사 링크와 날짜까지 확인된 건 2개 중 1개예요.')
     // ipc says it on what is delivered: after liveCited, never inside the tool session before it.
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc.indexOf('listShortfall(result.answer')).toBeGreaterThan(ipc.indexOf('result.answer = await liveCited('))
+    expect(ipc.indexOf('listShortfall(answer, asks')).toBeGreaterThan(ipc.indexOf('answer = await liveCited(answer'))
     expect(ipc).not.toContain('shortfall: (answer: string) =>')
   })
 })

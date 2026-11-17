@@ -288,6 +288,16 @@ export async function judgeItems(answer: string, asks: readonly string[], write?
   const items = listItems(answer), verdict = await itemCheck(asks.join('\n'), items, write, ms)
   return verdict && offLinks(items, verdict)
 }
+/** One turn's verdicts, asked once per set of asks and items. c12b r3 (review #2): keyed by the asks too, since the verdict judges the
+ * items against them: after a change of ask the same lines are judged afresh, never let through on the old ask's verdict. */
+export function itemVerdicts(write?: (prompt: string, ms: number) => Promise<string>): (answer: string, asks: readonly string[]) => Promise<ItemsOff | undefined> {
+  const verdicts = new Map<string, Promise<ItemsOff | undefined>>()
+  return (answer, asks) => {
+    const key = JSON.stringify([asks, listItems(answer)])
+    if (!verdicts.has(key)) verdicts.set(key, judgeItems(answer, asks, write))
+    return verdicts.get(key)!
+  }
+}
 function listCount(answer: string, asks: readonly string[], held: readonly string[], now: Date, off?: ItemsOff): { asked: number; good: number; items: number; dated: boolean; unfit: number[]; repeat: number[] } | undefined {
   const asked = askedOf(asks)
   if (!asked) return undefined

@@ -145,6 +145,9 @@ export interface AgentLoopOptions {
   recheck?(answer: string): string | undefined | Promise<string | undefined>
   // c11b r3: the same check on the answer that is delivered, whatever rounds ran: a line that says what it still lacks, put under it.
   shortfall?(answer: string): string | undefined
+  // c12b r3: the host's own steps on the answer before it goes out (a verdict, link checks, a rewrite). They run inside the turn, so
+  // words said while they run rewrite the answer like any other late words, and the rewrite goes through them again.
+  deliver?(answer: string): Promise<string>
 }
 
 export interface AgentLoopStep {

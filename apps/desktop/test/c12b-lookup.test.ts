@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { runToolSession, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { itemCheck, judgeItems, listGap, listItems, listShortfall, offLinks, withoutOff } from '../src/main/fast-lane.js'
+import { itemCheck, itemVerdicts, judgeItems, listGap, listItems, listShortfall, offLinks, withoutOff } from '../src/main/fast-lane.js'
 
 // c12b (R3/H6, cause C1): on the lone lookup nobody judged what a list item is. One quick-model verdict now judges each item against the
 // ask and groups items about one same event; its misses feed the existing gap → one-more-round path. No wording here is in the harness.
@@ -101,7 +101,23 @@ describe('c12b: the item verdict on a counted list', () => {
   it('ipc asks the verdict for the recheck and the delivered answer, before liveCited, and the shortfall line uses it', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     const at = (text: string): number => { const i = ipc.indexOf(text); expect(i, text).toBeGreaterThan(-1); return i }
-    expect(at('await itemsOff(result.answer, [lookup.ask(), ...steered])')).toBeLessThan(at('result.answer = await liveCited(result.answer'))
-    expect(at('listShortfall(result.answer, [lookup.ask(), ...steered], heldFor(laneRead, laneSaid), undefined, off)')).toBeGreaterThan(at('result.answer = await liveCited(result.answer'))
+    expect(at('await itemsOff(answer, asks)')).toBeLessThan(at('answer = await liveCited(answer'))
+    expect(at('listShortfall(answer, asks, heldFor(laneRead, laneSaid), undefined, off)')).toBeGreaterThan(at('answer = await liveCited(answer'))
+  })
+
+  // c12b r3 (review #2): the verdict judges items against the ask; keyed by items alone, a changed ask whose rewrite kept the same lines
+  // reused the old ask's verdict. Wordings are in no harness row.
+  it('a verdict is reused only for the same asks and items: a changed ask on the same lines is judged afresh', async () => {
+    const lines = '1. 청주 공방 체험 (11월 3일) [a](https://a.example/1)\n2. 청주 도자기 축제 (11월 5일) [b](https://b.example/2)'
+    const asked: string[] = []
+    const verdicts = itemVerdicts(async prompt => { asked.push(prompt); return prompt.includes('축제 2개로') ? '{"fit":[2],"same":[]}' : '{"fit":[1,2],"same":[]}' })
+    const first = await verdicts(lines, ['청주 공방 체험 2개'])
+    expect(await verdicts(lines, ['청주 공방 체험 2개'])).toBe(first)
+    expect(asked).toHaveLength(1)
+    const after = await verdicts(lines, ['청주 공방 체험 2개', '아니 체험 말고 축제 2개로'])
+    expect(asked).toHaveLength(2)
+    expect(asked[1]).toContain('축제 2개로')
+    expect([...after!.unfit]).toEqual(['https://a.example/1'])
+    expect([...first!.unfit]).toEqual([])
   })
 })

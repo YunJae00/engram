@@ -368,6 +368,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
       await takeLate()
     }
+    // c12b r3 (review #1): the host's own steps before delivery are a wait like the others: words said during them are taken, the raw
+    // answer is rewritten with them, and the rewrite is shaped again. Only an answer shaped from the last raw answer is delivered.
+    if (options.deliver) {
+      let shaped: string | undefined
+      do shaped = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.deliver(session.answer), ended.then(() => undefined)]) : undefined
+      while (await takeLate())
+      if (shaped !== undefined && !signal.aborted && !session.error) session = { ...session, answer: shaped }
+    }
     const short = closed === undefined && !signal.aborted && !session.error && !asked && session.answer.trim() ? options.shortfall?.(session.answer) : undefined
     if (short) session = { ...session, answer: `${session.answer.trimEnd()}\n\n${short}` }
   } finally {
