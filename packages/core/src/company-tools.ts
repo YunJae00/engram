@@ -1027,7 +1027,9 @@ const LIST_ASKED = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
 // A teammate's own line in front of their list that only says a list follows ("확인해 보니 다음 달 서울 IT 행사 일정은 이래요.").
 const INTRO_LINE = /^[^\d\n]{0,60}(?:이래요|다음과\s*같아요|아래와\s*같아요|정리해\s*봤어요|정리했어요)[.:!]?$/u
 // The items a list job brought back, as the host shows them (mergedReport): its lines, less one that only says a list follows.
-const listItems = (m: TeamMember): string[] => { if (m.read) return []; const lines = findings(delivered(m), false, true).lines.map(line => line.replace(LIST_MARK, '')); return lines.length > 1 ? lines.filter((line, k) => !SOURCE_SENTENCE.test(line) && !(k === 0 && INTRO_LINE.test(line))) : lines }
+// stack-9 (c9b run C5-C10, H5: "12월 서울 IT 행사는 두 개 있어요." over one event): a teammate's line on how many there are is no item, and the opener says it.
+const COUNT_REMARK = /^(?:확실한|딱\s*맞는|맞는)\s*[가-힣]{0,6}\s*(?:은|는)\s*(?:이거|이것|이|요)?\s*(?:하나|한\s*(?:개|건|곳)|[두세네]\s*(?:개|건|곳)|\d+\s*(?:개|건|곳))\s*(?:뿐)?(?:이에요|예요|이네요|네요|뿐이에요)[.!]?/u
+const listItems = (m: TeamMember): string[] => { if (m.read) return []; const lines = findings(delivered(m), false, true).lines.map(line => line.replace(LIST_MARK, '')); return lines.length > 1 ? lines.filter((line, k) => !SOURCE_SENTENCE.test(line) && !COUNT_REMARK.test(line) && !(k === 0 && INTRO_LINE.test(line))) : lines }
 // c9b r2 (Codex): the host's opener read the same for everyone. It ends the way that teammate speaks (VOICES, stored with them): the bright
 // one "…있더라고요!", the plain one "…있네요.", the calm one as it is. Only the last sentence's ending changes; the words stay.
 const VOICED: Record<string, [RegExp, string][]> = {
@@ -1241,7 +1243,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const from = handedFrom(m.brief), looked = !!m.empty && !from && !m.then
     const said = looked ? '' : delivered(m), korean = HANGUL.test(said) || HANGUL.test(m.brief), handed = from && outsideOf(from.job, from.result, now)
     // c9: a line that only says a list follows, says where the facts came from, or says again what the opener says is not shown.
-    const lined = said ? read(m, said, true, true) : [], all = lined.length > 1 ? lined.filter((line, k) => !SOURCE_SENTENCE.test(line) && !(k === 0 && (INTRO_LINE.test(line.replace(LIST_MARK, '')) || (!!from && OWN_OPENER.test(line))))) : lined
+    const lined = said ? read(m, said, true, true) : [], all = lined.length > 1 ? lined.filter((line, k) => !SOURCE_SENTENCE.test(line) && !COUNT_REMARK.test(line.replace(LIST_MARK, '')) && !(k === 0 && (INTRO_LINE.test(line.replace(LIST_MARK, '')) || (!!from && OWN_OPENER.test(line))))) : lined
     const kept = handed ? all.filter(line => !soldAsSoon(line, handed, now)) : all, cut = all.length - kept.length
     // Each item takes its own page on its line's end; when no line names one, the last line takes the part's page.
     const linked = itemLines(kept, said, korean), bare = !from && !!linked.length && !linked.some(line => /\]\(https?:/.test(line))

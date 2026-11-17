@@ -89,3 +89,16 @@ it('stack-9 (c9a Codex r3): a held round the list left out joins it; "깜짝 …
   expect(eventRank({ title: '깜짝 300억 투자 유치, 스타트업 업계 들썩', url: 'https://news.example/a', snippet: '', date: '11월 17일' }, ask)).toBe(1)
   expect(eventRank({ title: '메디인테크, 338억 원 규모 시리즈C 투자 유치', url: 'https://news.example/b', snippet: '', date: '11월 17일' }, ask)).toBe(2)
 })
+
+// stack-9 (c9b run C5-C10, H5, every judge quoted it): "12월 서울 IT 행사는 두 개 있어요." over one event; the teammate's own count line was an item.
+it('stack-9: a teammate\'s line on how many there are is no item and is not shown again under the opener', async () => {
+  const { mergedReport } = await import('core')
+  const m = { id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', botId: 'bot-1', voice: '차분하고 또박또박', title: '다음 달 서울 IT 행사 일정 정리', lookup: true as const, query: '2026년 12월 서울 IT 행사 일정', background: true as const, state: 'released' as const, sessionKey: 's', hiredAt: '2026-11-17T07:55:08.846Z', finishedAt: '2026-11-17T07:55:17.834Z',
+    result: '12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - COEX Hall A, AI·SW 비즈니스 전시회 — https://www.coex.co.kr/exhibitions/sw-2026/\n\n확실한 일정은 이거 하나예요. 나머지 검색 결과는 날짜가 2026년 12월로 명시되지 않거나 서울 IT 행사와 직접 관련이 없었어요.',
+    sources: ['https://search.naver.com/search.naver?query=x'], review: { ok: true, note: 'auto' } }
+  const out = mergedReport([m], new Map(), [], { ask: '이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리', now: new Date('2026-11-17T07:55:20.255Z') })
+  expect(out).not.toMatch(/두 개|2개/)
+  expect(out).toContain('확실한 건 하나예요.')
+  expect(out).not.toContain('확실한 일정은 이거 하나예요')
+  expect(out).toContain('소프트웨이브 2026')
+})
