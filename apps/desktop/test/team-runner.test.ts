@@ -400,10 +400,10 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       await vi.advanceTimersByTimeAsync(WRITER_HARD_MS + 10)
       vi.useRealTimers()
       written = await answer
-      expect(written.split('\n')).toEqual(['홍보 문구 3개 뽑기(서연, 지민이 찾은 걸로): [Notion](https://www.notion.com/releases)', '1. 일은 에이전트에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로'])
+      expect(written.split('\n')).toEqual(['홍보 문구 3개 뽑기(서연, 지민이 찾은 걸로): [Notion](https://www.notion.com/releases)', '1. 일은 AI 도우미에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로'])
     } finally { vi.useRealTimers() }
     expect((await w.members())[1]).toMatchObject({ role: '서연', writer: true, state: 'released', review: { ok: true } })
-    await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → Notion Agent 개선', '홍보 문구 3개 뽑기 (지민한테 받아서) → 1. 일은 에이전트에게 2. 하루를 맡기세요 3. 더 적은 비용으로']))
+    await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → Notion Agent 개선', '홍보 문구 3개 뽑기 (지민한테 받아서) → 1. 일은 AI 도우미에게 2. 하루를 맡기세요 3. 더 적은 비용으로']))
     // The page the find came from is linked on the hand-off's report.
     expect(written).toContain('](https://www.notion.com/releases)')
   })

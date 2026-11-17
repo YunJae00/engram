@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, reportData, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, kindChecked, reportData, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -194,15 +194,18 @@ export function teamRunner(deps: {
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
       if (timedOut && !signal?.aborted) outcome = whole ?? { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
+      // c11a: a teammate's result is the report block it wrote; with none (or a broken one) it is null, and its prose is never parsed.
+      // Its list keeps only items of the kind asked, judged here once by the quick model (core kindChecked), before anything shows it.
+      const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
+      const quick = kit.engine.id === 'claude' && kit.engine.quick && !control.signal.aborted ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      const report = structured ? await kindChecked(reportData(outcome.answer, me, [...sources], isKorean(goal)), me.brief, quick) ?? null : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
         // c9a R2: a fact the teammate gave with no address is tied to the row it read it from (figurePages).
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
-          // c11a: a teammate's result is the report block it wrote; with none (or a broken one) it is null, and its prose is never parsed.
-          const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
-          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(structured ? { report: reportData(outcome.answer, me, [...sources], isKorean(goal)) ?? null } : {}) }, now(), isKorean(goal))
+          settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
         }
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.

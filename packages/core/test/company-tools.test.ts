@@ -1718,7 +1718,7 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   const linear = reported(s5.c3[2]!, { facts: [], nothing_in_period: { latest: { text: 'BYOK(자체 API 키 연결)로 클라우드 코딩 에이전트에서 자체 API 키를 쓸 수 있게 됐어요.', url: 'https://linear.app/changelog/2026-11-12-bring-your-own-key', date: '11월 12일' } } })
   await employeeWriteBack(e.paths, { botId: bot.id, brief: linear.brief, result: linear.result!, title: s5.c3[2]!.title! }, now)
   const line = (await teamRecord(e.paths)).facts[0]!.text
-  expect(line).toMatch(/^이번 주 리니어 신기능 조사 → 이번엔 새로 나온 게 없어요\. 가장 최근: 11월 12일 BYOK\(자체 API 키 연결\)로 클라우드 코딩 에이전트에서/)
+  expect(line).toMatch(/^이번 주 리니어 신기능 조사 → 이번엔 새로 나온 게 없어요\. 가장 최근: 11월 12일 BYOK\(자체 API 키 연결\)로 클라우드 코딩 AI 도우미에서/)
   expect(line).not.toMatch(/항목이 확인됐어요|https?:/)
   // A find of another year is recorded as that, and the summary's writer is told the job found nothing for the time asked.
   const acc = reported({ ...s5.c5[0]!, role: '도윤' }, { facts: [], nothing_in_period: { latest: { text: 'ACC 2025가 서울 신라호텔에서 열렸어요.', url: 'https://itsight.zdnet.co.kr/conference/ACC2025', date: '2025년 12월 11일' } } })

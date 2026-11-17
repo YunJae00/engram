@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { createBot, updateBot } from '../src/bots.js'
-import { checkedReport, employeeNote, handoffBrief, mergedReport, reportData, reportPrompt, WRITER_RULE, writtenReport } from '../src/company-tools.js'
+import { checkedReport, employeeNote, handoffBrief, kindChecked, mergedReport, reportData, reportPrompt, WRITER_RULE, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { dataText, settleMember, sourceName } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
@@ -139,4 +139,60 @@ test('reportData: prose with no block is no data; a writer\'s items are cut to t
   expect(reportData(block({ facts: [{ text: '숫자', url: 'not a url' }] }), { brief: 'x' })).toBeUndefined()
   expect(reportData(block({ facts: [{ text: '숫자 하나', url: 'nope' }] }), { brief: 'x' }, ['https://a.example/p'])!.facts[0]!.url).toBe('https://a.example/p')
   expect(reportData(block({ items: ['하나', '둘', '셋'] }), { brief: '문구 2개 써', writer: true })!.items).toEqual(['하나', '둘'])
+})
+
+// --- c11a round 2 (review r1). Wordings are not the harness's. ---
+
+test('r2: inner words a page used never reach the person: plain at the data boundary, refused when the writer adds them', () => {
+  const m = settled(member({ id: 'm1', role: '소희', brief: '이번 주 고객센터 툴 신기능 조사', topic: '고객센터 툴' }), block({ facts: [{ text: '상담 AI 에이전트와 프롬프트 편집기가 나왔고, 대화 세션 기록이 길어졌어요.', url: 'https://helpdesk.example.kr/blog/new', site: '헬프데스크' }], note: '컨텍스트가 길어진 게 눈에 띄어요.' }))
+  const jargon = /에이전트|세션|토큰|프롬프트|런타임|컨텍스트/
+  expect(m.data!.facts[0]!.text).toBe('상담 AI 도우미와 지시문 편집기가 나왔고, 대화 시간 기록이 길어졌어요.')
+  expect(m.data!.note).not.toMatch(jargon)
+  const fallback = mergedReport([m])
+  expect(fallback).not.toMatch(jargon)
+  expect(fallback).toContain('상담 AI 도우미')
+  const link = '[헬프데스크](https://helpdesk.example.kr/blog/new)'
+  expect(checkedReport(JSON.stringify({ message: `소희가 보니 상담 AI 도우미랑 지시문 편집기가 새로 나왔어요. ${link}`, kept: ['f1'] }), [m])).toContain('소희')
+  expect(checkedReport(JSON.stringify({ message: `소희가 보니 상담 에이전트가 새로 나왔어요. ${link}`, kept: ['f1'] }), [m])).toBeUndefined()
+})
+
+test('r2: a hand-off whose receiver brought no data keeps the giver\'s sourced find in the answer, and labels the receiver', () => {
+  const giver = settled(member({ id: 'g', role: '태오', brief: '이번 주말 성수 팝업 전시 조사', then: { botId: 'bot-r', who: '윤서', brief: '소개 문장 두 개 써' } }), block({ facts: [{ text: '성수에서 향수 팝업 전시가 토요일까지 열려요.', url: 'https://popup.example.kr/seongsu/77', site: '팝업맵' }] }))
+  const receiver = member({ id: 'r', role: '윤서', lookup: false, writer: true, brief: handoffBrief('소개 문장 두 개 써', '태오', giver.result!, giver.brief) })
+  settleMember(receiver, { answer: '문장을 쓰다가 멈췄어요', report: reportData('문장을 쓰다가 멈췄어요', receiver) ?? null }, NOW.toISOString(), true)
+  expect(receiver.data).toBeUndefined()
+  const text = mergedReport([giver, receiver])
+  expect(text).toContain('향수 팝업 전시')
+  expect(text).toContain('(https://popup.example.kr/seongsu/77)')
+  expect(text).toMatch(/윤서[^\n]*못/)
+  // A writer message that drops the giver's part is refused: the giver is a part of its own again.
+  expect(checkedReport(JSON.stringify({ message: '윤서가 문장을 못 끝냈어요.', kept: [] }), [giver, receiver])).toBeUndefined()
+})
+
+test('r2: the kind asked is judged once where the data comes in, so the host\'s own rendering shows only items of that kind', async () => {
+  const facts = [
+    { text: '청담에서 내추럴 와인 시음회가 열려요.', url: 'https://wine.example.kr/e/1', site: '와인나우' },
+    { text: '자동차 셀프 정비 강좌가 열려요.', url: 'https://car.example.kr/c/9', site: '카클래스' },
+    { text: '논현에서 부르고뉴 와인 시음 모임이 있어요.', url: 'https://wine.example.kr/e/2', site: '와인나우' },
+  ]
+  const brief = '이번 달 강남 와인 시음회 목록'
+  const prompts: string[] = []
+  const judged = await kindChecked({ facts }, brief, async prompt => { prompts.push(prompt); return '{"keep":[1,3]}' })
+  expect(prompts[0]).toContain(brief)
+  expect(prompts[0]).toContain('자동차 셀프 정비 강좌')
+  const m = member({ id: 'k', role: '다온', brief })
+  settleMember(m, { answer: 'x', report: judged ?? null }, NOW.toISOString(), true)
+  const text = mergedReport([m])
+  expect(text).toContain('내추럴 와인')
+  expect(text).toContain('부르고뉴')
+  expect(text).not.toContain('정비')
+  // Nothing of the kind: a part that found nothing for it, not the wrong item.
+  expect((await kindChecked({ facts: facts.slice(1, 2).concat(facts[1]!) }, brief, async () => '{"keep":[]}'))?.nothing).toEqual({})
+  // No model, a late one or a broken answer: the teammate's own judgment stands; one fact is never sent for a check.
+  expect(await kindChecked({ facts }, brief)).toEqual({ facts })
+  expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual({ facts })
+  expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual({ facts })
+  let asked = false
+  await kindChecked({ facts: facts.slice(0, 1) }, brief, async () => { asked = true; return '{"keep":[]}' })
+  expect(asked).toBe(false)
 })
