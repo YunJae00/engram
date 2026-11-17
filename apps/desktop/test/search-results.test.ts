@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, expect, it, vi } from 'vitest'
 import { plainPage } from '../src/main/plain-page.js'
-import { askedCount, BACKGROUND_ROWS, EVENT_ROWS, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, eventRank, sameEvent, searchResults, withoutRepeats } from 'core'
+import { askedCount, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, sameEvent, searchResults, withoutRepeats } from 'core'
 
 // grokbar c3 R2/R3: "검색 결과 페이지에서 실제 기사 링크를 가져오지 못해서" - the reader kept the first 25 anchors of the page.
 // These are real results pages (saved 2026-11-17, scripts, styles and attributes other than href/role removed).
@@ -231,9 +231,9 @@ it('search_web searches recent news with the period, drops rows outside it and f
   // Three asked, two recent: the older rows after the recent ones. c6: a counted ask loads the wider page (the last year) with the
   // period page, and a row older than a year (the 2024 one) fills nothing.
   const out = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘', steps: [], read: '' } as never)
-  // c9a R3: the period page held fewer rounds than asked, so one more search in the event's own words runs over the same period.
-  expect(asked.map(url => new URL(url).searchParams.get('nso'))).toEqual(['so:r,p:1m,a:all', 'so:r,p:1y,a:all', 'so:r,p:1m,a:all'])
-  expect(new URL(asked[2]!).searchParams.get('query')).toBe('AI 스타트업 투자 뉴스 시리즈 유치 억 원')
+  // c11b: no search in the event's own words follows (the host judges no headline): the period page, then the year's, and that is all.
+  expect(asked.map(url => new URL(url).searchParams.get('nso'))).toEqual(['so:r,p:1m,a:all', 'so:r,p:1y,a:all'])
+  expect(out).toContain('They asked for 3')
   expect(rowsOf(out).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2026년 9월 17일'])
   expect(out).toContain('The first 2 are from the last month')
   expect(out).toContain('the next most recent older ones fill that number, each with its own date and year')
@@ -242,7 +242,7 @@ it('search_web searches recent news with the period, drops rows outside it and f
   // c6: a counted ask always has the older rows behind the recent ones (the rows may be fewer events than they look), never a 2024 one.
   asked.length = 0
   const two = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 AI 스타트업 투자 뉴스 2개만', steps: [], read: '' } as never)
-  // c9a r2: the month holds the two rounds asked for (the company first counts as named), so no search in the event's own words.
+  // The same two loads, whatever the rows say.
   expect(asked).toHaveLength(2)
   expect(rowsOf(two).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2026년 9월 17일'])
   expect(two).not.toContain('2024')
@@ -310,10 +310,11 @@ it('c6: a counted news ask loads the period page and then the wider page, never 
   expect(together).toBe(1)
   const rows = out.split('\n').filter(line => line.startsWith('- '))
   // One row for the event of the month, then the older rounds, most recent first, each with its year; nothing from 2024.
-  // c9a r2: the month's one event names no round (an investor's portfolio list), so with the floor kept at 2 it goes after the rounds, as background.
-  expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.'], ['https://www.businesspost.co.kr/2', '11월 10일']])
-  expect(out).toContain('None is from the last month')
-  expect(out).toContain(`${EVENT_ROWS} 2. ${BACKGROUND_ROWS} the last 1`)
+  // c11b: the month's event comes first like any row of the period: no headline sends it behind the rounds as background.
+  expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.businesspost.co.kr/2', '11월 10일'], ['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.']])
+  expect(out).toContain('The first 1 are from the last month')
+  expect(out).toContain('They asked for 5')
+  expect(out).not.toMatch(/Background only|The rows that are the event asked for/)
 })
 
 // ---- cycle 7 (c7a) ----
@@ -334,29 +335,11 @@ it('c7: two rows are one event only when the funded company matches, not when on
   expect(sameEvent(first, row('엔비디아, 모티프테크놀로지스에 투자', '11월 10일', '포인트투테크놀로지 등 4곳이 대상이다.'), query)).toBe(true)
 })
 
-// R3 of the run: item 3 "…대학기술지주 투자 포트폴리오 내 인수 사례로 언급", item 5 "…(구체 금액·기업명 미확인)".
-it('c7 R3: a counted news ask gets the rows whose title names the event first, the ones that only mention it last, and nothing dated over twelve months back', async () => {
+// R3 of the run: item 3 "…대학기술지주 투자 포트폴리오 내 인수 사례로 언급", item 5 "…(구체 금액·기업명 미확인)". c11b: which rows are the
+// event is the model's call (the search asks it to leave out what only touches the topic); the host ranks no headline, every row in the
+// period reaches the model, dated ones first, and nothing dated over twelve months back.
+it('c7 R3 (c11b): a counted news ask hands over every row of the year, a forum or a portfolio mention included, unranked; nothing dated over twelve months back', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
-  const titled = (title: string) => ({ title, url: 'https://example.com/x', snippet: '', date: '' })
-  // A funded company beside 유치 / 투자받 / 시리즈 A-C / an amount in 억 원.
-  for (const title of ['홀리데이로보틱스, 시리즈A 1,550억 원 투자 유치', '업스테이지, LS그룹서 1500억 투자받아', '아크, 시리즈 B 마무리', '리벨리온 620억 원 확보']) expect(eventRank(titled(title), ask), title).toBe(2)
-  // The run's junk: an acquisition named inside a portfolio story, and a round with nobody named at an expo; a plan, a forum, a visit.
-  for (const title of ['대학기술지주 투자 포트폴리오 성과…리벨리온 인수 사례로 언급', '국내 AI 스타트업, 비즈니스엑스포 계기 미국 벤처투자자 대규모 투자 유치', 'AI 스타트업 투자 유치 포럼 개최', '○○, 시리즈B 투자 유치 추진', '장관, AI 스타트업 방문해 투자 확대 약속']) expect(eventRank(titled(title), ask), title).toBe(0)
-  // Neither: kept in the middle. Another kind of ask is not ranked at all.
-  expect(eventRank(titled('엔비디아 AI 스타트업 투자 내역 공개'), ask)).toBe(1)
-  // c7a r2: a country, a region or a word for who invested is nobody's name, so the title names no funded company.
-  for (const title of ['국내 AI 스타트업 미국 투자 유치', 'AI 스타트업, 해외 벤처투자자 대규모 투자 유치', '국내 스타트업 잇단 투자 유치 훈풍']) expect(eventRank(titled(title), ask), title).toBe(1)
-  expect(eventRank({ title: '국내 AI 스타트업 미국 투자 유치', url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(1)
-  expect(eventRank(titled('뤼튼, 미국서 300억 원 투자 유치'), ask)).toBe(2)
-  // c7a r3: a describing word no list holds is not a company either; the company is the word the headline marks (a comma, or the round right after it).
-  for (const title of ['국내 AI 스타트업 연쇄 투자 유치', '국내 AI 스타트업 사상 최대 투자 유치', '국내 AI 스타트업 역대급 투자 유치 행렬', '국내 AI 스타트업 미국서 300억 원 투자 유치', 'AI 스타트업, 투자 유치 빙하기 끝났나']) expect(eventRank({ title, url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, ask), title).toBe(1)
-  // stack-7 (c7a r3 #2): a word of degree right before the amount is not the funded company; a company before it still is.
-  for (const title of ['국내 AI 스타트업 역대급 300억 투자 유치', '국내 AI 스타트업 사상 최대 300억 원 투자 유치', 'AI 스타트업 누적 1,000억 원 투자 유치', 'AI 스타트업 총 300억 투자 유치']) expect(eventRank({ title, url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, ask), title).toBe(1)
-  expect(eventRank({ title: 'AI 스타트업 리벨리온 역대급 620억 원 투자 유치', url: 'https://example.com/news', snippet: '', date: '11월 17일' }, ask)).toBe(1)
-  expect(eventRank({ title: 'AI 스타트업 리벨리온, 역대급 620억 원 투자 유치', url: 'https://example.com/news', snippet: '', date: '11월 17일' }, ask)).toBe(2)
-  for (const title of ['AI 스타트업 뤼튼, 사상 최대 투자 유치', 'AI 스타트업 리벨리온 620억 원 투자 유치', '뤼튼·업스테이지 나란히 투자 유치', 'Wrtn raises $30M in Series B']) expect(eventRank(titled(title), ask), title).toBe(2)
-  expect(eventRank(titled('AI 스타트업 투자 유치 포럼 개최'), '요즘 AI 신제품 뉴스 5개')).toBe(1)
-
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
   const menu = Array.from({ length: 8 }, (_, i) => ({ text: `메뉴 ${i}`, url: `https://search.naver.com/search.naver?where=tab${i}&query=x` }))
@@ -368,15 +351,16 @@ it('c7 R3: a counted news ask gets the rows whose title names the event first, t
   // The host's words for this ask (fast-lane laneQuery), as a news search.
   const out = await tool.run({ query: '국내 AI 스타트업 투자 유치', kind: 'news' }, { task: ask, steps: [], read: '' } as never)
   const urls = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1])
-  // The month's round, then the year's rounds most recent first, then the two that only mention it; the one from over a year back is gone.
-  expect(urls).toEqual(['https://www.globalnews.example/2', 'https://www.viva.example/4', 'https://www.smart.example/5', 'https://www.forum.example/1', 'https://www.economist.example/3'])
-  // c9a R3: only the rounds that name their company are items (c9a r2: the company first counts); the rest is handed over after them as background.
-  expect(out).toContain(`${EVENT_ROWS} 3. ${BACKGROUND_ROWS} the last 2 (a statistic, a plan, an opinion piece, a forum, a mention, nobody named as funded): never one of them is a list item`)
+  // The month's rows in the page's order (the forum too), then the year's most recent first; the one from over a year back is gone.
+  expect(urls).toEqual(['https://www.forum.example/1', 'https://www.globalnews.example/2', 'https://www.viva.example/4', 'https://www.economist.example/3', 'https://www.smart.example/5'])
+  expect(out).toContain('They asked for 5')
+  expect(out).toContain('a row that only touches the topic (a statistic, a plan, an opinion piece) is not one')
+  expect(out).not.toMatch(/Background only|The rows that are the event asked for/)
   expect(out).not.toContain('token.example')
   // With no period said, a counted news list still takes nothing dated over twelve months back; a list that was not counted is left as it was.
   const counted = await tool.run({ query: 'AI 스타트업 투자 유치', kind: 'news' }, { task: 'AI 스타트업 투자 뉴스 5개 찾아줘', steps: [], read: '' } as never)
   expect(counted).not.toContain('token.example')
-  expect(counted.split('\n').filter(line => line.startsWith('- ')).at(-1)).toContain('economist.example')
+  expect(counted).toContain('economist.example')
   expect(await tool.run({ query: 'AI 스타트업 투자 유치', kind: 'news' }, { task: 'AI 스타트업 투자 뉴스 찾아줘', steps: [], read: '' } as never)).toContain('token.example')
   vi.useRealTimers()
 })

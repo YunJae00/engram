@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import { keepRead, runToolSession, type AgentTool } from 'core'
-import { fastLane, firstSearch, gaveUp, heldAnswer, heldFor, laneQuery, listOnly, newsAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, firstSearch, gaveUp, heldAnswer, heldFor, laneQuery, listGap, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -175,7 +175,8 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain("answer from them and cite that result's own address")
   expect(LANE_NOTE).toContain('open a page (read_pages) only when a number they asked for is in none of them')
   // c7 R3: the count is met with real items only.
-  expect(LANE_NOTE).toContain('as many items as they asked for when it holds that many real ones')
+  // c11b: the model picks the items from every row; the host checks only the list's shape (listGap).
+  expect(LANE_NOTE).toContain('A list they asked for (news, prices) is yours to pick from the results: as many items as they asked for')
   // How it reads.
   // c4 L2/L1: a single lookup is short and says what its figure is as of.
   expect(LANE_NOTE).toContain('A single lookup is the answer in one or two sentences plus at most one more line they would want')
@@ -196,17 +197,21 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('labeled 예상 or 전작')
   expect(LANE_NOTE).toContain('a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리)')
   // c5 R3/H6: a news list is numbered lines, never a table, with no paragraph about the search; a plan or a visit is not an investment.
-  expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item, never a table, and nothing after the last item: no closing paragraph, no word about what the search did or did not have, no remark on an item')
+  expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item, never a table, and nothing after the last item: no closing paragraph, no remark on an item')
   expect(LANE_NOTE).toContain('keeps one line per item with what happened, its date and the outlet as a named link')
-  expect(LANE_NOTE).toContain('a plan to raise, a visit, a forum, a support programme or a partnership is not an investment')
+  // c11b: no rule for one topic: what only touches the topic is said for any topic.
+  expect(LANE_NOTE).toContain('a statistic, a plan or an opinion piece that only touches the topic is not one')
+  expect(LANE_NOTE).not.toContain('is not an investment')
   // c6 R3/H6: N asked means N given, filled from the next most recent real ones; never the fewer with a paragraph about what was left out.
   expect(LANE_NOTE).not.toContain('give the fewer')
   // c7 R3: N asked is N real ones; an item that is not what was asked never fills the count, and the list is then shorter.
-  expect(LANE_NOTE).toContain('"N개" asks for N different events of the kind they asked for')
-  expect(LANE_NOTE).toContain('is never used to reach the count: with fewer real ones the list is shorter and the lead says so in half a sentence')
+  expect(LANE_NOTE).toContain('each a different event that is what they asked for')
+  // c11b: a short list is searched again before it is shortened, and a shortfall is said in the model's own words, not a template.
+  expect(LANE_NOTE).toContain('search once more in other words or open a few articles (read_pages) before you answer; if it still falls short, the lead says in one plain clause how many you found, in your own words')
+  expect(LANE_NOTE).not.toContain('확실한 건')
   expect(LANE_NOTE).toContain('"올해" is never said over an item of another year')
   // c7 H6: a short news list in chat is passed on the way a person does, the outlet's link on the end of each sentence.
-  expect(LANE_NOTE).toContain('"업스테이지가 LS그룹에서 1,500억 원 투자받았대요. [글로벌경제](address)"')
+  expect(LANE_NOTE).toContain('each item one plain sentence with the outlet as the link on its end')
   expect(LANE_NOTE).toContain('never "sentence (date) — outlet"')
   // c7 L1: weather in a person's words, not a forecast's.
   // c10a L1/L3: a colleague's words, whole degrees, each weekend day by name.
@@ -218,8 +223,8 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, never a variant\'s, and a price cell is the named model\'s own tier')
   // c7 L2: the failure words of the run are named.
   expect(LANE_NOTE).toContain('"가져오지 못했어요", "확인되는 대로 다시 알려드릴게요"')
-  expect(LANE_NOTE).toContain('the next most recent real ones from the results marked older fill the list, each with its date and year')
-  expect(LANE_NOTE).toContain('"이번 달 건 두 개뿐이라 지난달 것도 넣었어요."')
+  expect(LANE_NOTE).toContain('the next most recent ones from the results marked older fill the list, each with its date and year')
+  expect(LANE_NOTE).toContain('and the lead says so in half a sentence')
   expect(LANE_NOTE).toContain('never a word about what was left out')
   // c6 L2: "오늘 주가" before the market opens says why it is yesterday's close.
   expect(LANE_NOTE).toContain('the first sentence says why in a few words and gives the latest one ("미국 장이 아직 안 열려서 어제 종가 기준 156.14달러예요.")')
@@ -235,7 +240,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('it says in one short clause how the work was split, from "split" in the hire result')
   expect(LANE_NOTE).toContain('For a comparison every brief names the same points its row needs')
   // c4 R3/H6: N items are N different events of the kind asked, each with a real date.
-  expect(LANE_NOTE).toContain('"N개" asks for N different events of the kind they asked for')
+  expect(LANE_NOTE).toContain('each a different event that is what they asked for')
   expect(LANE_NOTE).toContain('never two items about the same event')
   expect(LANE_NOTE).toContain('never as an age ("1주 전")')
   expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')
@@ -435,20 +440,18 @@ it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held resu
   expect(heldFor(['a', 'b'], [{ text: '그냥 애플로 바꿔', at: 1 }, { text: '고마워', at: 2 }])).toEqual(['b'])
 })
 
-// R3: "5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요." under the list.
-it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, an item\'s own lines and the suggested replies stay', () => {
+// R3: "5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요." under the list. c11b: the host cuts nothing after a list (the
+// model's own clause on how many it found may stand there); a counted list is checked by its shape only and a gap goes back to the model.
+it('c7 R3 (c11b): nothing after a numbered news list is cut; a short counted list is a gap for the model, and the lane hands it back', () => {
   const list = '최근 투자 소식이에요.\n\n1. 홀리데이로보틱스, 시리즈A 1,550억 원 유치 — 2026년 7월 13일, [스마트투데이](https://a.example/1)\n2. 아크, 시리즈A 200억 원 유치 — 10월 14일, [비바100](https://b.example/2)'
-  expect(listOnly(`${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.`)).toBe(list)
-  expect(listOnly(list)).toBe(list)
-  const replies = '\n\n```replies\n더 찾아줘\n```'
-  expect(listOnly(`${list}\n\n더 필요하면 말씀하세요.${replies}`)).toBe(list + replies)
-  const nested = `${list}\n   기업가치 8,800억 원이래요.`
-  expect(listOnly(`${nested}\n\n이상이에요.`)).toBe(nested)
-  for (const kept of ['지금 13.6도예요. 저녁부터 비 와요.', '1. 하나뿐인 줄\n\n덧붙이는 말']) expect(listOnly(kept)).toBe(kept)
-  expect(newsAsk('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(true)
-  expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
+  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
+  const tail = `${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.\n\n\`\`\`replies\n더 찾아줘\n\`\`\``
+  expect(listGap(tail, [ask], [])).toMatch(/^They asked for 5; \d of this answer's items/)
+  // No count asked: no check at all.
+  for (const kept of ['지금 13.6도예요. 저녁부터 비 와요.', '1. 하나뿐인 줄\n\n덧붙이는 말', list]) expect(listGap(kept, ['엔비디아 오늘 주가 알려줘'], [])).toBeUndefined()
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
+  expect(ipc).not.toMatch(/listOnly|newsItems|shortSaid/)
+  expect(ipc).toContain('listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid))')
 })
 
 // stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
@@ -468,18 +471,17 @@ it('stack-7: a time said relative to today is taken out of search words the same
   expect(read('../../../packages/core/src/company-tools.ts')).toContain('words = withoutRelativeTime(words)')
 })
 
-// stack-7 (rule 7): c7a drops and reorders search rows only (by date and same event), and LANE_NOTE asks for a shorter list over a
-// padded one. A list shorter than the count asked always says so, from the model or else from the host.
-it('stack-7: a counted news list shorter than the count says so in its lead; a full list, a lead that already says it and a list with no numbers are left', async () => {
-  const { shortSaid } = await import('../src/main/fast-lane.js')
-  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
-  const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. [비바100](https://v.example/3)'
-  expect(shortSaid(ask, three)).toBe(`확실한 투자 유치 건은 3개예요.\n\n${three}`)
-  for (const lead of ['확실한 건 세 건이라 세 개만 넣었어요.', '이번 달 건 3개뿐이라 그것만 넣었어요.']) expect(shortSaid(ask, `${lead}\n\n${three}`)).toBe(`${lead}\n\n${three}`)
-  const five = `${three}\n4. 넷째예요. [a](https://a.example/4)\n5. 다섯째예요. [b](https://b.example/5)`
-  expect(shortSaid(ask, five)).toBe(five)
-  expect(shortSaid(ask, three.replace(/^\d\. /gm, ''))).toBe(three.replace(/^\d\. /gm, ''))
-  expect(shortSaid('요즘 AI 뉴스 알려줘', three)).toBe(three)
-  const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))')
+// stack-7 (rule 7): c7a drops and reorders search rows only (by date and same event). c11b: a list shorter than the count is said by
+// the model, never by a host-written lead; the host only finds the gap (fast-lane listGap) and hands it back for one more round.
+it('stack-7 (c11b): a counted news list shorter than the count, or without dates, is a gap; a full dated list and an ask with no count are none', async () => {
+  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', now = new Date(2026, 10, 17, 9, 30)
+  const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. — 11월 16일 [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. — 11월 14일 [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. — 11월 12일 [비바100](https://v.example/3)'
+  expect(listGap(three, [ask], [], now)).toMatch(/^They asked for 5; 3 of/)
+  const five = `${three}\n4. 넷째예요. — 11월 10일 [a](https://a.example/4)\n5. 다섯째예요. — 11월 9일 [b](https://b.example/5)`
+  expect(listGap(five, [ask], [], now)).toBeUndefined()
+  expect(listGap(five.replace(/ — 11월 \d+일/g, ''), [ask], [], now)).toMatch(/^They asked for 5; 0 of .*its date/)
+  expect(listGap(three.replace(/^\d\. /gm, ''), [ask], [], now)).toMatch(/^They asked for 5; 3 of/)
+  expect(listGap(three, ['요즘 AI 뉴스 알려줘'], [], now)).toBeUndefined()
+  // A count said mid-work is the one that holds.
+  expect(listGap(three, [ask, '아 그냥 3개만'], [], now)).toBeUndefined()
 })
