@@ -260,7 +260,12 @@ export function shareReady(ask: string, answer: string): string {
   const lead = `${kept.map((name, at) => at < kept.length - 1 ? `${name}${lastSound(name) > 0 ? '이랑' : '랑'}` : name).join(' ')} 위주로 짧게 정리했어요.`
   const first = lines.findIndex(line => line.trim())
   // A promise in front of the summary gives way to the choice; a summary that opens on a heading gets it.
-  if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!)) lines[first] = lead
+  // stack-7 (c7c run, H3): "결정사항이랑 할 일 위주로 짧게 정리했어요." stood over the model's own "결정사항과 할 일, 미결 위주로 짧게
+  // 정리했어요." (judge: 첫 두 문장이 거의 반복). When the line under the promise already says what was kept, in the past tense, the promise
+  // just goes and that line is the lead.
+  const next = lines.slice(first + 1).find(line => line.trim())
+  if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!) && next !== undefined && !head(next) && /[했았었]어요[.!~]?\s*$/.test(next)) lines.splice(first, 1)
+  else if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!)) lines[first] = lead
   else if (head(lines[first]!)) lines.splice(first, 0, lead, '')
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
 }
