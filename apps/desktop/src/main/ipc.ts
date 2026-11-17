@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, listShortfall, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -2971,7 +2971,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
-            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined } : {}),
+            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined, shortfall: (answer: string) => listShortfall(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',

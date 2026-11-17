@@ -238,7 +238,7 @@ const ITEM_LINE = /^\s*(?:\d+[.)]|[-*•·])\s+\S/, LINK = /\]\((https?:\/\/[^\s
 const SEARCH_PAGE = /^https?:\/\/(?:m\.)?search\.|\/search(?:[/?.]|$)|[?&](?:q|query|keyword|search)=/i
 const NEWS_KIND = /뉴스|기사|소식|보도|\b(?:news|articles?|headlines?)\b/i
 const WRITTEN_DATE = /(?:19|20)\d\d[.\-/]\s?\d{1,2}[.\-/]\s?\d{1,2}|\d{1,2}월\s*\d{1,2}일|\d+\s*(?:분|시간|일|주)\s*전|어제|그제|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b/i
-export function listGap(answer: string, asks: readonly string[], held: readonly string[], now = new Date()): string | undefined {
+function listCount(answer: string, asks: readonly string[], held: readonly string[], now: Date): { asked: number; good: number; items: number; dated: boolean } | undefined {
   const asked = asks.map(ask => askedCount(ask)).filter((n): n is number => !!n).at(-1)
   if (!asked) return undefined
   const all = asks.join('\n'), dated = NEWS_KIND.test(all) || !!newsPeriod(all), period = newsPeriod(all) ?? 'year'
@@ -258,11 +258,26 @@ export function listGap(answer: string, asks: readonly string[], held: readonly 
     const date = row ? row.match(new RegExp(WRITTEN_DATE.source, 'gi'))?.at(-1) ?? own : own
     return !!date && (!!row || !!resultDay(date, now)) && inPeriod(date, period, now)
   }).length
-  if (good === asked && items.length === asked) return undefined
+  return { asked, good, items: items.length, dated }
+}
+export function listGap(answer: string, asks: readonly string[], held: readonly string[], now = new Date()): string | undefined {
+  const count = listCount(answer, asks, held, now)
+  if (!count || count.good === count.asked && count.items === count.asked) return undefined
+  const { asked, good, items, dated } = count
   const need = dated ? 'its own article link (not a search page) and its date, inside the period they asked for' : 'its own link (not a search page)'
-  return items.length > asked && good >= asked
-    ? `They asked for ${asked}; this answer lists ${items.length}. Keep the ${asked} that fit best.`
+  return items > asked && good >= asked
+    ? `They asked for ${asked}; this answer lists ${items}. Keep the ${asked} that fit best.`
     : `They asked for ${asked}; ${good} of this answer's items each have ${need}, and the others do not or repeat one. Each item needs ${need}.`
+}
+// c11b r3 (review #3): the answer that is delivered is checked too, not only the draft before a second round: when it still has fewer
+// items that meet the ask's shape than were asked, one plain line under it says how many did (rule 7: what is missing is labeled, never
+// hidden). The model's words are not cut or reworded; this line is added after them.
+export function listShortfall(answer: string, asks: readonly string[], held: readonly string[], now = new Date()): string | undefined {
+  const count = listCount(answer, asks, held, now)
+  if (!count || count.good >= count.asked) return undefined
+  const korean = asks.some(ask => /[가-힣]/.test(ask))
+  const what = count.dated ? (korean ? '기사 링크와 날짜까지 확인된 건' : 'with their own article link and a date in the asked period') : (korean ? '링크까지 확인된 건' : 'with their own link')
+  return korean ? `${what} ${count.asked}개 중 ${count.good}개예요.` : `${count.good} of the ${count.asked} asked for are found ${what}.`
 }
 // c11b: a second round for a gap starts only while this much of a lookup row's time is used, so it still ends inside it (BAR R: 35 s).
 export const LANE_RECHECK_MS = 20_000

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import type { EngineCwd, ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
-import { asideShape, laneTidy, listGap, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
+import { asideShape, laneTidy, listGap, listShortfall, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 // c11b: the host never deletes or rewrites what the model said by its wording. All wordings here are not in the harness.
@@ -143,4 +143,15 @@ it('c11b r2: an item counts only when its date, from its search row or as writte
   expect(listGap('1. 바깥 기사 2026.11.16 [뉴스](https://else.example/b)', ['요즘 게임 업계 소식 1개'], [rows], now)).toBeUndefined()
   // No period word in a news ask: the default year window still drops a two-year-old row.
   expect(listGap('1. 옛 기사 [뉴스](https://news.example/title)', ['조선업 기사 1개 찾아줘'], [rows], now)).toMatch(/0 of/)
+})
+
+// c11b r3 (review #3): the delivered list is checked by the same count as the draft; a shortfall gets one plain line, in the ask's language.
+it('c11b r3: listShortfall names how many of the asked items met the ask, and nothing when all did', () => {
+  const now = new Date('2026-11-17T12:00:00+09:00')
+  const held = ['results for x at https://search.example/?q=x:\n- 해운 운임 반등 — https://sea.example/1 — 2026.11.12.\n- 작년 운임 — https://sea.example/old — 2025.10.02.']
+  const answer = '1. 해운 운임 반등 [기사](https://sea.example/1)\n2. 작년 운임 [기사](https://sea.example/old)\n3. 검색 [더보기](https://search.example/?q=x)'
+  expect(listShortfall(answer, ['이번 달 해운 운임 기사 3개만 알려줘'], held, now)).toBe('기사 링크와 날짜까지 확인된 건 3개 중 1개예요.')
+  expect(listShortfall('1. a [x](https://a.example/1)\n2. b [y](https://b.example/2)', ['캠핑 의자 추천 2개'], [], now)).toBeUndefined()
+  expect(listShortfall('1. a [x](https://a.example/1)', ['top 2 camping chair reviews'], [], now)).toBe('1 of the 2 asked for are found with their own link.')
+  expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain('shortfall: (answer: string) => listShortfall(')
 })

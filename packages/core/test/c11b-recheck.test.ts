@@ -62,3 +62,38 @@ it('c11b r2: words written only before a tool call are a note; the turn gets one
   const kept = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: '수요일 회의 기억해 둘게요.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '수요일 회의 기억해', {})
   expect([runs, kept.answer]).toEqual([2, '수요일 회의 기억해 둘게요.'])
 })
+
+// c11b r3 (review #2): when the extra round wrote nothing too, an English note ("Searching the web for results") became the answer in a
+// Korean thread. A note stands in only when it is in the person's own language. Wordings are in no harness row.
+it('c11b r3: a note in a language the person did not write in is never the answer, even when both rounds say nothing', async () => {
+  for (const note of ['Searching the web for results', '먼저 Bloomberg terminal feed 확인할게요.']) {
+    let runs = 0
+    const r = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '이번 주 해운 운임 기사 알려줘', { lookup: true })
+    expect([runs, r.answer]).toEqual([2, ''])
+  }
+  // Their own language, or a Latin word they wrote themselves, stays.
+  let runs = 0
+  const ok = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: 'Figma 링크 기억해 둘게요.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, 'Figma 링크 기억해', {})
+  expect(ok.answer).toBe('Figma 링크 기억해 둘게요.')
+  runs = 0
+  const en = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: 'Noted the dentist on Friday.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, 'remember the dentist on Friday', {})
+  expect(en.answer).toBe('Noted the dentist on Friday.')
+})
+
+// c11b r3 (review #3): the second round's answer was delivered unchecked, so a list still short of the count went out with no word of
+// what was missing. The delivered answer is checked by the same shortfall check and gets one plain line under it; the model's words stay.
+it('c11b r3: the delivered answer is checked after every round; a list still short gets one line under it saying how many met the ask', async () => {
+  let runs = 0
+  const shortfall = (answer: string) => (answer.match(/^\d+\./gm) ?? []).length < 4 ? `링크까지 확인된 건 4개 중 ${(answer.match(/^\d+\./gm) ?? []).length}개예요.` : undefined
+  const two = '1. 오션 운임 반등 [a](https://a.example/1)\n2. 컨테이너선 발주 [b](https://b.example/2)'
+  const r = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '1. 오션 운임 반등 [a](https://a.example/1)' } : { answer: two })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, recheck: () => runs === 1 ? 'They asked for 4.' : undefined, shortfall })
+  expect(runs).toBe(2)
+  expect(r.answer).toBe(`${two}\n\n링크까지 확인된 건 4개 중 2개예요.`)
+  // The empty second round keeps the draft, and the draft is labeled too.
+  runs = 0
+  const kept = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '1. 하나 [a](https://a.example/1)' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, recheck: () => 'They asked for 4.', shortfall })
+  expect(kept.answer).toBe('1. 하나 [a](https://a.example/1)\n\n링크까지 확인된 건 4개 중 1개예요.')
+  // A full list gets nothing added.
+  const full = await runToolSession({ engine: brain(async () => ({ answer: '1. a\n2. b\n3. c\n4. d' })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, shortfall })
+  expect(full.answer).toBe('1. a\n2. b\n3. c\n4. d')
+})
