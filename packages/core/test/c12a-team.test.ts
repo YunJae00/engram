@@ -103,7 +103,7 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   expect(listingPages(checked)).toEqual([listing.url, yearOnly.url])
   expect(itemsPrompt(listingPages(checked))).toContain(listing.url)
   // The extra round brings two dated items: they take the pages' place, one per line in the fallback.
-  const more = reportData(block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }] }), { brief })
+  const more = reportData(block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }], whole: [listing.url, yearOnly.url] }), { brief })
   const whole = withItems(checked!, more)
   expect(whole.facts.map(f => f.url)).toEqual(['https://board.example.kr/daejeon/1206', 'https://board.example.kr/daejeon/1220'])
   const m = member({ id: 'm1', role: '서아', brief, topic: topicOf(brief), state: 'done', data: whole })
@@ -138,4 +138,44 @@ test('A1 contract: the stand-in report is written under the same rule from what 
   expect(prompt).toContain('```report')
   expect(prompt).toContain('https://linecorp.com/ko/pr/news/1')
   expect(prompt).toContain('이번 달 라인 업데이트 조사')
+})
+
+// --- c12a round 2 (Codex r1). Wordings are not the harness's. ---
+
+test('r2 B2: a model number or a price sharing a digit with the date does not count as the date being stated', () => {
+  expect(datedText({ text: '아이폰 18 가격은 11만 원이에요.', date: '11월 18일' })).toBe('아이폰 18 가격은 11만 원이에요 (11월 18일).')
+  expect(datedText({ text: '갤럭시 S27 사전예약은 27만 명이 했어요.', date: '3월 27일' })).toBe('갤럭시 S27 사전예약은 27만 명이 했어요 (3월 27일).')
+  expect(datedText({ text: '맥북 14인치 13 대가 남았어요.', date: '2027.1.13' })).toBe('맥북 14인치 13 대가 남았어요 (2027.1.13).')
+  // Stated as a date in any form: shown once.
+  for (const text of ['3월 27일 오후에 문을 열어요.', '2027.1.13에 공개돼요.', '4월 2~6일 전시가 열려요.']) expect(datedText({ text, date: text.startsWith('2027') ? '2027년 1월 13일' : text.startsWith('3월') ? '3월 27일' : '4월 2일~6일' })).toBe(text)
+})
+
+test('r2 B3: one fact is always checked by meaning, whatever the ask says; a counted ask with no list word still gets a lone listing page labeled', async () => {
+  const page = { text: '광주 독서 모임 게시판에 이번 겨울 모임이 여럿 올라와 있어요.', url: 'https://read.example.kr/gwangju/board', site: '책모임' }
+  for (const brief of ['광주 독서 모임 두 개만 골라줘', '광주에서 갈 만한 독서 모임 하나 찾아봐']) {
+    const prompts: string[] = []
+    const checked = await kindChecked({ facts: [page] }, brief, async prompt => { prompts.push(prompt); return '{"keep":[1],"lists":[1]}' })
+    expect(prompts).toHaveLength(1)
+    expect(listingPages(checked)).toEqual([page.url])
+    const m = member({ id: 'g', role: '하람', brief, state: 'done', data: checked! })
+    expect(mergedReport([m])).toContain('하나씩은 아직 못 뽑았어요.')
+  }
+})
+
+test('r2 B3: a round that takes only part of a listing page apart adds its items and keeps the page labeled; only a page it says it gave in full goes', () => {
+  const page = { text: '울산 러닝 크루 페이지에 모임 네 개가 있어요.', url: 'https://run.example.kr/ulsan', site: '런크루', listing: true as const }
+  const other = { text: '포항 러닝 크루 목록에 모임이 여럿 있어요.', url: 'https://run.example.kr/pohang', site: '런크루', listing: true as const }
+  const one = { text: '1월 9일 태화강에서 저녁 러닝이 있어요.', url: 'https://run.example.kr/ulsan/0109', site: '런크루', date: '1월 9일' }
+  const partial = reportData(block({ facts: [one] }), { brief: '울산 러닝 모임' })
+  expect(withItems({ facts: [page] }, partial).facts.map(f => [f.url, f.listing])).toEqual([[page.url, true], [one.url, undefined]])
+  const m = member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: withItems({ facts: [page] }, partial) })
+  const shown = mergedReport([m])
+  expect(shown).toContain('하나씩은 아직 못 뽑았어요.')
+  expect(shown).toContain('태화강')
+  // Says it gave all of one page (and a stray address it was not asked about): only that page goes.
+  const full = reportData(block({ facts: [one], whole: [page.url, 'https://elsewhere.example.kr/x', 'not a url'] }), { brief: '울산 러닝 모임' })
+  expect(full!.whole).toEqual([page.url, 'https://elsewhere.example.kr/x'])
+  const merged = withItems({ facts: [page, other] }, full)
+  expect(merged.facts.map(f => f.url)).toEqual([other.url, one.url])
+  expect(merged.whole).toBeUndefined()
 })

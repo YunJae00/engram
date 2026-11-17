@@ -956,7 +956,6 @@ const missing = (m: TeamMember): boolean => !atWork(m) && !m.data
 const sought = (job: string): string => job.replace(/\s*(?:찾기|알아보기)$/u, '').trim()
 /** What a report is made with besides the results: the team result shown before it in the thread, the day, and the person's words. */
 export interface ReportContext { previous?: string | undefined; now?: Date | undefined; ask?: string | undefined }
-const LIST_ASKED = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
 // What the team summary may never say (teamSummary's check).
 const NOT_SAID = /이번 턴|턴\s*안|실패|\(여기까지|여기까지 찾|더 있을 수 있|시간\s*(?:한도|초과)|확인 불가|결과예요|보고(?:예요|입니다|드려요|드립니다)/u
 /** The time a job asks about, when it names one of 다음 달, 이번 주말, 이번 주, 내일 (Monday to Sunday for a week). */
@@ -964,11 +963,11 @@ export function askedPeriod(ask: string, now = new Date()): { from: Date; to: Da
   const spans = periodSpans(ask, now), at = ['다음 달', '이번 주말', '이번 주', '내일'].map(name => spans.find(span => span.name === name)).find(Boolean)
   return at && { from: at.from, to: at.to, label: at.name === '다음 달' ? `${at.from.getFullYear() === now.getFullYear() ? '올해' : '내년'} ${at.from.getMonth() + 1}월` : at.name }
 }
-// A part's facts as shown: in a list, an item that stands only on a search-results page goes while another item has a page of its own
+// A part's facts as shown: an item that stands only on a search-results page goes while another item has a page of its own
 // (a structural rule on addresses, not on words).
 function shownFacts(m: TeamMember): MemberFact[] {
   const facts = m.data?.facts ?? [], real = facts.some(f => !isSearchPage(f.url))
-  return real && (LIST_ASKED.test(m.brief.split('\n')[0]!) || facts.length > 1) ? facts.filter(f => !isSearchPage(f.url)) : facts
+  return real ? facts.filter(f => !isSearchPage(f.url)) : facts
 }
 /** c11a: the structured report a teammate's answer holds (REPORT_RULE / WRITER_RULE), with each fact's site named from what the host holds
  * for its page (siteOf). Undefined when there is none: the prose is never parsed. sources: the pages the teammate read, for a fact given with no page. */
@@ -996,7 +995,8 @@ export function reportData(answer: string, member: Pick<TeamMember, 'brief' | 'w
   }
   const facts = [...(Array.isArray(o['facts']) ? o['facts'] : []), ...(Array.isArray(o['items']) ? o['items'] : [])].map(fact).filter((f): f is MemberFact => !!f)
   const period = o['nothing_in_period'], latest = period && typeof period === 'object' ? fact((period as Record<string, unknown>)['latest']) : undefined
-  if (facts.length) return { facts, ...extra }
+  const whole = Array.isArray(o['whole']) ? o['whole'].map(url => trimmed(line(url, 600))).filter(url => /^https?:\/\//.test(url)) : []
+  if (facts.length) return { facts, ...extra, ...(whole.length ? { whole } : {}) }
   return period && typeof period === 'object' ? { facts: [], nothing: latest ? { latest } : {}, ...extra } : undefined
 }
 /** c11a r2: which items of a teammate's list are the kind of thing their job asks for is judged once, by meaning, where the data comes
@@ -1008,8 +1008,9 @@ export const KIND_CHECK_MS = 3000
 // single thing with what the job needs, judged by meaning; they are taken apart in one more round while the teammate has time
 // (team-runner), else shown labeled. It also names each kept item in a few words, for the record's one-clause outcome (B4).
 export async function kindChecked(data: MemberData | undefined, brief: string, write?: ReportWriter, ms = KIND_CHECK_MS): Promise<MemberData | undefined> {
-  if (!data || !data.facts.length || (data.facts.length < 2 && !LIST_ASKED.test(brief.split('\n')[0]!))) return data
-  if (!write) return data
+  // Every part with a fact is checked, one fact too: whether it is one item or a page of several is the item's meaning, never the ask's
+  // wording (c12a round 2: "모임 두 개 알려줘" named no list word, and a lone listing page was shown as one meeting).
+  if (!data || !data.facts.length || !write) return data
   const prompt = [
     'A teammate looked something up for the job below and brought back these items. Keep every item that is the kind of thing the job asks for, judged by what the item is; leave out an item of another kind (a cooking class in a list of developer meetups). When unsure, keep it.',
     'Of the items you keep, list in "lists" those that are not one single thing with what the job needs to use it: a page or summary that covers several things, or an item without what the job needs (each entry of a schedule or a news list needs its own day; a year alone is not a day). Give every kept item a short name in "names", a few words in the item\'s own language ("판교 리액트 밋업").',
@@ -1032,11 +1033,13 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
 }
 /** c12a B3: the pages a teammate is asked to take apart in one more round, and their items put in place of those pages. */
 export const listingPages = (data: MemberData | undefined): string[] => [...new Set((data?.facts ?? []).filter(f => f.listing).map(f => f.url))]
-export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for).\n${urls.join('\n')}`
+export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for). Also put in the block "whole": [the addresses below whose every item the job asks for you gave]; leave out a page you could not take apart in full.\n${urls.join('\n')}`
+// round 2: a listing page gives way only to a round that says, as data, it gave all of that page's items; a partial round adds its
+// items and the page stays, labeled, so the rest is never silently dropped (GROKBOT rule 7).
 export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
   if (!more?.facts.length) return data
-  const pages = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
-  return { ...data, facts: [...data.facts.filter(f => !f.listing || !pages.has(f.url)), ...more.facts.filter(f => !known.has(f.text))] }
+  const done = new Set(more.whole ?? []), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  return { ...data, facts: [...data.facts.filter(f => !f.listing || !done.has(f.url)), ...more.facts.filter(f => !known.has(f.text))] }
 }
 // The pages a hand-off's work was made from: the giver's facts when the giver is in this report, else the addresses the host itself wrote
 // into the hand-off (dataText's " — address" lines), named by the host's one rule. A deliverable cites what it stands on (GROKBOT rule 5).
