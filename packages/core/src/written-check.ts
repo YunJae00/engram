@@ -25,7 +25,8 @@ export function checkPrompt(input: CheckInput, draft: string): string {
   return [
     'You check a message before a person reads it in a chat with their team. Read the data it was written from, what the person asked, and the message. Judge meaning only, not style or wording.',
     'Name every problem of these kinds:',
-    '- "contradicts": a sentence that contradicts the data or says more than it holds: a count, a state, a date or a price that differs, or "all", "only", "none", "both" that the data does not bear out.',
+    '- "contradicts": a sentence that contradicts the data or says more than it holds: a count, a state, a date or a price that differs, or "all", "only", "none", "both" that the data does not bear out (parts that brought nothing back count: "all done" over one of them is a problem). It also covers a count or a fact about the same things that differs from an earlier message the person already read, when the data holds one, unless the message says why it differs.',
+    'Lines the data says are shown after the message are part of what the person reads: what they say need not be in the message.',
     '- "unsaid": a state the data marks that the message leaves out or says otherwise: someone who has left the team (named as if still on it), a part not finished, a part still under way, a part with nothing found or missing.',
     '- "asks": a question or a choice put to the person about something the team can do itself (look again, redo a part, pick a form), or a sentence about how the work was done (search words, tools, retries, typos in a query).',
     ...(input.rewrite ? ['- "dropped": the message rewrites an earlier reply, and a constraint of the earlier ask that the earlier reply kept (register such as polite or formal, audience, format, language, length unit) no longer holds in it.'] : []),

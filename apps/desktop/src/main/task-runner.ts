@@ -56,7 +56,7 @@ export function recheckAddsNothing(answer: string, report: string): boolean {
 }
 
 export interface TurnOutcome { /** The turn's own answer is in the thread and the turn was not cut short at a call or time limit. */ delivered?: boolean; tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { /** The lead passing on what its background employees reported: a short turn of words, no team check. */ report?: true; tokenBudget?: number; context?: string; /** The context is only a route learned from an earlier run of the same ask, not resumed or answered work. */ learned?: boolean; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
+export interface TaskTurn { /** The task's ask, which this turn's answer answers (c14b r2: kept on the transcript turn, askedBefore). */ asked?: string; /** The lead passing on what its background employees reported: a short turn of words, no team check. */ report?: true; tokenBudget?: number; context?: string; /** The context is only a route learned from an earlier run of the same ask, not resumed or answered work. */ learned?: boolean; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
 // The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
@@ -94,7 +94,7 @@ export function taskRunner(deps: {
   abort(channel: string): void
   broadcast(event: EngramEvent): void
   remember(text: string): Promise<void>
-  deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence): Promise<void>
+  deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence, /** The task's ask the text answers. */ asked?: string): Promise<void>
   checkBudgetMs?: number
   learn?(question: string, answer: string, goal: string): void
   notify(task: DelegatedTask): void
@@ -178,7 +178,7 @@ export function taskRunner(deps: {
   const flush = async (task: DelegatedTask | undefined): Promise<void> => {
     const draft = task && unshown.get(task.id)
     if (!task || draft === undefined) return
-    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), reportTrails.get(task.id) ?? trails.get(task.id) ?? [])
+    await deps.deliver(channelOf(task), draft, Date.parse(task.createdAt), reportTrails.get(task.id) ?? trails.get(task.id) ?? [], undefined, task.goal)
     answered.add(task.id)
     await shown(task.id)
   }
@@ -331,7 +331,7 @@ export function taskRunner(deps: {
         // A turn that is no re-check saved its own answer as the draft: posting that answer is posting the draft.
         const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
         if (!replaced) await flush(after)
-        await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail)
+        await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, undefined, after.goal)
         answered.add(id)
         if (replaced) await shown(id)
       }
@@ -388,7 +388,7 @@ export function taskRunner(deps: {
         const history = (await readBotTranscript(paths, task.botId)).filter(one => !one.error).map((one) => ({ role: one.role, text: one.text }))
         const unread = readbackNext.get(id)
         readbackNext.delete(id)
-        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', goal: task.goal, ...(unread ? { readback: true } : {}) } } : {}), ...(why === 'report' ? { report: true as const } : {}) })
+        const after = await turn(id, { engineId: '', botId: task.botId, channel, message: unread ? readbackPrompt(task, unread) : continuationPrompt(task, why, note), history }, { quiet: true, asked: task.goal, ...(why === 'verify' || unread ? { verification: { result: task.result ?? '', goal: task.goal, ...(unread ? { readback: true } : {}) } } : {}), ...(why === 'report' ? { report: true as const } : {}) })
         if (after?.state !== 'running') { await finished(after); return }
         why = nextReason(after); note = ''
       }
@@ -479,7 +479,7 @@ export function taskRunner(deps: {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
       // A report whose re-check an earlier run of the app never finished: this runner holds no draft of it, so it is posted from the task before the restart question.
-      for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), []); await shown(task.id) }
+      for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), [], undefined, task.goal); await shown(task.id) }
       for (const task of tasksToResume(tasks)) {
         // Checked for each task as its turn comes, and again on the stored task: the list is as old as the awaits above it.
         const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))

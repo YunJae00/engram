@@ -510,10 +510,11 @@ export const reshapePrompt = (message: string, lastReply: string, ask?: string):
   'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
-/** The person's message the last reply answered (the reshape voice keeps its constraints). */
-export const askedBefore = (history: readonly { role: string; text: string }[]): string | undefined => {
+/** The person's message the last reply answered (the reshape voice keeps its constraints). c14b r2: a task's result posted later (after
+ * other turns) carries its own ask (`asked`); only a reply without one answers the person's message before it. */
+export const askedBefore = (history: readonly { role: string; text: string; asked?: string }[]): string | undefined => {
   const last = history.map(one => one.role).lastIndexOf('assistant')
-  return last < 0 ? undefined : history.slice(0, last).reverse().find(one => one.role === 'user')?.text
+  return last < 0 ? undefined : history[last]!.asked ?? history.slice(0, last).reverse().find(one => one.role === 'user')?.text
 }
 // c14b: the whole reshape (voice, meaning check, one rewrite and its check) answers within this; Q4 has 8 s and took 3.1 s.
 export const RESHAPE_DUE_MS = 2 * RESHAPE_MS

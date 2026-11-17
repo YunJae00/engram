@@ -155,3 +155,37 @@ test('a nothing-new part\'s latest change reaches the writer as one short name, 
   // The host's own rendering keeps the whole fact.
   expect(mergedReport([m])).toContain('팀 폴더 기능')
 })
+
+// c14b r2 (Codex r1 #1): the check read the writer's parts only, so "all done" over a part that brought nothing back passed, and the host's
+// line for that part then followed the claim. The check now reads those parts and the line shown after the message.
+test('a lead that says every part came back, over a part that brought nothing, is checked against that part and the line that follows', async () => {
+  const members = [libraries()[0]!, libraries()[1]!, { ...part('m3', '소윤', '이번 주말 별빛도서관 운영 확인', '별빛도서관'), state: 'done' as const }]
+  const two = `중앙도서관은 하은이 봤는데 휴관이에요. [a](${A})\n해맑은도서관은 준이 봤는데 토요일 오전 9시부터 열어요. [b](${B})`
+  const both = (lead: string) => JSON.stringify({ message: `${lead}\n\n${two}`, kept: ['f1', 'f2'] })
+  const { write, calls } = model(both('세 곳 다 확인했는데 해맑은도서관만 열어요.'), both('해맑은도서관은 토요일에 열고 중앙도서관은 쉬어요.'), [problem('contradicts', '세 곳 다 확인했는데'), none])
+  const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000 })
+  expect(calls).toHaveLength(4)
+  // The checker reads the part with nothing to show and the host's own line for it.
+  const data = JSON.parse(calls[1]!.split('\n').find(line => line.startsWith('Data: '))!.slice(6)) as { broughtNothing: { name: string }[]; shownAfterMessage: string }
+  expect(data.broughtNothing.map(one => one.name)).toEqual(['소윤'])
+  expect(data.shownAfterMessage).toContain('소윤')
+  expect(out.startsWith('해맑은도서관은 토요일에 열고')).toBe(true)
+  // The person reads the rewrite, then the host's line for the missing part, as before.
+  expect(out.endsWith(data.shownAfterMessage)).toBe(true)
+  // The writer's own prompt is unchanged: it is still told to leave that part to the host's line.
+  expect(calls[0]).toContain('Do not mention 소윤 at all')
+})
+
+// c14b r2 (Codex r1 #2): a deliverable counted "세 행사" after the team's message before it had named two; the check never read that message.
+test('the check reads the team message before this one, so a count that differs from what the person already read is checkable', async () => {
+  const members = libraries(), before = '이번 주말엔 두 곳만 문을 열어요: 해맑은도서관과 별빛도서관이에요.'
+  const { write, calls } = model(said(`해맑은도서관만 열어요.\n\n${body}`), said(`지난번과 달리 이번에 다시 보니 해맑은도서관만 열어요.\n\n${body}`), [problem('contradicts', '해맑은도서관만 열어요.'), none])
+  const out = await writtenReport({ ask: ASK, members, write, timeoutMs: 5000, previous: before })
+  expect(calls[1]).toContain('"teamMessageBefore":"이번 주말엔 두 곳만 문을 열어요')
+  expect(calls[1]).toContain('an earlier message the person already read')
+  expect(out).toMatch(/^지난번과 달리/)
+  // With no earlier message, no such field.
+  const alone = model(said(`해맑은도서관만 열어요.\n\n${body}`), '', [none])
+  await writtenReport({ ask: ASK, members, write: alone.write, timeoutMs: 5000 })
+  expect(alone.calls[1]).not.toContain('teamMessageBefore')
+})

@@ -1825,13 +1825,13 @@ export function registerIpc(ctx: VaultContext): void {
     // file and link, so it outlives the conversation that did it.
     remember: async (text) => { await writeCapture(paths.inbox, text); runPipelineSoon(ctx, 'librarian: task result') },
     reviewRules: () => approvals.reviewRules(),
-    deliver: async (channel, text, since, trail, evidence) => {
+    deliver: async (channel, text, since, trail, evidence, asked) => {
       const { text: body, captures } = extractChatCaptures(finishProgress(channel, text))
       // A held answer's "remember this" notes are saved like a posted answer's.
       for (const item of captures) await writeCapture(paths.inbox, item).catch(error => flog('chat-capture-write', error))
       if (captures.length) runPipelineSoon(ctx, 'librarian: chat capture')
       const cleaned = await newestRevisions(artifactDirectory(paths), body, since, latestResultOutputs(trail, []).map(output => output.path))
-      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}) })
+      await appendBotTurn(paths, channel.replace(/^bot-/, ''), { role: 'assistant', text: cleaned, work: progressWork(channel), at: new Date().toISOString(), ...(evidence ? { evidence } : {}), ...(asked ? { asked: withoutSecrets(asked, asked) } : {}) })
       broadcast({ type: 'chat:done', channel, text: cleaned, ...(evidence ? { evidence } : {}) })
     },
     learn: (question, answer, goal) => learnFromAnswer(ctx, question, answer, goal),
@@ -2732,7 +2732,7 @@ export function registerIpc(ctx: VaultContext): void {
       // otherwise miss its last exchange.
       if (bot) {
         const at = new Date().toISOString()
-        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, work: progressWork(channel), at }).catch(() => undefined)
+        await appendBotTurn(paths, bot.id, { role: 'assistant', text: cleaned, work: progressWork(channel), at, ...(turn?.asked ? { asked: withoutSecrets(turn.asked, turn.asked) } : {}) }).catch(() => undefined)
         // A comet made with one press is named by its first words - unless
         // those words carry a secret, which is never written anywhere.
         if (firstTitle) {

@@ -20,7 +20,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
   await mkdir(temporary, { recursive: true })
   const root = at?.root ?? await mkdtemp(join(temporary, 'engram-task-runner-')), paths = { root, workspace: root, cache: join(root, '.engram'), privateDir: join(root, 'private'), inbox: join(root, 'inbox') } as unknown as VaultPaths
   await mkdir(paths.inbox, { recursive: true })
-  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], deliveredTrails: NonNullable<TurnOutcome["trail"]>[] = [], evidences: TurnEvidence[] = []
+  const sent: { request: ChatRequestDto; extra?: TaskTurn }[] = [], events: EngramEvent[] = [], remembered: string[] = [], notified: string[] = [], learned: string[][] = [], delivered: string[] = [], deliveredTrails: NonNullable<TurnOutcome["trail"]>[] = [], evidences: TurnEvidence[] = [], deliveredAsked: (string | undefined)[] = []
   let last: TurnOutcome | undefined
   const hooks: { afterDrop?: () => Promise<void> } = {}
   const aborted: { resolve?: () => void } = {}
@@ -46,7 +46,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     remember: async (text) => { remembered.push(text); await writeCapture(paths.inbox, text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
     learn: (question, answer) => learned.push([question, answer]),
-    deliver: async (channel, text, _since, trail, evidence) => { delivered.push(text); deliveredTrails.push(trail); if (evidence) evidences.push(evidence); events.push({ type: 'chat:done', channel, text }) },
+    deliver: async (channel, text, _since, trail, evidence, asked) => { delivered.push(text); deliveredAsked.push(asked); deliveredTrails.push(trail); if (evidence) evidences.push(evidence); events.push({ type: 'chat:done', channel, text }) },
   })
   handlers.clear()
   runner.register()
@@ -57,7 +57,7 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     expect(task.state).toBe(state)
     return task
   }, { timeout: 5000 })
-  return { paths, runner, hooks, sent, events, remembered, notified, learned, delivered, deliveredTrails, evidences, aborted, call, chat, settle }
+  return { paths, runner, hooks, sent, events, remembered, notified, learned, delivered, deliveredTrails, deliveredAsked, evidences, aborted, call, chat, settle }
 }
 
 // A press that commits something, as an approved Save or Submit does; a plain navigation press carries no `committed`.

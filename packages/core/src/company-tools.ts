@@ -1374,14 +1374,23 @@ export async function writtenReport(input: { ask: string; members: readonly Team
     const out = reportCheck(raw, members)
     if (!('text' in out)) { log(`refused:${out.refused}`); return fallback }
     // c14b (cause W): the accepted message is checked for meaning against the same data, inside the writer's own time (began + ms).
+    // c14b r2: the check reads what the person reads: the parts that brought nothing back too, with the host's own line for each that
+    // follows the message ("세 곳 모두" over a part still missing is checkable; the message itself rightly leaves them to that line), and the
+    // team's message before this one in the thread (a deliverable that counts "세 행사" after that message named two is checkable).
     let checked = 'unchecked' as CheckOutcome, kinds = ''
+    const gaps = all.filter(missing), after = gaps.map(m => partLines(m, topics, members, all.length > 1))
+    const data = {
+      parts: writerData(members, topics),
+      ...(gaps.length ? { broughtNothing: gaps.map(m => ({ name: m.role, ...(partName(m, topics) ? { part: partName(m, topics) } : {}), outcome: partOutcome(m) })), shownAfterMessage: after.join('\n\n') } : {}),
+      ...(input.previous?.trim() ? { teamMessageBefore: clip(input.previous, 600) } : {}),
+    }
     const text = await checkedWrite({
-      data: writerData(members, topics), ask: input.ask, draft: out.text, check: write, due: began + ms, log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
+      data, ask: input.ask, draft: out.text, check: write, due: began + ms, log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
       redo: async (note, left) => { const again = reportCheck(await write(prompt + note, left), members); return 'text' in again ? again.text : undefined },
     })
     if (text === undefined) { log(`refused:meaning:${kinds}`); return fallback }
     log(checked === 'rewritten' ? `rewritten:${kinds}` : 'accepted')
-    return [[...hired, text].join(' '), ...all.filter(missing).map(m => partLines(m, topics, members, all.length > 1))].join('\n\n')
+    return [[...hired, text].join(' '), ...after].join('\n\n')
   } catch { log('refused:error'); return fallback } finally { clearTimeout(timer) }
 }
 
