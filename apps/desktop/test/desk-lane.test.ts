@@ -136,8 +136,9 @@ describe('document and tidy answers', () => {
   })
   it('keeps decisions and to-dos apart in a summary, and names each folder with its count after a tidy-up', () => {
     // c5c D1: the notes' own decisions were four tasks, and both headings listed the same four lines.
-    expect(DESK_NOTE).toContain('결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when')
-    expect(DESK_NOTE).toContain('the same sentence never appears under both')
+    // c13c: one principle by meaning (a decision is what was settled, an action item who does what by when, never both).
+    expect(DESK_NOTE).toContain('a decision (결정사항) is what the meeting settled - a choice, a direction or a commitment - and an action item (할 일) is who does what by when')
+    expect(DESK_NOTE).toContain('Each thing goes under one of them, never both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
     // c6c F1: the count per folder is one sentence now, not a list (GROKBOT rule 6).
     // stack-6: BAR F1 asks for a summary list, so the counts are a short list again, without file names.

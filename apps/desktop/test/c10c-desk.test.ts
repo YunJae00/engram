@@ -102,14 +102,18 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   it('asks the quick voice with the last reply and the message, and takes the reply it writes', async () => {
     const asked: string[] = []
     const voice = (answer: string) => async (prompt: string): Promise<string> => { asked.push(prompt); return answer }
+    // c13c: the voice answers {form, was, reply}; "shorter" is checked against the asked thing it names.
+    const said = (reply: string, form = 'shorter'): string => JSON.stringify({ form, was: '엔비디아 종가는 135.2달러로, 전일보다 2.1% 올랐어요.', reply })
     for (const ask of ['방금 답을 압축해줘', '핵심만 남겨봐', '반말로 해봐', '표로 바꿔줄래', '세 단어로'])
-      expect(await reshapeAsk(ask, LAST, voice('엔비디아는 135.2달러, 2.1% 올랐어요.')), ask).toBe('엔비디아는 135.2달러, 2.1% 올랐어요.')
+      expect(await reshapeAsk(ask, LAST, voice(said('엔비디아는 135.2달러, 2.1% 올랐어요.'))), ask).toBe('엔비디아는 135.2달러, 2.1% 올랐어요.')
     expect(asked[0]).toContain(LAST)
     expect(asked[0]).toContain('"방금 답을 압축해줘"')
     expect(asked[0]).toContain('reply with exactly NO.')
     expect(await reshapeAsk('그럼 애플은?', LAST, voice('NO'))).toBeUndefined()
     expect(await reshapeAsk('그럼 애플은?', LAST, voice('No.'))).toBeUndefined()
-    expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('YES\n135.2달러, 2.1% 상승이에요.'))).toBe('135.2달러, 2.1% 상승이에요.')
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice(`YES\n${said('135.2달러, 2.1% 상승이에요.')}`))).toBe('135.2달러, 2.1% 상승이에요.')
+    // Plain text with no form is no reshape: the turn keeps its route.
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('135.2달러, 2.1% 상승이에요.'))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('NONE'))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('  '))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, async () => { throw new Error('late') })).toBeUndefined()

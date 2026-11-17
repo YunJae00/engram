@@ -26,7 +26,7 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     for (const gate of ['!company', '!lane', '!handed', '(!kind || short)', '!isCorrection(request.message)']) expect(line).toContain(gate)
   })
   it('a send, a post or a team ask is no reshape even when the voice writes one (wordings not in the harness)', async () => {
-    const yes = vi.fn(async () => '엔비디아는 182.3달러예요.')
+    const yes = vi.fn(async () => JSON.stringify({ form: 'shorter', was: '엔비디아는 지금 182.3달러예요.', reply: '엔비디아는 182.3달러예요.' }))
     for (const message of ['이거 수진이한테 카톡으로 보내줘', '방금 거 팀 채널에 올려줘', '봇 3개 돌려서 도시별로 나눠서 알아봐']) {
       expect(reshapeCandidate(message, reply), message).toBe(false)
       expect(await reshapeAsk(message, reply, yes), message).toBeUndefined()

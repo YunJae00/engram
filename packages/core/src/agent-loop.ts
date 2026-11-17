@@ -133,6 +133,8 @@ export interface AgentLoopOptions {
   lookup?: boolean
   // A turn with what it needs already in its prompt, or one small call to make: it runs without long thinking, like a lookup.
   light?: boolean
+  // A short ask whose reply shape the host's turn note owns (one line, one fact, small talk): its session gets no work rules.
+  short?: boolean
   // Wall-clock share of a tool session: past it no new tool call starts and the model is told to report what it has.
   deadlineMs?: number
   // The tool session has its turn and starts working: time limits count from here, not from the wait in line.

@@ -3015,6 +3015,8 @@ export function registerIpc(ctx: VaultContext): void {
             // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
             // c12b: and by what its items are (judgeItems): an item that is not the thing asked for, or a second report of one event, is a gap too.
             ...(lane ? { deliver: shapeLane } : {}),
+            // c13c: a turn whose reply shape a host note owns (a short ask, small talk, something told) gets no work rules (core sessionRules).
+            ...([SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, TOLD_NOTE].includes(laneNote) ? { short: true } : {}),
             ...(solo ? { recheck: async (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid), undefined, await itemsOff(answer, [laneAsk, ...steered])) : undefined } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),

@@ -248,7 +248,8 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
 
 describe('a note the host read is answered without long thinking (D1)', () => {
   it('keeps decisions and to-dos apart when the notes\' decisions are all tasks', () => {
-    for (const part of ['When the decisions in the notes are all tasks with an owner and a date, 결정사항 says briefly what was agreed', '할 일 gives each owner and date', 'Every decision, owner and due date of the file is still in the answer'])
+    // c13c: one principle by meaning replaced the "all tasks" special case; every owner and date still stays.
+    for (const part of ['an item with an owner and a due date is an action item', 'The content decides, not the notes\' own headings', 'Every owner and due date of the file is still in the answer'])
       expect(DESK_NOTE, part).toContain(part)
   })
 })
