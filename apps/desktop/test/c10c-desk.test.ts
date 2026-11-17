@@ -29,7 +29,7 @@ describe('c10c F1: the host sorts one folder by kind', () => {
   // wordings and others not in the harness are sorted; another criterion, a restriction, a second job, two folders or a file are not.
   it('sorts the folder whatever the sentence shape, and leaves other asks to the model', async () => {
     expect(deskKind(F1)).toBe('tidy')
-    const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘', 'fixtures/inbox-dump 정리해줘',
+    const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘',
       '"fixtures/inbox-dump" 안의 자료 형식별로 분류해 주세요.', '받은 파일 모아둔 fixtures/inbox-dump/ 좀 확장자별로 나눠줘', 'fixtures/inbox-dump의 파일들 파일유형별로 정리해 줄래']
     for (const ask of yes) {
       expect(kindSortAsk(ask), ask).toBeDefined()
@@ -42,7 +42,9 @@ describe('c10c F1: the host sorts one folder by kind', () => {
     await mkdir(join(workspace, 'fixtures', 'other'))
     const no = ['fixtures/inbox-dump 폴더 날짜별로 정리해줘', 'fixtures/inbox-dump에 있는 파일들 프로젝트별로 정리해줘', 'fixtures/inbox-dump fixtures/other 정리해줘',
       'fixtures/meeting-notes.md 정리해줘', 'fixtures/inbox-dump 폴더 정리하고 오래된 건 지워줘', '폴더 정리해줘', 'fixtures/inbox-dump 폴더 정리해서 민호한테 보내줘',
-      'fixtures/inbox-dump에서 PDF만 종류별로 정리해줘', 'fixtures/inbox-dump 정리하지 마', 'fixtures/nowhere 종류별로 정리해줘']
+      'fixtures/inbox-dump에서 PDF만 종류별로 정리해줘', 'fixtures/inbox-dump 정리하지 마', 'fixtures/nowhere 종류별로 정리해줘',
+      // stack-10 (c10c r3, Codex): a criterion named without "-별", or none at all, is not kind: the model decides.
+      'fixtures/inbox-dump 파일들을 이름순으로 정리해줘', 'fixtures/inbox-dump 날짜순으로 정리해줘', 'fixtures/inbox-dump 크기대로 나눠줘', 'fixtures/inbox-dump 거래처마다 분류해줘', 'fixtures/inbox-dump 정리해줘']
     for (const ask of no) expect(await sortByKind(ask, workspace, move(), context), ask).toBeUndefined()
     expect((await readdir(inbox)).sort()).toEqual([...INBOX].sort())
   })

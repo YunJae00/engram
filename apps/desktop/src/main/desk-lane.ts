@@ -425,7 +425,10 @@ const SORT_LAST = /(?:정리|분류|나눠|나누어)\s*(?:좀\s*)?(?:해|하)?\
 export function kindSortAsk(message: string): string[] | undefined {
   const text = message.trim()
   if (text.includes('\n') || [...text].length > ASK_MAX || !SORT_LAST.test(text) || ONLY_SOME.test(text)) return undefined
-  if ([...text.matchAll(CRITERION)].some(([, criterion]) => !BY_KIND.test(criterion!.replace(/^파일/, '')))) return undefined
+  // stack-10 (c10c r3, Codex: "파일들을 이름순으로 정리해줘" was sorted by kind): no criterion is not kind; "이름순", "날짜대로", "프로젝트마다" name
+  // one in other words. The host sorts only when the ask names kind as the grouping, and every grouping it names is kind.
+  const criteria = [...text.matchAll(CRITERION)].map(([, criterion]) => criterion!.replace(/^파일/, ''))
+  if (!criteria.length || criteria.some(criterion => !BY_KIND.test(criterion))) return undefined
   const words = text.split(/[\s"'`“”‘’()[\]<>,]+/).map(word => word.replace(/[.!~?]+$/, '')).filter(word => word && !word.startsWith('~'))
   return words.length ? words : undefined
 }
