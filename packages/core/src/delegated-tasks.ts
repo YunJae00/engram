@@ -28,7 +28,28 @@ export interface TaskApproval {
 export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
 // One hidden worker hired for a part of the task; parentId null means the lead hired it.
 /** c11a: one thing a teammate found, as data: its page, and the site's name taken from what the host holds for that page (never "출처"). */
-export interface MemberFact { text: string; url: string; site: string; date?: string }
+/** listing: the quick check found it is not one item with what the job needs (a page that lists several, an item with only a year): it is
+ * shown labeled, never as an item (c12a B3). rest: items were taken from it; shown after them as where the full list is (round 3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
+export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string }
+// c12a B2: a fact's date lives in its text (REPORT_RULE); `date` is metadata for sorting and period checks. Shown once: after the text,
+// in brackets, only when the text already states that same date in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지").
+// round 3: a date is compared as a date: each number with the part of a date it is (year, month or day), read from a unit (년/월/일,
+// a range "2~6일" too) or a date form (12.2, 2026-12-02, Dec 2). A clock time ("11시 18분"), a model number or a price is no part of a
+// date, and a word about now ("오늘 확인했어요") states no day of the thing, so the date is shown. Number forms, not a phrase list.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+const DATE_PARTS = /(\d+)\s*(?:[~–-]\s*(\d+)\s*)?(년|월|일)|(?<!\d)(\d{1,4})[./-](\d{1,2})(?:[./-](\d{1,2}))?(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/giu
+const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_PARTS)].flatMap(m => {
+  const n = (v: string): number => Number(v)
+  if (m[3]) return [m[1], m[2]].filter(Boolean).map(v => `${m[3]}${n(v!)}`)
+  if (m[7]) return [`월${MONTHS.indexOf(m[7].toLowerCase()) + 1}`, `일${n(m[8]!)}`]
+  const [a, b, c] = [m[4]!, m[5]!, m[6]]
+  return c ? [`년${n(a)}`, `월${n(b)}`, `일${n(c)}`] : a.length === 4 ? [`년${n(a)}`, `월${n(b)}`] : [`월${n(a)}`, `일${n(b)}`]
+}))
+export const datedText = (f: { text: string; date?: string | undefined }): string => {
+  const date = f.date?.trim(), own = dateParts(f.text), parts = [...dateParts(date ?? '')]
+  const stated = !date || (parts.length > 0 && parts.every(p => own.has(p)))
+  return stated ? f.text : f.text.replace(/([.!?]?)\s*$/u, ` (${date})$1`)
+}
 /** c11a: what a teammate handed back, as data the host never parses out of prose. A lookup gives facts (one per item for a list), or nothing
  * for the time asked with the newest thing it did see; a writer gives the deliverable's finished lines. note: their own one chat sentence. */
 export interface MemberData { facts: MemberFact[]; nothing?: { latest?: MemberFact }; items?: string[]; note?: string }

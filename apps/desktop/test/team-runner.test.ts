@@ -260,9 +260,11 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const { loadBotMemory, readBotTranscript, recordFacts } = await import('core')
     await recordFacts(w.paths, w.kim.id, ['지난주에 슬랙 가격을 조사했다'])
     // grokbar B7: a waited lookup comes back as the answer itself, under the agent's name, with no merge round.
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('노션 신기능 조사(지민): 노션이 AI 회의록을 냈어요. [Notion](https://notion.so/releases)')
+    // c12a B1: led by a plain sentence (the part named from the person's words, the teammate), never the job title as a label.
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('노션 신기능은 지민이 찾아 왔어요. 노션이 AI 회의록을 냈어요. [Notion](https://notion.so/releases)')
     expect((await readBotTranscript(w.paths, w.kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '노션이 AI 회의록을 냈어요. — https://notion.so/releases']])
-    expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 노션이 AI 회의록을 냈어요\. \(지민, \d{4}-\d\d-\d\d\)$/)
+    // c12a B4: the record holds the job and one short clause on what came of it, never the fact sentence.
+    expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 찾았어요 \(지민, \d{4}-\d\d-\d\d\)$/)
     expect((await w.members())[0]).toMatchObject({ botId: w.kim.id, lookup: true, state: 'released', review: { ok: true } })
     // The persona carries who they are, their role and what they remember.
     const p = await staffed(async () => 'unused')
@@ -286,7 +288,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     // grokbar B7 (C6): one report, 서연's result. c9 fix 2: whose find it was made from is a clause and a link on her opener, with no closing sentence.
     // c11a: the host's rendering of a writer's part is its head with whose find it was made from, then the items as a numbered list.
     const handed = await w.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })
-    expect(handed.split('\n')).toEqual(['홍보 문구 3개(서연, 지민이 찾은 걸로): [example.com](https://example.com/summit)', '1. 문구 3개 <- 지민 자료'])
+    // c12a B1: who made it from whose find (its part's name in the person's words), never the job title; one item is that line alone.
+    expect(handed.split('\n')).toEqual(['서연이 지민이 찾은 행사로 한 줄 써 왔어요. [example.com](https://example.com/summit)', '문구 3개 <- 지민 자료'])
     // grokbar C6: the next one's job is writing from what was handed over, so they run as a writer: no tools at all, the handed result in the prompt.
     expect((await w.members())[1]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
     expect((await w.members())[1]!.lookup).toBeUndefined()
@@ -297,7 +300,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     expect(w.seen.map(turn => turn.role)).toEqual(['지민', '서연'])
     expect((await w.task()).team!.hires).toBe(2)
     const failed = await staffed(async turn => { if (turn.role === '지민') throw new Error('no source'); return 'never' })
-    expect(await failed.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('행사 조사(지민): 이번엔 못 찾았어요.')
+    expect(await failed.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('행사는 지민이 이번엔 못 찾았어요.')
     // grokbar C10: a part that found nothing leaves its line on the team's record too, in plain words.
     const { loadBotMemory } = await import('core')
     await vi.waitFor(async () => expect((await loadBotMemory(failed.paths, '_team')).facts.map(fact => fact.text.replace(/\d{4}-\d\d-\d\d/, 'day'))).toEqual(['행사 조사 → 못 찾았어요 (지민, day)']))
@@ -322,7 +325,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       // 지민 handed on: the lead is told at once, and that report is 지민's own find, alone, with its link.
       await vi.waitFor(() => expect(w.reported).toHaveLength(1))
       const first = employeesReport(await w.task())!
-      expect(first).toBe('이번 주말 서울 날씨 찾기(지민): 이번 주말 서울은 토요일 아침 영하 6도, 낮 2~6도에 대체로 맑대요. [KMA](https://www.weather.go.kr/w/a)')
+      expect(first).toBe('서울 날씨는 지민이 찾아 왔어요. 이번 주말 서울은 토요일 아침 영하 6도, 낮 2~6도에 대체로 맑대요. [KMA](https://www.weather.go.kr/w/a)')
       await updateTask(w.paths, w.id, handoffShown)
       if (stopped) {
         await w.team.stop('bot-b1')
@@ -336,7 +339,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       await vi.waitFor(() => expect(w.reported).toHaveLength(2))
       // The second bubble is 서연's alone: it names 지민 and the weather, carries the page, and nothing closes it. Two bubbles after the ack.
       const second = employeesReport(await w.task())!
-      expect(second.split('\n')).toEqual(['주말 나들이 추천 문구 한 줄 쓰기(서연, 지민이 찾은 걸로): [기상청](https://www.weather.go.kr/w/a)', '1. 맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!'])
+      // c12a B1 (H5 judge: "작업명과 담당자 중심으로 적어 … 딱딱"): one plain sentence, never the job title "…쓰기(서연, …):".
+      expect(second.split('\n')).toEqual(['서연이 지민이 찾은 서울 날씨로 한 줄 써 왔어요. [기상청](https://www.weather.go.kr/w/a)', '맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!'])
       expect(second).not.toContain('(지민)')
       seconds.push(second)
     }
@@ -376,7 +380,7 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const texts = async () => (await readBotTranscript(w.paths, w.kim.id)).map(turn => turn.text)
     w.busy.add(`bot-${w.kim.id}`)
     await appendBotTurn(w.paths, w.kim.id, { role: 'user', text: '내 질문', at: new Date().toISOString() })
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('노션 신기능 조사(지민): 노션 결과예요. [Notion](https://notion.so/releases)')
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('노션 신기능은 지민이 찾아 왔어요. 노션 결과예요. [Notion](https://notion.so/releases)')
     expect(await texts()).toEqual(['내 질문'])
     await appendBotTurn(w.paths, w.kim.id, { role: 'assistant', text: '내 답', at: new Date().toISOString() })
     w.busy.delete(`bot-${w.kim.id}`)
@@ -400,10 +404,11 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       await vi.advanceTimersByTimeAsync(WRITER_HARD_MS + 10)
       vi.useRealTimers()
       written = await answer
-      expect(written.split('\n')).toEqual(['홍보 문구 3개 뽑기(서연, 지민이 찾은 걸로): [Notion](https://www.notion.com/releases)', '1. 일은 AI 도우미에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로'])
+      expect(written.split('\n')[0]).toMatch(/^서연이 지민이 찾은 \S.*(?:으로|로) 3개 써 왔어요\. \[Notion\]\(https:\/\/www\.notion\.com\/releases\)$/)
+      expect(written.split('\n').slice(1)).toEqual(['1. 일은 AI 도우미에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로'])
     } finally { vi.useRealTimers() }
     expect((await w.members())[1]).toMatchObject({ role: '서연', writer: true, state: 'released', review: { ok: true } })
-    await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → Notion Agent 개선', '홍보 문구 3개 뽑기 (지민한테 받아서) → 1. 일은 AI 도우미에게 2. 하루를 맡기세요 3. 더 적은 비용으로']))
+    await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → 찾았어요', '홍보 문구 3개 뽑기 (지민한테 받아서) → 3개 써 왔어요']))
     // The page the find came from is linked on the hand-off's report.
     expect(written).toContain('](https://www.notion.com/releases)')
   })
@@ -455,7 +460,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     go()
     await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`, `bot-b1 ${w.id}`]))
     const second = employeesReport(await w.task())!
-    expect(second).toBe('슬랙(서연): 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
+    // c12a B1: alone in its own report, the part is said in a sentence: its name in the person's words and who.
+    expect(second).toBe('슬랙은 서연이 찾아 왔어요. 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
     await new Promise(resolve => setTimeout(resolve, 90))
     expect(w.reported).toHaveLength(2)
   })

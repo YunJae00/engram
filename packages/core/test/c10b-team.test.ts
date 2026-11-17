@@ -48,8 +48,8 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
   expect(alone.data).toBeUndefined()
   const lone = mergedReport([{ ...alone, role: '지민' }])
   expect(lone).not.toMatch(/재즈|공연|확실한 건/)
-  expect(lone).toContain('(지민)')
-  expect(lone).toContain('못 찾았어요')
+  // c12a B1: named in a plain sentence, no job-title head.
+  expect(lone).toBe('지민은 이번엔 못 찾았어요.')
   const searched = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(searched, { answer: '12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(searched.result).toContain('데브 밋업')
@@ -91,7 +91,8 @@ test('c10b fix 2 and 3: nothing new this week is said, each line gives its lates
   const [, , doyun] = c3()
   const fresh = withData(member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief }), { facts: [{ text: '노션은 11월 18일에 AI 회의록 기능을 냈어요.', url: 'https://www.notion.com/ko/releases' }] })
   const mixed = mergedReport([fresh, doyun!])
-  expect(partOf(mixed, '도윤').replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없.*11월 12일.*BYOK 기능이 나왔어요\./)
+  // c12a B2: the day once, after a text that does not state it.
+  expect(partOf(mixed, '도윤').replace(/^[^:]+:\s*/, '')).toMatch(/^이번엔 새로 나온 게 없.*BYOK 기능이 나왔어요 \(11월 12일\)\./)
   expect(partOf(mixed, '지민')).toContain('11월 18일')
 })
 
@@ -99,8 +100,9 @@ test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an Engl
   const m = withData(member({ brief: '다음 달 서울 IT 행사 일정 정리' }), { facts: [{ text: '소프트웨이브, 클라우드 보안 발표', date: '12월 2일', url: 'https://www.coex.co.kr/a' }, { text: '데브 밋업', date: '12월 9일', url: 'https://www.meetup.com/b' }] })
   const said = mergedReport([m])
   expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
-  expect(said).toMatch(/^- 12월 2일 소프트웨이브.* \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
-  expect(said).toMatch(/^- 12월 9일 데브 밋업 \[[^\]]+\]\(https:\/\/www\.meetup\.com\/b\)$/m)
+  // c12a B2: a text with no day of its own carries it once, after it.
+  expect(said).toMatch(/^- 소프트웨이브.* \(12월 2일\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
+  expect(said).toMatch(/^- 데브 밋업 \(12월 9일\) \[[^\]]+\]\(https:\/\/www\.meetup\.com\/b\)$/m)
   expect(said).not.toMatch(/:\s*·|""|\[출처\]/)
   // A writer's message with an English run is refused; the host's rendering stands.
   expect(checkedReport(JSON.stringify({ message: '지민이 찾아보니 12월 2일 소프트웨이브: software developers meet for cloud security talks [코엑스](https://www.coex.co.kr/a) 12월 9일 데브 밋업 [밋업](https://www.meetup.com/b)', kept: ['f1', 'f2'] }), [m])).toBeUndefined()

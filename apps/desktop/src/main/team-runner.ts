@@ -1,17 +1,26 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  ANSWER_NOW, backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, kindChecked, reportData, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
+// c12a A1 (C3: 지민 and 서연 read their release pages and were cut at 15.0 s with nothing written): the last part of a lookup teammate's
+// time is for answering. At the hard limit less this, a teammate that read something and is not writing yet is told to answer now from
+// what it read, in a round with no tools; the quick model writes the same report from the kept rows in case that round is not back by
+// the limit. On the scale of the real limit (the test seam shortens it).
+const ANSWER_RESERVE_MS = 3_000
+// How long past the hard limit the quick model's report is waited for.
+const ANSWER_GRACE_MS = 1_000
+// c12a B3: one more round to take a listing page apart into items, only with at least this much of the teammate's time left.
+const ITEMS_ROUND_MS = 6_000
 
 // Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
@@ -54,6 +63,7 @@ export function teamRunner(deps: {
   reportCapMs?: number
 }) {
   const { paths } = deps
+  setReportLog(line => flog('team-report', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
   const inflight = new Map<string, number>()
@@ -126,15 +136,30 @@ export function teamRunner(deps: {
       const sources = new Set<string>(), kept: string[] = []
       const hardMs = me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS
       let startedAt: number | undefined
-      const begun = () => { if (me.lookup || me.writer) { startedAt ??= Date.now(); hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, hardMs) } }
+      // A teammate's tool rounds run on their own signal: the answer reserve ends a round without ending the teammate.
+      const toolRound = new AbortController()
+      control.signal.addEventListener('abort', () => toolRound.abort(), { once: true })
+      const scale = hardMs / LOOKUP_HARD_MS, reserveMs = ANSWER_RESERVE_MS * scale
+      const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
+      const readSome = (): boolean => kept.length > 0 || [...sources].some(url => !isSearchPage(url))
+      const answerNow = () => {
+        if (control.signal.aborted || !readSome()) return
+        written = quick?.(keptReportPrompt(me.brief, kept), reserveMs + ANSWER_GRACE_MS * scale).catch(() => undefined)
+        // Already writing its report block: that answer is let finish.
+        if (/```|^\s*\{/.test(draft)) return
+        answering = true; toolRound.abort()
+      }
+      const begun = () => { if (me.lookup || me.writer) { startedAt ??= Date.now(); hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, hardMs); if (me.lookup && me.botId) reserve ??= setTimeout(answerNow, hardMs - reserveMs) } }
       // Time until the hard stop, on the scale of the real limit (the test seam shortens the limit, and the share of it left is what counts):
       // a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
       const left = (): number => (hardMs - (startedAt === undefined ? 0 : Date.now() - startedAt)) * LOOKUP_HARD_MS / hardMs
+      let tools: AgentTool[] = []
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left) : tool, taskId, me))
+        tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         // c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member. The search the lead gave words for is run
         // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
@@ -160,7 +185,7 @@ export function teamRunner(deps: {
         let priced = false
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
-            signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
+            signal: toolRound.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
             onStart: begun,
             onUsage: tokens => { begun(); used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
             ...(native ? { native } : {}),
@@ -183,11 +208,21 @@ export function teamRunner(deps: {
           }
           // A member reports up only after it reviewed its own helpers; it gets one reminder.
           const open = unreviewed((await find(taskId))?.team, id)
-          if (!open.length || result.asked || result.budgetExhausted || control.signal.aborted) break
+          if (!open.length || result.asked || result.budgetExhausted || toolRound.signal.aborted) break
           if (round) { outcome = { answer: '', error: `it reported without reviewing ${open.map(m => m.role).join(', ')}.` }; break }
           prompt = reviewFirst(open)
         }
-      } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } } finally { clearTimeout(hardStop) }
+      } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
+      // The reserve ended its round: one round with no tools, to write the report from what it read (the tool path's own ANSWER_NOW).
+      const turn = (task: string, roundTools: AgentTool[]) => (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools: roundTools }, task, {
+        signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), modelHint: 'smart' as const, ...drafted,
+        onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
+      })
+      if (answering && !control.signal.aborted) {
+        draft = ''
+        try { outcome = { answer: (await turn(`${ANSWER_NOW} Write it as the report block your rules describe. What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } /* Cut at the hard limit, what it wrote by then is in draft; else the quick model's report stands in. */ }
+      }
+      clearTimeout(reserve)
       // What it had written at the hard stop is its result, whether or not it called a tool first (grokbar C6: three lines of copy written with
       // no tool call were thrown away as "조사하지 못했어요"). Only a lookup's one short line before its first tool call is still an opening line,
       // not findings (perf146 r3: "먼저 기상청부터 확인.").
@@ -197,8 +232,26 @@ export function teamRunner(deps: {
       // c11a: a teammate's result is the report block it wrote; with none (or a broken one) it is null, and its prose is never parsed.
       // Its list keeps only items of the kind asked, judged here once by the quick model (core kindChecked), before anything shows it.
       const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
-      const quick = kit.engine.id === 'claude' && kit.engine.quick && !control.signal.aborted ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
-      const report = structured ? await kindChecked(reportData(outcome.answer, me, [...sources], isKorean(goal)), me.brief, quick) ?? null : undefined
+      let data = structured ? reportData(outcome.answer, me, [...sources], isKorean(goal)) : undefined
+      // c12a A1: with no report by the limit, the quick model's report from the kept rows, waited for until the limit plus the grace.
+      if (structured && !data && written) {
+        let wait: ReturnType<typeof setTimeout> | undefined
+        const by = Math.max(0, (startedAt ?? Date.now()) + hardMs + ANSWER_GRACE_MS * scale - Date.now())
+        data = reportData(await Promise.race([written, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
+        clearTimeout(wait)
+      }
+      // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
+      data = await kindChecked(data, me.brief, timedOut || control.signal.aborted ? undefined : quick)
+      // c12a B3: a listing page among the facts is taken apart in one more round while the teammate's time allows it (the hard stop still
+      // applies); otherwise it stays, labeled where it is shown.
+      const pages = me.lookup && !timedOut && !control.signal.aborted ? listingPages(data) : []
+      if (data && pages.length && (hardMs - (Date.now() - (startedAt ?? Date.now()))) / scale >= ITEMS_ROUND_MS) {
+        draft = ''
+        const more = await turn(itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
+        data = withItems(data, more)
+      }
+      clearTimeout(hardStop)
+      const report = structured ? data ?? null : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
@@ -209,7 +262,7 @@ export function teamRunner(deps: {
         }
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
-        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}) }
+        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}), ...(ended === 'done' && m.data ? { data: m.data } : {}) }
       })
       if (done) {
         // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.

@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
 import { communityPost } from './search-template.js'
-import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
+import { datedText, logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
 const KOREAN_COUNT = ['', '하나', '둘', '셋', '넷', '다섯', '여섯']
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
@@ -566,7 +566,7 @@ export function keptItems(brief: string, text: string): string {
 }
 /** A teammate's data as plain lines with their addresses: what the record keeps and what the next teammate in a hand-off reads. */
 export function dataText(data: MemberData): string {
-  const fact = (f: { text: string; url: string; date?: string }): string => `${f.date ? `${f.date} ` : ''}${f.text} — ${f.url}`
+  const fact = (f: { text: string; url: string; date?: string }): string => `${datedText(f)} — ${f.url}`
   if (data.items?.length) return data.items.map((item, i) => `${i + 1}. ${item}`).join('\n')
   if (data.nothing) return ['이번엔 새로 나온 게 없어요.', ...(data.nothing.latest ? [`가장 최근: ${fact(data.nothing.latest)}`] : [])].join('\n')
   return data.facts.map(fact).join('\n')
