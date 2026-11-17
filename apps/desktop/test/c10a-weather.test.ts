@@ -4,8 +4,8 @@ import { laneTidy, perDay, weekendAnswer } from '../src/main/fast-lane.js'
 const now = new Date('2026-11-17T09:00:00+09:00')
 test('c10a L1: the run\'s answer loses "13.0" and the date after 오늘; other figures and dates stay', () => {
   const l1 = '오늘(11월 17일)은 비가 오고 있어요, 지금 13.0도예요. 저녁까지 비가 이어지다가 밤에는 흐림으로 바뀌어요. [네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)'
-  expect(laneTidy(l1)).toBe('오늘은 비가 오고 있어요, 지금 13도예요. 저녁까지 비가 이어지다가 밤에는 흐림으로 바뀌어요. [네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)')
-  expect(laneTidy('내일(18일 수)은 -3.0℃, 모레(11월 19일)는 10.0°까지 올라요.')).toBe('내일은 -3℃, 모레는 10°까지 올라요.')
+  expect(laneTidy(l1)).toBe('11월 17일 오늘은 비가 오고 있어요, 지금 13도예요. 저녁까지 비가 이어지다가 밤에는 흐림으로 바뀌어요. [네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)')
+  expect(laneTidy('내일(18일 수)은 -3.0℃, 모레(11월 19일)는 10.0°까지 올라요.')).toBe('18일 내일은 -3℃, 11월 19일 모레는 10°까지 올라요.')
   for (const kept of ['지금 13.5도예요.', '13.05도', '1달러에 1,385.0원이에요.', '이번 주말(21~22일)은 맑아요.', '11월 16일 종가 기준 155.0달러예요.']) expect(laneTidy(kept)).toBe(kept)
 })
 

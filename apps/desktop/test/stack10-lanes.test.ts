@@ -35,3 +35,12 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     for (const message of ['엔비디아 말고 애플 주가', '테슬라 말고 애플로 알려줘']) expect(fastLane(message, true) || isCorrection(message), message).toBe(true)
   })
 })
+
+describe('stack-10 (c10a run L1, "today\'s date missing"): a weather answer keeps its date, said plainly', async () => {
+  const { LANE_NOTE, laneTidy } = await import('../src/main/fast-lane')
+  it('the date in brackets after a day word moves before it; the note asks for the date, never in brackets', () => {
+    expect(laneTidy('오늘(12월 3일, 수)은 눈 오고 -2.0도예요.')).toBe('12월 3일 오늘은 눈 오고 -2도예요.')
+    expect(laneTidy('내일(1월 9일)은 맑대요.')).toBe('1월 9일 내일은 맑대요.')
+    expect(LANE_NOTE).toContain('opening on the day it is for with its date said plainly, never in brackets')
+  })
+})
