@@ -317,13 +317,16 @@ export const foundNothing = (answer: string): boolean => !!answer && answer.leng
 // c6 C3: 도윤's stored result was its answer, a rule line, the same answer again under a heading, its suggested replies, and a shopping row
 // it had only read. A teammate's answer is kept once: the replies block is for a person's thread, and the same answer again under a heading goes.
 const addressesIn = (text: string): string[] => (text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
-function saidOnce(answer: string): string {
+function saidOnce(answer: string, job: string): string {
   const plain = answer.replace(/\s*```replies[^]*?(?:```|$)/g, '').trim(), [first = '', ...more] = plain.split(/\n\s*-{3,}\s*\n/), named = addressesIn(first)
-  // c6b r2: "12월 2일 행사 A … /events", a rule line, "12월 9일 행사 B … /events": the second event was dropped for citing the same page. A half is
-  // the first again only in the shape that was seen: it opens on a heading and gives no address and no number the first does not.
-  // shortcut: a different item under a heading with the same page and the same numbers is still dropped; compare the wording if that shows up.
+  // c6b r2: "12월 2일 행사 A … /events", a rule line, "12월 9일 행사 B … /events": the second event was dropped for citing the same page.
+  // c6b r3: "행사 B" of the same day from the same page, under "**다른 행사**", was still dropped: no new address, no new number. A half is the
+  // first again only in the shape that was seen: its heading is the job's own name ("리니어 신기능 조사 결과" for "리니어 신기능 조사"), and it
+  // gives no address and no number the first does not. Under any other heading it is another item.
+  // shortcut: another item under the job's own name with the same page and numbers is still dropped; ask the quick model if that shows up.
   const numbers: string[] = first.match(/\d+/g) ?? []
-  const kept = more.filter(half => !/^\s*(?:#{1,6}\s|\*\*[^*\n]+\*\*\s*(?:\n|$))/.test(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
+  const titled = (half: string): boolean => { const head = /^\s*(?:#{1,6}\s+(.+)|\*\*([^*\n]+)\*\*\s*(?:\n|$))/.exec(half); return !!head && (head[1] ?? head[2])!.replace(/[*_:：]/g, ' ').split(/\s+/).filter(Boolean).every(word => job.includes(word) || /^(?:결과|정리|요약|내용|조사)$/u.test(word)) }
+  const kept = more.filter(half => !titled(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
   return kept.length === more.length ? plain : [first.trim(), ...kept.map(half => half.trim())].join('\n\n---\n\n')
 }
 // A job that asks for a schedule, a list or a number of things, and a line that carries a day.
@@ -331,7 +334,7 @@ const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|�
 const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
 const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
-  const said = saidOnce(outcome.answer.trim())
+  const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)
   // A member that was stopped, failed or asked keeps nothing of what it read (GROKBOT rule 4); one whose time or calls ran out does.
   const read = outcome.error || outcome.asked ? '' : (outcome.read ?? '').trim()
   // Cut short on a line about what it was going to do, or on a draft that only says what it could not do while results are in hand: that is no answer.

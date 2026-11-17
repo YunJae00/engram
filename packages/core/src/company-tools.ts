@@ -815,10 +815,13 @@ const sought = (job: string): string => job.replace(/\s*(?:찾기|알아보기)$
 /** What a report is made with besides the results: the lead of the team result shown before it in the thread, and the day it is made. */
 export interface ReportContext { previous?: string | undefined; now?: Date | undefined }
 /** The first sentence over one teammate's result: it names the job in the person's words, and whose work it was made from (c4 C5, C6, H5). previous: the result before it in the thread, whose lead it does not end like. */
-function resultLead(m: TeamMember, previous = ''): string {
+function resultLead(m: TeamMember, previous = '', now?: Date): string {
   const from = handedFrom(m.brief), who = josa(m.role, '이', '가'), given = from ? sought(jobTitle(from.job)) : ''
   if (!from) return `${who} ${jobDone(jobOf(m), true, previous)}.`
-  return `${who} ${given && !given.endsWith('…') ? `${from.from}의 ${ro(given)}` : `${from.from}한테 받은 내용으로`} ${jobDone(jobOf(m), false, previous)}.`
+  // c6b r3: what was handed over lay outside the time asked, and the year was said only in the last line, under copy that sold it as next
+  // month's. The lead says it before anything made from it is read.
+  const out = outsideOf(from.job, from.result, now)
+  return `${who} ${given && !given.endsWith('…') ? `${from.from}의 ${ro(given)}` : `${from.from}한테 받은 내용으로`} ${jobDone(jobOf(m), false, previous)}.${out ? ` ${out.said.replace(/보여요\.$/u, '보여서')} ${out.when} 걸로 썼어요.` : ''}`
 }
 // c6 C5: one finding under "…정리해 왔어요." made the person read two bubbles' worth for one fact. A lookup that came back with one sentence
 // is said in the lead itself ("지민이 찾아봤는데, …"), so the first sentence already answers.
@@ -903,6 +906,10 @@ const outsideHead = (m: TeamMember, out: Outside, previous = ''): string => `${j
 const nearestSaid = (out: Outside): string => `가장 가까운 건 ${out.when} 거예요.`
 // Whether a text that uses such a find says it is not of this year, and (plain) that the time asked has nothing yet.
 const yearSaid = (text: string, out: Outside, now: Date): boolean => !out.year || new RegExp(`${out.year}년|${out.year === now.getFullYear() - 1 ? '작년|지난해' : out.year === now.getFullYear() + 1 ? '내년' : '$^'}`).test(text)
+// c6b r3: "다음 달 서울에서 만나요." written from last year's event. A line made from a find outside the time asked that speaks of it as
+// coming up, with no year of its own, is not shown.
+const SOON = /다음\s*달|내달|이번\s*주말|이번\s*주|금주|내일|올해|(?<![가-힣])곧(?![가-힣])/u
+const soldAsSoon = (line: string, out: Outside, now: Date): boolean => SOON.test(line) && !(out.year && yearSaid(line, out, now))
 const NONE_YET = /안 보여|없어요|없었어요|없네요|안 나왔/u
 // A part that brought nothing back, said once and plainly; a hand-off that could not go on names both people (c4 H5: the thread ended on the first).
 function nothingLine(m: TeamMember, topics: ReadonlyMap<string, string>): string {
@@ -933,7 +940,10 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
   }
   const blocks = parts.flatMap((m, i) => {
     const from = handedFrom(m.brief), looked = !!m.empty && !from && !m.then
-    const said = looked ? '' : delivered(m), lines = said ? read(m, said, true) : [], body = numbered(lines, askedCount(m.brief)).join('\n')
+    const said = looked ? '' : delivered(m), all = said ? read(m, said, true) : [], handed = from && outsideOf(from.job, from.result, now)
+    const lines = handed ? all.filter(line => !soldAsSoon(line, handed, now)) : all, cut = all.length - lines.length
+    // What is left out is said (GROKBOT rule 7), and the rest is numbered as the list it was.
+    const body = [...numbered(lines, cut ? lines.length : askedCount(m.brief)), ...(cut && lines.length ? [`\n지금 일정처럼 쓴 ${cut}줄은 날짜가 안 맞아서 뺐어요.`] : [])].join('\n')
     // One finding, one link; several lines keep the two pages they came from, as before.
     const other = body ? '' : foreign(m, said), korean = HANGUL.test(said) || HANGUL.test(m.brief)
     const link = !body ? '' : lines.length > 1 ? pagesOf(said, m.sources).slice(0, 2).map(url => pageLink(url, said, korean)).join(' · ') : partLink(m, said)
@@ -941,7 +951,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const out = body && !from ? outsideFor(m, now) : undefined, gist = body && !out && !i ? gistOf(m, previous) : undefined
     if (out) { const head = `${outsideHead(m, out, i ? '' : previous)} ${nearestSaid(out)}`; return [i ? head : lead(head), withLink(out.line, link)] }
     if (gist) return [lead(withLink(`${gist.open} ${gist.line}${/[.!?]$/.test(gist.line) ? '' : '.'}`, link))]
-    const head = body ? resultLead(m, i ? '' : previous) : atWork(m) ? `${partName(m, topics)}(${m.role}): ${STILL}` : looked ? `${josa(m.role, '이', '가')} 찾아봤는데, ${nothingNew(m)}` : other ? `${josa(m.role, '이', '가')} ${FOREIGN}.` : nothingLine(m, topics)
+    const head = body ? resultLead(m, i ? '' : previous, now) : atWork(m) ? `${partName(m, topics)}(${m.role}): ${STILL}` : looked ? `${josa(m.role, '이', '가')} 찾아봤는데, ${nothingNew(m)}` : other ? `${josa(m.role, '이', '가')} ${FOREIGN}.` : nothingLine(m, topics)
     // The giver's facts in one line, unless the giver's own part is shown above.
     const given = from && !parts.some(giver => giver !== m && giver.role === from.from) ? read(m, from.result).slice(0, 3).join(' · ') : ''
     const facts = from && given ? `${josa(from.from, '이', '가')} 찾은 내용: ${withLink(clip(given, 240), pageLink(handedPages(m, members)[0], from.result, HANGUL.test(from.result) || HANGUL.test(m.brief)))}` : ''
@@ -1044,11 +1054,13 @@ export const REPORT_WRITER_MAX_MS = 8000
 export const REPORT_CAP_MS = 25_000
 const WRITER_TEXT_CHARS = 1200
 // c6 C3: the writer was cut at 4.0 s on a row done at 21.5 s of 35, and the host's stand-in list was shown. It gets what is left of the
-// report's cap, counted from when the work was handed out: at most 8 s, and never less than the 4 s it always had (a report made at the
-// cap, or a late part's own, is past the cap already).
+// report's cap, counted from when the work was handed out, at most 8 s. A report made at the cap or after it (a late part's own) has
+// the 4 s it always had: the cap leaves that much inside the bar.
+// c6b r3: with 3 s of the cap left it was given 4 s and could hold the answer past the cap. Before the cap it gets what is left, no more.
 export function writerMs(members: readonly TeamMember[], now = Date.now()): number {
   const since = Math.min(...members.map(m => Date.parse(m.hiredAt)).filter(at => !Number.isNaN(at)))
-  return Math.min(REPORT_WRITER_MAX_MS, Math.max(REPORT_WRITER_MS, Number.isFinite(since) ? REPORT_CAP_MS - (now - since) : 0))
+  const left = Number.isFinite(since) ? REPORT_CAP_MS - (now - since) : 0
+  return left > 0 ? Math.min(REPORT_WRITER_MAX_MS, left) : REPORT_WRITER_MS
 }
 
 export function reportPrompt(ask: string, members: readonly TeamMember[], topics: ReadonlyMap<string, string> = new Map(), context: ReportContext = {}): string {
@@ -1059,7 +1071,7 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
     const text = n ? numbered(findings(said, true, true).lines, n).join('\n') : said.slice(0, m.read ? MEMBER_RESULT_CHARS : WRITER_TEXT_CHARS)
     return { name: m.role, part: partName(m, topics), text, pages: partPages(m).slice(0, m.empty ? 8 : 3), ...(m.empty ? { nothing: true } : m.read ? { read: true } : {}), ...(atWork(m) ? { working: true } : {}), ...(out ? { outside: out.when } : {}), ...(from ? { from: { name: from.from, job: from.job, text: clip(from.result.replace(CUT_SHORT, ''), WRITER_TEXT_CHARS), pages: handedPages(m, members).slice(0, 3), ...(given ? { outside: given.when } : {}) } } : {}) }
   })
-  const first = `The first line is exactly ${JSON.stringify(resultLead(handoff ?? parts[0]!, context.previous))}`
+  const first = `The first line is exactly ${JSON.stringify(resultLead(handoff ?? parts[0]!, context.previous, now))}`
   // One teammate: a find outside the time asked, or a lone finding, is said in the lead's own sentence (mergedReport says them the same way).
   const only = !table && !handoff ? parts[0]! : undefined, out = only && outsideFor(only, now), gist = only && !out ? gistOf(only, context.previous) : undefined
   return [
@@ -1111,7 +1123,8 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // that nothing shows for it yet and whose year the nearest one is; a result made from such a hand-over says the year.
   if (parts.some(m => {
     const own = outsideFor(m, now), from = handedFrom(m.brief), given = from && outsideOf(from.job, from.result, now)
-    return (!!own && !(NONE_YET.test(rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && !yearSaid(text, given, now))
+    // c6b r3: the year anywhere in the text passed. It is said in the first line, and no line speaks of the find as coming up.
+    return (!!own && !(NONE_YET.test(rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && (!yearSaid(text.split('\n')[0]!, given, now) || text.split('\n').some(line => soldAsSoon(line, given, now))))
   })) return undefined
   if (table && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
   // A run of English nobody asked for (GROKBOT rule 12), quoted or not; only a link's words (the page's own name) are not counted.
@@ -1131,7 +1144,7 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   if (parts.length === 1 && delivered(parts[0]!)) {
     const m = parts[0]!, [head = '', ...rest] = text.split('\n'), out = outsideFor(m, now), open = out ? outsideHead(m, out, context.previous) : gistOf(m, context.previous)?.open
     if (open) { if (!head.startsWith(open)) return undefined }
-    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head)) text = [resultLead(m, context.previous), ...rest].join('\n')
+    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head)) text = [resultLead(m, context.previous, now), ...rest].join('\n')
   }
   // c5 C6: "[소프트웨이브 2026](…) [ACC 2026](…)" read as one name, "소프트웨이브 2026 ACC 2026".
   return spaced(text)

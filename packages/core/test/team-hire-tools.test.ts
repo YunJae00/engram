@@ -404,6 +404,13 @@ describe('team hire tools', () => {
     delete headed.result
     settleMember(headed, { answer: '12월 2일 행사 A가 열려요. https://example.com/events\n\n---\n\n**다른 행사**\n\n12월 9일 행사 B가 열려요. https://example.com/events' }, 'now', true)
     expect(headed.result).toContain('12월 9일 행사 B')
+    // c6b r3: the same day and the same page under a heading, a different event: kept (it was dropped for bringing no new address or number).
+    const sameDay: TeamMember = { ...m, brief: '다음 달 행사 일정 2개 정리', state: 'working' }
+    delete sameDay.result
+    settleMember(sameDay, { answer: '12월 2일 행사 A가 열려요. https://example.com/events\n---\n**다른 행사**\n12월 2일 행사 B가 열려요. https://example.com/events' }, 'now', true)
+    expect(sameDay.result).toContain('12월 2일 행사 A')
+    expect(sameDay.result).toContain('12월 2일 행사 B')
+    expect(sameDay.result).toContain('**다른 행사**')
     // The paths this does not touch: an answer with no address keeps what it read; a found-nothing answer keeps it and is marked; no answer is what was read.
     const bare: TeamMember = { ...m, state: 'working' }
     settleMember(bare, { answer: 'BYOK가 11월 12일에 나왔어요.', timedOut: true, read }, 'now', true)

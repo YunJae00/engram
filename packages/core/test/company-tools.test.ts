@@ -1383,13 +1383,14 @@ const s5 = { c3: stack5.c3.members as TeamMember[], c5: stack5.c5.members as Tea
 const NOV17 = new Date(2026, 10, 17, 9)
 const linksIn = (text: string): string[] => [...text.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map(hit => hit[1]!)
 
-test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s and never less than 4 s', async () => {
+test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s, and before the cap never more than is left', async () => {
   const at = Date.parse('2026-11-17T00:00:00Z'), hired = (agoMs: number): TeamMember[] => [part('m1', '지민', '노션 신기능 조사', { result: '노션이 AI 회의록을 냈어요. https://notion.so/releases', hiredAt: new Date(at - agoMs).toISOString() })]
-  // 20 s of the cap left: 8 s. 6 s left: those 6 s. 3 s left, at the cap or long past it (a late part's own report): the 4 s it always had.
+  // 20 s of the cap left: 8 s. 6 s left: those 6 s. 3 s left: those 3 s (c6b r3: it was given 4). At the cap or long past it (a late part's own report): the 4 s it always had.
   expect(writerMs(hired(REPORT_CAP_MS - 20_000), at)).toBe(REPORT_WRITER_MAX_MS)
   expect(REPORT_WRITER_MAX_MS).toBe(8000)
   expect(writerMs(hired(REPORT_CAP_MS - 6000), at)).toBe(6000)
-  expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(REPORT_WRITER_MS)
+  expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(3000)
+  expect(writerMs(hired(REPORT_CAP_MS - 500), at)).toBe(500)
   expect(writerMs(hired(REPORT_CAP_MS), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs(hired(90_000), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs([part('m1', '지민', '조사')], at)).toBe(REPORT_WRITER_MS)
@@ -1477,9 +1478,16 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   expect(handedFrom(handed)).toMatchObject({ brief: '홍보 문구 3개 뽑기', from: '지민', job: '다음 달 서울 IT 행사 일정 정리', result: s5.c5[0]!.result })
   expect(handoffBrief('문구 쓰기', '지민', '소프트웨이브는 12월 2일에 열려요. https://a.example/sw', '다음 달 서울 IT 행사 일정 정리', [], NOV17)).not.toContain('outside')
   // What the run showed for it (서연's lines, then "ACC 2025가 12월 11일 … 열려요") is refused; with the year said it passes.
-  const lines = s5.c6[0]!.result!, lead = '서연이 지민의 다음 달 서울 IT 행사 일정 정리로 홍보 문구 3개 뽑았어요.'
+  // c6b r3: the year is said in the first line, and her third line ("… 올해를 마무리하세요") is not shown for last year's event.
+  const lines = s5.c6[0]!.result!, bare = '서연이 지민의 다음 달 서울 IT 행사 일정 정리로 홍보 문구 3개 뽑았어요.', lead = `${bare} 올해 12월 일정은 아직 안 보여서 작년 12월 11일 걸로 썼어요.`
+  const last = `지민이 찾은 내용: ACC는 작년 12월 11일 서울 신라호텔에서 열렸어요. [ACC 2025](${acc})`
   expect(checkedReport(`${lead}\n\n${lines}\n\n지민이 찾은 내용: ACC 2025가 12월 11일 서울 신라호텔에서 열려요. [ACC 2025](${acc})`, s5.c6, ctx)).toBeUndefined()
-  expect(checkedReport(`${lead}\n\n${lines}\n\n지민이 찾은 내용: ACC는 작년 12월 11일 서울 신라호텔에서 열렸어요. [ACC 2025](${acc})`, s5.c6, ctx)).toBeDefined()
+  expect(checkedReport(`${bare}\n\n${lines}\n\n${last}`, s5.c6, ctx)).toBeUndefined()
+  expect(checkedReport(`${lead}\n\n${lines}\n\n${last}`, s5.c6, ctx)).toBeUndefined()
+  const c6host = mergedReport(s5.c6, undefined, [], ctx)
+  expect(c6host.startsWith(`${lead}\n\n1. `)).toBe(true)
+  expect(c6host).not.toContain('올해를 마무리')
+  expect(c6host).toContain('\n\n지금 일정처럼 쓴 1줄은 날짜가 안 맞아서 뺐어요.\n\n')
   expect(mergedReport(s5.c6, undefined, [], ctx)).toContain('지민이 찾은 내용: ACC 2025(AI & Cloud Conference)는 2025년 12월 11일 서울 신라호텔에서 열려요')
   expect(reportPrompt(stack5.c6.goal, s5.c6, undefined, ctx)).toContain('starts with exactly "지민이 찾은 내용:"')
 })
@@ -1578,4 +1586,30 @@ test('c6 item 7: a late part that never came is one plain line, not silence and 
   expect(employeesReport(job)).toBe('리니어 쪽은 끝까지 못 찾았어요.')
   lateShown(job)
   expect(job.team).toMatchObject({ lateTold: true, lateDone: true })
+})
+
+test('c6b r3: copy made from last year\'s event says the year in its first line and no line sells it as next month\'s', async () => {
+  const found = 'ACC 2025는 2025년 12월 11일 서울에서 열려요. https://example.com/acc'
+  const brief = handoffBrief('홍보 문구 3개 뽑기', '지민', found, '다음 달 서울 IT 행사 일정 정리', [], NOV17)
+  const seoyeon = part('m1', '서연', brief, { result: '1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.\n3. 다음 달 서울에서 만나요.' })
+  const host = mergedReport([seoyeon], new Map(), [], { now: NOV17 })
+  const [lead, list, left, facts] = host.split('\n\n')
+  expect(lead).toBe('서연이 지민의 다음 달 서울 IT 행사 일정 정리로 홍보 문구 3개 뽑았어요. 올해 12월 일정은 아직 안 보여서 작년 12월 11일 걸로 썼어요.')
+  expect(list).toBe('1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.')
+  expect(left).toBe('지금 일정처럼 쓴 1줄은 날짜가 안 맞아서 뺐어요.')
+  expect(facts).toContain('2025년 12월 11일')
+  expect(host).not.toContain('다음 달 서울에서 만나요')
+  // The writer's text: "작년" only in the last line, or the line kept, is refused; the host's list stands in.
+  const tail = '지민이 찾은 내용: 작년 12월 11일에 ACC 2025가 서울에서 열렸어요. [ACC](https://example.com/acc)'
+  const late = `서연이 홍보 문구 3개 뽑았어요.\n\n1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.\n3. 서울에서 만나요.\n\n${tail}`
+  expect(checkedReport(late, [seoyeon], { now: NOV17 })).toBeUndefined()
+  expect(checkedReport(`${lead}\n\n1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.\n3. 다음 달 서울에서 만나요.\n\n${tail}`, [seoyeon], { now: NOV17 })).toBeUndefined()
+  expect(await writtenReport({ ask: '행사 정리해서 서연한테 넘겨 문구 뽑아줘', members: [seoyeon], now: NOV17, timeoutMs: 1000, write: async () => late })).toBe(host)
+  // Copy that names no time passes with the lead that says the year, and a hand-over from inside the time asked reads as before.
+  const fine = { ...seoyeon, result: '1. 12월 11일 서울 행사에 오세요.\n2. ACC 2025를 기대해 주세요.\n3. 서울에서 만나요.' }
+  expect(checkedReport(`${lead}\n\n${fine.result}\n\n${tail}`, [fine], { now: NOV17 })).toContain('3. 서울에서 만나요.')
+  const inside = part('m1', '서연', handoffBrief('홍보 문구 3개 뽑기', '지민', 'ACC 2026은 2026년 12월 10일 서울에서 열려요. https://example.com/acc', '다음 달 서울 IT 행사 일정 정리', [], NOV17), { result: seoyeon.result! })
+  const plain = mergedReport([inside], new Map(), [], { now: NOV17 })
+  expect(plain).toContain('3. 다음 달 서울에서 만나요.')
+  expect(plain.split('\n')[0]).toBe('서연이 지민의 다음 달 서울 IT 행사 일정 정리로 홍보 문구 3개 뽑았어요.')
 })
