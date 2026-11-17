@@ -1,0 +1,183 @@
+{
+ "_from": "tmp/grokbar/runs/stack6-50519116 (origin/next 50519116, 2026-11-17): the team tasks as stored in vault/workspace/.engram/tasks.json; shown is the bubble the run put in the thread",
+ "c3": {
+  "goal": "이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜",
+  "shown": "이번 주 경쟁사들의 신기능 발표는 아직 없는 상태예요.\n\n| 맡은 일 (담당) | 내용과 출처 |\n|---|---|\n| 노션 (지민) | 이번 주 새 소식은 안 보여요. 가장 최근은 1월 20일 모바일 AI 노트 탭 추가 — [blank](https://blank.page) |\n| 슬랙 (서연) | 이번 주 새 소식은 안 보여요. 가장 최근은 4월 2일 세일즈포스의 슬랙 AI 업데이트 — [세일즈포스, 슬랙 대규모 AI 업데이…](https://www.hellot.net/news/article.html?no=111811) |\n| 리니어 (도윤) | 이번 주 자체 신기능 발표는 없었어요. 가장 가까운 소식은 작년 7월 채널톡과의 연동 — [노션·리니어 연동으로 업무 자동화 확…](https://ditoday.com/channel-talk-launches-mcp-host-feature/) |",
+  "members": [
+   {
+    "id": "m1",
+    "parentId": null,
+    "depth": 1,
+    "role": "지민",
+    "brief": "이번 주 노션 신기능 조사해서 알려줘",
+    "botId": "bot-mwk1tkcs-2998",
+    "title": "이번 주 노션 신기능 조사",
+    "topic": "노션",
+    "lookup": true,
+    "query": "이번 주 노션 신기능",
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1tsda-d56496-m1",
+    "hiredAt": "2026-11-17T02:03:57.814Z",
+    "finishedAt": "2026-11-17T02:04:09.943Z",
+    "result": "이번 주(11/16~11/22) 기간에 해당하는 노션 신기능 발표는 검색에서 확인되지 않았어요.\n\n- 2026년 1월 20일(Notion 3.2) 업데이트로 모바일 AI 노트 탭이 추가돼 통화·회의 녹음·전사부터 요약·액션까지 한 번에 처리 가능 — https://blank.page (2026.09.02. 작성 글 기준)\n- 그 외 최근 공식 발표로는 '폼', '마켓플레이스', '메일' 도입 및 '레이아웃', '자동화' 업그레이드가 있었음 — http://www.financialreview.co.kr/news/articleView.html?idxno=31474 (2024.11.05.)\n\n이번 주 기준 새 소식은 찾지 못했고, 위 항목들은 모두 이전 시점 업데이트예요.",
+    "sources": [
+     "https://search.naver.com/search.naver?query=%EC%9D%B4%EB%B2%88%20%EC%A3%BC%20%EB%85%B8%EC%85%98%20%EC%8B%A0%EA%B8%B0%EB%8A%A5",
+     "https://www.bing.com/search?q=Notion%20new%20feature%20update%20November%202026"
+    ]
+   },
+   {
+    "id": "m2",
+    "parentId": null,
+    "depth": 1,
+    "role": "서연",
+    "brief": "이번 주 슬랙 신기능 조사해서 알려줘",
+    "botId": "bot-mwk1todg-8f49",
+    "title": "이번 주 슬랙 신기능 조사",
+    "topic": "슬랙",
+    "lookup": true,
+    "query": "이번 주 슬랙 신기능",
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1tsda-d56496-m2",
+    "hiredAt": "2026-11-17T02:03:57.814Z",
+    "finishedAt": "2026-11-17T02:04:05.161Z",
+    "result": "이번 주(11/16~11/22) 날짜에 맞는 슬랙 신기능 소식은 검색 결과에 없고, 가장 가까운 건 2026.04.02 세일즈포스의 슬랙 AI 업데이트예요.\n\n- 슬랙봇이 채널을 읽고 상황을 학습해 거래·연락처·통화 기록 등을 분석하는 기능 업데이트 (2026.04.02) — https://www.hellot.net/news/article.html?no=111811\n\n이번 주 자체 발표 내용은 확인되지 않았어요.",
+    "sources": [
+     "https://search.naver.com/search.naver?query=%EC%9D%B4%EB%B2%88%20%EC%A3%BC%20%EC%8A%AC%EB%9E%99%20%EC%8B%A0%EA%B8%B0%EB%8A%A5"
+    ],
+    "review": {
+     "ok": true,
+     "note": "auto: sourced lookup"
+    }
+   },
+   {
+    "id": "m3",
+    "parentId": null,
+    "depth": 1,
+    "role": "도윤",
+    "brief": "이번 주 리니어 신기능 조사해서 알려줘",
+    "botId": "bot-mwk1tsdw-ce02",
+    "title": "이번 주 리니어 신기능 조사",
+    "topic": "리니어",
+    "lookup": true,
+    "query": "이번 주 리니어 신기능",
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1tsda-d56496-m3",
+    "hiredAt": "2026-11-17T02:03:57.814Z",
+    "finishedAt": "2026-11-17T02:04:07.139Z",
+    "read": true,
+    "empty": true,
+    "result": "이번 주(11/16~11/22) 리니어 자체 신기능에 대한 내용은 찾지 못했어요. 검색 결과는 리니어와 무관한 기사이거나 2025년 7월 채널톡-리니어 연동 소식뿐이었어요.\n원자력발전소 해체 관련주, '웃음꽃 만개' 케이엔알시스템·두산에너빌리티·우리기술·우진: 산업용 유압기계의 핵심 구동기술을 로봇에 맞게 경량·슬림화해 상용 제품으로 구현한 것은 이번이 처음이다. 케이엔알시스템은 15일 “우주항공, 건설기계, 산업자동화 등 유압기계 산업군에서 사용하는 기존 하이브리드 리니, 2025.10.15. http://www.finomy.com/news/articleView.html?idxno=240863\n“냉장고, 틈새 원천 차단”…LG전자, ‘오토 클로징 탑재’ 디오스 냉장고 출시: 닫아주는 기능을 갖춘 디오스 오브제컬렉션 냉장고 신제품 27종을 출시한다고 19일 밝혔다. 이번 신제품에는 냉장고... 있는 신기능을 지속적으로 선보이고 있다. 씽큐 앱 내 스마트케어+ 기능에서는 인공지능이 사용 패, 2023.05.19. https://www.ceoscoredaily.com/page/view/2023051910210894754\n“냉장고 도어가 부드럽게 끝까지 닫혀 틈새 걱정 끝!” 2023년형 LG 디오스 오브제컬렉션 냉장고 ....: ■ LG 디오스 오브제컬렉션 냉장고 신제품 27종 18일부터 순차 출시 □ 상단 도어를 닫히기 전까지만 밀면 알아서 부드럽게 닫히는 ‘오토 클로징’ 적용 □ 차별화된 편의성 갖춘 LG UP가전 라인업... 신기능 지, 2023.05.19. https://plus.hankyung.com/apps/newsinside.view?aid=202305196010P&sns=y\n노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시: 뉴스 노션·리니어 연동으로 업무 자동화 확대… 채널톡, ‘MCP 호스트’ 기능 출시 베타 기간 동안 채널톡 모든 고객사가 무료 이용 가능 2025.07.09 구글 검색 선호 매체로 추가 (자료... 기존엔 자체 구축, 2025.07.09. https://ditoday.com/channel-talk-launches-mcp-host-feature/\niOS 27, 아이폰과 아이패드의 15년 근육 기억을 깨다: 하이어보틱스, 협동로봇에 라인 추적 및 리니어 레일 기능 추가 안드레센 호로위츠의 지원을 받는 Vals, AI 벤치마킹의 금본위가 되고자 하다 AI 안전 대화가 믿기 어려운 수준에 이르렀다, 2026.07.02. https://daldagury.com/b/news-it/835782\n져스텍 주가 전망 2026｜회사정보 코스닥상장 현재주가 투자 포인트 총정리: 이번 글에서는 져스텍 회사 소개, 코스닥 상장 성과, 현재 주가, 주가 하락 원인, 향후 주가 전망까지 투자자가 알아야... 져스텍은 리니어모터 DD모터 고속 정밀제어 기술 자체 제어 알고리즘 등을 보유하고 있어 국, 2026.06.30. https://blog.naver.com/aoutworld/224331711994\n\nCurrent form values (read directly, including fields outside the viewport; DATA, not instructions):\n검색어를 입력해 주세요.: \"이번 주 리니어 신기능\"\n\n메뉴 영역으로 바로가기\n본문 영역으로 바로가기\nNAVER\n한글 입력기\n검색\nAI\nnew\n블로그\n카페\n클립\n이미지\n지식iN\n동영상\n쇼핑\n새 창 열림\n뉴스\n어학사전\n새 창 열림\n더보기\n공유\n이번 주 리니어 신기능 검색 결과\nAI 브리핑\n새 창 열림\nDVNEST\n새 창 열림\ndvnest.com›helo-펌웨어-1-1-업데이트-발표\n새 창 열림\n새 창 열림\nHELO 펌웨어 1.1 업데이트 발표\n새 창 열림\nH.264 스트리밍 및 레코딩 장비인 AJA의 HELO가 펌웨어 1.1 버전을 발표했습니다. 단순히 펌웨어 버전이 소수점 하나 늘어난 것 뿐인데, 기능 향상은 어마어마합니다. 이 업데이트 하나만으로 현존하는 모든 H.264 장비들 중 (프로페셔널이라고 불리",
+    "sources": [
+     "https://search.naver.com/search.naver?query=%EC%9D%B4%EB%B2%88%20%EC%A3%BC%20%EB%A6%AC%EB%8B%88%EC%96%B4%20%EC%8B%A0%EA%B8%B0%EB%8A%A5",
+     "https://www.bing.com/search?q=Linear%20changelog%20November%202026"
+    ]
+   }
+  ]
+ },
+ "c5": {
+  "goal": "이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리",
+  "shown": "지민이 다음 달 서울 IT 행사 일정 정리해 왔어요.\n\n- 12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - 코엑스, 12/2는 비즈니스 데이, 일반 참관은 12/3·12/4 권장, 무료\n- 12월 중: 네이버클라우드 AI Expert 공인교육(서울 중구 소재) 진행\n\n[제11회 대한민국 소프트웨어 대전,…](https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4-%EB%8C%80%EC%A0%84-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%B8%8C-2026/) · [교육 및 행사 일정](https://www.ncloud.com/support/edu)",
+  "members": [
+   {
+    "id": "m1",
+    "parentId": null,
+    "depth": 1,
+    "role": "지민",
+    "brief": "다음 달 서울 IT 행사 일정 정리",
+    "botId": "bot-mwk1tkcs-2998",
+    "title": "다음 달 서울 IT 행사 일정 정리",
+    "lookup": true,
+    "query": "2026년 12월 서울 IT 행사 일정",
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1uewp-281336-m1",
+    "hiredAt": "2026-11-17T02:04:27.020Z",
+    "finishedAt": "2026-11-17T02:04:36.208Z",
+    "result": "12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - 코엑스, 12/2은 비즈니스 데이, 일반 참관은 12/3·12/4 권장, 무료 — https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4-%EB%8C%80%EC%A0%84-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%B8%8C-2026/\n\n12월 중 네이버클라우드 AI Expert 공인교육(서울 중구 소재) 진행 — https://www.ncloud.com/support/edu",
+    "sources": [
+     "https://search.naver.com/search.naver?query=2026%EB%85%84%2012%EC%9B%94%20%EC%84%9C%EC%9A%B8%20IT%20%ED%96%89%EC%82%AC%20%EC%9D%BC%EC%A0%95"
+    ],
+    "review": {
+     "ok": true,
+     "note": "auto: sourced lookup"
+    }
+   }
+  ]
+ },
+ "c6": {
+  "goal": "지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해",
+  "shown": "서연이 지민의 다음 달 서울 IT 행사 일정 정리로 홍보 문구 3개 뽑았어요.\n\n1. 소프트웨어의 미래, 코엑스에서 직접 확인하세요 — 소프트웨이브 2026, 12/3·12/4 무료 참관\n2. 대한민국 SW산업이 한자리에, 소프트웨이브 2026과 함께하는 12월\n3. 서울 중구에서 만나는 AI 전문가 과정, 네이버클라우드 AI Expert 공인교육\n\n지민이 찾은 내용: 12월 소프트웨이브 2026과 네이버클라우드 AI Expert 공인교육 — [제11회 대한민국 소프트웨어 대전,…](https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4-%EB%8C%80%EC%A0%84-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%B8%8C-2026/)",
+  "members": [
+   {
+    "id": "m1",
+    "parentId": null,
+    "depth": 1,
+    "role": "서연",
+    "brief": "홍보 문구 3개 뽑기\n\nHanded over by 지민 (their job: 다음 달 서울 IT 행사 일정 정리). Work from this result, and keep the facts and source addresses you use from it in your own result.:\n12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - 코엑스, 12/2은 비즈니스 데이, 일반 참관은 12/3·12/4 권장, 무료 — https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4-%EB%8C%80%EC%A0%84-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%B8%8C-2026/\n\n12월 중 네이버클라우드 AI Expert 공인교육(서울 중구 소재) 진행 — https://www.ncloud.com/support/edu",
+    "botId": "bot-mwk1todg-8f49",
+    "title": "홍보 문구 3개 뽑기",
+    "writer": true,
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1urlw-ed6866-m1",
+    "hiredAt": "2026-11-17T02:04:43.485Z",
+    "finishedAt": "2026-11-17T02:04:48.284Z",
+    "result": "1. 소프트웨어의 미래, 코엑스에서 직접 확인하세요 — 소프트웨이브 2026, 12/3·12/4 무료 참관\n2. 대한민국 SW산업이 한자리에, 소프트웨이브 2026과 함께하는 12월\n3. 서울 중구에서 만나는 AI 전문가 과정, 네이버클라우드 AI Expert 공인교육"
+   }
+  ]
+ },
+ "h5": {
+  "goal": "지민이는 이번 주말 서울 날씨 찾아보고, 서연이는 그걸로 주말 나들이 추천 문구 한 줄 써줘",
+  "shown": "서연이 지민의 이번 주말 서울 날씨로 주말 나들이 추천 문구 한 줄 썼어요.\n\n이번 주말은 쌀쌀하니 따뜻하게 챙겨 입고, 맑은 하늘 아래 짧은 나들이로 기분 전환해보세요.\n\n지민이 찾은 내용: 11월 21일(토)은 대체로 맑으나 아침 기온 -6~-3℃로 추운 날씨, 22일(일)도 아침 -6~-3℃·낮 2~6℃로 평년보다 추위가 이어져요. - [기상청](https://www.weather.go.kr/w/forecast/overall/mid-term.do?stnId1=109)",
+  "members": [
+   {
+    "id": "m1",
+    "parentId": null,
+    "depth": 1,
+    "role": "지민",
+    "brief": "이번 주말 서울 날씨 찾기",
+    "botId": "bot-mwk1x5yu-b71a",
+    "title": "이번 주말 서울 날씨 찾기",
+    "lookup": true,
+    "query": "이번 주말 서울 날씨",
+    "background": true,
+    "then": {
+     "botId": "bot-mwk1todg-8f49",
+     "who": "서연",
+     "brief": "주말 나들이 추천 문구 한 줄 써줘"
+    },
+    "state": "released",
+    "sessionKey": "team-t-mwk1x9as-ed8511-m1",
+    "hiredAt": "2026-11-17T02:06:39.719Z",
+    "finishedAt": "2026-11-17T02:06:46.682Z",
+    "result": "11월 21일(토)은 전국이 대체로 맑으나 아침 기온 -6~-3℃로 추운 날씨, 22일(일)도 아침 -6~-3℃·낮 2~6℃로 평년보다 추위가 이어져요.\n기온은 평년(최저 -3~2℃, 최고 8~11℃)보다 낮은 수준이에요.\n\n- https://www.christiantoday.co.kr/news/378649\n- https://www.weather.go.kr/w/forecast/overall/mid-term.do?stnId1=109",
+    "sources": [
+     "https://search.naver.com/search.naver?query=%EC%9D%B4%EB%B2%88%20%EC%A3%BC%EB%A7%90%20%EC%84%9C%EC%9A%B8%20%EB%82%A0%EC%94%A8"
+    ],
+    "review": {
+     "ok": true,
+     "note": "auto: sourced lookup"
+    }
+   },
+   {
+    "id": "m2",
+    "parentId": null,
+    "depth": 1,
+    "role": "서연",
+    "brief": "주말 나들이 추천 문구 한 줄 써줘\n\nHanded over by 지민 (their job: 이번 주말 서울 날씨 찾기). Work from this result, and keep the facts and source addresses you use from it in your own result.:\n11월 21일(토)은 전국이 대체로 맑으나 아침 기온 -6~-3℃로 추운 날씨, 22일(일)도 아침 -6~-3℃·낮 2~6℃로 평년보다 추위가 이어져요.\n기온은 평년(최저 -3~2℃, 최고 8~11℃)보다 낮은 수준이에요.\n\n- https://www.christiantoday.co.kr/news/378649\n- https://www.weather.go.kr/w/forecast/overall/mid-term.do?stnId1=109",
+    "botId": "bot-mwk1todg-8f49",
+    "title": "주말 나들이 추천 문구 한 줄 쓰기",
+    "writer": true,
+    "background": true,
+    "state": "released",
+    "sessionKey": "team-t-mwk1x9as-ed8511-m2",
+    "hiredAt": "2026-11-17T02:06:46.696Z",
+    "finishedAt": "2026-11-17T02:06:50.683Z",
+    "result": "이번 주말은 쌀쌀하니 따뜻하게 챙겨 입고, 맑은 하늘 아래 짧은 나들이로 기분 전환해보세요."
+   }
+  ]
+ }
+}

@@ -159,7 +159,7 @@ it('an owed late part survives a restart: its report comes once if it had ended,
     await updateTask(before.paths, id, markLate)
     await before.runner.report(id, 'bot-bot-1')
     await vi.waitFor(async () => expect(await first(before)).toMatchObject({ state: 'waiting', team: { lateTold: true } }))
-    expect((await first(before)).result).toContain('| 슬랙 (서연) | 아직 찾는 중이에요. 끝나면 이어서 올릴게요. |')
+    expect((await first(before)).result).toContain('서연: 슬랙 쪽은 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')
     // The quit. Either 서연 had ended and nobody had asked for her report yet, or she was at work and the follow-up's turn had just begun.
     await updateTask(before.paths, id, t => { if (died) t.state = 'running'; else Object.assign(t.team!.members[1]!, { state: 'done', result: '슬랙이 캔버스 공유를 냈어요. https://example.com/b' }) })
     const after: World = await setup(async (_request, _turn, extra) => report(after, extra), true, undefined, undefined, before.paths)
@@ -170,7 +170,7 @@ it('an owed late part survives a restart: its report comes once if it had ended,
     if (died) await updateTask(after.paths, id, t => { failOnRestart(t.team!, new Date().toISOString()) })
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', team: { lateDone: true } }))
-    expect((await first(after)).result).toBe(died ? '슬랙 쪽은 끝까지 못 찾았어요.' : '서연이 찾아봤는데, 슬랙이 캔버스 공유를 냈어요. [example](https://example.com/b)')
+    expect((await first(after)).result).toBe(died ? '슬랙 쪽은 끝까지 못 찾았어요.' : '서연: 슬랙이 캔버스 공유를 냈어요. [example](https://example.com/b)')
     // Once: a second request starts nothing.
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(() => expect(after.runner.activeChannels()).toEqual([]))
