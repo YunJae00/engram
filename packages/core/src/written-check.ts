@@ -56,14 +56,17 @@ export function readProblems(raw: string | undefined, rewrite = false): WrittenP
 export const problemsNote = (draft: string, problems: readonly WrittenProblem[]): string =>
   `\nYour earlier draft was: ${JSON.stringify(draft)}\nA check against the data found these problems in it: ${JSON.stringify(problems)}\nWrite it again in the same form with every one of them fixed: a sentence that contradicts the data says what the data says, a state the data marks is said, no question to the person about what the team can do itself and no sentence about how the work was done, and every constraint of the earlier ask kept.`
 
-const within = async <T>(work: Promise<T>, ms: number): Promise<T | undefined> => {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try { return await Promise.race([work.catch(() => undefined), new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })]) } finally { clearTimeout(timer) }
+// stack-14: a stop ("멈춰") ends a wait at once, like its deadline (GROKBOT rule 4).
+const within = async <T>(work: Promise<T>, ms: number, signal?: AbortSignal): Promise<T | undefined> => {
+  let timer: ReturnType<typeof setTimeout> | undefined, onAbort = (): void => undefined
+  try {
+    return await Promise.race([work.catch(() => undefined), new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); onAbort = () => resolve(undefined); signal?.addEventListener('abort', onAbort, { once: true }) })])
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort) }
 }
 
 /** Asks the quick model for the problems of a draft within `ms`; undefined when no verdict came in time. */
-export async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number): Promise<WrittenProblem[] | undefined> {
-  return readProblems(await within(check(checkPrompt(input, draft), ms), ms), input.rewrite)
+export async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number, signal?: AbortSignal): Promise<WrittenProblem[] | undefined> {
+  return readProblems(await within(check(checkPrompt(input, draft), ms), ms, signal), input.rewrite)
 }
 
 export type CheckOutcome = 'unchecked' | 'clean' | 'rewritten' | 'refused'
@@ -80,17 +83,19 @@ export async function checkedWrite(input: CheckInput & {
   due: number
   now?: () => number
   log?: (outcome: CheckOutcome, problems: readonly WrittenProblem[]) => void
+  /** The person's stop: from then on there is no time left. */
+  signal?: AbortSignal
 }): Promise<string | undefined> {
-  const now = input.now ?? Date.now, left = (): number => input.due - now(), log = input.log ?? (() => undefined)
+  const now = input.now ?? Date.now, signal = input.signal, left = (): number => signal?.aborted ? 0 : input.due - now(), log = input.log ?? (() => undefined)
   if (!input.check || left() < CHECK_MIN_MS) { log('unchecked', []); return input.draft }
-  const problems = await writtenProblems(input.check, input, input.draft, left())
+  const problems = await writtenProblems(input.check, input, input.draft, left(), signal)
   if (!problems) { log('unchecked', []); return input.draft }
   if (!problems.length) { log('clean', []); return input.draft }
   // The draft is known wrong: from here every failure is the host's fallback, never the draft.
   if (left() < 2 * CHECK_MIN_MS) { log('refused', problems); return undefined }
-  const again = await within(input.redo(problemsNote(input.draft, problems), left() - CHECK_MIN_MS), left() - CHECK_MIN_MS)
+  const again = await within(input.redo(problemsNote(input.draft, problems), left() - CHECK_MIN_MS), left() - CHECK_MIN_MS, signal)
   if (!again || left() < CHECK_MIN_MS) { log('refused', problems); return undefined }
-  const still = await writtenProblems(input.check, input, again, left())
+  const still = await writtenProblems(input.check, input, again, left(), signal)
   if (!still || still.length) { log('refused', still ?? problems); return undefined }
   log('rewritten', problems)
   return again

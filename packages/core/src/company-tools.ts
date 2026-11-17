@@ -1374,7 +1374,7 @@ let reportLog: (line: string) => void = () => undefined
 export const setReportLog = (log: (line: string) => void): void => { reportLog = log }
 /** The one answer for the person's thread: written by the quick model from the teammates' data when it answers in time and passes the
  * host's check, else the host's plain rendering of that data. A part with nothing to show is the host's own line after the message (c12a A2). */
-export async function writtenReport(input: { ask: string; members: readonly TeamMember[]; topics?: ReadonlyMap<string, string>; hired?: readonly string[]; write?: ReportWriter; timeoutMs?: number; /** The team result before this one in the thread. */ previous?: string | undefined; now?: Date }): Promise<string> {
+export async function writtenReport(input: { ask: string; members: readonly TeamMember[]; topics?: ReadonlyMap<string, string>; hired?: readonly string[]; write?: ReportWriter; timeoutMs?: number; /** The team result before this one in the thread. */ previous?: string | undefined; now?: Date; /** stack-14: the person's stop: the writer and its check end at once, on the host's rendering. */ signal?: AbortSignal | undefined }): Promise<string> {
   const { members, topics = new Map<string, string>(), hired = [] } = input, context: ReportContext = { previous: input.previous, now: input.now, ask: input.ask }
   const fallback = mergedReport(members, topics, hired), ms = input.timeoutMs ?? writerMs(members, input.now?.getTime()), began = Date.now()
   const all = shownParts(members), log = (writer: string): void => reportLog(`writer=${writer} ms=${Date.now() - began} parts=${all.length} missing=${all.filter(missing).length} outcomes=${all.map(m => `${m.role}:${partOutcome(m)}`).join(',')}`)
@@ -1382,7 +1382,7 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   const write = input.write, prompt = reportPrompt(input.ask, members, topics, context)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })
+    const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
     const raw = await Promise.race([write(prompt, ms), late])
     if (raw === undefined) { log('late'); return fallback }
     const out = reportCheck(raw, members)
@@ -1399,7 +1399,7 @@ export async function writtenReport(input: { ask: string; members: readonly Team
       ...(input.previous?.trim() ? { teamMessageBefore: clip(input.previous, 600) } : {}),
     }
     const text = await checkedWrite({
-      data, ask: input.ask, draft: out.text, check: write, due: began + ms, log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
+      data, ask: input.ask, draft: out.text, check: write, due: began + ms, ...(input.signal ? { signal: input.signal } : {}), log: (outcome, problems) => { checked = outcome; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
       redo: async (note, left) => { const again = reportCheck(await write(prompt + note, left), members); return 'text' in again ? again.text : undefined },
     })
     if (text === undefined) { log(`refused:meaning:${kinds}`); return fallback }
@@ -1518,7 +1518,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       const asking = reports.filter(m => m.state === 'waiting')
       if (asking.length && !reports.some(m => m.result && m.review?.ok)) return formatAsk(asking.map(m => `${m.role}: ${m.result ?? ''}`).join('\n'), [])
       // Words only: the host's own merge is the answer (the call closed the turn). Someone still asking is said in their own line.
-      if (wanted.every(one => !one.make)) return [await writtenReport({ ask: context.task, members: reports.filter(m => m.state !== 'waiting'), hired: lines, ...(host.write ? { write: host.write } : {}) }), ...asking.map(m => `${m.role}: ${m.result ?? ''}`)].join('\n\n')
+      if (wanted.every(one => !one.make)) return [await writtenReport({ ask: context.task, members: reports.filter(m => m.state !== 'waiting'), hired: lines, ...(host.write ? { write: host.write } : {}), signal: context.signal }), ...asking.map(m => `${m.role}: ${m.result ?? ''}`)].join('\n\n')
       return JSON.stringify({
         ...(lines.length ? { added: lines } : {}),
         reports: reports.map(m => ({ who: m.role, state: m.review ? (m.review.ok ? 'done' : 'failed') : m.state, result: m.result ?? '', ...(m.sources?.length ? { sources: m.sources } : {}), ...(m.files?.length ? { files: m.files } : {}), ...(m.state === 'waiting' ? { id: m.id, ask: m.result ?? '' } : {}) })),
