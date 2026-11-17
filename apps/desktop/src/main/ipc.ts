@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -2904,6 +2904,10 @@ export function registerIpc(ctx: VaultContext): void {
         const decks = retitle ? earlierOutputs.filter(output => /\.pptx$/i.test(output.name)) : []
         const retitled = retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool, { task: request.message, signal }, threadKorean(request.message, request.history ?? [])) : undefined
         if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }
+        // c10c F1: one folder sorted by kind is moved here through the turn's own file_move, in one call (desk-lane.ts sortByKind); any other
+        // tidy ask, an English thread or anything file_move refuses goes to the model.
+        const sorted = !handed && kind === 'tidy' && threadKorean(request.message, request.history ?? []) ? await sortByKind(request.message, paths.workspace, everyTool.find(tool => tool.name === 'file_move'), { task: request.message, signal }) : undefined
+        if (sorted) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kind-sort', moved: (sorted.steps[0]!.args['moves'] as unknown[]).length })) }
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
         // A lookup turn shows its answer, never the notes it writes between calls.
@@ -2939,7 +2943,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (!searched) laneSearches.delete(channel)
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
           : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
-          : retitled ? { ...retitled, fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {
+          : retitled ? { ...retitled, fellBack: false } : sorted ? { ...sorted, fellBack: false } : await lookup.run(async (laneAsk, roundSignal, again) => {
           if (again) { flog('chat-phase', JSON.stringify({ channel, phase: 'lane-swap', ms: Date.now() - nativeSince })); searched = await searchFor(laneAsk, roundSignal) }
           return runComet(
           {
