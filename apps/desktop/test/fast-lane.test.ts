@@ -334,6 +334,13 @@ it('c7 L2: an answer that is not a failure report is left alone; with nothing he
   const fine = '11월 16일 종가 기준 155.26달러예요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
   expect(gaveUp(fine)).toBe(false)
   expect(gaveUp('픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.')).toBe(false)
+  // c7a r2: a link beside the failure line does not make it an answer; with results held it is written from them.
+  const linked = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
+  expect(gaveUp(linked)).toBe(true)
+  expect(gaveUp('엔비디아 주가를 가져오지 못했어요. https://search.naver.com/search.naver?query=x')).toBe(true)
+  expect(await heldAnswer(linked, { ask: '엔비디아 오늘 주가 알려줘', held: ['엔비디아 155.26 USD'], korean: true, write: async () => '155.26달러예요.' })).toBe('155.26달러예요.')
+  // A list with one part missing is an answer, not a give-up.
+  expect(gaveUp('세 건 찾았고 나머지 둘은 찾지 못했어요.\n1. 업스테이지가 1,500억 원 투자받았대요. [글로벌경제](https://example.com/a)\n2. 뤼튼이 300억 원 유치했어요. [전자신문](https://example.com/b)')).toBe(false)
   let asked = 0
   expect(await heldAnswer(fine, { ask: '엔비디아 오늘 주가 알려줘', held: [RESULTS], korean: true, write: async () => { asked++; return 'x' } })).toBe(fine)
   expect(asked).toBe(0)

@@ -81,7 +81,9 @@ export async function firstSearch(message: string, search: AgentTool | undefined
 }
 // c7 L2: "엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요." An answer that only says it could not get it.
 const GAVE_UP = /가져오지 못|불러오지 못|확인하지 못|확인이 안|찾지 못했|확인되는 대로|다시 알려\s?드릴게요|잠시 후 다시|\b(?:could ?n[o']t|was unable to|unable to) (?:get|fetch|retrieve|find|load)\b/i
-export const gaveUp = (answer: string): boolean => answer.length <= 300 && !/https?:\/\//.test(answer) && GAVE_UP.test(answer)
+// c7a r2: a link beside the failure line ("…가져오지 못했어요. [네이버 증권](…)") made it pass as an answer. A link is not an answer: the
+// test reads the words without their links. A list or a table is one (some found, one part missing), so it is never a give-up.
+export const gaveUp = (answer: string): boolean => { const words = answer.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, ''); return words.length <= 300 && !/^\s*(?:\d+[.)]|[-*|])\s?\S/m.test(words) && GAVE_UP.test(words) }
 /**
  * The solo lookup's finished answer. One that only reports a failure never reaches the thread while results are held: it is written
  * from them by the quick model (write). With nothing held, or no such writer, the answer says in one plain sentence what could not be

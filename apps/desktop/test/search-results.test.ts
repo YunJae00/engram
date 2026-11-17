@@ -339,6 +339,10 @@ it('c7 R3: a counted news ask gets the rows whose title names the event first, t
   for (const title of ['대학기술지주 투자 포트폴리오 성과…리벨리온 인수 사례로 언급', '국내 AI 스타트업, 비즈니스엑스포 계기 미국 벤처투자자 대규모 투자 유치', 'AI 스타트업 투자 유치 포럼 개최', '○○, 시리즈B 투자 유치 추진', '장관, AI 스타트업 방문해 투자 확대 약속']) expect(eventRank(titled(title), ask), title).toBe(0)
   // Neither: kept in the middle. Another kind of ask is not ranked at all.
   expect(eventRank(titled('엔비디아 AI 스타트업 투자 내역 공개'), ask)).toBe(1)
+  // c7a r2: a country, a region or a word for who invested is nobody's name, so the title names no funded company.
+  for (const title of ['국내 AI 스타트업 미국 투자 유치', 'AI 스타트업, 해외 벤처투자자 대규모 투자 유치', '국내 스타트업 잇단 투자 유치 훈풍']) expect(eventRank(titled(title), ask), title).toBe(1)
+  expect(eventRank({ title: '국내 AI 스타트업 미국 투자 유치', url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(1)
+  expect(eventRank(titled('뤼튼, 미국서 300억 원 투자 유치'), ask)).toBe(2)
   expect(eventRank(titled('AI 스타트업 투자 유치 포럼 개최'), '요즘 AI 신제품 뉴스 5개')).toBe(1)
 
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })

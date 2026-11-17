@@ -263,12 +263,16 @@ export const withoutRepeats = (rows: SearchResult[], query: string): SearchResul
 const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp][] = [
   [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|추진|검토|나선다|목표|언급|사례/i],
 ]
+// c7a r2: "국내 AI 스타트업 미국 투자 유치" ranked first: "미국" was counted as the company funded. A country, a region or a word for who or
+// how much is nobody's name.
+// shortcut: a closed word list, no name recognition; a describing word it lacks still passes as a name. Use a tagger if that shows.
+const NO_NAME = /^(미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
 export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
   const kind = EVENTS.find(([words]) => words.test(ask))
   if (!kind) return 1
   if (kind[2].test(row.title)) return 0
   const asked = nameWords(ask)
-  return kind[1].test(row.title) && nameWords(row.title).some(word => !asked.some(one => alike(word, one))) ? 2 : 1
+  return kind[1].test(row.title) && nameWords(row.title).some(word => !NO_NAME.test(word) && !asked.some(one => alike(word, one))) ? 2 : 1
 }
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
