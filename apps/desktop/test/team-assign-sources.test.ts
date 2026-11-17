@@ -93,7 +93,8 @@ it('c4: agents stopped before they wrote anything still fill their rows from wha
   // c11a: no report block, so no data and no rows filled from read text: each part is labeled unfinished, with a named link to where it looked.
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n')).toContain(`${topic}(${who}): 이번엔 끝까지 못 봤어요. 보던 곳은 [네이버 검색](${address(`${topic} 새 기능 업데이트`)})`)
   expect(answer).not.toMatch(/추가로 검색|\[출처\]/)
-  expect((await w.task()).team!.members.map(m => [m.state, m.read])).toEqual([['released', true], ['released', true], ['released', true]])
+  // c11a: a teammate's result never holds the rows it read (no prose or rows become items), so `read` stays unset.
+  expect((await w.task()).team!.members.map(m => [m.state, m.read])).toEqual([['released', undefined], ['released', undefined], ['released', undefined]])
 })
 
 // stack-6 (c6b run, C3): each teammate made its first search call at 11.4 s, past the limit for starting one, and the thread read
@@ -105,5 +106,5 @@ it('stack-6: teammates that never got to search still fill their rows, from the 
   // c11a: no report block, so no data and no rows filled from read text: each part is labeled unfinished, with a named link to where it looked.
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n')).toContain(`${topic}(${who}): 이번엔 끝까지 못 봤어요. 보던 곳은 [네이버 검색](${address(`${topic} 새 기능 업데이트`)})`)
   expect(answer).not.toMatch(/추가로 검색|\[출처\]/)
-  expect((await w.task()).team!.members.map(m => [m.query, m.read])).toEqual([['노션 새 기능 업데이트', true], ['슬랙 새 기능 업데이트', true], ['리니어 새 기능 업데이트', true]])
+  expect((await w.task()).team!.members.map(m => [m.query, m.read])).toEqual([['노션 새 기능 업데이트', undefined], ['슬랙 새 기능 업데이트', undefined], ['리니어 새 기능 업데이트', undefined]])
 })
