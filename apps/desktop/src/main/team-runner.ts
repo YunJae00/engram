@@ -288,7 +288,7 @@ export function teamRunner(deps: {
       return [...teamHireTools(host), assignTool(paths, {
         ...host,
         later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
-        ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: REPORT_WRITER_MS }) } : {}),
+        ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) } : {}),
         // The job that agent is on right now in this thread, whichever task of the thread it belongs to.
         attach: async (botId, then) => {
           for (const [key, one] of live) {

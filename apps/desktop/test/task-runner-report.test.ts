@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { lateShown, listTasks, logTask, markLate, updateTask, type TaskTeam, type TeamMember } from 'core'
+import { employeesReport, failOnRestart, lateShown, listTasks, logTask, markLate, updateTask, type TaskTeam, type TeamMember } from 'core'
 import { done, setup } from './task-runner-fixture.js'
 import { awaitingEmployees } from '../src/shared/task-waits.js'
 
@@ -136,4 +136,44 @@ it('a part that ends while the report without it is being written still gets its
   await s.runner.report(again, 'bot-bot-1')
   await vi.waitFor(async () => expect((await listTasks(s.paths)).at(-1)).toMatchObject({ state: 'done', team: { lateDone: true } }))
   expect(s.sent.filter(one => one.extra?.report)).toHaveLength(4)
+})
+
+// c6 (stack-5 "For cycle 6"): the person was told "아직 찾는 중이에요. 끝나면 이어서 올릴게요." and the app was quit before that part's own line.
+// After the restart nothing reported it. What team-runner's resume does (fails the members that died, then asks for the report) is done by hand here.
+it('an owed late part survives a restart: its report comes once if it had ended, and one plain line if it died with the app', async () => {
+  const report = async (s: World, extra: { report?: true } | undefined, said = '답') => {
+    if (!extra?.report) return done(said)
+    const task = (await listTasks(s.paths)).find(t => t.state === 'running')!
+    const text = employeesReport(task) ?? ''
+    await updateTask(s.paths, task.id, lateShown)
+    return done(text)
+  }
+  for (const died of [false, true]) {
+    const before: World = await setup(async (_request, turn, extra) => {
+      if (turn === 1) { await seed(before, teamOf(employee('working', { brief: '노션 조사', topic: '노션' }), employee('working', { id: 'm2', role: '서연', brief: '슬랙 조사', topic: '슬랙', botId: 'seo', sessionKey: 'team-x-m2' }))); return done('지민, 서연한테 나눠 맡겼어요.') }
+      return report(before, extra)
+    })
+    await before.chat('노션, 슬랙 조사해줘. 지민, 서연한테 나눠서 시켜')
+    const id = (await first(before)).id
+    await finishMember(before)
+    await updateTask(before.paths, id, markLate)
+    await before.runner.report(id, 'bot-bot-1')
+    await vi.waitFor(async () => expect(await first(before)).toMatchObject({ state: 'waiting', team: { lateTold: true } }))
+    expect((await first(before)).result).toContain('| 슬랙 (서연) | 아직 찾는 중이에요. 끝나면 이어서 올릴게요. |')
+    // The quit. Either 서연 had ended and nobody had asked for her report yet, or she was at work and the follow-up's turn had just begun.
+    await updateTask(before.paths, id, t => { if (died) t.state = 'running'; else Object.assign(t.team!.members[1]!, { state: 'done', result: '슬랙이 캔버스 공유를 냈어요. https://example.com/b' }) })
+    const after: World = await setup(async (_request, _turn, extra) => report(after, extra), true, undefined, undefined, before.paths)
+    await after.runner.resume()
+    // No restart question: the task waits for the report as it did.
+    expect(await first(after)).toMatchObject({ state: 'waiting', awaitingEmployees: true })
+    expect((await first(after)).question).toBeUndefined()
+    if (died) await updateTask(after.paths, id, t => { failOnRestart(t.team!, new Date().toISOString()) })
+    await after.runner.report(id, 'bot-bot-1')
+    await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', team: { lateDone: true } }))
+    expect((await first(after)).result).toBe(died ? '슬랙 쪽은 끝까지 못 찾았어요.' : '서연이 찾아봤는데, 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
+    // Once: a second request starts nothing.
+    await after.runner.report(id, 'bot-bot-1')
+    await vi.waitFor(() => expect(after.runner.activeChannels()).toEqual([]))
+    expect(after.sent.filter(one => one.extra?.report)).toHaveLength(1)
+  }
 })

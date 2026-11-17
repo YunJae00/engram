@@ -484,6 +484,10 @@ export function taskRunner(deps: {
         // Checked for each task as its turn comes, and again on the stored task: the list is as old as the awaits above it.
         const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))
         if (mine()) continue
+        // c6: a report's turn was cut by the quit while a late part's own line was still owed ("끝나면 이어서 올릴게요"). That is no work to
+        // ask the person about: the task waits as it did before the turn, and team-runner's resume has its lead report what came, or
+        // that the part never did.
+        if (lateOwed(task)) { await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }); continue }
         const question = await restartQuestion(paths, task)
         await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
       }

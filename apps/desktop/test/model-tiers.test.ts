@@ -398,11 +398,11 @@ describe('instant first line', () => {
     expect(source('ipc.ts')).toMatch(/const hire = !handoff && company && chief && !turn\?\.report && request\.scheduled !== true \? plainHire\(request\.message\) : undefined/)
     // grokbar cycle 3: the background result is written by the quick model from the agents' texts (the host's own table is the fallback).
     expect(source('ipc.ts')).toMatch(/const reporting = !direct && company && turn\?\.report \? \(await listTasks\(paths\)\)\.find\(task => task\.state === 'running' && task\.botId === bot\.id\) : undefined/)
-    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(reporting, writer\)\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
+    expect(source('ipc.ts')).toMatch(/: !company \? undefined : turn\?\.report \? await employeesAnswer\(reporting, writer, lastTeamResult\(await listTasks\(paths\), reporting\)\)\n[^\n]*: summing \? await teamSummary\(paths, [^\n]*\n\s*: aboutEmployee\(request\.message, everyone, await listTasks\(paths\)\)/)
     // c5 C10: what the team did is written from the record by the quick model, behind the lane's waiting line; C5: every team result passes one refusal.
     expect(source('ipc.ts')).toMatch(/const summing = !direct && !!company && chief && !turn\?\.report && isTeamWorkAsk\(request\.message\) && \(request\.scheduled === true \|\| !isDutyAsk\(request\.message\)\)\n\s*if \(summing\) firstLineNow\(/)
     expect(source('ipc.ts')).toMatch(/if \(teamTask\) result\.answer = teamAnswer\(result\.answer, teamTask\)\n\s*if \(company && !result\.asked && \/https/)
-    expect(source('ipc.ts')).toMatch(/const writer = engine\.id === 'claude' && engine\.quick \? \(prompt: string\) => engine\.quick!\(prompt, \{ workdir: engineCwd\(paths\), timeoutMs: REPORT_WRITER_MS \}\) : undefined/)
+    expect(source('ipc.ts')).toMatch(/const writer = engine\.id === 'claude' && engine\.quick \? \(prompt: string, ms = REPORT_WRITER_MS\) => engine\.quick!\(prompt, \{ workdir: engineCwd\(paths\), timeoutMs: ms \}\) : undefined/)
   })
 
   // grokbar cycle 3 (C9): "바로 확인해 볼게요." came up at 0.6 s over an answer the host had ready at 1 s, because the host's answer was

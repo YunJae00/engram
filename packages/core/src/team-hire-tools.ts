@@ -394,8 +394,27 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
 const NOTHING_SAID = /찾지 못|못 찾|찾을 수 ?없|(?:소식|내용|정보|발표|결과|업데이트|자료|기능)[은는이가도]?\s*(?:전혀\s*|따로\s*|아직\s*)?(?:없|안 보|보이지 않)|확인되지 않|\b(?:no (?:new|recent|relevant)|nothing (?:new|relevant|found)|could ?n[o']t find|did ?n[o']t find)\b/iu
 export const foundNothing = (answer: string): boolean => !!answer && answer.length <= 400 && !/https?:\/\//.test(answer) && NOTHING_SAID.test(answer)
 // korean: the person's language, for the one line a cut-short result carries that the lead may show them.
+// c6 C3: 도윤's stored result was its answer, a rule line, the same answer again under a heading, its suggested replies, and a shopping row
+// it had only read. A teammate's answer is kept once: the replies block is for a person's thread, and the same answer again under a heading goes.
+const addressesIn = (text: string): string[] => (text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
+function saidOnce(answer: string, job: string): string {
+  const plain = answer.replace(/\s*```replies[^]*?(?:```|$)/g, '').trim(), [first = '', ...more] = plain.split(/\n\s*-{3,}\s*\n/), named = addressesIn(first)
+  // c6b r2: "12월 2일 행사 A … /events", a rule line, "12월 9일 행사 B … /events": the second event was dropped for citing the same page.
+  // c6b r3: "행사 B" of the same day from the same page, under "**다른 행사**", was still dropped: no new address, no new number. A half is the
+  // first again only in the shape that was seen: its heading is the job's own name ("리니어 신기능 조사 결과" for "리니어 신기능 조사"), and it
+  // gives no address and no number the first does not. Under any other heading it is another item.
+  // shortcut: another item under the job's own name with the same page and numbers is still dropped; ask the quick model if that shows up.
+  const numbers: string[] = first.match(/\d+/g) ?? []
+  const titled = (half: string): boolean => { const head = /^\s*(?:#{1,6}\s+(.+)|\*\*([^*\n]+)\*\*\s*(?:\n|$))/.exec(half); return !!head && (head[1] ?? head[2])!.replace(/[*_:：]/g, ' ').split(/\s+/).filter(Boolean).every(word => job.includes(word) || /^(?:결과|정리|요약|내용|조사)$/u.test(word)) }
+  const kept = more.filter(half => !titled(half) || addressesIn(half).some(url => !named.includes(url)) || (half.replace(/https?:\/\/\S+/g, ' ').match(/\d+/g) ?? []).some(n => !numbers.includes(n)))
+  return kept.length === more.length ? plain : [first.trim(), ...kept.map(half => half.trim())].join('\n\n---\n\n')
+}
+// A job that asks for a schedule, a list or a number of things, and a line that carries a day.
+const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|네|다섯)\s*(?:개|가지|건|편)(?![가-힣]*월)/iu
+const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
+const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
-  const said = outcome.answer.trim()
+  const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)
   // A member that was stopped, failed or asked keeps nothing of what it read (GROKBOT rule 4); one whose time or calls ran out does.
   const read = outcome.error || outcome.asked ? '' : (outcome.read ?? '').trim()
   // Cut short on a line about what it was going to do, or on a draft that only says what it could not do while results are in hand: that is no answer.
@@ -414,7 +433,11 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   // still read "이번엔 못 찾았어요." with no link. Having loaded a page is enough: the row links where it looked.
   const sources = sourcesOf(outcome.sources ?? [])
   const empty = !tail && (!!read || sources.length > 0) && !!member.lookup && foundNothing(answer)
-  const rest = !answer || empty ? read : tail ? read.split('\n').filter(line => !(line.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).some(url => answer.includes(url))).join('\n').trim() : ''
+  // c6 C3: a cut-short answer that gives its finding with the address it came from is the whole result: the rows under it were only read
+  // (a shopping row, a workshop on linear colliders) and their addresses reached the thread as that part's sources. The rows stay only
+  // under an answer that names no address, or under a schedule or a list that holds fewer dated items than the rows do (c4b r3).
+  const unreached = read.split('\n').filter(line => !addressesIn(line).some(url => answer.includes(url))).join('\n').trim()
+  const rest = !answer || empty ? read : tail && (!addressesIn(answer).length || (LIST_ASK.test(member.brief.split('\n')[0]!) && datedLines(answer) < datedLines(read))) ? unreached : ''
   if (rest) member.read = true
   if (empty) member.empty = true
   member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
