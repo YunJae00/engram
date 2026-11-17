@@ -37,6 +37,7 @@ const ANSWER_GRACE_MS = 1_000
 const ITEMS_ROUND_MS = 6_000
 // c14a: what a second items round adds, after the page itself gave no day for its entries.
 const OWN_PAGE = 'These pages did not give each entry its own day. Search each entry by its own name for its own page and day, and give those instead.'
+const HAVE_NOTE = 'These entries are already in hand; give only the others:'
 // c14a (cause E, T1: the 대구 part searched a garbled "대긵", came back empty and stayed empty): a lookup part that ends with no data while
 // at least this much of its time is left runs once more, from the person's own words, on the same deadline.
 const EMPTY_RETRY_MS = 10_000
@@ -308,14 +309,16 @@ export function teamRunner(deps: {
       // c14a (cause K, C5: "ACC 2026은 12월에 …" shown with no day after one round): one round was all it got. It loops on the same deadline;
       // a round after the first also looks each entry up by its own name, since the page itself did not give its day.
       // Each page gets at most those two rounds: a third one would ask the same again.
+      // c14a r2: a first round that gave some of a page's entries does not end it: the host cannot tell it gave them all (withItems), so
+      // the page still gets its by-name round, told which entries are in hand so it looks for the others.
       const opened = new Set<string>(), named = new Set<string>()
       for (;;) {
-        const pages = me.lookup ? listingPages(data).filter(url => !named.has(url) && !data!.facts.some(f => f.url === url && f.rest)) : []
+        const pages = me.lookup ? listingPages(data).filter(url => !named.has(url)) : []
         if (!data || !pages.length || left() < ITEMS_ROUND_MS || timedOut || control.signal.aborted) break
         draft = ''
-        const byName = pages.every(url => opened.has(url))
+        const byName = pages.every(url => opened.has(url)), have = data.facts.filter(f => !f.listing).map(f => `- ${f.text}`)
         for (const url of pages) (byName ? named : opened).add(url)
-        const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
+        const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
         // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
         data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge))
       }

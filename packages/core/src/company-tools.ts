@@ -1062,8 +1062,9 @@ export const itemsPrompt = (urls: readonly string[]): string => `Some of what yo
 // stack-12 (c12a r3 #2): what the round gives back is judged like any data (team-runner runs kindChecked on it): a fact still judged a
 // listing, or one that is a listing page itself given back, is no item. With no item left the page stays labeled as before.
 export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
-  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
-  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
+  // c14a r2: an entry looked up again by its own name comes back on its own page, worded anew: the same page is the same entry.
+  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).flatMap(f => [f.text, f.url]))
+  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text) && !known.has(f.url))
   if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
   return { ...data, facts: [...data.facts.filter(f => !f.listing), ...items, ...pages] }

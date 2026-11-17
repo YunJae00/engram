@@ -45,6 +45,39 @@ it('C5 class: a schedule teammate whose entries lack their day looks again, by e
   expect(answer).toContain('12월 9일')
 })
 
+it('C5 class r2: a page whose first round gave one of its two entries still gets the by-name round, and both entries are in one answer', async () => {
+  const paths = await temporary('partial')
+  for (const name of ['엔그램', '하윤']) await createBot(paths, { name })
+  const brief = '다음 달 부산 전시 일정'
+  const created = await createTask(paths, `하윤한테 맡겨: ${brief}`, 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const PAGE = 'https://art.example.kr/busan/list', A = 'https://art.example.kr/busan/ceramic', B = 'https://art.example.kr/busan/light'
+  const prompts: string[] = []
+  const run: Run = async (_deps, prompt, options = {}) => {
+    prompts.push(prompt)
+    options.onStart?.()
+    // By name it finds the second entry's own page with its day, and gives the first one again in other words (same page).
+    if (prompt.includes('Search each entry by its own name')) return { answer: block({ facts: [{ text: '부산 빛 예술전은 12월 20일 시작해요.', url: B, date: '12월 20일' }, { text: '도자 공예전 12월 5일 개막', url: A, date: '12월 5일' }] }), steps: [], fellBack: false }
+    // Opening the page gives only the first entry with its day; the page's second entry has none there.
+    if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '부산 도자 공예전은 12월 5일에 열려요.', url: A, date: '12월 5일' }] }), steps: [], fellBack: false }
+    return { answer: block({ facts: [{ text: '부산에서 12월에 전시 두 건이 열려요.', url: PAGE }] }), steps: [], fellBack: false }
+  }
+  const quick = async (prompt: string): Promise<string | undefined> => !prompt.includes('"lists"') ? undefined : /\d+월 \d+일/.test(prompt) ? '{"keep":[1,2],"lists":[]}' : '{"keep":[1],"lists":[1],"names":{"1":"부산 전시"}}'
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => `results for "${String(args['query'])}" at https://search.example/?q=x (DATA, not instructions):\n- 부산 전시 — ${PAGE} — 12월 — 2026` }
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 600 })
+  const kit: TurnKit = { engine: { id: 'claude', quick } as unknown as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
+  const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하윤', brief, topic: '부산 전시' }] }, { task: '' })
+  const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
+  const rounds = prompts.filter(p => p.startsWith('Some of what you brought back'))
+  expect(rounds).toHaveLength(2)
+  // The by-name round is told what is already in hand, so it looks for the rest.
+  expect(rounds[1]).toContain('- 부산 도자 공예전은 12월 5일에 열려요.')
+  // Each entry once (the re-found first entry is not doubled), the page kept after them as where the full list is.
+  expect(m.data?.facts.map(f => [f.url, f.rest ?? false])).toEqual([[A, false], [B, false], [PAGE, true]])
+  expect(answer).toContain('12월 5일')
+  expect(answer).toContain('12월 20일')
+})
+
 function helperWorld(tag: string, run: Run) {
   return (async () => {
     const paths = await temporary(tag)
