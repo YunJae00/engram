@@ -1046,7 +1046,10 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   const said = await judgedItems(brief.trim().slice(0, 400), data.facts.map(f => ({ text: f.text })), write, ms)
   if (!said) return data
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
-  const facts = data.facts.flatMap((f, i) => said.keep.includes(i + 1) ? [{ ...f, ...(said.lists.includes(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}) }] : [])
+  // c14a: an item the judge could not tell stays, as before for a teammate (there is no search loop here to look further); an item judged
+  // a listing or aggregate is a page of several like one in `lists` (stack-13 "For cycle 14"): both go to the teammate's items rounds.
+  const held = (n: number): boolean => said.keep.includes(n) || said.unsure.includes(n), several = (n: number): boolean => said.lists.includes(n) || said.listing.includes(n)
+  const facts = data.facts.flatMap((f, i) => held(i + 1) ? [{ ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}) }] : [])
   // None of the kind asked: said as a part that found nothing for it, with where it looked (partLines), never the wrong items.
   return facts.length ? { ...data, facts } : { ...data, facts: [], nothing: {} }
 }

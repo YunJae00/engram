@@ -26,7 +26,7 @@ test('c9a R3 (c13b): of the run\'s four rows for five asked, the verdict keeps t
   expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001'])
   expect(prompts[0]).toContain('벤처투자 12조6248억')
   const data = out.split('\n').find(line => line.startsWith('These rows were checked'))!
-  expect(data).toContain('Only 1 of the 5 asked for are here')
+  expect(data).toContain('1 of the 5 asked for were found')
   expect(data).not.toMatch(/[가-힣]/)
 })
 
@@ -39,7 +39,7 @@ test('c9a H6 (c13b): the same rows with three asked; the aggregate figure is a l
   const { out, rows } = await checked(r3Rows, ask, '{"keep":[1,2,3],"same":[],"listing":[2],"outside":[]}')
   expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001', 'https://biz.heraldcorp.com/article/10000003'])
   expect(out).not.toContain('벤처투자 12조6248억')
-  expect(out).toContain('Only 2 of the 3 asked for are here')
+  expect(out).toContain('2 of the 3 asked for were found')
 })
 
 test('c9a R3 (c13b): five rows for five asked that all fit reach the model whole; a trend row the verdict leaves out does not; another wording', async () => {
@@ -58,7 +58,7 @@ test('c9a R3 (c13b): five rows for five asked that all fit reach the model whole
   expect(all.out).toContain('They hold the 5 asked for: list 5 of them.')
   const four = await checked(rows, ask, '{"keep":[1,2,3,4],"same":[],"listing":[],"outside":[]}')
   expect(four.rows).not.toContain('https://e.example/5')
-  expect(four.out).toContain('Only 4 of the 5 asked for are here')
+  expect(four.out).toContain('4 of the 5 asked for were found')
   // A dead page goes too, whatever the verdict.
   expect((await checked(rows, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}', { dead: ['https://a.example/1'] })).rows).not.toContain('https://a.example/1')
 })
@@ -71,7 +71,7 @@ test('c9a r2 (c13b): search_web still hands every row over unmarked; with no rou
   expect(answer).toContain('https://news.mt.co.kr/2')
   const none = await checked(rows, ask, '{"keep":[],"same":[],"listing":[],"outside":[],"search":""}')
   expect(none.rows).toEqual([])
-  expect(none.out).toContain('None of the 3 asked for is here')
+  expect(none.out).toContain('None of the 3 asked for turned up')
   // search_web hands every dated row in the period over, none marked as background, and says the count.
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
@@ -134,5 +134,5 @@ test('c9a r3 (c13b): an article on the funded company is kept or left by the ver
   expect((await checked(rows, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[]}')).rows).toHaveLength(2)
   const dead = await checked(rows, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://www.etnews.com/2026111700005'] })
   expect(dead.rows).toEqual(['https://www.asiae.co.kr/article/2026111700001'])
-  expect(dead.out).toContain('Only 1 of the 3 asked for are here')
+  expect(dead.out).toContain('1 of the 3 asked for were found')
 })

@@ -115,7 +115,7 @@ describe('stack-11: Codex-cap findings', () => {
     const held = 'results for "x" at https://search.example/?q=x (DATA, not instructions):\n- 양극재 증설 — https://dead.example/a — x — 2026.11.12.\n- 음극재 수주 — https://news.example/b — x — 2026.11.13.'
     const judged = await checked(held, '이번 달 2차전지 소재 뉴스 2개만', '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://dead.example/a'] })
     expect(judged.rows).toEqual(['https://news.example/b'])
-    expect(judged.out).toContain('Only 1 of the 2 asked for are here')
+    expect(judged.out).toContain('1 of the 2 asked for were found')
     // What the model writes from those rows passes the net after writing unchanged.
     const answer = '이번 달엔 한 건만 나왔어요.\n\n1. 음극재 수주 소식이에요. [신문](https://news.example/b)'
     expect(await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)).toBe(answer)
