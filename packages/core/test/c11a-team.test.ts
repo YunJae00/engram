@@ -189,13 +189,15 @@ test('r2: the kind asked is judged once where the data comes in, so the host\'s 
   // Nothing of the kind: a part that found nothing for it, not the wrong item.
   expect((await kindChecked({ facts: facts.slice(1, 2).concat(facts[1]!) }, brief, async () => '{"keep":[]}'))?.nothing).toEqual({})
   // No model, a late one or a broken answer: nothing is judged by wording, the teammate's own judgment stands (stack-11, c11a r3 #2);
-  // one fact is never sent for a check.
+  // one fact is never sent for a check, unless the job asks for a list (c12a B3: a lone page that lists several is the list's whole answer).
   expect(await kindChecked({ facts }, brief)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual({ facts })
   let asked = false
-  await kindChecked({ facts: facts.slice(0, 1) }, brief, async () => { asked = true; return '{"keep":[]}' })
+  await kindChecked({ facts: facts.slice(0, 1) }, '강남 와인 시음회 하나 추천해줘', async () => { asked = true; return '{"keep":[]}' })
   expect(asked).toBe(false)
+  await kindChecked({ facts: facts.slice(0, 1) }, brief, async () => { asked = true; return '{"keep":[1]}' })
+  expect(asked).toBe(true)
 })
 
 // --- c11a round 3 (review r2). Wordings are not the harness's. ---

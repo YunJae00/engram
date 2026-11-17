@@ -265,11 +265,13 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   doyun!.data = reportData(block({ facts: [], nothing_in_period: {} }), doyun!, doyun!.sources, true)!
   seoyeon!.data = reportData(block({ facts: [{ text: '슬랙이 Huddles 요약을 냈어요.', url: 'https://slack.com/blog/huddles' }] }), seoyeon!, seoyeon!.sources, true)!
   const table = mergedReport([doyun!, seoyeon!])
-  expect(table).toContain('리니어 신기능 조사(도윤): 이번엔 새로 나온 게 없어요.')
+  // c12a B1: no part names were given here, so each part leads with its teammate, never the job title as a label.
+  expect(table).toContain('도윤이 봤는데 이번엔 새로 나온 게 없어요.')
+  expect(table).not.toContain('신기능 조사(')
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
   // The cut-short part's link is named by its site, never by the host's own "시간 한도" line under the address.
-  expect(table).toContain('슬랙 신기능 조사(서연): 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
+  expect(table).toContain('서연이 찾아 왔어요. 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
   expect(table).not.toContain('한도')
   expect(table).not.toContain('출처')
 })

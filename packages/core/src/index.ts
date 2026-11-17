@@ -85,7 +85,7 @@ export { addBotTask, appendBotTurn, archiveBotTranscript, createBot, deleteBot, 
 export { appendErrandRecord, readErrandJournal, type ErrandRecord } from './errand-journal.js'
 export { addRoutine, clearRoutinePendingWrite, fillSlots, listRoutines, markRoutineRun, removeRoutine, renameRoutine, routineBlock, routineSlots, routineStepLabel, routineWrites, runRoutine, validateRoutineSteps, type Routine, type RoutineBlock, type RoutineDriver, type RoutineReading, type RoutineRunOptions, type RoutineRunResult, type RoutineStep, type RoutineStepResult, type RoutineTarget } from './routine.js'
 export { detectLoop, parsePendingCall, runAgentLoop, type AgentLoopDeps, type AgentLoopOptions, type AgentLoopResult, type AgentLoopStep, type AgentTool } from './agent-loop.js'
-export { runComet, runToolSession, PLAN_RULE } from './agent-session.js'
+export { runComet, runToolSession, PLAN_RULE, ANSWER_NOW } from './agent-session.js'
 export { sessionShape } from './agent-session-shape.js'
 export { RESUME_FIELDS, resumeCheckpoint } from './agent-resume.js'
 export { readSidebarLayout, changeSidebarLayout, type SidebarLayout, type SidebarChange, type SidebarKind } from './sidebar-layout.js'
@@ -99,7 +99,7 @@ export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedul
 export { scheduleTool, scheduleWords, plainSchedule, type ScheduleDeps } from './schedule-tools.js'
 export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export * from './company-tools.js'
-export { backgroundOpen } from './delegated-tasks.js'
+export { backgroundOpen, datedText } from './delegated-tasks.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {
   factScore,

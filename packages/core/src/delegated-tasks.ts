@@ -28,7 +28,19 @@ export interface TaskApproval {
 export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done' | 'failed' | 'released'
 // One hidden worker hired for a part of the task; parentId null means the lead hired it.
 /** c11a: one thing a teammate found, as data: its page, and the site's name taken from what the host holds for that page (never "출처"). */
-export interface MemberFact { text: string; url: string; site: string; date?: string }
+/** listing: the quick check found it is not one item with what the job needs (a page that lists several, an item with only a year): it is
+ * shown labeled, never as an item (c12a B3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
+export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; name?: string }
+// c12a B2: a fact's date lives in its text (REPORT_RULE); `date` is metadata for sorting and period checks. Shown once: after the text,
+// in brackets, only when the text does not already state it, in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지": every
+// number of the date is in the text), or speaks of its own time relative to now ("이번 주말"). Numbers and date forms, not a phrase list.
+const RELATIVE_DAY = /오늘|어제|내일|모레|주말|[월화수목금토일]요일|(?:이번|다음|지난|저번)\s?(?:주|달)/u
+const numbers = (text: string): string[] => (text.match(/\d+/g) ?? []).map(n => String(Number(n)))
+export const datedText = (f: { text: string; date?: string | undefined }): string => {
+  const own = new Set(numbers(f.text)), date = f.date?.trim()
+  const stated = !date || (numbers(date).length > 0 && numbers(date).every(n => own.has(n))) || RELATIVE_DAY.test(f.text)
+  return stated ? f.text : f.text.replace(/([.!?]?)\s*$/u, ` (${date})$1`)
+}
 /** c11a: what a teammate handed back, as data the host never parses out of prose. A lookup gives facts (one per item for a list), or nothing
  * for the time asked with the newest thing it did see; a writer gives the deliverable's finished lines. note: their own one chat sentence. */
 export interface MemberData { facts: MemberFact[]; nothing?: { latest?: MemberFact }; items?: string[]; note?: string }
