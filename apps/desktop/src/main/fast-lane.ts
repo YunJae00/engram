@@ -252,11 +252,14 @@ export function listGap(answer: string, asks: readonly string[], held: readonly 
     if (!url || SEARCH_PAGE.test(url) || seen.has(url)) return false
     seen.add(url)
     if (!dated) return true
+    // c11b r2 (review #2: a 2025 row passed a "요즘" ask in 2026): the date must be inside the asked period, not only present. The search
+    // row's own date (its last one: titles may hold dates too) is the source; an item outside the rows needs a written, readable date.
     const own = WRITTEN_DATE.exec(line)?.[0], row = rows.find(one => one.includes(url))
-    return row ? !!own || WRITTEN_DATE.test(row) : !!own && !!resultDay(own, now) && inPeriod(own, period, now)
+    const date = row ? row.match(new RegExp(WRITTEN_DATE.source, 'gi'))?.at(-1) ?? own : own
+    return !!date && (!!row || !!resultDay(date, now)) && inPeriod(date, period, now)
   }).length
   if (good === asked && items.length === asked) return undefined
-  const need = dated ? 'its own article link (not a search page) and its date' : 'its own link (not a search page)'
+  const need = dated ? 'its own article link (not a search page) and its date, inside the period they asked for' : 'its own link (not a search page)'
   return items.length > asked && good >= asked
     ? `They asked for ${asked}; this answer lists ${items.length}. Keep the ${asked} that fit best.`
     : `They asked for ${asked}; ${good} of this answer's items each have ${need}, and the others do not or repeat one. Each item needs ${need}.`

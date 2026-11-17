@@ -51,18 +51,20 @@ describe('the answer is the model\'s last message, the same for every lane', () 
       return Object.assign(run(), { interrupt: async () => undefined })
     },
   } as unknown as SessionSdk)
-  // With nothing after the call the words before it stand: a reply said before a save ("…기억해 둘게요." then keep_in_mind) is the answer.
-  it('takes the last message after the last call; with none after it, the words before it stand', async () => {
-    for (const [after, expected] of [['10월 반도체 수출은 13% 늘었어요.', '10월 반도체 수출은 13% 늘었어요.'], ['', 'Looking for the export figures first, then I will list them.']] as const) {
+  // c11b r2 (review #3): with nothing after the call, the words before it are a note, never the answer (runToolSession then asks for one).
+  it('takes the last message after the last call; with none after it, the words before it are a note, not the answer', async () => {
+    for (const [after, expected] of [['10월 반도체 수출은 13% 늘었어요.', { answer: '10월 반도체 수출은 13% 늘었어요.' }], ['', { answer: '', note: 'Looking for the export figures first, then I will list them.' }]] as const) {
       const pool = new SessionPool()
       try {
         const result = await pool.run(job('반도체 수출 알려줘'), { sdk: sdk(after), binary: 'claude', workdir: 'C:/tmp', model: 'fixture' })
-        expect(result.answer).toBe(expected)
+        expect(result).toEqual(expected)
       } finally { pool.closeAll() }
     }
   })
   it('does the same for the ChatGPT runtime: a later message replaces an earlier one', () => {
     expect(src('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
+    // c11b r2: and words before an action are moved out of the answer into the note.
+    expect(src('codex-native.ts')).toContain("if (turn.answer) { turn.note = turn.answer; turn.answer = '' }")
   })
 })
 
@@ -123,4 +125,22 @@ describe('words said mid-work: a remark goes on, a change needs a named thing (H
     expect(asideShape('표로 보여줘', ask)).toBe('other')
     expect(swappedAsk(ask, '표로 해줘')).toBeUndefined()
   })
+})
+
+// c11b r2 (review #2): a dated search row passed whatever its date; a November 2025 row answered a "요즘" ask in November 2026.
+it('c11b r2: an item counts only when its date, from its search row or as written, is inside the period the ask names', () => {
+  const now = new Date('2026-11-17T12:00:00+09:00')
+  const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
+  // The review's own repro, then other wordings and periods.
+  expect(listGap('1. 작년 기사 [뉴스](https://news.example/old)', ['요즘 국내 핀테크 투자 뉴스 1개만'], [rows], now)).toMatch(/^They asked for 1; 0 of .*inside the period/)
+  expect(listGap('1. 새 기사 [뉴스](https://news.example/new)', ['요즘 국내 핀테크 투자 뉴스 1개만'], [rows], now)).toBeUndefined()
+  // A date written in the answer does not overrule the row's own date.
+  expect(listGap('1. 작년 기사 (11월 15일) [뉴스](https://news.example/old)', ['최근 배터리 업계 소식 1건'], [rows], now)).toMatch(/0 of/)
+  // A date inside a title is not the row's date.
+  expect(listGap('1. 옛 기사 [뉴스](https://news.example/title)', ['이번 달 조선업 기사 1개'], [rows], now)).toMatch(/0 of/)
+  // An item outside the rows: its written date must be readable and in the period.
+  expect(listGap('1. 바깥 기사 2025.12.01 [뉴스](https://else.example/a)', ['요즘 게임 업계 소식 1개'], [rows], now)).toMatch(/0 of/)
+  expect(listGap('1. 바깥 기사 2026.11.16 [뉴스](https://else.example/b)', ['요즘 게임 업계 소식 1개'], [rows], now)).toBeUndefined()
+  // No period word in a news ask: the default year window still drops a two-year-old row.
+  expect(listGap('1. 옛 기사 [뉴스](https://news.example/title)', ['조선업 기사 1개 찾아줘'], [rows], now)).toMatch(/0 of/)
 })
