@@ -821,8 +821,9 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
     if (!draft) return plainSummary(jobs, span)
     // c14b (cause W; C10 named 서연, who had left, as on the team): the summary is checked for meaning against the record it was written from,
     // inside the same writer time; a "left", "unfinished" or "working" flag the text does not say is a problem the host never matched words for.
+    // stack-14: the outcome is logged like the team answer's (C10 left no trace of what its check said).
     const text = await checkedWrite({
-      data: jobs, ask: input.message, draft, check: write, due,
+      data: jobs, ask: input.message, draft, check: write, due, log: (outcome, problems) => reportLog(`summary=${outcome}${problems.length ? `:${[...new Set(problems.map(p => p.kind))].join('+')}` : ''} jobs=${jobs.length} left=${jobs.filter(job => job.left).length}`),
       redo: async (note, left) => summaryOk(((await write(prompt + note, left)) ?? '').replace(/^```\w*\n?|\n?```$/g, '').trim(), jobs, everyone, span),
     })
     return text ?? plainSummary(jobs, span)
