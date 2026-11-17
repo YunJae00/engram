@@ -94,18 +94,36 @@ describe('c10c F1: the host sorts one folder by kind', () => {
 })
 
 describe('c10c Q4: reshaping the last reply is quick', () => {
-  it('matches a short reshape of the last reply and not new work', () => {
-    for (const ask of ['방금 말한 거 더 짧게', '더 짧게', '짧게 줄여줘', '다시 써줘', '더 정중하게', '영어로', '한 줄로', '방금 말한 거 한 줄로 줄여줘', '좀 더 부드럽게 다시 써줘', 'make it shorter'])
-      expect(reshapeAsk(ask), ask).toBe(true)
-    for (const ask of ['더 짧은 회의록 만들어줘', '영어로 메일 보내줘', '민호한테 더 정중하게 보내줘', 'fixtures/meeting-notes.md 짧게 정리해줘', '엔비디아 주가 다시 찾아줘', '이거 영어로 워드 파일 만들어줘', '1년은 몇 초야?', '고마워'])
-      expect(reshapeAsk(ask), ask).toBe(false)
-    // The global file-name pattern is matched without carrying state from one call to the next.
-    expect([reshapeAsk('더 짧게'), reshapeAsk('더 짧게')]).toEqual([true, true])
+  // c10c r3: no word list decides it. The quick voice reads the message next to the last reply; the host only keeps out what cannot be a
+  // reshape. Wordings below are not the harness's ("방금 답을 압축해줘" is the reviewer's).
+  const LAST = '엔비디아 종가는 135.2달러로, 전일보다 2.1% 올랐어요. [네이버 금융](https://finance.naver.com)'
+  it('asks the quick voice with the last reply and the message, and takes only its YES', async () => {
+    const asked: string[] = []
+    const voice = (answer: string) => async (prompt: string): Promise<string> => { asked.push(prompt); return answer }
+    for (const ask of ['방금 답을 압축해줘', '핵심만 남겨봐', '반말로 해봐', '표로 바꿔줄래', '세 단어로'])
+      expect(await reshapeAsk(ask, LAST, voice('YES')), ask).toBe(true)
+    expect(asked[0]).toContain(LAST)
+    expect(asked[0]).toContain('"방금 답을 압축해줘"')
+    expect(asked[0]).toContain('Reply with exactly YES or NO.')
+    expect(await reshapeAsk('그럼 애플은?', LAST, voice('NO'))).toBe(false)
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('Yes.'))).toBe(true)
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('NONE'))).toBe(false)
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, async () => { throw new Error('late') })).toBe(false)
+    expect(await reshapeAsk('방금 답을 압축해줘', LAST, undefined)).toBe(false)
+  })
+
+  it('does not ask the voice when the message cannot be a reshape', async () => {
+    let calls = 0
+    const voice = async (): Promise<string> => { calls++; return 'YES' }
+    for (const [ask, last] of [['방금 답을 압축해줘', undefined], ['방금 답을 압축해줘', '  '], ['fixtures/meeting-notes.md 짧게', LAST], ['report.docx 줄여줘', LAST], ['/짧게', LAST], ['짧게\n영어로', LAST], ['가'.repeat(41), LAST]] as const)
+      expect(await reshapeAsk(ask, last, voice), ask).toBe(false)
+    expect(calls).toBe(0)
   })
 
   it('runs on the fast tier at low effort, with no tools, no shell and only the recent turns', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain('const reshape = !company && !lane && plainAsk && !handed && reshapeAsk(request.message) && !!lastReplyOf(')
+    expect(ipc).toContain('const reshape = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message)')
+    expect(ipc).toContain('&& await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: RESHAPE_MS }) : undefined)')
     expect(ipc).toContain('deskMenu = reshape ? new Set<string>() : kind && DESK_TOOLS[kind]')
     expect(ipc).toMatch(/\.\.\.\(desk \? \{ modelHint: 'smart' as const[^\n]*\n[^\n]*\n\s*\.\.\.\(reshape \? \{ modelHint: 'fast' as const, light: true \} : \{\}\),/)
     expect(ipc).toContain('history: (reshape ? savedHistory.slice(-RESHAPE_TURNS) : savedHistory)')

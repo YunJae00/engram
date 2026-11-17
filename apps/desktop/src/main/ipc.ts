@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_NOTE, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, RESHAPE_NOTE, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -2879,7 +2879,9 @@ export function registerIpc(ctx: VaultContext): void {
         const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined
         const short = kind === 'ask' || kind === 'question'
         // c10c Q4: "방금 말한 거 더 짧게" reshapes the last reply: fast tier, low effort, no tools, only the recent turns (desk-lane.ts reshapeAsk).
-        const reshape = !company && !lane && plainAsk && !handed && reshapeAsk(request.message) && !!lastReplyOf(savedHistory.filter(one => !one.progress && !one.error))?.trim()
+        // c10c r3: the quick voice judges it from the message and the last reply; only a plain ask no other route took is asked, and only after the first line.
+        const reshape = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message) && !plainReply(request.message) && !onlyTells(request.message) && !quickQuestion(request.message)
+          && await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: RESHAPE_MS }) : undefined)
         const laneNote = company ? '' : lane ? `${LANE_NOTE} ${laneToday()}` : !plainAsk ? '' : reshape ? RESHAPE_NOTE : plainReply(request.message) ? SMALL_TALK_NOTE : short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : ''
         if (reshape) flog('chat-phase', JSON.stringify({ channel, phase: 'reshape' }))
         if (lane) flog('chat-phase', JSON.stringify({ channel, phase: 'fast-lane' }))

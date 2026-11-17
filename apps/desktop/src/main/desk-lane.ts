@@ -477,11 +477,26 @@ export async function sortByKind(message: string, workspace: string, move: MoveT
 }
 
 // c10c Q4 (stack9): "방금 말한 거 더 짧게" took 8.2 s of 8: the work model at the settings' effort with 7 tools and a 42k-char prompt, first token
-// at 7.1 s, to shorten one line it had just written. A short message that only reshapes the last reply runs on the fast tier at low effort,
-// with no tools and only the recent turns (ipc.ts). Something that makes a file, sends, searches or names a file is other work.
-// shortcut: a closed word list; a reshape it misses only keeps the slower route.
-const RESHAPE = /(?:더\s*)?(?:짧게|길게|간단하게|간단히|간략하게|짧고|쉽게|자세하게|자세히|정중하게|공손하게|부드럽게|친근하게|편하게|캐주얼하게|격식\s*있게)|다시\s*(?:써|작성|말해|정리)|(?:영어|한국어|한글|일본어|중국어)로|한\s*(?:줄|문장)로|두\s*(?:줄|문장)로|줄여|\b(?:shorter|longer|simpler|more (?:polite|formal|casual)|rephrase|rewrite|in (?:english|korean))\b/i
-const RESHAPE_OUT = /만들|보내|메일|전송|파일|저장|검색|찾아|알아봐|조사|올려|게시|슬랙|카톡|한테|에게|피피티|ppt|워드|엑셀|문서|회의록|보고서|슬라이드|맡겨|시켜|기억|\bmake (?:a|an|the|me)\b|\b(?:send|mail|save|search|find|file|post)\b/i
+// at 7.1 s, to shorten one line it had just written. A message that only reshapes the last reply runs on the fast tier at low effort, with no
+// tools and only the recent turns (ipc.ts).
+// c10c r3: a closed word list decided which messages those were, and "방금 답을 압축해줘" was not one. Whether a message only asks for the last
+// reply in another form is a question about its meaning next to that reply, so the quick voice answers it (reshapePrompt), reading both. The host
+// only keeps out what cannot be one: no reply yet, a long or multi-line message, a slash command, a named file. A late or failed voice is a no:
+// the turn keeps its usual route. The reshape turn has no tools, so a wrong yes can only write text, never send, save or search.
 export const RESHAPE_MAX = 40
-export const reshapeAsk = (message: string): boolean => { const text = message.trim(); return !!text && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && RESHAPE.test(text) && !RESHAPE_OUT.test(text) && !text.match(NAMED_FILE) }
+export const RESHAPE_MS = 2500
+export const reshapeCandidate = (message: string, lastReply: string | undefined): boolean => {
+  const text = message.trim()
+  return !!text && !!lastReply?.trim() && [...text].length <= RESHAPE_MAX && !text.includes('\n') && !text.startsWith('/') && !text.match(NAMED_FILE) && !/[\w-]+\/[\w.-]+/.test(text)
+}
+export const reshapePrompt = (message: string, lastReply: string): string => [
+  'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
+  'Reply YES if they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject.',
+  'Reply NO if they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or if you cannot tell.',
+  'Reply with exactly YES or NO.',
+].join('\n')
+export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<boolean> {
+  if (!quick || !reshapeCandidate(message, lastReply)) return false
+  return quick(reshapePrompt(message, lastReply!)).then(raw => /^\W*yes\b/i.test(raw.trim()), () => false)
+}
 export const RESHAPE_NOTE = 'They want your last reply in another shape. Write it again as asked, with the same facts and nothing else: no tools, no lead-in about what you changed.'
