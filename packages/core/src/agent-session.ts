@@ -54,6 +54,9 @@ const CLOSE_GRACE_MS = 150
 const CLOSE_TAIL_MS = 15_000
 // shortcut: words that keep coming past this many rewrites are answered as their own turn, raise it if people steer more often.
 const LATE_STEER_ROUNDS = 3
+// c11b: one more round for a gap the host found in the answer's shape: two calls (a search, or a read of a few pages), then the answer.
+const RECHECK_CALLS = 2
+export const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, say in one plain clause how many you found.`
 export function lateSteer(draft: string, said: string[], replied = false): string {
   return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
 }
@@ -326,6 +329,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
       exhausted = false; extended = false; startedCalls = 0; working = Date.now()
       session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
+    }
+    const gap = closed === undefined && !signal.aborted && !session.error && !asked ? options.recheck?.(session.answer) : undefined
+    if (gap) {
+      const draft = session.answer
+      options.onReset?.(true)
+      exhausted = false; extended = false; startedCalls = Math.max(0, allowance() - RECHECK_CALLS); working = Date.now()
+      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${recheckNote(draft, gap)}` }), ended])
+      if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
     }
   } finally {
     options.onSteerable?.(null)
