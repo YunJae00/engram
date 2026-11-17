@@ -248,3 +248,14 @@ it('stack-6: "할 일만" gets the tasks only: the 미결 block and the lone hea
   expect(onlyAsked('fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', shown)).toBe(shown)
   expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)")
 })
+
+// stack-6: where c6c's host corrections may act, pinned on the merged tree (stack6-brief section 1).
+it('stack-6: the repeat check is the quick voice\'s only, and the block corrections are a desk note\'s only', () => {
+  const first = source('first-line.ts'), ipc = source('ipc.ts')
+  // The team lane's host-made line ("지민한테 맡겼어요.", firstLineNow) and the reply to a mid-work message (aside-ipc asideReply) never pass it.
+  expect(first.slice(first.indexOf('export function firstLineNow'))).not.toContain('saidBefore')
+  expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
+  // Never on a team result, a lookup or a document: each call hangs on the desk kind, which those turns do not have.
+  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked']) expect(ipc.split('\n').filter(line => line.includes(`${fix}(`) && !line.includes('import'))).toEqual([expect.stringContaining(`if (kind === 'note' && !result.asked) result.answer = ${fix}(routed, result.answer)`)])
+  expect(ipc.split('\n').filter(line => line.includes('tidyCounts(') && !line.includes('import'))).toEqual([expect.stringContaining("if (kind === 'tidy' && !result.asked)")])
+})
