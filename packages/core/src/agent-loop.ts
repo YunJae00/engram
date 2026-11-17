@@ -140,10 +140,14 @@ export interface AgentLoopOptions {
   // The host already answered words said mid-turn with a line of its own: the model takes them in without writing another.
   steerReplied?: boolean
   // c11b: the host's check of the finished answer against the ask's shape (a count, a link and a date per item): a gap it names gets one
-  // more round, with the draft and the gap said, and its calls and time again. undefined: the answer stands.
-  recheck?(answer: string): string | undefined
+  // more round, with the draft and the gap said, and its calls and time again. undefined: the answer stands. c12b: it may wait on a quick
+  // model's verdict on the items (desktop fast-lane itemCheck); a stop does not wait for it.
+  recheck?(answer: string): string | undefined | Promise<string | undefined>
   // c11b r3: the same check on the answer that is delivered, whatever rounds ran: a line that says what it still lacks, put under it.
   shortfall?(answer: string): string | undefined
+  // c12b r3: the host's own steps on the answer before it goes out (a verdict, link checks, a rewrite). They run inside the turn, so
+  // words said while they run rewrite the answer like any other late words, and the rewrite goes through them again.
+  deliver?(answer: string): Promise<string>
 }
 
 export interface AgentLoopStep {

@@ -326,14 +326,23 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     if (closed !== undefined) { const stop = () => lifetime.abort(new Error('The tool session has ended.')), limit = setTimeout(stop, CLOSE_TAIL_MS); void run.catch(() => undefined).finally(() => { clearTimeout(limit); stop() }) }
     // Words said after the last tool result, while the answer was being written, had no tool result left to ride on: the answer is
     // written again with them, in the same turn, and the draft is dropped. grokbar B6 r3: "그냥 애플로 바꿔" got the 엔비디아 answer and a turn of its own.
-    for (let round = 0; round < LATE_STEER_ROUNDS && closed === undefined && !signal.aborted && !session.error && !asked; round++) {
-      const late = options.takeSteer?.() ?? []
-      if (!late.length) break
-      options.onReset?.(true)
-      // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
-      exhausted = false; extended = false; startedCalls = 0; working = Date.now()
-      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
+    // c12b r2 (review #1): every wait after the first round (the note round, the host's verdict on the draft, its extra round) is a window
+    // words can land in; each ends here, so words said at any point before delivery rewrite the one answer. True when words were taken.
+    let lateLeft = LATE_STEER_ROUNDS
+    const takeLate = async (): Promise<boolean> => {
+      let took = false
+      while (lateLeft > 0 && closed === undefined && !signal.aborted && !session.error && !asked) {
+        const late = options.takeSteer?.() ?? []
+        if (!late.length) break
+        lateLeft--; took = true
+        options.onReset?.(true)
+        // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
+        exhausted = false; extended = false; startedCalls = 0; working = Date.now()
+        session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
+      }
+      return took
     }
+    await takeLate()
     // c11b r2 (review #3): a turn whose only words came before a tool call gets one round to say its answer; the note is never shown as
     // one unless that round, too, says nothing (a reply said before a save, "…기억해 둘게요." then keep_in_mind, is then kept as it was).
     if (closed === undefined && !signal.aborted && !session.error && !asked && !session.answer.trim() && session.note?.trim()) {
@@ -345,14 +354,27 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // stack-11 (c11b r3 #1): on a lookup the answer is what was found, so words said before a call ("먼저 자료를 찾아볼게요.") never
       // stand in, in any language: the answer stays empty and the host writes it from the rows it holds (desktop fast-lane heldAnswer).
       if (!session.answer.trim() && !session.error && !options.lookup && theirLanguage(note, task)) session = { answer: note }
+      await takeLate()
     }
-    const gap = closed === undefined && !signal.aborted && !session.error && !asked ? options.recheck?.(session.answer) : undefined
-    if (gap) {
+    // A verdict on a draft that words said during it have since rewritten is about the old ask: the rewritten answer is judged instead.
+    let gap: string | undefined
+    do gap = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.recheck?.(session.answer), ended.then(() => undefined)]) : undefined
+    while (await takeLate())
+    if (gap && !signal.aborted) {
       const draft = session.answer
       options.onReset?.(true)
       exhausted = false; extended = false; startedCalls = Math.max(0, allowance() - RECHECK_CALLS); working = Date.now()
       session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${recheckNote(draft, gap)}` }), ended])
       if (!session.answer.trim() && !session.error) session = { ...session, answer: draft }
+      await takeLate()
+    }
+    // c12b r3 (review #1): the host's own steps before delivery are a wait like the others: words said during them are taken, the raw
+    // answer is rewritten with them, and the rewrite is shaped again. Only an answer shaped from the last raw answer is delivered.
+    if (options.deliver) {
+      let shaped: string | undefined
+      do shaped = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.deliver(session.answer), ended.then(() => undefined)]) : undefined
+      while (await takeLate())
+      if (shaped !== undefined && !signal.aborted && !session.error) session = { ...session, answer: shaped }
     }
     const short = closed === undefined && !signal.aborted && !session.error && !asked && session.answer.trim() ? options.shortfall?.(session.answer) : undefined
     if (short) session = { ...session, answer: `${session.answer.trimEnd()}\n\n${short}` }

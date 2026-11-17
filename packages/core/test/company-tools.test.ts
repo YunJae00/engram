@@ -2040,7 +2040,7 @@ test('stack-7: a named teammate on a lookup keeps both their way of speaking and
   const persona = memberPersona(member) + await employeeNote(paths, kim.id, undefined, 'lookup')
   // Both rules are there, whole.
   expect(persona).toContain(LOOKUP_RULE)
-  expect(persona).toContain('A price point always carries a figure with its currency')
+  expect(persona).toContain('a price with its currency: an answer whose price has no digit is not finished')
   expect(persona).toContain('Your temperament:')
   // c11a: the lookup rule's value lines go into the report block whole, after the rule that asks for them.
   expect(persona.indexOf('Everything the rules above say to report goes into facts')).toBeGreaterThan(persona.indexOf(LOOKUP_RULE))

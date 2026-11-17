@@ -97,3 +97,75 @@ it('c11b r3: the delivered answer is checked after every round; a list still sho
   const full = await runToolSession({ engine: brain(async () => ({ answer: '1. a\n2. b\n3. c\n4. d' })), workdir: WORKDIR, tools: [search] }, '해운 운임 기사 4개', { lookup: true, shortfall })
   expect(full.answer).toBe('1. a\n2. b\n3. c\n4. d')
 })
+
+// c12b r2 (review #1): the host's verdict on a draft may take seconds (a quick model judges the items); words said while it ran, or while
+// its extra round ran, were never taken, and the old-scope answer went out with the words left for a turn of their own (rule 3).
+// Wordings are in no harness row.
+it('c12b r2: words said while the draft is judged or while its extra round runs rewrite the one answer, and the rewrite is judged', async () => {
+  const waiting: string[] = [], prompts: string[] = [], judged: string[] = []
+  const engine = brain(async job => {
+    prompts.push(job.prompt)
+    return { answer: prompts.length === 1 ? '1. 전기차 보조금 개편 [a](https://a.example/1)' : prompts.length === 2 ? '1. 수소차 충전소 확대 [h](https://h.example/1)' : '1. 수소차 충전소 확대 [h](https://h.example/1)\n2. 수소버스 도입 [k](https://k.example/2)' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '전기차 정책 기사 2개 찾아줘', {
+    lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
+    recheck: async answer => {
+      judged.push(answer)
+      // The words land while the first verdict is still out.
+      if (judged.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('아 전기차 말고 수소차로'); return 'They asked for 2.' }
+      return 'They asked for 2.'
+    },
+  })
+  // The verdict on the 전기차 draft is dropped: the steered answer is judged, then gets its extra round.
+  expect(judged).toEqual(['1. 전기차 보조금 개편 [a](https://a.example/1)', '1. 수소차 충전소 확대 [h](https://h.example/1)'])
+  expect(prompts[1]).toContain('아 전기차 말고 수소차로')
+  expect(prompts[2]).toContain('수소차 충전소 확대')
+  expect(result.answer).not.toContain('전기차 보조금')
+  expect(waiting).toEqual([])
+
+  // Words said during the extra round, after its last call, are taken too: one more rewrite, no turn of their own.
+  const later: string[] = [], seen: string[] = []
+  let runs = 0
+  const r2 = await runToolSession({ engine: brain(async job => {
+    seen.push(job.prompt); runs++
+    if (runs === 2) later.push('경남 소식도 하나 넣어줘')
+    return { answer: runs === 1 ? '1. 부산 항만 [p](https://p.example/1)' : runs === 2 ? '1. 부산 항만 [p](https://p.example/1)\n2. 울산 항만 [u](https://u.example/2)' : '1. 부산 항만 [p](https://p.example/1)\n2. 울산 항만 [u](https://u.example/2)\n3. 창원 항만 [c](https://c.example/3)' }
+  }), workdir: WORKDIR, tools: [search] }, '항만 기사 2개', { lookup: true, takeSteer: () => later.splice(0), recheck: async () => runs === 1 ? 'They asked for 2.' : undefined })
+  expect(runs).toBe(3)
+  expect(seen[2]).toContain('경남 소식도 하나 넣어줘')
+  expect(r2.answer).toContain('3. 창원 항만')
+})
+
+// c12b r3 (review #1): after the session's last round the host still shaped the answer (writes from held rows, the item verdict, link
+// checks) before it went out; words said in that window were never taken and became a turn of their own after the old-scope answer.
+// The host's shaping now runs as the session's deliver step, inside the late-words drain. Wordings are in no harness row.
+it('c12b r3: words said while the host shapes the answer rewrite it, and only the rewrite, shaped again, is delivered', async () => {
+  const waiting: string[] = [], prompts: string[] = [], shaped: string[] = []
+  const engine = brain(async job => {
+    prompts.push(job.prompt)
+    return { answer: prompts.length === 1 ? '1. 김포 맛집 [g](https://g.example/1)' : '1. 일산 맛집 [i](https://i.example/1)' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '김포 맛집 하나 알려줘', {
+    lookup: true, steerReplied: true, takeSteer: () => waiting.splice(0),
+    deliver: async answer => {
+      shaped.push(answer)
+      // The words land while the link check on the 김포 answer is still out.
+      if (shaped.length === 1) { await new Promise(resolve => setTimeout(resolve, 20)); waiting.push('김포 말고 일산으로 찾아줘') }
+      return `${answer} (확인됨)`
+    },
+  })
+  expect(shaped).toEqual(['1. 김포 맛집 [g](https://g.example/1)', '1. 일산 맛집 [i](https://i.example/1)'])
+  // The rewrite is asked with the raw draft, never the shaped one, and with the words said.
+  expect(prompts[1]).toContain('김포 말고 일산으로 찾아줘')
+  expect(prompts[1]).not.toContain('(확인됨)')
+  expect(result.answer).toBe('1. 일산 맛집 [i](https://i.example/1) (확인됨)')
+  expect(waiting).toEqual([])
+
+  // With no words said, deliver runs once, also on an empty answer (the host writes it from what it holds).
+  const once: string[] = []
+  const r2 = await runToolSession({ engine: brain(async () => ({ answer: '' })), workdir: WORKDIR, tools: [search] }, '파주 카페', {
+    lookup: true, takeSteer: () => [], deliver: async answer => { once.push(answer); return '파주 카페는 [p](https://p.example/1)' },
+  })
+  expect(once).toEqual([''])
+  expect(r2.answer).toBe('파주 카페는 [p](https://p.example/1)')
+})
