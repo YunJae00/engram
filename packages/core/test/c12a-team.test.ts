@@ -103,11 +103,12 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   expect(listingPages(checked)).toEqual([listing.url, yearOnly.url])
   expect(itemsPrompt(listingPages(checked))).toContain(listing.url)
   // The extra round brings two dated items: they take the pages' place, one per line in the fallback.
-  const more = reportData(block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }], whole: [listing.url, yearOnly.url] }), { brief })
+  const more = reportData(block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }] }), { brief })
   const whole = withItems(checked!, more)
-  expect(whole.facts.map(f => f.url)).toEqual(['https://board.example.kr/daejeon/1206', 'https://board.example.kr/daejeon/1220'])
+  // round 3: the pages are never taken out; they follow the items as where the full list is.
+  expect(whole.facts.map(f => [f.url, f.rest])).toEqual([['https://board.example.kr/daejeon/1206', undefined], ['https://board.example.kr/daejeon/1220', undefined], [listing.url, true], [yearOnly.url, true]])
   const m = member({ id: 'm1', role: '서아', brief, topic: topicOf(brief), state: 'done', data: whole })
-  expect(mergedReport([m]).split('\n')).toEqual(['서아가 대전 보드게임 모임 일정 2개를 찾아 왔어요.', '- 12월 6일 둔산동에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)'])
+  expect(mergedReport([m]).split('\n')).toEqual(['서아가 대전 보드게임 모임 일정 2개를 찾아 왔어요.', '- 12월 6일 둔산동에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)', '전체 목록은 여기 있어요. [board.example.kr](https://board.example.kr/daejeon/schedule) · [festa.example.kr](https://festa.example.kr/2026)'])
   // No time left (no extra round): the listing stays, labeled as not taken apart, never as an item of the list.
   const as = member({ id: 'm1', role: '서아', brief, state: 'done', data: { facts: [checked!.facts[0]!] } })
   expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 하나씩은 아직 못 뽑았어요\. \[/)
@@ -162,20 +163,35 @@ test('r2 B3: one fact is always checked by meaning, whatever the ask says; a cou
   }
 })
 
-test('r2 B3: a round that takes only part of a listing page apart adds its items and keeps the page labeled; only a page it says it gave in full goes', () => {
+test('r2/r3 B3: a round that takes only part of a listing page, even one claiming the page whole, never drops the page or its label of the rest', () => {
   const page = { text: '울산 러닝 크루 페이지에 모임 네 개가 있어요.', url: 'https://run.example.kr/ulsan', site: '런크루', listing: true as const }
   const other = { text: '포항 러닝 크루 목록에 모임이 여럿 있어요.', url: 'https://run.example.kr/pohang', site: '런크루', listing: true as const }
   const one = { text: '1월 9일 태화강에서 저녁 러닝이 있어요.', url: 'https://run.example.kr/ulsan/0109', site: '런크루', date: '1월 9일' }
-  const partial = reportData(block({ facts: [one] }), { brief: '울산 러닝 모임' })
-  expect(withItems({ facts: [page] }, partial).facts.map(f => [f.url, f.listing])).toEqual([[page.url, true], [one.url, undefined]])
-  const m = member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: withItems({ facts: [page] }, partial) })
-  const shown = mergedReport([m])
-  expect(shown).toContain('하나씩은 아직 못 뽑았어요.')
-  expect(shown).toContain('태화강')
-  // Says it gave all of one page (and a stray address it was not asked about): only that page goes.
-  const full = reportData(block({ facts: [one], whole: [page.url, 'https://elsewhere.example.kr/x', 'not a url'] }), { brief: '울산 러닝 모임' })
-  expect(full!.whole).toEqual([page.url, 'https://elsewhere.example.kr/x'])
-  const merged = withItems({ facts: [page, other] }, full)
-  expect(merged.facts.map(f => f.url)).toEqual([other.url, one.url])
-  expect(merged.whole).toBeUndefined()
+  // The teammate's own claim (an unknown "whole" field) is not data the host acts on.
+  for (const extra of [{}, { whole: [page.url, other.url] }]) {
+    const more = reportData(block({ facts: [one], ...extra }), { brief: '울산 러닝 모임' })
+    const data = withItems({ facts: [page, other] }, more)
+    expect(data.facts.map(f => [f.url, f.rest])).toEqual([[one.url, undefined], [page.url, true], [other.url, true]])
+    const shown = mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data })]).split('\n')
+    expect(shown).toEqual(['나래가 찾아 왔어요. 1월 9일 태화강에서 저녁 러닝이 있어요. [런크루](https://run.example.kr/ulsan/0109)', '전체 목록은 여기 있어요. [런크루](https://run.example.kr/ulsan) · [런크루](https://run.example.kr/pohang)'])
+  }
+  // A round that gave nothing leaves the pages labeled as not taken apart.
+  expect(withItems({ facts: [page] }, undefined).facts).toEqual([page])
+  expect(mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: { facts: [page] } })])).toContain('하나씩은 아직 못 뽑았어요.')
 })
+
+// --- c12a round 3 (Codex r2). Wordings are not the harness's. ---
+
+test('r3 B2: a date is matched as a date: a clock time, a word about now or a month/day swap does not hide it', () => {
+  // Clock time sharing the date's numbers.
+  expect(datedText({ text: '사진전 개막식은 오후 3시 12분에 해요.', date: '3월 12일' })).toBe('사진전 개막식은 오후 3시 12분에 해요 (3월 12일).')
+  expect(datedText({ text: '행사가 오전 9시 25분에 시작해요.', date: '9월 25일' })).toBe('행사가 오전 9시 25분에 시작해요 (9월 25일).')
+  // A word about now is not the event's day.
+  expect(datedText({ text: '오늘 확인해 보니 재즈 공연 표가 남아 있어요.', date: '1월 30일' })).toBe('오늘 확인해 보니 재즈 공연 표가 남아 있어요 (1월 30일).')
+  expect(datedText({ text: '이번 주말에 플리마켓이 열려요.', date: '5월 17일' })).toBe('이번 주말에 플리마켓이 열려요 (5월 17일).')
+  // The same numbers in the other roles (6월 4일 vs 4월 6일).
+  expect(datedText({ text: '6월 4일에 접수가 끝나요.', date: '4월 6일' })).toBe('6월 4일에 접수가 끝나요 (4월 6일).')
+  // Stated as a date in any form: once.
+  for (const [text, date] of [['수영 대회는 8월 2일부터 4일까지 해요.', '8월 2~4일'], ['공개일은 2027.1.13.', '2027년 1월 13일'], ['Opens Mar 5 in Busan.', '3월 5일'], ['접수 마감은 7/21이에요.', '7월 21일'], ['10월 3일 오후 2시에 열려요.', '10월 3일']] as const) expect(datedText({ text, date })).toBe(text)
+})
+

@@ -995,8 +995,7 @@ export function reportData(answer: string, member: Pick<TeamMember, 'brief' | 'w
   }
   const facts = [...(Array.isArray(o['facts']) ? o['facts'] : []), ...(Array.isArray(o['items']) ? o['items'] : [])].map(fact).filter((f): f is MemberFact => !!f)
   const period = o['nothing_in_period'], latest = period && typeof period === 'object' ? fact((period as Record<string, unknown>)['latest']) : undefined
-  const whole = Array.isArray(o['whole']) ? o['whole'].map(url => trimmed(line(url, 600))).filter(url => /^https?:\/\//.test(url)) : []
-  if (facts.length) return { facts, ...extra, ...(whole.length ? { whole } : {}) }
+  if (facts.length) return { facts, ...extra }
   return period && typeof period === 'object' ? { facts: [], nothing: latest ? { latest } : {}, ...extra } : undefined
 }
 /** c11a r2: which items of a teammate's list are the kind of thing their job asks for is judged once, by meaning, where the data comes
@@ -1033,13 +1032,15 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
 }
 /** c12a B3: the pages a teammate is asked to take apart in one more round, and their items put in place of those pages. */
 export const listingPages = (data: MemberData | undefined): string[] => [...new Set((data?.facts ?? []).filter(f => f.listing).map(f => f.url))]
-export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for). Also put in the block "whole": [the addresses below whose every item the job asks for you gave]; leave out a page you could not take apart in full.\n${urls.join('\n')}`
-// round 2: a listing page gives way only to a round that says, as data, it gave all of that page's items; a partial round adds its
-// items and the page stays, labeled, so the rest is never silently dropped (GROKBOT rule 7).
+export const itemsPrompt = (urls: readonly string[]): string => `Some of what you brought back covers several things, or lacks the day the job needs. Open these pages and give their items instead: one fact per item, each with its own day, as your report block (only the items the job asks for).\n${urls.join('\n')}`
+// round 3: the host cannot check that a round gave every item of a page (a claim like "whole" is only the teammate's word), so a listing
+// page is never taken out. After a round that gave items it stays as where the full list is (`rest`), after them: nothing is dropped
+// unseen, and nothing done is labeled as not done (GROKBOT rule 7).
 export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
   if (!more?.facts.length) return data
-  const done = new Set(more.whole ?? []), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
-  return { ...data, facts: [...data.facts.filter(f => !f.listing || !done.has(f.url)), ...more.facts.filter(f => !known.has(f.text))] }
+  const known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
+  return { ...data, facts: [...data.facts.filter(f => !f.listing), ...more.facts.filter(f => !known.has(f.text)), ...pages] }
 }
 // The pages a hand-off's work was made from: the giver's facts when the giver is in this report, else the addresses the host itself wrote
 // into the hand-off (dataText's " — address" lines), named by the host's one rule. A deliverable cites what it stands on (GROKBOT rule 5).
@@ -1076,9 +1077,11 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
   }
   // A page that lists several things (kindChecked) is shown, labeled as not taken apart yet: never as an item (rule 7).
   const line = (f: MemberFact): string => `${datedText({ text: factWords(f), date: f.date })}${f.listing ? ' 하나씩은 아직 못 뽑았어요.' : ''} ${linkOf(f)}`
-  const found = row || (facts.length > 1 ? `${josa(m.role, '이', '가')} ${handed}${part ? `${part} ` : ''}${facts.length}개를 찾아 왔어요.` : `${part ? `${josa(part, '은', '는')} ` : ''}${josa(m.role, '이', '가')} ${handed}찾아 왔어요.`).replace(/\s+/g, ' ')
-  if (facts.length === 1) return `${found} ${line(facts[0]!)}`
-  if (facts.length) return [found, ...facts.map(f => `- ${line(f)}`)].join('\n')
+  // round 3: a listing page some items were taken from is where the full list is: one line after the items, never counted as an item.
+  const shown = facts.filter(f => !f.rest), rest = facts.filter(f => f.rest), full = rest.length ? [`전체 목록은 여기 있어요. ${rest.map(linkOf).join(' · ')}`] : []
+  const found = row || (shown.length > 1 ? `${josa(m.role, '이', '가')} ${handed}${part ? `${part} ` : ''}${shown.length}개를 찾아 왔어요.` : `${part ? `${josa(part, '은', '는')} ` : ''}${josa(m.role, '이', '가')} ${handed}찾아 왔어요.`).replace(/\s+/g, ' ')
+  if (shown.length === 1) return [`${found} ${line(shown[0]!)}`, ...full].join('\n')
+  if (shown.length) return [found, ...shown.map(f => `- ${line(f)}`), ...full].join('\n')
   // Done with no report (cut at its limit mid-answer): said plainly as unfinished, with where it looked; its prose is never shown.
   // Released counts too: a waited assign releases its parts before the report is made.
   const looked = !m.late && (m.state === 'done' || m.state === 'released') ? lookedAt(m) : undefined
@@ -1218,7 +1221,7 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
       name: m.role, ...(part ? { part } : {}), ...(from ? { madeFrom: from.from, madeFromLinks: madeFrom(m, members).map(linkOf) } : {}),
       ...(atWork(m) ? { still: true } : {}),
       // c12a B2: the date is in the text once (datedText), never a field for the writer to put in front of it again.
-      ...(ids.some(one => one.m === m) ? { facts: ids.filter(one => one.m === m).map(one => ({ id: one.id, text: datedText(one.fact), link: linkOf(one.fact), ...(one.fact.listing ? { listPage: true } : {}) })) } : {}),
+      ...(ids.some(one => one.m === m) ? { facts: ids.filter(one => one.m === m).map(one => ({ id: one.id, text: datedText(one.fact), link: linkOf(one.fact), ...(one.fact.rest ? { fullList: true } : one.fact.listing ? { listPage: true } : {}) })) } : {}),
       ...(d?.nothing ? { nothing: d.nothing.latest ? { latest: { text: datedText(d.nothing.latest), link: linkOf(d.nothing.latest) } } : lookedAt(m) ? { looked: linkOf(lookedAt(m)!) } : {} } : {}),
       ...(d?.items?.length ? { items: d.items } : {}),
       ...(d?.note ? { said: d.note } : {}),
@@ -1226,7 +1229,7 @@ export function reportPrompt(ask: string, members: readonly TeamMember[], topics
   })
   return [
     'You write the one message a person reads in their team chat about what their teammates brought back. Korean, polite -요 form (해요체), short and warm, the way a capable colleague passes it on in a messenger: never a report.',
-    'Write: one first sentence with the gist. Then who found or made what, in natural sentences that name each teammate ("노션은 지민이 봤는데 이번 주엔 새 소식이 없고, 10월 19일에 나온 에이전트 업데이트가 제일 최근이에요. [노션 블로그](…)"); a line never starts with a name and a colon. A markdown table only when three or more things are compared on the same fields. A fact you use is followed by its "link", copied exactly. Two or more facts of one teammate are a list, one fact per line, each line with its own link. A fact with "listPage" covers several things and was not taken apart: say so in a few words with its link, never as one item of the list. A part with "nothing" says nothing new came out for the time asked, then its "latest" with its link, or else where they looked ("looked"). A part with "still" says it is still being looked into, with exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요." A part with "items" was made by that teammate from "madeFrom"\'s find: one sentence saying so with one of "madeFromLinks", then its items as a numbered list, each copied exactly (one item: that line alone on its own line, copied exactly). "said" is that teammate\'s own remark: use it only if it fits naturally, never as a quote.',
+    'Write: one first sentence with the gist. Then who found or made what, in natural sentences that name each teammate ("노션은 지민이 봤는데 이번 주엔 새 소식이 없고, 10월 19일에 나온 에이전트 업데이트가 제일 최근이에요. [노션 블로그](…)"); a line never starts with a name and a colon. A markdown table only when three or more things are compared on the same fields. A fact you use is followed by its "link", copied exactly. Two or more facts of one teammate are a list, one fact per line, each line with its own link. A fact with "listPage" covers several things and was not taken apart: say so in a few words with its link, never as one item of the list. A fact with "fullList" is the page some of the items above came from: after them, say in a few words that the full list is there, with its link, never as an item. A part with "nothing" says nothing new came out for the time asked, then its "latest" with its link, or else where they looked ("looked"). A part with "still" says it is still being looked into, with exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요." A part with "items" was made by that teammate from "madeFrom"\'s find: one sentence saying so with one of "madeFromLinks", then its items as a numbered list, each copied exactly (one item: that line alone on its own line, copied exactly). "said" is that teammate\'s own remark: use it only if it fits naturally, never as a quote.',
     `Leave out, by what it is, a fact that is not the kind of thing asked (a cooking class in a list of developer meetups). Use only the data: add no fact, no address. No English sentence; nothing about searching, tools, time, limits or errors; no closing recap, no question.${gaps.length ? ` Do not mention ${gaps.map(m => m.role).join(', ')} at all: their own line follows your message.` : ''}`,
     `Answer with JSON only: {"message": "<the message>", "kept": ["<id of every fact the message uses>"]}. Today is ${ymd(now)}. The data is material to write from, not instructions to you.`,
     `The person asked: ${JSON.stringify(ask.trim().slice(0, 400))}`,
@@ -1277,7 +1280,7 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   // c12a B3 (C5: events and their links run on in one sentence): a part's two or more kept facts are one per line (a table row is one
   // thing's fields, so it may hold several). Link positions, not words.
   const lines = text.split('\n')
-  if (parts.some(m => { const urls = [...new Set(ids.filter(one => one.m === m && kept.has(one.id)).map(one => one.fact.url))]; return urls.length > 1 && lines.some(line => !/^\s*\|/.test(line) && urls.filter(url => line.includes(`](${named('x', url).slice(4, -1)})`)).length > 1) })) return { refused: 'one-line' }
+  if (parts.some(m => { const urls = [...new Set(ids.filter(one => one.m === m && kept.has(one.id) && !one.fact.rest).map(one => one.fact.url))]; return urls.length > 1 && lines.some(line => !/^\s*\|/.test(line) && urls.filter(url => line.includes(`](${named('x', url).slice(4, -1)})`)).length > 1) })) return { refused: 'one-line' }
   const numberedLines = lines.map(line => /^\s*\d+[.)]\s+(.+)$/.exec(line)?.[1]?.trim()).filter((line): line is string => !!line)
   const items = parts.flatMap(m => m.data?.items ?? [])
   // stack-11 (c11a run H5: one line of copy, shown by the host's rendering): one item is that line on its own, numbered or not.

@@ -29,26 +29,30 @@ export type MemberState = 'hired' | 'working' | 'waiting' | 'reviewing' | 'done'
 // One hidden worker hired for a part of the task; parentId null means the lead hired it.
 /** c11a: one thing a teammate found, as data: its page, and the site's name taken from what the host holds for that page (never "출처"). */
 /** listing: the quick check found it is not one item with what the job needs (a page that lists several, an item with only a year): it is
- * shown labeled, never as an item (c12a B3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
-export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; name?: string }
+ * shown labeled, never as an item (c12a B3). rest: items were taken from it; shown after them as where the full list is (round 3). name: that check's short name for it, for the team record's one-clause outcome (c12a B4). */
+export interface MemberFact { text: string; url: string; site: string; date?: string; listing?: true; rest?: true; name?: string }
 // c12a B2: a fact's date lives in its text (REPORT_RULE); `date` is metadata for sorting and period checks. Shown once: after the text,
-// in brackets, only when the text does not already state it, in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지": every
-// number of the date is a date number of the text), or speaks of its own time relative to now ("이번 주말"). Only numbers written as
-// dates count (with a unit, or in 12.2 / 2026-12-02 form): a model number or a price that shares a digit is no date (round 2:
-// "아이폰 18 가격은 11만 원" does not state "11월 18일"). Number forms, not a phrase list.
-const RELATIVE_DAY = /오늘|어제|내일|모레|주말|[월화수목금토일]요일|(?:이번|다음|지난|저번)\s?(?:주|달)/u
-const DATE_NUMBERS = /(?:\d+\s*[~–-]\s*)?\d+\s*(?:년|월|일|시|분)|\d{1,4}(?:[./-]\d{1,2}){1,2}(?!\d)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:,\s*\d{4})?/giu
-const numbers = (text: string): string[] => (text.match(/\d+/g) ?? []).map(n => String(Number(n)))
-const dateNumbers = (text: string): string[] => [...text.matchAll(DATE_NUMBERS)].flatMap(m => numbers(m[0]))
+// in brackets, only when the text already states that same date in any wording ("12월 2일~4일" is stated by "12월 2일부터 4일까지").
+// round 3: a date is compared as a date: each number with the part of a date it is (year, month or day), read from a unit (년/월/일,
+// a range "2~6일" too) or a date form (12.2, 2026-12-02, Dec 2). A clock time ("11시 18분"), a model number or a price is no part of a
+// date, and a word about now ("오늘 확인했어요") states no day of the thing, so the date is shown. Number forms, not a phrase list.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+const DATE_PARTS = /(\d+)\s*(?:[~–-]\s*(\d+)\s*)?(년|월|일)|(?<!\d)(\d{1,4})[./-](\d{1,2})(?:[./-](\d{1,2}))?(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/giu
+const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_PARTS)].flatMap(m => {
+  const n = (v: string): number => Number(v)
+  if (m[3]) return [m[1], m[2]].filter(Boolean).map(v => `${m[3]}${n(v!)}`)
+  if (m[7]) return [`월${MONTHS.indexOf(m[7].toLowerCase()) + 1}`, `일${n(m[8]!)}`]
+  const [a, b, c] = [m[4]!, m[5]!, m[6]]
+  return c ? [`년${n(a)}`, `월${n(b)}`, `일${n(c)}`] : a.length === 4 ? [`년${n(a)}`, `월${n(b)}`] : [`월${n(a)}`, `일${n(b)}`]
+}))
 export const datedText = (f: { text: string; date?: string | undefined }): string => {
-  const own = new Set(dateNumbers(f.text)), date = f.date?.trim()
-  const stated = !date || (numbers(date).length > 0 && numbers(date).every(n => own.has(n))) || RELATIVE_DAY.test(f.text)
+  const date = f.date?.trim(), own = dateParts(f.text), parts = [...dateParts(date ?? '')]
+  const stated = !date || (parts.length > 0 && parts.every(p => own.has(p)))
   return stated ? f.text : f.text.replace(/([.!?]?)\s*$/u, ` (${date})$1`)
 }
 /** c11a: what a teammate handed back, as data the host never parses out of prose. A lookup gives facts (one per item for a list), or nothing
  * for the time asked with the newest thing it did see; a writer gives the deliverable's finished lines. note: their own one chat sentence. */
-/** whole: in the extra round for listing pages (itemsPrompt), the pages it says it gave every item of (withItems). */
-export interface MemberData { facts: MemberFact[]; nothing?: { latest?: MemberFact }; items?: string[]; note?: string; whole?: string[] }
+export interface MemberData { facts: MemberFact[]; nothing?: { latest?: MemberFact }; items?: string[]; note?: string }
 export interface TeamMember { id: string; parentId: string | null; depth: number; role: string; brief: string; /** This member is the employee (a persistent bot) with this id. */ botId?: string; /** The lead does not wait for it: its report comes back as a later turn of the lead's. */ background?: true; /** When it ends done, this employee takes its result and goes on (a handoff). */ then?: { botId: string; who: string; brief: string; voice?: string }; /** The employee's way of speaking (company-tools voiceOf), for the host's own opener over their result. */ voice?: string; deliverable?: string; /** Only looks things up and reports: runs fast, read-only and time-boxed. */ lookup?: boolean; /** The search words the lead gave a lookup member: the host runs that search as the member starts (team-runner). */ query?: string; /** Writes from what was handed over: no tools, time-boxed. */ writer?: true; /** The name of its part in the person's words ("노션"), for the row of the merged answer. */ topic?: string; /** What the job was, in a few words ("노션 신기능 조사"): what the person reads when they ask who did what. */ title?: string; state: MemberState; result?: string; files?: string[]; /** Pages a lookup member read, for the lead's citations. */ sources?: string[]; /** Its result holds what it read (search rows, page text), under whatever it had written: its time ran out first. */ read?: true; /** It said it found nothing new; its result is that sentence, then what it read (settleMember). */ empty?: true; /** Still at work when the others were reported (GROKBOT rule 7): labeled there, and reported by itself when it lands. */ late?: true; /** c11a: its structured result (lookup or writer on the team); absent when it gave none, and then its prose is never parsed into items. */ data?: MemberData; review?: { ok: boolean; note: string }; sessionKey: string; hiredAt: string; finishedAt?: string }
 // planTurn is the task turn in which the big plan was last sent back to be shown; only a later turn can approve it.
 export interface TaskTeam { members: TeamMember[]; hires: number; maxHires: number; maxDepth: number; big: boolean; approvedAt?: string; planTurn?: number; /** The report without the late members is in the thread: the next one is theirs alone. */ lateTold?: true; /** The late members' own report is in the thread too: nothing of this split is owed. */ lateDone?: true; /** c9: members whose result is already in the thread as a bubble of its own (a hand-off's first teammate): later reports leave them out. */ posted?: string[] }
