@@ -670,7 +670,7 @@ describe('stack-5: low effort stays on the turns it was given to', () => {
   it('a team turn is low only for the weekly summary, a desk turn only for a pre-read note or a remember turn, and a desk kind is never a team or lookup turn', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),")
-    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),")
+    expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),")
     expect(ipc).toContain('const kind = !company && !lane && deskLane(routed, plainAsk) ? deskKind(routed) : undefined')
     // The Korean lead and the appended offer hang on the desk kind, so a team result or a lookup never gets either.
     expect(ipc).toContain("if (kind === 'ask' && !result.asked) result.answer = koreanLead(")

@@ -142,7 +142,7 @@ export { quietDesktopTools, type QuietCourier, type QuietPressOptions } from './
 export { isOfficeTool, officeStepSummary, officeTools, type OfficeCourier, type OfficeOp } from './office-tools.js'
 export { auditDeck, deckBodyLayout, describeDeckFindings, type DeckFinding, type DeckSlide } from './deck-audit.js'
 export { withoutMissingParts } from './package-tidy.js'
-export { resolveTheme, THEME_NEEDED, type OfficeTheme, type ThemeInput } from './office-theme.js'
+export { resolveTheme, THEME_NEEDED, HOUSE_THEME, KOREAN_FACE, faceFor, type OfficeTheme, type ThemeInput } from './office-theme.js'
 export { renameWithRetry } from './rename-with-retry.js'
 export { resetBotsToV2 } from './bots-reset.js'
 export { preferences, preferenceAsk, widens, activityLine, siteOf, PREFERENCE_ACTIONS, type Preferences, type PreferenceAsk, type PreferenceHost } from './preferences-tools.js'

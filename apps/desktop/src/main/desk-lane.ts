@@ -55,7 +55,7 @@ export const DESK_NOTE = [
   'A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.',
   'A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file: make a file only when they asked for one.',
   'An extraction of one part ("할 일만 뽑아줘") gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for. '
-    + 'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line of something new, a plain sentence of its own ("원하시면 담당자별로 표로 묶어 드릴게요."), unless an earlier reply of yours in this conversation already ended with an offer.',
+    + 'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line, a plain sentence of its own that offers the next step of the work ("원하시면 담당자별로 보낼 알림 문구도 써 드릴게요."), never the same content in another shape (a table, a file), unless an earlier reply of yours in this conversation already ended with an offer.',
   'When they ask for a note to be made easy to share or read without saying the form ("공유하기 좋게", "보기 좋게", "깔끔하게"), you choose the form and the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요."). Then at most about eight short lines: who does what by when, then what is still open, then the next meeting. No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask; something not settled yet goes under 미결, never under 결정사항.',
   'In a summary of meeting notes, 결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when; the same sentence never appears under both. When the decisions in the notes are all tasks with an owner and a date, 결정사항 says briefly what was agreed ("온보딩 화면은 새 시안으로 확정하기로 했어요.") and 할 일 gives each owner and date. Every decision, owner and due date of the file is still in the answer, a heading with nothing of its own is left out, and no section says it is the same as another ("위와 동일").',
 ].join(' ')
@@ -86,7 +86,7 @@ export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()
   if (!text || [...text].length > ASK_MAX || text.includes('\n') || text.startsWith('/')) return undefined
-  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : (DECK.test(text) || ((SHEET.test(text.replace(NAMED_FILE, ' ')) || OFFICE_FILE.test(text)) && !SENT.test(text) && !howTo(text))) && !GATED.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
+  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : slideTitleFix(text) ? 'deck' : (DECK.test(text) || ((SHEET.test(text.replace(NAMED_FILE, ' ')) || OFFICE_FILE.test(text)) && !SENT.test(text) && !howTo(text))) && !GATED.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
 }
 
 // plain: an ordinary first turn by the person on a Claude brain (ipc.ts plainAsk): nothing attached, resumed, scheduled or re-checked.
@@ -181,9 +181,12 @@ const offered = (text: string): boolean => lastLines(text).some(line => /원하�
 export function withOffer(ask: string, answer: string, earlier: readonly { role: string; text: string; progress?: boolean; error?: unknown }[], korean: boolean): string {
   if (deskKind(ask) !== 'note' || !EXTRACT.test(ask) || !answer.trim() || closesOnOffer(answer)) return answer
   if (earlier.some(turn => turn.role === 'assistant' && !turn.progress && !turn.error && offered(turn.text))) return answer
-  const table = /^\s*\|.+\|\s*$/m.test(answer), people = /할\s*일|담당|\b(to-?dos?|action items?|tasks?)\b/i.test(ask)
-  const offer = korean ? table ? '원하시면 워드 파일로도 만들어 드릴게요.' : people ? '원하시면 담당자별로 표로 묶어 드릴게요.' : '원하시면 표로도 정리해 드릴게요.'
-    : table ? 'I can put this in a Word file if you\'d like.' : people ? 'I can group these by owner in a table if you\'d like.' : 'I can put these in a table if you\'d like.'
+  // c8c H4: "원하시면 담당자별로 표로 묶어 드릴게요." under four owner lines (judge: 표로 다시 묶어 주겠다는 제안은 불필요). An offer is the next
+  // step of the work, never the same lines in another shape: reminders to write for the owners, a timeline for dated items; else none.
+  const people = /할\s*일|담당|\b(to-?dos?|action items?|tasks?)\b/i.test(ask), dated = datesIn(answer).length >= 2
+  if (!people && !dated) return answer
+  const offer = korean ? people ? '원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.' : '원하시면 기한 순으로 일정표도 만들어 드릴게요.'
+    : people ? 'I can draft a reminder for each owner if you\'d like.' : 'I can lay these out as a timeline by due date if you\'d like.'
   const replies = answer.search(/\n*```replies/)
   return replies < 0 ? `${answer.trimEnd()}\n\n${offer}` : `${answer.slice(0, replies).trimEnd()}\n\n${offer}${answer.slice(replies)}`
 }
@@ -319,3 +322,74 @@ export function tidyCounts(ask: string, answer: string): string {
   const listed = out.flatMap(line => { const said = COUNT_SENTENCE.exec(line); return said ? [...(said[1]?.trim() ? [said[1].trim(), ''] : []), ...said[2]!.split(/,\s*/).map(one => `- ${one.trim()}`)] : [line] })
   return listed.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
+
+// c8c M1 (stack7-b3ddda26): "내 이름은 권윤재고 지민호랑 같이 일해. 기억해" took 10.3 s of 8: two model rounds on a cold prompt for one
+// keep_in_mind call. A statement with a remember word after it (or before it), no question and no other work, is kept by the host through
+// the same tool, in the person's own words (so keptFix's whole-word match still finds a name in it), and answered in one line.
+// shortcut: a closed shape; "이거 기억해?", a statement plus a task, a bare "기억해" and a statement with any asking word in it stay with the model.
+const REMEMBER = '(?:기억\\s*해(?:\\s*(?:둬\\s*줘|둬|줘|놔|두세요|주세요))?|잊지\\s*마(?:세요)?|외워\\s*(?:둬|줘))요?'
+const KEEP_AFTER = new RegExp(`^(.+?)([.,!~]*)\\s*(?:(?:이거|이건|꼭|잘|좀)\\s*)*${REMEMBER}[.!~\\s]*$`)
+const KEEP_BEFORE = new RegExp(`^${REMEMBER}\\s*[:,.]?\\s+(.+?)[.!~\\s]*$`)
+const KEEP_EN = /^(?:please\s+)?remember that\s+(.+?)[.!\s]*$/i
+const STATED = /(야|해|어|아|다|요|임|음|거든|잖아|[a-z0-9])$/i
+export function plainKeep(message: string, lastReply = '', korean = true): { fact: string; answer: string } | undefined {
+  const text = message.trim()
+  if (!text || text.includes('\n') || /[?？]/.test(text) || [...text].length > ASK_MAX) return undefined
+  const after = KEEP_AFTER.exec(text)
+  // With no mark between them the statement has to end like one ("…일해 기억해", never "…일한다는 거 기억해").
+  const fact = (after && (after[2] || STATED.test(after[1]!)) ? after[1]! : KEEP_BEFORE.exec(text)?.[1] ?? KEEP_EN.exec(text)?.[1] ?? '').trim()
+  // A clause that runs on ("…써 주고 기억해") or holds a word that asks for something is other work.
+  if ([...fact].length < 4 || /고$/.test(fact) || ASKING.test(fact)) return undefined
+  const said = korean ? '기억해 둘게요.' : 'Got it, I\'ll remember that.'
+  return { fact, answer: lastReply.trim() === said ? korean ? '이것도 기억해 둘게요.' : 'I\'ll remember that too.' : said }
+}
+
+// c8c D5 (stack7-b3ddda26): 107.2 s of 30: between the outline read and one file_edit_package call the model thought for 89 s about a
+// change the host can state in one object. The plainest shape is made by the host through the same two tool calls (fixSlideTitle): a slide
+// number, 제목, the new words in quotes and a change word, with nothing before it but words that point at the deck.
+// shortcut: a deck named by a file name with a space in it, a body text, two changes in one message stay with the model (which runs light).
+const DOUBLE_QUOTED = /["“”]([^"“”\n]{1,120})["“”]|「([^」\n]{1,120})」/g, SINGLE_QUOTED = /['‘’]([^'‘’\n]{1,120})['‘’]/g
+const SLIDE_TITLE = /^(.{0,60}?)(?:(\d{1,3})\s*(?:번째|번)?\s*(?:슬라이드|장|페이지|쪽)|슬라이드\s*(\d{1,3})\s*번?)의?\s*(?:제목|타이틀)(?:을|를|은|만)?\s*$/i
+const TITLE_TO = /^\s*(?:으로|로|라고)\s*(?:바꿔|고쳐|수정해|변경해)\s*(?:줘|주세요|줄래|줘요|봐)?[.!~\s]*$/
+const DECK_POINTER = /^(?:아[,\s]+)?(?:(?:방금|아까|좀\s*전에)\s*)?(?:(?:만든|만들어\s*준|그|이|저|위)\s*)?(?:ppt|피피티|파워포인트|발표\s*자료|슬라이드|덱|파일)?\s*(?:에서|의|에)?\s*$/i
+const SLIDE_TITLE_EN = /^(?:please\s+)?(?:change|rename|set)\s+(?:the\s+)?(?:title\s+of\s+slide\s+(\d{1,3})|slide\s+(\d{1,3})(?:['’]s)?\s+title)\s+to\s*$/i
+const DECK_FILE = /[^\s"'“”‘’]+\.pptx(?![a-z0-9])/gi
+export function slideTitleFix(message: string): { slide: number; title: string; file?: string } | undefined {
+  const text = message.trim()
+  if (text.includes('\n') || [...text].length > ASK_MAX) return undefined
+  const double = [...text.matchAll(DOUBLE_QUOTED)], quoted = double.length ? double : [...text.matchAll(SINGLE_QUOTED)]
+  if (quoted.length !== 1) return undefined
+  const found = quoted[0]!, title = (found[1] ?? found[2] ?? '').trim(), before = text.slice(0, found.index), after = text.slice(found.index + found[0].length)
+  const files = before.match(DECK_FILE) ?? []
+  const ko = SLIDE_TITLE.exec(before.replace(DECK_FILE, ' ')), en = SLIDE_TITLE_EN.exec(before)
+  const slide = ko && TITLE_TO.test(after) && DECK_POINTER.test(ko[1]!.trim()) ? Number(ko[2] ?? ko[3]) : en && /^[.!\s]*$/.test(after) ? Number(en[1] ?? en[2]) : 0
+  if (!title || !slide || files.length > 1) return undefined
+  return { slide, title, ...(files[0] ? { file: basename(files[0]) } : {}) }
+}
+// The host's two calls are the model's own: file_read_package (outline) and file_edit_package ({slide, with}), so the read gate, the source
+// hash, an approval and the save are the tools' and unchanged. Anything they refuse, or a slide past the end, is left to the model: nothing is written.
+type CalledTool = { name: string; run(args: Record<string, unknown>, context: { task: string; signal?: AbortSignal }): Promise<string> }
+export async function fixSlideTitle(fix: { slide: number; title: string }, deck: { name: string; path: string }, tools: readonly CalledTool[], context: { task: string; signal?: AbortSignal }, korean = true): Promise<{ answer: string; steps: { tool: string; args: Record<string, unknown>; observation: string }[] } | undefined> {
+  const read = tools.find(tool => tool.name === 'file_read_package'), edit = tools.find(tool => tool.name === 'file_edit_package')
+  if (!read || !edit) return undefined
+  try {
+    const readArgs = { path: deck.path, outline: true }, seen = await read.run(readArgs, context)
+    const outline = JSON.parse(seen) as { sha256?: unknown; slides?: unknown }
+    if (typeof outline.sha256 !== 'string' || !Array.isArray(outline.slides) || fix.slide > outline.slides.length) return undefined
+    const editArgs = { sourcePath: deck.path, expectedSha256: outline.sha256, name: deck.name, edits: [{ slide: fix.slide, with: fix.title }] }
+    const done = await edit.run(editArgs, context)
+    // A receipt, not a refusal in words.
+    if (typeof (JSON.parse(done) as { markdownLink?: unknown }).markdownLink !== 'string') return undefined
+    const answer = korean ? `${fix.slide}번 슬라이드 제목을 "${fix.title}"${[0, 8, -1].includes(lastSound(fix.title)) ? '로' : '으로'} 바꿨어요.` : `Changed the title of slide ${fix.slide} to "${fix.title}".`
+    return { answer, steps: [{ tool: 'file_read_package', args: readArgs, observation: seen }, { tool: 'file_edit_package', args: editArgs, observation: done }] }
+  } catch { return undefined }
+}
+
+// c8c D5, F1: a document turn ran at the settings' effort with no bound on thinking (7,134 thinking tokens for one title; 20.7 s to list
+// twenty moves). No long thinking (agent-session.ts light) for: something to remember, a folder to sort, a note the host already read, and a
+// change to a document that exists (one made earlier in the thread, or an office file the ask names). Making a new document keeps its effort.
+const CHANGES = /바꿔|고쳐|수정|지워|빼|추가|옮겨|변경|\b(change|fix|edit|remove|delete|add|move|rename|replace)\b/i
+const MAKES = /만들|작성|새로|\b(make|create|build|write)\b/i
+const ANY_OFFICE_FILE = /\.(pptx?|docx?|xlsx?)(?![a-z0-9])/i
+export const deskLight = (kind: DeskKind | undefined, ask: string, has: { given?: boolean; made?: boolean }): boolean =>
+  kind === 'keep' || kind === 'tidy' || (kind === 'note' && !!has.given) || (kind === 'deck' && CHANGES.test(ask) && !MAKES.test(ask) && (!!has.made || ANY_OFFICE_FILE.test(ask)))

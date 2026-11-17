@@ -1,5 +1,5 @@
 import { shell } from 'electron'
-import { auditDeck, deckBodyLayout, describeDeckFindings, withoutMissingParts, type OfficeTheme } from 'core'
+import { auditDeck, deckBodyLayout, describeDeckFindings, faceFor, withoutMissingParts, type OfficeTheme } from 'core'
 import { officeOutputName, saveOfficeOutput } from './office-output.js'
 import PptxGenJS from 'pptxgenjs'
 
@@ -35,17 +35,17 @@ function titleSlide(pptx: PptxGenJS, spec: DeckSpec, t: OfficeTheme): void {
   const slide = pptx.addSlide()
   slide.background = { color: t.colors.field }
   slide.addShape(pptx.ShapeType.rect, { x: MARGIN, y: 3.5, w: 1.4, h: 0.09, fill: { color: t.colors.accent } })
-  slide.addText(first.title, { x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9, fontFace: t.fonts.title, fontSize: 40, color: t.colors.onField, bold: true, align: 'left', valign: 'bottom', fit: 'shrink' })
-  if (first.subtitle) slide.addText(first.subtitle, { x: MARGIN, y: 3.8, w: W - MARGIN * 2, h: 2.0, fontFace: t.fonts.body, fontSize: 18, color: t.colors.onField, align: 'left', fit: 'shrink' })
+  slide.addText(first.title, { x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9, fontFace: faceFor(first.title, t.fonts.title), fontSize: 40, color: t.colors.onField, bold: true, align: 'left', valign: 'bottom', fit: 'shrink' })
+  if (first.subtitle) slide.addText(first.subtitle, { x: MARGIN, y: 3.8, w: W - MARGIN * 2, h: 2.0, fontFace: faceFor(first.subtitle, t.fonts.body), fontSize: 18, color: t.colors.onField, align: 'left', fit: 'shrink' })
   if (first.notes) slide.addNotes(first.notes)
 }
 
 function contentFrame(pptx: PptxGenJS, slide: DeckSlide, index: number, total: number, t: OfficeTheme): PptxGenJS.Slide {
   const s = pptx.addSlide()
   s.background = { color: t.colors.paper }
-  s.addText(slide.title, { x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0, fontFace: t.fonts.title, fontSize: 26, color: t.colors.field, bold: true, fit: 'shrink', margin: 0 })
+  s.addText(slide.title, { x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0, fontFace: faceFor(slide.title, t.fonts.title), fontSize: 26, color: t.colors.field, bold: true, fit: 'shrink', margin: 0 })
   s.addShape(pptx.ShapeType.rect, { x: MARGIN, y: 1.42, w: 1.1, h: 0.06, fill: { color: t.colors.accent } })
-  if (slide.subtitle) s.addText(slide.subtitle, { x: MARGIN, y: 1.5, w: W - MARGIN * 2, h: deckBodyLayout(slide).subtitleHeight, fontFace: t.fonts.body, fontSize: 14, color: t.colors.mute, italic: true, margin: 0 })
+  if (slide.subtitle) s.addText(slide.subtitle, { x: MARGIN, y: 1.5, w: W - MARGIN * 2, h: deckBodyLayout(slide).subtitleHeight, fontFace: faceFor(slide.subtitle, t.fonts.body), fontSize: 14, color: t.colors.mute, italic: true, margin: 0 })
   s.addText(`${index} / ${total}`, { x: W - MARGIN - 1.2, y: H - 0.55, w: 1.2, h: 0.3, fontFace: t.fonts.body, fontSize: 9, color: t.colors.mute, align: 'right' })
   return s
 }
@@ -53,7 +53,7 @@ function contentFrame(pptx: PptxGenJS, slide: DeckSlide, index: number, total: n
 function addBullets(slide: PptxGenJS.Slide, bullets: string[], top: number, height: number, t: OfficeTheme): void {
   slide.addText(
     bullets.map((text) => ({ text, options: { bullet: { code: '25AA', indent: 18 }, color: t.colors.ink, fontSize: 16, paraSpaceAfter: 10, breakLine: true } })),
-    { x: MARGIN, y: top, w: W - MARGIN * 2, h: height, fontFace: t.fonts.body, valign: 'top', margin: 0 },
+    { x: MARGIN, y: top, w: W - MARGIN * 2, h: height, fontFace: faceFor(bullets.join(''), t.fonts.body), valign: 'top', margin: 0 },
   )
 }
 
@@ -62,7 +62,7 @@ function addTable(pptx: PptxGenJS, slide: PptxGenJS.Slide, table: DeckTable, top
     row.map((cell) => ({
       text: String(cell),
       options: {
-        fontFace: t.fonts.body, fontSize: 13, color: r === 0 ? t.colors.onField : t.colors.ink, bold: r === 0,
+        fontFace: faceFor(String(cell), t.fonts.body), fontSize: 13, color: r === 0 ? t.colors.onField : t.colors.ink, bold: r === 0,
         fill: { color: r === 0 ? t.colors.field : r % 2 === 0 ? t.colors.zebra : t.colors.paper },
         align: (r === 0 || typeof cell === 'number' ? 'center' : 'left') as PptxGenJS.HAlign,
         valign: 'middle' as PptxGenJS.VAlign, margin: 4,
@@ -74,10 +74,10 @@ function addTable(pptx: PptxGenJS, slide: PptxGenJS.Slide, table: DeckTable, top
 
 function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, chart: DeckChart, top: number, t: OfficeTheme): void {
   const type = chartType(pptx, chart.type)
-  const palette = t.colors.chart
+  const palette = t.colors.chart, face = faceFor([...chart.categories, ...chart.series.map(series => series.name)].join(''), t.fonts.body)
   if (chart.type === 'pie') {
     slide.addChart(type, [{ name: chart.series[0]!.name, labels: chart.categories, values: chart.series[0]!.values }], {
-      x: MARGIN, y: top, w: W - MARGIN * 2, h: H - top - 0.7, showLegend: true, legendPos: 'r', chartColors: palette, showPercent: true, dataLabelColor: t.colors.onField, fontFace: t.fonts.body,
+      x: MARGIN, y: top, w: W - MARGIN * 2, h: H - top - 0.7, showLegend: true, legendPos: 'r', chartColors: palette, showPercent: true, dataLabelColor: t.colors.onField, fontFace: face,
     })
     return
   }
@@ -85,7 +85,7 @@ function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, chart: DeckChart, top
   slide.addChart(type, data, {
     x: MARGIN, y: top, w: W - MARGIN * 2, h: H - top - 0.7,
     barDir: chart.type === 'bar' ? 'bar' : 'col',
-    chartColors: palette, showLegend: chart.series.length > 1, legendPos: 'b', fontFace: t.fonts.body,
+    chartColors: palette, showLegend: chart.series.length > 1, legendPos: 'b', fontFace: face,
     catAxisLabelColor: t.colors.mute, valAxisLabelColor: t.colors.mute, catAxisLabelFontSize: 11, valAxisLabelFontSize: 11,
     showValue: false, valGridLine: { style: 'solid', color: t.colors.hair, size: 1 },
   })

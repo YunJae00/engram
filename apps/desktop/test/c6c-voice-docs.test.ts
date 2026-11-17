@@ -224,7 +224,7 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect(ipc.indexOf('result.answer = shareReady(routed, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = withOffer(routed, result.answer, savedHistory'))
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
-    expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 표로 묶어 드릴게요.`)
+    expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
   })
 })
 

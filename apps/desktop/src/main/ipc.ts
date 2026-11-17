@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, keptFix, namedText, plainKeep, slideTitleFix, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -2888,6 +2888,17 @@ export function registerIpc(ctx: VaultContext): void {
         const fixArgs = fix ? { facts: [fix.fact], replaces: [fix.old], scope: personMemory.facts.some(fact => fact.text === fix.old) ? 'everyone' : 'this bot' } : undefined
         const fixed = fix && fixArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(fixArgs, { task: request.message, signal }).then(() => fix.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
         if (fixed) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-fix' })) }
+        // c8c M1: a plain "…. 기억해" is kept here the same way, in the person's words, with no model round (desk-lane.ts plainKeep).
+        const keep = !handed && !fixed && kind === 'keep' ? plainKeep(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), threadKorean(request.message, request.history ?? [])) : undefined
+        const keepArgs = keep ? { facts: [keep.fact] } : undefined
+        const keptPlain = keep && keepArgs ? await everyTool.find(tool => tool.name === 'keep_in_mind')?.run(keepArgs, { task: request.message, signal }).then(() => keep.answer, (error: unknown) => { flog('comet-memory', error); return undefined }) : undefined
+        if (keptPlain) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'kept-plain' })) }
+        // c8c D5: a slide's title by number, the new words quoted, on the one deck made in this thread is changed here through the model's
+        // own two tool calls (desk-lane.ts fixSlideTitle); two decks, another file's name or any refusal leaves it to the model.
+        const retitle = !handed && kind === 'deck' ? slideTitleFix(request.message) : undefined
+        const decks = retitle ? earlierOutputs.filter(output => /\.pptx$/i.test(output.name)) : []
+        const retitled = retitle && decks.length === 1 && (!retitle.file || retitle.file === decks[0]!.name) ? await fixSlideTitle(retitle, decks[0]!, everyTool, { task: request.message, signal }, threadKorean(request.message, request.history ?? [])) : undefined
+        if (retitled) { firstLineSpoke(channel); flog('chat-phase', JSON.stringify({ channel, phase: 'slide-fix' })) }
         // Words the person said mid-turn that this turn took with a tool result: it answers them itself.
         const steered: string[] = []
         // A lookup turn shows its answer, never the notes it writes between calls.
@@ -2907,7 +2918,9 @@ export function registerIpc(ctx: VaultContext): void {
         if (searched) flog('chat-phase', JSON.stringify({ channel, phase: 'lane-first-search', ran: !!searched.opening }))
         // stack-7: a teammate hired in this turn with the same words starts from these results (team-runner laneSearches); every turn resets it.
         if (searched?.query) laneSearches.set(channel, { query: searched.query, found: searched.found ?? '' }); else laneSearches.delete(channel)
-        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false } : await runComet(
+        const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
+          : keptPlain ? { answer: keptPlain, steps: [{ tool: 'keep_in_mind', args: keepArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false }
+          : retitled ? { ...retitled, fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
@@ -2930,8 +2943,8 @@ export function registerIpc(ctx: VaultContext): void {
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
-            // A note the host already read, or something to remember: no long thinking (agent-session.ts light).
-            ...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),
+            // A note the host already read, something to remember, a folder to sort, a change to a document that exists: no long thinking (desk-lane.ts deskLight).
+            ...(desk ? { modelHint: 'smart' as const, ...(deskLight(kind, routed, { given: !!given, made: earlierOutputs.some(output => /\.(pptx|docx|xlsx)$/i.test(output.name)) }) ? { light: true } : {}) } : {}),
             onMetric: metric => flog('harness', JSON.stringify({ ...metric, channel })),
             // Historical context cannot override a new request or restore permission.
             ...(resume ? { resume } : {}),
