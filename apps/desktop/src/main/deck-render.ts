@@ -19,6 +19,7 @@ interface DeckSpec { slides: DeckSlide[]; saveAs?: string; title?: string; theme
 const W = 13.33
 const H = 7.5
 const MARGIN = 0.7
+const COVER = 'ENGRAM_COVER', PAGE = 'ENGRAM_PAGE'
 
 function sanitize(name: string): string {
   return (name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'deck')
@@ -32,18 +33,18 @@ function chartType(pptx: PptxGenJS, type: DeckChart['type']): PptxGenJS.CHART_NA
 
 function titleSlide(pptx: PptxGenJS, spec: DeckSpec, t: OfficeTheme): void {
   const first = spec.slides[0]!
-  const slide = pptx.addSlide()
+  const slide = pptx.addSlide({ masterName: COVER })
   slide.background = { color: t.colors.field }
   slide.addShape(pptx.ShapeType.rect, { x: MARGIN, y: 3.5, w: 1.4, h: 0.09, fill: { color: t.colors.accent } })
-  slide.addText(first.title, { x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9, fontFace: faceFor(first.title, t.fonts.title), fontSize: 40, color: t.colors.onField, bold: true, align: 'left', valign: 'bottom', fit: 'shrink' })
+  slide.addText(first.title, { placeholder: 'title', x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9, fontFace: faceFor(first.title, t.fonts.title), fontSize: 40, color: t.colors.onField, bold: true, align: 'left', valign: 'bottom', fit: 'shrink' })
   if (first.subtitle) slide.addText(first.subtitle, { x: MARGIN, y: 3.8, w: W - MARGIN * 2, h: 2.0, fontFace: faceFor(first.subtitle, t.fonts.body), fontSize: 18, color: t.colors.onField, align: 'left', fit: 'shrink' })
   if (first.notes) slide.addNotes(first.notes)
 }
 
 function contentFrame(pptx: PptxGenJS, slide: DeckSlide, index: number, total: number, t: OfficeTheme): PptxGenJS.Slide {
-  const s = pptx.addSlide()
+  const s = pptx.addSlide({ masterName: PAGE })
   s.background = { color: t.colors.paper }
-  s.addText(slide.title, { x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0, fontFace: faceFor(slide.title, t.fonts.title), fontSize: 26, color: t.colors.field, bold: true, fit: 'shrink', margin: 0 })
+  s.addText(slide.title, { placeholder: 'title', x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0, fontFace: faceFor(slide.title, t.fonts.title), fontSize: 26, color: t.colors.field, bold: true, fit: 'shrink', margin: 0 })
   s.addShape(pptx.ShapeType.rect, { x: MARGIN, y: 1.42, w: 1.1, h: 0.06, fill: { color: t.colors.accent } })
   if (slide.subtitle) s.addText(slide.subtitle, { x: MARGIN, y: 1.5, w: W - MARGIN * 2, h: deckBodyLayout(slide).subtitleHeight, fontFace: faceFor(slide.subtitle, t.fonts.body), fontSize: 14, color: t.colors.mute, italic: true, margin: 0 })
   s.addText(`${index} / ${total}`, { x: W - MARGIN - 1.2, y: H - 0.55, w: 1.2, h: 0.3, fontFace: t.fonts.body, fontSize: 9, color: t.colors.mute, align: 'right' })
@@ -113,6 +114,9 @@ async function composeDeck(spec: DeckSpec): Promise<Buffer> {
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'WIDE', width: W, height: H })
   pptx.layout = 'WIDE'
+  // c11c: each slide's title is a real title placeholder (<p:ph type="title"/>), so a title edit or check finds the title, not the first text.
+  pptx.defineSlideMaster({ title: COVER, objects: [{ placeholder: { options: { name: 'title', type: 'title', x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9 }, text: '' } }] })
+  pptx.defineSlideMaster({ title: PAGE, objects: [{ placeholder: { options: { name: 'title', type: 'title', x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0 }, text: '' } }] })
   spec.slides.forEach((slide, index) => {
     if (index === 0 && !slide.bullets && !slide.table && !slide.chart) { titleSlide(pptx, spec, t); return }
     const s = contentFrame(pptx, slide, index + 1, spec.slides.length, t)
