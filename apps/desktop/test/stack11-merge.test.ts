@@ -157,10 +157,10 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
 // Section 6 (c11b run H6): an English working note opened a Korean news answer, and two items dated as ranges were counted as undated.
 describe('stack-11: working notes and date ranges', () => {
   it('drops only the lines the quick model names as notes; an asked-for English line, a quoted title and code stay', async () => {
-    const { withoutWorkNotes } = await import('../src/main/first-line.js')
+    const { dropWorkingNotes } = await import('../src/main/first-line.js')
     const answer = ['Found four solid rows, writing them up now in order.', '', '1. 배터리 재활용 기업 리사이클원이 120억 원을 유치했어요. [전자신문](https://www.etnews.com/1)', '2. "Battery Passport Standard for Recyclers Released" 발표 소식이에요.', '3. Battery Passport Standard for Recyclers Released [Reuters](https://www.reuters.com/x)'].join('\n')
     const prompts: string[] = []
-    const out = await withoutWorkNotes(answer, '요즘 배터리 재활용 투자 뉴스 3개만', async prompt => { prompts.push(prompt); return '{"notes":[1]}' })
+    const out = await dropWorkingNotes(answer, '요즘 배터리 재활용 투자 뉴스 3개만', async prompt => { prompts.push(prompt); return '{"notes":[1]}' })
     expect(out).not.toContain('Found four solid rows')
     expect(out).toContain('3. Battery Passport Standard for Recyclers Released [Reuters](https://www.reuters.com/x)')
     // Only no-Hangul lines with a long Latin run were candidates (line 2 has Korean words).
@@ -168,15 +168,15 @@ describe('stack-11: working notes and date ranges', () => {
     expect(prompts[0]).not.toContain('발표 소식이에요')
     // Asked-for English: the model keeps it.
     const asked = '부탁하신 문장이에요.\n\nCould we push the review to Thursday afternoon instead?'
-    expect(await withoutWorkNotes(asked, '리뷰 목요일 오후로 미루자는 영어 문장 하나 써줘', async () => '{"notes":[]}')).toBe(asked)
+    expect(await dropWorkingNotes(asked, '리뷰 목요일 오후로 미루자는 영어 문장 하나 써줘', async () => '{"notes":[]}')).toBe(asked)
     // No verdict: everything stays. No Korean line at all: nothing is judged here (withTheirWords' case).
-    for (const write of [async () => 'not json', async () => { throw new Error('late') }]) expect(await withoutWorkNotes(answer, '배터리 뉴스', write)).toBe(answer)
+    for (const write of [async () => 'not json', async () => { throw new Error('late') }]) expect(await dropWorkingNotes(answer, '배터리 뉴스', write)).toBe(answer)
     let called = false
-    expect(await withoutWorkNotes('Could we push the review to Thursday afternoon instead?', '영어로 써줘', async () => { called = true; return '{"notes":[1]}' })).toBe('Could we push the review to Thursday afternoon instead?')
+    expect(await dropWorkingNotes('Could we push the review to Thursday afternoon instead?', '영어로 써줘', async () => { called = true; return '{"notes":[1]}' })).toBe('Could we push the review to Thursday afternoon instead?')
     expect(called).toBe(false)
     // Inside a code block nothing is a candidate.
     called = false
-    await withoutWorkNotes('스크립트예요.\n```sh\necho moving all the log files now\n```', '로그 정리 스크립트', async () => { called = true; return '{"notes":[1]}' })
+    await dropWorkingNotes('스크립트예요.\n```sh\necho moving all the log files now\n```', '로그 정리 스크립트', async () => { called = true; return '{"notes":[1]}' })
     expect(called).toBe(false)
   })
   it('a day range is a date, read as its last day', async () => {

@@ -262,7 +262,7 @@ export function answerAlone(answer: string): string {
 // apart. The host finds the candidates by structure (no Hangul, a run of four or more Latin words outside links and code), and the quick
 // model judges them against the ask; only lines it names as notes go. No verdict (late, absent, unusable): every line stays.
 const LATIN_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
-export async function withoutWorkNotes(answer: string, ask: string, write?: (prompt: string) => Promise<string>): Promise<string> {
+export async function dropWorkingNotes(answer: string, ask: string, write?: (prompt: string) => Promise<string>): Promise<string> {
   if (!write) return answer
   const lines = answer.split('\n'), fence = lines.map((_, i) => lines.slice(0, i).filter(line => /^\s*```/.test(line)).length % 2 === 1)
   const odd = lines.map((line, i) => ({ line, i })).filter(({ line, i }) => !fence[i] && !/^\s*```/.test(line) && !/[가-힣]/.test(line) && LATIN_RUN.test(line.replace(/\[[^\]]*\]\([^)]*\)|https?:\/\/\S+|`[^`]*`/g, ' ')))
