@@ -484,7 +484,9 @@ const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|�
 const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
 const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
 // c10b (C5-C10, H5: "12월 24일, … 카즈미 타테이시 트리오 내한공연" in "다음 달 서울 IT 행사"): a list job keeps only items of the kind asked, and
-// an item whose only link is a search page while another item has a real page. The last item is never dropped.
+// an item whose only link is a search page while another item has a real page. The last item is never dropped for its link; one of
+// another kind always goes (c10b r1, Codex: a lone concert stood as "확실한 건 하나예요." under the IT list), and then the list says none fit.
+const NONE_OF_KIND = 'IT 쪽으로 딱 맞는 행사는 못 찾았어요.'
 // shortcut: the kind is checked only for an IT-type ask against shows; add a pair here when a run shows another kind mixed in.
 const IT_WORDS = /(?<![A-Za-z])(?:IT|AI|SW|ICT|DX)(?![A-Za-z])|소프트웨어|개발|보안|클라우드|데이터|테크|스타트업|인공지능|반도체|게임|컨퍼런스|콘퍼런스|해커톤|밋업|서밋|세미나|포럼|엑스포/u
 const SHOW = /공연|콘서트|내한|뮤지컬|연극|오페라|발레|리사이틀|팬\s*미팅|재즈|클래식|미술|갤러리|축제|페스티벌|버스킹/u
@@ -493,9 +495,11 @@ const offKind = (brief: string, line: string): boolean => { const plain = line.r
 export function keptItems(brief: string, text: string): string {
   const ask = brief.split('\n')[0]!
   if (!LIST_ASK.test(ask)) return text
-  const lines = text.split('\n'), real = lines.some(line => addressesIn(line).some(url => !isSearchPage(url)))
-  const kept = lines.filter(line => !offKind(ask, line) && !(real && addressesIn(line).length > 0 && addressesIn(line).every(isSearchPage)))
-  return kept.some(line => /[가-힣A-Za-z]/.test(line.replace(/https?:\/\/\S+/g, ''))) ? kept.join('\n') : text
+  const said = (some: string[]): boolean => some.some(line => /[가-힣A-Za-z]/.test(line.replace(/https?:\/\/\S+/g, '')))
+  const lines = text.split('\n'), ofKind = lines.filter(line => !offKind(ask, line)), real = ofKind.some(line => addressesIn(line).some(url => !isSearchPage(url)))
+  if (!said(ofKind)) return said(lines) ? NONE_OF_KIND : text
+  const kept = ofKind.filter(line => !(real && addressesIn(line).length > 0 && addressesIn(line).every(isSearchPage)))
+  return (said(kept) ? kept : ofKind).join('\n')
 }
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)

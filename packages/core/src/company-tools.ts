@@ -938,7 +938,13 @@ const ENGLISH_RUNS = new RegExp(`["'“‘]?${ENGLISH_RUN.source}[.!?]?["'”’
 // "API 키(등)". A run with its short form in brackets leaves the short form as the name; a bracket that holds a run goes whole.
 const SHORT_FORM = new RegExp(`["'“‘]?${ENGLISH_RUN.source}\\s*\\(([A-Z][A-Za-z0-9]{1,9})\\)["'”’]?`, 'g')
 const withoutEnglish = (line: string): string => line.replace(SHORT_FORM, '$1').replace(/\s*\(([^()\n]*)\)/g, (all, inner: string) => ENGLISH_RUN.test(inner) ? '' : all)
-  .replace(ENGLISH_RUNS, '').replace(/\(\s*(?:등|외)?\s*\)|""|“”|''|‘’/gu, '').replace(/^\s*,\s*/, '').replace(/\s+([,.!?])/g, '$1')
+  // c10b r1: "소프트웨이브: software developers meet … <link>" left "소프트웨이브: ·"; a colon or dash the run leaves with nothing after it goes too.
+  .replace(ENGLISH_RUNS, '\uE002').replace(/\s*[:：–—]?\s*\uE002(?=\s*(?:$|\uE000))/gu, ' ').replace(/\uE002/g, '').replace(/\(\s*(?:등|외)?\s*\)|""|“”|''|‘’/gu, '').replace(/^\s*,\s*/, '').replace(/\s+([,.!?])/g, '$1')
+// A line's text outside its links and addresses, changed by `change`; the links come back as they were.
+const outsideLinks = (line: string, change: (text: string) => string): string => {
+  const kept: string[] = []
+  return change(line.replace(/\[[^\]]*\]\([^)]*\)|https?:\/\/\S+/g, link => `\uE000${kept.push(link) - 1}\uE001`)).replace(/\uE000(\d+)\uE001/g, (_, k: string) => kept[Number(k)]!)
+}
 // c10b C3: "확인해 보니 노션의 …" opened a teammate's line: how they looked, not what is there.
 const LOOKED_FIRST = /^(?:확인해\s*보니|찾아\s*보니|알아\s*보니|살펴\s*보니|검색해\s*보니)\s*,?\s*/u
 /** What an agent found, as lines a person can read: no notes on the looking, no headings, no sentence in another language in a Korean result. cut: it was stopped at its limit. links: addresses stay where they were written. */
@@ -953,8 +959,9 @@ function findings(text: string, links = false, marks = false, korean = HANGUL.te
       .replace(links ? /$^/ : /\s+[—–-]\s*(?:출처|참고)?\s*$/, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
       .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '')
-      // shortcut: a link's words are left alone where links are kept (the team record, which a model reads back, never the thread).
-      .replace(/^[\s\S]*$/, all => korean && !links ? withoutEnglish(all) : all).trim())
+      // c10b r1 (Codex): a lone teammate's list keeps its links and showed "software developers meet for cloud security talks". Where links
+      // are kept, only their words and addresses are left alone.
+      .replace(/^[\s\S]*$/, all => !korean ? all : links ? outsideLinks(all, withoutEnglish) : withoutEnglish(all)).trim())
     // stack-8 (C3 replay of stack7-b3ddda26): "…검색 결과에 나오지 않았어요. 가장 최근으로 확인되는 건 1월 20일자 …" was one line and META
     // dropped it whole, so all three teammates read "이번엔 못 찾았어요.". Only the sentence about the looking goes.
     .map(line => META.test(line) ? line.split(/(?<=[^\d\s][.!?])\s+/).filter(sentence => !META.test(sentence)).join(' ') : line)
@@ -982,7 +989,7 @@ const partPages = (m: TeamMember): string[] => m.empty ? [...new Set([...(m.sour
 // sentence names their part ("리니어는 이번 주 새 소식이 안 보여요.").
 // c7b r2: "도윤: 리니어는 이번 주 새 소식이 안 보여요. [ditoday]" left out the 2025년 7월 find the part had read. The latest result that
 // names the part is given with its day (the row's own date, written at its end), as the other teammates' lines give theirs.
-// quiet: the lead has already said nothing is new, so the line does not say it again.
+// c10b r1 (Codex): the line says nothing is new itself even under a lead that said it for everyone: a line is read on its own.
 // c7b r3: the written answer was not held to it (checkedReport passed "도윤: 리니어는 새 발표 없네요."), so the find is one function's
 // answer: nothingNew says it, reportPrompt hands it to the writer, checkedReport refuses a line without it.
 function latestNamed(m: TeamMember, now: Date): { line: string; title: string; day?: string; time?: number; year?: number; month?: number } | undefined {
@@ -997,12 +1004,11 @@ function latestNamed(m: TeamMember, now: Date): { line: string; title: string; d
   })
   return rows.reduce<typeof rows[number] | undefined>((best, one) => !best || (one.time ?? -Infinity) > (best.time ?? -Infinity) ? one : best, undefined)
 }
-function nothingNew(m: TeamMember, said = false, now = new Date(), quiet = false): string {
+function nothingNew(m: TeamMember, said = false, now = new Date()): string {
   const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(m.brief)?.[0], topic = m.topic?.trim(), row = latestNamed(m, now)
   const at = row?.line.match(ADDRESS)?.at(-1) ?? m.sources?.[0]
   const link = at ? named(sourceName(trimmed(at), true), trimmed(at)) : ''
   if (!link) return `${said && topic ? `${topic} 쪽은 ` : ''}${NOTHING}`
-  if (row?.day && quiet && said) return withLink(`${topic} 쪽은 ${row.day} 게 제일 최근이에요. ${row.title}`, link)
   const about = said && topic ? `${josa(topic, '은', '는')} ` : ''
   const none = `${about}${when ? `${when} ` : ''}새 소식${about ? '이' : '은'} 안 보여요.`
   return row?.day ? withLink(`${none} 가장 가까운 건 ${row.day} 거예요. ${row.title}`, link) : `${none} ${link}`
@@ -1166,12 +1172,13 @@ const outsideFor = (m: TeamMember, now?: Date): Outside | undefined => m.read ||
 const outsideHead = (m: TeamMember, out: Outside): string => `${m.role}: ${out.said}`
 const nearestSaid = (out: Outside): string => `가장 가까운 건 ${out.when} 거예요.`
 // c10b C3: "노션은 이번 주엔 새로 낸 게 없어요. 최근엔 10월 19일에 …": a part whose newest find is older than the time asked says so first,
-// then that find in the teammate's words, without a label that sells it as new ("리니어 새 기능으로는, "). quiet: the lead already said
-// nothing is new for anyone, so the line gives only the latest find (said three times over, it read as a status report).
-const noneSince = (topic: string, out: Outside, quiet = false): string => {
+// then that find in the teammate's words, without a label that sells it as new ("리니어 새 기능으로는, ").
+// c10b r1 (Codex): under the quiet lead 도윤's line read only "리니어는 최근엔 11월 12일에 BYOK 기능이 나왔어요.", which a reader of that
+// line alone takes as this week's news. Every such line says the period itself, quiet lead or not.
+const noneSince = (topic: string, out: Outside): string => {
   const line = out.line.replace(/^[^,.!?]{0,20}(?:새\s*기능|신기능|새\s*소식|업데이트)(?:으로는|으로|은|는)\s*,?\s*/u, '')
   const dated = /^(?:\d{4}\s*년\s*)?\d{1,2}\s*월/u.test(line) ? `최근엔 ${line}` : /\d{1,2}\s*월/u.test(line) ? line : `가장 최근 건 ${out.when} 거예요. ${line}`
-  return `${topic && !(quiet && dated.startsWith(topic)) ? `${josa(topic, '은', '는')} ` : ''}${quiet ? '' : `${out.period}엔 새로 낸 게 없어요. `}${dated}`
+  return `${topic ? `${josa(topic, '은', '는')} ` : ''}${out.period}엔 새로 낸 게 없어요. ${dated}`
 }
 // Whether a text that uses such a find says it is not of this year, and (plain) that the time asked has nothing yet.
 const yearSaid = (text: string, out: { year?: number }, now: Date): boolean => !out.year || new RegExp(`${out.year}년|${out.year === now.getFullYear() - 1 ? '작년|지난해' : out.year === now.getFullYear() + 1 ? '내년' : '$^'}`).test(text)
@@ -1251,10 +1258,10 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
       : `${count} ${ledBy(jobForms(jobOf(parts[0]!), true).forms, previous)}.`
     const lines = spoke.map(({ m, topic, out, own, link, other, honest }) => {
       const about = (text: string): string => !topic || text.includes(topic) ? text : `${topic} 쪽은 ${text}`
-      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true, now, quiet)
+      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true, now)
         // c6: a find dated outside the time asked says so, in the teammate's own words when they already did. When the lead has said
         // nothing is new, the line gives the latest one and its day and does not say it again.
-        : out && !honest ? withLink(out.said.includes('일정') ? about(`${out.said} ${nearestSaid(out)} ${out.line}`) : noneSince(topic, out, quiet), link)
+        : out && !honest ? withLink(out.said.includes('일정') ? about(`${out.said} ${nearestSaid(out)} ${out.line}`) : noneSince(topic, out), link)
         : own ? withLink(about(own), link) : other ? `${about(`${FOREIGN}.`)} ${other}` : about(m.late ? NEVER_CAME : NOTHING)
       return `${m.role}: ${line}`
     })

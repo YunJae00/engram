@@ -26,13 +26,20 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
   expect(shown).not.toMatch(/카즈미|공연/)
   expect(shown).toContain('소프트웨이브 2026')
   expect(shown.split('\n')[0]).toBe('지민: 12월 서울 IT 행사는 확실한 건 하나예요.')
-  // A list item that stands only on a search page goes while another has a real page; the last item is never dropped.
+  // A list item that stands only on a search page goes while another has a real page; the last item is never dropped for its link.
   const listed = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(listed, { answer: '12월 2일 소프트웨이브 https://www.coex.co.kr/a\n12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(listed.result).toBe('12월 2일 소프트웨이브 https://www.coex.co.kr/a')
   const alone = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(alone, { answer: '12월 24일 재즈 공연 https://example.com/a' }, 'now', true)
-  expect(alone.result).toBe('12월 24일 재즈 공연 https://example.com/a')
+  // c10b r1 (Codex): a lone item of another kind goes too, and the list says none fit, never "확실한 건 하나예요." over a concert.
+  expect(alone.result).toBe('IT 쪽으로 딱 맞는 행사는 못 찾았어요.')
+  const lone = mergedReport([{ ...alone, role: '지민' }], undefined, [], { ask: alone.brief, now: NOV17 })
+  expect(lone).not.toMatch(/재즈|공연|확실한 건/)
+  expect(lone).toContain('못 찾았어요')
+  const searched = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
+  settleMember(searched, { answer: '12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
+  expect(searched.result).toContain('데브 밋업')
   // A job that is no list is never touched.
   const one = member({ brief: '이번 주말 서울 공연 찾아줘' })
   settleMember(one, { answer: '12월 24일 재즈 공연이 있어요. https://example.com/a' }, 'now', true)
@@ -52,7 +59,9 @@ test('c10b fix 2 and 3: nothing new this week is said, each line gives its lates
   expect(lines.map(line => line.split(': ')[0])).toEqual(['지민', '서연', '도윤'])
   expect(lines[0]).toMatch(/^지민: 노션의 가장 최근 업데이트는 2026년 10월 19일에 나온/)
   expect(lines[1]).toMatch(/^서연: 슬랙은 이번 주\(11\/16~11\/22\)엔 새로 낸 게 없더라고요! 최근엔 2026년 11월 9일에 /)
-  expect(lines[2]).toMatch(/^도윤: 리니어는 최근엔 11월 12일에 BYOK 기능이 나왔어요\. /)
+  expect(lines[2]).toMatch(/^도윤: 리니어는 이번 주엔 새로 낸 게 없어요\. 최근엔 11월 12일에 BYOK 기능이 나왔어요\. /)
+  // c10b r1 (Codex): every line says by itself that its part has nothing from this week.
+  for (const line of lines) expect(line).toMatch(/이번 주(?:\([^)]*\))?엔? ?(?:\S+ )?새로 (?:낸|나온) (?:게|건) 없/)
   for (const line of lines) expect(line).toMatch(/\]\(https:\/\/[^)]+\)$/)
   expect(said).not.toMatch(/확인해 보니|\(등\)|\(BYOK\)'|\(\s*\)|셋 다 찾아봤어요/)
   expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
@@ -70,4 +79,14 @@ test('c10b fix 2 and 3: nothing new this week is said, each line gives its lates
   const fresh = member({ id: 'a', role: '지민', topic: '노션', brief: run.notion.brief, result: '노션은 11월 18일에 AI 회의록 기능을 냈어요. https://www.notion.com/ko/releases' })
   const mixed = mergedReport([fresh, doyun!], undefined, [], { ask: ASK, now: NOV17 }).split('\n\n')
   expect(mixed.at(-1)).toMatch(/^도윤: 리니어는 이번 주엔 새로 낸 게 없어요\. 최근엔 11월 12일에 BYOK 기능이 나왔어요\./)
+})
+
+test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an English run with the colon that led to it', () => {
+  const m = member({ brief: '다음 달 서울 IT 행사 일정 정리', result: '12월 2일 소프트웨이브: software developers meet for cloud security talks https://www.coex.co.kr/a\n12월 9일 데브 밋업 "Build with AI in Seoul today" https://www.meetup.com/b' })
+  const said = mergedReport([m], undefined, [], { ask: m.brief, now: NOV17 })
+  expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
+  expect(said).toContain('12월 2일 소프트웨이브 · [')
+  expect(said).toContain('(https://www.coex.co.kr/a)')
+  expect(said).toContain('(https://www.meetup.com/b)')
+  expect(said).not.toMatch(/:\s*·|""/)
 })
