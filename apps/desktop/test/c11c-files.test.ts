@@ -17,6 +17,8 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { mistypedWords, officeAgentTools } from '../src/main/office-agent.js'
 import { artifactDirectory, cometFileTools, placeInTask, saveOutput, taskOutputs, twinsFile } from '../src/main/file-work.js'
 import { fixSlideTitle } from '../src/main/desk-lane.js'
+import { deliverOutputs } from '../src/main/native-tools.js'
+import { outputLinks } from '../../../packages/core/src/agent-session-result.js'
 
 const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 const THEME = { field: '#1F2937', accent: '#7C3AED', fonts: { title: 'Pretendard', body: 'Pretendard' } }
@@ -119,6 +121,45 @@ describe('an edit is saved to the file it read', () => {
     expect(await files('.docx')).toEqual(['주간 보고.docx'])
     expect(await saved('.docx')).toEqual([heading.artifact])
     expect(await xmlOf(doc.taskPath, 'word/document.xml')).toContain('이번 주 성과')
+  })
+
+  // c11c r3: an edit saved under another name is a new file, so the file it read is still handed over beside it (a card for each).
+  it('hands over both files when a same-turn edit is saved under another name; one card when it is saved onto the file', async () => {
+    const t1 = turnTools('t1')
+    const run = async (tools: ReturnType<typeof turnTools>, name: string, args: Record<string, unknown>) => { const observation = await tools.find(tool => tool.name === name)!.run(args, { task: 'x' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { path: string; taskPath: string; artifact: string; sha256: string; markdownLink: string } } }
+    const built = await run(t1, 'ppt_build', { slides: SLIDES, saveAs: '고객 설문 결과.pptx', theme: THEME })
+    const outline = await run(t1, 'file_read_package', { path: built.receipt.path, outline: true })
+    const copy = await run(t1, 'file_edit_package', { sourcePath: built.receipt.path, expectedSha256: outline.receipt.sha256, name: '고객 설문 결과 요약본.pptx', edits: [{ slide: 2, with: '응답 요약' }] })
+    expect(copy.receipt.taskPath).not.toBe(built.receipt.taskPath)
+    expect(await files('.pptx')).toEqual(['고객 설문 결과 요약본.pptx', '고객 설문 결과.pptx'])
+    const steps = [built.step, outline.step, copy.step]
+    const answer = outputLinks(steps, `요약본도 만들었어요. ${copy.receipt.markdownLink}`, task)
+    const result = { answer, steps }
+    await deliverOutputs(paths(), task, result, 0, 'x')
+    expect(result.answer).toContain(copy.receipt.markdownLink)
+    expect(result.answer.match(/engram-artifact:/g)).toHaveLength(2)
+    expect(result.answer).toContain(built.receipt.markdownLink)
+    // A workbook is handed over by the host: on the answer as the model wrote it, the original goes over beside its differently named copy.
+    const book = await run(t1, 'file_create_workbook', { name: '동호회 회비.xlsx', sheet: '3월', rows: [['이름', '회비'], ['가람', 20000]] })
+    const wb = await run(t1, 'file_read_package', { path: book.receipt.path, part: 'xl/workbook.xml' })
+    const wbPart = (JSON.parse(wb.step.observation) as { partSha256: string }).partSha256
+    const april = await run(t1, 'file_edit_package', { sourcePath: book.receipt.path, expectedSha256: wb.receipt.sha256, name: '동호회 회비 4월.xlsx', edits: [{ part: 'xl/workbook.xml', expectedSha256: wbPart, before: 'name="3월"', after: 'name="4월"' }] })
+    expect(april.receipt.taskPath).not.toBe(book.receipt.taskPath)
+    const raw = { answer: `4월 것도 만들었어요. ${april.receipt.markdownLink}`, steps: [book.step, wb.step, april.step] }
+    await deliverOutputs(paths(), task, raw, 0, 'x')
+    expect(raw.answer.match(/engram-artifact:/g)).toHaveLength(2)
+    expect(raw.answer).toContain(april.receipt.markdownLink)
+    expect(raw.answer).toContain(encodeURIComponent(book.receipt.artifact))
+
+    // The same edit under the file's own name is that file, now edited: one card, the edit's.
+    const t2 = turnTools('t2')
+    const deck = await run(t2, 'ppt_build', { slides: SLIDES, saveAs: '팀 워크숍 안내.pptx', theme: THEME })
+    const seen = await run(t2, 'file_read_package', { path: deck.receipt.path, outline: true })
+    const fix = await run(t2, 'file_edit_package', { sourcePath: deck.receipt.path, expectedSha256: seen.receipt.sha256, name: '팀 워크숍 안내.pptx', edits: [{ slide: 2, with: '준비물' }] })
+    expect(fix.receipt.taskPath).toBe(deck.receipt.taskPath)
+    const one = { answer: outputLinks([deck.step, seen.step, fix.step], `고쳤어요. ${fix.receipt.markdownLink}`, task), steps: [deck.step, seen.step, fix.step] }
+    await deliverOutputs(paths(), task, one, 0, 'x')
+    expect(one.answer).toBe(`고쳤어요. ${fix.receipt.markdownLink}`)
   })
 
   it('a new build never overwrites a same-name file an earlier turn made', async () => {
