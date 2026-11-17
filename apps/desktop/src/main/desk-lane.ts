@@ -405,33 +405,52 @@ export const deskLight = (kind: DeskKind | undefined, ask: string, has: { given?
 // its single file_move, then 13 s writing the counts. Sorting one folder by kind is fixed work: the host lists the folder's top level, groups
 // by extension into fixed Korean folder names and moves everything in ONE call of the same file_move tool (its gate: inside the workspace,
 // never Engram's folders, nothing deleted, nothing overwritten). A name already taken in a kind folder gets "-2", so both files stay.
-// shortcut: a closed shape of words; a criterion other than kind (날짜, 프로젝트), two folders, a folder that already holds other folders, an
-// English thread or anything file_move refuses goes to the model as before.
+// c10c r3: the first matcher took one sentence shape (the folder as the first word), so "fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘"
+// went to the model. The ask is read by its parts, in any order: the folder is whichever word names ONE real folder in the workspace (looked up
+// on disk, a Korean particle after it trimmed off: "inbox-dump에"), the criterion is Korean grouping "<기준>별" and must be kind (none given
+// means kind), nothing restricts it to some files ("PDF만"), and the sort is the sentence's last verb, so a second job after it ("…정리해서
+// 보내줘", "…정리하고 지워줘") goes to the model. A miss only costs speed; anything file_move refuses, or a folder of folders, goes to the model.
 const KIND_FOLDERS: readonly [string, RegExp][] = [
   ['PDF', /^pdf$/], ['이미지', /^(png|jpe?g|gif|bmp|webp|heic|svg|tiff?)$/], ['문서', /^(docx?|hwpx?|odt|rtf|pages)$/], ['엑셀', /^(xlsx?|csv|numbers|ods)$/],
   ['텍스트', /^(txt|md)$/], ['발표 자료', /^(pptx?|key|odp)$/], ['압축 파일', /^(zip|7z|rar|tar|gz)$/],
 ]
 const OTHER_FOLDER = '기타'
 export const kindFolder = (file: string): string => KIND_FOLDERS.find(([, ext]) => ext.test(extname(file).slice(1).toLowerCase()))?.[0] ?? OTHER_FOLDER
-const FOLDER_WORD = /^[^\s"'`“”‘’]+$/
-const SORT_ASK = /^\s*(?:폴더)?\s*(?:안의|안에\s*있는|에\s*있는|의)?\s*(?:파일들?|자료들?)?\s*(?:을|를|좀|다)?\s*(?:(?:종류|형식|확장자|유형|파일\s*종류)\s*별로?)?\s*(?:폴더로|폴더별로|폴더\s*만들어서)?\s*(?:정리|분류|나눠)\s*(?:해\s*줘|해\s*주세요|해\s*줄래|해|줘|줄래)?\s*[.!~]*\s*$/
-export function kindSortAsk(message: string): string | undefined {
+const CRITERION = /([가-힣]+)별(?=로|\s|$|[.,!~])/g
+const BY_KIND = /^(?:종류|형식|확장자|유형|포맷|타입|형태)$/
+const ONLY_SOME = /[가-힣a-z0-9]만(?=\s|$|[.,!~])/i
+const SORT_LAST = /(?:정리|분류|나눠|나누어)\s*(?:좀\s*)?(?:해|하)?\s*(?:줘|주세요|줄래|줘요|주라|봐|주실래요|주시겠어요)?\s*(?:요)?\s*[.!~]*\s*$/
+// The words of a sort-by-kind ask that may name its folder (sortByKind looks each up), or undefined when the ask is not one.
+export function kindSortAsk(message: string): string[] | undefined {
   const text = message.trim()
-  if (text.includes('\n') || [...text].length > ASK_MAX) return undefined
-  const [first, ...rest] = text.split(/\s+/)
-  if (!first || !FOLDER_WORD.test(first) || !/[/\\]/.test(first) || /\.[a-z0-9]{1,5}$/i.test(first)) return undefined
-  return SORT_ASK.test(rest.join(' ')) ? first.replace(/[/\\]+$/, '') : undefined
+  if (text.includes('\n') || [...text].length > ASK_MAX || !SORT_LAST.test(text) || ONLY_SOME.test(text)) return undefined
+  if ([...text.matchAll(CRITERION)].some(([, criterion]) => !BY_KIND.test(criterion!.replace(/^파일/, '')))) return undefined
+  const words = text.split(/[\s"'`“”‘’()[\]<>,]+/).map(word => word.replace(/[.!~?]+$/, '')).filter(word => word && !word.startsWith('~'))
+  return words.length ? words : undefined
+}
+// The one folder inside the workspace the words name: a word as written, or with up to four trailing Hangul letters (a particle) trimmed.
+async function namedFolder(words: readonly string[], root: string): Promise<string | undefined> {
+  const found = new Set<string>()
+  for (const word of words) {
+    for (let cut = 0; cut <= 4; cut++) {
+      const tail = word.slice(word.length - cut)
+      if (cut && (cut > word.length - 1 || !/^[가-힣]+$/.test(tail))) break
+      const path = await realpath(resolve(root, cut ? word.slice(0, -cut) : word)).catch(() => undefined)
+      if (path && path !== root && inside(root, path) && (await lstat(path)).isDirectory()) { found.add(path); break }
+    }
+  }
+  return found.size === 1 ? [...found][0] : undefined
 }
 // The first of name, name-2, name-3 … not taken (file-work.ts freeName, which this module cannot import: it loads electron).
 const freeIn = (name: string, taken: ReadonlySet<string>): string => { for (let count = 1; ; count++) { const one = count === 1 ? name : `${basename(name, extname(name))}-${count}${extname(name)}`; if (!taken.has(one.toLowerCase())) return one } }
 type MoveTool = { run(args: Record<string, unknown>, context: { task: string; signal?: AbortSignal }): Promise<string> }
 export async function sortByKind(message: string, workspace: string, move: MoveTool | undefined, context: { task: string; signal?: AbortSignal }): Promise<{ answer: string; steps: { tool: string; args: Record<string, unknown>; observation: string }[] } | undefined> {
-  const named = kindSortAsk(message)
-  if (!named || !move || named.startsWith('~')) return undefined
+  const words = kindSortAsk(message)
+  if (!words || !move) return undefined
   try {
-    const root = await realpath(workspace), folder = await realpath(resolve(root, named))
+    const root = await realpath(workspace), folder = await namedFolder(words, root)
     // The chats' task folders are Engram's (namedText's box); file_move refuses the rest of its own folders.
-    if (folder === root || !inside(root, folder) || inside(join(root, 'tasks'), folder)) return undefined
+    if (!folder || inside(join(root, 'tasks'), folder)) return undefined
     const entries = await readdir(folder, { withFileTypes: true })
     const kinds = new Set([...KIND_FOLDERS.map(([name]) => name), OTHER_FOLDER])
     // A folder that already holds folders of its own is sorted some other way: the model looks at it.

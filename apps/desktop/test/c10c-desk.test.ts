@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
@@ -25,13 +25,26 @@ describe('c10c F1: the host sorts one folder by kind', () => {
   })
   afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
-  it('matches a plain sort-by-kind ask and nothing else', () => {
+  // c10c r3: the folder, the criterion and the verb are read by their parts in any order, the folder looked up on disk. The reviewer's two
+  // wordings and others not in the harness are sorted; another criterion, a restriction, a second job, two folders or a file are not.
+  it('sorts the folder whatever the sentence shape, and leaves other asks to the model', async () => {
     expect(deskKind(F1)).toBe('tidy')
-    for (const ask of [F1, 'fixtures/inbox-dump 정리해줘', 'fixtures/inbox-dump 폴더 형식별로 분류해줘', 'fixtures/inbox-dump/ 파일 확장자별로 정리해 주세요.', 'fixtures/inbox-dump 폴더 종류별로 나눠줘'])
-      expect(kindSortAsk(ask)).toBe('fixtures/inbox-dump')
-    for (const ask of ['fixtures/inbox-dump 폴더 날짜별로 정리해줘', 'fixtures/inbox-dump 폴더 파일들 프로젝트별로 정리해줘', 'fixtures/a fixtures/b 정리해줘',
-      'fixtures/meeting-notes.md 정리해줘', 'fixtures/inbox-dump 폴더 정리하고 오래된 건 지워줘', '폴더 정리해줘', 'fixtures/inbox-dump 폴더 정리해서 민호한테 보내줘'])
-      expect(kindSortAsk(ask)).toBeUndefined()
+    const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘', 'fixtures/inbox-dump 정리해줘',
+      '"fixtures/inbox-dump" 안의 자료 형식별로 분류해 주세요.', '받은 파일 모아둔 fixtures/inbox-dump/ 좀 확장자별로 나눠줘', 'fixtures/inbox-dump의 파일들 파일유형별로 정리해 줄래']
+    for (const ask of yes) {
+      expect(kindSortAsk(ask), ask).toBeDefined()
+      const sorted = await sortByKind(ask, workspace, move(), context)
+      expect(sorted?.answer, ask).toContain('- PDF 6개')
+      for (const folder of ['PDF', '문서', '엑셀', '이미지', '텍스트']) for (const name of await readdir(join(inbox, folder))) await rename(join(inbox, folder, name), join(inbox, name))
+      for (const folder of ['PDF', '문서', '엑셀', '이미지', '텍스트']) await rmdir(join(inbox, folder))
+    }
+    await writeFile(join(workspace, 'fixtures', 'meeting-notes.md'), '# 회의')
+    await mkdir(join(workspace, 'fixtures', 'other'))
+    const no = ['fixtures/inbox-dump 폴더 날짜별로 정리해줘', 'fixtures/inbox-dump에 있는 파일들 프로젝트별로 정리해줘', 'fixtures/inbox-dump fixtures/other 정리해줘',
+      'fixtures/meeting-notes.md 정리해줘', 'fixtures/inbox-dump 폴더 정리하고 오래된 건 지워줘', '폴더 정리해줘', 'fixtures/inbox-dump 폴더 정리해서 민호한테 보내줘',
+      'fixtures/inbox-dump에서 PDF만 종류별로 정리해줘', 'fixtures/inbox-dump 정리하지 마', 'fixtures/nowhere 종류별로 정리해줘']
+    for (const ask of no) expect(await sortByKind(ask, workspace, move(), context), ask).toBeUndefined()
+    expect((await readdir(inbox)).sort()).toEqual([...INBOX].sort())
   })
 
   it('moves every file into Korean kind folders in one file_move, deletes nothing and answers with the counts', async () => {
