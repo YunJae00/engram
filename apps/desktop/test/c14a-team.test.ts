@@ -79,14 +79,15 @@ it('C5 class r2: a page whose first round gave one of its two entries still gets
   expect(answer).toContain('12월 20일')
 })
 
-it('C5 class r3: two different entries that cite one same schedule page are both kept; only the judge\'s "same" makes a re-find', async () => {
+// stack-14 (c14a r3 #1 evidence request): also with the listing page and both entries on one same address.
+it.each([['a season page apart from the list', 'https://stage.example.kr/daegu/season/2026-winter'], ['the list page itself', 'https://stage.example.kr/daegu/season']])('C5 class r3: two different entries that cite one same schedule page are both kept; only the judge\'s "same" makes a re-find (%s)', async (_label, SEASON) => {
   const paths = await temporary('shared')
   for (const name of ['엔그램', '하윤']) await createBot(paths, { name })
   const brief = '이번 겨울 대구 공연 일정'
   const created = await createTask(paths, `하윤한테 맡겨: ${brief}`, 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
   // One season page lists both shows; each entry's text and day come from it, so both cite it.
-  const LIST = 'https://stage.example.kr/daegu/season', SEASON = 'https://stage.example.kr/daegu/season/2026-winter'
+  const LIST = 'https://stage.example.kr/daegu/season'
   const prompts: string[] = []
   const run: Run = async (_deps, prompt, options = {}) => {
     prompts.push(prompt)

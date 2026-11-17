@@ -1084,10 +1084,12 @@ export const itemsPrompt = (urls: readonly string[]): string => `Some of what yo
 // unseen, and nothing done is labeled as not done (GROKBOT rule 7).
 // stack-12 (c12a r3 #2): what the round gives back is judged like any data (team-runner runs kindChecked on it): a fact still judged a
 // listing, or one that is a listing page itself given back, is no item. With no item left the page stays labeled as before.
-export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
+// stack-14 (c14a r3 #1): an entry that cites the listing page itself is still an entry. Once the round was judged (`judged`), its `listing`
+// verdict is what tells a page summary from an entry, by meaning; the page address stands in for that only for a round nobody judged.
+export function withItems(data: MemberData, more: MemberData | undefined, judged = false): MemberData {
   // c14a r3: an entry found again is told apart by meaning where the round is judged (kindChecked's `inHand`); here only the same words are
   // the same entry. A shared page is not: two entries of one schedule often cite one page (r2 dropped the second one on it).
-  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  const listed = new Set(judged ? [] : listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
   const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
   if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))

@@ -39,4 +39,7 @@ test('an extra round that gives the listing page back, or only facts judged a li
   expect(withItems(data, { facts: [{ text: '다른 모임 목록이에요.', url: 'https://club.example.kr/other', site: 'c', listing: true }] })).toEqual(data)
   const one = withItems(data, { facts: [{ text: '12월 7일 수성못 러닝이 있어요.', url: 'https://club.example.kr/runs/7', site: 'c' }] })
   expect(one.facts.map(f => [f.url, f.rest ?? false])).toEqual([['https://club.example.kr/runs/7', false], [page, true]])
+  // stack-14 (c14a r3 #1): once the round was judged, an entry citing the list page itself is an entry; only the judge's `listing` drops one.
+  const judged = withItems(data, { facts: [{ text: '12월 14일 앞산 야간 러닝이 있어요.', url: page, site: 'c', date: '12월 14일' }, { text: '다른 모임 목록이에요.', url: page, site: 'c', listing: true }] }, true)
+  expect(judged.facts.map(f => [f.text, f.rest ?? false])).toEqual([['12월 14일 앞산 야간 러닝이 있어요.', false], ['러닝 모임 여러 개가 올라와 있어요.', true]])
 })

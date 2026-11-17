@@ -320,7 +320,9 @@ export function teamRunner(deps: {
         for (const url of pages) (byName ? named : opened).add(url)
         const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
         // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
-        data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, undefined, data.facts.filter(f => !f.listing)))
+        // stack-14: kindChecked hands back the round itself when no verdict came (no judge, late, stopped); any other object was judged.
+        const checked = await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, undefined, data.facts.filter(f => !f.listing))
+        data = withItems(data, checked, !!checked && checked !== more)
       }
       clearTimeout(hardStop)
       reading.delete(key)
