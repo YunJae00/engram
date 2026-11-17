@@ -188,11 +188,46 @@ test('r2: the kind asked is judged once where the data comes in, so the host\'s 
   expect(text).not.toContain('정비')
   // Nothing of the kind: a part that found nothing for it, not the wrong item.
   expect((await kindChecked({ facts: facts.slice(1, 2).concat(facts[1]!) }, brief, async () => '{"keep":[]}'))?.nothing).toEqual({})
-  // No model, a late one or a broken answer: the teammate's own judgment stands; one fact is never sent for a check.
-  expect(await kindChecked({ facts }, brief)).toEqual({ facts })
-  expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual({ facts })
-  expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual({ facts })
+  // No model, a late one or a broken answer: the job's own words judge (r3: sharedWords); one fact is never sent for a check.
+  const wine = { facts: [facts[0]!, facts[2]!] }
+  expect(await kindChecked({ facts }, brief)).toEqual(wine)
+  expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual(wine)
+  expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual(wine)
   let asked = false
   await kindChecked({ facts: facts.slice(0, 1) }, brief, async () => { asked = true; return '{"keep":[]}' })
   expect(asked).toBe(false)
+})
+
+// --- c11a round 3 (review r2). Wordings are not the harness's. ---
+
+test('r3: tool names, ids and paths in a teammate\'s data never reach the person; a page address is left whole', () => {
+  const m = settled(member({ id: 't', role: '하린', brief: '이번 주 사내 위키 개편 소식 조사' }), block({ facts: [{ text: 'fetch_page_text 호출로 보니 task-9be1c 기록은 ~/notes/wiki_log.md, /private/var/x/run.json에 있고 개편은 금요일이에요.', url: 'https://wiki.example.kr/news/re_design', site: '위키소식' }], note: 'open_url 결과는 /home/me/out/에 남겼어요.' }))
+  const fact = m.data!.facts[0]!
+  expect(fact.text).toBe('호출로 보니 기록은 wiki_log.md, run.json에 있고 개편은 금요일이에요.')
+  expect(fact.url).toBe('https://wiki.example.kr/news/re_design')
+  expect(m.data!.note).toBe('결과는 out에 남겼어요.')
+  const text = mergedReport([m])
+  expect(text).not.toMatch(/fetch_page_text|open_url|task-9be1c|\/private\/|\/home\/|~\//)
+  expect(text).toContain('(https://wiki.example.kr/news/re_design)')
+})
+
+test('r3: with no answer from the kind check, an item sharing none of the job\'s words is left out of the fallback', async () => {
+  const brief = '다음 달 대전 보드게임 모임 일정'
+  const facts = [
+    { text: '둔산동 보드게임카페에서 정기 모임이 있어요.', url: 'https://board.example.kr/m/3', site: '보드온' },
+    { text: '다음 달 유성 온천 축제가 열려요.', url: 'https://fest.example.kr/f/1', site: '축제달력' },
+    { text: '대전 보드게임 동호회 번개가 토요일에 있어요.', url: 'https://board.example.kr/m/8', site: '보드온' },
+  ]
+  for (const write of [undefined, () => new Promise<string>(() => {}), async () => '{"keep": "all"}']) {
+    const data = await kindChecked({ facts }, brief, write, 20)
+    const m = member({ id: 'b', role: '세아', brief })
+    settleMember(m, { answer: 'x', report: data ?? null }, NOW.toISOString(), true)
+    const text = mergedReport([m])
+    expect(text).toContain('둔산동')
+    expect(text).toContain('동호회')
+    expect(text).not.toContain('온천')
+  }
+  // Nothing shares a word: nothing is judged, all stay (unsure keeps).
+  const other = [{ text: '가나 행사', url: 'https://a.example/1', site: 'A' }, { text: '다라 행사', url: 'https://a.example/2', site: 'A' }]
+  expect(await kindChecked({ facts: other }, brief)).toEqual({ facts: other })
 })
