@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, listOnly, namesSubject, newsAsk, newsItems, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, RESHAPE_NOTE, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, keepDeclaredName, pageHead, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -3019,13 +3019,22 @@ export function registerIpc(ctx: VaultContext): void {
         flog('chat-phase', JSON.stringify({ channel, phase: 'runtime-finished', ms: Date.now() - nativeSince }))
         if (signal.aborted) return
         // Asks one shown address whether it answers: nothing is sent with it but the address itself.
-        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(response => { void response.body?.cancel().catch(() => undefined); return linkAnswers(response.status) })
+        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(async response => {
+          // c10a r2: the head of a page that answers holds the site's own name (og:site_name); kept so its link is named by it, not "출처".
+          if (linkAnswers(response.status) && /html/i.test(response.headers.get('content-type') ?? '')) keepDeclaredName(url, await pageHead(response.body).catch(() => ''))
+          else void response.body?.cancel().catch(() => undefined)
+          return linkAnswers(response.status) })
         if (lane && !result.asked) {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
           // c7 L2: a lone lookup never ends on "가져오지 못했어요" while results are held; c7 R3: nothing follows a numbered news list (fast-lane.ts).
           if (solo) result.answer = await heldAnswer(result.answer, { ask: [lookup.ask(), ...steered].join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          // c10a L3: a weekend weather answer names 토요일 and 일요일 (redone once from the held rows); L1: "13.0도" → "13도", no date after 오늘.
+          if (solo) result.answer = await weekendAnswer(result.answer, { ask: lookup.ask(), held: heldFor(laneRead, laneSaid), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          result.answer = laneTidy(result.answer)
+          // c10a T2: after a swap the answer names what it is now about (fast-lane namesSubject).
+          if (solo && lookup.ask() !== request.message) result.answer = namesSubject(result.answer, lookup.ask())
           if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(newsItems(result.answer, laneRead, routed)))
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.

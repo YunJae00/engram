@@ -21,7 +21,7 @@ test('c9a R3: the run\'s plain lines are numbered, the statistic, the plan and t
     '정부, 2030년까지 기업가치 1조 AI 스타트업 20곳 육성 지원 계획 발표 — 11월 11일 [헤럴드경제](https://biz.heraldcorp.com/article/10000003)',
     "젠슨 황 퇴진 소식에 글로벌 AI 스타트업 투자 환경 '비상' — 11월 16일 [조선일보](https://www.chosun.com/economy/2026/11/16/x)"].join('\n')
   const out = shortSaid(ask, listOnly(newsItems(answer, [r3Rows], ask)))
-  expect(out).toBe('확실한 건 1건이라 1개만 넣었어요.\n\n1. 메디인테크, 338억 원 규모 시리즈C 투자 유치 (AI 로봇내시경·수술로봇 고도화) — 11월 17일 [아시아경제](https://www.asiae.co.kr/article/2026111700001)')
+  expect(out).toBe('확실한 투자 유치 건은 1개예요.\n\n1. 메디인테크, 338억 원 규모 시리즈C 투자 유치 (AI 로봇내시경·수술로봇 고도화) — 11월 17일 [아시아경제](https://www.asiae.co.kr/article/2026111700001)')
   expect(out).not.toMatch(/벤처투자 12조|정부,|젠슨/)
 })
 
@@ -50,7 +50,7 @@ test('c9a R3: four real rounds give a four-item numbered list and the half sente
   const items = out.split('\n').filter(line => /^\d+\. /.test(line))
   expect(items).toHaveLength(4)
   expect(items.map(line => line.slice(0, 3))).toEqual(['1. ', '2. ', '3. ', '4. '])
-  expect(out.startsWith('확실한 건 4건이라 4개만 넣었어요.')).toBe(true)
+  expect(out.startsWith('확실한 투자 유치 건은 4개예요.')).toBe(true)
   expect(out).not.toContain('3분기')
   // With no rows marked as the event, plain lines are still numbered and nothing is dropped.
   expect(newsItems('a [x](https://a.example/1)\nb [y](https://b.example/2)', [], ask)).toBe('1. a [x](https://a.example/1)\n2. b [y](https://b.example/2)')
@@ -70,7 +70,9 @@ test('c9a r2 (Codex r1): with no round among the results, a statistic or a plan 
   // stack-9: the items stay (an item is dropped only when another remains), under a lead that says none is a round; the model's lead goes.
   expect(out.split('\n')[0]).toBe('딱 맞는 소식은 아직 없어서, 가까운 소식만 모았어요.')
   expect(out).not.toContain('투자 관련 소식이에요.')
-  expect(out.split('\n').filter(line => /^\d+\. /.test(line))).toEqual(['1. 벤처투자가 12조 원으로 늘었어요. [머니투데이](https://news.mt.co.kr/2)', '2. 정부가 AI 스타트업 20곳을 키운대요. [헤럴드경제](https://biz.heraldcorp.com/3)'])
+  // c10a: related news is never a numbered item (background rows are never items): it follows the lead as plain lines.
+  expect(out.split('\n').filter(line => /^\d+\. /.test(line))).toEqual([])
+  expect(out.split('\n').filter(line => /^- /.test(line))).toEqual(['- 벤처투자가 12조 원으로 늘었어요. [머니투데이](https://news.mt.co.kr/2)', '- 정부가 AI 스타트업 20곳을 키운대요. [헤럴드경제](https://biz.heraldcorp.com/3)'])
   // search_web marks the rows that way: a known kind keeps the floor at 2 even when no row names a round.
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
@@ -132,7 +134,7 @@ test('c9a r3 (Codex r2): a background article on the funded company is no item, 
   const answer = ['1. 메디인테크가 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)',
     '2. 메디인테크가 정부 AI 실증 지원 사업에 뽑혔어요. [전자신문](https://www.etnews.com/2026111700005)'].join('\n')
   const out = shortSaid(ask, listOnly(newsItems(answer, [rows], ask)))
-  expect(out).toBe('확실한 건 1건이라 1개만 넣었어요.\n\n1. 메디인테크가 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)')
+  expect(out).toBe('확실한 투자 유치 건은 1개예요.\n\n1. 메디인테크가 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)')
   // An item linking a page the search did not list still counts by the company it names.
   expect(newsItems('1. 메디인테크 338억 유치 [더벨](https://www.thebell.co.kr/1)\n2. 메디인테크 실증 선정 [전자신문](https://www.etnews.com/2026111700005)', [rows], ask)).toBe('1. 메디인테크 338억 유치 [더벨](https://www.thebell.co.kr/1)')
 })

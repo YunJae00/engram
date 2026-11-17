@@ -209,11 +209,13 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('"업스테이지가 LS그룹에서 1,500억 원 투자받았대요. [글로벌경제](address)"')
   expect(LANE_NOTE).toContain('never "sentence (date) — outlet"')
   // c7 L1: weather in a person's words, not a forecast's.
-  expect(LANE_NOTE).toContain('"오늘(11월 17일)은 저녁부터 비 와요. 지금은 13.6도예요."')
+  // c10a L1/L3: a colleague's words, whole degrees, each weekend day by name.
+  expect(LANE_NOTE).toContain('"지금 비 오고 13도예요. 저녁까지 오다가 밤엔 그친대요."')
+  expect(LANE_NOTE).toContain('"토요일은 맑고, 일요일은 구름만 조금 껴요."')
   expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
   // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
   expect(LANE_NOTE).toContain('is named by the plain word 출처')
-  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, with a variant\'s in one short bracket after it when it differs')
+  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, never a variant\'s, and a price cell is the named model\'s own tier')
   // c7 L2: the failure words of the run are named.
   expect(LANE_NOTE).toContain('"가져오지 못했어요", "확인되는 대로 다시 알려드릴게요"')
   expect(LANE_NOTE).toContain('the next most recent real ones from the results marked older fill the list, each with its date and year')
@@ -472,7 +474,7 @@ it('stack-7: a counted news list shorter than the count says so in its lead; a f
   const { shortSaid } = await import('../src/main/fast-lane.js')
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
   const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. [비바100](https://v.example/3)'
-  expect(shortSaid(ask, three)).toBe(`확실한 건 3건이라 3개만 넣었어요.\n\n${three}`)
+  expect(shortSaid(ask, three)).toBe(`확실한 투자 유치 건은 3개예요.\n\n${three}`)
   for (const lead of ['확실한 건 세 건이라 세 개만 넣었어요.', '이번 달 건 3개뿐이라 그것만 넣었어요.']) expect(shortSaid(ask, `${lead}\n\n${three}`)).toBe(`${lead}\n\n${three}`)
   const five = `${three}\n4. 넷째예요. [a](https://a.example/4)\n5. 다섯째예요. [b](https://b.example/5)`
   expect(shortSaid(ask, five)).toBe(five)

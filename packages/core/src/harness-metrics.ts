@@ -8,6 +8,8 @@ export interface HarnessMetric {
   sentChars?: number
   completed?: number
   requested?: number
+  /** c10a: the counts of one pass of a counted news search (rows, rounds, rows kept). */
+  counts?: Record<string, number>
 }
 
 // Metrics contain timings and counts, never page contents, arguments or addresses.

@@ -120,7 +120,7 @@ export {
   type BotFact,
   type BotMemoryFile,
 } from './bot-memory.js'
-export { askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventQuery, eventRank, headlineNames, inPeriod, newsPeriod, newsTemplate, rankLinks, resultDay, sameEvent, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
+export { askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventQuery, eventRank, headlineNames, inPeriod, newsPeriod, newsTemplate, rankLinks, resultDay, ROUND_UP_QUERY, ROUND_UP_TITLE, roundUpRows, sameEvent, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 export { answerLanguageLine, scriptLanguage, parseProposal, proposalPrompt, routineDraftTool, PROPOSAL_TOKENS, type TaskProposal } from './task-proposal.js'
 export { updateRoutineGoal } from './routine-store.js'
 export { evidenceRegion } from './work-evidence.js'

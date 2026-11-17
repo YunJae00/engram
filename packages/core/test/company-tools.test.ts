@@ -1521,7 +1521,7 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   expect(askedPeriod('서울 IT 행사 일정 정리', NOV17)).toBeUndefined()
   // C5 as stored: last year's event for "다음 달". The host's list says so, keeps the year as written and links the page.
   const host = mergedReport(s5.c5, undefined, [], ctx)
-  expect(host).toBe(`지민: 올해 12월 일정은 아직 안 보여요. 가장 가까운 건 작년 12월 11일 거예요.\n\nACC 2025(AI & Cloud Conference)는 2025년 12월 11일 서울 신라호텔에서 열려요. [출처](${acc})`)
+  expect(host).toBe(`지민: 올해 12월 일정은 아직 안 보여요. 가장 가까운 건 작년 12월 11일 거예요.\n\nACC 2025(AI & Cloud Conference)는 2025년 12월 11일 서울 신라호텔에서 열려요. [지디넷코리아](${acc})`)
   // The writer is told, and what the run showed (the year dropped) is refused; a text that says it passes.
   const prompt = reportPrompt(stack5.c5.goal, s5.c5, undefined, ctx)
   expect(prompt).toContain('"outside":"작년 12월 11일"')
@@ -1530,10 +1530,10 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   const shown = `지민이 다음 달 서울 IT 행사 일정 정리해 왔어요.\n\n12월 11일, ACC 2025(AI & Cloud Conference) 신라호텔에서 개최\n\n[ACC 2025](${acc})`
   expect(checkedReport(shown, s5.c5, ctx)).toBeUndefined()
   expect(checkedReport(`지민: 올해 12월 일정은 아직 안 보여요. 12월 11일에 ACC가 신라호텔에서 열려요. [ACC 2025](${acc})`, s5.c5, ctx)).toBeUndefined()
-  const said = `지민: 올해 12월 일정은 아직 안 보여요. 작년엔 12월 11일에 ACC가 신라호텔에서 있었어요. [출처](${acc})`
-  expect(checkedReport(said.replace('[출처]', '[ACC 2025]'), s5.c5, ctx)).toBe(said)
+  const said = `지민: 올해 12월 일정은 아직 안 보여요. 작년엔 12월 11일에 ACC가 신라호텔에서 있었어요. [지디넷코리아](${acc})`
+  expect(checkedReport(said.replace('[지디넷코리아]', '[ACC 2025]'), s5.c5, ctx)).toBe(said)
   expect(await writtenReport({ ask: stack5.c5.goal, members: s5.c5, now: NOV17, write: async () => shown })).toBe(host)
-  expect(await writtenReport({ ask: stack5.c5.goal, members: s5.c5, now: NOV17, write: async () => said.replace('[출처]', '[ACC]') })).toBe(said)
+  expect(await writtenReport({ ask: stack5.c5.goal, members: s5.c5, now: NOV17, write: async () => said.replace('[지디넷코리아]', '[ACC]') })).toBe(said)
   // A find inside the time asked, a month named without a day, or no date at all: nothing is said about the time.
   const inside = (result: string, brief = '다음 달 서울 IT 행사 일정 정리'): string => mergedReport([part('m1', '지민', brief, { result })], undefined, [], ctx)
   for (const result of ['소프트웨이브 2026은 12월 2일 코엑스에서 열려요. https://a.example/sw', '소프트웨이브 2026은 2026년 12월 2일 코엑스에서 열려요. https://a.example/sw', 'ACC 2026은 12월에 열려요(11월 10일 기사). https://a.example/acc', '코엑스에서 큰 행사가 열려요. https://a.example/x', 'ACC는 2025년 12월 11일에 열렸고, 소프트웨이브는 12월 2일에 열려요. https://a.example/x'])
