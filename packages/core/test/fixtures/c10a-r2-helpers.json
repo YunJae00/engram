@@ -1,0 +1,74 @@
+{
+ "goal": "아이폰 18, 갤럭시 S27, 픽셀 11 가격이랑 출시일 비교해줘. 각각 따로 조사시켜",
+ "members": [
+  {
+   "id": "m1",
+   "parentId": null,
+   "depth": 1,
+   "role": "iphone18",
+   "brief": "아이폰 18의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "아이폰 18 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkfyhd4-586409-m1",
+   "hiredAt": "2026-11-17T08:39:38.335Z",
+   "finishedAt": "2026-11-17T08:39:52.000Z",
+   "result": "아이폰 18 프로는 이미 출시되어 국내 출고가(256GB 기준) 약 199만 원이에요. (https://m.naver.com/shorts/?mediaType=VOD&recId=%7B%22query%22%3A%22%EC%95%84%EC%9D%B4%ED%8F%B0+18+%EC%B6%9C%EA%B3%A0%EA%B0%80%22%2C%22seedIndex%22%3A%224%22%2C%22type%22%3A%22ALL%22%2C%22order%22%3A%22RELATED%22%2C%22filter%22%3A%5B%22LOW_QUALITY_LEVEL_3%22%2C%22NXOPEN_0%22%5D%2C%22theme%22%3A%22shopping%22%2C%22now%22%3A%220%22%7D&recType=CLIP_SEARCH&seedMediaId=6A5D1544244BD5A47FFF463C2458197E492A&serviceType=CLIP)\n\niPhone 18 Pro는 현재 Apple 공식 홈페이지에서 구매 가능한 상태로, 이미 출시되었어요. (https://www.apple.com/kr/iphone-18-pro/)\n\n반면 아이폰 18 일반형은 아직 미출시로, 2027년 봄 출시가 예상돼요 (https://cafe.naver.com/hiric)\n\n가격: 프로 기준 199만 원(256GB)부터 — https://blog.naver.com/automobile1004/224479601593\n출시일: 프로는 이미 출시됨, 일반형은 2027년 봄 예상",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EC%B6%9C%EA%B3%A0%EA%B0%80",
+    "https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EC%B6%9C%EC%8B%9C%EC%9D%BC"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  },
+  {
+   "id": "m2",
+   "parentId": null,
+   "depth": 1,
+   "role": "galaxyS27",
+   "brief": "갤럭시 S27의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "갤럭시 S27 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkfyhd4-586409-m2",
+   "hiredAt": "2026-11-17T08:39:38.335Z",
+   "finishedAt": "2026-11-17T08:39:48.338Z",
+   "result": "가격: 미발표, 예상 기본형 999달러(약 134만원)부터, S27+는 1199달러(약 160만원)부터, 울트라는 약 187만원부터 - https://www.mt.co.kr/tech/2026/10/20/2026101915464770051\n\n출시일: 미발표, 2027년 1~2월 언팩·내년(2027년) 상반기 출시 예상 - https://blog.naver.com/nsunha/224472687749",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EA%B0%A4%EB%9F%AD%EC%8B%9C%20S27%20%EC%B6%9C%EA%B3%A0%EA%B0%80",
+    "https://search.naver.com/search.naver?query=%EA%B0%A4%EB%9F%AD%EC%8B%9C%20S27%20%EC%B6%9C%EC%8B%9C%EC%9D%BC"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  },
+  {
+   "id": "m3",
+   "parentId": null,
+   "depth": 1,
+   "role": "pixel11",
+   "brief": "픽셀 11의 가격과 출시일 조사",
+   "deliverable": "가격과 출시일 (미발표면 예상가/예상월)",
+   "lookup": true,
+   "query": "구글 픽셀 11 가격 출시일",
+   "state": "released",
+   "sessionKey": "team-t-mwkfyhd4-586409-m3",
+   "hiredAt": "2026-11-17T08:39:38.335Z",
+   "finishedAt": "2026-11-17T08:39:50.039Z",
+   "result": "가격: 999유로부터 (기본 모델 기준) — https://ko.vidabytes.com/%EA%B5%AC%EA%B8%80-%ED%94%BD%EC%85%80-11-%EC%B6%9C%EC%8B%9C%EC%9D%BC--%EA%B0%80%EA%B2%A9-%EB%B0%8F-%EC%9C%A0%EC%B6%9C%EB%90%9C-%EB%AA%A8%EB%93%A0-%EA%B8%B0%EB%8A%A5/\n출시일: 2026년 8월 12일 (미국 뉴욕 'Made by Google' 행사에서 공개) — https://ko.wikipedia.org/wiki/%ED%94%BD%EC%85%80_11_%ED%94%84%EB%A1%9C",
+   "sources": [
+    "https://search.naver.com/search.naver?query=%EA%B5%AC%EA%B8%80%20%ED%94%BD%EC%85%80%2011%20%EC%B6%9C%EA%B3%A0%EA%B0%80",
+    "https://search.naver.com/search.naver?query=%EA%B5%AC%EA%B8%80%20%ED%94%BD%EC%85%80%2011%20%EC%B6%9C%EC%8B%9C%EC%9D%BC"
+   ],
+   "review": {
+    "ok": true,
+    "note": "auto: sourced lookup"
+   }
+  }
+ ]
+}

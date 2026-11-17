@@ -1007,8 +1007,10 @@ it('c6: a lone lookup\'s link is never named by its bare host: the result\'s tit
 
 it('c6: the member rule and the merged shape keep a row to the thing the person named', () => {
   expect(LOOKUP_RULE).toContain('The thing is called by the name in your part ("아이폰 18"), never by a variant\'s')
-  expect(LOOKUP_RULE).toContain('a figure that belongs to a variant says so in the value ("프로 기준 179만 원부터")')
-  expect(LOOKUP_RULE).toContain('when the named model itself is not out the value says that first ("일반형은 내년 봄 예상")')
+  // c10a R2: one tier per row; an unannounced base model is "미발표 (예상 …)" or "미발표 (전작 …)".
+  expect(LOOKUP_RULE).toContain('another tier\'s figure (프로, 울트라, 플러스) is never the value, not even in a bracket')
+  expect(LOOKUP_RULE).toContain('("미발표 (전작 아이폰 17 129만 원)")')
+  expect(MERGED_SHAPE).toContain('every row is the same tier - the base model unless the person named a tier')
   expect(LOOKUP_RULE).toContain('a value never takes another product\'s figure')
   expect(LOOKUP_RULE).toContain('when the results of a first search come with your part, that search is done: start from them')
   expect(MERGED_SHAPE).toContain('A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로")')
@@ -1132,6 +1134,6 @@ it('c7 R2: a price point with no figure asks for one more search, for the previo
   // The rule says the same, and the date rule with it.
   expect(LOOKUP_RULE).toContain('A price point always carries a figure with its currency: an answer whose price has no digit is not finished.')
   expect(LOOKUP_RULE).toContain('your one more search is for the previous model\'s launch price ("갤럭시 S26 출고가"), and that figure is the value, labeled 전작')
-  expect(LOOKUP_RULE).toContain('A date is one thing: the named model\'s own, with a variant\'s date in one short bracket after it when it matters')
+  expect(LOOKUP_RULE).toContain('A date is one thing: the named model\'s own, never a variant\'s')
   expect(LOOKUP_RULE).toContain('is named by the plain word 출처')
 })

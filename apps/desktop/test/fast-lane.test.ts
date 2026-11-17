@@ -215,7 +215,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
   // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
   expect(LANE_NOTE).toContain('is named by the plain word 출처')
-  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, with a variant\'s in one short bracket after it when it differs')
+  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, never a variant\'s, and a price cell is the named model\'s own tier')
   // c7 L2: the failure words of the run are named.
   expect(LANE_NOTE).toContain('"가져오지 못했어요", "확인되는 대로 다시 알려드릴게요"')
   expect(LANE_NOTE).toContain('the next most recent real ones from the results marked older fill the list, each with its date and year')
