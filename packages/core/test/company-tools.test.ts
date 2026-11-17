@@ -646,7 +646,10 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   const good = said(message)
   const asked: string[] = []
   const out = await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async text => { asked.push(text); return good } })
-  expect(asked).toEqual([prompt])
+  // c14b: then the meaning check reads the same data and the message (written-check); its reply here is no verdict, so the message stands.
+  expect(asked).toHaveLength(2)
+  expect(asked[0]).toBe(prompt)
+  expect(asked[1]).toContain('Judge meaning only')
   // Links it was given are kept, named by the host from the data; an address it was not given is dropped, its words stay.
   expectParts(out, [['지민', bing], ['서연'], ['도윤', byok]])
   expect(out).not.toContain('evil.example')
@@ -1088,7 +1091,8 @@ test('c4b r2: a teammate cut short with only English search rows shows no Englis
   const written = await writtenReport({ ask: '노션 신기능 조사해줘', members: [kim], write })
   expect(written).toContain('더 적은 비용으로')
   expectParts(written, [['지민', 'https://www.notion.com/releases']])
-  expect(write).toHaveBeenCalledOnce()
+  // c14b: the writer, then the meaning check.
+  expect(write).toHaveBeenCalledTimes(2)
   // An English ask keeps its English result.
   expect(mergedReport([reported(part('m1', 'Kim', 'Look up Notion news'), { facts: [{ text: 'Agents rebuilt to do more for less', url: 'https://www.notion.com/releases' }] })])).toContain('Agents rebuilt to do more for less')
 })
@@ -1211,11 +1215,12 @@ test('c4b r3: with no written answer, a part that read only English pages is sai
   const write = (message: string, kept = ['f1']) => async (prompt: string): Promise<string> => { asked.push(prompt); return JSON.stringify({ message, kept }) }
   const alone = await writtenReport({ ask: '노션 신기능 조사해줘', members: [kim], write: write('노션은 지민이 봤는데 워크스페이스 관리 기능이 새로 나왔어요. [노션](https://www.notion.com/releases)') })
   expectParts(alone, [['지민', 'https://www.notion.com/releases']])
-  expect(asked).toHaveLength(1)
+  // c14b: one writer pass and the meaning check of what it wrote.
+  expect(asked).toHaveLength(2)
   asked.length = 0
   const both = await writtenReport({ ask: '노션, 슬랙 신기능 조사해줘', members: [kim, park], write: write('노션은 지민이 봤는데 관리 기능이 나왔고, 슬랙은 서연이 봤는데 캔버스 공유가 나왔어요. [노션](https://www.notion.com/releases) [슬랙](https://slack.com/blog)', ['f1', 'f2']) })
   expectParts(both, [['지민', 'https://www.notion.com/releases'], ['서연', 'https://slack.com/blog']])
-  expect(asked).toHaveLength(1)
+  expect(asked).toHaveLength(2)
   // A text that is English, or names nobody: the host's own rendering with its link; English is never shown.
   for (const bad of ['지민: Agents rebuilt to do more for less', 'New workspace controls were added to every plan', '']) {
     asked.length = 0
@@ -1402,7 +1407,9 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return good } })).toBe(good)
   expect(asked[0]).toContain('two or three short sentences')
   // One small ask: the jobs of this week only, each with who and the day in words, no address. c9 fix 5: the span is not said again in a job.
-  expect(asked).toHaveLength(1)
+  // c14b: and the meaning check of what it wrote, against the same record.
+  expect(asked).toHaveLength(2)
+  expect(asked[1]).toContain('Judge meaning only')
   expect(asked[0]!.length).toBeLessThan(3000)
   const record = JSON.parse(asked[0]!.split('Record: ')[1]!) as { who: string; did: string; got: string; day: string; from?: string }[]
   expect(record.map(job => [job.who, job.did, job.day])).toEqual([['지우', '노션 신기능 조사', '월요일'], ['서연', '슬랙 신기능 조사', '월요일'], ['서연', '홍보 문구 3개 뽑기', '월요일']])
@@ -1413,7 +1420,8 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   // A text the person should not read gives way to the host's own sentence: a list, a raw day, an address, someone left out, nothing at all.
   // c9 fix 5: the host's own summary speaks in the span asked, says the span once, and puts the found-nothing jobs in one sentence of their own.
   // c13a: the job's own words, with no verb table (JOB_VERBS is gone with the host's lead sentences).
-  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요.'
+  // c14b: 서연 was taken off the team, and the host's own summary says so too.
+  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요. 서연은 이제 팀에 없어요.'
   // c7 C10: the clause chain the run showed ("…했는데 …없었고, …도 …없었어요") and five sentences are refused too.
   for (const bad of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.', '', undefined]) expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => bad })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })).toBe(plain)
@@ -1608,7 +1616,10 @@ test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s,
   const shown = await writtenReport({ ask: '노션 신기능 조사해줘', members, now: new Date(at), write: async (_prompt, ms) => { given.push(ms); return good } })
   expect(shown).toBe(checkedReport(good, members))
   expectParts(shown, [['지민', 'https://notion.so/releases', 'https://notion.so/mail']])
-  expect(given).toEqual([8000])
+  // c14b: the meaning check gets what is left of the same 8 s, never more.
+  expect(given[0]).toBe(8000)
+  expect(given).toHaveLength(2)
+  expect(given[1]!).toBeLessThanOrEqual(8000)
   // A writer that does not make it: the host's own list stands in, as before.
   const slow = hired(REPORT_CAP_MS - 3000)
   expect(await writtenReport({ ask: '노션 신기능 조사해줘', members: slow, timeoutMs: 20, write: () => new Promise(resolve => setTimeout(() => resolve(good), 200)) })).toBe(mergedReport(slow))
@@ -1734,7 +1745,7 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   const two = (text: string) => teamSummary(d.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return text } })
   const fine = '이번 주엔 지우가 노션 쪽을 봤는데 새 소식은 없었어요. 도윤은 리니어에 BYOK가 들어온 걸 찾았어요.'
   expect(await two(fine)).toBe(fine)
-  expect((JSON.parse(asked.at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, false])
+  expect((JSON.parse(asked.filter(one => one.includes('Record: ')).at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, false])
   // Refused; the host's own summary keeps the found job out of its found-nothing sentence (c9: that sentence names only 지우's part).
   const kept = (await two('오늘 지우랑 도윤이 노션이랑 리니어 쪽은 새 소식이 없었어요.'))!
   expect(kept).toBe('이번 주엔 도윤은 리니어 신기능 조사를 했어요. BYOK(자체 API 키 연결)가 11월 12일에 나왔어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요.')
