@@ -125,7 +125,7 @@ export function releaseAll(team: TaskTeam, at: string): string[] {
 // One line that only says what the member is about to do ("지금 검색하겠습니다."): cut off there, it reported nothing.
 const PROGRESS_ONLY = /^(?:[^\n]{0,120}(?:겠습니다|겠어요|[할볼릴]게요|하는 중(?:입니다|이에요)?)|(?:I['’]ll|I will|I am going to|I'm going to|Let me|Searching|Looking|Checking)\b[^\n]{0,120})[.!…\s]*$/i
 // A results page is where a member searched, not where the fact is; a wall or an error page answered nothing.
-const SEARCH_PAGE = /^https?:\/\/(?:[^/\s]*\bsearch\.|[^\s?#]*\/(?:search|results)\b|\S*[?&](?:q|query|search_query|wd|keyword)=)/i
+const SEARCH_PAGE = /^https?:\/\/(?:[^/\s]*\bsearch\.|[^\s?#]*\/(?:search|results)\b|\S*[?&](?:q|query|search_query|search|wd|keyword)=)/i
 const WALLED = /로봇|캡차|자동\s?입력|비정상적인 (?:트래픽|접근)|접근이?\s?(?:거부|차단|제한)|차단(?:되|됐|당)|오류(?:가|를)?\s?(?:발생|났|나서)|에러|페이지를 찾을 수 없|열리지 않|(?:열|읽|찾|확인할|가져올|접속할) 수 ?(?:가 )?없|(?:읽|찾|확인하|가져오|접속하)지 못|실패|\b(?:robot|captcha|unusual traffic|access denied|forbidden|blocked|not found|error|failed|could ?n[o']t|cannot|can't|unable to|timed out)\b/i
 // grokbar review r1: "지금 검색하겠습니다. https://search.naver.com/…" was accepted for its link alone. A member answered its brief
 // when, the links and the "about to do" lines taken out, facts are left, nothing in it reports a wall or a failure, and a source is a page of its own.

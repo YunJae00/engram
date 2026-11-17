@@ -1,4 +1,4 @@
-import { askedCount, datedQuery, defaultSearchTemplate, inPeriod, isOutsideAsk, newsPeriod, resultDay, searchUrlFor, sourceName, withoutRelativeTime, type AgentTool } from 'core'
+import { askedCount, datedQuery, defaultSearchTemplate, inPeriod, isOutsideAsk, isSearchPage, newsPeriod, resultDay, searchUrlFor, sourceName, withoutRelativeTime, type AgentTool } from 'core'
 // grokbar: a web lookup, or a "have bots research this" ask, ran on the work model with ~72 tools and a 38k-char prompt:
 // 13 s to plan a hire, 8 s to merge, 30-45 s for one weather or stock lookup. Such a turn runs on the smart tier with a
 // menu small enough to be put in the prompt whole (PRELOADED_TOOLS_MAX). The match is a closed word list, no model:
@@ -235,7 +235,6 @@ export async function weekendAnswer(answer: string, by: { ask: string; held: rea
 // the search row of its link). An item found outside the search rows needs its own date, inside the period the ask names. The gap is said
 // to the model for one more round (agent-session recheck); the answer itself is never cut, numbered or led by the host.
 const ITEM_LINE = /^\s*(?:\d+[.)]|[-*•·])\s+\S/, LINK = /\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)>\]]+)/
-const SEARCH_PAGE = /^https?:\/\/(?:m\.)?search\.|\/search(?:[/?.]|$)|[?&](?:q|query|keyword|search)=/i
 const NEWS_KIND = /뉴스|기사|소식|보도|\b(?:news|articles?|headlines?)\b/i
 const WRITTEN_DATE = /(?:19|20)\d\d[.\-/]\s?\d{1,2}[.\-/]\s?\d{1,2}|\d{1,2}월\s*\d{1,2}일|\d+\s*(?:분|시간|일|주)\s*전|어제|그제|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b/i
 function listCount(answer: string, asks: readonly string[], held: readonly string[], now: Date): { asked: number; good: number; items: number; dated: boolean } | undefined {
@@ -249,7 +248,7 @@ function listCount(answer: string, asks: readonly string[], held: readonly strin
   const seen = new Set<string>()
   const good = items.filter(line => {
     const found = LINK.exec(line), url = found?.[1] ?? found?.[2]
-    if (!url || SEARCH_PAGE.test(url) || seen.has(url)) return false
+    if (!url || isSearchPage(url) || seen.has(url)) return false
     seen.add(url)
     if (!dated) return true
     // c11b r2 (review #2: a 2025 row passed a "요즘" ask in 2026): the date must be inside the asked period, not only present. The search

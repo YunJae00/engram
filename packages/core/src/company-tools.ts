@@ -1198,7 +1198,11 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     .replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (_, words: string, url: string) => { const fact = facts.get(trimmed(url)); return fact ? linkOf(fact) : words })
   const words = text.replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
   // The data is already in plain words (reportData), so any of these words is the writer's own.
-  if (!text || text.length > 3000 || !HANGUL.test(text) || /https?:\/\//.test(words) || ENGLISH_RUN.test(words) || words.search(JARGON) >= 0) return undefined
+  // stack-11: so is an English run only when the data and the briefs (the person's own words) do not hold it: a product name or a title
+  // a teammate found is content, refused nowhere on the way to the thread (the same rule as the jargon check, c11a 86e3f9a0).
+  const given = members.flatMap(m => [m.brief, m.data?.note ?? '', ...(m.data?.items ?? []), ...[...(m.data?.facts ?? []), ...(m.data?.nothing?.latest ? [m.data.nothing.latest] : [])].map(f => f.text)]).join('\n').toLowerCase()
+  const addedEnglish = [...words.matchAll(new RegExp(ENGLISH_RUN.source, 'g'))].some(run => !given.includes(run[0].trim().toLowerCase()))
+  if (!text || text.length > 3000 || !HANGUL.test(text) || /https?:\/\//.test(words) || addedEnglish || words.search(JARGON) >= 0) return undefined
   if (parts.some(m => !words.includes(m.role) || new RegExp(`^\\s*(?:[-*]\\s*)?${escapedRe(m.role)}\\s*[:：]`, 'mu').test(text))) return undefined
   const linked = (url: string): boolean => text.includes(`](${named('x', url).slice(4, -1)})`)
   if (ids.some(one => kept.has(one.id) !== linked(one.fact.url) && !ids.some(other => other !== one && other.fact.url === one.fact.url && kept.has(other.id)))) return undefined
