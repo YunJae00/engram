@@ -216,8 +216,8 @@ it('hands a change to the running turn before the reply is written, keeps a rema
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-reply', text) as Promise<{ ok: boolean; reply?: string; action?: string; instruction?: string }>
   try {
     expect(await say('아 대구도 추가해')).toEqual({ ok: true, action: 'relay', instruction: '아 대구도 추가해', reply: '대구도 한 명 더 붙여서 볼게요.' })
-    // The work has the words before the line is written: the reply never delays the change.
-    expect(order).toEqual(['held', 'voice'])
+    // c11b r2: the voice's verdict decides the hand-over, so the work has the words right after that one quick call.
+    expect(order).toEqual(['voice', 'held'])
     // A complaint is answered and the work goes on unchanged: nothing is handed to the running turn, nothing waits for a turn of its own.
     expect(await say('아 왜 이렇게 느려')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
     expect(held).toEqual(['아 대구도 추가해'])
@@ -317,4 +317,43 @@ it('offers handed words to the running lookup after queueing them, and never a r
     await handlers.get('chat:say')!({}, 'bot-swap', '아 왜 이렇게 느려')
     expect(order).toEqual(['held 그냥 애플로 바꿔', 'changed 그냥 애플로 바꿔'])
   } finally { await rm(cache, { recursive: true, force: true }) }
+})
+
+// c11b r2 (review #1): "아 너무 답답한데" fell outside the word-ending rule and was handed to the running work as a change. Whether words
+// said mid-work change the job is the quick voice's verdict, for any wording: none of the words below is in the harness or in a host list.
+it('c11b r2: the voice\'s verdict, not the wording, decides whether words said mid-work reach the running work', async () => {
+  const { asideVoice, asideReplyPrompt } = await import('../src/main/aside-ipc.js')
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  await mkdir(temporary, { recursive: true })
+  const cache = await mkdtemp(join(temporary, 'aside-verdict-'))
+  const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
+  const held: string[] = []
+  // A stand-in for the model: it reads the meaning (here: a fixed table of meanings), the host only obeys the tag.
+  const meaning: Record<string, string> = {
+    '아 너무 답답한데': 'REMARK: 거의 다 찾았어요, 금방 올릴게요.',
+    '와 진짜 하세월이네': 'remark - 조금만 기다려 주세요, 금방 올릴게요.',
+    '기다리다 지치겠다 ㅠ': 'REMARK: 거의 다 됐어요, 조금만요.',
+    '울산 것도 같이': 'CHANGE: 울산도 넣을게요.',
+    '환율은 엔화 기준으로': 'CHANGE: 엔화 기준으로 볼게요.',
+  }
+  const voice = { id: 'claude', quick: async (prompt: string) => Object.entries(meaning).find(([said]) => prompt.includes(JSON.stringify(said)))?.[1] ?? '' }
+  turnGoals.set('bot-verdict', '요즘 국내 핀테크 투자 뉴스 3개만 찾아줘')
+  registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text) }, setOffersAside: async () => {}, voice: async () => voice })
+  const say = (text: string) => handlers.get('chat:say')!({}, 'bot-verdict', text) as Promise<{ ok: boolean; reply?: string; instruction?: string }>
+  try {
+    expect(await say('아 너무 답답한데')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
+    expect(await say('와 진짜 하세월이네')).toEqual({ ok: true, action: 'relay', reply: '조금만 기다려 주세요, 금방 올릴게요.' })
+    expect((await say('기다리다 지치겠다 ㅠ')).instruction).toBeUndefined()
+    expect(held).toEqual([])
+    expect((await readCheckpoint(paths, 'verdict')).pending).toEqual([])
+    expect(await say('울산 것도 같이')).toEqual({ ok: true, action: 'relay', instruction: '울산 것도 같이', reply: '울산도 넣을게요.' })
+    expect((await say('환율은 엔화 기준으로')).instruction).toBe('환율은 엔화 기준으로')
+    expect(held).toEqual(['울산 것도 같이', '환율은 엔화 기준으로'])
+  } finally { turnGoals.delete('bot-verdict'); await rm(cache, { recursive: true, force: true }) }
+  // A verdict with a line that fails the checks still decides; the stand-in line follows the verdict, not the wording.
+  expect(await asideVoice({ id: 'claude', quick: async () => 'REMARK: Almost done, hang on.' }, 'tmp', '서울 날씨 알려줘', '표로 보여줘', true)).toEqual({ line: '거의 다 됐어요, 금방 올릴게요.', changes: false })
+  expect(await asideVoice({ id: 'claude', quick: async () => 'CHANGE: 표로 정리할게요.' }, 'tmp', '서울 날씨 알려줘', '아 진짜', true)).toEqual({ line: '표로 정리할게요.', changes: true })
+  // No verdict (absent, late or untagged voice): changes is unset and the host falls back to the word shape.
+  expect(await asideVoice(undefined, '', '서울 날씨 알려줘', '아 진짜', true)).toEqual({ line: '거의 다 됐어요, 금방 올릴게요.' })
+  expect(asideReplyPrompt('서울 날씨 알려줘', '아 진짜', true)).toContain('Judge by what it means, not by its words.')
 })

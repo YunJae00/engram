@@ -82,7 +82,7 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(ipc).toContain("if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
     const aside = source('aside-ipc.ts')
-    expect(aside).toContain('asideReply(')
+    expect(aside).toContain('asideVoice(') // c11b r2: asideReply now wraps asideVoice (line + verdict)
     expect(aside).not.toContain('heldRounds')
   })
 
