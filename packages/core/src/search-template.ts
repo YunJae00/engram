@@ -236,6 +236,7 @@ const NEWS_WORD = /^(투자|유치|발표|공개|계획|추가|규모|시리즈\
 const nameWords = (text: string): string[] => [...new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).map(word => word.length >= 3 ? word.replace(PARTICLE, '') : word).filter(word => word.length >= 2 && !/^\d/.test(word) && !NEWS_WORD.test(word)))]
 // An ending the particle list missed still matches by its start ("포인트투테크놀로지" in "포인트투테크놀로지스"), from three characters.
 const alike = (a: string, b: string): boolean => a === b || Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))
+const amounts = (title: string): string[] => (title.match(/\d[\d,.]*\s*(?:억|조|만\s*달러|million|billion)/gi) ?? []).map(one => one.replace(/[\s,]/g, '').toLowerCase())
 export function sameEvent(a: SearchResult, b: SearchResult, query: string): boolean {
   const asked = nameWords(query), unasked = (words: string[]): string[] => words.filter(word => !asked.some(one => alike(word, one)))
   const mine = unasked(nameWords(a.title)), theirs = unasked(nameWords(b.title))
@@ -252,6 +253,9 @@ export function sameEvent(a: SearchResult, b: SearchResult, query: string): bool
   // shared words. Two rows are one event only when the company that was funded matches: when both titles open on the same name (the
   // investor) and the name after it differs, each unknown to the other row, they are two rounds.
   // shortcut: by position only (investor first, the funded company next); a headline in another order is told apart by the rules below.
+  // stack-10 (c10a run H6: "메디인테크, 338억 … 로봇내시경 …" three times as three news items): the rule below reads the second word as the funded
+  // company, and here it was a description. A shared name with the same amount on the same day is one event, whatever words describe it.
+  if (a.date && a.date === b.date && amounts(a.title).some(one => amounts(b.title).includes(one))) return true
   if (mine.length > 1 && theirs.length > 1 && alike(mine[0]!, theirs[0]!) && !alike(mine[1]!, theirs[1]!) && !held([mine[1]!], b) && !held([theirs[1]!], a)) return false
   return held(mine, b) >= 2 || held(theirs, a) >= 2 || shared.some(word => word.length >= 3) && !!a.date && a.date === b.date && (held(mine, b) === mine.length || held(theirs, a) === theirs.length)
 }
