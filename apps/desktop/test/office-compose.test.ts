@@ -14,7 +14,9 @@ vi.mock('../src/main/desktop-control.js', () => ({ assertDesktopTurnNotStopped: 
 vi.mock('../src/main/desktop-access.js', () => ({ bindDesktopForLane: fake.bind }))
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn(), officeWorkPreview: () => fake.preview }))
 vi.mock('../src/main/application-work.js', () => ({ applicationWork: () => ({ signal: undefined, show: vi.fn() }), clearApplicationWork: vi.fn() }))
-import { officeAgentTools } from '../src/main/office-agent.js'
+import { officeAgentTools, proofFixes } from '../src/main/office-agent.js'
+import { createRequire } from 'node:module'
+const JSZip = createRequire(resolve('packages/core/package.json'))('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 import { taskOutputs } from '../src/main/file-work.js'
 
 const THEME = { field: '#1F2937', accent: '#7C3AED', fonts: { title: 'Pretendard', body: 'Pretendard' } }
@@ -127,6 +129,37 @@ it('says a built deck is done, lists its slides and names garbled words (the sto
   expect(receipt.mistyped).toContain('file_edit_package')
   const clean = JSON.parse(await tools().find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적 보고' }, { title: '요약', bullets: ['매출: 수치 입력 (전분기 대비 수치 입력)', '결론: 내역 입력'] }], theme: THEME }, { task: 'PPT' }))
   expect(clean.mistyped).toBeUndefined()
+})
+
+// c10c r3 (D3): garble made of syllables people do type ("거실론", "수시 입력" in stack 9) passed the syllable check. The quick voice now
+// reads the text before the build and the host puts the meant words in, so the one file built is clean. Words below are not the harness's.
+it('builds a deck with the garbled words the proofreader names already fixed, in one file', async () => {
+  const asked: string[] = []
+  const proofread = async (prompt: string): Promise<string> => { asked.push(prompt); return '회으록 => 회의록\n- "담당쟈" → 담당자\n없는말 => 아무말\n2023년 => 2024년\n예산 => 이번 분기 전체 예산 계획' }
+  const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!
+  const deck = [{ title: '주간 회으록' }, { title: '할 일', bullets: ['담당쟈: 민수, 2023년 예산 확인'] }]
+  const receipt = JSON.parse(await tool.run({ slides: deck, saveAs: '주간 회의.pptx', theme: THEME }, { task: '회의 PPT' }))
+  expect(asked).toHaveLength(1)
+  expect(asked[0]).toContain('주간 회으록')
+  expect(asked[0]).toContain('담당쟈: 민수, 2023년 예산 확인')
+  expect(receipt.titles).toEqual(['주간 회의록', '할 일'])
+  const xml = (await Promise.all(Object.values((await JSZip.loadAsync(await readFile(receipt.path))).files).filter(file => /slide\d+\.xml$/.test(file.name)).map(file => file.async('string')))).join('')
+  expect(xml).toContain('담당자: 민수, 2023년 예산 확인')
+  expect(xml).not.toContain('회으록')
+  expect((await readdir(task)).filter(file => file.endsWith('.pptx'))).toEqual(['주간 회의.pptx'])
+})
+
+it('builds the deck as written when the proofreader fails or says nothing is garbled', async () => {
+  for (const proofread of [async () => { throw new Error('late') }, async () => 'NONE']) {
+    const receipt = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task), proofread).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '분기 계획' }], theme: THEME }, { task: 'PPT' }))
+    expect(receipt.titles).toEqual(['분기 계획'])
+  }
+})
+
+it('keeps only safe fixes from a proofread: a word in the text, Korean on both sides, the same digits, a close length', () => {
+  const texts = ['출시일: 3월 5일 확정', '마케팅 예산 검토즁']
+  expect(proofFixes('검토즁 => 검토 중\n3월 5일 => 4월 5일\n없는말 => 아무말\nmarketing => 마케팅\n예산 => 올해 전체 마케팅 예산 총액\n아무 설명 문장', texts)).toEqual([['검토즁', '검토 중']])
+  expect(proofFixes('NONE', texts)).toEqual([])
 })
 
 it('hands in one file when the same deck is built again', async () => {

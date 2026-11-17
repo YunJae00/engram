@@ -191,7 +191,7 @@ import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
 import { desktopAgentTools, desktopContext, forgetPermissionGiveUp, permissionWaiting, registerPermissionCardIpc } from './desktop-agent.js'
 import { desktopOptIn, DESKTOP_CONSENT_CONTEXT } from './desktop-opt-in.js'
-import { officeAgentTools, officeContext } from './office-agent.js'
+import { officeAgentTools, officeContext, PROOF_MS } from './office-agent.js'
 import { artifactDirectory, checkedOutputs, cometFileTools, linkedOutputs, newestRevisions, registerArtifactIpc, taskOutputs, taskRoot } from './file-work.js'
 import { workEvidenceTools } from './work-evidence.js'
 import { chatAttachmentIds, readChatAttachments, registerChatAttachmentIpc } from './chat-attachments.js'
@@ -2386,7 +2386,7 @@ export function registerIpc(ctx: VaultContext): void {
     await loadBrainConnections()
     // The documents and decks this turn composes: its own outputs, which its file tools read back without a card.
     const composed = new Set<string>(), turnId = randomUUID()
-    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId)), ...desktopAgentTools(channel)], {
+    const appTools = !webOnly && permission !== 'plan' && engine.desktopToolIsolation === true ? desktopOptIn([...officeAgentTools(channel, taskOutputs(paths, async () => native?.cwd ?? await workFolderFor(paths, channel), composed, turnId), engine.quick ? prompt => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: PROOF_MS }) : undefined), ...desktopAgentTools(channel)], {
       enabled: async () => (await loadSettings()).computerUse === true,
       enable: async () => { const next = await updateSettings(current => ({ ...current, computerUse: true })); audit('approval', { tool: 'desktop', detail: 'App control enabled by explicit approval' }); broadcast({ type: 'settings:changed', settings: next }) },
       ask: what => studying.has(channel) ? Promise.resolve('cancel') : team.askFor(channel, async () => 'approve')?.(what) ?? Promise.resolve('cancel'),

@@ -29,6 +29,36 @@ export function mistypedWords(texts: readonly { where: string; text: string }[])
     .filter(word => /[가-힣][\u0300-\u036f]/.test(word) || [...word].some(one => /[가-힣]/.test(one) && !COMMON_HANGUL.has(one)))
     .map(word => `${word} (${where})`)).slice(0, 8)
 }
+// c10c r3 (D3): the garbled words of the stack-9 deck were the model's own sampling slips, one UTF-8 byte off (결→거, 말→맠): most land on
+// syllables people do type ("거실론", "수시 입력"), so no syllable list can catch them. Before the file is built, the quick voice reads the
+// document's text once and names each garbled word with the word meant; the host puts those in and builds once. The syllable check above
+// stays the backstop for when the voice is late or absent. A reply is used only where it is safe: the word is in the text, both are
+// Korean, no digit changes, and the length stays close, so a proofread can fix a slip but never rewrite content.
+export type Proofread = (prompt: string) => Promise<string>
+export const PROOF_MS = 5000
+export const proofPrompt = (texts: readonly string[]): string => [
+  'Below are lines of a Korean document, one per line. Some words may have been garbled while typing: a wrong or stray syllable, a stray mark, a word nobody writes or that does not fit its sentence.',
+  'For each garbled word write one line: garbled => intended. Change nothing else: not the style, spacing, numbers, names, English or anything correct.',
+  'If nothing is garbled, reply with exactly NONE.',
+  '',
+  ...texts,
+].join('\n')
+export function proofFixes(raw: string, texts: readonly string[]): [string, string][] {
+  const whole = texts.join('\n'), digits = (text: string): string => text.replace(/\D/g, '')
+  const fixes = new Map<string, string>()
+  for (const line of raw.split('\n')) {
+    const found = /^\s*(?:[-*•]\s+|\d+[.)]\s+)?["'“‘]?(.+?)["'”’]?\s*(?:=>|->|→)\s*["'“‘]?(.+?)["'”’]?\s*$/.exec(line)
+    if (!found) continue
+    const [, wrong = '', right = ''] = found
+    if (wrong === right || !whole.includes(wrong) || !/[가-힣]/.test(wrong) || !/[가-힣]/.test(right) || digits(wrong) !== digits(right) || Math.abs([...wrong].length - [...right].length) > 2) continue
+    fixes.set(wrong, right)
+  }
+  return [...fixes]
+}
+const withFixes = (value: unknown, fixes: readonly [string, string][]): unknown =>
+  typeof value === 'string' ? fixes.reduce((text, [wrong, right]) => text.split(wrong).join(right), value)
+    : Array.isArray(value) ? value.map(one => withFixes(one, fixes))
+      : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, one]) => [key, withFixes(one, fixes)])) : value
 const written = (op: 'ppt.build' | 'word.write', args: Record<string, unknown>): { titles: string[]; texts: { where: string; text: string }[] } => {
   if (op === 'ppt.build') {
     const slides = (Array.isArray(args['slides']) ? args['slides'] : []) as { title?: unknown; subtitle?: unknown; bullets?: unknown; table?: { rows?: unknown } }[]
@@ -48,10 +78,15 @@ const written = (op: 'ppt.build' | 'word.write', args: Record<string, unknown>):
 
 // A new deck or document is built headlessly and handed in; no Office window
 // opens and nothing lands in the person's own folders (QA 0.8.142 B5/B11).
-async function composeOffice(op: 'ppt.build' | 'word.write', args: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, signal?: AbortSignal, assertActive?: () => void): Promise<unknown> {
+async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<string, unknown>, outputs: OfficeOutputs | undefined, own: Set<string>, signal?: AbortSignal, assertActive?: () => void, proofread?: Proofread): Promise<unknown> {
   signal?.throwIfAborted()
   assertActive?.()
   if (!outputs) throw new Error('A document can be composed only in a chat that keeps its outputs.')
+  const said = written(op, asked).texts.map(one => one.text)
+  const fixes = proofread && said.some(text => /[가-힣]/.test(text)) ? await proofread(proofPrompt(said)).then(raw => proofFixes(raw, said), () => []) : []
+  const args = fixes.length ? withFixes(asked, fixes) as Record<string, unknown> : asked
+  signal?.throwIfAborted()
+  assertActive?.()
   const built = op === 'ppt.build'
     ? await (await import('./deck-render.js')).buildDeck(args as unknown as Parameters<typeof import('./deck-render.js').buildDeck>[0])
     : await (await import('./doc-render.js')).buildDoc(args as unknown as Parameters<typeof import('./doc-render.js').buildDoc>[0])
@@ -101,7 +136,8 @@ export async function showOfficePreview(lane: string, op: OfficeOp, window?: str
   catch { /* The activity card remains available when no readable window exists. */ }
 }
 let workQueue: Promise<unknown> = Promise.resolve()
-export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTool[] {
+// proofread: the quick voice, which reads a new document's text for garbled words before it is built (composeOffice).
+export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread): AgentTool[] {
   const apps = officeApps()
   if (!officeSupported() || !apps) return []
   // The same deck or document built again in this session is the file already
@@ -113,7 +149,7 @@ export function officeAgentTools(lane: string, outputs?: OfficeOutputs): AgentTo
     if (op === 'ppt.build' || op === 'word.write') {
       const key = `${op}\0${JSON.stringify(args)}`
       if (composed.has(key)) { signal?.throwIfAborted(); assertDesktopTurnNotStopped(lane); return composed.get(key) }
-      const receipt = await composeOffice(op, args, outputs, own, signal, () => assertDesktopTurnNotStopped(lane))
+      const receipt = await composeOffice(op, args, outputs, own, signal, () => assertDesktopTurnNotStopped(lane), proofread)
       // Another build under this name replaced the file an earlier receipt names: that receipt is no longer the file to hand back.
       const named = (one: unknown): string | undefined => /^\[([^\]]+)\]/.exec(String((one as { markdownLink?: unknown }).markdownLink ?? ''))?.[1]?.toLowerCase()
       for (const [held, earlier] of composed) if (named(earlier) === named(receipt)) composed.delete(held)
