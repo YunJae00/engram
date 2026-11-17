@@ -210,26 +210,26 @@ const LIST_JOB = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
 const OTHER_WORDS: [RegExp, string][] = [[/행사/u, '컨퍼런스 세미나 밋업'], [/맛집/u, '식당 추천'], [/전시회?/u, '박람회 전시'], [/공연/u, '콘서트 뮤지컬'], [/축제/u, '페스티벌'], [/카페/u, '카페 추천 모음']]
 export interface FirstSearch { query: string; /** A news search: the search tool keeps it inside the period the teammate's task names. */ news?: true; /** The maker's Latin name: this search looks for their own updates page. */ maker?: string }
 /** The maker a job is about and the words for their own updates page, from the person's own "리니어(Linear)" first, else the closed list. */
-export function makerOf(words: string, about = ''): { name: string; query: string } | undefined {
+export function makerOf(words: string, about = '', latin = true): { name: string; query: string } | undefined {
   for (const text of [words, about]) {
     const given = /([가-힣]{2,})\s*\(\s*([A-Za-z][A-Za-z0-9.&' -]{1,30}?)\s*\)/u.exec(text)
     if (given && words.includes(given[1]!)) return { name: given[2]!, query: `${given[2]!} changelog` }
   }
   const known = MAKERS.find(([ko]) => ko.test(words))
   if (known) return { name: known[1], query: known[2] }
-  const latin = /(?<![A-Za-z])([A-Z][A-Za-z0-9]{2,})(?![A-Za-z])/.exec(words)?.[1]
-  return latin ? { name: latin, query: `${latin} changelog` } : undefined
+  const named = latin ? /(?<![A-Za-z])([A-Z][A-Za-z0-9]{2,})(?![A-Za-z])/.exec(words)?.[1] : undefined
+  return named ? { name: named, query: `${named} changelog` } : undefined
 }
 /** The searches the host runs side by side before a teammate's first round: the stored words alone, or two for a job about a product's updates or for a list. At most two, never the same words twice. about: the person's whole ask. */
 export function firstSearches(member: Pick<TeamMember, 'brief' | 'query'>, about = ''): FirstSearch[] {
   const query = member.query?.trim(), line = (handedFrom(member.brief)?.brief ?? member.brief).split('\n')[0]!
   if (!query || handedFrom(member.brief)) return []
-  const title = jobTitle(member.brief)
-  if (UPDATES.test(title)) {
-    const maker = makerOf(withoutRelativeTime(title.replace(new RegExp(UPDATES.source, 'gu'), ' ')), about)
-    const news: FirstSearch = { query, ...(PERIOD_JOB.test(line) ? { news: true as const } : {}) }
-    return maker && maker.query.toLowerCase() !== query.toLowerCase() ? [news, { query: maker.query, maker: maker.name }] : [news]
-  }
+  // c9b r2: any job about a named product ("이번 주 슬랙 가격 조사"), not only its updates; a bare Latin word names a maker only in an updates job ("KOSPI 지수" is none).
+  const title = jobTitle(member.brief), updates = UPDATES.test(title)
+  const maker = makerOf(withoutRelativeTime(updates ? title.replace(new RegExp(UPDATES.source, 'gu'), ' ') : title), about, updates)
+  const news: FirstSearch = { query, ...(PERIOD_JOB.test(line) ? { news: true as const } : {}) }
+  if (maker && maker.query.toLowerCase() !== query.toLowerCase()) return [news, { query: maker.query, maker: maker.name }]
+  if (updates) return [news]
   if (!LIST_JOB.test(line)) return [{ query }]
   const plain = query.replace(/\s*(?:일정|목록|리스트)(?=\s|$)/u, '').trim(), other = OTHER_WORDS.find(([kind]) => kind.test(plain))
   const second = other ? plain.replace(other[0], other[1]) : `${plain} 모음`
@@ -254,7 +254,7 @@ export function makerFirst(found: string, maker: string): { found: string; own: 
 export function firstFound(founds: readonly (FirstSearch & { found: string; own?: boolean })[]): string {
   if (founds.length === 1) return `\n\nResults of the search already run for you ("${founds[0]!.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${founds[0]!.found}`
   const maker = founds.find(one => one.own)
-  return `\n\nResults of the searches already run for you, side by side. Answer from them; search again only when none holds what your part asks.${maker ? ` The first row under "${maker.query}" is ${maker.maker}'s own updates page: read that one page (read_pages) and answer from its newest dated entry, ${MAKER_NOTE}` : ''}${founds.map(one => `\n\n[${one.query}]\n${one.found}`).join('')}`
+  return `\n\nResults of the searches already run for you, side by side. Answer from them; search again only when none holds what your part asks.${maker ? ` The first row under "${maker.query}" is ${maker.maker}'s own updates page. When your part is about what ${maker.maker} has put out or changed, read that one page (read_pages) and answer from its newest dated entry, ${MAKER_NOTE} Otherwise answer from the other results, and from that page only what it says about your part.` : ''}${founds.map(one => `\n\n[${one.query}]\n${one.found}`).join('')}`
 }
 const MAKER_NOTE = 'in Korean, with its date and that page as your one address. When the entry is inside the time your part asks about, say it as the news. When it is not, say that, then the newest one: "이번 주엔 새로 낸 게 없어요. 최근엔 <date>에 <thing>이 나왔어요." with that page\'s address.'
 // A title that was still cut short is not said as a job ("…를 했어요"): the part's own short name stands in when there is one.
@@ -526,7 +526,7 @@ export function plainSplit(message: string, staff: readonly string[]): Split | u
 const PLEASE = '\\s*(?:줘요?|주세요)?'
 const ALSO = new RegExp(`^(\\S+(?:\\s\\S+)?)도\\s*(?:같이\\s*)?(?:추가해?|넣어|포함해|조사해|알아봐|찾아|봐|해)${PLEASE}$`, 'u')
 const OPEN = ['hired', 'working']
-export interface SplitSteer { taskId: string; /** The one line the person reads. */ said: string; /** The part taken off. */ stop?: string; /** The part that joins. */ add?: { role: string; botId: string; brief: string; topic: string } }
+export interface SplitSteer { taskId: string; /** The one line the person reads. */ said: string; /** The part taken off. */ stop?: string; /** The part that joins. */ add?: { role: string; botId: string; brief: string; topic: string; voice?: string } }
 /** Whether words could change a split under way: cheap, asked before the tasks are read. */
 export const steerShaped = (message: string): boolean => message.length <= 60 && !message.includes('\n') && /도\s|말고|대신|빼|제외|바꿔/u.test(message)
 /** Words said while a split's teammates work, as a change to that split ("아 피그마도 추가해", "노션 말고 피그마로 바꿔", "리니어는 빼줘"), or undefined. */
@@ -541,7 +541,7 @@ export function plainSteer(message: string, tasks: readonly DelegatedTask[], bot
     const parts = team.members.filter(m => m.background && m.lookup && !!m.botId && !!m.topic && m.parentId === null && !m.then && m.state !== 'released' && m.brief.includes(m.topic))
     if (parts.length < 2 || !parts.some(m => OPEN.includes(m.state))) continue
     const part = (thing: string, like: TeamMember, by: TeamMember): NonNullable<SplitSteer['add']> | undefined =>
-      thing.length > 20 || parts.some(m => m.topic === thing) || team.hires >= team.maxHires ? undefined : { role: by.role, botId: by.botId!, brief: like.brief.replace(like.topic!, thing), topic: thing }
+      thing.length > 20 || parts.some(m => m.topic === thing) || team.hires >= team.maxHires ? undefined : { role: by.role, botId: by.botId!, brief: like.brief.replace(like.topic!, thing), topic: thing, ...(by.voice ? { voice: by.voice } : {}) }
     for (const old of parts) {
       const name = `^${escaped(old.topic!)}(?:은|는|을|를)?`
       if (parts.length > 2 && new RegExp(`${name}\\s*(?:빼|제외해)${PLEASE}$`, 'u').test(line)) return { taskId: task.id, said: `${josa(old.topic!, '은', '는')} 뺄게요.`, stop: old.id }
@@ -565,7 +565,7 @@ export function steerSplit(task: DelegatedTask, steer: SplitSteer, at = new Date
   if (old) { old.state = 'released'; old.finishedAt ??= at; delete old.result }
   if (!steer.add) return { ids: [], stop: old ? [old.id] : [] }
   const id = `m${team.members.length + 1}`
-  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief, undefined, task.goal) ? { query: searchWords(steer.add.brief, undefined, task.goal)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+  team.members.push({ id, parentId: null, depth: 1, role: steer.add.role, brief: steer.add.brief, botId: steer.add.botId, ...(steer.add.voice ? { voice: steer.add.voice } : {}), title: jobTitle(steer.add.brief), topic: steer.add.topic, lookup: true, ...(searchWords(steer.add.brief, undefined, task.goal) ? { query: searchWords(steer.add.brief, undefined, task.goal)! } : {}), background: true, state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
   team.hires++
   logTask(task, `Changed while working: ${steer.said}`)
   return { ids: [id], stop: old ? [old.id] : [] }
@@ -1025,22 +1025,29 @@ const LIST_ASKED = /일정|목록|리스트|[가-힣]들(?:\s|$)/u
 const INTRO_LINE = /^[^\d\n]{0,60}(?:이래요|다음과\s*같아요|아래와\s*같아요|정리해\s*봤어요|정리했어요)[.:!]?$/u
 // The items a list job brought back, as the host shows them (mergedReport): its lines, less one that only says a list follows.
 const listItems = (m: TeamMember): string[] => { if (m.read) return []; const lines = findings(delivered(m), false, true).lines.map(line => line.replace(LIST_MARK, '')); return lines.length > 1 ? lines.filter((line, k) => !SOURCE_SENTENCE.test(line) && !(k === 0 && INTRO_LINE.test(line))) : lines }
+// c9b r2 (Codex): the host's opener read the same for everyone. It ends the way that teammate speaks (VOICES, stored with them): the bright
+// one "…있더라고요!", the plain one "…있네요.", the calm one as it is. Only the last sentence's ending changes; the words stay.
+const VOICED: Record<string, [RegExp, string][]> = {
+  [VOICES[1]![0]]: [[/있어요\.$/u, '있더라고요!'], [/나와요\.$/u, '나오더라고요!'], [/이래요\.$/u, '이렇더라고요!'], [/요\.$/u, '요!']],
+  [VOICES[2]![0]]: [[/있어요\.$/u, '있네요.'], [/나와요\.$/u, '나오네요.'], [/이래요\.$/u, '이렇네요.'], [/(?:이)?예요\.$/u, '네요.'], [/([았었했왔봤랐썼렸켰났갔졌쳤웠])어요\.$/u, '$1네요.']],
+}
+export const voiced = (said: string, voice?: string): string => { const rule = voice ? VOICED[voice]?.find(([end]) => end.test(said)) : undefined; return rule ? said.replace(rule[0], rule[1]) : said }
 /** The first sentence over one teammate's result, said by them. previous: the result before it in the thread, whose lead it does not end like. link: the page the handed-over find came from, on the opener. */
 function resultLead(m: TeamMember, previous = '', now = new Date(), link = ''): string {
   const from = handedFrom(m.brief), job = jobOf(m)
   if (!from) {
     const looked = !!m.lookup && (OPENERS.test(job) || !(JOB_VERBS.some(([ending]) => ending.test(job)) || DOING_NOUN.test(job)))
-    if (!looked) { const { what, forms } = jobForms(job, true); return `${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.` }
+    if (!looked) { const { what, forms } = jobForms(job, true); return voiced(`${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.`, m.voice) }
     const what = job.endsWith('…') ? '' : aboutJob(job, now), items = listItems(m).length, list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
     // Two ways each, so a lead never ends like the one before it (ledBy).
     const count = COUNTED_KO[items] ?? `${items}개`, said = list && items === 1 ? '확실한 건 하나예요.' : `${ledBy(list && items >= 2 ? [`${count} 있어요`, `${count} 나와요`] : ['이래요', '이렇게 나와요'], previous)}.`
-    return `${m.role}: ${what ? `${josa(what, '은', '는')} ${said}` : `찾은 건 ${said}`}`
+    return voiced(`${m.role}: ${what ? `${josa(what, '은', '는')} ${said}` : `찾은 건 ${said}`}`, m.voice)
   }
   // c6b r3: what was handed over lay outside the time asked, and the year was said only in the last line, under copy that sold it as next
   // month's. The lead says it before anything made from it is read.
   const out = outsideOf(from.job, from.result, now), { forms } = jobForms(job, false), n = askedCount(m.brief)
   const thing = aboutJob(jobTitle(from.job), now), found = thing && !thing.endsWith('…') ? thing : handedThing(from.job)
-  const opener = `${m.role}: ${josa(from.from, '이', '가')} 찾은 ${ro(found)} ${n ? COUNTED_KO[n] ?? `${n}개` : '이렇게'} ${ledBy([forms[1]!, forms[0]!, forms[2]!], previous)}.`
+  const opener = voiced(`${m.role}: ${josa(from.from, '이', '가')} 찾은 ${ro(found)} ${n ? COUNTED_KO[n] ?? `${n}개` : '이렇게'} ${ledBy([forms[1]!, forms[0]!, forms[2]!], previous)}.`, m.voice)
   return withLink(`${opener}${out ? ` ${out.said.replace(/보여요\.$/u, '보여서')} ${out.when} 걸로 썼어요.` : ''}`, link)
 }
 // The last word of what the giver looked for ("이번 주말 서울 날씨 찾기" → "날씨"), or "내용".
@@ -1589,7 +1596,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
       const lines: string[] = []
       const wanted: { bot: Bot; brief: string; topic: string; make: boolean; writer?: true; from?: string; then?: NonNullable<TeamMember['then']> }[] = []
       for (const part of parts) {
-        const bot = staff.get(part.who)!, next = part.then ? { botId: staff.get(part.then.who)!.id, who: part.then.who, brief: part.then.brief } : undefined
+        const bot = staff.get(part.who)!, next = part.then ? { botId: staff.get(part.then.who)!.id, who: part.then.who, brief: part.then.brief, ...(voiceOf(staff.get(part.then.who)!) ? { voice: voiceOf(staff.get(part.then.who)!)! } : {}) } : undefined
         if (part.brief) { wanted.push({ bot, brief: part.brief, topic: part.topic, make: part.make, ...(next ? { then: next } : {}) }); continue }
         if (await host.attach(bot.id, next!)) { lines.push(`${josa(bot.name, '이', '가')} 끝내면 ${next!.who}한테 넘길게요.`); continue }
         const last = lastJob(bot.id)
@@ -1605,7 +1612,7 @@ export function assignTool(paths: VaultPaths, host: AssignHost, changed: () => v
         const at = new Date().toISOString()
         const ids = wanted.map(one => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, title: jobTitle(one.brief), ...(one.topic ? { topic: one.topic } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const, ...(searchWords(one.brief, undefined, context.task) ? { query: searchWords(one.brief, undefined, context.task)! } : {}) }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: null, depth: 1, role: one.bot.name, brief: one.brief, botId: one.bot.id, ...(voiceOf(one.bot) ? { voice: voiceOf(one.bot)! } : {}), title: jobTitle(one.brief), ...(one.topic ? { topic: one.topic } : {}), ...(one.writer ? { writer: true as const } : one.make ? {} : { lookup: true as const, ...(searchWords(one.brief, undefined, context.task) ? { query: searchWords(one.brief, undefined, context.task)! } : {}) }), ...(wait ? {} : { background: true as const }), ...(one.then ? { then: one.then } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += ids.length

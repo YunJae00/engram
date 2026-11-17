@@ -329,7 +329,7 @@ test('assign without waiting answers in one Korean line and leaves the work runn
   expect(o.later).toEqual([['m1']])
   expect(o.task.team!.members[0]).toMatchObject({ background: true, state: 'hired', role: '지민' })
   expect(await o.assign({ wait: false, to: [{ who: '지민', brief: '조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })).toBe('지민한테 맡기고, 끝나면 서연한테 넘길게요.')
-  expect(o.task.team!.members[1]!.then).toEqual({ botId: (await o.named('서연'))!.id, who: '서연', brief: '홍보 문구 3개' })
+  expect(o.task.team!.members[1]!.then).toEqual({ botId: (await o.named('서연'))!.id, who: '서연', brief: '홍보 문구 3개', voice: '밝고 시원시원하게' })
 })
 
 test('a failed part is said as failed, and an agent who needs the person is asked up', async () => {
@@ -362,7 +362,8 @@ test('a handoff with no new brief joins the job the agent is on, or takes their 
   await updateTask(o.paths, earlier.id, t => { t.state = 'done'; t.team = { members: [{ id: 'm1', parentId: null, depth: 1, role: '지민', brief: '행사', botId: kim.id, state: 'released', result: '11월 20일 서울 AI 서밋 https://example.com/summit', sessionKey: 's', hiredAt: '2026-11-16T00:00:00.000Z', finishedAt: '2026-11-16T00:01:00.000Z' }], hires: 1, maxHires: 8, maxDepth: 3, big: false } })
   // grokbar B7 (C6): the report is 서연's own result, then the facts it was made from, under whose they were and what that job was.
   // c9 fix 2: the opener says what it was made from, with that page; no closing source sentence.
-  expect(await o.assign(hand)).toBe('서연: 지민이 찾은 행사로 세 개 만들어 봤어요. [출처](https://example.com/summit)\n\n서연 결과 · [출처](https://example.com/m1)')
+  // c9b r2: said in 서연's own (bright) way.
+  expect(await o.assign(hand)).toBe('서연: 지민이 찾은 행사로 세 개 만들어 봤어요! [출처](https://example.com/summit)\n\n서연 결과 · [출처](https://example.com/m1)')
   // grokbar C6: writing from what was handed over is a writer's job (no web), not a lookup.
   expect(o.task.team!.members[0]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
   expect(o.task.team!.members[0]!.lookup).toBeUndefined()
@@ -1964,4 +1965,16 @@ test('c9 fix 5: a later hand-off in one thread is said another way, each one sen
   expect(await said(p, { wait: false, to: [{ who: '지민', brief: '피그마 신기능 조사' }, { who: '서연', brief: '지라 신기능 조사' }] })).toBe('지민, 서연한테 하나씩 넘겨 놨어요.')
   expect(await said(p, { wait: false, to: [{ who: '지민', brief: '이번 주말 서울 날씨 찾기', then: { who: '서연', brief: '문구 한 줄 써줘' } }] })).toBe('지민한테 맡기고, 끝나면 서연한테 넘길게요.')
   expect(await said(p, { wait: false, to: [{ who: '지민', brief: '이번 주말 부산 날씨 찾기', then: { who: '서연', brief: '문구 한 줄 써줘' } }] })).toBe('지민이 먼저 하고 서연이 이어서 할 거예요.')
+})
+
+test('c9b r2: assign stores each teammate\'s own voice on their part and on the one their work is handed to', async () => {
+  const { voiceOf } = await import('../src/company-tools.js')
+  const o = await office()
+  await o.assign({ wait: false, to: [{ who: '지민', brief: '다음 달 서울 IT 행사 일정 정리', then: { who: '서연', brief: '홍보 문구 3개 뽑기' } }] })
+  const kim = (await o.named('지민'))!, park = (await o.named('서연'))!
+  expect(voiceOf(kim)).toBeTruthy()
+  expect(voiceOf(park)).not.toBe(voiceOf(kim))
+  const m = o.task.team!.members[0]!
+  expect(m.voice).toBe(voiceOf(kim))
+  expect(m.then?.voice).toBe(voiceOf(park))
 })

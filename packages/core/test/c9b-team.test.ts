@@ -101,3 +101,38 @@ test('c9 fix 2: a writer\'s own closing line on where the facts came from is not
   const h5 = mergedReport([park])
   expect(h5).toBe('서연: 지민이 찾은 이번 주말 서울 날씨로 이렇게 써 봤어요. [기상청](https://www.weather.go.kr/w/a)\n\n맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!')
 })
+
+// --- c9b round 2 (Codex r1) ---
+test('c9b r2 finding 1: any job about a named product opens with the maker\'s own page too, not only an updates job', () => {
+  // Codex's repro: "이번 주 슬랙 가격 조사" ran one search with no period.
+  expect(firsts('이번 주 슬랙 가격 조사')).toEqual([{ query: '슬랙 가격', news: true }, { query: 'Slack release notes', maker: 'Slack' }])
+  expect(firsts('노션 요금제 정리')).toEqual([{ query: '노션 요금제' }, { query: 'Notion releases', maker: 'Notion' }])
+  expect(firsts('플로우잇(Flowit) 가격 조사')[1]).toEqual({ query: 'Flowit changelog', maker: 'Flowit' })
+  // A bare Latin word names a maker only in an updates job, and an unknown product gets the one search.
+  expect(firsts('이번 주 KOSPI 지수 조사')).toHaveLength(1)
+  expect(firsts('이번 주 모아보기 앱 가격 조사')).toHaveLength(1)
+  // The teammate is told to read the maker's page only when the part is about what the maker put out.
+  const told = firstFound([{ query: '슬랙 가격', news: true, found: 'results for "a"' }, { query: 'Slack release notes', maker: 'Slack', found: 'x', own: true }])
+  expect(told).toMatch(/When your part is about what Slack has put out or changed, read that one page/)
+})
+
+test('c9b r2 finding 2: C5 and C6 openers are said in each teammate\'s own stored voice', async () => {
+  const { handoffBrief, voiced } = await import('../src/company-tools.js')
+  const ask = { ask: '이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리' }
+  const kim = (voice?: string) => member({ role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', title: '다음 달 서울 IT 행사 일정 정리', background: true, result: C5_RESULT, ...(voice ? { voice } : {}) })
+  const lead = (m: TeamMember, previous?: string) => mergedReport([m], new Map(), [], { ...ask, previous }).split('\n')[0]!
+  expect(lead(kim('차분하고 또박또박'))).toBe('지민: 12월 서울 IT 행사는 세 개 있어요.')
+  expect(lead(kim('밝고 시원시원하게'))).toBe('지민: 12월 서울 IT 행사는 세 개 있더라고요!')
+  expect(lead(kim('담백하고 짧게'))).toBe('지민: 12월 서울 IT 행사는 세 개 있네요.')
+  // A voice the person gave in their own words keeps the plain ending.
+  expect(lead(kim('사투리로'))).toBe('지민: 12월 서울 IT 행사는 세 개 있어요.')
+  const park = member({ id: 'm2', role: '서연', voice: '밝고 시원시원하게', lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT })
+  const c5 = mergedReport([kim('차분하고 또박또박')], new Map(), [], ask)
+  const c6 = mergedReport([park], new Map(), [], { ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', previous: c5 })
+  expect(c6.split('\n')[0]).toMatch(/^서연: 지민이 찾은 12월 서울 IT 행사로 세 개 뽑아 봤어요! \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  expect(c6.match(/^\d\. /gm)).toHaveLength(3)
+  // Endings only; never a voice that turns 반말 or adds a closing.
+  expect(voiced('서연: 이렇게 정리했어요.', '담백하고 짧게')).toBe('서연: 이렇게 정리했네요.')
+  expect(voiced('지민: 확실한 건 하나예요.', '담백하고 짧게')).toBe('지민: 확실한 건 하나네요.')
+  expect(voiced('지민: 확실한 건 하나예요.', '밝고 시원시원하게')).toBe('지민: 확실한 건 하나예요!')
+})

@@ -225,7 +225,7 @@ export function teamRunner(deps: {
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
       // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return { to, background: !!m.background }
