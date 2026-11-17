@@ -201,6 +201,9 @@ export interface ToolSessionJob {
 export interface ToolSessionResult {
   answer: string
   error?: string
+  // c11b r2: words the model wrote before a tool call and never followed with any after it. They are notes, not the answer:
+  // runToolSession asks for the answer once more instead of showing them.
+  note?: string
 }
 
 // Base for every classified engine failure, so a caller that only wants to

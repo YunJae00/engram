@@ -57,6 +57,8 @@ const LATE_STEER_ROUNDS = 3
 // c11b: one more round for a gap the host found in the answer's shape: two calls (a search, or a read of a few pages), then the answer.
 const RECHECK_CALLS = 2
 export const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, say in one plain clause how many you found.`
+// c11b r2: the model ended its turn with nothing after its last call; what it wrote before the call was a note to itself.
+export const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
 export function lateSteer(draft: string, said: string[], replied = false): string {
   return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
 }
@@ -329,6 +331,14 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // The new words are a new ask: a turn that had used up its calls or its time gets both again for them (B6 r4: at the limit the words became a turn of their own).
       exhausted = false; extended = false; startedCalls = 0; working = Date.now()
       session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${lateSteer(session.answer, late, options.steerReplied)}` }), ended])
+    }
+    // c11b r2 (review #3): a turn whose only words came before a tool call gets one round to say its answer; the note is never shown as
+    // one unless that round, too, says nothing (a reply said before a save, "…기억해 둘게요." then keep_in_mind, is then kept as it was).
+    if (closed === undefined && !signal.aborted && !session.error && !asked && !session.answer.trim() && session.note?.trim()) {
+      const note = session.note
+      working = Date.now()
+      session = await Promise.race([runTools.call(deps.engine, { ...job, prompt: `${job.prompt}\n\n${UNSAID_NOTE}` }), ended])
+      if (!session.answer.trim() && !session.error) session = { answer: note }
     }
     const gap = closed === undefined && !signal.aborted && !session.error && !asked ? options.recheck?.(session.answer) : undefined
     if (gap) {

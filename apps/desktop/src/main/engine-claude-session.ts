@@ -65,6 +65,8 @@ interface Turn {
   firstTool: boolean
   resolve(result: ToolSessionResult): void
   answer: string
+  // Words written before a tool call (c11b r2): kept apart, never the answer.
+  note?: string
   detachAbort(): void
   onToken?: (text: string) => void
   onProgress?: () => void
@@ -217,12 +219,13 @@ export class WarmSession {
           if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
           // Words written before a tool call were thinking aloud; the reply
           // starts over after the call.
-          else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') this.turn?.onReset?.(undefined, event.content_block.name)
+          else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') { this.turn?.onReset?.(undefined, event.content_block.name); this.noteBeforeCall() }
           continue
         }
         if (message.type === 'assistant') {
-          const text = textOf((message as { message: { content: unknown } }).message.content)
+          const content = (message as { message: { content: unknown } }).message.content, text = textOf(content)
           if (text && this.turn) this.turn.answer = text
+          if (Array.isArray(content) && content.some(block => (block as { type?: unknown })?.type === 'tool_use')) this.noteBeforeCall()
           continue
         }
         // The runtime says which model it actually opened with; worth one
@@ -241,7 +244,9 @@ export class WarmSession {
           this.finish({ answer: spoken, error: said })
           continue
         }
-        this.finish({ answer: result.result?.trim() || spoken })
+        // The runtime's result is its last text; when that is the note before a call, nothing was said after it.
+        const last = result.result?.trim() ?? '', note = this.turn?.note
+        this.finish({ answer: (last !== note ? last : '') || spoken, ...(note && !spoken && (!last || last === note) ? { note } : {}) })
       }
     } catch (err) {
       this.finish({ answer: this.turn?.answer ?? '', error: err instanceof Error ? err.message : String(err) })
@@ -252,6 +257,9 @@ export class WarmSession {
     }
   }
 
+  // c11b r2 (review #3): words before a tool call were the model working aloud ("Looking for the export figures first…"): they are moved
+  // out of the answer, so a turn that says nothing after its last call has no answer rather than its note as one.
+  private noteBeforeCall(): void { if (this.turn?.answer) { this.turn.note = this.turn.answer; this.turn.answer = '' } }
   private finish(result: ToolSessionResult): void {
     const turn = this.turn
     if (!turn) return

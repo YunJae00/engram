@@ -40,3 +40,25 @@ it('c11b: no gap, one round; a second round that writes nothing keeps the draft'
   const empty = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '1. 하나 [a](https://a.example/1)' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '요즘 국내 핀테크 투자 소식 4개만', { lookup: true, recheck: () => 'They asked for 4.' })
   expect([runs, empty.answer]).toEqual([2, '1. 하나 [a](https://a.example/1)'])
 })
+
+// c11b r2 (review #3): "Looking for the export figures first…" written before a call, with nothing after the call, was shown as the answer.
+it('c11b r2: words written only before a tool call are a note; the turn gets one round to say its answer, and the note is not shown', async () => {
+  const prompts: string[] = []
+  const engine = brain(async job => {
+    prompts.push(job.prompt)
+    return prompts.length === 1 ? { answer: '', note: 'Let me pull the latest shipbuilding orders before answering.' } : { answer: '이번 달 조선 수주는 3건이에요.' }
+  })
+  const result = await runToolSession({ engine, workdir: WORKDIR, tools: [search] }, '이번 달 조선 수주 알려줘', { lookup: true, deadlineMs: 5_000 })
+  expect(prompts).toHaveLength(2)
+  expect(prompts[1]).toContain('wrote no answer after it')
+  expect(result.answer).toBe('이번 달 조선 수주는 3건이에요.')
+  expect(result.answer).not.toContain('Let me')
+  // A turn that answered after its call gets no extra round.
+  let runs = 0
+  const plain = await runToolSession({ engine: brain(async () => { runs++; return { answer: '맑아요.', note: 'Checking.' } }), workdir: WORKDIR, tools: [search] }, '부산 날씨', { lookup: true })
+  expect([runs, plain.answer]).toEqual([1, '맑아요.'])
+  // The round says nothing as well: the words said before a save ("…기억해 둘게요." then the save) stay, rather than a blank turn.
+  runs = 0
+  const kept = await runToolSession({ engine: brain(async () => (++runs === 1 ? { answer: '', note: '수요일 회의 기억해 둘게요.' } : { answer: '' })), workdir: WORKDIR, tools: [search] }, '수요일 회의 기억해', {})
+  expect([runs, kept.answer]).toEqual([2, '수요일 회의 기억해 둘게요.'])
+})
