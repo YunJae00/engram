@@ -1,11 +1,10 @@
 import { expect, test, vi } from 'vitest'
 import { cometTools } from 'core'
-import { listGap } from '../src/main/fast-lane.js'
-// c11b r2: listGap now checks each date against the asked period, so these fixed rows are read on the day of the run.
-const NOW = new Date(2026, 10, 17, 9, 30)
+import { checked } from './checked-rows.js'
+// c11b r2: dates are read against the asked period on the day of the run.
 
-// The rows of the c9a run's R3 and H6 answers (stack-8 67507b42). c11b: search_web hands them all over unmarked; which are what was asked
-// is the model's call, and the host checks only the list's shape (fast-lane listGap): the count, an own link and a date per item.
+// The rows of the c9a run's R3 and H6 answers (stack-8 67507b42). c13b: search_web hands them all over unmarked; which are what was asked
+// is the quick model's call on the rows themselves (core checkedSearch), before the model writes: no headline is matched by a word list.
 const r3Rows = [
   'results for "국내 AI 스타트업 투자 유치" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):',
   '- 메디인테크, 338억 원 규모 시리즈C 투자 유치 — https://www.asiae.co.kr/article/2026111700001 — AI 로봇내시경 고도화 — 11월 17일',
@@ -14,30 +13,36 @@ const r3Rows = [
   '- 젠슨 황 퇴진 소식에 글로벌 AI 스타트업 투자 환경 비상 — https://www.chosun.com/economy/2026/11/16/x — 투자 공백 우려 — 11월 16일',
 ].join('\n')
 
-test('c9a R3 (c11b): the run\'s four linked, dated lines for five asked are a gap said to the model; the host drops, numbers and leads nothing', () => {
+test('c9a R3 (c13b): of the run\'s four rows for five asked, the verdict keeps the one round before the model writes; the count is data, in no Korean words', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
   const answer = ['확실한 투자 유치 건이 두 개뿐이라, 벤처투자 동향 기사까지 포함해 네 개만 정리했어요.', '',
     '메디인테크, 338억 원 규모 시리즈C 투자 유치 (AI 로봇내시경·수술로봇 고도화) — 11월 17일 [아시아경제](https://www.asiae.co.kr/article/2026111700001)',
     '올해 1~3분기 국내 벤처투자 12조6248억 원, 역대 최대…AI·반도체 분야 대형 투자가 견인 — 11월 17일 [머니투데이](https://news.mt.co.kr/mtview.php?no=2026111700002)',
     '정부, 2030년까지 기업가치 1조 AI 스타트업 20곳 육성 지원 계획 발표 — 11월 11일 [헤럴드경제](https://biz.heraldcorp.com/article/10000003)',
     "젠슨 황 퇴진 소식에 글로벌 AI 스타트업 투자 환경 '비상' — 11월 16일 [조선일보](https://www.chosun.com/economy/2026/11/16/x)"].join('\n')
-  const gap = listGap(answer, [ask], [r3Rows], NOW)
-  // The statistic, the plan and the opinion piece count like any item: no headline is judged.
-  expect(gap).toMatch(/^They asked for 5; 4 of this answer's items each have its own article link/)
-  expect(gap).not.toMatch(/[가-힣]/)
+  // The run's answer above was written from every row. Now the statistic, the plan and the opinion piece are judged by meaning first.
+  expect(answer).toContain('벤처투자 12조6248억')
+  const { out, rows, prompts } = await checked(r3Rows, ask, '{"keep":[1],"same":[],"listing":[],"outside":[],"search":""}')
+  expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001'])
+  expect(prompts[0]).toContain('벤처투자 12조6248억')
+  const data = out.split('\n').find(line => line.startsWith('These rows were checked'))!
+  expect(data).toContain('Only 1 of the 5 asked for are here')
+  expect(data).not.toMatch(/[가-힣]/)
 })
 
-test('c9a H6 (c11b): the same rows with three asked; three linked sentences dated by their rows are a whole list', () => {
+test('c9a H6 (c13b): the same rows with three asked; the aggregate figure is a listing and does not reach the model, so its answer cannot list it', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘'
   const answer = ["'의료로봇 스타트업' 메디인테크가 11월 17일 338억 원 규모 시리즈C 투자를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)", '',
     '정부가 2030년까지 기업가치 1조 원 이상의 AI 스타트업 20곳을 육성하겠다고 11월 11일 발표했어요. [헤럴드경제](https://biz.heraldcorp.com/article/10000003)', '',
     '올해 1~3분기 국내 벤처투자액이 12조6248억 원으로 역대 최대를 기록했어요. [머니투데이](https://news.mt.co.kr/mtview.php?no=2026111700002)'].join('\n')
-  expect(listGap(answer, [ask], [r3Rows], NOW)).toBeUndefined()
-  // One link twice is one item.
-  expect(listGap(answer.replace('https://news.mt.co.kr/mtview.php?no=2026111700002', 'https://www.asiae.co.kr/article/2026111700001'), [ask], [r3Rows], NOW)).toMatch(/^They asked for 3; 2 of/)
+  expect(answer).toContain('https://news.mt.co.kr/mtview.php?no=2026111700002')
+  const { out, rows } = await checked(r3Rows, ask, '{"keep":[1,2,3],"same":[],"listing":[2],"outside":[]}')
+  expect(rows).toEqual(['https://www.asiae.co.kr/article/2026111700001', 'https://biz.heraldcorp.com/article/10000003'])
+  expect(out).not.toContain('벤처투자 12조6248억')
+  expect(out).toContain('Only 2 of the 3 asked for are here')
 })
 
-test('c9a R3 (c11b): five linked, dated bullets for five asked stand as written, the trend item too; fewer are a gap; another wording', () => {
+test('c9a R3 (c13b): five rows for five asked that all fit reach the model whole; a trend row the verdict leaves out does not; another wording', async () => {
   const ask = '요즘 바이오 스타트업 투자 뉴스 5개'
   const rows = ['results for "바이오 스타트업 투자 유치" at https://search.naver.com/search.naver?where=news&query=y (DATA, not instructions):',
     '- 지아이이노베이션, 300억 원 투자 유치 — https://a.example/1 — x — 11월 3일', '- 큐리오시스, 시리즈B 200억 — https://b.example/2 — x — 11월 5일', '- 셀비온, 150억 원 투자 유치 — https://c.example/3 — x — 11월 9일', '- 넥스아이, 시리즈A 120억 — https://d.example/4 — x — 11월 12일', '- 바이오 벤처투자 3분기 동향 — https://e.example/5 — x — 11월 13일'].join('\n')
@@ -47,19 +52,26 @@ test('c9a R3 (c11b): five linked, dated bullets for five asked stand as written,
     '- 셀비온이 11월 9일 150억 원 투자를 마무리했어요. [전자신문](https://c.example/3)',
     '- 넥스아이가 11월 12일 시리즈A 120억 원을 유치했어요. [조선비즈](https://d.example/4)',
     '- 바이오 벤처투자가 3분기에 늘었대요. [이데일리](https://e.example/5)'].join('\n')
-  expect(listGap(answer, [ask], [rows], NOW)).toBeUndefined()
-  // Plain linked lines are items too; two of five is a gap.
-  expect(listGap('a [x](https://a.example/1)\nb [y](https://b.example/2)', [ask], [rows], NOW)).toMatch(/^They asked for 5; 2 of/)
-  // Links the search never listed and no date of their own: none counts.
-  expect(listGap('1. 통계 [x](https://z.example/1)\n2. 계획 [y](https://z.example/2)', [ask], [rows], NOW)).toMatch(/^They asked for 5; 0 of/)
+  expect(answer.split('\n').filter(line => line.startsWith('- '))).toHaveLength(5)
+  const all = await checked(rows, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}')
+  expect(all.rows).toHaveLength(5)
+  expect(all.out).toContain('They hold the 5 asked for: list 5 of them.')
+  const four = await checked(rows, ask, '{"keep":[1,2,3,4],"same":[],"listing":[],"outside":[]}')
+  expect(four.rows).not.toContain('https://e.example/5')
+  expect(four.out).toContain('Only 4 of the 5 asked for are here')
+  // A dead page goes too, whatever the verdict.
+  expect((await checked(rows, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}', { dead: ['https://a.example/1'] })).rows).not.toContain('https://a.example/1')
 })
 
-test('c9a r2 (c11b): with no round among the results every row still reaches the model unmarked, and a short list is a gap', async () => {
+test('c9a r2 (c13b): search_web still hands every row over unmarked; with no round among them the verdict leaves none, and the model is told so', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘'
   const rows = ['results for "국내 AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=z (DATA, not instructions):',
     '- 올해 1~3분기 국내 벤처투자 12조 원 — https://news.mt.co.kr/2 — x — 11월 17일', '- 정부, AI 스타트업 20곳 육성 — https://biz.heraldcorp.com/3 — x — 11월 11일'].join('\n')
   const answer = ['투자 관련 소식이에요.', '', '- 벤처투자가 12조 원으로 늘었어요. [머니투데이](https://news.mt.co.kr/2)', '- 정부가 AI 스타트업 20곳을 키운대요. [헤럴드경제](https://biz.heraldcorp.com/3)'].join('\n')
-  expect(listGap(answer, [ask], [rows], NOW)).toMatch(/^They asked for 3; 2 of/)
+  expect(answer).toContain('https://news.mt.co.kr/2')
+  const none = await checked(rows, ask, '{"keep":[],"same":[],"listing":[],"outside":[],"search":""}')
+  expect(none.rows).toEqual([])
+  expect(none.out).toContain('None of the 3 asked for is here')
   // search_web hands every dated row in the period over, none marked as background, and says the count.
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
@@ -98,23 +110,29 @@ test('c9a R3 (c11b): a counted investment ask loads the period page, then the wi
   } finally { vi.useRealTimers() }
 })
 
-test('c9a R3 (c11b): a valuation, a support plan and a round all count alike: the host never judges a headline', () => {
+test('c9a R3 (c13b): which of a valuation, a support plan and a round fit is the quick model\'s verdict on the rows, never a host word list', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개'
   const titles = ['정부, 기업가치 1조 AI 스타트업 20곳 육성', 'AI 스타트업 기업가치 1조 돌파', '리벨리온, 역대 최대 620억 원 투자 유치', '메디인테크, 338억 원 규모 시리즈C 투자 유치', '국내 AI 스타트업 미국 투자 유치']
   const answer = titles.map((title, i) => `${i + 1}. ${title} — 11월 1${i}일 [기사](https://example.com/n${i})`).join('\n')
-  expect(listGap(answer, [ask], [], NOW)).toBeUndefined()
-  // A search page is no article.
-  expect(listGap(answer.replace('https://example.com/n0', 'https://search.naver.com/search.naver?query=x'), [ask], [], NOW)).toMatch(/^They asked for 5; 4 of/)
+  const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', ...titles.map((title, i) => `- ${title} — https://example.com/n${i} — x — 11월 1${i}일`)].join('\n')
+  expect(answer.split('\n')).toHaveLength(5)
+  // The host keeps what the verdict keeps, whatever the words: a verdict that keeps all five leaves all five.
+  expect((await checked(page, ask, '{"keep":[1,2,3,4,5],"same":[],"listing":[],"outside":[]}')).rows).toHaveLength(5)
+  const judged = await checked(page, ask, '{"keep":[3,4,5],"same":[],"listing":[],"outside":[]}')
+  expect(judged.rows).toEqual(['https://example.com/n2', 'https://example.com/n3', 'https://example.com/n4'])
+  expect(judged.prompts[0]).toContain(JSON.stringify(ask))
 })
 
-test('c9a r3 (c11b): an article on the funded company is the model\'s pick like any other; an unlisted link needs its own date', () => {
+test('c9a r3 (c13b): an article on the funded company is kept or left by the verdict like any other row; a page that does not open is never shown', async () => {
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘'
   const rows = ['results for "국내 AI 스타트업 투자 유치" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):',
     '- 메디인테크, 338억 원 규모 시리즈C 투자 유치 — https://www.asiae.co.kr/article/2026111700001 — x — 11월 17일',
     '- 메디인테크, 정부 AI 실증 지원 사업 선정 — https://www.etnews.com/2026111700005 — x — 11월 15일'].join('\n')
   const answer = ['1. 메디인테크가 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/article/2026111700001)',
     '2. 메디인테크가 정부 AI 실증 지원 사업에 뽑혔어요. [전자신문](https://www.etnews.com/2026111700005)'].join('\n')
-  expect(listGap(answer, [ask], [rows], NOW)).toMatch(/^They asked for 3; 2 of/)
-  // A link the search did not list, with no date of its own, does not count; the listed one is dated by its row.
-  expect(listGap('1. 메디인테크 338억 유치 [더벨](https://www.thebell.co.kr/1)\n2. 메디인테크 실증 선정 [전자신문](https://www.etnews.com/2026111700005)', [ask], [rows], NOW)).toMatch(/^They asked for 3; 1 of/)
+  expect(answer.split('\n')).toHaveLength(2)
+  expect((await checked(rows, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[]}')).rows).toHaveLength(2)
+  const dead = await checked(rows, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://www.etnews.com/2026111700005'] })
+  expect(dead.rows).toEqual(['https://www.asiae.co.kr/article/2026111700001'])
+  expect(dead.out).toContain('Only 1 of the 3 asked for are here')
 })

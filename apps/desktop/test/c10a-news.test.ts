@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { cometTools, type HarnessMetric } from 'core'
-import { listGap } from '../src/main/fast-lane.js'
+import { checked } from './checked-rows.js'
 
 const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
 const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
@@ -33,8 +33,8 @@ async function search(second: boolean) {
 }
 
 // c11b: the second pass (three months, a round-up search and page) is gone: the search hands over what the period and the year hold,
-// and a short list goes back to the model as a gap (fast-lane listGap) for one more round of its own.
-test('c10a R3 (c11b): a counted ask loads the period page and the year page only; both period rows reach the model; the count is logged; a short answer is a gap', async () => {
+// c13b: and its rows are judged before the model writes (core checkedSearch); a short list is said to the model as data, with no extra round.
+test('c10a R3 (c13b): a counted ask loads the period page and the year page only; both period rows reach the check; the count is logged; the statistic never reaches the model', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
     const { out, asked, metrics } = await search(true)
@@ -46,50 +46,66 @@ test('c10a R3 (c11b): a counted ask loads the period page and the year page only
     expect(out).not.toMatch(/Background only|The rows that are the event asked for/)
     const passes = metrics.filter(metric => metric.operation === 'news-pass').map(metric => metric.counts)
     expect(passes).toEqual([{ pass: 1, recent: 2, older: 0, kept: 2 }])
-    const answer = ['요즘 투자 소식이에요.', '', '1. 메디인테크가 11월 16일 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/1)', '2. 국내 벤처투자가 역대 최대예요. [머니투데이](https://news.mt.co.kr/2)'].join('\n')
-    expect(listGap(answer, [ask], [out], new Date(2026, 10, 17, 9, 30))).toMatch(/^They asked for 5; 2 of/)
+    const round = rows.findIndex(row => row.includes('https://www.asiae.co.kr/1')) + 1
+    const judged = await checked(out, ask, `{"keep":[${round}],"same":[],"listing":[${3 - round}],"outside":[]}`, { now: 20_000 })
+    expect(judged.rows).toEqual(['https://www.asiae.co.kr/1'])
+    expect(judged.out).toContain('Only 1 of the 5 asked for are here')
+    expect(judged.out).not.toContain('They asked for 5: list')
   } finally { vi.useRealTimers() }
 })
 
-test('c10a R3 (c11b): with nothing more to find, the host writes no count lead and drops nothing: the model gets the gap', async () => {
+test('c10a R3 (c13b): with nothing more to find, the host writes no count lead: the model is told the count as data, before it writes', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
     const { out, asked } = await search(false)
     expect(asked.length).toBeLessThanOrEqual(2)
     expect(out).toContain('https://news.mt.co.kr/2')
-    const answer = ['딱 맞는 건 하나예요.', '', '1. 메디인테크가 338억 원 시리즈C를 유치했어요. [아시아경제](https://www.asiae.co.kr/1)', '2. 국내 벤처투자가 역대 최대예요. [머니투데이](https://news.mt.co.kr/2)'].join('\n')
-    const gap = listGap(answer, [ask], [out], new Date(2026, 10, 17, 9, 30))
-    expect(gap).toMatch(/^They asked for 5; 2 of/)
-    expect(gap).not.toMatch(/확실한|[가-힣]/)
+    const judged = await checked(out, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[],"search":"AI 스타트업 시리즈 투자"}', { now: 20_000 })
+    const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
+    expect(data).toContain('Only 2 of the 5 asked for are here')
+    expect(data).not.toMatch(/확실한|[가-힣]/)
+    // Too late for a widened search: none ran.
+    expect(judged.queries).toEqual(['q'])
   } finally { vi.useRealTimers() }
 })
 
-test('c10a R3/H6 (c11b): the run\'s answers are short lists: each is a gap, an item dated by its own words or by its row counts', () => {
+test('c10a R3/H6 (c13b): the run\'s statistic row is judged a listing and never reaches the model, so neither answer could list it', async () => {
   const none = ['results for "국내 AI 스타트업 투자 유치" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):',
     '- 올해 1~3분기 국내 벤처투자 12조6248억 원 — https://news.mt.co.kr/2 — x — 11월 17일'].join('\n')
   const now = new Date(2026, 10, 17, 9, 30)
   const r3 = ['딱 맞는 소식은 아직 없어서, 가까운 소식만 모았어요.', '', '메디인테크, 로봇내시경 AI 기술 기반으로 338억 원 규모 시리즈C 투자 유치 (11월 17일) — [아시아경제](https://www.asiae.co.kr/1)', '올해 1~3분기 국내 벤처투자 12조 6248억 원으로 역대 최대, AI·반도체 분야 대형 투자가 견인 (11월 17일) — [머니투데이](https://news.mt.co.kr/2)'].join('\n')
-  expect(listGap(r3, [ask], [none], now)).toMatch(/^They asked for 5; 2 of/)
+  expect(r3).toContain('https://news.mt.co.kr/2')
+  expect(now.getFullYear()).toBe(2026)
   const h6Ask = '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘'
   const h6 = '메디인테크가 로봇내시경 기술 기반으로 338억 원 규모 시리즈C 투자를 유치했어요. 11월 17일 [이데일리](https://www.edaily.co.kr/1)\n\n국내 벤처투자가 역대 최대래요. [머니투데이](https://news.mt.co.kr/2)'
-  expect(listGap(h6, [h6Ask], [none], now)).toMatch(/^They asked for 3; 2 of/)
+  expect(h6).toContain('https://news.mt.co.kr/2')
+  for (const one of [ask, h6Ask]) {
+    const judged = await checked(none, one, '{"keep":[1],"same":[],"listing":[1],"outside":[]}')
+    expect(judged.rows).toEqual([])
+    expect(judged.out).not.toContain('벤처투자')
+  }
 })
 
-test('c10a R3 (c11b): a plan word in a headline is the model\'s to weigh; the host counts four linked, dated items for four asked', () => {
+test('c10a R3 (c13b): a plan word in a headline is the quick model\'s to weigh, never the host\'s: four rows it keeps all reach the model', async () => {
   const titles = ['메디인테크, 338억 원 시리즈C 유치…해외 진출 추진', '뤼튼, 시리즈B 투자 유치 추진', '업스테이지, 500억 투자 검토', '정부, 기업가치 1조 AI 스타트업 20곳 육성']
   const answer = titles.map((title, i) => `${i + 1}. ${title} — 11월 1${i}일 [기사](https://example.com/n${i})`).join('\n')
-  expect(listGap(answer, ['요즘 AI 스타트업 투자 뉴스 4개'], [], new Date(2026, 10, 17, 9, 30))).toBeUndefined()
+  const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', ...answer.split('\n').map(line => `- ${line.replace(/^\d\. /, '').replace(/ — (11월 \d+일) \[기사\]\((\S+)\)$/, ' — $2 — x — $1')}`)].join('\n')
+  const judged = await checked(page, '요즘 AI 스타트업 투자 뉴스 4개', '{"keep":[1,2,3,4],"same":[],"listing":[],"outside":[]}')
+  expect(judged.rows).toEqual(['https://example.com/n0', 'https://example.com/n1', 'https://example.com/n2', 'https://example.com/n3'])
+  expect(judged.out).toContain('They hold the 4 asked for')
 })
 
-// c10a r2 (Codex r1): a weekly round-up's own date is no article's date. Wordings not in the harness. c11b: the host reads no round-up; an
-// item on a page the search never listed is dated only by its own words.
-test('c10a r2 (c11b): an item on an unlisted page counts only with a date of its own, inside the year', () => {
-  const answer = ['1. [2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치 [플래텀](https://example.kr/a/1)', '2. 딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치 [플래텀](https://example.kr/a/2)', '3. 뉴런웍스 AI 칩 설계로 450억 원 투자 유치 — 지난달 28일 [플래텀](https://example.kr/a/3)'].join('\n')
-  expect(listGap(answer, ['AI 스타트업 투자 뉴스 4건 알려줘'], [], new Date(2026, 10, 17, 9, 30))).toMatch(/^They asked for 4; 1 of/)
+// c10a r2 (Codex r1): a weekly round-up's own date is no article's date. Wordings not in the harness. c11b: the host reads no round-up.
+// c13b: a round-up row is a listing to the verdict, and a row with no day of its own is one the ask cannot use (lists): neither is shown.
+test('c10a r2 (c13b): a round-up row and a row without its own day never reach the model; an item dated in its own words does', async () => {
+  const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', '- [2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치 — https://example.kr/a/1 — x', '- 딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치 — https://example.kr/a/2 — x', '- 11월 둘째 주 스타트업 투자 동향 — https://example.kr/weekly — x — 11월 14일'].join('\n')
+  const judged = await checked(page, 'AI 스타트업 투자 뉴스 4건 알려줘', '{"keep":[1,2,3],"same":[],"lists":[2,3],"listing":[3],"outside":[]}')
+  expect(judged.rows).toEqual(['https://example.kr/a/1'])
+  expect(judged.out).toContain('Only 1 of the 4 asked for are here')
 })
 
 // c10a r3 (Codex r2): nothing dated an undated round as recent but inPeriod. Any source, any wording: a round with no date is no counted item.
-test('c10a r3 (c11b): an undated round still reaches the model, after the dated one; listed without a date it does not count', async () => {
+test('c10a r3 (c13b): an undated round still reaches the check, after the dated one; the verdict that it lacks a day keeps it from the model', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
     const asked2 = '바이오 스타트업 투자 유치 소식 두 건만 링크 달아서 알려줘'
@@ -104,6 +120,9 @@ test('c10a r3 (c11b): an undated round still reaches the model, after the dated 
     expect(items[0]).toMatch(/^- 지놈랩.* — 11월 14일/)
     expect(items[1]).toMatch(/^- 하모니셀/)
     const answer = '1. 지놈랩이 120억 원을 유치했어요. [예시뉴스](https://www.example-news.kr/a)\n2. 하모니셀이 80억 원을 유치했어요. [다른일보](https://www.other-daily.kr/b)'
-    expect(listGap(answer, [asked2], [out], new Date(2026, 10, 17, 9, 30))).toMatch(/^They asked for 2; 1 of/)
+    expect(answer).toContain('https://www.other-daily.kr/b')
+    const judged = await checked(out, asked2, '{"keep":[1,2],"same":[],"lists":[2],"listing":[],"outside":[]}', { now: 20_000 })
+    expect(judged.rows).toEqual(['https://www.example-news.kr/a'])
+    expect(judged.out).toContain('Only 1 of the 2 asked for are here')
   } finally { vi.useRealTimers() }
 })

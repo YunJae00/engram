@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { isSearchPage, liveLinks, plainSteer, reportData, settleMember, steerSplit, teamAnswer, writtenReport, type DelegatedTask, type TeamMember } from 'core'
+import { isSearchPage, withLiveSources, liveLinks, plainSteer, reportData, settleMember, steerSplit, teamAnswer, writtenReport, type DelegatedTask, type TeamMember } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answerOnly } from '../src/main/result-check.js'
-import { listGap } from '../src/main/fast-lane.js'
 
 // stack-11: the three cycle-11 branches meet in ipc.ts. These check the seams; no wording here is the harness's.
 const AT = '2026-11-18T03:00:00.000Z'
@@ -69,15 +68,15 @@ describe('stack-11 merge: words said mid-split', () => {
 
 describe('stack-11 merge: one helper each', () => {
   const src = (file: string): string => readFileSync(new URL(file, import.meta.url), 'utf8')
-  it('"is a search page" is core\'s isSearchPage for the lone lookup and the team alike', () => {
+  it('"is a search page" is core\'s isSearchPage for the lone lookup and the team alike', async () => {
     expect(src('../src/main/fast-lane.ts')).not.toMatch(/const SEARCH_PAGE\s*=/)
     for (const url of ['https://search.daum.net/search?q=x', 'https://m.search.naver.com/search.naver?query=x', 'https://www.google.com/search?q=x', 'https://shop.example.com/list?search=chair']) expect(isSearchPage(url), url).toBe(true)
     expect(isSearchPage('https://www.hankyung.com/article/2026111712345')).toBe(false)
-    // The lone lookup's list check counts a search page as no article link.
-    const ask = '요즘 조선업 수주 기사 2개만'
-    const rows = ['- 수주 소식 — https://news.example/a — 11월 15일', '- 수주 소식 2 — https://news.example/b — 11월 16일'].join('\n')
-    const now = new Date(2026, 10, 17)
-    expect(listGap('1. 첫 소식 [기사](https://news.example/a)\n2. 둘째 [검색](https://shop.example.com/list?search=ship)', [ask], [rows], now)).toMatch(/^They asked for 2; 1 of/)
+    // c13b: a teammate's cited pages are checked as its result is handed over; a search page is no cited page and is never asked.
+    const asked: string[] = []
+    const m = { ...member('m1', '수주', '요즘 조선업 수주 기사 2개', '조선업'), state: 'done' as const, result: '1. 첫 소식 — https://news.example/a\n2. 둘째 — https://shop.example.com/list?search=ship', sources: ['https://shop.example.com/list?search=ship'] }
+    expect(await withLiveSources([m], async url => { asked.push(url); return true })).toBe(false)
+    expect(asked).toEqual(['https://news.example/a'])
   })
 })
 
@@ -110,20 +109,18 @@ describe('stack-11: Codex-cap findings', () => {
     expect(save.answer).toBe('우선 관련 기사부터 훑어볼게요.')
   })
 
-  it('c11b r3 #2: a list that loses a dead link on the way out is labeled with how many met the ask', async () => {
+  it('c13b (c11b r3 #2): a dead row is left out before the model writes, so no list loses a link on the way out and no host line labels it', async () => {
     const { liveCited } = await import('core')
-    const { listShortfall } = await import('../src/main/fast-lane.js')
-    const now = new Date(2026, 10, 17, 12)
-    const asks = ['이번 달 2차전지 소재 뉴스 2개만']
-    const held = ['results for "x" (DATA, not instructions):\n- 양극재 증설 — https://dead.example/a — 2026.11.12.\n- 음극재 수주 — https://news.example/b — 2026.11.13.']
-    const answer = '1. 양극재 증설 소식이에요. [신문](https://dead.example/a)\n2. 음극재 수주 소식이에요. [신문](https://news.example/b)'
-    expect(listShortfall(answer, asks, held, now)).toBeUndefined()
-    const after = await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)
-    expect(listShortfall(after, asks, held, now)).toBe('기사 링크와 날짜까지 확인된 건 2개 중 1개예요.')
-    // ipc says it on what is delivered: after liveCited, never inside the tool session before it.
+    const { checked } = await import('./checked-rows.js')
+    const held = 'results for "x" at https://search.example/?q=x (DATA, not instructions):\n- 양극재 증설 — https://dead.example/a — x — 2026.11.12.\n- 음극재 수주 — https://news.example/b — x — 2026.11.13.'
+    const judged = await checked(held, '이번 달 2차전지 소재 뉴스 2개만', '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://dead.example/a'] })
+    expect(judged.rows).toEqual(['https://news.example/b'])
+    expect(judged.out).toContain('Only 1 of the 2 asked for are here')
+    // What the model writes from those rows passes the net after writing unchanged.
+    const answer = '이번 달엔 한 건만 나왔어요.\n\n1. 음극재 수주 소식이에요. [신문](https://news.example/b)'
+    expect(await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)).toBe(answer)
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc.indexOf('listShortfall(answer, asks')).toBeGreaterThan(ipc.indexOf('answer = await liveCited(answer'))
-    expect(ipc).not.toContain('shortfall: (answer: string) =>')
+    expect(ipc).not.toMatch(/listShortfall|shortfall: \(answer: string\) =>/)
   })
 })
 
@@ -185,9 +182,9 @@ describe('stack-11: working notes and date ranges', () => {
     expect(resultDay('10월 3~7일', now)?.getDate()).toBe(7)
     expect(resultDay('10월 첫째주(1~6일)', now)?.getDate()).toBe(6)
     expect(resultDay('10월 5일', now)?.getDate()).toBe(5)
-    const ask = '요즘 반도체 소재 투자 기사 2개만'
-    const two = '1. 소재 기업 A가 80억 원을 유치했어요(11월 10~12일 보도). [a](https://news.example/a)\n2. B가 시리즈A를 마쳤어요, 11월 셋째주(15~16일). [b](https://news.example/b)'
-    expect(listGap(two, [ask], [], now)).toBeUndefined()
+    // The ranges as written in an item read as their last day, inside a "요즘" ask's period.
+    expect(resultDay('11월 10~12일', now)?.getDate()).toBe(12)
+    expect(resultDay('11월 셋째주(15~16일)', now)?.getDate()).toBe(16)
   })
 })
 

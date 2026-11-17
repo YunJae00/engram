@@ -183,14 +183,12 @@ describe('team hire tools', () => {
   })
 
   // c5 T1/R2: "봇 3개에 네 도시를 어떻게 나눠 맡겼는지는 말하지 않아". The host says who took part and who joined mid-work; the lead puts it in a clause.
-  it('tells the lead how the work was split: how many took part, and who joined after the person spoke mid-work', async () => {
+  it('c13b: hands the lead no head count and no split line: the first line of its answer is the answer, whoever joined mid-work', async () => {
     const plain = world('서울 부산 제주 날씨')
     const out = JSON.parse(await plain.call(null, 'hire_members', { members: three }))
-    expect(out.split).toBe('3 took part (said in Korean words: 셋, never a digit or a Han numeral), one part each')
-    expect(out.note).toContain('says in a few words how it was split, from "split" in this result')
-    // c6 T1: the reply to the mid-work message already said one more was put on it; the lead does not explain the head count again.
-    expect(out.note).toContain('the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined')
-    expect(out.note).not.toContain('대구는 한 명 더 붙여서 넷이 나눠 봤어요')
+    expect(out.split).toBeUndefined()
+    expect(out.note).not.toMatch(/"split"|took part \(|셋이 하나씩/)
+    expect(out.note).toContain('No sentence about how the work was split, who took which part or how many took part: the first line is the answer.')
     expect(out.note).toContain('a member id or a role label')
     const { state, tools } = world('서울 부산 제주 날씨')
     let finish!: () => void, speak!: () => void
@@ -204,8 +202,8 @@ describe('team hire tools', () => {
     state.steer = new Promise(() => undefined)
     const added = hire.run({ members: [{ role: '대구날씨', brief: '대구 날씨', deliverable: '한 줄' }] }, { task: '' })
     finish()
-    expect(JSON.parse(await added).split).toBe('4 took part (said in Korean words: 넷, never a digit or a Han numeral), one part each; 1 of them joined after the person added to the job mid-work (대구날씨), and the person was told so then')
-    // One member is no split.
+    expect(JSON.parse(await added).split).toBeUndefined()
+    // One member: nothing either.
     const solo = world('서울 날씨')
     expect(JSON.parse(await solo.call(null, 'hire_members', { members: three.slice(0, 1) })).split).toBeUndefined()
   })

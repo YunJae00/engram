@@ -2,7 +2,6 @@ import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
 import { communityPost } from './search-template.js'
 import { datedText, logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type MemberData, type TaskTeam, type TeamMember } from './delegated-tasks.js'
-const KOREAN_COUNT = ['', '하나', '둘', '셋', '넷', '다섯', '여섯']
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
 // Rules and text live here; pool slots, sessions and abort live in the desktop team-runner.
@@ -24,7 +23,7 @@ export const AUTO_REVIEW = 'auto: sourced lookup'
 // c6 R2: three members cut at their time limit were not accepted, and three review_member calls took 3.3 s before the first word of the answer.
 const ACCEPTED_NOTE = 'Members with accepted true are lookups, already accepted and released: do not call review_member for them, and write the answer now. One that stopped at its time limit handed back what it had read: answer its part from that. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
-export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist and says only what the cells below show, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"). Every concrete value a member reported stays in its row, labeled as the member labeled it (출시가, 예상, 전작, or the model it belongs to: "상위 모델 출시가 199만 원부터"), never dropped or turned into "미발표"; a thing already out has its 출시가 and date. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result ("셋이 하나씩 맡아 알아봤어요."); when "split" says someone joined mid-work, the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value not out yet keeps the labeled figure its member reported ("예상 130만 원대").'
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist and says only what the cells below show, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"). Every concrete value a member reported stays in its row, labeled as the member labeled it (출시가, 예상, 전작, or the model it belongs to: "상위 모델 출시가 199만 원부터"), never dropped or turned into "미발표"; a thing already out has its 출시가 and date. No sentence about how the work was split, who took which part or how many took part: the first line is the answer. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A value marked "(no live source)" lost the page it was read on: its cell keeps the value labeled unconfirmed ("199만 원(미확인)"), and its source cell links another page that member read, or, with none, says 미확인; never an empty cell. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value not out yet keeps the labeled figure its member reported ("예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
 const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id, a site you cannot name by its host as written in the address (store.google.com), never a piece of a title, never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
@@ -88,6 +87,8 @@ export interface TeamHost {
   release(ids: string[]): Promise<void>
   live(id: string): boolean
   tokensLeft(): Promise<number>
+  // c13b: asks one address whether it answers (a page a member cites is checked when its result is handed over); no check without it.
+  alive?(url: string, signal: AbortSignal): Promise<boolean>
   // The message that started the lead's current turn.
   personSaid(): string
 }
@@ -417,7 +418,7 @@ const ADDRESS = /https?:\/\/[^\s)\]>"'|]+/g
 // The same address reads differently once its spaces and Korean are escaped for a link.
 const plainAddress = (url: string): string => { try { return decodeURI(url) } catch { return url } }
 const unloaded = (text: string, read: readonly string[]): string[] => { const loaded = new Set(read.map(plainAddress)); return [...new Set((text.match(ADDRESS) ?? []).map(url => url.replace(/[.,;:!?]+$/, '')))].filter(url => !loaded.has(plainAddress(url))) }
-async function deadOf(shown: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms: number): Promise<string[]> {
+export async function deadOf(shown: readonly string[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms: number): Promise<string[]> {
   if (!shown.length) return []
   const limit = new AbortController(), timer = setTimeout(() => limit.abort(), ms)
   const late = new Promise<boolean>(resolve => limit.signal.addEventListener('abort', () => resolve(true), { once: true }))
@@ -465,6 +466,34 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
   const out = declaredNamed(withoutDead(rows.join('\n'), dead, read, korean), korean)
   // A closing source line lists links only: a member's dead page leaves no bare name there.
   return out.replace(/\n\n(출처|Sources): ([^\n]*)$/, (_whole, label: string, items: string) => { const kept = items.split(' · ').filter(item => /\]\(https?:\/\//.test(item)); return kept.length ? `\n\n${label}: ${kept.join(' · ')}` : '' })
+}
+// c13b (cause J, R2): a member cited an article from a search row it never opened; the address was found dead only after the lead had
+// written its table, and the row's source cell was left empty. Each page a lookup member's result cites is asked once, all members together
+// inside one link budget, as the result is handed over. A dead one gives way to another live page of the same member whose line holds the
+// same figure (the same fact, read elsewhere); with none, the fact is marked as having no live source, so the lead labels it unconfirmed
+// (MERGED_SHAPE) and never shows it with an empty source. true when a result changed.
+export const NO_LIVE_SOURCE = '(no live source)'
+export async function withLiveSources(members: TeamMember[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms = LINK_CHECK_MS): Promise<boolean> {
+  const cited = (m: TeamMember): string[] => [...new Set([...addressesIn(m.result ?? ''), ...(m.sources ?? [])])].filter(url => !isSearchPage(url))
+  const dead = new Set(await deadOf([...new Set(members.flatMap(cited))], alive, ms))
+  if (!dead.size) return false
+  const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), words = (line: string): string => line.replace(ADDRESS, ' ')
+  let changed = false
+  for (const m of members) {
+    const lines = (m.result ?? '').split('\n')
+    const fixed = lines.map(line => {
+      const gone = addressesIn(line).filter(url => dead.has(url))
+      if (!gone.length) return line
+      // A number of the asked thing's own name ("아이폰 18") is no figure of a fact.
+      const figures = (words(line).match(/\d[\d,.]{2,}/g) ?? []).filter(figure => !m.brief.includes(figure))
+      const live = (other: string): string | undefined => addressesIn(other).find(url => !dead.has(url) && !isSearchPage(url))
+      const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) ? live(other) : undefined).find(Boolean) : undefined
+      return gone.reduce((text, url) => text.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}\\)`, 'g'), to ? `[${sourceName(to, /[가-힣]/.test(m.brief))}](${to})` : NO_LIVE_SOURCE).split(url).join(to ?? NO_LIVE_SOURCE), line)
+    }).join('\n')
+    const sources = m.sources?.filter(url => !dead.has(url))
+    if (fixed !== m.result || sources?.length !== m.sources?.length) { changed = true; m.result = fixed; if (sources?.length) m.sources = sources; else delete m.sources }
+  }
+  return changed
 }
 // A lone lookup's answer says where it was read. grokbar stack-1 L1, L4: "출처: 네이버 환율 검색 결과" with no address.
 // c3 L2/L4: "출처: bing.com" read like a printout. An answer with no link gets one named link, after its last sentence; an answer that links a page is left alone.
@@ -766,24 +795,26 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
   const open = new Map<string, Promise<void>>()
   // One early return per turn: words the turn does not take with the result (a check turn takes none) must not end every wait at once.
   let steerable = host.self === null && !!host.steered
-  // stack-8 (R2, stack7-b3ddda26): "3 took part" came back as "三 명이 하나씩 맡아서 알아봤어요.": the count is handed over in Korean words.
-  // c5 T1/R2: the merged answer never said how the work was split. The lead's hires of this turn, call by call: who took part, and who was
-  // hired after the person spoke mid-work, is the host's to say; the lead puts it in a clause (MERGED_SHAPE).
-  const took: string[] = [], late = new Set<string>()
-  let spoke = false
+  // The lead's hires of this turn, call by call. c13b (cause H, R2): the head count is no longer handed over: its "셋이 하나씩 맡아서
+  // 알아봤어요." opened the answer as a line about the process (GROKBOT rule 5); the first line is the answer.
+  const took: string[] = []
   // Waits for the open members, or for the person's words to the lead, and hands back what there is.
   const collect = async (): Promise<string> => {
     const heard = new AbortController()
     const all = Promise.all([...new Set(open.values())])
     let steered = false
     try { steered = await Promise.race([all.then(() => false), steerable ? host.steered!(heard.signal).then(() => true) : new Promise<never>(() => undefined)]) } catch (error) { open.clear(); throw error } finally { heard.abort() }
-    if (steered) { steerable = false; spoke = true }
+    if (steered) steerable = false
     const team = (await host.load())?.team
     // c6 T1: a wait call (members []) with everyone already back returns this turn's results again with the answer note, not an error.
     const mine = (team?.members ?? []).filter(m => open.size ? open.has(m.id) : took.includes(m.id))
     const working = (m: TeamMember): boolean => steered && (host.live(m.id) || m.state === 'hired' || m.state === 'working')
     const ended = mine.filter(m => !working(m))
     for (const m of ended) open.delete(m.id)
+    // c13b (cause J, R2): a page a member cites that does not open is swapped or labeled here, as its result is handed over, before the lead
+    // writes a row around it (and before citeMembers can put it back in that row from the record).
+    const looked = host.alive ? ended.filter(m => m.lookup && m.state === 'done') : []
+    if (looked.length && await withLiveSources(looked, host.alive!)) await host.change(task => { for (const m of task.team?.members ?? []) { const fixed = looked.find(one => one.id === m.id); if (fixed) { m.result = fixed.result; if (fixed.sources?.length) m.sources = fixed.sources; else delete m.sources } } })
     const auto = ended.filter(accepted).map(m => m.id)
     // The record every task end checks (teamReviewIssue): the host's acceptance is written on the member, here and not in settleMember.
     if (auto.length) await host.change(task => { for (const m of task.team?.members ?? []) if (auto.includes(m.id) && !m.review) m.review = { ok: true, note: AUTO_REVIEW } })
@@ -795,9 +826,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     const settled = (m: TeamMember): boolean => accepted(m) || m.state === 'released'
     const base = partial ? PARTIAL_NOTE : ended.every(settled) ? ACCEPTED_NOTE : ended.some(settled) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
     const note = `${ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base}${partial ? '' : ` ${MERGED_SHAPE}`}`
-    const added = (team?.members ?? []).filter(m => late.has(m.id))
-    const split = host.self === null && took.length > 1 ? { split: `${took.length} took part (said in Korean words: ${KOREAN_COUNT[took.length] ?? `${took.length}명`}, never a digit or a Han numeral), one part each${added.length ? `; ${added.length} of them joined after the person added to the job mid-work (${added.map(m => m.role).join(', ')}), and the person was told so then` : ''}` } : {}
-    return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, ...split, note })
+    return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, note })
   }
   const hire: AgentTool = {
     name: 'hire_members',
@@ -849,7 +878,6 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       if (!out) return 'No running task: nothing was hired.'
       if ('refuse' in out) return out.refuse
       took.push(...out.ids)
-      if (spoke) for (const id of out.ids) late.add(id)
       const run = host.run(out.ids, context.signal)
       // An early return leaves this running with nobody awaiting it.
       run.catch(() => undefined)

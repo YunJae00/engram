@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { createBot, createTask, inAskedPeriod, kindChecked, LOOKUP_HARD_MS, LOOKUP_SOFT_MS, mergedReport, reportData, settleMember, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { itemCheck, teamAsk } from '../src/main/fast-lane.js'
+import { teamAsk } from '../src/main/fast-lane.js'
+import { checked } from './checked-rows.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // stack-12: c12b (lone-lookup item verdict) and c12a (team: reserve, host-said gaps, data-led lines) meet here. No wording is the harness's.
@@ -27,18 +28,20 @@ describe('stack-12 merge: one item judge', () => {
     const write = async (prompt: string) => { prompts.push(prompt); return answer }
     const facts = [{ text: '수원 재즈 공연이 12월 5일에 열려요.', url: 'https://a.example/1', site: 'a' }, { text: '수원 맛집 지도', url: 'https://b.example/2', site: 'b' }, { text: '수원 공연 일정 페이지예요.', url: 'https://c.example/3', site: 'c' }]
     const team = await kindChecked({ facts }, '다음 달 수원 공연 일정', write)
-    const lone = await itemCheck('수원 공연 3개 알려줘', facts.map(f => `- ${f.text} [x](${f.url})`), write)
-    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): /.test(line)).join('\n')
+    const lone = await checked(['results for "수원 공연" at https://search.example/?q=s (DATA, not instructions):', ...facts.map(f => `- ${f.text} — ${f.url} — x`)].join('\n'), '수원 공연 3개 알려줘', prompt => write(prompt))
+    // c13b: a counted ask adds only its count line and the "search" field; every other instruction line is the same.
+    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^They asked for \d+\. /.test(line)).join('\n').replace(', "search": "<words>"', '')
     expect(prompts).toHaveLength(2)
     expect(instructions(prompts[0]!)).toBe(instructions(prompts[1]!))
     // kindChecked: keep, lists, names (as before the merge); the same-event groups are not its business.
     expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://c.example/3', true, '']])
-    // itemCheck: keep as fit, and same; an out-of-range number gives no verdict (as before the merge).
-    expect(lone).toEqual({ fit: [1, 3], same: [[1, 3]] })
-    expect(await itemCheck('x', ['- a [x](https://a.example/1)', '- b [x](https://b.example/2)'], async () => '{"keep":[1,7]}')).toBeUndefined()
+    // c13b: the lone lookup's row check reads keep, same, lists and listing: row 3 is a page of several (lists) and the same event as row 1.
+    expect(lone.rows).toEqual(['https://a.example/1'])
+    expect(lone.out).toContain('Only 1 of the 3 asked for are here')
     // No second judge is defined anywhere.
     expect(src('../../../packages/core/src/company-tools.ts')).not.toMatch(/Keep every item that is the kind of thing/)
     expect(src('../src/main/fast-lane.ts')).not.toMatch(/Judge each item by what it is/)
+    expect(src('../../../packages/core/src/item-check.ts').match(/Judge each item by what it is/g)).toHaveLength(1)
   })
 })
 

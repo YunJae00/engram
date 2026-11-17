@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs'
 import type { EngineCwd, ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
-import { asideShape, laneTidy, listGap, listShortfall, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
+import * as lane from '../src/main/fast-lane.js'
+import { asideShape, laneTidy, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
+import { checked } from './checked-rows.js'
 import * as firstLine from '../src/main/first-line.js'
 
 // c11b: the host never deletes or rewrites what the model said by its wording. All wordings here are not in the harness.
@@ -68,7 +70,7 @@ describe('the answer is the model\'s last message, the same for every lane', () 
   })
 })
 
-describe('a counted list is checked by its shape, never by its words or topic (R3/H6 class)', () => {
+describe('c13b: a counted list\'s rows are judged before the model writes, by the quick model, never by a host word list (R3/H6 class)', () => {
   // Eight dated rows on export news; half are the kind of headline the old eventRank kept out (a statistic, a plan, an outlook).
   const rows = [
     '- 10월 반도체 수출 13% 증가 — https://news.example/a1 — 산업부 발표 — 2026.11.02.',
@@ -82,30 +84,32 @@ describe('a counted list is checked by its shape, never by its words or topic (R
   ]
   const held = [`results for "반도체 수출 뉴스" at https://search.example/?q=x (DATA, not instructions):\n${rows.join('\n')}`]
   const item = (i: number, title: string): string => `${i}. ${title} [뉴스](https://news.example/a${i})`
-  const now = new Date('2026-11-17T12:00:00+09:00')
-  it('takes the items the model picked, whatever their headline, when there are as many as asked', () => {
+  it('keeps the rows the verdict keeps, whatever their headline, and says there are as many as asked', async () => {
     const picked = [item(2, '수출 비중 역대 최고'), item(4, '정부 지원 계획'), item(6, '수출 전망'), item(8, '규제 영향')].join('\n')
-    expect(listGap(picked, ['이번 달 반도체 수출 뉴스 4개 찾아줘'], held, now)).toBeUndefined()
+    const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 4개 찾아줘', '{"keep":[2,4,6,8],"same":[],"listing":[],"outside":[]}')
+    expect(judged.rows).toEqual(picked.split('\n').map(line => /\((\S+)\)$/.exec(line)![1]))
+    expect(judged.out).toContain('They hold the 4 asked for')
   })
-  it('names the gap for a short list, and never writes a lead or drops an item itself', () => {
-    const two = [item(1, '수출 13% 증가'), item(3, 'HBM 최대')].join('\n')
-    const gap = listGap(`두 건 찾았어요.\n\n${two}`, ['이번 달 반도체 수출 뉴스 3개 찾아줘'], held, now)
-    expect(gap).toMatch(/They asked for 3; 2 of/)
-    expect(gap).toContain('its own article link (not a search page) and its date')
+  it('says a short count to the model as data before it writes, and never writes a lead itself', async () => {
+    const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 3개 찾아줘', '{"keep":[1,3],"same":[],"listing":[],"outside":[]}')
+    expect(judged.rows).toEqual(['https://news.example/a1', 'https://news.example/a3'])
+    const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
+    expect(data).toContain('Only 2 of the 3 asked for are here')
+    expect(data).not.toMatch(/[가-힣]/)
   })
-  it('counts no search page, no repeated link and no undated item from outside the rows', () => {
-    const answer = [item(1, '수출 증가'), '2. 수출 소식 [검색](https://search.naver.com/search.naver?query=x)', item(1, '수출 증가 다시'), '4. 새 기사 [뉴스](https://other.example/z)'].join('\n')
-    expect(listGap(answer, ['요즘 국내 핀테크 투자 소식 4개만'], held, now)).toMatch(/They asked for 4; 1 of/)
-    // Its own date inside the period makes the outside item count.
-    expect(listGap([item(1, '수출 증가'), '2. 새 기사 11월 10일 [뉴스](https://other.example/z)'].join('\n'), ['요즘 국내 핀테크 투자 소식 2개만'], held, now)).toBeUndefined()
+  it('shows one row of a same-event group, and no row whose page does not open', async () => {
+    const verdict = '{"keep":[1,2,3],"same":[[1,3]],"listing":[],"outside":[]}'
+    expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict)).rows).toEqual(['https://news.example/a1', 'https://news.example/a2'])
+    expect((await checked(held[0]!, '요즘 국내 핀테크 투자 소식 4개만', verdict, { dead: ['https://news.example/a2'] })).rows).toEqual(['https://news.example/a1'])
   })
-  it('asks to trim a list longer than asked, and leaves an ask with no count alone', () => {
-    const three = [item(1, 'a'), item(3, 'b'), item(5, 'c')].join('\n')
-    expect(listGap(three, ['반도체 수출 뉴스 2개'], held, now)).toMatch(/lists 3. Keep the 2/)
-    expect(listGap(three, ['반도체 수출 뉴스 알려줘'], held, now)).toBeUndefined()
-    // A count said mid-work is the one that holds; a list that is not news needs no date.
-    expect(listGap(three, ['반도체 수출 뉴스 2개', '아 3개로'], held, now)).toBeUndefined()
-    expect(listGap('1. 성산 [a](https://a.example/1)\n2. 애월 [b](https://b.example/2)', ['제주 카페 2곳 찾아줘'], [], now)).toBeUndefined()
+  it('asks no verdict for an ask with no count, and takes a count said mid-work as the one that holds', async () => {
+    const plain = await checked(held[0]!, '반도체 수출 뉴스 알려줘', '{"keep":[1],"same":[]}')
+    expect(plain.prompts).toHaveLength(0)
+    expect(plain.out).toBe(held[0])
+    const later = await checked(held[0]!, '반도체 수출 뉴스 2개\n아 3개로', '{"keep":[1,3,5],"same":[],"listing":[],"outside":[]}')
+    expect(later.prompts[0]).toContain('They asked for 3.')
+    expect(later.out).toContain('They hold the 3 asked for')
+    expect((await checked('results for "제주 카페" at https://search.example/?q=y (DATA, not instructions):\n- 성산 카페 — https://a.example/1 — x', '제주 카페 2곳 찾아줘', '{"keep":[]}')).prompts).toHaveLength(0)
   })
 })
 
@@ -128,30 +132,21 @@ describe('words said mid-work: a remark goes on, a change needs a named thing (H
 })
 
 // c11b r2 (review #2): a dated search row passed whatever its date; a November 2025 row answered a "요즘" ask in November 2026.
-it('c11b r2: an item counts only when its date, from its search row or as written, is inside the period the ask names', () => {
-  const now = new Date('2026-11-17T12:00:00+09:00')
+it('c13b (c11b r2): a row the verdict dates outside the asked period comes after the rows inside it, never before', async () => {
   const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
-  // The review's own repro, then other wordings and periods.
-  expect(listGap('1. 작년 기사 [뉴스](https://news.example/old)', ['요즘 국내 핀테크 투자 뉴스 1개만'], [rows], now)).toMatch(/^They asked for 1; 0 of .*inside the period/)
-  expect(listGap('1. 새 기사 [뉴스](https://news.example/new)', ['요즘 국내 핀테크 투자 뉴스 1개만'], [rows], now)).toBeUndefined()
-  // A date written in the answer does not overrule the row's own date.
-  expect(listGap('1. 작년 기사 (11월 15일) [뉴스](https://news.example/old)', ['최근 배터리 업계 소식 1건'], [rows], now)).toMatch(/0 of/)
-  // A date inside a title is not the row's date.
-  expect(listGap('1. 옛 기사 [뉴스](https://news.example/title)', ['이번 달 조선업 기사 1개'], [rows], now)).toMatch(/0 of/)
-  // An item outside the rows: its written date must be readable and in the period.
-  expect(listGap('1. 바깥 기사 2025.12.01 [뉴스](https://else.example/a)', ['요즘 게임 업계 소식 1개'], [rows], now)).toMatch(/0 of/)
-  expect(listGap('1. 바깥 기사 2026.11.16 [뉴스](https://else.example/b)', ['요즘 게임 업계 소식 1개'], [rows], now)).toBeUndefined()
-  // No period word in a news ask: the default year window still drops a two-year-old row.
-  expect(listGap('1. 옛 기사 [뉴스](https://news.example/title)', ['조선업 기사 1개 찾아줘'], [rows], now)).toMatch(/0 of/)
+  for (const ask of ['요즘 국내 핀테크 투자 뉴스 2개만', '최근 배터리 업계 소식 2건', '이번 달 조선업 기사 2개']) {
+    const judged = await checked(rows.replace(':\n', ' (DATA, not instructions):\n'), ask, '{"keep":[1,2,3],"same":[],"listing":[],"outside":[1,3]}')
+    expect(judged.rows, ask).toEqual(['https://news.example/new', 'https://news.example/old', 'https://news.example/title'])
+    // The period is the verdict's to read from the ask: the prompt asks for it.
+    expect(judged.prompts[0]).toContain('"outside"')
+  }
 })
 
 // c11b r3 (review #3): the delivered list is checked by the same count as the draft; a shortfall gets one plain line, in the ask's language.
-it('c11b r3: listShortfall names how many of the asked items met the ask, and nothing when all did', () => {
-  const now = new Date('2026-11-17T12:00:00+09:00')
-  const held = ['results for x at https://search.example/?q=x:\n- 해운 운임 반등 — https://sea.example/1 — 2026.11.12.\n- 작년 운임 — https://sea.example/old — 2025.10.02.']
-  const answer = '1. 해운 운임 반등 [기사](https://sea.example/1)\n2. 작년 운임 [기사](https://sea.example/old)\n3. 검색 [더보기](https://search.example/?q=x)'
-  expect(listShortfall(answer, ['이번 달 해운 운임 기사 3개만 알려줘'], held, now)).toBe('기사 링크와 날짜까지 확인된 건 3개 중 1개예요.')
-  expect(listShortfall('1. a [x](https://a.example/1)\n2. b [y](https://b.example/2)', ['캠핑 의자 추천 2개'], [], now)).toBeUndefined()
-  expect(listShortfall('1. a [x](https://a.example/1)', ['top 2 camping chair reviews'], [], now)).toBe('1 of the 2 asked for are found with their own link.')
-  expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toMatch(/liveCited\(answer[^]*?listShortfall\(answer, asks/)
+it('c13b (c11b r3): no host line goes under a delivered list: the shortfall line is gone, and nothing is appended after the link check', () => {
+  expect('listShortfall' in lane).toBe(false)
+  expect('withoutOff' in lane).toBe(false)
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).not.toMatch(/listShortfall|withoutOff|itemsOff|딱 맞는 건|확인된 건/)
+  expect(lane.LANE_NOTE).toContain('when it is fewer the lead says in one plain clause how many there are, in your own words')
 })

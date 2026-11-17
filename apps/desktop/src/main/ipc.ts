@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, listShortfall, itemVerdicts, withoutOff, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, keepDeclaredName, pageHead, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, keepDeclaredName, pageHead, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText, checkedSearch } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -343,6 +343,13 @@ export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 // per channel: a comet parked at a wall keeps the window for itself, and
 // another comet finishing does not let go of it.
 const WALL_HOLD_MS = 10 * 60_000
+// Asks one shown address whether it answers: nothing is sent with it but the address itself.
+// c13b: module-level so a lookup's rows and a teammate's cited pages are checked the same way where they enter (checkedSearch, TeamHost.alive).
+const linkAlive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(async response => {
+  // c10a r2: the head of a page that answers holds the site's own name (og:site_name); kept so its link is named by it, not "출처".
+  if (linkAnswers(response.status) && /html/i.test(response.headers.get('content-type') ?? '')) keepDeclaredName(url, await pageHead(response.body).catch(() => ''))
+  else void response.body?.cancel().catch(() => undefined)
+  return linkAnswers(response.status) })
 // A provider failing on its side usually answers again within seconds to minutes.
 const OUTAGE_RESEND_MS = 15_000
 // Tools that change files or applications; plan mode leaves them off.
@@ -2467,7 +2474,7 @@ export function registerIpc(ctx: VaultContext): void {
           .map((note) => ({ ...toRetrievedNote(note), meaning: closeness.get(note.front.id) ?? 0 }))
       },
     }), ...workEvidenceTools(paths, channel), ...attachments.tools,
-    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
+    ...(channel.startsWith('bot-') ? [cometSchedule(channel.slice('bot-'.length), input.chief === true), ...(input.chief ? [staffTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) }), companyStatusTool(paths)] : [teamTool(paths, () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) })])] : []), ...team.tools(channel, { engine, workdir: engineCwd(paths), guided, said: () => turnGoals.get(channel) ?? '', alive: linkAlive, nativeFor: async lane => native && cometNativeTools({ paths, channel: lane, member: lane, cwd: native.cwd, sandboxed: commandSandbox(engine.id), mode: permission, attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane, async () => 'approve'), onStep: line => broadcast({ type: 'comet:step', channel: leadOf(lane), line }), audit: (tool, detail) => audit('step', { tool, detail }) }), toolsFor: (lane, own) => cometToolSet({ ...input, channel: lane, turn: undefined, native: own }) }, input.chief ? () => { broadcast({ type: 'bots:changed' }); broadcast({ type: 'notices:changed' }) } : undefined),
     deskActivityTool,
     notificationsTool(ctx),
     standingApprovalsTool(approvals),
@@ -2926,10 +2933,14 @@ export function registerIpc(ctx: VaultContext): void {
         // failure is written from it (heldAnswer); only a change of the ask makes held results old, a complaint or an addition does not (heldFor).
         // shortcut: the search runs before the model's session opens, not beside it (the task needs its results); open the session first if that ~1 s matters.
         const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
-        // c12b (R3/H6): the quick model's verdict on a counted list's items (fast-lane judgeItems), asked once per set of asks and items in a turn (fast-lane itemVerdicts):
-        // the draft's gap names the misses for one more round, and the delivered answer loses them when it lists more than asked.
-        const itemsOff = itemVerdicts(writer)
-        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined
+        // A verdict on an address is asked once a turn: a row checked where it entered is not asked again when the answer cites it (liveCited).
+        const linkVerdicts = new Map<string, boolean>()
+        const alive = (url: string, limit: AbortSignal): Promise<boolean> => linkVerdicts.has(url) ? Promise.resolve(linkVerdicts.get(url)!) : linkAlive(url, limit).then(ok => { linkVerdicts.set(url, ok); return ok })
+        // c13b (cause J: R3, H6): every search a lone lookup runs, the host's first one included, is checked where its rows enter (core
+        // checkedSearch): a row whose page does not open is gone, and for a counted list the quick model keeps only the rows that are the kind
+        // asked, single and distinct, with the count said to the model as data. The model never writes from a row that does not fit, so no
+        // verdict, cut, gap round or host line follows its answer.
+        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
         // the old ask), and the turn starts again on the new ask (fast-lane swappedAsk): the host's search for it, then one fresh round.
@@ -2947,12 +2958,6 @@ export function registerIpc(ctx: VaultContext): void {
           if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? '' }); else laneSearches.delete(channel)
           return found
         }
-        // Asks one shown address whether it answers: nothing is sent with it but the address itself.
-        const alive = (url: string, limit: AbortSignal): Promise<boolean> => localAddress(url) ? Promise.resolve(true) : net.fetch(url, { signal: limit, credentials: 'omit' }).then(async response => {
-          // c10a r2: the head of a page that answers holds the site's own name (og:site_name); kept so its link is named by it, not "출처".
-          if (linkAnswers(response.status) && /html/i.test(response.headers.get('content-type') ?? '')) keepDeclaredName(url, await pageHead(response.body).catch(() => ''))
-          else void response.body?.cancel().catch(() => undefined)
-          return linkAnswers(response.status) })
         // c12b r3 (review #1): every host step on a lookup's answer before it goes out (the writes from held rows, the item verdict, the
         // link checks, the Korean-words pass) runs inside the session as its deliver step, so words said while any of them runs rewrite
         // the one answer instead of becoming a turn of their own after it (GROKBOT rule 3). laneShaped: this round's answer went through it.
@@ -2966,18 +2971,12 @@ export function registerIpc(ctx: VaultContext): void {
           // c10a L3: a weekend weather answer names 토요일 and 일요일 (redone once from the held rows); L1: "13.0도" → "13도", no date after 오늘.
           if (solo) answer = await weekendAnswer(answer, { ask: lookup.ask(), held: heldFor(laneRead, laneSaid), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
           answer = laneTidy(answer)
-          // c12b: a list still longer than asked loses the items the verdict left out, never one it judged fit (fast-lane withoutOff).
-          const off = solo && !signal.aborted && answer.trim() ? await itemsOff(answer, asks) : undefined
-          if (off) answer = withoutOff(answer, asks, off)
           // c10a T2: after a swap the answer names what it is now about (fast-lane namesSubject).
           if (solo && lookup.ask() !== request.message) answer = namesSubject(answer, lookup.ask())
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
+          // c13b: a safety net only: the rows and a teammate's pages were checked where they entered, and those verdicts are reused here.
           answer = await liveCited(answer, [...read], async cited => citeOwn(await team.cited(channel, cited), [...read], korean), alive, korean)
-          // stack-11 (c11b r3 #2): how many of the asked items met the ask is said under what is delivered, after dead links went, never
-          // before: a list that lost a link to liveCited is labeled like any other short one (GROKBOT rules 5, 7). Under a trailing replies block's place.
-          const short = solo && !signal.aborted && answer.trim() ? listShortfall(answer, asks, heldFor(laneRead, laneSaid), undefined, off) : undefined
-          if (short) answer = answer.replace(/((?:\s*\n-{3,})?\s*```replies[^]*)?$/, tail => `\n\n${short}${tail}`)
           // stack-11: the Korean-words pass below, done here for a lookup so it is inside the same window.
           if (korean) {
             answer = await dropWorkingNotes(answer, request.message, writer && (prompt => writer(prompt, THEIR_WORDS_MS)))
@@ -3012,10 +3011,7 @@ export function registerIpc(ctx: VaultContext): void {
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
-            // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
-            // c12b: and by what its items are (judgeItems): an item that is not the thing asked for, or a second report of one event, is a gap too.
             ...(lane ? { deliver: shapeLane } : {}),
-            ...(solo ? { recheck: async (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid), undefined, await itemsOff(answer, [laneAsk, ...steered])) : undefined } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
