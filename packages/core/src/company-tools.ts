@@ -1068,7 +1068,16 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   const raw = await judgedItems(brief.trim().slice(0, 400), [...inHand, ...data.facts].map(f => ({ text: f.text })), write, ms)
   if (!raw) return data
   // The verdict renumbered to the new items alone; a new item in a "same" group with one in hand is dropped.
-  const off = inHand.length, again = new Set(raw.same.filter(group => group.some(n => n <= off)).flat())
+  // c15a r3 (cause L): unless it is the group's first-hand report and the ones in hand only pass it on: then it takes their place
+  // (`instead`, read by withItems), so the maker's page is cited, not the café's. The group's lead is chosen as for the lone lookup.
+  const off = inHand.length, held0 = (n: number): boolean => raw.keep.includes(n) || raw.unsure.includes(n)
+  const lead = (group: number[]): number => { const g = firstHand(group, n => raw.secondhand.includes(n)); return g.find(n => raw.keep.includes(n)) ?? g.find(held0) ?? g[0]! }
+  const instead = new Map<number, string[]>(), again = new Set<number>()
+  for (const group of raw.same.filter(g => g.some(n => n <= off))) {
+    const top = lead(group), first = top > off && !raw.secondhand.includes(top) && group.some(n => n <= off && raw.secondhand.includes(n))
+    if (first) instead.set(top - off, group.filter(n => n <= off).map(n => inHand[n - 1]!.text))
+    for (const n of group) if (!first || n !== top) again.add(n)
+  }
   const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
   const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
@@ -1076,7 +1085,7 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   // a listing or aggregate is a page of several like one in `lists` (stack-13 "For cycle 14"): both go to the teammate's items rounds.
   const held = (n: number): boolean => said.keep.includes(n) || said.unsure.includes(n), several = (n: number): boolean => said.lists.includes(n) || said.listing.includes(n)
   // c15a (cause L): a fact passed on second-hand (a café post, a wiki) when another one reports it first-hand ranks after the first-hand ones.
-  const facts = firstHand(data.facts.flatMap((f, i) => held(i + 1) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n)).map(one => one.f)
+  const facts = firstHand(data.facts.flatMap((f, i) => held(i + 1) ? [{ f: { ...f, ...(several(i + 1) ? { listing: true as const } : {}), ...(nameOf(i + 1) ? { name: nameOf(i + 1) } : {}), ...(instead.has(i + 1) ? { instead: instead.get(i + 1)! } : {}) }, n: i + 1 }] : []), one => said.secondhand.includes(one.n)).map(one => one.f)
   // None of the kind asked: said as a part that found nothing for it, with where it looked (partLines), never the wrong items.
   return facts.length ? { ...data, facts } : { ...data, facts: [], nothing: {} }
 }
@@ -1097,7 +1106,11 @@ export function withItems(data: MemberData, more: MemberData | undefined, judged
   const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
   if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
-  return { ...data, facts: [...data.facts.filter(f => !f.listing), ...items, ...pages] }
+  // c15a r3: a first-hand item judged the same entry as second-hand ones in hand stands where the first of them stood; they go.
+  const replaced = new Map(items.flatMap(f => (f.instead ?? []).map(text => [text, f] as const))), placed = new Set<MemberFact>()
+  const kept = data.facts.filter(f => !f.listing).flatMap(f => { const by = replaced.get(f.text); if (!by) return [f]; if (placed.has(by)) return []; placed.add(by); return [by] })
+  const plain = (f: MemberFact): MemberFact => { const one = { ...f }; delete one.instead; return one }
+  return { ...data, facts: [...kept, ...items.filter(f => !placed.has(f)), ...pages].map(plain) }
 }
 // The pages a hand-off's work was made from: the giver's facts when the giver is in this report, else the addresses the host itself wrote
 // into the hand-off (dataText's " — address" lines), named by the host's one rule. A deliverable cites what it stands on (GROKBOT rule 5).

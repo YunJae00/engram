@@ -62,6 +62,21 @@ describe('c15a: a counted lookup shows only sure items and asks for other words 
     expect(data?.facts.map(f => f.url)).toEqual(['https://news.example/2', 'https://cafe.example/9'])
   })
 
+  it('a later round: a first-hand fact the judge groups with a second-hand one in hand takes its place; the reverse is dropped', async () => {
+    const { withItems } = await import('../src/company-tools.js')
+    const blog = { text: '블로그: 별빛 도서관 개관은 3월 2일이래요', url: 'https://blog.example/7', site: '블로그' }
+    const city = { text: '별빛구청, 별빛 도서관 3월 2일 개관', url: 'https://city.example/news/3', site: '구청' }
+    const other = { text: '달빛 도서관 리모델링 4월 재개관', url: 'https://city.example/news/4', site: '구청' }
+    const out = await kindChecked({ facts: [city, other] }, '구립 도서관 개관 소식', async () => '{"keep":[1,2,3],"same":[[1,2]],"secondhand":[1]}', 1000, [blog])
+    expect(out?.facts.map(f => f.url)).toEqual([city.url, other.url])
+    const merged = withItems({ facts: [blog] }, out, true)
+    expect(merged.facts.map(f => f.url)).toEqual([city.url, other.url])
+    expect(merged.facts.some(f => 'instead' in f)).toBe(false)
+    // In hand first-hand, the new one second-hand: the new one is that entry found again and goes, as before.
+    const back = await kindChecked({ facts: [blog] }, '구립 도서관 개관 소식', async () => '{"keep":[1,2],"same":[[1,2]],"secondhand":[2]}', 1000, [city])
+    expect(back?.facts).toEqual([])
+  })
+
   it('"멈춰" during the judge retry halts at once; no further search starts', async () => {
     const stop = new AbortController()
     const s = search([page('q', [row(1, '셀젠, 메디랩 인수')]), page('more', [row(2, '바이오원 합병')])])
