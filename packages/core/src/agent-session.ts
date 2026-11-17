@@ -346,8 +346,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       // stand in, in any language: the answer stays empty and the host writes it from the rows it holds (desktop fast-lane heldAnswer).
       if (!session.answer.trim() && !session.error && !options.lookup && theirLanguage(note, task)) session = { answer: note }
     }
-    const gap = closed === undefined && !signal.aborted && !session.error && !asked ? options.recheck?.(session.answer) : undefined
-    if (gap) {
+    const gap = closed === undefined && !signal.aborted && !session.error && !asked ? await Promise.race([options.recheck?.(session.answer), ended.then(() => undefined)]) : undefined
+    if (gap && !signal.aborted) {
       const draft = session.answer
       options.onReset?.(true)
       exhausted = false; extended = false; startedCalls = Math.max(0, allowance() - RECHECK_CALLS); working = Date.now()

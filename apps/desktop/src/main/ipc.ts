@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, listShortfall, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
+import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, LANE_RECHECK_MS, listGap, listShortfall, judgeItems, listItems, withoutOff, type ItemsOff, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -2926,6 +2926,14 @@ export function registerIpc(ctx: VaultContext): void {
         // failure is written from it (heldAnswer); only a change of the ask makes held results old, a complaint or an addition does not (heldFor).
         // shortcut: the search runs before the model's session opens, not beside it (the task needs its results); open the session first if that ~1 s matters.
         const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
+        // c12b (R3/H6): the quick model's verdict on a counted list's items (fast-lane judgeItems), asked once per set of item links in a turn:
+        // the draft's gap names the misses for one more round, and the delivered answer loses them when it lists more than asked.
+        const verdicts = new Map<string, Promise<ItemsOff | undefined>>()
+        const itemsOff = (answer: string, asks: readonly string[]): Promise<ItemsOff | undefined> => {
+          const key = listItems(answer).join('\n')
+          if (!verdicts.has(key)) verdicts.set(key, judgeItems(answer, asks, writer))
+          return verdicts.get(key)!
+        }
         const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
@@ -2971,7 +2979,8 @@ export function registerIpc(ctx: VaultContext): void {
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             // c11b: a counted list is checked by its shape (fast-lane listGap); a gap with time left gets one more round, said to the model.
-            ...(solo ? { recheck: (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid)) : undefined } : {}),
+            // c12b: and by what its items are (judgeItems): an item that is not the thing asked for, or a second report of one event, is a gap too.
+            ...(solo ? { recheck: async (answer: string) => Date.now() - nativeSince < LANE_RECHECK_MS ? listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid), undefined, await itemsOff(answer, [laneAsk, ...steered])) : undefined } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
             ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
@@ -3031,6 +3040,9 @@ export function registerIpc(ctx: VaultContext): void {
           // c10a L3: a weekend weather answer names 토요일 and 일요일 (redone once from the held rows); L1: "13.0도" → "13도", no date after 오늘.
           if (solo) result.answer = await weekendAnswer(result.answer, { ask: lookup.ask(), held: heldFor(laneRead, laneSaid), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
           result.answer = laneTidy(result.answer)
+          // c12b: a list still longer than asked loses the items the verdict left out, never one it judged fit (fast-lane withoutOff).
+          const off = solo && !signal.aborted && result.answer.trim() ? await itemsOff(result.answer, [lookup.ask(), ...steered]) : undefined
+          if (off) result.answer = withoutOff(result.answer, [lookup.ask(), ...steered], off)
           // c10a T2: after a swap the answer names what it is now about (fast-lane namesSubject).
           if (solo && lookup.ask() !== request.message) result.answer = namesSubject(result.answer, lookup.ask())
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
@@ -3038,7 +3050,7 @@ export function registerIpc(ctx: VaultContext): void {
           result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)
           // stack-11 (c11b r3 #2): how many of the asked items met the ask is said under what is delivered, after dead links went, never
           // before: a list that lost a link to liveCited is labeled like any other short one (GROKBOT rules 5, 7). Under a trailing replies block's place.
-          const short = solo && !signal.aborted && result.answer.trim() ? listShortfall(result.answer, [lookup.ask(), ...steered], heldFor(laneRead, laneSaid)) : undefined
+          const short = solo && !signal.aborted && result.answer.trim() ? listShortfall(result.answer, [lookup.ask(), ...steered], heldFor(laneRead, laneSaid), undefined, off) : undefined
           if (short) result.answer = result.answer.replace(/((?:\s*\n-{3,})?\s*```replies[^]*)?$/, tail => `\n\n${short}${tail}`)
         }
         // stack-4: a team answer made from what a teammate read links the rows of a kept results page, which nobody opened. Only a page a

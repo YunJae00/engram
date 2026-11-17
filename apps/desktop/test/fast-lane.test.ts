@@ -451,7 +451,8 @@ it('c7 R3 (c11b): nothing after a numbered news list is cut; a short counted lis
   for (const kept of ['지금 13.6도예요. 저녁부터 비 와요.', '1. 하나뿐인 줄\n\n덧붙이는 말', list]) expect(listGap(kept, ['엔비디아 오늘 주가 알려줘'], [])).toBeUndefined()
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).not.toMatch(/listOnly|newsItems|shortSaid/)
-  expect(ipc).toContain('listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid))')
+  // c12b: the gap also carries the quick model's item verdict (judgeItems).
+  expect(ipc).toContain('listGap(answer, [laneAsk, ...steered], heldFor(laneRead, laneSaid), undefined, await itemsOff(answer, [laneAsk, ...steered]))')
 })
 
 // stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
