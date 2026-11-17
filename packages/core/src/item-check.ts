@@ -28,8 +28,11 @@ export async function judgedItems(ask: string, items: readonly { text: string; l
     const raw = await Promise.race([write(prompt, ms), new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })])
     const o = JSON.parse((raw ?? '').replace(/^```\w*\n?|\n?```\s*$/g, '').trim()) as Record<string, unknown> | null
     const keep = o?.['keep'], same = o?.['same'] ?? [], lists = o?.['lists'] ?? [], names = o?.['names'], listing = o?.['listing'], outside = o?.['outside'], search = o?.['search']
-    if (!ints(keep) || !Array.isArray(same) || !same.every(ints)) return undefined
-    return { keep, same: same.filter(group => group.length > 1), lists: ints(lists) ? lists : [], names: names && typeof names === 'object' ? names as Record<string, string> : {}, listing: ints(listing) ? listing : [], outside: ints(outside) ? outside : [], ...(typeof search === 'string' && search.trim() ? { search: search.trim().slice(0, 80) } : {}) }
+    // c13b r2: a verdict that names an item that is not there ("keep": [9] of 2) judged something else: it is no verdict, so no real row is
+    // dropped on it. The other fields only lose numbers that name nothing.
+    const real = (n: number): boolean => n >= 1 && n <= items.length, only = (v: unknown): number[] => ints(v) ? v.filter(real) : []
+    if (!ints(keep) || !keep.every(real) || !Array.isArray(same) || !same.every(group => ints(group) && group.every(real))) return undefined
+    return { keep, same: same.filter(group => group.length > 1), lists: only(lists), names: names && typeof names === 'object' ? names as Record<string, string> : {}, listing: only(listing), outside: only(outside), ...(typeof search === 'string' && search.trim() ? { search: search.trim().slice(0, 80) } : {}) }
   } catch { return undefined } finally { clearTimeout(timer) }
 }
 

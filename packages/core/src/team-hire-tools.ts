@@ -474,7 +474,8 @@ export async function liveCited(answer: string, read: readonly string[], cite: (
 // (MERGED_SHAPE) and never shows it with an empty source. true when a result changed.
 export const NO_LIVE_SOURCE = '(no live source)'
 export async function withLiveSources(members: TeamMember[], alive: (url: string, signal: AbortSignal) => Promise<boolean>, ms = LINK_CHECK_MS): Promise<boolean> {
-  const cited = (m: TeamMember): string[] => [...new Set([...addressesIn(m.result ?? ''), ...(m.sources ?? [])])].filter(url => !isSearchPage(url))
+  // c13b r2: a results page a member cites is a source like any other, and is asked too.
+  const cited = (m: TeamMember): string[] => [...new Set([...addressesIn(m.result ?? ''), ...(m.sources ?? [])])]
   const dead = new Set(await deadOf([...new Set(members.flatMap(cited))], alive, ms))
   if (!dead.size) return false
   const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), words = (line: string): string => line.replace(ADDRESS, ' ')
@@ -486,7 +487,8 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
       if (!gone.length) return line
       // A number of the asked thing's own name ("아이폰 18") is no figure of a fact.
       const figures = (words(line).match(/\d[\d,.]{2,}/g) ?? []).filter(figure => !m.brief.includes(figure))
-      const live = (other: string): string | undefined => addressesIn(other).find(url => !dead.has(url) && !isSearchPage(url))
+      // A live article is taken before a live results page.
+      const live = (other: string): string | undefined => addressesIn(other).filter(url => !dead.has(url)).sort((a, b) => Number(isSearchPage(a)) - Number(isSearchPage(b)))[0]
       const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) ? live(other) : undefined).find(Boolean) : undefined
       return gone.reduce((text, url) => text.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}\\)`, 'g'), to ? `[${sourceName(to, /[가-힣]/.test(m.brief))}](${to})` : NO_LIVE_SOURCE).split(url).join(to ?? NO_LIVE_SOURCE), line)
     }).join('\n')

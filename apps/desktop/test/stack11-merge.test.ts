@@ -72,11 +72,11 @@ describe('stack-11 merge: one helper each', () => {
     expect(src('../src/main/fast-lane.ts')).not.toMatch(/const SEARCH_PAGE\s*=/)
     for (const url of ['https://search.daum.net/search?q=x', 'https://m.search.naver.com/search.naver?query=x', 'https://www.google.com/search?q=x', 'https://shop.example.com/list?search=chair']) expect(isSearchPage(url), url).toBe(true)
     expect(isSearchPage('https://www.hankyung.com/article/2026111712345')).toBe(false)
-    // c13b: a teammate's cited pages are checked as its result is handed over; a search page is no cited page and is never asked.
+    // c13b: a teammate's cited pages are checked as its result is handed over; r2: a results page it cites is asked too, each address once.
     const asked: string[] = []
     const m = { ...member('m1', '수주', '요즘 조선업 수주 기사 2개', '조선업'), state: 'done' as const, result: '1. 첫 소식 — https://news.example/a\n2. 둘째 — https://shop.example.com/list?search=ship', sources: ['https://shop.example.com/list?search=ship'] }
     expect(await withLiveSources([m], async url => { asked.push(url); return true })).toBe(false)
-    expect(asked).toEqual(['https://news.example/a'])
+    expect(asked.sort()).toEqual(['https://news.example/a', 'https://shop.example.com/list?search=ship'])
   })
 })
 
