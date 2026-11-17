@@ -67,3 +67,25 @@ it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 �
   expect(foundNothing('이번 주(11/16~11/22) 슬랙 신기능은 관련 공지나 기사가 안 보여서 확인이 안 됐어요.')).toBe(true)
   expect(foundNothing('12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.')).toBe(false)
 })
+
+// stack-9, c9a Codex r3: five rounds held and four written is no "확실한 건 4건"; a word of surprise first names nobody.
+it('stack-9 (c9a Codex r3): a held round the list left out joins it; "깜짝 …" is no round', async () => {
+  const { EVENT_ROWS, BACKGROUND_ROWS, eventRank } = await import('core')
+  const { newsItems, shortSaid, listOnly } = await import('../src/main/fast-lane.js')
+  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', names = ['메디인테크', '업스테이지', '뤼튼', '리벨리온', '아크']
+  const held = [`results for "x" at https://search.naver.com/search.naver?query=x (DATA, not instructions):`, `${EVENT_ROWS} 5. ${BACKGROUND_ROWS} the last 1 (…).`,
+    ...names.map((name, i) => `- ${name}, 100억 원 투자 유치 — https://news.example/${i} — 투자 — 11월 ${i + 1}일`), '- 올해 벤처투자 역대 최대 — https://news.example/bg — 통계 — 11월 9일'].join('\n')
+  const answer = ['요즘 투자 소식 네 개예요.', '', ...names.slice(0, 4).map((name, i) => `${i + 1}. ${name}가 100억 원을 유치했어요. [기사](https://news.example/${i})`), '', '더 찾으면 알려드릴게요.'].join('\n')
+  const out = shortSaid(ask, listOnly(newsItems(answer, [held], ask)))
+  const items = out.split('\n').filter(line => /^\d+\. /.test(line))
+  expect(items).toHaveLength(5)
+  expect(items[4]).toBe('5. 아크, 100억 원 투자 유치 — 11월 5일 [출처](https://news.example/4)')
+  expect(out).not.toMatch(/확실한 건 \d건이라|네 개예요/)
+  // A round already in the list under another article is not added again; nothing is added past the count.
+  const other = answer.replace('https://news.example/0', 'https://other.example/medi')
+  const again = newsItems(other, [held], ask).split('\n').filter(line => /^\d+\. /.test(line))
+  expect(again.filter(line => line.includes('메디인테크'))).toHaveLength(1)
+  expect(again).toHaveLength(5)
+  expect(eventRank({ title: '깜짝 300억 투자 유치, 스타트업 업계 들썩', url: 'https://news.example/a', snippet: '', date: '11월 17일' }, ask)).toBe(1)
+  expect(eventRank({ title: '메디인테크, 338억 원 규모 시리즈C 투자 유치', url: 'https://news.example/b', snippet: '', date: '11월 17일' }, ask)).toBe(2)
+})

@@ -273,7 +273,8 @@ export function eventQuery(query: string, ask: string): string | undefined {
 // how much is nobody's name.
 // shortcut: a closed word list, no name recognition; a describing word it lacks still passes as a name. Use a tagger if that shows.
 // c9a R3: a company's value or size before an amount ("기업가치 1조") is nobody's name either.
-const NO_NAME = /^(올해|작년|지난해|내년|국내|해외|글로벌|업계|기업가치|가치|시가총액|시총|매출|예산|규모|미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|역대급|역대|사상|최대|최고|최초|초대형|초기|누적|총|약|무려|단숨에|연쇄|추가|후속|신규|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
+// stack-9 (c9a Codex r3 #2): "깜짝 300억 투자 유치, 스타트업 업계 들썩" ranked as a round: a word of surprise or attention first is nobody's name.
+const NO_NAME = /^(올해|작년|지난해|내년|국내|해외|글로벌|업계|기업가치|가치|시가총액|시총|매출|예산|규모|미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|역대급|역대|사상|최대|최고|최초|초대형|초기|누적|총|약|무려|단숨에|연쇄|추가|후속|신규|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|깜짝|돌연|화제|속보|단독|주목|눈길|파격|거액|잭팟|급등|급성장|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
 // c7a r3: "국내 AI 스타트업 연쇄 투자 유치" and "… 사상 최대 투자 유치" ranked first: any word the lists lacked was the company. A word is the
 // funded company only where the headline marks it as one: a comma or a middle dot after it ("뤼튼, …"), or the round right after it
 // ("리벨리온 620억 원", "아크 시리즈 B", "Wrtn raises"). The lists above only take words away from those.

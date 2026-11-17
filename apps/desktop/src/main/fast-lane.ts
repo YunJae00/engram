@@ -205,12 +205,19 @@ export function newsItems(answer: string, held: readonly string[], ask: string):
   // linking a background row is background whatever it names; one linking an unknown page counts by name.
   const real = (line: string): boolean => urls.some(url => line.includes(url)) || !background.some(url => line.includes(url)) && names.some(name => line.toLowerCase().includes(name))
   const kept = items.filter(real)
-  if (kept.length === items.length) return numbered.join('\n')
+  const roundLine = (row: string, n: number): string => { const [title, ...rest] = row.slice(2).split(' — '), url = rest.find(part => /^https?:\/\//.test(part)), date = rest.slice(1).reverse().find(part => part.length <= 20 && /\d\s*(?:월|일|년|시간|분)|\d{4}[.-]/.test(part)); return `${n}. ${title}${date ? ` — ${date}` : ''}${url ? ` [${sourceName(url, true)}](${url})` : ''}` }
   // c9a r2: no item names a round though the results hold some: the rounds themselves are the list, each with its date and its own page.
-  if (!kept.length) return rounds.map((row, i) => { const [title, ...rest] = row.slice(2).split(' — '), url = rest.find(part => /^https?:\/\//.test(part)), date = rest.slice(1).reverse().find(part => part.length <= 20 && /\d\s*(?:월|일|년|시간|분)|\d{4}[.-]/.test(part)); return `${i + 1}. ${title}${date ? ` — ${date}` : ''}${url ? ` [${sourceName(url, true)}](${url})` : ''}` }).join('\n')
-  const first = numbered.findIndex(item)
+  if (!kept.length) return rounds.map((row, i) => roundLine(row, i + 1)).join('\n')
+  // stack-9 (c9a Codex r3 #1): five rounds held, four written, and "확실한 건 4건이라" followed. A round the list left out joins it, up to the count asked.
+  const unused = rounds.filter(row => { const url = / — (https?:\/\/\S+)/.exec(row)?.[1], own = headlineNames(row.split(' — ')[0]!.slice(2), ask); return !kept.some(line => !!url && line.includes(url) || own.some(name => line.toLowerCase().includes(name))) })
+  const extra = unused.slice(0, Math.max(0, (askedCount(ask) ?? 0) - kept.length))
+  if (kept.length === items.length && !extra.length) return numbered.join('\n')
+  const first = numbered.findIndex(item), last = numbered.length - 1 - [...numbered].reverse().findIndex(item)
   let n = 0
-  return numbered.slice(first).filter(line => !item(line) || real(line)).map(line => item(line) ? line.replace(/^\s*\d+[.)]/, `${++n}.`) : line).join('\n').trim()
+  const listed = numbered.slice(first).filter(line => !item(line) || real(line)).map(line => item(line) ? line.replace(/^\s*\d+[.)]/, `${++n}.`) : line)
+  // The added rounds go right after the last item, before any closing line.
+  const end = listed.length - (numbered.length - 1 - last)
+  return [...listed.slice(0, end), ...extra.map(row => roundLine(row, ++n)), ...listed.slice(end)].join('\n').trim()
 }
 export const newsAsk = (message: string): boolean => FIRST_STEPS[3]![0].test(message)
 // stack-7 (rule 7: what is missing is labeled, never hidden): LANE_NOTE asks for a shorter list when the results hold fewer real
