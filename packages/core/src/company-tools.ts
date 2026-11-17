@@ -965,7 +965,11 @@ function pageLink(url: string | undefined, said: string, korean: boolean): strin
 }
 const partLink = (m: TeamMember, said: string): string => pageLink(pagesOf(said, m.sources)[0], said, HANGUL.test(said) || HANGUL.test(m.brief))
 // A sentence takes its link after a space, a fragment after a dot.
-const withLink = (text: string, link: string): string => !link ? text : !text ? link : `${text}${/[.!?]$/.test(text) ? ' ' : /[요다]$/u.test(text) ? '. ' : ' · '}${link}`
+// stack-8 (c8b run H5): "…, 코엑스 코엑스(링크)": an item that ends on the link's own name gives that word to the link.
+const withLink = (text: string, link: string): string => {
+  const name = /^\[([^\]]+)\]\(/.exec(link)?.[1], cut = name && text.endsWith(` ${name}`) && !/[.!?요다]$/u.test(text) ? text.slice(0, -name.length - 1).replace(/[,·\s]+$/, '') : text
+  return !link ? text : !cut ? link : `${cut}${/[.!?]$/.test(cut) ? ' ' : /[요다]$/u.test(cut) ? '. ' : ' · '}${link}`
+}
 // A table cell: one or two short sentences, the first finding first, without the label the teammate put in front when it only repeats
 // the row's first cell ("슬랙 신기능: …" in the 슬랙 row).
 const SAME_AS_PART = /신기능|새\s*기능|새\s*소식|소식|업데이트|조사|결과|관련|최신|이번\s*주|\s/gu
@@ -1040,6 +1044,10 @@ const SOON = /다음\s*달|내달|이번\s*주말|이번\s*주|금주|내일|올
 const soldAsSoon = (line: string, out: Outside, now: Date): boolean => SOON.test(line) && !(out.year && yearSaid(line, out, now))
 // c7: a teammate says it their own way ("이번 주엔 조용해요. 제일 최근 건 1월에 나온 …").
 const NONE_YET = /안 보여|안 보이|없어요|없었어요|없네요|없더라고요|없대요|안 나왔|조용|(?:제일|가장)\s*(?:최근|가까운)|마지막/u
+// stack-8 (c8b run C3, base code): "리니어만 새 소식이 있어요." stood over 도윤's "이번 주 리니어 신기능은 검색 결과로 확인이 안 되네요.": the
+// writer was told a part had news when its teammate's own first sentence said it had none. That first sentence, as they wrote it, decides.
+const NOT_FOUND = /못 찾|찾지 못|확인(?:이|은)?\s*안\s*(?:되|돼)|확인되지\s*않|나오지\s*않|안\s*나오/u
+const saysNoneFirst = (m: TeamMember): boolean => NOT_FOUND.test(delivered(m).split(/(?<=[.!?])\s+/)[0] ?? '')
 // A part that brought nothing back, said once and plainly; a hand-off that could not go on names both people (c4 H5: the thread ended on the first).
 function nothingLine(m: TeamMember, topics: ReadonlyMap<string, string>): string {
   const what = sought(jobOf(m)).replace(/\s*(?:조사|정리)$/u, '').trim()
@@ -1093,7 +1101,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     const spoke = parts.map(m => {
       const text = delivered(m), topic = (topics.get(m.id) || m.topic || '').trim(), out = atWork(m) || m.empty ? undefined : outsideFor(m, now)
       const own = text && !m.empty ? cellOf(read(m, text), topic) : '', honest = !!out && NONE_YET.test(own) && yearSaid(own, out, now) && !soldAsSoon(own, out, now)
-      return { m, topic, out, own, link: partLink(m, text), other: own ? '' : foreign(m, text), quiet: !atWork(m) && (!!m.empty || !!out || NONE_YET.test(own.split(/(?<=[.!?])\s+/)[0] ?? '')), honest }
+      return { m, topic, out, own, link: partLink(m, text), other: own ? '' : foreign(m, text), quiet: !atWork(m) && (!!m.empty || !!out || saysNoneFirst(m) || NONE_YET.test(own.split(/(?<=[.!?])\s+/)[0] ?? '')), honest }
     })
     const open = parts.filter(atWork).length, count = ALL_OF[parts.length] ?? '다들', quiet = spoke.every(one => one.quiet)
     const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(context.ask || parts[0]!.brief)?.[0]
@@ -1356,7 +1364,9 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   const fallback = mergedReport(members, topics, hired, context), ms = input.timeoutMs ?? writerMs(members, input.now?.getTime()), shown = shownParts(members)
   // Nothing came back at all: the host's line already says exactly that. c7: one teammate's one sentence is the answer in their own
   // words, and no writer is asked to say it again.
-  if (!input.write || !shown.some(m => findings(delivered(m)).lines.length) || (shown.length === 1 && !outsideFor(shown[0]!, context.now) && gistOf(shown[0]!))) return fallback
+  // stack-8: when every teammate says first that nothing new was found, the host's answer (their own lines under one lead) stands.
+  const quietAll = shown.length > 1 && shown.every(m => !atWork(m) && (!!m.empty || saysNoneFirst(m)))
+  if (!input.write || quietAll || !shown.some(m => findings(delivered(m)).lines.length) || (shown.length === 1 && !outsideFor(shown[0]!, context.now) && gistOf(shown[0]!))) return fallback
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })

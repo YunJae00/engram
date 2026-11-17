@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 import { takesCompanyLane } from 'core'
-import { deskKind, deskLight, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
+import { deskKind, deskLight, inKoreanWords, plainKeep, slideTitleFix } from '../src/main/desk-lane.js'
 
 const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
 const team = { staff: ['지민', '서연', '도윤'], chief: true }
@@ -42,4 +42,10 @@ it('stack-8: light effort is for small changes only', () => {
   expect(deskKind(cut)).toBe('deck')
   expect(deskLight(deskKind(cut), cut, { made: true })).toBe(true)
   expect(deskKind('그 피피티 파일 지워줘')).not.toBe('deck')
+})
+
+it('stack-8 (c8c run D1): a Han shorthand in a note summary is said in Korean words; text with no Hangul is left alone', () => {
+  expect(inKoreanWords('신규 온보딩 화면 시안 확정 (B안 선호 의견 多)')).toBe('신규 온보딩 화면 시안 확정 (B안 선호 의견 많음)')
+  expect(inKoreanWords('多 and 少')).toBe('多 and 少')
+  expect(ipc).toContain("if (kind === 'note' && !result.asked) result.answer = inKoreanWords(result.answer)")
 })

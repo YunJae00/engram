@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest'
-import { mergedReport } from '../src/company-tools.js'
+import { expect, test, vi } from 'vitest'
+import { mergedReport, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 
 // stack-8 section 3: the stored results of stack7-b3ddda26 (tasks.json), fed through the host's merge. Each teammate came back with their
@@ -30,4 +30,23 @@ test('R2: price and date lines keep no empty "(출처: )", no "… — 출처" t
   expect(out.split('\n').filter(line => line.startsWith('셋 다'))).toHaveLength(1)
   const hosts = [...out.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(found => new URL(found[1]!).host)
   expect(new Set(hosts).size).toBe(3)
+})
+
+test('C3 (c8b run): when every teammate says first that nothing new was found, no writer is asked and the lead says so', async () => {
+  const members = [
+    member('m1', '지민', '이번 주 노션 신기능 조사해서 알려줘', '이번 주(11/16~11/22)엔 노션에서 새로 나온 업데이트는 확인되지 않아요. 가장 최근 소식은 2026년 10월 19일 공개된 AI 에이전트 개편(크레딧 체계 개편, Auto 모델 라우터, 작업 최대 24시간 처리, ChatGPT 요금제 연결)이에요.\n\n출처: https://www.notion.com/releases/2026-10-19', '노션'),
+    member('m2', '서연', '이번 주 슬랙 신기능 조사해서 알려줘', '이번 주(11/16~11/22) 슬랙 신기능은 검색에서 못 찾았더라고요! Android용 슬랙 릴리스 노트 쪽은 알림 배너 유지 시간 개선 같은 버그 수정 내용뿐이라 이번 주 신기능이라고 보긴 어렵더라고요.\n\nhttps://slack.com/intl/ko-kr/release-notes/android', '슬랙'),
+    member('m3', '도윤', '이번 주 리니어 신기능 조사해서 알려줘', '이번 주(11/16~11/22) 리니어 신기능은 검색 결과로 확인이 안 되네요. 두 번 찾아봤는데 둘 다 관련 없는 내용만 나왔어요.', '리니어'),
+  ]
+  const write = vi.fn(async () => '리니어만 새 소식이 있어요.')
+  const out = await writtenReport({ ask: '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', members, write, now: new Date('2026-11-17T05:29:19.705Z') })
+  expect(write).not.toHaveBeenCalled()
+  expect(out.split('\n')[0]).toBe('이번 주는 셋 다 새로 나온 게 없대요.')
+  expect(out).toContain('10월 19일')
+  expect(out).toContain('버그 수정')
+})
+
+test('C5 (c8b run): an item that ends on its link\'s own name does not say the name twice', () => {
+  const out = mergedReport([member('m1', '지민', '다음 달 서울 IT 행사 일정 정리', '12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전), 코엑스 https://www.coex.co.kr/event/1\n12월 9일: AI 서밋 서울, 양재 aT센터 https://aisummit.co.kr/2026')], new Map(), [], { ask: '다음 달 서울 IT 행사 일정 정리', now })
+  expect(out).not.toMatch(/코엑스 \[코엑스\]|코엑스 코엑스/)
 })

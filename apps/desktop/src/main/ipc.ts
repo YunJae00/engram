@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, shortSaid, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, keptFix, namedText, plainKeep, slideTitleFix, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -3021,6 +3021,7 @@ export function registerIpc(ctx: VaultContext): void {
         // c5c Q1: small talk never asks how it can help (first-line.ts withoutHelpDesk).
         if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))
         // c6c H3: a 결정사항 block that only repeats the 할 일 lines is dropped (desk-lane.ts withoutSameDecisions).
+        if (kind === 'note' && !result.asked) result.answer = inKoreanWords(result.answer)
         if (kind === 'note' && !result.asked) result.answer = withoutSameDecisions(routed, result.answer)
         // c6c r2 H3: an open-form summary opens on what was chosen, without 일시 / 참석 / 논의 (desk-lane.ts shareReady).
         if (kind === 'note' && !result.asked) result.answer = shareReady(routed, result.answer)

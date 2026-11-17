@@ -54,6 +54,7 @@ export const DESK_NOTE = [
   'To change the words on a slide (its title, a line, a figure in a cell), never read or write slide XML: read the deck once with file_read_package outline:true, then make one file_edit_package call under the same file name whose edits are {slide, with} for a title or {slide, text, with} for another text, copied from the outline. Only a change to the structure (a new shape, a layout, an order) uses the XML form.',
   'After making or changing a document, the answer is one or two sentences that start with what is in the file and the one choice you made ("회의록 내용만 담았고, 결정사항이랑 할 일은 한 표로 합쳤어요.", "3번 슬라이드 제목을 바꿨어요."), never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요."), then at most one short offer: never a list of its sections, slides, sheets or contents, because the file itself is shown under your answer.',
   'A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.',
+  'Write in Korean words only: never a Chinese character as shorthand (多, 有, 約).',
   'A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file: make a file only when they asked for one.',
   'An extraction of one part ("할 일만 뽑아줘") gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for. '
     + 'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line, a plain sentence of its own that offers the next step of the work ("원하시면 담당자별로 보낼 알림 문구도 써 드릴게요."), never the same content in another shape (a table, a file), unless an earlier reply of yours in this conversation already ended with an offer.',
@@ -229,6 +230,10 @@ function decidedOnce(answer: string): string {
   }
   return lines.join('\n')
 }
+// stack-8 (c8c run D1): "B안 선호 의견 多" for the notes' "B안이 더 낫다는 의견이 많았다": a Han shorthand the person never wrote. The common
+// ones are said in Korean words. shortcut: these six only; a Han guard for every answer (c8a's) is cycle 9's.
+const HAN_SHORTHAND: Record<string, string> = { 多: '많음', 少: '적음', 有: '있음', 無: '없음', 約: '약', 等: '등' }
+export const inKoreanWords = (answer: string): string => /[가-힣]/.test(answer) ? answer.replace(/[多少有無約等]/g, han => HAN_SHORTHAND[han]!) : answer
 export function withoutSameDecisions(ask: string, answer: string): string {
   if (/결정|decision/i.test(ask)) return BOTH_ASKED.test(ask) ? decidedOnce(answer) : answer
   const lines = answer.split('\n')
