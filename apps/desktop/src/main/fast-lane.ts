@@ -74,18 +74,30 @@ export function laneQuery(message: string, now = new Date()): { query: string; k
 export type AsideShape = 'add' | 'replace' | 'remark' | 'question' | 'other'
 const REPLACES = /바꿔|바꾸|바꿀|말고|대신|아니라|아니고|\b(instead|rather than|switch|change (it |that |this )?to|make (it|that) )\b/i
 const ADDS = /추가|더해|포함|같이|도\s*(넣|해|찾|봐|알려|조사|알아|부탁)|[가-힣]도\s*[.!~]*$|\b(add|also|too|as well|include|plus)\b/i
-// A remark about the work (impatience, thanks), not a change to it: the work goes on as it was and its result still comes.
-// shortcut: short messages in a closed list only ("감사 보고서로 정리해줘" is a job); a remark it misses is handed to the turn as before, which costs time, not the request.
-// Each alternative takes its whole word, so what is left over after them is whatever else the message says.
-const REMARKS = /느려\S*|느리\S*|왜\s*이렇게|오래\s*걸\S*|답답\S*|언제\s*(돼|되|끝|나와)\S*|아직(이야|이에요|인가요|도\s*안\s*\S*|\s*멀었\S*|\s*안\s*(됐|끝|나)\S*)|고마워\S*|고맙\S*|감사(해|합니다|드려|드립니다)\S*|수고\S*|빨리(\s*좀)?(\s*해\s*(줘|주세요)\S*)?|\b(so slow|hurry up|how (much )?long(er)?|taking (so |too )?long|thanks|thank you)\b/gi
-const REMARK_FILLER = /^(아|어|음|좀|진짜|너무|정말|왜|근데|이렇게|요|네|is|it|its|this|that|so|still|very|you|a lot|much)$/i
-const REMARK_MAX = 25
-// A remark is nothing but the remark: thanks or impatience with a job behind it ("고마워, 대구 넣어줘") is a change and goes to the turn (c3a review r1 #1).
-function remark(text: string): boolean {
-  const rest = text.replace(REMARKS, ' ')
-  return [...text.trim()].length <= REMARK_MAX && rest !== text && rest.split(/[^가-힣a-z0-9]+/i).every(word => !word || REMARK_FILLER.test(word))
+// c11b: what words said mid-work are to the work is read from what they name, never from a list of complaint phrases. A word names
+// something unless it is in the running ask, a word of grammar (an interjection, an adverb of time or degree, a demonstrative, a question
+// word: closed classes, the same for any complaint or thanks) or a predicate ("느려", "걸리네", "고마워요", "끝나?"). A word right before
+// a request verb is its object and always names something ("대구 넣어줘", "피자 시켜줘"); so does a word with a case particle ("표로").
+// A message that names nothing is a remark: answered in one line, never handed to the work. A replacement needs a named new subject.
+// shortcut: no tagger; a noun that looks like a predicate and stands alone ("피자?") reads as a remark. Use a tagger if that shows.
+const GRAMMAR = /^(?:아+|어+|음+|하+|헐|휴|에휴|아이고|와|오|근데|그런데|그래도|그냥|진짜|정말|너무|되게|엄청|완전|좀|조금|많이|왜|언제|얼마나|어떻게|아직|아직도|안|못|벌써|이제|지금|아까|계속|자꾸|또|다|빨리|천천히|오래|이렇게|그렇게|저렇게|이거|그거|저거|이게|그게|요|네|ㅠ+|ㅜ+|ㅋ+|ㅎ+|so|very|too|still|yet|now|why|how|when|it|its|this|that|is|are|you|thanks|thank|please|ok|okay|wow)$/i
+const PREDICATE = /(?:[아어여해워와줘봐네요다지까니냐래려게고서며군나돼됐걸]|ㅠ+|ㅜ+|ㅋ+)$/
+const REQUEST = /(?:줘|줘요|주세요|줄래|해|해요|봐|봐요)$/
+const CASE_PARTICLE = /[가-힣]{2,}(?:으로|로|을|를|은|는|도|랑|이랑|하고|까지|부터|에서|만)$/
+const askWords = (ask: string): string[] => ask.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 2)
+export function namesSomething(text: string, ask = ''): boolean {
+  const asked = askWords(ask), words = text.toLowerCase().split(/[^\p{L}\p{N}ㄱ-ㅎㅏ-ㅣ]+/u).filter(Boolean).map(word => word.replace(/(?:이야|이에요|예요|야|이다|이지|이죠)$/, '') || word)
+  return words.some((word, at) => {
+    if (asked.some(one => one.startsWith(word) || word.startsWith(one) && word.length - one.length <= 2) || GRAMMAR.test(word)) return false
+    if (CASE_PARTICLE.test(word) || /^[a-z0-9]/.test(word)) return true
+    return at + 1 < words.length && REQUEST.test(words[at + 1]!) || !PREDICATE.test(word)
+  })
 }
-export function asideShape(text: string): AsideShape { return REPLACES.test(text) ? 'replace' : ADDS.test(text) ? 'add' : remark(text) ? 'remark' : /[?？]\s*$/.test(text) ? 'question' : 'other' }
+// ask: the running ask; anything else (an index, when called through .map) counts as none.
+export function asideShape(text: string, ask?: unknown): AsideShape {
+  const named = namesSomething(text, typeof ask === 'string' ? ask : '')
+  return REPLACES.test(text) && named || !!swapTarget(text) ? 'replace' : ADDS.test(text) ? 'add' : !named ? 'remark' : /[?？]\s*$/.test(text) ? 'question' : 'other'
+}
 // What the host-run search opens the task with: the same sentence a teammate gets (team-runner), and one line for words said mid-work.
 export const firstResults = (query: string, found: string): string => `Results of the search already run for you ("${query}"). When they hold what was asked, answer from them now; search once more in other words only when they do not. If the person changes what they ask for while you work, these results are for the old ask: search for the new one, and name what the answer is now about in its first sentence ("애플은 …").\n${found}`
 /** Runs the solo lookup's first search through the turn's own search_web (so its sources, kept titles, news period and ranking apply). opening: what to put in the task, '' when the search did not run or met a wall (the task is then as before). calls: what is left of LANE_SOLO_CALLS. */
@@ -108,7 +120,7 @@ export const gaveUp = (answer: string): boolean => { const words = answer.replac
 // results stayed held and a failure line was written again from them: the old ask answered after the change. Words that end by
 // naming another thing to do it for ("… 걸로", "… 거로 해줘") are a change of ask here too.
 const SWAPS = /[가-힣A-Za-z0-9]\s*(?:걸|거|것으)로(?:\s*(?:해|바꿔|줘|해\s?줘|부탁해|봐\s?줘))?요?[.!~\s]*$/
-export const swaps = (text: string): boolean => asideShape(text) === 'replace' || SWAPS.test(text.trim())
+export const swaps = (text: string): boolean => asideShape(text) === 'replace'
 // c9a T2: "그냥 애플로 바꿔" said 2 s into "엔비디아 오늘 주가 알려줘" waited 14 s for a model round on 엔비디아. The lane stops that round and
 // starts again on the ask with the new thing in the old one's place ("애플 오늘 주가 알려줘"). Only a thing it can name for sure: a
 // day ("내일로"), a form ("표로") or anything it cannot read leaves the change to the running round, as before.
@@ -116,12 +128,17 @@ const SWAP_LEAD = /^(?:아+|어|음|그냥|그럼|아니|아니야|아니다|그
 const SWAP_TAIL = String.raw`\s*(?:(?:바꿔|바꾸|해)(?:서)?\s*(?:알려|봐|찾아|확인해|보여)?\s*(?:줘|줄래|주세요)?요?|봐\s*줘|봐|부탁해|알려\s*줘|줘)?\s*[.!~]*$`
 const SWAP_NEW = [new RegExp(String.raw`(?:말고|대신(?:에)?|아니라|아니고)\s*,?\s*(.+?)\s*(?:걸로|거로|것으로|으로|로)?${SWAP_TAIL}`), new RegExp(String.raw`^(.+?)\s*(?:걸로|거로|것으로|으로|로)${SWAP_TAIL}`)]
 const NOT_A_THING = /^(?:표|목록|리스트|한국어|영어|원화|달러|엔화|숫자|짧게|간단히|요약|오늘|내일|모레|어제|주말|이번\s*주|다음\s*주|지난\s*주|[월화수목금토일]요일|\d+\s*(?:일|월|시|개|건))$/
-export function swappedAsk(ask: string, said: string, now = new Date()): string | undefined {
-  if (!swaps(said) && !/(?:으로|로)\s*해\s*(?:줘|줄래|주세요)?요?[.!~\s]*$/.test(said)) return undefined
+// The new thing a change of ask names ("애플" in "그냥 애플로 바꿔"), or undefined when it names none or only a day or a form.
+function swapTarget(said: string): string | undefined {
+  if (!REPLACES.test(said) && !SWAPS.test(said.trim()) && !/(?:으로|로)\s*해\s*(?:줘|줄래|주세요)?요?[.!~\s]*$/.test(said)) return undefined
   let text = said.trim()
   for (let before = ''; before !== text;) { before = text; text = text.replace(SWAP_LEAD, '') }
   const named = SWAP_NEW.map(words => words.exec(text)?.[1]?.trim()).find(Boolean)
-  if (!named || [...named].length > 20 || NOT_A_THING.test(named) || ASK_TAIL.test(named)) return undefined
+  return !named || [...named].length > 20 || NOT_A_THING.test(named) || ASK_TAIL.test(named) ? undefined : named
+}
+export function swappedAsk(ask: string, said: string, now = new Date()): string | undefined {
+  const named = swapTarget(said)
+  if (!named) return undefined
   const kind = FIRST_STEPS.findIndex(([words]) => words.test(ask)), subject = subjectOf(ask, now)
   if (!subject || subject === named) return undefined
   return ask.includes(subject) ? ask.replace(subject, named) : `${named} ${kind >= 0 && kind < 3 ? KIND_WORDS[kind] : ''} 알려줘`.replace(/\s+/g, ' ')

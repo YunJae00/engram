@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import type { EngineCwd, ToolSessionJob } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { SessionPool, type SessionSdk } from '../src/main/engine-claude-session.js'
-import { laneTidy, listGap, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
+import { asideShape, laneTidy, listGap, SHORT_QUESTION_NOTE, swappedAsk } from '../src/main/fast-lane.js'
 import * as firstLine from '../src/main/first-line.js'
 
 // c11b: the host never deletes or rewrites what the model said by its wording. All wordings here are not in the harness.
@@ -104,5 +104,23 @@ describe('a counted list is checked by its shape, never by its words or topic (R
     // A count said mid-work is the one that holds; a list that is not news needs no date.
     expect(listGap(three, ['반도체 수출 뉴스 2개', '아 3개로'], held, now)).toBeUndefined()
     expect(listGap('1. 성산 [a](https://a.example/1)\n2. 애월 [b](https://b.example/2)', ['제주 카페 2곳 찾아줘'], [], now)).toBeUndefined()
+  })
+})
+
+describe('words said mid-work: a remark goes on, a change needs a named thing (H6/T1/T2 class)', () => {
+  const ask = '이번 달 반도체 수출 뉴스 3개 찾아줘'
+  it('takes complaints, questions about the wait and thanks as remarks, in any wording', () => {
+    for (const said of ['아 진짜 오래 걸리네', '아직이야?', '하 답답하다 진짜', '이거 왜 안 끝나', '아직도야?', '수고했어 고마워', '반도체 아직이야?'])
+      expect(asideShape(said, ask), said).toBe('remark')
+    for (const said of ['아 진짜 오래 걸리네', '아직이야?']) expect(swappedAsk(ask, said)).toBeUndefined()
+  })
+  it('takes a new subject as a replacement and a new scope as an addition', () => {
+    expect(asideShape('그냥 테슬라로 해', ask)).toBe('replace')
+    expect(swappedAsk('엔비디아 오늘 주가 알려줘', '그냥 테슬라로 해')).toBe('테슬라 오늘 주가 알려줘')
+    expect(asideShape('광주도 넣어', '서울 부산 날씨 알려줘')).toBe('add')
+    // Thanks with a job behind it is that job; a form is not a new subject.
+    expect(asideShape('고마워, 디스플레이 넣어줘', ask)).not.toBe('remark')
+    expect(asideShape('표로 보여줘', ask)).toBe('other')
+    expect(swappedAsk(ask, '표로 해줘')).toBeUndefined()
   })
 })

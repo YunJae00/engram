@@ -176,7 +176,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     // A question of its own is answered here and, like a remark, never handed to the running turn.
     const answer = await asideAnswer(deps.voice?.(channel), workdir, said, korean)
     if (stopped()) return { ok: true }
-    const steer = !answer && asideShape(said) !== 'remark'
+    const steer = !answer && asideShape(said, goal) !== 'remark'
     if (steer) {
       await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
       asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])
@@ -188,7 +188,7 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     // A quick question the voice had no answer for has used the budget: it gets the fixed line, not a second wait.
     const reply = answer ?? (quickQuestion(said) ? fixedAsideReply(said, korean) : await asideReply(deps.voice?.(channel), workdir, goal, said, korean))
     if (stopped()) return { ok: true }
-    flog('aside', JSON.stringify({ channel, reply: 'shown', shape: answer ? 'answer' : asideShape(said), ms: Date.now() - started }))
+    flog('aside', JSON.stringify({ channel, reply: 'shown', shape: answer ? 'answer' : asideShape(said, goal), ms: Date.now() - started }))
     // The reply is kept under the words it answers, as a line of the running turn, not as its answer.
     await appendBotTurn(deps.paths, botId, { role: 'assistant', text: withoutSecrets(reply, said), at: new Date().toISOString(), progress: true, aside: true }).catch(error => flog('aside', error))
     if (!steer) return { ok: true, action: 'relay', reply }
