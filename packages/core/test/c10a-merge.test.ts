@@ -83,3 +83,15 @@ test('c10a r3: a base row\'s source cell of several links drops each page of ano
   expect(out[1]![2]).not.toMatch(/air8-a|air8-b/)
   expect(out[1]![2]).toContain('https://search.naver.com/search.naver?query=y')
 })
+
+test('stack-10 (c10a r3, Codex): a tier bracket with no figure labels the price before it, so that price goes; one with its own figure is an aside', () => {
+  expect(oneTier('199만 원부터 (프로 기준)', '아이폰 18')).toBe('기본형은 못 찾았어요')
+  expect(oneTier('미발표 (예상 89만 원대), 129만 원부터 (울트라 모델)', '갤럭시 탭 S12')).toBe('미발표 (예상 89만 원대)')
+  expect(oneTier('109만 원 (울트라는 159만 원)', '갤럭시 탭 S12')).toBe('109만 원')
+  expect(oneTier('49만 원 (맥스 기준) / 39만 원 (기본형)', '에어팟')).toBe('39만 원 (기본형)')
+  expect(oneTier('129만 원 (프로 기준)', '맥북 프로')).toBe('129만 원 (프로 기준)')
+})
+test('stack-10: a tier bracket that speaks about that tier is an aside, its base figure stays', () => {
+  expect(oneTier('69만 원부터 (울트라는 아직 미정)', '갤럭시 워치 9')).toBe('69만 원부터')
+  expect(oneTier('69만 원부터 (울트라 모델)', '갤럭시 워치 9')).toBe('기본형은 못 찾았어요')
+})

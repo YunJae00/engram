@@ -257,9 +257,18 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 // A cell left with nothing says the base model was not found.
 // shortcut: tier words by a closed list (프로, 울트라, 플러스, 맥스, "S27+"); a tier the list lacks stays.
 const TIER = /프로|울트라|플러스|맥스|\b(?:pro|ultra|plus|max)\b|[a-z]*\d+\s?\+/i
+const ASIDE = new RegExp(`(?:${TIER.source})\\s*[은는이가도](?=[\\s)]|$)`, 'i')
 export function oneTier(cell: string, row: string, korean = true): string {
   if (TIER.test(row) || !TIER.test(cell) || /\]\(https?:/.test(cell)) return cell
-  const out = cell.replace(/\s*\([^()]*\)/g, part => TIER.test(part) ? '' : part).split(/,\s+|\s+\/\s+|;\s*/).filter(part => !TIER.test(part)).join(', ').trim()
+  // stack-10 (c10a r3, Codex: "199만 원부터 (프로 기준)" kept the Pro price): a tier bracket that only names the tier ("프로 기준", "울트라 모델")
+  // labels the figure before it, so its whole piece is that tier's and goes. One that says something of its own about that tier, with its own
+  // figure or with the tier as its subject ("(울트라 159만 원)", "(프로는 이미 출시)"), is an aside: only the bracket goes.
+  const piece = (part: string): string => {
+    let labels = false
+    const rest = part.replace(/\s*\([^()]*\)/g, bracket => !TIER.test(bracket) ? bracket : /\d/.test(bracket) || ASIDE.test(bracket) ? '' : (labels = true, ''))
+    return labels || TIER.test(rest) ? '' : rest
+  }
+  const out = cell.split(/(?:,\s+|\s+\/\s+|;\s*)(?![^()]*\))/).map(piece).filter(Boolean).join(', ').trim()
   return out || (korean ? '기본형은 못 찾았어요' : 'base model not found')
 }
 // c9a R2: the rows linked cafe.naver.com, cafe.naver.com and a search page, named 출처 three times, while the 갤럭시 helper had also cited
