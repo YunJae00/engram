@@ -39,7 +39,8 @@ const FIXED: Record<AsideShape, [string, string]> = {
   // A question the host could not answer itself: the running work answers it with its result.
   question: ['그것도 같이 챙길게요.', 'Covering that too.'],
   // Never a bare yes (GROKBOT rule 1): the line says what happens with their words.
-  other: ['지금 하는 일에 반영할게요.', 'Working that into this now.'],
+  // Also the line when nothing read the words (no verdict): it must fit a complaint and a change alike.
+  other: ['하신 말씀까지 챙겨서 금방 올릴게요.', 'Taking that in, posting it shortly.'],
 }
 // c6 T1: "대구도 함께 조사할게요." and then four cities from "봇 3개": the judge read the fourth as unexplained. While a split job runs
 // (the job's own words ask for one, fast-lane teamAsk), the reply to an added part says how it is taken in: one more looks at it.
@@ -80,7 +81,7 @@ const fits = (line: string | undefined, said: string, korean: boolean): line is 
 // c11b r2 (review #1, "아 너무 답답한데" handed to the work as a change): whether words said mid-work change the job is what they mean, which
 // no word list or word-ending rule reads for every wording. The quick voice that writes the reply reads them anyway, so it also gives
 // the verdict (CHANGE / REMARK) and the host steers on it. changes: undefined when the voice gave no verdict (late, absent, untagged):
-// only then does the host fall back to asideShape.
+// the host then reads nothing into them and hands them to the running work, whose model judges them (chat:say).
 export async function asideVoice(voice: Voice | Promise<Voice>, workdir: string, goal: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<{ line: string; changes?: boolean }> {
   const raw = await voiceLine(voice, asideReplyPrompt(goal, said, korean), workdir, budgetMs)
   const tag = /^\s*(CHANGE|REMARK)\s*[:：\-–—]\s*/i.exec(raw ?? ''), changes = tag ? tag[1]!.toUpperCase() === 'CHANGE' : undefined
@@ -188,7 +189,9 @@ export function registerAsideIpc(deps: AsideIpcDeps): void {
     // A quick question the voice had no answer for has used the budget: it gets the fixed line, not a second wait.
     const voiced = answer || quickQuestion(said) ? undefined : await asideVoice(deps.voice?.(channel), workdir, goal, said, korean)
     if (stopped()) return { ok: true }
-    const steer = !answer && (voiced?.changes ?? asideShape(said, goal) !== 'remark')
+    // c11b r3 (review #1): with no verdict from the voice (absent, late, untagged) the host does not guess what the words mean from their
+    // wording: they go to the running work, whose model reads them with the rule that a remark leaves the job as it is (agent-session withSteer).
+    const steer = !answer && voiced?.changes !== false
     if (steer) {
       await changeCheckpoint(deps.paths, botId, state => ({ ...state, pending: [...new Set([...state.pending, said])] })).catch(() => flog('aside', 'checkpoint-write-failed'))
       asides.set(channel, [...(asides.get(channel) ?? []), { role: 'user', text: said }])

@@ -44,6 +44,6 @@ test('a message sent mid-answer gets its own reply', async () => {
   // qa142 B7/B8: the first answer stays whole in one bubble above the follow-up.
   // grokbar c3a (GROKBOT rule 3): words said mid-work get a one-line reply at once, right under them, and then their answer.
   expect(order.map(bubble => bubble.user), `MIDSTREAM-FOLLOWUP each reply under its question: ${JSON.stringify(order)}`).toEqual([true, false, true, false, false])
-  expect(order[askedAt + 1]!.text, 'MIDSTREAM-FOLLOWUP one-line reply at once').toBe('Working that into this now.')
+  expect(order[askedAt + 1]!.text, 'MIDSTREAM-FOLLOWUP one-line reply at once').toBe('Taking that in, posting it shortly.')
   expect(answeredAt, 'MIDSTREAM-FOLLOWUP answer after the one-line reply').toBe(askedAt + 2)
 })
