@@ -72,6 +72,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
   const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
+  // The turn kind picks which rules the session is sent (agent-session-shape sessionRules): a lookup or a short ask carries no work rules.
+  const kind = options.lookup ? 'lookup' as const : options.short ? 'short' as const : 'work' as const
   const baseCalls = browser ? 120 : SESSION_MAX_CALLS
   if (workflow && deps.engine.desktopToolIsolation !== true) throw new Error(DESKTOP_TOOL_ISOLATION_MESSAGE)
   deps = { ...deps, tools: sessionMenu(desktopScopeTools(deps.tools)) }
@@ -267,13 +269,13 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       }
     },
     workdir: deps.workdir,
-    system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native }),
+    system: sessionRules({ engineId: deps.engine.id, desktop, workflow, browser, planned, pageSteps: deps.tools.some(tool => tool.name === 'page_steps'), pageDo: deps.tools.some(tool => tool.name === 'page_do'), native: options.native, kind, tools: deps.tools.map(tool => tool.name) }),
     prompt: [...personaLines(options.persona, options.memory), ...(options.onScreen ? [options.onScreen] : []),
       ...(options.attachmentContext ? [options.attachmentContext] : []),
       ...resumeLines(options.resume),
       ...(desktop ? ['Prior-turn desktop observations are historical: use app_read for background accessibility work, or read_desktop/look_desktop for foreground work, before the first input this turn, then reuse fresh returned observations within this turn.'] : []),
       ...skillIndexLines(options.skills),
-      EARLIER_REPLIES_RULE, `Task: ${task}`, answerLanguageLine(task)].join('\n'),
+      ...(kind === 'work' ? [EARLIER_REPLIES_RULE] : []), `Task: ${task}`, answerLanguageLine(task)].join('\n'),
     ...(opening ? { opening } : {}),
     ...(options.session ? { sessionKey: options.session } : {}),
     ...(options.modelHint ? { modelHint: options.modelHint } : {}),

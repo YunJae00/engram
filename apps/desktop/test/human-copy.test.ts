@@ -109,7 +109,9 @@ describe('fixed copy a person reads in a conversation', () => {
 
 describe('how the bot is told to talk', () => {
   it('gives every turn the coworker rule: register, no jargon, memory of the thread, decisions, one next step, team voice, small talk', () => {
-    expect(openRuleLines()).toContain(COLLEAGUE_RULE)
+    // c13c: the full work set carries all three parts of it (core, choice, file job); other turn kinds carry the core.
+    expect(openRuleLines().join('\n')).toContain(COLLEAGUE_RULE.split('When the ask is loose')[0]!.trim())
+    for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind, tools: [] }).join('\n')).toMatch(/coworker on a messenger/)
     for (const part of [/coworker on a messenger/, /-요 form/, /never switch to -습니다/, /no tool or function names/, /에이전트/, /without asking for it again/, /민호로 고쳤어요/, /without mentioning memory, records or notes/, /아 그거 말고 지난주 걸로/, /never offer a menu of options/, /ONE short offer line of something new/, /document turns in a row carry at most one offer between them/, /지민이가 찾은 날씨를 서연이가 문구로 다듬었어요/, /아 왜 이렇게 느려/, /never a repeated one/, /무엇을 도와드릴까요/])
       expect(COLLEAGUE_RULE).toMatch(part)
     // The examples it gives are themselves clean: the trade words appear only in the sentence that forbids them.
