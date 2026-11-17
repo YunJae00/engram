@@ -204,8 +204,9 @@ const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, qu
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 // The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
+// stack-11 (c11b run H6: "11월 9~13일" counted as undated): a day range, also after a few words ("11월 둘째주(9~15일)"), is its last day.
 export function resultDay(date: string, now = new Date()): Date | null {
-  const dot = /(\d{4})(?:\.\s?|-)(\d{1,2})(?:\.\s?|-)(\d{1,2})/.exec(date), ko = /(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일/.exec(date), en = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?/i.exec(date)
+  const dot = /(\d{4})(?:\.\s?|-)(\d{1,2})(?:\.\s?|-)(\d{1,2})/.exec(date), ko = /(?:(\d{4})년\s*)?(\d{1,2})월\s*(?:[^\d\n]{0,8}?(?:\d{1,2}\s*[~\-–]\s*))?(\d{1,2})일/.exec(date), en = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:,? (\d{4}))?/i.exec(date)
   const [year, month, day] = dot ? [dot[1], Number(dot[2]), dot[3]] : ko ? [ko[1], Number(ko[2]), ko[3]] : en ? [en[3], MONTHS.indexOf(en[1]!.toLowerCase()) + 1, en[2]] : []
   if (!month || !day) return null
   const at = new Date(Number(year ?? now.getFullYear()), month - 1, Number(day))

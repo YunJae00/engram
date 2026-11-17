@@ -185,7 +185,7 @@ import { learningTools } from './learning-wiring.js'
 import { isHelperLane, lookAsHelper } from './helper-lanes.js'
 import { meaningScores, skillShortlist } from './meaning.js'
 import { setTimeout as delay } from 'node:timers/promises'
-import { answerAlone, talkOnly, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
+import { answerAlone, talkOnly, THEIR_WORDS_MS, withTheirWords, withoutWorkNotes, beginFirstLine, endFirstLine, fallbackLine, firstLineNote, firstLineNow, firstLineReady, firstLineSaw, firstLineSpoke, firstLineWaiting, heldRounds, plainReply, smallTalkAnswer } from './first-line.js'
 import { cometNativeTools, commandSandbox, deliverOutputs, namedBy, rememberWorkFolder, workFolderFor } from './native-tools.js'
 import { takeTurnScripts, type TurnScript } from './turn-scripts.js'
 import { agentBrowserAvailable, agentContext, armIdleClose, closeAgentBrowser, DEFAULT_LANE, holdAgentBrowser, installedBrowsers, laneLastUrl, setAgentBrowser, setViewHeight } from './agent-browser.js'
@@ -3073,6 +3073,12 @@ export function registerIpc(ctx: VaultContext): void {
         if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
         if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
+        // stack-11: in a Korean thread, a line the quick model judges a working note goes (first-line.ts withoutWorkNotes), and a reply with no
+        // Korean word in it gets the few words that hand it over (withTheirWords). Neither changes the words that stay.
+        if (!result.asked && threadKorean(request.message, request.history ?? [])) {
+          result.answer = await withoutWorkNotes(result.answer, request.message, writer && (prompt => writer(prompt, THEIR_WORDS_MS)))
+          result.answer = await withTheirWords(result.answer, writer && (prompt => writer(prompt, THEIR_WORDS_MS)))
+        }
         clearApplicationWork(channel)
         endDesktopTurn(channel)
         await deliverOutputs(paths, native?.cwd ?? workFolder, result, nativeSince, request.message)

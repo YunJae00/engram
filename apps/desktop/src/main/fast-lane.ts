@@ -237,7 +237,7 @@ export async function weekendAnswer(answer: string, by: { ask: string; held: rea
 // to the model for one more round (agent-session recheck); the answer itself is never cut, numbered or led by the host.
 const ITEM_LINE = /^\s*(?:\d+[.)]|[-*•·])\s+\S/, LINK = /\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)>\]]+)/
 const NEWS_KIND = /뉴스|기사|소식|보도|\b(?:news|articles?|headlines?)\b/i
-const WRITTEN_DATE = /(?:19|20)\d\d[.\-/]\s?\d{1,2}[.\-/]\s?\d{1,2}|\d{1,2}월\s*\d{1,2}일|\d+\s*(?:분|시간|일|주)\s*전|어제|그제|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b/i
+const WRITTEN_DATE = /(?:19|20)\d\d[.\-/]\s?\d{1,2}[.\-/]\s?\d{1,2}|\d{1,2}월\s*(?:[^\d\n]{0,8}?(?:\d{1,2}\s*[~\-–]\s*))?\d{1,2}일|\d+\s*(?:분|시간|일|주)\s*전|어제|그제|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\b/i
 function listCount(answer: string, asks: readonly string[], held: readonly string[], now: Date): { asked: number; good: number; items: number; dated: boolean } | undefined {
   const asked = asks.map(ask => askedCount(ask)).filter((n): n is number => !!n).at(-1)
   if (!asked) return undefined
