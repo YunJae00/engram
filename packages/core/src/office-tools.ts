@@ -46,22 +46,22 @@ function only(args: Record<string, unknown>, keys: string[], tool: string): void
 }
 // c15c (cause D, D3: the first ppt_build of every deck run was refused in 3-6 ms, and each rebuild cost the model 20-25 s of writing): an
 // input that can be read only one way is taken as meant, never refused: an empty optional text is absent, one bullet given as text is a list
-// of one, numbers stand as their text, a grid given without {rows} or with short rows is padded square, a chart number given as text is that
-// number, and a blank written in brackets ("[수치 입력]") loses the brackets - what it says stays, so an unfilled marker inside is still refused.
-const BRACKETED = /\[([^[\]]{1,40})\]/g
-const unbracket = (value: unknown): unknown => typeof value === 'string' ? value.replace(BRACKETED, '$1') : typeof value === 'number' ? String(value) : value
+// of one, numbers stand as their text, a grid given without {rows} or with short rows is padded square, and a chart number given as text is
+// that number. c15c r2: a blank written in brackets ("[금액 입력]") is an unfilled slot, not a near miss: it stays as written so the deck audit
+// refuses it and names it, and the model fills it in.
+const asText = (value: unknown): unknown => typeof value === 'number' ? String(value) : value
 const present = (value: unknown): boolean => value !== undefined && value !== null && !(typeof value === 'string' && !value.trim())
 export function nearMissSlide(given: unknown): unknown {
   if (!plain(given)) return given
   const slide: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(given)) if (present(value)) slide[key] = value
-  for (const key of ['title', 'subtitle', 'notes']) if (key in slide) slide[key] = unbracket(slide[key])
+  for (const key of ['title', 'subtitle', 'notes']) if (key in slide) slide[key] = asText(slide[key])
   const bullets = typeof slide['bullets'] === 'string' ? [slide['bullets']] : slide['bullets']
-  if (Array.isArray(bullets)) { const kept = bullets.filter(present).map(unbracket); if (kept.length) slide['bullets'] = kept; else delete slide['bullets'] }
+  if (Array.isArray(bullets)) { const kept = bullets.filter(present).map(asText); if (kept.length) slide['bullets'] = kept; else delete slide['bullets'] }
   const table = Array.isArray(slide['table']) ? { rows: slide['table'] } : slide['table']
   if (plain(table) && Array.isArray(table['rows']) && table['rows'].every(row => Array.isArray(row))) {
     const rows = (table['rows'] as unknown[][]).filter(row => row.length), width = Math.max(0, ...rows.map(row => row.length))
-    slide['table'] = { ...table, rows: rows.map(row => [...row, ...Array<string>(width - row.length).fill('')].map(cell => cell === null || cell === undefined ? '' : typeof cell === 'string' ? unbracket(cell) : cell)) }
+    slide['table'] = { ...table, rows: rows.map(row => [...row, ...Array<string>(width - row.length).fill('')].map(cell => cell === null || cell === undefined ? '' : cell)) }
   } else if (table !== undefined) slide['table'] = table
   const chart = slide['chart']
   if (plain(chart) && Array.isArray(chart['series'])) slide['chart'] = { ...chart, series: chart['series'].map(one => plain(one) && Array.isArray(one['values']) ? { ...one, values: one['values'].map(v => typeof v === 'string' && v.trim() && Number.isFinite(Number(v.replace(/,/g, ''))) ? Number(v.replace(/,/g, '')) : v) } : one) }

@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, isOutsideAsk } from 'core'
+import { checkedWrite, isOutsideAsk, readProblems, type WrittenProblem } from 'core'
 
 // grokbar B7 (stack1-f4f6844c): everyday desk work ran on the work model with 73 tools and a 40k-char prompt, and most of the time was
 // that model's rounds: M1-M3 (remember, correct, recall) 9-12 s for one keep_in_mind call or none, F2 9 s with no call, F1 41 s (20 s
@@ -560,15 +560,11 @@ function rewritten(reply: string, last: string): number {
 }
 
 // c15c (cause D, D1: "결정사항" and "할 일" held the same four items, the decisions the discussion settled were never said): a desk answer was
-// written once and nothing read it against its ask and the source it came from. An answer with structure - two or more blocks or a list,
-// read by shape, never by words - goes through the same meaning check as every writer path (core checkedWrite, with kind "overlap" for parts
-// that say the same thing or hold another part's content), and is rewritten once by the quick model inside the turn's own time. A one-line
-// answer is never held: the short asks' bar has no room for a check.
-const LIST_LINE = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*\S/
-export const structured = (text: string): boolean => {
-  const blocks = text.trim().split(/\n\s*\n/).filter(block => block.trim())
-  return text.split('\n').filter(line => LIST_LINE.test(line)).length >= 2 || blocks.length >= 3 || (blocks.length >= 2 && text.trim().split('\n').filter(line => line.trim()).length >= 4)
-}
+// written once and nothing read it against its ask and the source it came from. An answer with structure - more than one line, read by shape,
+// never by words (c15c r2: two short sections "장점: …" / "단점: …" are parts too) - goes through the same meaning check as every writer path
+// (core checkedWrite, with kind "overlap" for parts that say the same thing or hold another part's content), and is rewritten once by the
+// quick model inside the turn's own time. A one-line answer is never held: the short asks' bar has no room for a check.
+export const structured = (text: string): boolean => text.split('\n').filter(line => line.trim()).length >= 2
 // shortcut: one budget for every desk kind from the turn's start (the summary row has 20 s); a desk turn already past it keeps its draft.
 export const DESK_CHECK_DUE_MS = 18_000
 export const SOURCE_CHARS = 6000
@@ -577,11 +573,43 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   const data = { source: input.source.slice(0, SOURCE_CHARS) }, quick = input.quick
   const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length, and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
     'Each thing goes under the one part it belongs to, by what the source says it is; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
+  // c15c r2: what the check found wrong, in the last text it read (the rewrite when its own check named problems, else the draft).
+  let found: { text: string; problems: readonly WrittenProblem[] } = { text: input.draft, problems: [] }, rewrite: string | undefined, checks = 0
   const text = await checkedWrite({
-    data, ask: input.ask, parts: true, draft: input.draft, check: quick, due: input.since + DESK_CHECK_DUE_MS, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}),
-    redo: async (note, ms) => (await quick(base + note, ms).catch(() => undefined))?.trim() || undefined,
+    data, ask: input.ask, parts: true, draft: input.draft, ...(input.signal ? { signal: input.signal } : {}), due: input.since + DESK_CHECK_DUE_MS, ...(input.now ? { now: input.now } : {}),
+    check: async (prompt, ms) => {
+      // checkedWrite reads the draft first and the rewrite second.
+      const read = checks++ ? rewrite ?? input.draft : input.draft, raw = await quick(prompt, ms), problems = readProblems(raw)
+      if (problems?.length) found = { text: read, problems }
+      return raw
+    },
+    redo: async (note, ms) => (rewrite = (await quick(base + note, ms).catch(() => undefined))?.trim() || undefined),
     log: (outcome, problems) => input.log?.(outcome, problems.map(problem => problem.kind)),
   })
-  // A rewrite that failed its own check leaves the draft: the desk has no other rendering to fall back on.
-  return text ?? input.draft
+  // c15c r2: a text the check named problems in never reaches the thread as it is. The desk has no other rendering, so the host's fallback is
+  // that text without the lines the check quoted (and a heading left with nothing under it): less, never wrong.
+  return text ?? withoutQuoted(found.text, found.problems)
+}
+const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
+const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`]/g, '').replace(/\s+/g, '')
+/** The text without each problem's line: the line the quote was copied from, or for a quote spanning lines, the last line it holds whole
+ * (two parts that say the same thing keep the first). A heading whose every line went goes with them. */
+export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
+  const lines = text.split('\n'), gone = new Set<number>()
+  for (const { quote } of problems) {
+    const q = bare(quote)
+    if (!q) continue
+    const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
+    const whole = at.filter(({ b }) => b.includes(q))
+    const pick = (whole.length ? whole : at).at(-1)
+    if (pick) gone.add(pick.i)
+  }
+  // A heading (a line that is not a list item) loses its place when every line under it, up to the next heading, went.
+  lines.forEach((line, i) => {
+    if (!line.trim() || ITEM.test(line) || gone.has(i)) return
+    const under: number[] = []
+    for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || ITEM.test(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
+    if (under.length && under.every(j => gone.has(j))) gone.add(i)
+  })
+  return lines.filter((_, i) => !gone.has(i)).join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }

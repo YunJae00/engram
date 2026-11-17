@@ -44,18 +44,28 @@ describe('ppt_build takes a near-miss input as meant (D3 class)', () => {
     const build = (args: unknown) => (async () => tools.find(one => one.name === 'ppt_build')!.run(args as Record<string, unknown>, { task: '발표 자료' }))()
     return { calls, build }
   }
-  it('empty optional texts, one bullet as text, a bare ragged grid, numbers as text and bracketed blanks are built, not refused', async () => {
+  it('empty optional texts, one bullet as text, a bare ragged grid and numbers as text are built, not refused', async () => {
     const { calls, build } = setup()
     await build({ slides: [
       { title: '연간 교육 계획', subtitle: '', notes: '  ' },
-      { title: '분기별 예산', bullets: '교육비: [금액 입력]', table: [['분기', '예산'], ['1분기']] },
+      { title: '분기별 예산', bullets: '교육비: 1인당 30만 원', table: [['분기', '예산'], ['1분기']] },
       { title: '참여 인원', chart: { type: 'column', categories: ['상반기', '하반기'], series: [{ name: '인원', values: ['1,200', 30] }] } },
     ] })
     expect(calls).toHaveLength(1)
     const sent = calls[0]!.args['slides'] as Record<string, unknown>[]
     expect(sent[0]).toEqual({ title: '연간 교육 계획' })
-    expect(sent[1]).toMatchObject({ bullets: ['교육비: 금액 입력'], table: { rows: [['분기', '예산'], ['1분기', '']] } })
+    expect(sent[1]).toMatchObject({ bullets: ['교육비: 1인당 30만 원'], table: { rows: [['분기', '예산'], ['1분기', '']] } })
     expect((sent[2]!['chart'] as { series: { values: number[] }[] }).series[0]!.values).toEqual([1200, 30])
+  })
+  it('a blank written in brackets is an unfilled slot: kept as written, refused by the audit and named (r2)', async () => {
+    const { calls, build } = setup()
+    for (const slide of [{ title: '분기별 예산', bullets: '교육비: [금액 입력]' }, { title: '[발표 제목]', bullets: ['내용'] }]) {
+      expect(nearMissSlide(slide)).toMatchObject(typeof slide.bullets === 'string' ? { bullets: [slide.bullets] } : { title: slide.title })
+      const said = await build({ slides: [slide] })
+      expect(said).toMatch(/^The deck does not read clean yet, so nothing was built/)
+      expect(said).toMatch(/\[(금액 입력|발표 제목)\]/)
+    }
+    expect(calls).toHaveLength(0)
   })
   it('an unfilled marker inside brackets is still refused, and nothing counts as written', async () => {
     const { calls, build } = setup()

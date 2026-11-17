@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { checkedDesk, structured } from '../src/main/desk-lane.js'
+import { checkedDesk, structured, withoutQuoted } from '../src/main/desk-lane.js'
 import { MEMORY_YIELDS, turnStarting, yielding } from '../src/main/comet-memory.js'
 
 // c15c (cause D). Wordings are not the harness's: a product review split into 장점/단점.
@@ -18,7 +18,9 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(structured('| 항목 | 값 |\n| 가 | 1 |')).toBe(true)
     expect(structured('평년 기준으로 31,536,000초예요.')).toBe(false)
     expect(structured('칼국수 어때요? 쌀쌀하니까요.')).toBe(false)
-    expect(structured('정리했어요.\n\n파일은 아래에 있어요.')).toBe(false)
+    // r2: two short sections are parts, however short.
+    expect(structured('장점: 가벼워요.\n\n단점: 배터리가 짧아요.')).toBe(true)
+    expect(structured('원인: 캐시가 오래됐어요.\n대책: 매일 비워요.')).toBe(true)
   })
   it('parts that say the same thing are found ("overlap") and the answer is rewritten once from the source', async () => {
     const prompts: string[] = []
@@ -39,12 +41,40 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(await checkedDesk({ ask: '이 메모 한 줄로 요약해줘', draft: '배터리만 빼면 만족스러운 이어폰이에요.', source: SOURCE, quick, since: Date.now() })).toBe('배터리만 빼면 만족스러운 이어폰이에요.')
     expect(quick).not.toHaveBeenCalled()
   })
-  it('past the turn\'s budget, or a rewrite that is still wrong, leaves the draft', async () => {
+  it('past the turn\'s budget the draft stands unchecked', async () => {
     const quick = vi.fn(async () => '{"problems":[]}')
     expect(await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick, since: Date.now() - 60_000 })).toBe(DRAFT)
     expect(quick).not.toHaveBeenCalled()
-    const wrong = '{"problems":[{"kind":"overlap","quote":"x","why":"y"}]}', again = [wrong, FIXED, wrong]
-    expect(await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => again.shift(), since: Date.now() })).toBe(DRAFT)
+  })
+  it('two short sections are checked too (r2)', async () => {
+    const quick = vi.fn(async () => '{"problems":[]}')
+    const two = '장점: 가벼워요.\n\n단점: 가벼워요.'
+    await checkedDesk({ ask: ASK, draft: two, source: SOURCE, quick, since: Date.now() })
+    expect(quick).toHaveBeenCalledTimes(1)
+  })
+  it('a rewrite that is still wrong never shows the lines the check named: the last text read, without them (r2)', async () => {
+    // The rewrite moved one item but still lists 노이즈 캔슬링 under 단점; its own check quotes that line.
+    const STILL = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요\n- 노이즈 캔슬링이 좋아요'
+    const again = ['{"problems":[{"kind":"overlap","quote":"가벼워서 오래 껴도 편해요","why":"두 번"}]}', STILL, '{"problems":[{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같음"}]}']
+    const logged: string[] = []
+    const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => again.shift(), since: Date.now(), log: outcome => logged.push(outcome) })
+    expect(logged).toEqual(['refused'])
+    expect(out).not.toBe(DRAFT)
+    expect(out).toBe('장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요')
+  })
+  it('a rewrite that came too late leaves the draft without the lines its check named (r2)', async () => {
+    const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 하루 종일 가요","why":"5시간"}]}', undefined]
+    const draft = '좋은 점\n- 귀가 안 아파요\n- 배터리가 하루 종일 가요\n\n아쉬운 점\n- 없어요'
+    expect(await checkedDesk({ ask: '이어폰 리뷰 좋은 점 아쉬운 점으로', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })).toBe('좋은 점\n- 귀가 안 아파요\n\n아쉬운 점\n- 없어요')
+  })
+})
+
+describe('withoutQuoted', () => {
+  it('drops the quoted line, the later copy of a repeated one, and a heading left empty', () => {
+    const text = '원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요'
+    expect(withoutQuoted(text, [{ kind: 'overlap', quote: '대책: 캐시가 오래됐어요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요')
+    expect(withoutQuoted(text, [{ kind: 'contradicts', quote: '서버는 정상이에요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모')
+    expect(withoutQuoted(text, [{ kind: 'asks', quote: '', why: '' }])).toBe(text)
   })
 })
 
