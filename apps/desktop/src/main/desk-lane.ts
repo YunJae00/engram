@@ -60,7 +60,8 @@ export const DESK_NOTE = [
   'An extraction of one part ("할 일만 뽑아줘") gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for. '
     + 'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line, a plain sentence of its own that offers the next step of the work ("원하시면 담당자별로 보낼 알림 문구도 써 드릴게요."), never the same content in another shape (a table, a file), unless an earlier reply of yours in this conversation already ended with an offer.',
   'When they ask for a note to be made easy to share or read without saying the form ("공유하기 좋게", "보기 좋게", "깔끔하게"), you choose the form and the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요."). Then at most about eight short lines: who does what by when, then what is still open, then the next meeting. No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask; something not settled yet goes under 미결, never under 결정사항.',
-  'In a summary of meeting notes, 결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when; the same sentence never appears under both. When the decisions in the notes are all tasks with an owner and a date, 결정사항 says briefly what was agreed ("온보딩 화면은 새 시안으로 확정하기로 했어요.") and 할 일 gives each owner and date. Every decision, owner and due date of the file is still in the answer, a heading with nothing of its own is left out, and no section says it is the same as another ("위와 동일").',
+  // c13c D1: the notes' own 결정사항 heading listed owner+due tasks and was copied as decisions and again as 할 일. One principle, by meaning.
+  'In a summary of meeting notes, a decision (결정사항) is what the meeting settled - a choice, a direction or a commitment - and an action item (할 일) is who does what by when. Each thing goes under one of them, never both: an item with an owner and a due date is an action item. What the notes only lean toward (an opinion most people shared, a preference, a proposal) is said as a leaning, never as 확정 or as a decision. The content decides, not the notes\' own headings: action items listed under a heading called 결정사항 are action items, and when nothing else was settled, 결정사항 says so in one line or is left out. Every owner and due date of the file is still in the answer, a heading with nothing of its own is left out, and no section says it is the same as another ("위와 동일").',
 ].join(' ')
 
 // grokbar cycle 3 (M1, M2, F1, D3): above the preload limit (engine-claude-session.ts PRELOADED_TOOLS_MAX = 16) tool shapes are deferred and the
@@ -495,16 +496,28 @@ export const reshapeCandidate = (message: string, lastReply: string | undefined)
     // stack-10: a send or post outside and a team ask keep their own routes and gates whatever the voice says (the lanes' own checks).
     && !isOutsideAsk(text) && !teamAsk(text)
 }
+// c13c Q4: "the same facts and nothing else" made the explanation line a fact, so "더 짧게" came back as long as before (42 vs 42) and
+// nothing checked it. The voice names the form it wrote and the asked thing it reshaped; the host checks the form where it is structural.
+export const RESHAPE_FORMS = ['shorter', 'longer', 'simpler', 'language', 'tone', 'table', 'other'] as const
 export const reshapePrompt = (message: string, lastReply: string): string => [
   'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
-  'If they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject, write that reply again as asked: only the new reply, in the language and the polite register of your last reply (in Korean the -요 form), the same facts and nothing else, no lead-in about what you changed.',
+  'If they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject, write it again as asked and answer with one line of JSON: {"form": one of "shorter" (any ask for less: shorter, fewer lines, only the key point), "longer", "simpler", "language", "tone", "table", "other"; "was": the thing they asked for in your last reply, copied exactly, without its lead-in or any line about it; "reply": the new reply}.',
+  'The new reply is the asked thing in the asked form and nothing else: in the language and the polite register of your last reply (in Korean the -요 form), no lead-in about what you changed, and no line on what it means or why.',
   'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
+const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
 // stack-10 (c10c run Q4: 9.2 s of 8): the voice said YES in 1.3 s, then a fresh session with a 34.8k-char prompt on a cold cache took 7.3 s to
 // its first token for one short line. The voice that judges it reads the last reply and the message already, so it writes the reshaped reply
-// itself: the reply, or undefined (NO, nothing, late or failed), and the turn keeps its usual route.
+// itself: the reply, or undefined (NO, nothing, late or failed, not the asked form), and the turn keeps its usual route.
 export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string) => Promise<string>) | undefined): Promise<string | undefined> {
   if (!quick || !reshapeCandidate(message, lastReply)) return undefined
-  const said = await quick(reshapePrompt(message, lastReply!)).then(raw => raw.trim().replace(/^yes[.!]?\s*\n/i, '').trim(), () => '')
-  return !said || /^\W*(?:yes|no|none)\W*$/i.test(said) ? undefined : said
+  const raw = await quick(reshapePrompt(message, lastReply!)).catch(() => '')
+  let said: { form?: unknown; was?: unknown; reply?: unknown }
+  try { said = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) } catch { return undefined }
+  const reply = typeof said.reply === 'string' ? said.reply.trim() : ''
+  if (!reply || !RESHAPE_FORMS.includes(said.form as typeof RESHAPE_FORMS[number]) || squash(reply) === squash(lastReply!)) return undefined
+  if (said.form !== 'shorter') return reply
+  // "Shorter" is checked against the asked thing, not the commentary around it: a "was" not found in the last reply cannot be checked.
+  const was = typeof said.was === 'string' ? squash(said.was) : ''
+  return was && squash(lastReply!).includes(was) && [...squash(reply)].length < [...was].length ? reply : undefined
 }
