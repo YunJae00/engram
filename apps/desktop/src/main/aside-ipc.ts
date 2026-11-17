@@ -79,7 +79,9 @@ const fits = (line: string | undefined, said: string, korean: boolean): line is 
 // One line within the budget, whatever the voice does.
 export async function asideReply(voice: Voice | Promise<Voice>, workdir: string, goal: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string> {
   const line = await voiceLine(voice, asideReplyPrompt(goal, said, korean), workdir, budgetMs)
-  return fits(line, `${goal} ${said}`, korean) && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) ? line : fixedAsideReply(said, korean, teamAsk(goal))
+  // stack-9 (c9a run T1, judge 3): "대구도 함께 조사해서 볼게요." on a split of 3, then "넷이 하나씩": an added part of a split job is said as one more person on it.
+  const team = teamAsk(goal), joined = !(korean && team && asideShape(said) === 'add') || /한\s?(?:명|사람|분)|하나\s?더|더\s?(?:붙|맡)/.test(line ?? '')
+  return fits(line, `${goal} ${said}`, korean) && joined && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) ? line : fixedAsideReply(said, korean, team)
 }
 // c3a review r2 #2: "1년은 몇 초야?" said mid-work had no answer until the work ended (GROKBOT rule 2). A short general-knowledge
 // question (fast-lane quickQuestion, the same test and prompt as on an idle thread) is answered whole by the quick voice, at once.

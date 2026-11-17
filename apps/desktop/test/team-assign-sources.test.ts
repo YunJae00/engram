@@ -61,7 +61,7 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   expect(shown).not.toContain('<table>')
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(shown).toMatch(new RegExp(`<p>${who}: ${topic}[^<]*<a href="https://search\\.naver\\.com/`))
   // c9 fix 1: the maker's own updates page is searched beside the job's words.
-  const makers: Record<string, string> = { 노션: 'Notion releases', 슬랙: 'Slack release notes', 리니어: 'Linear changelog' }
+  const makers: Record<string, string> = { 노션: 'Notion releases 업데이트', 슬랙: 'Slack release notes 업데이트', 리니어: 'Linear changelog 업데이트' }
   expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 새 기능 업데이트`), address(makers[topic]!), address(`${topic} 신기능`)]))
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
   // The agents are held 15 s at most inside the 35 s answer.

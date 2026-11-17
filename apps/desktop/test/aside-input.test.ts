@@ -163,8 +163,11 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   const quick = (line: string, ms = 0) => ({ id: 'claude', quick: vi.fn(async () => { await new Promise(done => setTimeout(done, ms)); return line }) })
   const goal = '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘'
   // The voice's own line when it comes in time.
-  const voice = quick('대구도 넣을게요.')
-  expect(await asideReply(voice, 'tmp', goal, '아 대구도 추가해', true)).toBe('대구도 넣을게요.')
+  const voice = quick('대구도 한 명 더 붙여서 볼게요.')
+  expect(await asideReply(voice, 'tmp', goal, '아 대구도 추가해', true)).toBe('대구도 한 명 더 붙여서 볼게요.')
+  // stack-9 (c9a run T1): on a split job an addition that does not say one more is on it reads as an unexplained extra teammate.
+  expect(await asideReply(quick('대구도 함께 조사해서 볼게요.'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 한 명 더 붙여서 볼게요.')
+  expect(await asideReply(quick('대구도 넣을게요.'), 'tmp', '서울 날씨 알려줘', '아 대구도 추가해', true)).toBe('대구도 넣을게요.')
   expect(voice.quick.mock.calls[0]![0]).toContain(JSON.stringify(goal))
   expect(voice.quick.mock.calls[0]![0]).toContain('"아 대구도 추가해"')
   expect(await asideReply(quick('애플로 바꿔서 볼게요.'), 'tmp', '엔비디아 오늘 주가 알려줘', '그냥 애플로 바꿔', true)).toBe('애플로 바꿔서 볼게요.')
@@ -184,7 +187,7 @@ it('answers words said mid-work in one short line: the quick voice\'s, or a fixe
   // c3a review r1 #3: one Korean word does not make a Korean line; English the person did not write themselves is refused.
   expect(await asideReply(quick('대구도 넣을게요. Searching the web for results'), 'tmp', goal, '아 대구도 추가해', true)).toBe('그것도 한 명 더 붙여서 볼게요.')
   expect(await asideReply(quick('running 상태예요.'), 'tmp', goal, '아 왜 이렇게 느려', true)).toBe('거의 다 됐어요, 금방 올릴게요.')
-  expect(await asideReply(quick('iPhone도 넣을게요.'), 'tmp', goal, 'iPhone도 추가해', true)).toBe('iPhone도 넣을게요.')
+  expect(await asideReply(quick('iPhone도 한 명 더 붙여서 볼게요.'), 'tmp', goal, 'iPhone도 추가해', true)).toBe('iPhone도 한 명 더 붙여서 볼게요.')
   // c3a review r1 #2: the budget starts before the voice is found, so a slow sign-in probe cannot hold the reply.
   const began = Date.now()
   expect(await asideReply(new Promise(found => setTimeout(() => found(quick('대구도 넣을게요.')), 400)), 'tmp', goal, '아 대구도 추가해', true, 30)).toBe('그것도 한 명 더 붙여서 볼게요.')
@@ -207,19 +210,19 @@ it('hands a change to the running turn before the reply is written, keeps a rema
   const paths = { cache, workspace: join(cache, 'workspace'), privateDir: join(cache, 'workspace', '.engram') } as VaultPaths
   const held: string[] = [], order: string[] = [], stopped: string[] = []
   const asked: string[] = [], answers: string[] = []
-  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return answers.shift() ?? (prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 넣을게요.') } }
+  const voice = { id: 'claude', quick: async (prompt: string) => { asked.push(prompt); order.push('voice'); return answers.shift() ?? (prompt.includes('느려') ? '거의 다 찾았어요, 금방 올릴게요.' : '대구도 한 명 더 붙여서 볼게요.') } }
   turnGoals.set('bot-reply', '봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
   registerAsideIpc({ paths, busy: () => true, followUp: () => text => { held.push(text); order.push('held') }, setOffersAside: async () => {}, stop: async (_channel, said) => { stopped.push(said) }, voice: async () => voice })
   const say = (text: string) => handlers.get('chat:say')!({}, 'bot-reply', text) as Promise<{ ok: boolean; reply?: string; action?: string; instruction?: string }>
   try {
-    expect(await say('아 대구도 추가해')).toEqual({ ok: true, action: 'relay', instruction: '아 대구도 추가해', reply: '대구도 넣을게요.' })
+    expect(await say('아 대구도 추가해')).toEqual({ ok: true, action: 'relay', instruction: '아 대구도 추가해', reply: '대구도 한 명 더 붙여서 볼게요.' })
     // The work has the words before the line is written: the reply never delays the change.
     expect(order).toEqual(['held', 'voice'])
     // A complaint is answered and the work goes on unchanged: nothing is handed to the running turn, nothing waits for a turn of its own.
     expect(await say('아 왜 이렇게 느려')).toEqual({ ok: true, action: 'relay', reply: '거의 다 찾았어요, 금방 올릴게요.' })
     expect(held).toEqual(['아 대구도 추가해'])
     expect((await readCheckpoint(paths, 'reply')).pending).toEqual(['아 대구도 추가해'])
-    expect((await readBotTranscript(paths, 'reply')).map(turn => `${turn.role} ${turn.text}`)).toEqual(['user 아 대구도 추가해', 'assistant 대구도 넣을게요.', 'user 아 왜 이렇게 느려', 'assistant 거의 다 찾았어요, 금방 올릴게요.'])
+    expect((await readBotTranscript(paths, 'reply')).map(turn => `${turn.role} ${turn.text}`)).toEqual(['user 아 대구도 추가해', 'assistant 대구도 한 명 더 붙여서 볼게요.', 'user 아 왜 이렇게 느려', 'assistant 거의 다 찾았어요, 금방 올릴게요.'])
     // Thanks with a job behind it reaches the turn (review r1 #1).
     expect((await say('고마워, 대구 넣어줘')).instruction).toBe('고마워, 대구 넣어줘')
     expect(held).toEqual(['아 대구도 추가해', '고마워, 대구 넣어줘'])

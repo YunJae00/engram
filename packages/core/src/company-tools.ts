@@ -228,7 +228,9 @@ export function firstSearches(member: Pick<TeamMember, 'brief' | 'query'>, about
   const title = jobTitle(member.brief), updates = UPDATES.test(title)
   const maker = makerOf(withoutRelativeTime(updates ? title.replace(new RegExp(UPDATES.source, 'gu'), ' ') : title), about, updates)
   const news: FirstSearch = { query, ...(PERIOD_JOB.test(line) ? { news: true as const } : {}) }
-  if (maker && maker.query.toLowerCase() !== query.toLowerCase()) return [news, { query: maker.query, maker: maker.name }]
+  // stack-9 (c9b run C3): Latin-only words went to Bing (defaultSearchTemplate), which gave the harness an empty page for all three makers;
+  // one Korean word keeps the search on the person's own engine, whose results list the maker's page ("Linear changelog 업데이트" → linear.app/changelog).
+  if (maker && maker.query.toLowerCase() !== query.toLowerCase()) return [news, { query: /[가-힣]/.test(maker.query) ? maker.query : `${maker.query} 업데이트`, maker: maker.name }]
   if (updates) return [news]
   // stack-9: the one way a job's first searches are chosen; a plain job asking a price and a date gets one search per point (c9a pointQueries).
   if (!LIST_JOB.test(line)) return pointQueries(query).map(one => ({ query: one }))

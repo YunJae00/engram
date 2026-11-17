@@ -10,13 +10,13 @@ const firsts = (brief: string, about = brief) => firstSearches({ brief, query: s
 
 test('c9 fix 1: a job about a named product opens with the news search and the maker\'s own updates page, by its Latin name', () => {
   const slack = firsts('이번 주 슬랙 신기능 조사', '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘')
-  expect(slack).toEqual([{ query: '슬랙 앱 새 기능 업데이트', news: true }, { query: 'Slack release notes', maker: 'Slack' }])
-  expect(firsts('지난주 피그마 업데이트 뭐 있었어?')[1]).toEqual({ query: 'Figma release notes', maker: 'Figma' })
+  expect(slack).toEqual([{ query: '슬랙 앱 새 기능 업데이트', news: true }, { query: 'Slack release notes 업데이트', maker: 'Slack' }])
+  expect(firsts('지난주 피그마 업데이트 뭐 있었어?')[1]).toEqual({ query: 'Figma release notes 업데이트', maker: 'Figma' })
   // No period word: the job's words are searched as they are, not as news.
-  expect(firsts('디스코드 새 기능')).toEqual([{ query: '디스코드 새 기능 업데이트' }, { query: 'Discord patch notes', maker: 'Discord' }])
+  expect(firsts('디스코드 새 기능')).toEqual([{ query: '디스코드 새 기능 업데이트' }, { query: 'Discord patch notes 업데이트', maker: 'Discord' }])
   // The person's own Latin name wins over the list, and a product off the list is searched by it.
   expect(makerOf('리니어', '경쟁사 리니어(Linear) 조사')).toEqual({ name: 'Linear', query: 'Linear changelog' })
-  expect(firsts('이번 주 플로우잇(Flowit) 신기능 조사')[1]).toEqual({ query: 'Flowit changelog', maker: 'Flowit' })
+  expect(firsts('이번 주 플로우잇(Flowit) 신기능 조사')[1]).toEqual({ query: 'Flowit changelog 업데이트', maker: 'Flowit' })
   // An unknown product gets the one search.
   expect(firsts('이번 주 모아보기 앱 신기능 조사')).toHaveLength(1)
   // Never two of the same words, never more than two first searches, never a relative time in the words.
@@ -105,9 +105,9 @@ test('c9 fix 2: a writer\'s own closing line on where the facts came from is not
 // --- c9b round 2 (Codex r1) ---
 test('c9b r2 finding 1: any job about a named product opens with the maker\'s own page too, not only an updates job', () => {
   // Codex's repro: "이번 주 슬랙 가격 조사" ran one search with no period.
-  expect(firsts('이번 주 슬랙 가격 조사')).toEqual([{ query: '슬랙 가격', news: true }, { query: 'Slack release notes', maker: 'Slack' }])
-  expect(firsts('노션 요금제 정리')).toEqual([{ query: '노션 요금제' }, { query: 'Notion releases', maker: 'Notion' }])
-  expect(firsts('플로우잇(Flowit) 가격 조사')[1]).toEqual({ query: 'Flowit changelog', maker: 'Flowit' })
+  expect(firsts('이번 주 슬랙 가격 조사')).toEqual([{ query: '슬랙 가격', news: true }, { query: 'Slack release notes 업데이트', maker: 'Slack' }])
+  expect(firsts('노션 요금제 정리')).toEqual([{ query: '노션 요금제' }, { query: 'Notion releases 업데이트', maker: 'Notion' }])
+  expect(firsts('플로우잇(Flowit) 가격 조사')[1]).toEqual({ query: 'Flowit changelog 업데이트', maker: 'Flowit' })
   // A bare Latin word names a maker only in an updates job, and an unknown product gets the one search.
   expect(firsts('이번 주 KOSPI 지수 조사')).toHaveLength(1)
   expect(firsts('이번 주 모아보기 앱 가격 조사')).toHaveLength(1)

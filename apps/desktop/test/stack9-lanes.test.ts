@@ -58,3 +58,12 @@ it('stack-9: one search-page test', () => {
 it('stack-9: an early bubble only for a hand-off', () => {
   expect(runner).toContain('if (next?.background && !halting.has(leadChannel)) report?.(leadChannel, taskId)')
 })
+
+// stack-9 (c9b run C3, C10): the maker's search stays on the person's own engine, and a part that saw no notice or article is found-nothing.
+it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 확인이 안 됐어요" found nothing', async () => {
+  const { foundNothing, firstSearches: firsts } = await import('core')
+  const maker = firsts({ brief: '이번 주 리니어 신기능 조사', query: '리니어 신기능' }, '이번 주 리니어 신기능 조사').find(one => one.maker)
+  expect(maker?.query).toBe('Linear changelog 업데이트')
+  expect(foundNothing('이번 주(11/16~11/22) 슬랙 신기능은 관련 공지나 기사가 안 보여서 확인이 안 됐어요.')).toBe(true)
+  expect(foundNothing('12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.')).toBe(false)
+})

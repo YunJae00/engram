@@ -255,7 +255,7 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   // Found nothing: the rows the host's search gave are kept under it (c5b nothingNew) and the page searched on is its source.
   // c9 fix 1: a product's updates are also searched on the maker's own page ("Linear changelog"), side by side; the job's own search comes first.
   expect(doyun).toMatchObject({ empty: true, read: true })
-  expect(doyun!.sources).toEqual([address('리니어 신기능'), address('Linear changelog')])
+  expect(doyun!.sources).toEqual([address('리니어 신기능'), address('Linear changelog 업데이트')])
   expect(doyun!.result).toContain('SMTECHNO PLC Trainer 660,000원')
   // Cut short with its finding and the address it came from: the answer once, no replies block, nothing it only read (c6b settleMember).
   expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
