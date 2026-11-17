@@ -19,8 +19,9 @@ const OPENING_LINE_CHARS = 60
 // - Every part has at least MIN_PART_MS from its own start (one queued, or added by a steer, is not cut before it worked); the task's
 //   answer then waits for that part too (taskDue).
 // - The soft point (no new tool call) and the answer reserve are shares of the part's own window. The reserve is never less than one
-//   report round on the teammate's prompt (~40k characters, measured 9.6-9.9 s for a round with one tool call, c13a DONE): at that
-//   point a teammate that read something writes its report with no tools, and the quick model writes a stand-in from the kept rows.
+//   no-tool report round on the teammate's ~39-40k-character prompt (REPORT_ROUND_MS; a round with one tool call took 9.6-9.9 s in
+//   C3): at that point a teammate that read something writes its report with no tools, and the quick model writes a stand-in from the
+//   kept rows. A background part that can follow late is not cut at the deadline, so its report round may run past it.
 // - At the deadline a background part that can be reported late (core lateParts) is not stopped: it stays working, is shown as such,
 //   and its report follows in the same thread. LATE_CEILING_MS past the deadline it is stopped and recorded as not finished.
 // All on the scale of the real deadline (the test seam answerMs shortens it).
