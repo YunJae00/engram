@@ -244,14 +244,16 @@ export function teamRunner(deps: {
         clearTimeout(wait)
       }
       // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
-      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : (prompt, ms) => Promise.race([quick(prompt, ms), stopped]))
+      const judge = (prompt: string, ms?: number) => Promise.race([quick!(prompt, ms), stopped])
+      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge)
       // c12a B3: a listing page among the facts is taken apart in one more round while the teammate's time allows it (the hard stop still
       // applies); otherwise it stays, labeled where it is shown.
       const pages = me.lookup && !timedOut && !control.signal.aborted ? listingPages(data) : []
       if (data && pages.length && (hardMs - (Date.now() - (startedAt ?? Date.now()))) / scale >= ITEMS_ROUND_MS) {
         draft = ''
         const more = await turn(itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
-        data = withItems(data, more)
+        // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
+        data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge))
       }
       clearTimeout(hardStop)
       const report = structured ? data ?? null : undefined

@@ -1042,11 +1042,14 @@ export const itemsPrompt = (urls: readonly string[]): string => `Some of what yo
 // round 3: the host cannot check that a round gave every item of a page (a claim like "whole" is only the teammate's word), so a listing
 // page is never taken out. After a round that gave items it stays as where the full list is (`rest`), after them: nothing is dropped
 // unseen, and nothing done is labeled as not done (GROKBOT rule 7).
+// stack-12 (c12a r3 #2): what the round gives back is judged like any data (team-runner runs kindChecked on it): a fact still judged a
+// listing, or one that is a listing page itself given back, is no item. With no item left the page stays labeled as before.
 export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
-  if (!more?.facts.length) return data
-  const known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
+  if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
-  return { ...data, facts: [...data.facts.filter(f => !f.listing), ...more.facts.filter(f => !known.has(f.text)), ...pages] }
+  return { ...data, facts: [...data.facts.filter(f => !f.listing), ...items, ...pages] }
 }
 // The pages a hand-off's work was made from: the giver's facts when the giver is in this report, else the addresses the host itself wrote
 // into the hand-off (dataText's " — address" lines), named by the host's one rule. A deliverable cites what it stands on (GROKBOT rule 5).

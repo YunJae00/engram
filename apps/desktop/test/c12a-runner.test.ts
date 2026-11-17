@@ -82,7 +82,8 @@ it('B3: a listing page the item check flags is taken apart in one more round whi
     if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }] }), steps: [], fellBack: false }
     expect(deps.tools.length).toBeGreaterThan(0)
     return { answer: block({ facts: [{ text: '대전 보드게임 카페 일정 페이지에 다음 달 모임이 여러 개 올라와 있어요.', url: LIST }] }), steps: [], fellBack: false }
-  }, async prompt => prompt.includes('"lists"') ? '{"keep":[1],"lists":[1],"names":{"1":"보드게임 모임 일정"}}' : undefined, '다음 달 대전 보드게임 모임 일정')
+  // stack-12 (Codex c12a r3 #2): the round's items go through the same check; the quick model flags only the page, not the dated items.
+  }, async prompt => !prompt.includes('"lists"') ? undefined : prompt.includes('일정 페이지') ? '{"keep":[1],"lists":[1],"names":{"1":"보드게임 모임 일정"}}' : '{"keep":[1,2],"lists":[]}', '다음 달 대전 보드게임 모임 일정')
   expect(prompts.at(-1)).toContain(LIST)
   expect(w.m.data?.facts.map(f => f.url)).toEqual(['https://board.example.kr/daejeon/1206', 'https://board.example.kr/daejeon/1220', LIST])
   expect(w.answer.split('\n').filter(line => line.startsWith('- '))).toHaveLength(2)
@@ -95,7 +96,7 @@ it('round 2: an extra round that gives only part of a listing page keeps the pag
     options.onStart?.()
     if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '1월 11일 송도 클라이밍장에서 모임이 있어요.', url: 'https://climb.example.kr/incheon/0111', date: '1월 11일' }] }), steps: [], fellBack: false }
     return { answer: block({ facts: [{ text: '인천 클라이밍 모임 페이지에 이번 겨울 모임 세 개가 있어요.', url: LIST }] }), steps: [], fellBack: false }
-  }, async prompt => prompt.includes('"lists"') ? '{"keep":[1],"lists":[1]}' : undefined, '인천 클라이밍 모임 세 개 알려줘')
+  }, async prompt => !prompt.includes('"lists"') ? undefined : prompt.includes('모임 페이지') ? '{"keep":[1],"lists":[1]}' : '{"keep":[1],"lists":[]}', '인천 클라이밍 모임 세 개 알려줘')
   expect(w.m.data?.facts.map(f => [f.url, f.rest])).toEqual([['https://climb.example.kr/incheon/0111', undefined], [LIST, true]])
   expect(w.answer).toContain(`전체 목록은 여기 있어요. [`)
 })

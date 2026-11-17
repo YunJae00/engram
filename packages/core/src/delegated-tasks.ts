@@ -43,8 +43,10 @@ const dateParts = (text: string): Set<string> => new Set([...text.matchAll(DATE_
   if (m[3]) return [m[1], m[2]].filter(Boolean).map(v => `${m[3]}${n(v!)}`)
   if (m[7]) return [`월${MONTHS.indexOf(m[7].toLowerCase()) + 1}`, `일${n(m[8]!)}`]
   const [a, b, c] = [m[4]!, m[5]!, m[6]]
+  // stack-12 (c12a r3 #1): a year-less "2.5" is a decimal ("2.5배") unless written the way a day is ("12.2.", "12.2(화)").
+  if (!c && a.length < 4 && m[0].includes('.') && !/^[.(]/.test(text.slice(m.index! + m[0].length))) return []
   return c ? [`년${n(a)}`, `월${n(b)}`, `일${n(c)}`] : a.length === 4 ? [`년${n(a)}`, `월${n(b)}`] : [`월${n(a)}`, `일${n(b)}`]
-}))
+}).concat(/^\s*\d{4}\s*$/.test(text) ? [`년${Number(text.trim())}`] : []))
 export const datedText = (f: { text: string; date?: string | undefined }): string => {
   const date = f.date?.trim(), own = dateParts(f.text), parts = [...dateParts(date ?? '')]
   const stated = !date || (parts.length > 0 && parts.every(p => own.has(p)))

@@ -190,7 +190,10 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('the table has one row per thing and one column per point, in the order they said them, then the source column')
   expect(LANE_NOTE).toContain('every cell is a short value, never a sentence, and never two points in one cell')
   expect(LANE_NOTE).toContain('"미발표, 예상 130만 원대"')
-  expect(LANE_NOTE).toContain('"미발표, 전작 S26 115만 원"')
+  // stack-12 (c12b r3 #1): the same labeling rule as LOOKUP_RULE / MERGED_SHAPE: another tier's figure is given, labeled, never banned.
+  expect(LANE_NOTE).toContain('"전작 S26 출시가 115만 원"')
+  expect(LANE_NOTE).toContain('"상위 모델 출시가 199만 원부터"')
+  expect(LANE_NOTE).not.toMatch(/base model unless|another tier's price|"미발표 \(/)
   // c5 R2: "미발표, 전작 S26보다 인상 예상" had no number. The cell carries one, from a result or the previous model's launch price, labeled.
   expect(LANE_NOTE).not.toContain('when the results hold one')
   expect(LANE_NOTE).toContain('never a number of your own, and never a cell with no number in it')
@@ -220,7 +223,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
   // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
   expect(LANE_NOTE).toContain('is named by the plain word 출처')
-  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, never a variant\'s, and a price cell is the named model\'s own tier')
+  expect(LANE_NOTE).toContain('a thing already out has its 출시가 and its date, never "미발표"')
   // c7 L2: the failure words of the run are named.
   expect(LANE_NOTE).toContain('"가져오지 못했어요", "확인되는 대로 다시 알려드릴게요"')
   expect(LANE_NOTE).toContain('the next most recent ones from the results marked older fill the list, each with its date and year')
