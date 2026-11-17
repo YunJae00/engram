@@ -94,7 +94,7 @@ describe('c13b: a counted list\'s rows are judged before the model writes, by th
     const judged = await checked(held[0]!, '이번 달 반도체 수출 뉴스 3개 찾아줘', '{"keep":[1,3],"same":[],"listing":[],"outside":[]}')
     expect(judged.rows).toEqual(['https://news.example/a1', 'https://news.example/a3'])
     const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
-    expect(data).toContain('Only 2 of the 3 asked for are here')
+    expect(data).toContain('2 of the 3 asked for were found')
     expect(data).not.toMatch(/[가-힣]/)
   })
   it('shows one row of a same-event group, and no row whose page does not open', async () => {

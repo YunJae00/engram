@@ -28,7 +28,7 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     expect(kept).toEqual(['https://hk.example/a1', 'https://bl.example/a4'])
     // The page's own words held the left-out titles: they go too, and the search's own count line gives way to the checked one.
     expect(out).not.toMatch(/해커톤|They asked for 4: list/)
-    expect(out).toContain('Only 2 of the 4 asked for are here')
+    expect(out).toContain('2 of the 4 asked for were found')
   })
 
   it('through the host\'s first search: the task opens with the fitting rows only, and the lane asks the model for no second round', async () => {
@@ -63,7 +63,7 @@ describe('c13b: the item verdict judges the rows, before the model writes', () =
     expect(three.out).toContain('They hold the 3 asked for: list 3 of them.')
     const one = await checked(five, ask, '{"keep":[3],"same":[],"listing":[],"outside":[]}')
     expect(one.rows).toEqual(['https://c.example/3'])
-    expect(one.out).toContain('Only 1 of the 3 asked for are here')
+    expect(one.out).toContain('1 of the 3 asked for were found')
     // Nothing is cut from an answer afterwards: the cut is gone.
     expect('withoutOff' in lane).toBe(false)
   })

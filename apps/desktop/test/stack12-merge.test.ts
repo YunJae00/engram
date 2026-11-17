@@ -37,7 +37,7 @@ describe('stack-12 merge: one item judge', () => {
     expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://c.example/3', true, '']])
     // c13b: the lone lookup's row check reads keep, same, lists and listing: row 3 is a page of several (lists) and the same event as row 1.
     expect(lone.rows).toEqual(['https://a.example/1'])
-    expect(lone.out).toContain('Only 1 of the 3 asked for are here')
+    expect(lone.out).toContain('1 of the 3 asked for were found')
     // No second judge is defined anywhere.
     expect(src('../../../packages/core/src/company-tools.ts')).not.toMatch(/Keep every item that is the kind of thing/)
     expect(src('../src/main/fast-lane.ts')).not.toMatch(/Judge each item by what it is/)

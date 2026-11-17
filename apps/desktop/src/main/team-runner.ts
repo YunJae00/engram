@@ -6,6 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
+import { asides, turnGoals } from './turn-state.js'
 import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
@@ -34,6 +35,19 @@ const REPORT_ROUND_MS = 6_000
 const ANSWER_GRACE_MS = 1_000
 // c12a B3: one more round to take a listing page apart into items, only with at least this much of the teammate's time left.
 const ITEMS_ROUND_MS = 6_000
+// c14a: what a second items round adds, after the page itself gave no day for its entries.
+const OWN_PAGE = 'These pages did not give each entry its own day. Search each entry by its own name for its own page and day, and give those instead.'
+const HAVE_NOTE = 'These entries are already in hand; give only the others:'
+// c14a (cause E, T1: the 대구 part searched a garbled "대긵", came back empty and stayed empty): a lookup part that ends with no data while
+// at least this much of its time is left runs once more, from the person's own words, on the same deadline.
+const EMPTY_RETRY_MS = 10_000
+// No data: no item and no latest older one; with no data block, an answer that found nothing or none at all (a teammate's own prose is no empty part).
+const noData = (m: TeamMember): boolean => m.data ? !m.data.facts.length && !m.data.nothing?.latest : m.state === 'failed' || !!m.empty || !m.result?.trim()
+export const emptyRetryNote = (words: readonly string[], others: readonly string[]): string => [
+  'Your part came back with nothing. What the person said for this work, a line each:', ...words.map(line => `- ${line.slice(0, 400)}`),
+  ...(others.length ? [`The other parts: ${others.join(', ')}.`] : []),
+  'Your part is the piece of their words your brief is about. Search for it again in their words: the place, thing or name exactly as the person wrote it, not as your brief or your last search spelled it.',
+].join('\n')
 
 // Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
@@ -101,6 +115,8 @@ export function teamRunner(deps: {
   const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
+  // c14a: what an empty part's first run searched, carried into its second run.
+  const looked = new Map<string, { sources: string[]; kept: string[] }>()
   const find = async (taskId: string) => (await listTasks(paths)).find(t => t.id === taskId)
   const remember = (task: DelegatedTask) => { if (task.team && !TERMINAL.includes(task.state)) notes.set(channelOf(task), teamNote(task.team)); else notes.delete(channelOf(task)) }
   async function change<T>(taskId: string, work: (task: DelegatedTask) => T): Promise<T | undefined> {
@@ -129,17 +145,17 @@ export function teamRunner(deps: {
     return { ...tool, run: async (args, context) => { take(); return tool.run(args, context) }, ...(tool.runRich ? { runRich: async (args, context) => { take(); return tool.runRich!(args, context) } } : {}) }
   }
 
-  async function runOne(taskId: string, leadChannel: string, id: string, signal: AbortSignal | undefined, kit: TurnKit, budget: number, redo?: MemberRedo): Promise<void> {
+  async function runOne(taskId: string, leadChannel: string, id: string, signal: AbortSignal | undefined, kit: TurnKit, budget: number, redo?: MemberRedo): Promise<boolean> {
     const key = `${taskId}/${id}`, lane = memberLane(leadChannel, id)
     const control = new AbortController(), stop = () => control.abort()
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
-    let used = 0, role = id, goal = '', due = Date.now() + answerMs, ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
+    let retry = false, used = 0, role = id, goal = '', due = Date.now() + answerMs, ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
     // Tokens a lead session already counts are saved with the lead's turn, not again here.
     let charged = leads.has(leadChannel)
     try {
       const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; due = taskDue(task); if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
-      if (!member) return
+      if (!member) return false
       const { me, helpers } = member
       // A helper's lead writes the answer after it: it is due that much earlier.
       if (!me.botId) due -= LEAD_ANSWER_MS * scale
@@ -154,6 +170,8 @@ export function teamRunner(deps: {
       // Its window counts from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
+      const before = redo && looked.get(key)
+      if (before) { looked.delete(key); for (const url of before.sources) sources.add(url); kept.push(...before.kept) }
       reading.set(key, sources)
       let startedAt: number | undefined, stopAt = Infinity, reserveMs = 0
       // A teammate's tool rounds run on their own signal: the answer reserve ends a round without ending the teammate.
@@ -185,7 +203,8 @@ export function teamRunner(deps: {
         if (!(me.lookup || me.writer) || startedAt !== undefined) return
         startedAt = Date.now()
         if (me.writer) { stopAt = startedAt + WRITER_HARD_MS; hardStop = setTimeout(cut, WRITER_HARD_MS); return }
-        due = Math.max(due, startedAt + MIN_PART_MS * scale)
+        // c14a: a part run again because it came back empty counts toward the same deadline; it gets no window of its own.
+        if (!redo) due = Math.max(due, startedAt + MIN_PART_MS * scale)
         stopAt = due
         const window = due - startedAt
         reserveMs = Math.min(window, Math.max(REPORT_ROUND_MS * scale, window * RESERVE_SHARE))
@@ -285,14 +304,23 @@ export function teamRunner(deps: {
       // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
       const judge = (prompt: string, ms?: number) => Promise.race([quick!(prompt, ms), stopped])
       data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge)
-      // c12a B3: a listing page among the facts is taken apart in one more round while the teammate's time allows it (the hard stop still
-      // applies); otherwise it stays, labeled where it is shown.
-      const pages = me.lookup && !timedOut && !control.signal.aborted ? listingPages(data) : []
-      if (data && pages.length && left() >= ITEMS_ROUND_MS) {
+      // c12a B3: a listing page among the facts (several things, or an entry without the day the job needs) is taken apart in more rounds
+      // while the teammate's time allows it (the hard stop still applies); only at its deadline is it shown, labeled as what it is.
+      // c14a (cause K, C5: "ACC 2026은 12월에 …" shown with no day after one round): one round was all it got. It loops on the same deadline;
+      // a round after the first also looks each entry up by its own name, since the page itself did not give its day.
+      // Each page gets at most those two rounds: a third one would ask the same again.
+      // c14a r2: a first round that gave some of a page's entries does not end it: the host cannot tell it gave them all (withItems), so
+      // the page still gets its by-name round, told which entries are in hand so it looks for the others.
+      const opened = new Set<string>(), named = new Set<string>()
+      for (;;) {
+        const pages = me.lookup ? listingPages(data).filter(url => !named.has(url)) : []
+        if (!data || !pages.length || left() < ITEMS_ROUND_MS || timedOut || control.signal.aborted) break
         draft = ''
-        const more = await turn(itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
+        const byName = pages.every(url => opened.has(url)), have = data.facts.filter(f => !f.listing).map(f => `- ${f.text}`)
+        for (const url of pages) (byName ? named : opened).add(url)
+        const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
         // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
-        data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge))
+        data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, undefined, data.facts.filter(f => !f.listing)))
       }
       clearTimeout(hardStop)
       reading.delete(key)
@@ -306,6 +334,14 @@ export function teamRunner(deps: {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
           // c13a: a teammate that hands back data and ended with none is not finished (status and record read this, never "found nothing").
           if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
+          // c14a (cause E): a lookup part that ended with no data, not stopped, with time left, goes back in line for one more run (chain),
+          // from the person's own words. The empty run is not recorded; only where it looked is carried.
+          if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
+            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt'] as const) delete m[field]
+            m.state = 'hired'; retry = true
+            // Where it looked stays with it: a part that again finds nothing still links the pages it searched (c5b).
+            looked.set(key, { sources: [...sources], kept: [...kept] })
+          }
         }
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
@@ -324,14 +360,20 @@ export function teamRunner(deps: {
       // A member waiting on the person keeps its helpers for review when it resumes; any other end passes them up unreviewed, said so.
       if (ended !== 'waiting' && !halting.has(leadChannel)) await orphan(taskId, id, ended).catch(error => flog('team', error))
       deps.endLane(lane)
-      deps.step(leadChannel, isKorean(goal) ? `${role} 끝` : `${role} finished`)
+      if (!retry) deps.step(leadChannel, isKorean(goal) ? `${role} 끝` : `${role} finished`)
     }
+    return retry
   }
 
   // A member, then whoever its result is handed to (TeamMember.then): one hop, only after it ended done, and it counts as a hire.
   async function chain(taskId: string, leadChannel: string, id: string, signal: AbortSignal | undefined, kit: TurnKit, budget: number, redo?: MemberRedo): Promise<void> {
-    await runOne(taskId, leadChannel, id, signal, kit, budget, redo)
-    if (redo) return
+    // c14a (cause E): an empty part's second run is briefed from what the person said (the ask and every line they added while it worked),
+    // not from the words of its first run (T1: a garbled "대긵" query); its part is read off their words by meaning, beside the others'.
+    if (await runOne(taskId, leadChannel, id, signal, kit, budget, redo) && !signal?.aborted && !halting.has(leadChannel)) {
+      const task = await find(taskId), others = (task?.team?.members ?? []).filter(m => m.id !== id && m.lookup).map(m => m.role)
+      const words = [...new Set([turnGoals.get(leadChannel) || task?.goal || '', ...(asides.get(leadChannel) ?? []).filter(one => one.role === 'user').map(one => one.text)].map(line => line.trim()).filter(Boolean))]
+      await runOne(taskId, leadChannel, id, signal, kit, budget, { note: emptyRetryNote(words, others) })
+    } else if (redo) return
     const next = await change(taskId, task => {
       const team = task.team, m = team?.members.find(one => one.id === id)
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined

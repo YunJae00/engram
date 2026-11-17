@@ -49,7 +49,7 @@ test('c10a R3 (c13b): a counted ask loads the period page and the year page only
     const round = rows.findIndex(row => row.includes('https://www.asiae.co.kr/1')) + 1
     const judged = await checked(out, ask, `{"keep":[${round}],"same":[],"listing":[${3 - round}],"outside":[]}`, { now: 20_000 })
     expect(judged.rows).toEqual(['https://www.asiae.co.kr/1'])
-    expect(judged.out).toContain('Only 1 of the 5 asked for are here')
+    expect(judged.out).toContain('1 of the 5 asked for were found')
     expect(judged.out).not.toContain('They asked for 5: list')
   } finally { vi.useRealTimers() }
 })
@@ -62,7 +62,7 @@ test('c10a R3 (c13b): with nothing more to find, the host writes no count lead: 
     expect(out).toContain('https://news.mt.co.kr/2')
     const judged = await checked(out, ask, '{"keep":[1,2],"same":[],"listing":[],"outside":[],"search":"AI 스타트업 시리즈 투자"}', { now: 20_000 })
     const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
-    expect(data).toContain('Only 2 of the 5 asked for are here')
+    expect(data).toContain('2 of the 5 asked for were found')
     expect(data).not.toMatch(/확실한|[가-힣]/)
     // Too late for a widened search: none ran.
     expect(judged.queries).toEqual(['q'])
@@ -101,7 +101,7 @@ test('c10a r2 (c13b): a round-up row and a row without its own day never reach t
   const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', '- [2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치 — https://example.kr/a/1 — x', '- 딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치 — https://example.kr/a/2 — x', '- 11월 둘째 주 스타트업 투자 동향 — https://example.kr/weekly — x — 11월 14일'].join('\n')
   const judged = await checked(page, 'AI 스타트업 투자 뉴스 4건 알려줘', '{"keep":[1,2,3],"same":[],"lists":[2,3],"listing":[3],"outside":[]}')
   expect(judged.rows).toEqual(['https://example.kr/a/1'])
-  expect(judged.out).toContain('Only 1 of the 4 asked for are here')
+  expect(judged.out).toContain('1 of the 4 asked for were found')
 })
 
 // c10a r3 (Codex r2): nothing dated an undated round as recent but inPeriod. Any source, any wording: a round with no date is no counted item.
@@ -123,6 +123,6 @@ test('c10a r3 (c13b): an undated round still reaches the check, after the dated 
     expect(answer).toContain('https://www.other-daily.kr/b')
     const judged = await checked(out, asked2, '{"keep":[1,2],"same":[],"lists":[2],"listing":[],"outside":[]}', { now: 20_000 })
     expect(judged.rows).toEqual(['https://www.example-news.kr/a'])
-    expect(judged.out).toContain('Only 1 of the 2 asked for are here')
+    expect(judged.out).toContain('1 of the 2 asked for were found')
   } finally { vi.useRealTimers() }
 })

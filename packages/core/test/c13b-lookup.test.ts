@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { checkedSearch, judgedItems, WIDEN_BY_MS, WIDEN_MS } from '../src/item-check.js'
-import { citeMembers, NO_LIVE_SOURCE, teamHireTools, withLiveSources, type TeamHost } from '../src/team-hire-tools.js'
+import { checkedSearch, judgedItems, LOOKUP_RESERVE_MS, WIDEN_MS } from '../src/item-check.js'
+import { citeMembers, NO_LIVE_SOURCE, TEAM_ANSWER_MS, teamHireTools, withLiveSources, type TeamHost } from '../src/team-hire-tools.js'
+// c14a: the last point a widened search may end, on the one clock (was a fixed 15 s, WIDEN_BY_MS).
+const WIDEN_BY_MS = TEAM_ANSWER_MS - LOOKUP_RESERVE_MS
 import type { AgentTool } from '../src/agent-loop.js'
 import type { DelegatedTask, TeamMember } from '../src/delegated-tasks.js'
 
@@ -48,7 +50,9 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     const tool = checkedSearch(s, { ask: () => BIO, write: async () => verdict, since: 0, now: () => WIDEN_BY_MS })
     const out = await tool.run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
     expect(s.queries).toEqual(['바이오 스타트업 투자 유치'])
-    expect(out).toContain('Only 2 of the 4 asked for are here, and there are no more: list these 2, search no more, and the first sentence says plainly how many there are, in your own words.')
+    // c14a: the shortfall is data; the host never orders the count as the lead nor forbids searching.
+    expect(out).toContain('2 of the 4 asked for were found. Lead with the items; you may end with one short plain line that the rest did not turn up.')
+    expect(out).not.toMatch(/search no more|first sentence/)
     expect(out).not.toMatch(/딱 맞는|개 중/)
   })
 
@@ -66,7 +70,7 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     expect(early.queries).toEqual(['바이오 스타트업 투자 유치', '바이오 벤처 시리즈 투자'])
     expect(early.out).toContain('https://i.example/9')
     expect(early.out).not.toContain('https://h.example/8')
-    expect(early.out).toContain('Only 3 of the 4 asked for are here, after a second search')
+    expect(early.out).toContain('3 of the 4 asked for were found.')
     // One millisecond less time: it does not start.
     const late = await run(WIDEN_BY_MS - WIDEN_MS + 1)
     expect(late.queries).toEqual(['바이오 스타트업 투자 유치'])
@@ -178,7 +182,7 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
     // With no time to widen: told the real count, the old row still gone.
     const late = await checkedSearch(search([first]), { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => '{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', since: 0, now: () => WIDEN_BY_MS }).run({ query: '광주 공연' }, { task: '' })
     expect(late).not.toContain('https://l.example/3')
-    expect(late).toContain('Only 2 of the 3 asked for are here')
+    expect(late).toContain('2 of the 3 asked for were found.')
   })
   it('a dead source never gives way to a line of another thing with the same figure; a line saying the same thing still takes it', async () => {
     const helper = (result: string): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '이어폰', brief: '무선 이어폰 소니 가격', lookup: true, state: 'done', sessionKey: 's', hiredAt: 'now', result, sources: [] })
