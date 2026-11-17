@@ -272,8 +272,10 @@ export async function deliverOutputs(paths: VaultPaths, cwd: string, result: { a
     const revisions = new Set(result.steps.filter(one => sourceOf(one) === sourceOf(step) && ownArtifact(one)).flatMap(one => [artifactHref(basename(ownArtifact(one))), encodeURIComponent(basename(ownArtifact(one)))]))
     if (own && !others.slice(0, others.indexOf(own)).some(href => !revisions.has(href))) continue
     if (!own && quoted.has(`${output.name}\0${sourceOf(step)}`)) continue
-    // c10c r1: a file this turn made and then changed with file_edit_package is that file, now edited: its earlier version is not handed over.
-    if (!own && result.steps.slice(output.after! + 1).some(later => later.tool === 'file_edit_package' && ownArtifact(later) && typeof later.args['sourcePath'] === 'string' && basename(later.args['sourcePath']).replace(SAVED_ID, '').toLowerCase() === output.name.toLowerCase())) continue
+    // c10c r1, c11c: a file this turn made and then changed with file_edit_package is that file, now edited: its earlier version is not handed
+    // over. The edit is known by the file it read (this output or its task-folder twin), never by a name, which another file may share.
+    const twin = (() => { try { return (JSON.parse(step.observation) as { taskPath?: unknown }).taskPath } catch { return undefined } })()
+    if (!own && result.steps.slice(output.after! + 1).some(later => later.tool === 'file_edit_package' && ownArtifact(later) && typeof later.args['sourcePath'] === 'string' && [output.path, twin].includes(resolve(cwd, later.args['sourcePath'])))) continue
     let link = `[${output.name}](engram-artifact:${artifactHref(id)})`
     if (others.length) {
       // The answer keeps another artifact under this name, and files are known by name: this one is saved under the next free name, so both stay linked and checked.
