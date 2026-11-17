@@ -267,12 +267,21 @@ const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp][] = [
 // how much is nobody's name.
 // shortcut: a closed word list, no name recognition; a describing word it lacks still passes as a name. Use a tagger if that shows.
 const NO_NAME = /^(미국|중국|일본|유럽|영국|독일|프랑스|인도|동남아|중동|아시아|북미|남미|싱가포르|베트남|대만|홍콩|실리콘밸리|서울|부산|경기|판교|지역|지방|정부|벤처|벤처투자자?|투자자|투자사|벤처캐피탈|vc|대규모|대형|잇단|잇따라|연이어|연달아|줄줄이|속속|본격|활발|급증|증가|감소|열풍|훈풍|한파|러시|봇물|행진|전망|분석|현황|동향|상반기|하반기|분기|이번|지난|최근|us|usa|china|japan|europe|asia|global|investors?|venture|capital)$/i
+// c7a r3: "국내 AI 스타트업 연쇄 투자 유치" and "… 사상 최대 투자 유치" ranked first: any word the lists lacked was the company. A word is the
+// funded company only where the headline marks it as one: a comma or a middle dot after it ("뤼튼, …"), or the round right after it
+// ("리벨리온 620억 원", "아크 시리즈 B", "Wrtn raises"). The lists above only take words away from those.
+// shortcut: by headline form, no name recognition. A company named with neither mark ("업스테이지 투자 유치 성공") is rank 1: listed, behind
+// the marked ones; a describing word right before an amount ("역대급 300억") still passes. Use a tagger if either shows.
+const NAMED_BY = /^\s?[,·]|^\s*(?:\d[\d,.]*\s*(?:억|조)|시리즈|(?:raises?|secures?|closes?)\b)/i
 export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
   const kind = EVENTS.find(([words]) => words.test(ask))
   if (!kind) return 1
   if (kind[2].test(row.title)) return 0
+  if (!kind[1].test(row.title)) return 1
   const asked = nameWords(ask)
-  return kind[1].test(row.title) && nameWords(row.title).some(word => !NO_NAME.test(word) && !asked.some(one => alike(word, one))) ? 2 : 1
+  const named = [...row.title.matchAll(/[\p{L}\p{N}]+/gu)].some(word => NAMED_BY.test(row.title.slice(word.index + word[0].length))
+    && nameWords(word[0]).some(name => !NO_NAME.test(name.replace(/(에서|서)$/, '')) && !asked.some(one => alike(name, one))))
+  return named ? 2 : 1
 }
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']

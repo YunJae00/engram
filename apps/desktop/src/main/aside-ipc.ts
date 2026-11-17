@@ -3,7 +3,7 @@ import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-noti
 import { ipcMain } from 'electron'
 import { appendBotTurn, engineCwd, readBotTranscript, withoutSecrets, type Engine, type VaultPaths } from 'core'
 import { cleanLine, quickAnswerPrompt } from './first-line.js'
-import { quickQuestion, teamAsk } from './fast-lane.js'
+import { asideShape, quickQuestion, teamAsk, type AsideShape } from './fast-lane.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -29,21 +29,7 @@ export interface AsideIpcDeps {
 // 1.3 s for the voice leaves room for the two writes around it inside the 2 s the person waits.
 export const ASIDE_REPLY_MS = 1300
 export const ASIDE_REPLY_MAX = 60
-export type AsideShape = 'add' | 'replace' | 'remark' | 'question' | 'other'
-const REPLACES = /바꿔|바꾸|바꿀|말고|대신|아니라|아니고|\b(instead|rather than|switch|change (it |that |this )?to|make (it|that) )\b/i
-const ADDS = /추가|더해|포함|같이|도\s*(넣|해|찾|봐|알려|조사|알아|부탁)|[가-힣]도\s*[.!~]*$|\b(add|also|too|as well|include|plus)\b/i
-// A remark about the work (impatience, thanks), not a change to it: the work goes on as it was and its result still comes.
-// shortcut: short messages in a closed list only ("감사 보고서로 정리해줘" is a job); a remark it misses is handed to the turn as before, which costs time, not the request.
-// Each alternative takes its whole word, so what is left over after them is whatever else the message says.
-const REMARKS = /느려\S*|느리\S*|왜\s*이렇게|오래\s*걸\S*|답답\S*|언제\s*(돼|되|끝|나와)\S*|아직(이야|이에요|인가요|도\s*안\s*\S*|\s*멀었\S*|\s*안\s*(됐|끝|나)\S*)|고마워\S*|고맙\S*|감사(해|합니다|드려|드립니다)\S*|수고\S*|빨리(\s*좀)?(\s*해\s*(줘|주세요)\S*)?|\b(so slow|hurry up|how (much )?long(er)?|taking (so |too )?long|thanks|thank you)\b/gi
-const REMARK_FILLER = /^(아|어|음|좀|진짜|너무|정말|왜|근데|이렇게|요|네|is|it|its|this|that|so|still|very|you|a lot|much)$/i
-const REMARK_MAX = 25
-// A remark is nothing but the remark: thanks or impatience with a job behind it ("고마워, 대구 넣어줘") is a change and goes to the turn (c3a review r1 #1).
-function remark(text: string): boolean {
-  const rest = text.replace(REMARKS, ' ')
-  return [...text.trim()].length <= REMARK_MAX && rest !== text && rest.split(/[^가-힣a-z0-9]+/i).every(word => !word || REMARK_FILLER.test(word))
-}
-export function asideShape(text: string): AsideShape { return REPLACES.test(text) ? 'replace' : ADDS.test(text) ? 'add' : remark(text) ? 'remark' : /[?？]\s*$/.test(text) ? 'question' : 'other' }
+export { asideShape, type AsideShape }
 const FIXED: Record<AsideShape, [string, string]> = {
   add: ['그것도 넣을게요.', 'Adding that too.'],
   replace: ['바꿔서 볼게요.', 'Switching to that now.'],

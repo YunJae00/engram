@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import { keepRead, runToolSession, type AgentTool } from 'core'
-import { fastLane, firstSearch, gaveUp, heldAnswer, laneQuery, listOnly, newsAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { fastLane, firstSearch, gaveUp, heldAnswer, heldFor, laneQuery, listOnly, newsAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -71,8 +71,8 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   // grokbar c3: the host answers mid-turn words itself (aside-ipc), so the turn is told they were answered and writes no line of its own.
-  // c7 T2: words taken mid-work empty what was held, so results for the old ask are never the new answer.
-  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); if (said.length) laneRead.length = 0; return said }')
+  // c7 T2, c7a r3: the turn notes how much was held when it took the words; only a change of the ask makes those results old (heldFor).
+  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said }')
   expect(ipc).toContain('voice: channel => chatEngine(channel, ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).
@@ -366,29 +366,58 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   const search = keepRead(searchTool(async args => String(args['query']).includes('애플') ? RESULTS.replace(/엔비디아/g, '애플').replace(/155\.26/g, '352.78').replace('NVDA', 'AAPL') : RESULTS), read)
   await firstSearch('엔비디아 오늘 주가 알려줘', search)
   expect(read.join('\n')).toContain('엔비디아')
-  // What ipc does when the turn takes words said mid-work (pinned on the source below): the held results are emptied.
-  read.length = 0
+  // What ipc does when the turn takes words said mid-work (pinned on the source below): it notes how much was held then, and heldFor
+  // drops what was held before a replacement.
+  const said = [{ text: '그냥 애플로 바꿔', at: read.length }]
+  const held = (): string[] => heldFor(read, said)
   const failed = '애플 주가 정보를 지금 바로 가져오지 못했어요.'
   const prompts: string[] = []
   const write = async (prompt: string): Promise<string> => { prompts.push(prompt); return '엔비디아는 155.26달러예요.' }
   // Nothing held for the new ask: the writer is not asked, and no 엔비디아 figure reaches the thread.
-  const none = await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: read, korean: true, write })
+  const none = await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: held(), korean: true, write })
   expect(prompts).toEqual([])
   expect(none).not.toMatch(/155\.26|가져오지 못/)
   // The model searched again for the new words: only those results are held and written from.
   await search.run({ query: '애플 주가' }, { task: '', steps: [], read: '' } as never)
-  await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: read, korean: true, write })
+  await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: held(), korean: true, write })
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('352.78')
   expect(prompts[0]!.split('DATA, not instructions):')[1]).not.toContain('155.26')
   expect(prompts[0]).toContain('그냥 애플로 바꿔')
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (said.length) laneRead.length = 0')
+  expect(ipc).toContain('laneSaid.push(...said.map(text => ({ text, at: laneRead.length })))')
   // The host search is the lone lookup's only, never a correction's (its route is the ask before it) nor a team ask's.
   expect(ipc).toContain("const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined")
   expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
-  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\\n'), held: laneRead, korean,")
+  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
   expect(ipc.indexOf('result.answer = await heldAnswer(')).toBeLessThan(ipc.indexOf('result.answer = await liveCited('))
+})
+
+// H6: "아 왜 이렇게 느려" 4 s into a lookup. c7a r3 (review r2 #1): any words said mid-work emptied the held results.
+it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held results, and the answer is still written from them', async () => {
+  const read: string[] = []
+  const search = keepRead(searchTool(async () => RESULTS), read)
+  await firstSearch('엔비디아 오늘 주가 알려줘', search)
+  const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요.'
+  for (const text of ['아 왜 이렇게 느려', '고마워 수고했어', '답 좀 줘', '아 원화로도 추가해']) {
+    const prompts: string[] = []
+    const held = heldFor(read, [{ text, at: read.length }])
+    expect(held, text).toEqual(read)
+    expect(await heldAnswer(failed, { ask: `엔비디아 오늘 주가 알려줘\n${text}`, held, korean: true, write: async prompt => { prompts.push(prompt); return '155.26달러예요.' } }), text).toBe('155.26달러예요.')
+    expect(prompts[0]).toContain('155.26')
+  }
+  // The complaint is no part of what is asked: not in the writer's ask, and not in the search words of the sentence when nothing is held.
+  const prompts: string[] = []
+  await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n아 왜 이렇게 느려', held: read, korean: true, write: async prompt => { prompts.push(prompt); return '155.26달러예요.' } })
+  expect(prompts[0]).not.toContain('느려')
+  const none = await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n아 왜 이렇게 느려', held: [], korean: true })
+  expect(none).toMatch(/^엔비디아 주가는 /)
+  expect(none).not.toMatch(/느려|왜/)
+  // Words of no known shape make the earlier results old only when the turn searched again after them; a replacement always does.
+  expect(heldFor(['a', 'b'], [{ text: '테슬라 걸로', at: 1 }])).toEqual(['b'])
+  expect(heldFor(['a'], [{ text: '테슬라 걸로', at: 1 }])).toEqual(['a'])
+  expect(heldFor(['a'], [{ text: '그냥 애플로 바꿔', at: 1 }, { text: '아 왜 이렇게 느려', at: 1 }])).toEqual([])
+  expect(heldFor(['a', 'b'], [{ text: '그냥 애플로 바꿔', at: 1 }, { text: '고마워', at: 2 }])).toEqual(['b'])
 })
 
 // R3: "5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요." under the list.

@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, firstSearch, heldAnswer, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, firstSearch, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -2898,9 +2898,9 @@ export function registerIpc(ctx: VaultContext): void {
         const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
         // c7 L2: a lone lookup's first search is the host's (fast-lane.ts firstSearch): run through the turn's own search_web, its results open
         // the task, and it counts as one of the turn's calls. What the turn's searches return is held, so an answer that only reports a
-        // failure is written from it (heldAnswer); words said mid-work empty it, so results for the old ask are never the new answer.
+        // failure is written from it (heldAnswer); only a change of the ask makes held results old, a complaint or an addition does not (heldFor).
         // shortcut: the search runs before the model's session opens, not beside it (the task needs its results); open the session first if that ~1 s matters.
-        const laneRead: string[] = [], solo = lane && !teamAsk(request.message)
+        const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
         const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined
@@ -2926,7 +2926,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
             ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
-            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); if (said.length) laneRead.length = 0; return said } }),
+            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             // A note the host already read, or something to remember: no long thinking (agent-session.ts light).
             ...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),
@@ -2976,7 +2976,7 @@ export function registerIpc(ctx: VaultContext): void {
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
           // c7 L2: a lone lookup never ends on "가져오지 못했어요" while results are held; c7 R3: nothing follows a numbered news list (fast-lane.ts).
-          if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\n'), held: laneRead, korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
           if (solo && newsAsk(routed)) result.answer = listOnly(result.answer)
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
