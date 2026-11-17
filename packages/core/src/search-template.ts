@@ -229,16 +229,22 @@ export function datedWithYear(date: string, now = new Date()): string {
 // shared name alone made "카카오벤처스 뤼튼에 100억 투자" and "카카오벤처스 업스테이지에 200억 투자" one event; each names a party the other lacks.
 // A word left over that is no name ("확정") makes two reports of one thing on one day two rows; use a tagger if that shows.
 const PARTICLE = /(한다|했다|된다|됐다|으로|에서|에도|에게|까지|부터|이|가|은|는|을|를|의|에|와|과|도|로)$/
-const NEWS_WORD = /^(투자|유치|발표|공개|계획|추가|규모|시리즈\w*|라운드|단독|종합|속보|국내|한국|해외|글로벌|스타트업|기업|업체|회사|올해|내년|최대|신규|완료|성공|확대|진출|체결|내역|펀드|자금|조달|뉴스|기사|관련|기술|협력|강화|추진|한다|논란|기반|사업|서비스|개발|지원|시장|산업|플랫폼|솔루션|인공지능|ai|news|startups?|funding|raises?|invest\w*|series|round|million|billion|korean?)$/i
+const NEWS_WORD = /^(투자|유치|발표|공개|계획|추가|규모|시리즈\w*|라운드|단독|종합|속보|국내|한국|해외|글로벌|스타트업|기업|업체|회사|올해|내년|최대|신규|완료|성공|확대|진출|체결|내역|펀드|시드|프리\w*|브릿지|엔젤|후속|전략적?|주도|참여|단행|마무리|자금|조달|뉴스|기사|관련|기술|협력|강화|추진|한다|논란|기반|사업|서비스|개발|지원|시장|산업|플랫폼|솔루션|인공지능|ai|news|startups?|funding|raises?|invest\w*|series|round|seed|pre|bridge|angel|follow|million|billion|korean?)$/i
 const nameWords = (text: string): string[] => [...new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).map(word => word.length >= 3 ? word.replace(PARTICLE, '') : word).filter(word => word.length >= 2 && !/^\d/.test(word) && !NEWS_WORD.test(word)))]
 // An ending the particle list missed still matches by its start ("포인트투테크놀로지" in "포인트투테크놀로지스"), from three characters.
 const alike = (a: string, b: string): boolean => a === b || Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))
 export function sameEvent(a: SearchResult, b: SearchResult, query: string): boolean {
-  const asked = nameWords(query), parties = (row: SearchResult): string[] => nameWords(row.title).filter(word => !asked.some(one => alike(word, one)))
-  const mine = parties(a), theirs = parties(b)
+  const asked = nameWords(query), unasked = (words: string[]): string[] => words.filter(word => !asked.some(one => alike(word, one)))
+  const mine = unasked(nameWords(a.title)), theirs = unasked(nameWords(b.title))
   const shared = mine.filter(word => theirs.some(one => alike(word, one)))
   if (!shared.length) return false
   const held = (words: string[], other: SearchResult): number => { const hay = nameWords(`${other.title} ${other.snippet}`); return words.filter(word => hay.some(one => alike(word, one))).length }
+  // c6a r3: "카카오벤처스 뤼튼에 시드 투자" and "카카오벤처스 업스테이지에 시드 투자" shared two words, the investor and a funding word no list held.
+  // Who the money went to ("뤼튼에") settles it before any count: each row says one and the other row never mentions it, so they are two events.
+  // shortcut: only the 에 / 에게 ending marks who received; a headline without it ("뤼튼 시드 투자") is told apart by the word list alone.
+  const receivers = (row: SearchResult): string[] => unasked(row.title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 3 && /(에|에게)$/.test(word)).flatMap(nameWords))
+  const to = receivers(a), from = receivers(b)
+  if (to.length && from.length && !held(to, b) && !held(from, a)) return false
   return held(mine, b) >= 2 || held(theirs, a) >= 2 || shared.some(word => word.length >= 3) && !!a.date && a.date === b.date && (held(mine, b) === mine.length || held(theirs, a) === theirs.length)
 }
 export const withoutRepeats = (rows: SearchResult[], query: string): SearchResult[] => rows.filter((row, i) => !rows.slice(0, i).some(earlier => sameEvent(earlier, row, query)))

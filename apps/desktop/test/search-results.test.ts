@@ -275,6 +275,17 @@ it('c6: a news row that names the same parties as an earlier one is the same eve
   const wrtn = row('카카오벤처스 뤼튼에 100억 투자', '11월 17일'), upstage = row('카카오벤처스 업스테이지에 200억 투자', '11월 17일')
   expect(sameEvent(wrtn, upstage, query)).toBe(false)
   expect(withoutRepeats([wrtn, upstage], query)).toEqual([wrtn, upstage])
+  // c6a r3: the same pair with a funding word in both ("시드", "후속", a word no list holds): the investor and that word are not two shared parties.
+  for (const stage of ['시드', '후속', '프리A', '깜짝']) {
+    const one = row(`카카오벤처스 뤼튼에 ${stage} 투자`, '11월 17일'), other = row(`카카오벤처스 업스테이지에 ${stage} 투자`, '11월 17일')
+    expect(sameEvent(one, other, query)).toBe(false)
+    expect(withoutRepeats([one, other], query)).toEqual([one, other])
+  }
+  // Without the ending that marks who received it, the funding word is still no party.
+  expect(sameEvent(row('카카오벤처스, 뤼튼 시드 투자', '11월 17일'), row('카카오벤처스, 업스테이지 시드 투자', '11월 17일'), query)).toBe(false)
+  // One round reported twice stays one row: the second outlet names the same receiver, or mentions it under the title.
+  expect(sameEvent(row('카카오벤처스 뤼튼에 시드 투자', '11월 17일'), row('카카오벤처스, 뤼튼에 시드 투자 단행', '11월 17일'), query)).toBe(true)
+  expect(sameEvent(first, row('엔비디아, 모티프테크놀로지스에 투자', '11월 10일', '포인트투테크놀로지 등 4곳이 대상이다.'), query)).toBe(true)
   expect(withoutRepeats([first, a, second, b], query)).toEqual([first, a, b])
 })
 
