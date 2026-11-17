@@ -491,15 +491,33 @@ const NONE_OF_KIND = 'IT 쪽으로 딱 맞는 행사는 못 찾았어요.'
 const IT_WORDS = /(?<![A-Za-z])(?:IT|AI|SW|ICT|DX)(?![A-Za-z])|소프트웨어|개발|보안|클라우드|데이터|테크|스타트업|인공지능|반도체|게임|컨퍼런스|콘퍼런스|해커톤|밋업|서밋|세미나|포럼|엑스포/u
 const SHOW = /공연|콘서트|내한|뮤지컬|연극|오페라|발레|리사이틀|팬\s*미팅|재즈|클래식|미술|갤러리|축제|페스티벌|버스킹/u
 const offKind = (brief: string, line: string): boolean => { const plain = line.replace(/https?:\/\/\S+/g, ' '); return IT_WORDS.test(brief) && SHOW.test(plain) && !IT_WORDS.test(plain) }
-/** A list job's lines, less an item of another kind than asked and an item that stands only on a search page while another has a real one. */
+// c10b r3 (Codex r2: "12월 24일 재즈 공연\n강동아트센터 12월 24일 https://…" kept the venue line as a second event): the filter works on
+// items, not lines. An item starts at a top-level bullet or number, after a line that ends in its link (a read row is one line), or at a
+// line with a date the item so far does not carry; any other
+// line (venue, link, note) belongs to the item above it and goes or stays with it, unless it is itself of another kind (an undated show
+// under an IT item starts its own item, as it did when the filter read lines).
+const ITEM_MARK = /^(?:[-*•·]|\d{1,2}[.)])\s/
+const datesIn = (line: string): string[] => (line.match(new RegExp(DATED_LINE.source, 'g')) ?? []).map(day => day.replace(/\s+/g, ''))
+function itemsOf(lines: string[], apart: (line: string) => boolean): string[][] {
+  const items: string[][] = []
+  for (const line of lines) {
+    const item = items.at(-1), days = datesIn(line), known = new Set(item?.flatMap(datesIn))
+    if (!item || ITEM_MARK.test(line) || apart(line) || /https?:\/\/\S+\s*$/.test(item.at(-1)!) || days.length > 0 && !days.some(day => known.has(day))) items.push([line])
+    else item.push(line)
+  }
+  return items
+}
+/** A list job's items, less one of another kind than asked and one that stands only on a search page while another has a real one. */
 export function keptItems(brief: string, text: string): string {
   const ask = brief.split('\n')[0]!
   if (!LIST_ASK.test(ask)) return text
-  const said = (some: string[]): boolean => some.some(line => /[가-힣A-Za-z]/.test(line.replace(/https?:\/\/\S+/g, '')))
-  const lines = text.split('\n'), ofKind = lines.filter(line => !offKind(ask, line)), real = ofKind.some(line => addressesIn(line).some(url => !isSearchPage(url)))
-  if (!said(ofKind)) return said(lines) ? NONE_OF_KIND : text
-  const kept = ofKind.filter(line => !(real && addressesIn(line).length > 0 && addressesIn(line).every(isSearchPage)))
-  return (said(kept) ? kept : ofKind).join('\n')
+  const said = (some: string[][]): boolean => some.some(item => /[가-힣A-Za-z]/.test(item.join(' ').replace(/https?:\/\/\S+/g, '')))
+  const links = (item: string[]): string[] => item.flatMap(addressesIn)
+  const items = itemsOf(text.split('\n'), line => offKind(ask, line)), ofKind = items.filter(item => !offKind(ask, item.join(' ')))
+  const real = ofKind.some(item => links(item).some(url => !isSearchPage(url)))
+  if (!said(ofKind)) return said(items) ? NONE_OF_KIND : text
+  const kept = ofKind.filter(item => !(real && links(item).length > 0 && links(item).every(isSearchPage)))
+  return (said(kept) ? kept : ofKind).flat().join('\n')
 }
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)

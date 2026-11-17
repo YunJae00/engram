@@ -1818,13 +1818,15 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   expect(linksIn(said)).toHaveLength(3)
   expect(said.split('\n').filter(Boolean)).toHaveLength(4)
   // c7b r3: the written answer comes first, and its check passed 도윤's line with the find and its day left out (the reviewer's repro).
-  const [u0, u1, u2] = linksIn(said), written = (doyun: string): string => `이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.\n\n지민: 노션은 1월 모바일 AI 노트가 최근이에요. [출처](${u0})\n\n서연: 슬랙은 4월 AI 업데이트가 최근이에요. [출처](${u1})\n\n도윤: ${doyun}`
+  const [u0, u1, u2] = linksIn(said), written = (doyun: string): string => `이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.\n\n지민: 노션은 이번 주엔 새로 낸 게 없어요. 1월 모바일 AI 노트가 최근이에요. [출처](${u0})\n\n서연: 슬랙은 이번 주엔 새로 낸 게 없어요. 4월 AI 업데이트가 최근이에요. [출처](${u1})\n\n도윤: ${doyun}`
   const bare = written(`리니어는 새 발표 없네요. [출처](${u2})`)
   expect(checkedReport(bare, s6.c3, ctx)).toBeUndefined()
   // The day with no year reads as this year's; the find linked to another page is not the find.
   expect(checkedReport(written(`리니어는 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx)).toBeUndefined()
   expect(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${s6.c3[2]!.sources![0]})`), s6.c3, ctx)).toBeUndefined()
-  expect(nameLed(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx) ?? '')[2]).toBe(`도윤: 리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`)
+  // c10b r2 (Codex): a line that opens with the old find reads as this week's news on its own; the verdict leads, then the find.
+  expect(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx)).toBeUndefined()
+  expect(nameLed(checkedReport(written(`리니어는 이번 주엔 새로 낸 게 없어요. 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx) ?? '')[2]).toBe(`도윤: 리니어는 이번 주엔 새로 낸 게 없어요. 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`)
   // So the bubble the person gets from the bare one is the host's own, and the writer is handed the find to say.
   expect(nameLed(await writtenReport({ ask: ctx.ask, members: s6.c3, now: NOV17, write: async () => bare }))[2]).toBe(lines[2])
   expect(reportPrompt(ctx.ask, s6.c3, undefined, ctx)).toContain(`"latest":{"day":"작년 7월 9일","what":"노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시","page":"${u2}"}`)

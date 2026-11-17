@@ -1187,7 +1187,16 @@ const yearSaid = (text: string, out: { year?: number }, now: Date): boolean => !
 const SOON = /다음\s*달|내달|이번\s*주말|이번\s*주|금주|내일|올해|(?<![가-힣])곧(?![가-힣])/u
 const soldAsSoon = (line: string, out: Outside, now: Date): boolean => SOON.test(line) && !(out.year && yearSaid(line, out, now))
 // c7: a teammate says it their own way ("이번 주엔 조용해요. 제일 최근 건 1월에 나온 …").
+// NONE_YET's verdict words without the pointers at an old find ("가장 최근", "마지막"); "검색에서 확인되지 않았어요" stays the host's line.
+const NONE_SAID = /안 보여|안 보이|없어요|없었어요|없네요|없더라고요|없대요|안 나왔|조용/u
 const NONE_YET = /안 보여|안 보이|없어요|없었어요|없네요|없더라고요|없대요|안 나왔|조용|(?:제일|가장)\s*(?:최근|가까운)|마지막/u
+// c10b r2 (Codex): 지민's "노션의 가장 최근 업데이트는 10월 19일에 나온 …예요. 이번 주 새로 나온 건 없고, …" passed as honest: NONE_YET took
+// "가장 최근" as the verdict and read the whole text. A line about a part with nothing new in the time asked opens with that verdict;
+// "가장 최근 …" only points at the old find. The name or table cell in front of the line is skipped.
+const leadsNone = (text: string): boolean => {
+  const first = text.replace(/^\|[^|]*\|\s*/u, '').replace(/^[^\s:|]{1,10}:\s*/u, '').split(/(?<=[^\d\s][.!?])\s+/)[0] ?? ''
+  return NONE_SAID.test(first)
+}
 // stack-8 (c8b run C3, base code): "리니어만 새 소식이 있어요." stood over 도윤's "이번 주 리니어 신기능은 검색 결과로 확인이 안 되네요.": the
 // writer was told a part had news when its teammate's own first sentence said it had none. That first sentence, as they wrote it, decides.
 const NOT_FOUND = /못 찾|찾지 못|확인(?:이|은)?\s*안\s*(?:되|돼)|확인되지\s*않|나오지\s*않|안\s*나오/u
@@ -1246,7 +1255,7 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
       const text = delivered(m), topic = (topics.get(m.id) || m.topic || '').trim(), out = atWork(m) || m.empty ? undefined : outsideFor(m, now)
       // c10b C3: "슬랙은 이번 주엔 새로 낸 게 없더라고요!" is no find sold as this week's: soldAsSoon reads only the sentences that give a find.
       const own = text && !m.empty ? cellOf(read(m, text), topic) : '', finds = own.split(/(?<=[.!?])\s+/).filter(one => !SAYS_NONE.test(one)).join(' ')
-      const honest = !!out && NONE_YET.test(own) && yearSaid(own, out, now) && !soldAsSoon(finds, out, now)
+      const honest = !!out && leadsNone(own) && yearSaid(own, out, now) && !soldAsSoon(finds, out, now)
       return { m, topic, out, own, link: partLink(m, text), other: own ? '' : foreign(m, text), quiet: !atWork(m) && (!!m.empty || !!out || saysNoneFirst(m) || NONE_YET.test(own.split(/(?<=[.!?])\s+/)[0] ?? '')), honest }
     })
     const open = parts.filter(atWork).length, count = ALL_OF[parts.length] ?? '다들', quiet = spoke.every(one => one.quiet)
@@ -1467,7 +1476,8 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     return pages.length > 0 && !pages.some(url => rowOf(m).includes(`](${url})`))
   })) return undefined
   // A part still at work says so, and one that looked and found nothing new is never "못 찾았어요" (c5 C3).
-  if (parts.some(m => atWork(m) ? !rowOf(m).includes('아직 찾는 중') : !!m.empty && /못 찾았/.test(rowOf(m)))) return undefined
+  // c10b r2 (Codex): and its line opens by saying nothing is new ("리니어는 작년 7월 9일 … 제일 최근이에요." alone reads as this week's news).
+  if (parts.some(m => atWork(m) ? !rowOf(m).includes('아직 찾는 중') : !!m.empty && (/못 찾았/.test(rowOf(m)) || !leadsNone(rowOf(m))))) return undefined
   // c7b r3: "도윤: 리니어는 새 발표 없네요. [출처]" passed and was shown ahead of the host's own line, which gives the 작년 7월 9일 find.
   // A part that found nothing new and read a dated result naming it gives that result: its month, its year when not this one, its link.
   if (parts.some(m => {
@@ -1486,7 +1496,7 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     const own = outsideFor(m, now), from = handedFrom(m.brief), given = from && outsideOf(from.job, from.result, now)
     // c6b r3: the year anywhere in the text passed. It is said in the first line, and no line speaks of the find as coming up.
     // c7: with several teammates the lead may say once that nothing is new for all of them.
-    return (!!own && !(NONE_YET.test(spoken ? `${text.split('\n')[0]!} ${rowOf(m)}` : rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && (!yearSaid(text.split('\n')[0]!, given, now) || text.split('\n').some(line => soldAsSoon(line, given, now))))
+    return (!!own && !(leadsNone(rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && (!yearSaid(text.split('\n')[0]!, given, now) || text.split('\n').some(line => soldAsSoon(line, given, now))))
   })) return undefined
   if (table && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
   // c7: several teammates each say their own line, their part named in it (BAR C3 reads the last bubble for the products), under a

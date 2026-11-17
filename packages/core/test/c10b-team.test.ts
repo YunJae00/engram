@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
 import { checkedReport, mergedReport, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
-import { settleMember } from '../src/team-hire-tools.js'
+import { keptItems, settleMember } from '../src/team-hire-tools.js'
 
 // c10b: the named team's thread of the stack-9 run (runs/stack9-b685945e, tasks.json), read on its own day.
 const run = JSON.parse(readFileSync(new URL('./fixtures/c10b-stack9-team.json', import.meta.url), 'utf8')) as Record<'it' | 'notion' | 'slack' | 'linear', { brief: string; result: string; sources: string[] }>
@@ -57,7 +57,8 @@ test('c10b fix 2 and 3: nothing new this week is said, each line gives its lates
   const said = mergedReport(c3(), undefined, [], { ask: ASK, now: NOV17 }), [lead, ...lines] = said.split('\n\n')
   expect(lead).toBe('이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.')
   expect(lines.map(line => line.split(': ')[0])).toEqual(['지민', '서연', '도윤'])
-  expect(lines[0]).toMatch(/^지민: 노션의 가장 최근 업데이트는 2026년 10월 19일에 나온/)
+  // c10b r2 (Codex): the verdict leads; 지민's own text opened with the October find.
+  expect(lines[0]).toMatch(/^지민: 노션은 이번 주엔 새로 낸 게 없어요\. 최근엔 2026년 10월 19일에 나온/)
   expect(lines[1]).toMatch(/^서연: 슬랙은 이번 주\(11\/16~11\/22\)엔 새로 낸 게 없더라고요! 최근엔 2026년 11월 9일에 /)
   expect(lines[2]).toMatch(/^도윤: 리니어는 이번 주엔 새로 낸 게 없어요\. 최근엔 11월 12일에 BYOK 기능이 나왔어요\. /)
   // c10b r1 (Codex): every line says by itself that its part has nothing from this week.
@@ -89,4 +90,30 @@ test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an Engl
   expect(said).toContain('(https://www.coex.co.kr/a)')
   expect(said).toContain('(https://www.meetup.com/b)')
   expect(said).not.toMatch(/:\s*·|""/)
+})
+
+test('c10b r2 (Codex): an item that runs over several lines goes or stays whole', () => {
+  const brief = '이번 달 부산 AI 모임 목록 만들어줘'
+  // The show's venue line repeats its day, and the next show's address has no day at all: both go with their show.
+  const text = '1) 12월 3일 부산 AI 해커톤\n   벡스코 제2전시장 https://bexco.example/hack\n2) 12월 10일 바이올린 리사이틀\n   영화의전당 12월 10일 저녁 https://cinema.example/r\n12월 14일 오케스트라 공연\n   해운대 문화회관 https://hae.example/o\n- 12월 20일 클라우드 보안 밋업 https://meet.example/c'
+  const kept = keptItems(brief, text)
+  expect(kept).not.toMatch(/리사이틀|영화의전당|오케스트라|문화회관/)
+  expect(kept).toBe('1) 12월 3일 부산 AI 해커톤\n   벡스코 제2전시장 https://bexco.example/hack\n- 12월 20일 클라우드 보안 밋업 https://meet.example/c')
+  // Codex's own repro: the concert's second line no longer stands as a second event.
+  const m = member({ brief: '다음 달 서울 IT 행사 일정 정리', result: keptItems('다음 달 서울 IT 행사 일정 정리', '12월 2일 소프트웨이브 https://www.coex.co.kr/a\n12월 24일 재즈 공연\n강동아트센터 12월 24일 https://example.com/concert') })
+  const said = mergedReport([m], undefined, [], { ask: m.brief, now: NOV17 })
+  expect(said).not.toMatch(/강동아트센터|두 개/)
+})
+
+test('c10b r2 (Codex): a line for a part with nothing new in the time asked opens with that, whatever the teammate wrote first', () => {
+  const ASK = '이번 주 경쟁사 3곳 신기능 조사해서 알려줘'
+  const parts = (['notion', 'slack', 'linear'] as const).map((k, i) => member({ id: k, role: ['지민', '서연', '도윤'][i]!, topic: ['노션', '슬랙', '리니어'][i]!, brief: run[k].brief, result: run[k].result, sources: run[k].sources }))
+  const lines = mergedReport(parts, undefined, [], { ask: ASK, now: NOV17 }).split('\n\n').slice(1)
+  for (const line of lines) expect(line.replace(/^[^:]+:\s*/, '').split(/(?<=[.!?])\s+/)[0]).toMatch(/이번 주.*없/)
+  // Another wording: the old find first, the verdict second. The verdict leads, and the old find keeps its day.
+  const old = member({ id: 'f', role: '하린', topic: '피그마', brief: '이번 주 피그마 새 기능 찾아줘', result: '피그마의 제일 최근 릴리스는 11월 3일 나온 자동 레이아웃 개선이에요. 이번 주에는 발표가 없었어요. https://www.figma.com/release-notes' })
+  const other = member({ id: 'g', role: '태오', topic: '캔바', brief: '이번 주 캔바 새 기능 찾아줘', result: '캔바는 11월 18일에 AI 사진 편집을 냈어요. https://www.canva.com/newsroom' })
+  const harin = mergedReport([old, other], undefined, [], { ask: '이번 주 피그마랑 캔바 새 기능 찾아줘', now: NOV17 }).split('\n\n').find(line => line.startsWith('하린:'))!
+  expect(harin).toMatch(/^하린: 피그마는 이번 주엔 새로 낸 게 없어요\./)
+  expect(harin).toContain('11월 3일')
 })
