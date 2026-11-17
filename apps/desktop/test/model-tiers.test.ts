@@ -342,7 +342,7 @@ describe('instant first line', () => {
     expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('names the first concrete thing')
     expect(firstLinePrompt('엔비디아 오늘 주가 알려줘', true)).toContain('Do not restate the request')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain('fallback: fallbackLine(request.message, threadKorean(request.message, request.history ?? [])), show:')
+    expect(ipc).toContain('fallback: said => fallbackLine(request.message, threadKorean(request.message, request.history ?? []), said), show:')
   })
 
   it('drops a line that misses the budget', async () => {

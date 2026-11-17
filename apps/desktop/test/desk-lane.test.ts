@@ -36,7 +36,7 @@ describe('desk lane', () => {
     expect(DESK_NOTE).toContain('ONE keep_in_mind call (a correction replaces the old fact)')
     expect(DESK_NOTE).toContain('never that it was saved')
     // grokbar cycle 3 F1: a table of all 20 file names cost ~8 s; the answer is the count per kind (rule 6's own example).
-    expect(DESK_NOTE).toContain('one line per folder that names the folder and how many files went into it')
+    expect(DESK_NOTE).toContain('how many files went into each folder')
   })
 
   it('runs on the smart tier with the shell kept, and a plain kind gets only its own tools', () => {
@@ -139,8 +139,9 @@ describe('document and tidy answers', () => {
     expect(DESK_NOTE).toContain('결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when')
     expect(DESK_NOTE).toContain('the same sentence never appears under both')
     expect(DESK_NOTE).toContain('no section says it is the same as another ("위와 동일")')
-    expect(DESK_NOTE).toContain('- PDF 폴더: 6개\n- 이미지 폴더: 4개')
-    expect(DESK_NOTE).toContain('a markdown list with one line per folder that names the folder')
-    expect(DESK_NOTE).toContain('no table and no file names unless they ask')
+    // c6c F1: the count per folder is one sentence now, not a list (GROKBOT rule 6).
+    expect(DESK_NOTE).toContain('PDF 6개, 이미지 4개, 문서 3개')
+    expect(DESK_NOTE).toContain('what was done and how it was grouped, then how many files went into each folder')
+    expect(DESK_NOTE).toContain('File names are given only when they ask for them')
   })
 })

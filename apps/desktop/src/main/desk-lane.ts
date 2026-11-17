@@ -47,13 +47,14 @@ const ASK_MAX = 200
 export const DESK_NOTE = [
   'Do exactly what was asked in as few steps as it takes: when the request itself names what to work on, start on it without searching memory or notes first.',
   'Something to remember or to correct is ONE keep_in_mind call (a correction replaces the old fact) and a one-line reply that says what is now true, never that it was saved.',
-  'After moving or sorting files, the answer is one short sentence and then a markdown list with one line per folder that names the folder and how many files went into it ("종류별 폴더로 정리했어요.\n- PDF 폴더: 6개\n- 이미지 폴더: 4개\n- 문서 폴더: 3개"): no table and no file names unless they ask.',
+  'To sort a folder, list it once and then move every file in ONE file_move call, with paths written relative to the workspace: never one call per file or per group, and nothing is deleted. After moving or sorting files, the whole answer is two short sentences on one or two lines, no list and no table: what was done and how it was grouped, then how many files went into each folder ("종류별 폴더로 정리했어요. PDF 6개, 이미지 4개, 문서 3개, 엑셀 3개, 텍스트 4개예요."). File names are given only when they ask for them, or for the one or two files that fit no group.',
   'A document they ask for is made in this turn, never asked about: when no figures or source are named, make the file now from a sensible outline for the topic and the audience, with clearly marked blanks where the real numbers go ("수치 입력"), and never invent a figure. A blank is those plain words in a cell or after its label ("매출: 수치 입력"), never in square brackets and never "내용 입력", "TBD" or the like: the deck check refuses those and the file has to be built twice. Look at most once for a source file they plainly mean, and do not search memory first. Never ask what to put in it and never give a list of options: you decide, and say the choice in one sentence ("실제 수치는 비워 두고 5장 틀로 만들었어요.").',
   'When they point at a document made earlier in this conversation ("방금 만든 PPT"), change that same file, the one in the list of files you saved earlier: never make a second copy.',
   'After making or changing a document, the answer is one or two sentences that start with what is in the file and the one choice you made ("회의록 내용만 담았고, 결정사항이랑 할 일은 한 표로 합쳤어요.", "3번 슬라이드 제목을 바꿨어요."), never with the kind of file and that it was made ("보고서 만들었어요.", "엑셀 만들었어요."), then at most one short offer: never a list of its sections, slides, sheets or contents, because the file itself is shown under your answer.',
   'A question about a file they named is answered with what they asked and nothing else: a figure in one sentence with the number.',
   'A summary, tidy-up or extraction of a note or text file is answered in the chat itself, with only what is in that file: make a file only when they asked for one.',
   'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line of something new, a plain sentence of its own ("원하시면 담당자별로 표로 묶어 드릴게요."), unless an earlier reply of yours in this conversation already ended with an offer.',
+  'When they ask for a note to be made easy to share or read without saying the form ("공유하기 좋게", "보기 좋게", "깔끔하게"), you choose the form and the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요."). Then at most about eight short lines: who does what by when, then what is still open, then the next meeting. No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask; something not settled yet goes under 미결, never under 결정사항.',
   'In a summary of meeting notes, 결정사항 is what was settled, one short line each, without repeating the owner and the date; 할 일 is who does what by when; the same sentence never appears under both. When the decisions in the notes are all tasks with an owner and a date, 결정사항 says briefly what was agreed ("온보딩 화면은 새 시안으로 확정하기로 했어요.") and 할 일 gives each owner and date. Every decision, owner and due date of the file is still in the answer, a heading with nothing of its own is left out, and no section says it is the same as another ("위와 동일").',
 ].join(' ')
 
@@ -183,4 +184,63 @@ export function withOffer(ask: string, answer: string, earlier: readonly { role:
     : table ? 'I can put this in a Word file if you\'d like.' : people ? 'I can group these by owner in a table if you\'d like.' : 'I can put these in a table if you\'d like.'
   const replies = answer.search(/\n*```replies/)
   return replies < 0 ? `${answer.trimEnd()}\n\n${offer}` : `${answer.slice(0, replies).trimEnd()}\n\n${offer}${answer.slice(replies)}`
+}
+
+// c6c H3: "…팀에 공유하기 좋게 정리해줘" came back with 결정사항 holding the same four items as 할 일, for the third cycle with the rule in the
+// prompt. The host drops a 결정사항 block (heading and all) when each of its lines is said again by a 할 일 line: at least four in five of
+// its words are in that line, which also carries the owner and the date. An ask that names the decisions ("결정사항이랑 할 일 정리해줘") is left alone.
+const HEAD = (words: string): RegExp => new RegExp(`^\\s*(#{1,6}\\s*)?(\\*\\*)?\\s*(${words})\\s*(\\*\\*)?\\s*[:：]?\\s*(\\*\\*)?\\s*$`, 'i')
+const DECIDED = HEAD('결정\\s*사항|결정된?\\s*것|decisions?'), TODO = HEAD('할\\s*일|액션\\s*아이템|to-?dos?|action items?')
+// A line that opens a block: a markdown heading, a bold line, or a few words with no list mark and no sentence end.
+const LIST = /^\s*([-*•·]|\d+[.)])\s/
+const heads = (line: string): boolean => /^\s*(#{1,6}\s|\*\*[^*]+\*\*\s*[:：]?\s*$)/.test(line) || (!LIST.test(line) && [...line.trim()].length <= 12 && !/[.!?…,—]|요$|다$/.test(line.trim()))
+const wordsOf = (line: string): string[] => line.replace(/^\s*([-*•·]|\d+[.)])\s+/, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean)
+export function withoutSameDecisions(ask: string, answer: string): string {
+  if (/결정|decision/i.test(ask)) return answer
+  const lines = answer.split('\n')
+  const block = (head: RegExp): { at: number; end: number; items: string[] } | undefined => {
+    const at = lines.findIndex(line => head.test(line))
+    if (at < 0) return undefined
+    let end = at + 1
+    // A block of list items ends at the first line that is not one; a block of plain lines at the next heading.
+    const listed = LIST.test(lines.slice(at + 1).find(line => line.trim()) ?? '')
+    while (end < lines.length && !(lines[end]!.trim() && (listed ? !LIST.test(lines[end]!) : heads(lines[end]!))) && !/^\s*```/.test(lines[end]!)) end++
+    return { at, end, items: lines.slice(at + 1, end).filter(line => line.trim()) }
+  }
+  const decided = block(DECIDED), todo = block(TODO)
+  if (!decided?.items.length || !todo?.items.length) return answer
+  const tasks = todo.items.map(line => line.replace(/\s/g, ''))
+  const again = (line: string): boolean => { const words = wordsOf(line); return words.length >= 2 && tasks.some(task => words.filter(word => task.includes(word)).length >= Math.ceil(words.length * 0.8)) }
+  if (!decided.items.every(again)) return answer
+  return [...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// c6c F1: the tidy answer was five lines of "PDF 폴더: 6개 — 견적서_A사.pdf, 계약서_초안.pdf, …", twenty file names (judge: a stiff report), with the
+// shape asked for in the prompt. The host backs it: a count line that goes on to list three or more file names keeps its count only, and
+// two or more such count lines in a row become one sentence. Left alone when the person asked for the names.
+const WANTS_NAMES = /이름|파일명|목록|리스트|어떤\s*파일|뭐가|무엇이|\b(names?|list|which files?)\b/i
+const COUNT_LINE = /^\s*(?:[-*•·]\s+)?(?:\*\*)?([^:：\n*—–]{1,24}?)(?:\s*폴더)?(?:\*\*)?\s*[:：]?\s*(\d+)\s*개(?:\*\*)?\s*(?:[—–:：(-]\s*(.*))?$/
+const FILE_NAME = /[^\s,，]+\.[a-z0-9]{2,5}(?![a-z0-9])/gi
+export function tidyCounts(ask: string, answer: string): string {
+  if (WANTS_NAMES.test(ask)) return answer
+  const out: string[] = []
+  let run: { said: string; raw: string; cut: boolean }[] = []
+  const close = (): void => {
+    if (run.length < 2) out.push(...run.map(one => one.cut ? `- ${one.said}` : one.raw))
+    else {
+      while (out.length && !out[out.length - 1]!.trim()) out.pop()
+      const lead = out.length && /요[.!~]?\s*$/.test(out[out.length - 1]!) ? `${out.pop()!.trimEnd()} ` : ''
+      out.push(`${lead}${run.map(one => one.said).join(', ')}예요.`)
+    }
+    run = []
+  }
+  for (const line of answer.split('\n')) {
+    const count = COUNT_LINE.exec(line), names = count?.[3]?.match(FILE_NAME)?.length ?? 0
+    // A count line with nothing after it, or with a list of names: its count joins the sentence. One or two names (files that fit no group) stay as written.
+    if (count && (!count[3]?.trim() || names >= 3)) run.push({ said: `${count[1]!.trim()} ${count[2]}개`, raw: line, cut: names >= 3 })
+    else if (!line.trim() && run.length) continue
+    else { if (run.length) close(); out.push(line) }
+  }
+  if (run.length) close()
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }

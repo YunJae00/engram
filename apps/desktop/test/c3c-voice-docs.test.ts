@@ -427,12 +427,12 @@ describe('desk tool menus', () => {
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {
     // stack-3 (c3c run): F1 "정리했어요. PDF 6개, 이미지 4개, …" failed BAR's "summary list" and the judge could not tell where the files went;
     // H4 closed on "(참고: …)" with no offer; Q3 opened with "회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요."
-    expect(DESK_NOTE).toContain('one line per folder that names the folder and how many files went into it')
-    expect(DESK_NOTE).toContain('no table and no file names unless they ask')
+    expect(DESK_NOTE).toContain('how many files went into each folder')
+    expect(DESK_NOTE).toContain('File names are given only when they ask for them')
     // c5c H4: the desk note asks for the one offer after an extraction (the model did not follow COLLEAGUE_RULE alone), and never a list of offers.
     expect(DESK_NOTE.match(/exactly one short offer line/g)).toHaveLength(1)
     expect(SHORT_QUESTION_NOTE).toContain('never a sentence that restates the ask or says what you are about to write')
-    expect(DESK_NOTE).toContain('no table and no file names unless they ask')
+    expect(DESK_NOTE).toContain('File names are given only when they ask for them')
     expect(DESK_NOTE).toContain('answered in the chat itself')
     expect(DESK_NOTE).toContain('with only what is in that file')
   })
