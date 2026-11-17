@@ -172,7 +172,8 @@ it('an owed late part survives a restart: its report comes once if it had ended,
     if (died) await updateTask(after.paths, id, t => { failOnRestart(t.team!, new Date().toISOString()) })
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(async () => expect(await first(after)).toMatchObject({ state: 'done', team: { lateDone: true } }))
-    expect((await first(after)).result).toBe(died ? '슬랙(서연): 끝까지 못 찾았어요.' : '슬랙(서연): 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
+    // c12a B1: alone in its own report, the part is said in a sentence (its name in the person's words and who), not a "part(name):" label.
+    expect((await first(after)).result).toBe(died ? '슬랙은 서연이 끝까지 못 찾았어요.' : '슬랙은 서연이 찾아 왔어요. 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
     // Once: a second request starts nothing.
     await after.runner.report(id, 'bot-bot-1')
     await vi.waitFor(() => expect(after.runner.activeChannels()).toEqual([]))

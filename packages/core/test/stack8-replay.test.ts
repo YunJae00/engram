@@ -46,7 +46,8 @@ test('R2: price and date lines keep no empty "(출처: )", no "… — 출처" t
   expect(out).not.toMatch(/\(출처[:：]?\s*(출처\s*)?\)|— 출처|보고드려요|[一-鿿぀-ヿ]/u)
   // No link is named 출처, even where the teammate gave that word as the site.
   expect(out).not.toMatch(/\[출처\]/)
-  for (const name of ['아이폰18', '갤럭시S27', '픽셀11']) expect(out).toContain(`(${name})`)
+  // c12a B1: these members have no part name, so each is led by its teammate in a sentence, not "(name)".
+  for (const name of ['아이폰18', '갤럭시S27', '픽셀11']) expect(out).toContain(name)
   expect(out).not.toMatch(/(?<!\]\()https?:\/\//)
   const hosts = [...out.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(found => new URL(found[1]!).host.replace(/^(?:www|blog|smartstore)\./, ''))
   expect(new Set(hosts).size).toBe(3)
