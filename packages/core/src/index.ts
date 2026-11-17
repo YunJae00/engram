@@ -99,6 +99,7 @@ export { dueNow, guessSchedule, isSchedule, localDay, scheduleOver, type Schedul
 export { scheduleTool, scheduleWords, plainSchedule, type ScheduleDeps } from './schedule-tools.js'
 export { teamTool } from './team-tools.js'; export * from './team-hire-tools.js'
 export * from './company-tools.js'
+export * from './item-check.js'
 export { backgroundOpen, datedText } from './delegated-tasks.js'
 export { askKey, repeatedAsk, sameAsk, type PastAsk, type RepeatVerdict } from './repeat.js'
 export {

@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -142,6 +142,9 @@ export function teamRunner(deps: {
       const scale = hardMs / LOOKUP_HARD_MS, reserveMs = ANSWER_RESERVE_MS * scale
       const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
       let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
+      // stack-12 (T3): no wait after a teammate's own work (the stand-in report, the kind check) outlives a stop or a steer. The hard
+      // limit aborts the same signal, but it sets timedOut first and its stand-in keeps its grace.
+      const stopped = new Promise<undefined>(resolve => control.signal.addEventListener('abort', () => { if (!timedOut) resolve(undefined) }, { once: true }))
       const readSome = (): boolean => kept.length > 0 || [...sources].some(url => !isSearchPage(url))
       const answerNow = () => {
         if (control.signal.aborted || !readSome()) return
@@ -237,11 +240,11 @@ export function teamRunner(deps: {
       if (structured && !data && written) {
         let wait: ReturnType<typeof setTimeout> | undefined
         const by = Math.max(0, (startedAt ?? Date.now()) + hardMs + ANSWER_GRACE_MS * scale - Date.now())
-        data = reportData(await Promise.race([written, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
+        data = reportData(await Promise.race([written, stopped, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
         clearTimeout(wait)
       }
       // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
-      data = await kindChecked(data, me.brief, timedOut || control.signal.aborted ? undefined : quick)
+      data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : (prompt, ms) => Promise.race([quick(prompt, ms), stopped]))
       // c12a B3: a listing page among the facts is taken apart in one more round while the teammate's time allows it (the hard stop still
       // applies); otherwise it stays, labeled where it is shown.
       const pages = me.lookup && !timedOut && !control.signal.aborted ? listingPages(data) : []

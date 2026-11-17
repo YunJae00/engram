@@ -21,7 +21,7 @@ const verdictFor = (raw: string) => {
 
 describe('c12b: the item verdict on a counted list', () => {
   it('marks a second report of one funding round and a hackathon, and the gap asks for two replacements from a new search', async () => {
-    const quick = verdictFor('{"fit":[1,2,4],"same":[[1,2]]}')
+    const quick = verdictFor('{"keep":[1,2,4],"same":[[1,2]]}')
     const off = await judgeItems(draft, [FINTECH], quick.write)
     // One call; the ask and every item go in as data, each with its link.
     expect(quick.prompts).toHaveLength(1)
@@ -39,7 +39,7 @@ describe('c12b: the item verdict on a counted list', () => {
     expect(gap).toContain('from a new search in other words')
     // After the round: four distinct fitting items, no gap and no shortfall line.
     const after = [draft.split('\n')[0], draft.split('\n')[3], '3. 토스플레이스, 시리즈C 500억 원 유치 (11월 13일) — [매일경제](https://mk.example/b1)', '4. 핀다, 200억 원 투자 유치 (11월 15일) — [조선비즈](https://cb.example/b2)'].join('\n')
-    const again = await judgeItems(after, [FINTECH], verdictFor('{"fit":[1,2,3,4],"same":[]}').write)
+    const again = await judgeItems(after, [FINTECH], verdictFor('{"keep":[1,2,3,4],"same":[]}').write)
     expect(listGap(after, [FINTECH], [], NOW, again)).toBeUndefined()
     expect(listShortfall(after, [FINTECH], [], NOW, again)).toBeUndefined()
   })
@@ -49,7 +49,7 @@ describe('c12b: the item verdict on a counted list', () => {
     const second = draft.split('\n').slice(0, 1).concat(draft.split('\n')[3]!, '3. 토스플레이스, 시리즈C 500억 원 유치 (11월 13일) — [매일경제](https://mk.example/b1)', '4. 핀다, 200억 원 투자 유치 (11월 15일) — [조선비즈](https://cb.example/b2)').join('\n')
     const engine = { id: 'mock', detect: async () => ({ installed: true, loggedIn: true }), runTools: async (job: ToolSessionJob): Promise<ToolSessionResult> => { prompts.push(job.prompt); return { answer: prompts.length === 1 ? draft : second } } } as unknown as Engine
     const search: AgentTool = { name: 'search_web', description: 'Search', argsSchema: {}, run: async () => 'results' }
-    const quick = async (prompt: string) => prompt.includes('토스플레이스') ? '{"fit":[1,2,3,4],"same":[]}' : '{"fit":[1,2,4],"same":[[1,2]]}'
+    const quick = async (prompt: string) => prompt.includes('토스플레이스') ? '{"keep":[1,2,3,4],"same":[]}' : '{"keep":[1,2,4],"same":[[1,2]]}'
     const result = await runToolSession({ engine, workdir: 'C:/tmp' as EngineCwd, tools: [search] }, FINTECH, { lookup: true, deadlineMs: 5_000, recheck: async answer => listGap(answer, [FINTECH], [], NOW, await judgeItems(answer, [FINTECH], quick)) })
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toContain('item 3 (counting the listed items from the top) is not what they asked for')
@@ -64,10 +64,10 @@ describe('c12b: the item verdict on a counted list', () => {
     expect(await judgeItems(answer, [ask], hung, 50)).toBeUndefined()
     expect(Date.now() - started).toBeLessThan(1000)
     expect(await judgeItems(answer, [ask], async () => 'fit: 1, 2')).toBeUndefined()
-    expect(await judgeItems(answer, [ask], async () => '{"fit":[1,9]}')).toBeUndefined()
+    expect(await judgeItems(answer, [ask], async () => '{"keep":[1,9]}')).toBeUndefined()
     expect(await judgeItems(answer, [ask], undefined)).toBeUndefined()
     // No count asked: no model call at all.
-    const quick = verdictFor('{"fit":[1],"same":[]}')
+    const quick = verdictFor('{"keep":[1],"same":[]}')
     expect(await judgeItems(answer, ['부산 전시회 알려줘'], quick.write)).toBeUndefined()
     expect(quick.prompts).toHaveLength(0)
     expect(listGap(answer, [ask], [], NOW, undefined)).toBe(listGap(answer, [ask], [], NOW))
@@ -95,7 +95,7 @@ describe('c12b: the item verdict on a counted list', () => {
     const off = offLinks(lines, { fit: [2, 3], same: [[1, 2]] })
     expect([...off.unfit]).toEqual(['https://p.example/1'])
     expect(off.repeat.size).toBe(0)
-    expect(await itemCheck('x', lines.slice(0, 1), async () => '{"fit":[1],"same":[]}')).toBeUndefined()
+    expect(await itemCheck('x', lines.slice(0, 1), async () => '{"keep":[1],"same":[]}')).toBeUndefined()
   })
 
   it('ipc asks the verdict for the recheck and the delivered answer, before liveCited, and the shortfall line uses it', () => {
@@ -110,7 +110,7 @@ describe('c12b: the item verdict on a counted list', () => {
   it('a verdict is reused only for the same asks and items: a changed ask on the same lines is judged afresh', async () => {
     const lines = '1. 청주 공방 체험 (11월 3일) [a](https://a.example/1)\n2. 청주 도자기 축제 (11월 5일) [b](https://b.example/2)'
     const asked: string[] = []
-    const verdicts = itemVerdicts(async prompt => { asked.push(prompt); return prompt.includes('축제 2개로') ? '{"fit":[2],"same":[]}' : '{"fit":[1,2],"same":[]}' })
+    const verdicts = itemVerdicts(async prompt => { asked.push(prompt); return prompt.includes('축제 2개로') ? '{"keep":[2],"same":[]}' : '{"keep":[1,2],"same":[]}' })
     const first = await verdicts(lines, ['청주 공방 체험 2개'])
     expect(await verdicts(lines, ['청주 공방 체험 2개'])).toBe(first)
     expect(asked).toHaveLength(1)
