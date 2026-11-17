@@ -6,6 +6,8 @@ export const FIRST_LINE_BUDGET_MS = 1500
 // grokbar B6 r4: the small model said NONE (~0.6 s) or was late on Q2, M1, M2, F2, D1, L1 and L3, and the first text was the answer at 3-12 s.
 // From this moment a line the host already knows is said instead, so every turn opens within 2 s.
 export const FIRST_LINE_FALLBACK_MS = 1300
+// ACK_MAX: an acknowledgement is one sentence of at most 60 characters (GROKBOT rule 1); LINE_MAX is for a whole small-talk or quick answer.
+export const ACK_MAX = 60
 const LINE_MAX = 140, ASK_MAX = 2000, CHAT_MIN = 8, PLAIN_MAX = 40
 // The whole message is small talk, give or take a friendly tail: "thanks!", "고마워요 잘 됐어요", "고마워 수고했어" - never "ok, draft the report".
 // grokbar H6: "고마워 수고했어" was not small talk (no 수고했어 in the tail) and got "바로 처리할게요." plus five sentences from the work model.
@@ -78,7 +80,7 @@ const splitLine = (message: string, korean: boolean): string => teamAsk(message)
 export function firstLinePrompt(message: string, korean: boolean, said: readonly string[] = []): string {
   return [
     'You write the assistant\'s first line. The person just asked their assistant, a capable coworker who has tools, for the request below.',
-    `Reply with ONE short sentence in ${korean ? 'Korean, polite -요 form ending like -ㄹ게요 (never -습니다),' : 'the language of the request'} the way a coworker answers on a messenger, that names the first concrete thing the assistant now does for it${korean ? ' ("지금 시세 확인할게요.", "회의록부터 읽어볼게요.", "종류별 폴더로 옮길게요.", "셋한테 나눠 맡길게요.")' : ' ("Checking the price now.", "Reading the notes first.", "Sorting them into folders by type.")'}.`,
+    `Reply with ONE short sentence of at most 40 characters in ${korean ? 'Korean, polite -요 form ending like -ㄹ게요 (never -습니다),' : 'the language of the request'} the way a coworker answers on a messenger, that names the first concrete thing the assistant now does for it${korean ? ' ("지금 시세 확인할게요.", "회의록부터 읽어볼게요.", "종류별 폴더로 옮길게요.", "셋한테 나눠 맡길게요.")' : ' ("Checking the price now.", "Reading the notes first.", "Sorting them into folders by type.")'}.`,
     `The assistant can search the web, read and change the person's files and notes, make documents and hand work to its team. Name one plain step and be decisive. When the request is for a document (a report, a spreadsheet, slides), the step is the first thing done with what the request names, never the document plus "-해볼게요" or "-만들게요"${korean ? ' ("회의록 내용부터 추릴게요.", "매출 파일부터 볼게요.", "장표 흐름부터 잡을게요."; never "보고서 작성해볼게요.", "엑셀 파일 만들어볼게요.")' : ' ("Pulling the key points from the notes first.", "Opening the sales file first."; never "Making the report now.")'}. Do not restate the request. Do not echo the request back or open with a filler such as "네, 알겠습니다". Do not name tools or anything technical. Do not claim anything is done or found. No promise about time. No question, greeting, emoji or quotation marks.`,
     `When the person asks for the work to be split or says who does what${korean ? ' ("각각 따로", "나눠서", "봇 3개", "지민, 서연한테")' : ''}, the line says the split in their words${korean ? ' ("셋이 나눠서 알아볼게요.", "봇들한테 나눠 맡길게요.")' : ' ("Splitting this three ways now.")'}, never a plain "looking into it".`,
     ...(said.length ? [`Your first lines earlier in this conversation: ${said.slice(-2).map(line => JSON.stringify(line)).join(', ')}. Do not reuse their ending or their sentence frame: name this job's own first step in other words${korean ? ' ("슬라이드 순서부터 잡을게요.", "월별로 먼저 더해 볼게요.")' : ''}.`] : []),
@@ -136,9 +138,9 @@ export const talkOnly = (message: string, answer: string, korean: boolean): stri
 export const plainTalk = (message: string, korean: boolean): string =>
   /고마|고맙|감사|수고|고생|잘 ?했|최고|대박|멋져|훌륭|\b(thanks|thank you|thx|ty)\b/i.test(message) ? korean ? '별말씀을요.' : 'Anytime.' : /\bbye\b/i.test(message) ? korean ? '네, 들어가세요!' : 'See you!' : korean ? '안녕하세요!' : 'Hi!'
 
-export function cleanLine(raw: string): string | undefined {
+export function cleanLine(raw: string, max = LINE_MAX): string | undefined {
   const line = withoutHelpDesk(raw.trim().replace(/^(["'“‘])([^]*)(["'”’])$/, '$2').trim())
-  if (!line || /^none\.?$/i.test(line) || line.includes('\n') || line.includes('```') || [...line].length > LINE_MAX) return undefined
+  if (!line || /^none\.?$/i.test(line) || line.includes('\n') || line.includes('```') || [...line].length > max) return undefined
   return line
 }
 
@@ -194,7 +196,8 @@ export function beginFirstLine(ask: FirstLineAsk & { engine(): Promise<Voice | u
     if (!turn.open || settled) return
     const raw = await engine.quick(!talk ? firstLinePrompt(ask.message, ask.korean, said) : skip ? smallTalkPrompt(ask.message, ask.korean) : ask.told ? toldPrompt(ask.message, ask.korean, context) : quickAnswerPrompt(ask.message, ask.korean), { workdir: ask.workdir, timeoutMs: FIRST_LINE_BUDGET_MS })
     // A greeting's reply that was only a help-desk sentence is a plain greeting, not a wait for the main model.
-    const line = cleanLine(raw) ?? (skip && raw.trim() && !/^none\.?$/i.test(raw.trim()) && !withoutHelpDesk(raw.trim()) ? plainTalk(ask.message, ask.korean) : undefined)
+    // c6c r3: a 64-character voice line was shown as the acknowledgement; one over ACK_MAX is no line, so the host's own is shown.
+    const line = cleanLine(raw, talk ? undefined : ACK_MAX) ?? (skip && raw.trim() && !/^none\.?$/i.test(raw.trim()) && !withoutHelpDesk(raw.trim()) ? plainTalk(ask.message, ask.korean) : undefined)
     if (!turn.open || settled) return
     if (!line) return settle('none')
     if (talk) { turn.open = false; log({ channel: ask.channel, outcome: 'answered', ms: Date.now() - started }); return answer(line) }

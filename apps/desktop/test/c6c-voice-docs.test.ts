@@ -7,7 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
 import { DESK_NOTE, deskKind, shareReady, tidyCounts, withOffer, withoutSameDecisions } from '../src/main/desk-lane.js'
 import { laneFirstLine, SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
-import { beginFirstLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
+import { ACK_MAX, beginFirstLine, cleanLine, endFirstLine, fallbackLine, firstLinePrompt, firstLineReady, laneLine, quickAnswerPrompt, saidBefore, splitAsk } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const tail = (line: string) => line.replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/).slice(-2).join(' ')
@@ -60,6 +60,26 @@ describe('the first line does not repeat itself in a thread (D3, D4, D5)', () =>
     // With nothing said yet the line is the one it always was.
     expect(fallbackLine('이 글 요약해줘', true)).toBe('지금 정리할게요.')
     expect(fallbackLine('What is this?', false, ['Checking now.'])).toBe('Checking now.')
+  })
+
+  // c6c r3 (review r2): cleanLine let anything up to 140 characters through as the acknowledgement.
+  it('never shows a voice line over 60 characters as the acknowledgement (rule 1)', async () => {
+    const long = '회의록부터 확인하고 핵심 내용과 결정할 사항을 꼼꼼히 살펴본 다음 담당자별 할 일과 기한을 하나씩 짧게 정리할게요.'
+    expect([...long].length).toBe(64)
+    expect(ACK_MAX).toBe(60)
+    expect(cleanLine(long, ACK_MAX)).toBeUndefined()
+    const got = await run(DOCS[0]!, long, [])
+    expect(got.shown).toBe(1)
+    expect(got.line).toBe(fallbackLine(DOCS[0]!, true, []))
+    expect([...got.line!].length).toBeLessThanOrEqual(ACK_MAX)
+    // Exactly 60 is shown as written; a whole small-talk answer keeps its own, longer limit.
+    const edge = '가'.repeat(55) + ' 볼게요.'
+    expect([...edge].length).toBe(60)
+    expect((await run(DOCS[0]!, edge, [])).line).toBe(edge)
+    expect(cleanLine(long)).toBe(long)
+    expect(firstLinePrompt('x 정리해줘', true)).toContain('at most 40 characters')
+    // Every host-made first line is inside the limit too.
+    for (const ask of [...DOCS, '엔비디아 오늘 주가 알려줘', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', '클로드, GPT, 제미나이 비교해줘. 각각 따로 조사시켜']) for (const said of [[], [fallbackLine(ask, true, [])]]) expect([...fallbackLine(ask, true, said)].length, ask).toBeLessThanOrEqual(ACK_MAX)
   })
 
   it('keeps the budget and asks the voice once', () => {
