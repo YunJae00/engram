@@ -1038,13 +1038,20 @@ export const KIND_CHECK_MS = ITEM_CHECK_MS
 // c12a B3 (C5: a listing page's summary and an item dated only "2026" were a list's items): the same call says which kept items are not one
 // single thing with what the job needs, judged by meaning; they are taken apart in one more round while the teammate has time
 // (team-runner), else shown labeled. It also names each kept item in a few words, for the record's one-clause outcome (B4).
-export async function kindChecked(data: MemberData | undefined, brief: string, write?: ReportWriter, ms = KIND_CHECK_MS): Promise<MemberData | undefined> {
+// c14a r3: `inHand` are the items already in hand (a later items round): judged together with the new ones, so a new item the judge groups
+// in "same" with one in hand is that entry found again and is left out. Whether two items are one entry is their meaning, never their page:
+// two entries of one schedule often cite the same page.
+export async function kindChecked(data: MemberData | undefined, brief: string, write?: ReportWriter, ms = KIND_CHECK_MS, inHand: readonly MemberFact[] = []): Promise<MemberData | undefined> {
   // Every part with a fact is checked, one fact too: whether it is one item or a page of several is the item's meaning, never the ask's
   // wording (c12a round 2: "모임 두 개 알려줘" named no list word, and a lone listing page was shown as one meeting).
   if (!data || !data.facts.length || !write) return data
   // stack-12: one prompt with the lone lookup's item judge (item-check.ts); this caller reads keep, lists and names.
-  const said = await judgedItems(brief.trim().slice(0, 400), data.facts.map(f => ({ text: f.text })), write, ms)
-  if (!said) return data
+  const raw = await judgedItems(brief.trim().slice(0, 400), [...inHand, ...data.facts].map(f => ({ text: f.text })), write, ms)
+  if (!raw) return data
+  // The verdict renumbered to the new items alone; a new item in a "same" group with one in hand is dropped.
+  const off = inHand.length, again = new Set(raw.same.filter(group => group.some(n => n <= off)).flat())
+  const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
+  const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
   // c14a: an item the judge could not tell stays, as before for a teammate (there is no search loop here to look further); an item judged
   // a listing or aggregate is a page of several like one in `lists` (stack-13 "For cycle 14"): both go to the teammate's items rounds.
@@ -1062,9 +1069,10 @@ export const itemsPrompt = (urls: readonly string[]): string => `Some of what yo
 // stack-12 (c12a r3 #2): what the round gives back is judged like any data (team-runner runs kindChecked on it): a fact still judged a
 // listing, or one that is a listing page itself given back, is no item. With no item left the page stays labeled as before.
 export function withItems(data: MemberData, more: MemberData | undefined): MemberData {
-  // c14a r2: an entry looked up again by its own name comes back on its own page, worded anew: the same page is the same entry.
-  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).flatMap(f => [f.text, f.url]))
-  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text) && !known.has(f.url))
+  // c14a r3: an entry found again is told apart by meaning where the round is judged (kindChecked's `inHand`); here only the same words are
+  // the same entry. A shared page is not: two entries of one schedule often cite one page (r2 dropped the second one on it).
+  const listed = new Set(listingPages(data)), known = new Set(data.facts.filter(f => !f.listing).map(f => f.text))
+  const items = (more?.facts ?? []).filter(f => !f.listing && !listed.has(f.url) && !known.has(f.text))
   if (!items.length) return data
   const pages = data.facts.filter(f => f.listing).map(f => ({ ...f, rest: true as const }))
   return { ...data, facts: [...data.facts.filter(f => !f.listing), ...items, ...pages] }
