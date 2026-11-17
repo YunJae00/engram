@@ -416,7 +416,18 @@ it('c7 H6: a complaint, thanks or an addition said mid-work leaves the held resu
   expect(none).not.toMatch(/느려|왜/)
   // Words of no known shape make the earlier results old only when the turn searched again after them; a replacement always does.
   expect(heldFor(['a', 'b'], [{ text: '테슬라 걸로', at: 1 }])).toEqual(['b'])
-  expect(heldFor(['a'], [{ text: '테슬라 걸로', at: 1 }])).toEqual(['a'])
+  // stack-7 (c7a r3 #1): "테슬라 걸로" names another thing to do it for: a change of ask, searched again or not. The old results are
+  // never what the answer is written from, and the sentence that stands in names nothing of the old ask.
+  expect(heldFor(['a'], [{ text: '테슬라 걸로', at: 1 }])).toEqual([])
+  for (const swap of ['테슬라 걸로', '삼성전자 걸로 해줘', '아니 애플 거로', '테슬라 것으로 바꿔줘요']) expect(heldFor(['엔비디아 155.26 USD'], [{ text: swap, at: 1 }]), swap).toEqual([])
+  const wrote = vi.fn(async () => '엔비디아는 155.26달러예요.')
+  const swapped = await heldAnswer('주가 정보를 가져오지 못했어요.', { ask: '엔비디아 오늘 주가 알려줘\n테슬라 걸로', held: heldFor(['엔비디아 155.26 USD'], [{ text: '테슬라 걸로', at: 1 }]), korean: true, write: wrote })
+  expect(wrote).not.toHaveBeenCalled()
+  expect(swapped).toBe('바꾸신 건 지금 바로 못 읽었어요. 한 번만 더 말씀해 주시면 바로 볼게요.')
+  expect(swapped).not.toMatch(/엔비디아|155/)
+  // Searched again after the change: the new results are what is held, as before. An addition or a complaint is no change.
+  expect(heldFor(['엔비디아 155.26 USD', '테슬라 410.1 USD'], [{ text: '테슬라 걸로', at: 1 }])).toEqual(['테슬라 410.1 USD'])
+  for (const kept of ['아 원화로도 추가해', '답 좀 줘', '표로 정리해줘']) expect(heldFor(['a'], [{ text: kept, at: 1 }]), kept).toEqual(['a'])
   expect(heldFor(['a'], [{ text: '그냥 애플로 바꿔', at: 1 }, { text: '아 왜 이렇게 느려', at: 1 }])).toEqual([])
   expect(heldFor(['a', 'b'], [{ text: '그냥 애플로 바꿔', at: 1 }, { text: '고마워', at: 2 }])).toEqual(['b'])
 })
@@ -434,7 +445,7 @@ it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, a
   expect(newsAsk('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(true)
   expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = listOnly(result.answer)')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
 })
 
 // stack-7: c7a (a lone lookup's words) and c7b (a teammate's part) each stopped putting "이번 주 / 요즘" into a search as written.
@@ -452,4 +463,20 @@ it('stack-7: a time said relative to today is taken out of search words the same
   const read = (file: string): string => readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
   expect(read('../src/main/fast-lane.ts')).toContain('withoutRelativeTime(datedQuery(')
   expect(read('../../../packages/core/src/company-tools.ts')).toContain('words = withoutRelativeTime(words)')
+})
+
+// stack-7 (rule 7): c7a drops and reorders search rows only (by date and same event), and LANE_NOTE asks for a shorter list over a
+// padded one. A list shorter than the count asked always says so, from the model or else from the host.
+it('stack-7: a counted news list shorter than the count says so in its lead; a full list, a lead that already says it and a list with no numbers are left', async () => {
+  const { shortSaid } = await import('../src/main/fast-lane.js')
+  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
+  const three = '1. 메디인테크가 338억 원 시리즈C를 유치했어요. [이데일리](https://e.example/1)\n2. 업스테이지가 1,500억 원을 투자받았어요. [글로벌경제](https://g.example/2)\n3. 아크가 시리즈A 200억 원을 유치했어요. [비바100](https://v.example/3)'
+  expect(shortSaid(ask, three)).toBe(`확실한 건 3건이라 3개만 넣었어요.\n\n${three}`)
+  for (const lead of ['확실한 건 세 건이라 세 개만 넣었어요.', '이번 달 건 3개뿐이라 그것만 넣었어요.']) expect(shortSaid(ask, `${lead}\n\n${three}`)).toBe(`${lead}\n\n${three}`)
+  const five = `${three}\n4. 넷째예요. [a](https://a.example/4)\n5. 다섯째예요. [b](https://b.example/5)`
+  expect(shortSaid(ask, five)).toBe(five)
+  expect(shortSaid(ask, three.replace(/^\d\. /gm, ''))).toBe(three.replace(/^\d\. /gm, ''))
+  expect(shortSaid('요즘 AI 뉴스 알려줘', three)).toBe(three)
+  const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = shortSaid(routed, listOnly(result.answer))')
 })

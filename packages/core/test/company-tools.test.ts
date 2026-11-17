@@ -1826,7 +1826,9 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   // stack-7: named by the one rule (c7a): a site's own name or the plain word, never a piece of the host.
   expect(passed).not.toMatch(/\[(?:blank|hellot|ditoday)[^\]]*\]\(/)
   expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => good })).toBe(passed)
-  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace(' 작년 7월 채널톡 연동 소식이 마지막이에요.', ''), good.replace('이번 주는 셋 다 새로 나온 게 없대요.\n\n', '')])
+  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace(' 작년 7월 채널톡 연동 소식이 마지막이에요.', ''), good.replace('이번 주는 셋 다 새로 나온 게 없대요.\n\n', ''),
+    // stack-7 (c7b r3 #1): the month, the year and the link with no word of what the find was.
+    good.replace('리니어는 새 발표 없네요. 작년 7월 채널톡 연동 소식이 마지막이에요.', '리니어는 작년 7월에도 새 발표가 없네요.')])
     expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => bad }), bad.slice(0, 60)).toBe(said)
 })
 

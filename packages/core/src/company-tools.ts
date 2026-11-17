@@ -1297,7 +1297,13 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // A part that found nothing new and read a dated result naming it gives that result: its month, its year when not this one, its link.
   if (parts.some(m => {
     const latest = m.empty && !atWork(m) ? latestNamed(m, now) : undefined, at = latest?.day ? latest.line.match(ADDRESS)?.at(-1) : undefined, row = rowOf(m)
-    return !!at && !(row.includes(`](${trimmed(at)})`) && new RegExp(`(?<!\\d)0?${latest!.month}월`).test(row) && yearSaid(row, latest!, now))
+    if (!at) return false
+    // stack-7 (c7b r3 #1): "도윤: 리니어는 작년 7월에도 새 발표가 없네요. [출처]" had the month, the year and the link and still passed
+    // without the find. The line also says what it was: one word of that result (its title and what it says), other than the part's own name.
+    // shortcut: a word of the result, or the first two letters of a longer Korean one ("연동으로" → "연동"); a find retold with no word of its own is refused and the host's line stands in.
+    const own = row.replace(/\[[^\]]*\]\([^)]*\)/g, ''), topic = m.topic?.trim() ?? ''
+    const told = (latest!.line.replace(ADDRESS, ' ').match(/[가-힣A-Za-z]{2,}/gu) ?? []).filter(word => !topic.includes(word) && !word.includes(topic)).some(word => own.includes(word) || (/^[가-힣]{3,}$/u.test(word) && own.includes(word.slice(0, 2))))
+    return !(told && row.includes(`](${trimmed(at)})`) && new RegExp(`(?<!\\d)0?${latest!.month}월`).test(row) && yearSaid(row, latest!, now))
   })) return undefined
   // c6 C5/C6: "12월 11일, ACC 2025 … 개최" for an event of 2025 asked as next month's. A part whose finds all lie outside the time asked says
   // that nothing shows for it yet and whose year the nearest one is; a result made from such a hand-over says the year.

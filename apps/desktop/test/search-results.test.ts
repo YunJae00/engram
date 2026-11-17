@@ -345,6 +345,10 @@ it('c7 R3: a counted news ask gets the rows whose title names the event first, t
   expect(eventRank(titled('뤼튼, 미국서 300억 원 투자 유치'), ask)).toBe(2)
   // c7a r3: a describing word no list holds is not a company either; the company is the word the headline marks (a comma, or the round right after it).
   for (const title of ['국내 AI 스타트업 연쇄 투자 유치', '국내 AI 스타트업 사상 최대 투자 유치', '국내 AI 스타트업 역대급 투자 유치 행렬', '국내 AI 스타트업 미국서 300억 원 투자 유치', 'AI 스타트업, 투자 유치 빙하기 끝났나']) expect(eventRank({ title, url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, ask), title).toBe(1)
+  // stack-7 (c7a r3 #2): a word of degree right before the amount is not the funded company; a company before it still is.
+  for (const title of ['국내 AI 스타트업 역대급 300억 투자 유치', '국내 AI 스타트업 사상 최대 300억 원 투자 유치', 'AI 스타트업 누적 1,000억 원 투자 유치', 'AI 스타트업 총 300억 투자 유치']) expect(eventRank({ title, url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, ask), title).toBe(1)
+  expect(eventRank({ title: 'AI 스타트업 리벨리온 역대급 620억 원 투자 유치', url: 'https://example.com/news', snippet: '', date: '11월 17일' }, ask)).toBe(1)
+  expect(eventRank({ title: 'AI 스타트업 리벨리온, 역대급 620억 원 투자 유치', url: 'https://example.com/news', snippet: '', date: '11월 17일' }, ask)).toBe(2)
   for (const title of ['AI 스타트업 뤼튼, 사상 최대 투자 유치', 'AI 스타트업 리벨리온 620억 원 투자 유치', '뤼튼·업스테이지 나란히 투자 유치', 'Wrtn raises $30M in Series B']) expect(eventRank(titled(title), ask), title).toBe(2)
   expect(eventRank(titled('AI 스타트업 투자 유치 포럼 개최'), '요즘 AI 신제품 뉴스 5개')).toBe(1)
 

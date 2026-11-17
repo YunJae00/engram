@@ -16,6 +16,11 @@ const OPENING_LINE_CHARS = 60
 // Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
 type Native = NonNullable<Parameters<typeof runComet>[2]>['native']
+// stack-7: the host runs a first search in two places: for a lone lookup (ipc.ts, c7 fast-lane firstSearch) and for a teammate with
+// search words (below, c6). A lone lookup that then hires must never run both for the same words: what the lead's turn already found
+// is kept here by its thread, and a teammate hired in that turn with the same words starts from it, with no second search.
+export const laneSearches = new Map<string, { query: string; found: string }>()
+const sameWords = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase()
 export const memberLane = (channel: string, id: string): string => `${channel}~team-${id}`
 export const laneMember = (lane: string): RegExpExecArray | null => /^(bot-[^~]+)~team-(m\d+)$/.exec(lane)
 export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
@@ -138,7 +143,9 @@ export function teamRunner(deps: {
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
         if (search) {
           begun()
-          const found = await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
+          // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
+          const held = laneSearches.get(leadChannel), already = held && sameWords(held.query, me.query!) ? held.found : undefined
+          const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '') : await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
           if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${me.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
         }
         let priced = false
