@@ -105,8 +105,8 @@ test('a listing page ("부산 전시 일정 모음") is judged by meaning and ne
   const checked = await kindChecked({ facts }, brief, async () => '{"keep":[1,2,3],"lists":[2],"names":{"1":"벡스코 사진전","2":"부산 전시 모음","3":"미디어아트전"}}')
   expect(checked!.facts.map(f => !!f.listing)).toEqual([false, true, false])
   const text = mergedReport([member({ id: 'm1', role: '하람', brief, data: checked! })])
-  expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('하나씩은'))).toHaveLength(2)
-  expect(text).toContain('하나씩은 아직 못 뽑았어요.')
+  expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('여러 건이 한 페이지에'))).toHaveLength(2)
+  expect(text).toContain('여러 건이 한 페이지에 모여 있어요.')
   expect(text).not.toMatch(/[23]개/)
 })
 

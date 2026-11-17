@@ -156,7 +156,7 @@ describe('stack-12: a find is of the time asked, and a count is of single items'
     const text = mergedReport([m])
     // c13a (cause H): no host count lead at all; the two single items are the list's lines, the page is labeled after them.
     expect(text).not.toMatch(/\d개/)
-    expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('하나씩은'))).toHaveLength(2)
-    expect(text).toContain('하나씩은 아직 못 뽑았어요.')
+    expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('여러 건이 한 페이지에'))).toHaveLength(2)
+    expect(text).toContain('여러 건이 한 페이지에 모여 있어요.')
   })
 })

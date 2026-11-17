@@ -202,3 +202,16 @@ describe('c13b r3: a row out of the asked period is gone; a stand-in source must
     expect(own.result!.split('\n')[0]).toBe('가격: 1,290,000원 — https://live.example/s9')
   })
 })
+
+// stack-13 (cause J, R3 after c13b): the judge kept items of the asked topic that lacked the asked event. The rule it is given names every
+// part of the ask (not the topic), in one prompt for the lone lookup and the team (judgedItems). Wording not the harness's.
+describe('stack-13: the item judge checks every part the ask names', () => {
+  it('the one prompt asks for the thing on every part the ask names, and keeps only items that say too little to tell', async () => {
+    let prompt = ''
+    await judgedItems('부산 해산물 식당 개업 소식 4개', [{ text: '부산 기장에 해산물 식당 새로 문 열어' }, { text: '부산 해산물 축제 개막' }], async p => { prompt = p; return '{"keep":[1]}' }, 1000, 4)
+    expect(prompt).toContain('against everything the ask names about the thing it wants')
+    expect(prompt).toContain('keep an item only when it is that thing on every one of them')
+    expect(prompt).toContain('leave out an item that clearly lacks one')
+    expect(prompt).not.toContain('When unsure, keep it.')
+  })
+})

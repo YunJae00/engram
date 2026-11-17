@@ -112,7 +112,7 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   expect(mergedReport([m]).split('\n')).toEqual(['- 12월 6일 둔산동에서 보드게임 모임이 열려요. (서아) [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)', '전체 목록은 여기 있어요. [board.example.kr](https://board.example.kr/daejeon/schedule) · [festa.example.kr](https://festa.example.kr/2026)'])
   // No time left (no extra round): the listing stays, labeled as not taken apart, never as an item of the list.
   const as = member({ id: 'm1', role: '서아', brief, state: 'done', data: { facts: [checked!.facts[0]!] } })
-  expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 하나씩은 아직 못 뽑았어요\. \(서아\) \[/)
+  expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 여러 건이 한 페이지에 모여 있어요\. \(서아\) \[/)
   expect(reportPrompt(brief, [as])).toContain('"listPage":true')
   // A writer message that runs one teammate's two items and links into one line is refused (link positions, not words).
   const run = JSON.stringify({ message: '서아가 찾았어요. 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206), 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
@@ -160,7 +160,7 @@ test('r2 B3: one fact is always checked by meaning, whatever the ask says; a cou
     expect(prompts).toHaveLength(1)
     expect(listingPages(checked)).toEqual([page.url])
     const m = member({ id: 'g', role: '하람', brief, state: 'done', data: checked! })
-    expect(mergedReport([m])).toContain('하나씩은 아직 못 뽑았어요.')
+    expect(mergedReport([m])).toContain('여러 건이 한 페이지에 모여 있어요.')
   }
 })
 
@@ -178,7 +178,7 @@ test('r2/r3 B3: a round that takes only part of a listing page, even one claimin
   }
   // A round that gave nothing leaves the pages labeled as not taken apart.
   expect(withItems({ facts: [page] }, undefined).facts).toEqual([page])
-  expect(mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: { facts: [page] } })])).toContain('하나씩은 아직 못 뽑았어요.')
+  expect(mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data: { facts: [page] } })])).toContain('여러 건이 한 페이지에 모여 있어요.')
 })
 
 // --- c12a round 3 (Codex r2). Wordings are not the harness's. ---

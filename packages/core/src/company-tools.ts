@@ -1082,6 +1082,8 @@ const factWords = (f: MemberFact): string => { const text = f.text.trim(); retur
 // rows) a part with a name of its own is "노션(지민): …"; otherwise a line ends "(지민)" before its link. c13a (cause H; H5 "지민이 서울
 // 날씨 2개를 찾아 왔어요.", C5 "…일정 3개를 찾아 왔어요."): the host writes no sentence about who did what or how many; that is the
 // writer's data (reportPrompt), never a host lead. No job title, brief or `date` field is ever put in front of a fact (c12a B1).
+// stack-13: how the host labels a page of several things in its own rendering (partLines): what the page holds, not what was done.
+export const LISTING_LABEL = '여러 건이 한 페이지에 모여 있어요.'
 function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: readonly TeamMember[], side = false): string {
   const from = handedFrom(m.brief), part = partName(m, topics), row = side && part && !from ? `${part}(${m.role}): ` : '', by = row ? '' : ` (${m.role})`
   const looked = lookedAt(m)
@@ -1098,9 +1100,10 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
     const latest = data.nothing.latest, at = latest ?? looked
     return `${row}이번엔 새로 나온 게 없어요.${latest ? ` 가장 최근엔 ${datedText(latest)}` : ''}${by}${at ? ` ${linkOf(at)}` : ''}`
   }
-  // A page that lists several things (kindChecked) is shown, labeled as not taken apart yet: never as an item (rule 7).
+// A page that lists several things (kindChecked) is shown labeled as what it is, a page of several: never as an item (rule 7).
+  // stack-13 (cause H, C5 "하나씩은 아직 못 뽑았어요"): the label says what the page holds, never what the teammate did or did not do.
   // Whose it is is said once, on the part's first line.
-  const item = (f: MemberFact, i: number): string => `${datedText({ text: factWords(f), date: f.date })}${f.listing ? ' 하나씩은 아직 못 뽑았어요.' : ''}${i ? '' : by} ${linkOf(f)}`
+  const item = (f: MemberFact, i: number): string => `${datedText({ text: factWords(f), date: f.date })}${f.listing ? ` ${LISTING_LABEL}` : ''}${i ? '' : by} ${linkOf(f)}`
   // round 3: a listing page some items were taken from is where the full list is: one line after the items, never an item.
   const shown = facts.filter(f => !f.rest), rest = facts.filter(f => f.rest), full = rest.length ? [`전체 목록은 여기 있어요. ${rest.map(linkOf).join(' · ')}`] : []
   if (shown.length === 1) return [`${row}${item(shown[0]!, 0)}`, ...full].join('\n')
