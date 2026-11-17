@@ -903,7 +903,7 @@ const HANGUL = /[가-힣]/
 // Four English words in a row nobody asked for (GROKBOT rule 12, U1).
 const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 // GROKBOT rule 12 (U6): nothing technical in what the person reads: inner words, tool names, ids, paths.
-const JARGON = /에이전트|세션|(?<![가-힣])턴(?![가-힣])|토큰|프롬프트|런타임|컨텍스트|\b[a-z]+_[a-z_]+\b|\btask-[0-9a-f]{3,}|(?<![\w/])\/(?:Users|tmp|var|home)\//u
+const JARGON = /에이전트|세션|(?<![가-힣])턴(?![가-힣])|토큰|프롬프트|런타임|컨텍스트|\b[a-z]+_[a-z_]+\b|\btask-[0-9a-f]{3,}|(?<![\w/])\/(?:Users|tmp|var|home)\//gu
 // What an agent delivered; '' when they delivered nothing ("Failed: ..." is the host's own note, never shown).
 const delivered = (m: TeamMember): string => m.state === 'failed' || m.state === 'hired' || m.state === 'working' || !m.result?.trim() || m.result.startsWith('Failed: ') ? '' : m.result.trim()
 const NOTHING = '이번엔 못 찾았어요.'
@@ -965,7 +965,7 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>): string {
   if (atWork(m)) return `${head}: ${STILL}`
   const data = m.data, facts = data ? shownFacts(m) : []
   if (data?.items?.length) return [`${head}:`, ...data.items.map((item, i) => `${i + 1}. ${item}`)].join('\n')
-  if (data?.nothing) { const latest = data.nothing.latest; return `${head}: 이번엔 새로 나온 게 없어요.${latest ? ` 가장 최근 건 ${latest.date ? `${latest.date} ` : ''}${latest.text} ${linkOf(latest)}` : ''}` }
+  if (data?.nothing) { const latest = data.nothing.latest; return `${head}: 이번엔 새로 나온 게 없어요.${latest ? ` 가장 최근엔 ${latest.date ? `${latest.date}에 ` : ''}${latest.text} ${linkOf(latest)}` : ''}` }
   if (facts.length === 1) return `${head}: ${facts[0]!.date && !facts[0]!.text.includes(facts[0]!.date) ? `${facts[0]!.date} ` : ''}${facts[0]!.text} ${linkOf(facts[0]!)}`
   if (facts.length) return [`${head}:`, ...facts.map(f => `- ${f.date && !f.text.includes(f.date) ? `${f.date} ` : ''}${f.text} ${linkOf(f)}`)].join('\n')
   return `${head}: ${m.late ? NEVER_CAME : NOTHING}`
@@ -1133,7 +1133,9 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   const text = (typeof out['message'] === 'string' ? out['message'] : '').trim()
     .replace(/\[([^\]]*)\]\(([^)\s]*)\)/g, (_, words: string, url: string) => { const fact = facts.get(trimmed(url)); return fact ? linkOf(fact) : words })
   const words = text.replace(/\[[^\]]*\]\([^)]*\)/g, ' ')
-  if (!text || text.length > 3000 || !HANGUL.test(text) || /https?:\/\//.test(words) || ENGLISH_RUN.test(words) || JARGON.test(words)) return undefined
+  // A word of the data itself (a product's "코딩 에이전트") is content; only jargon the writer added is refused.
+  const given = parts.flatMap(m => [...(m.data?.facts ?? []), ...(m.data?.nothing?.latest ? [m.data.nothing.latest] : [])].map(f => f.text).concat(m.data?.items ?? [])).join('\n')
+  if (!text || text.length > 3000 || !HANGUL.test(text) || /https?:\/\//.test(words) || ENGLISH_RUN.test(words) || [...words.matchAll(JARGON)].some(hit => !given.includes(hit[0]))) return undefined
   if (parts.some(m => !words.includes(m.role) || new RegExp(`^\\s*(?:[-*]\\s*)?${escapedRe(m.role)}\\s*[:：]`, 'mu').test(text))) return undefined
   const linked = (url: string): boolean => text.includes(`](${named('x', url).slice(4, -1)})`)
   if (ids.some(one => kept.has(one.id) !== linked(one.fact.url) && !ids.some(other => other !== one && other.fact.url === one.fact.url && kept.has(other.id)))) return undefined
