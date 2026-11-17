@@ -7,7 +7,7 @@ import { formatAsk } from './ask.js'
 import { recordFacts } from './bot-memory.js'
 import { appendBotTurn, readBotTranscript } from './bots.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type TeamMember } from './delegated-tasks.js'
-import { datedQuery, foundNothing, givenName, periodSpans, placeNamed, pointQueries, isSearchPage, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
+import { datedQuery, foundNothing, givenName, keptItems, periodSpans, placeNamed, pointQueries, isSearchPage, sourceName, withoutRelativeTime, type TeamHost } from './team-hire-tools.js'
 import type { VaultPaths } from './vault.js'
 import { plainSchedule, scheduleWordsKo } from './schedule-tools.js'
 
@@ -356,7 +356,7 @@ function statusSaid(bots: readonly Bot[], tasks: readonly DelegatedTask[], now: 
   const words = jobs.map(group => group.job.split(' ')), at = words[0]!.findIndex((word, i) => words.some(one => one[i] !== word))
   const same = jobs.length > 1 && at >= 0 && words.every(one => one.length === words[0]!.length && one.every((word, i) => i === at || word === words[0]![i]))
   const tail = same ? words[0]!.slice(at + 1).join(' ') : ''
-  if (!again && recent && tail && did.length === idle.length && jobs.every(group => group.names.length === 1)) return `${jobs.map(group => group.names[0]!).join(', ')} 모두 방금 ${words.map(one => one[at]!).join('·')} ${tail} 끝냈어요. 지금은 ${everyone || '다들 '}한가해요.`
+  if (!again && recent && tail && did.length === idle.length && jobs.every(group => group.names.length === 1)) return `${jobs.map(group => group.names[0]!).join(', ')} 다 방금 ${words.map(one => one[at]!).join('·')} ${tail} 끝내서 지금은 한가해요.`
   return `${finished(jobs, recent)} ${again ? `아직 ${everyone}새로 맡은 일은 없어요.` : `지금은 ${everyone}${did.length === idle.length && everyone ? '한가해요.' : '하는 일 없어요.'}`}`
 }
 
@@ -628,11 +628,14 @@ export function dutyList(tasks: readonly BotTask[]): string {
   const kept = tasks.filter(task => task.schedule && !task.routineId)
   // c9 C7/C8/H5: "매주 월요일 9시에 … 하나 있어요." was read as the person's own calendar. It is what Engram keeps for them, and is said so;
   // with no calendar connected, nothing is claimed about the rest of their week.
-  if (!kept.length) return '제가 따로 챙기는 일정은 아직 없어요.'
+  // c10b C7/H5: "내 일정" is the person's own day too: what Engram keeps is said, and that their other plans are not something it can see.
+  // shortcut: no calendar is read here (Outlook's would ask for OS access mid-chat); read it when a calendar connection exists.
+  const rest = '다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.'
+  if (!kept.length) return `제가 따로 챙기는 일정은 아직 없어요. ${rest}`
   // "지난주 팀이 한 일 요약해줘" → "지난주 팀이 한 일 요약해 드리는 거".
   const doing = (goal: string): string => { const asked = /^(.*[가-힣])\s*(?:줘요?|주세요|줄래요?)[.!~\s]*$/u.exec(goal.trim())?.[1] ?? ''; return /해$/u.test(asked) && !asked.includes('\n') ? `${asked} 드리는 거` : `"${clip(goal, 60)}"` }
-  if (kept.length === 1) return `제가 챙기는 건 ${scheduleWordsKo(kept[0]!.schedule!)}${kept[0]!.schedule!.on || kept[0]!.schedule!.every ? '' : '에'} ${doing(kept[0]!.goal)} 하나예요.`
-  return `제가 챙기는 정기 일정은 ${kept.length}개예요.\n\n${kept.map(task => `- ${scheduleWordsKo(task.schedule!)}: ${jobTitle(task.goal)}`).join('\n')}`
+  if (kept.length === 1) return `제가 챙기는 건 ${scheduleWordsKo(kept[0]!.schedule!)}${kept[0]!.schedule!.on || kept[0]!.schedule!.every ? '' : '에'} ${doing(kept[0]!.goal)} 하나예요. ${rest}`
+  return `제가 챙기는 정기 일정은 ${kept.length}개예요.\n\n${kept.map(task => `- ${scheduleWordsKo(task.schedule!)}: ${jobTitle(task.goal)}`).join('\n')}\n\n${rest}`
 }
 // "그거 취소해" right after the one schedule was said: nothing else it could mean.
 const CANCELS = /^(?:그거|그건|그\s*일정|방금\s*(?:그거|거|일정)|일정)\s*(?:은|는|을|를)?\s*(?:취소|없애|지워|삭제|빼)\s*(?:해|해\s*줘요?|줘요?|해\s*주세요|주세요)?[.!~\s]*$/u
@@ -873,7 +876,7 @@ export async function employeeNote(paths: VaultPaths, botId: string, now?: Date)
 // grokbar C3 (stack2): the memos were pasted into the answer and read "이번 턴 안에 내용을 읽어오지 못했습니다", "소스 접근 실패", "This week's main items…".
 // c7: "Answer like a short memo" made every teammate write the same memo. A teammate answers as themselves, the way they would message
 // a colleague, and the host keeps their words (spoken).
-const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list the items your results give, three to five when they are there, one line each starting with its date and ending with the address it came from, and nothing about what you left out; with only one item, write "확실한 건 하나예요." and then that item. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that in one sentence and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, never the search or what its results page held ("검색 결과가 …뿐이었어요", "검색에서 무관한 … 나왔어요", "찾아봤는데"): say what is true about the thing itself, and nothing about time, limits or attempts. A search-results page is never your address while you read or cite a real page. No preamble, no headings, no offers.'
+const MEMO_RULE = 'Answer as yourself, the way you would message a colleague in the team chat, in the person\'s language (in Korean: polite -요 form, never -습니다, never 반말): one or two short sentences in your own way of speaking, the finding first and naming what it is about (the product, the place, the thing you were asked), then the address of the page it came from. A job that asks for a schedule or a list (일정, 목록, 리스트) is the exception: list the items your results give, three to five when they are there, one line each starting with its date and ending with the address it came from, and nothing about what you left out; with only one item, write "확실한 건 하나예요." and then that item. Every item is of the kind asked: for IT 행사, a conference, expo, summit, meetup or hackathon about IT, AI, software, development, security or cloud; a concert, show, art exhibition or festival is never an item, even when a search lists it. So is a part that names the points to find about a thing (its price, its release date): keep the "가격: …", "출시일: …" lines the lookup rule asks for, each a short value with its figure and its address, and nothing around them. If nothing is there for the time asked, say that first, in its own sentence, and, when you saw one, what the latest was and its month, with its address. Never describe what you tried, searched or could not open, never the search or what its results page held ("검색 결과가 …뿐이었어요", "검색에서 무관한 … 나왔어요", "찾아봤는데"): say what is true about the thing itself, and nothing about time, limits or attempts. A search-results page is never your address while you read or cite a real page. No preamble ("확인해 보니", "찾아보니"), no headings, no offers.'
 /** Added to the persona of someone who writes from what was handed over: they have no tools and need none. */
 export const WRITER_RULE = 'Everything this part needs is in the brief: you have no tools and look nothing up. Write the deliverable itself at once, in the person\'s language, and nothing else: no preamble, no account of what you did, no line on where the facts came from, no question. Work made from a teammate\'s find uses at least one of its facts as it is (a figure, a date or a name: "낮 2~6도", "12월 2일 코엑스"). When the job asks for a number of short things ("문구 3개", "3가지", "세 줄"), write exactly that many as a numbered markdown list, one per line.'
 
@@ -931,6 +934,19 @@ const HANGUL = /[가-힣]/
 const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 // grokbar c3b r1: a quoted headline stayed in the fallback row ('"Agents, rebuilt to do more for less" – Notion Agent 대폭 개선').
 const ENGLISH_RUNS = new RegExp(`["'“‘]?${ENGLISH_RUN.source}[.!?]?["'”’]?\\s*(?:[–—:-]\\s+)?`, 'g')
+// c10b (C4/C10): "'Bring your own key(BYOK)' 기능" read "(BYOK)' 기능" and "API 키(OpenAI, Anthropic, AWS Bedrock, Azure OpenAI 등)" read
+// "API 키(등)". A run with its short form in brackets leaves the short form as the name; a bracket that holds a run goes whole.
+const SHORT_FORM = new RegExp(`["'“‘]?${ENGLISH_RUN.source}\\s*\\(([A-Z][A-Za-z0-9]{1,9})\\)["'”’]?`, 'g')
+const withoutEnglish = (line: string): string => line.replace(SHORT_FORM, '$1').replace(/\s*\(([^()\n]*)\)/g, (all, inner: string) => ENGLISH_RUN.test(inner) ? '' : all)
+  // c10b r1: "소프트웨이브: software developers meet … <link>" left "소프트웨이브: ·"; a colon or dash the run leaves with nothing after it goes too.
+  .replace(ENGLISH_RUNS, '\uE002').replace(/\s*[:：–—]?\s*\uE002(?=\s*(?:$|\uE000))/gu, ' ').replace(/\uE002/g, '').replace(/\(\s*(?:등|외)?\s*\)|""|“”|''|‘’/gu, '').replace(/^\s*,\s*/, '').replace(/\s+([,.!?])/g, '$1')
+// A line's text outside its links and addresses, changed by `change`; the links come back as they were.
+const outsideLinks = (line: string, change: (text: string) => string): string => {
+  const kept: string[] = []
+  return change(line.replace(/\[[^\]]*\]\([^)]*\)|https?:\/\/\S+/g, link => `\uE000${kept.push(link) - 1}\uE001`)).replace(/\uE000(\d+)\uE001/g, (_, k: string) => kept[Number(k)]!)
+}
+// c10b C3: "확인해 보니 노션의 …" opened a teammate's line: how they looked, not what is there.
+const LOOKED_FIRST = /^(?:확인해\s*보니|찾아\s*보니|알아\s*보니|살펴\s*보니|검색해\s*보니)\s*,?\s*/u
 /** What an agent found, as lines a person can read: no notes on the looking, no headings, no sentence in another language in a Korean result. cut: it was stopped at its limit. links: addresses stay where they were written. */
 function findings(text: string, links = false, marks = false, korean = HANGUL.test(text)): { lines: string[]; cut: boolean } {
   const cut = CUT_SHORT.test(text)
@@ -943,14 +959,15 @@ function findings(text: string, links = false, marks = false, korean = HANGUL.te
       .replace(links ? /$^/ : /\s+[—–-]\s*(?:출처|참고)?\s*$/, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
       .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '')
-      // shortcut: a link's words are left alone where links are kept (the team record, which a model reads back, never the thread).
-      .replace(korean && !links ? ENGLISH_RUNS : /$^/, '').trim())
+      // c10b r1 (Codex): a lone teammate's list keeps its links and showed "software developers meet for cloud security talks". Where links
+      // are kept, only their words and addresses are left alone.
+      .replace(/^[\s\S]*$/, all => !korean ? all : links ? outsideLinks(all, withoutEnglish) : withoutEnglish(all)).trim())
     // stack-8 (C3 replay of stack7-b3ddda26): "…검색 결과에 나오지 않았어요. 가장 최근으로 확인되는 건 1월 20일자 …" was one line and META
     // dropped it whole, so all three teammates read "이번엔 못 찾았어요.". Only the sentence about the looking goes.
     .map(line => META.test(line) ? line.split(/(?<=[^\d\s][.!?])\s+/).filter(sentence => !META.test(sentence)).join(' ') : line)
     .filter(line => line && !/^[\s/:·,-]+$/.test(line) && !/^(출처|참고|sources?\b)/i.test(line) && !/[:：]$/.test(line) && !RESULT_HEADING.test(line))
     // A sentence with no Hangul in a Korean result is the agent thinking aloud; a quoted title or a bare figure is kept.
-    .map(line => line.split(/(?<=[.!?])\s+/).filter(sentence => !SAYS_IT_LOOKED.test(sentence) && (!korean || HANGUL.test(sentence) || /^["'“‘]/.test(sentence) || !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(sentence))).join(' '))
+    .map(line => line.split(/(?<=[.!?])\s+/).map(sentence => sentence.replace(LOOKED_FIRST, '')).filter(sentence => !SAYS_IT_LOOKED.test(sentence) && (!korean || HANGUL.test(sentence) || /^["'“‘]/.test(sentence) || !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(sentence))).join(' '))
     .filter(Boolean)
   return { lines, cut }
 }
@@ -972,7 +989,7 @@ const partPages = (m: TeamMember): string[] => m.empty ? [...new Set([...(m.sour
 // sentence names their part ("리니어는 이번 주 새 소식이 안 보여요.").
 // c7b r2: "도윤: 리니어는 이번 주 새 소식이 안 보여요. [ditoday]" left out the 2025년 7월 find the part had read. The latest result that
 // names the part is given with its day (the row's own date, written at its end), as the other teammates' lines give theirs.
-// quiet: the lead has already said nothing is new, so the line does not say it again.
+// c10b r1 (Codex): the line says nothing is new itself even under a lead that said it for everyone: a line is read on its own.
 // c7b r3: the written answer was not held to it (checkedReport passed "도윤: 리니어는 새 발표 없네요."), so the find is one function's
 // answer: nothingNew says it, reportPrompt hands it to the writer, checkedReport refuses a line without it.
 function latestNamed(m: TeamMember, now: Date): { line: string; title: string; day?: string; time?: number; year?: number; month?: number } | undefined {
@@ -987,12 +1004,11 @@ function latestNamed(m: TeamMember, now: Date): { line: string; title: string; d
   })
   return rows.reduce<typeof rows[number] | undefined>((best, one) => !best || (one.time ?? -Infinity) > (best.time ?? -Infinity) ? one : best, undefined)
 }
-function nothingNew(m: TeamMember, said = false, now = new Date(), quiet = false): string {
+function nothingNew(m: TeamMember, said = false, now = new Date()): string {
   const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(m.brief)?.[0], topic = m.topic?.trim(), row = latestNamed(m, now)
   const at = row?.line.match(ADDRESS)?.at(-1) ?? m.sources?.[0]
   const link = at ? named(sourceName(trimmed(at), true), trimmed(at)) : ''
   if (!link) return `${said && topic ? `${topic} 쪽은 ` : ''}${NOTHING}`
-  if (row?.day && quiet && said) return withLink(`${topic} 쪽은 ${row.day} 게 제일 최근이에요. ${row.title}`, link)
   const about = said && topic ? `${josa(topic, '은', '는')} ` : ''
   const none = `${about}${when ? `${when} ` : ''}새 소식${about ? '이' : '은'} 안 보여요.`
   return row?.day ? withLink(`${none} 가장 가까운 건 ${row.day} 거예요. ${row.title}`, link) : `${none} ${link}`
@@ -1038,12 +1054,12 @@ const VOICED: Record<string, [RegExp, string][]> = {
 }
 export const voiced = (said: string, voice?: string): string => { const rule = voice ? VOICED[voice]?.find(([end]) => end.test(said)) : undefined; return rule ? said.replace(rule[0], rule[1]) : said }
 /** The first sentence over one teammate's result, said by them. previous: the result before it in the thread, whose lead it does not end like. link: the page the handed-over find came from, on the opener. */
-function resultLead(m: TeamMember, previous = '', now = new Date(), link = ''): string {
+function resultLead(m: TeamMember, previous = '', now = new Date(), link = '', kept?: number): string {
   const from = handedFrom(m.brief), job = jobOf(m)
   if (!from) {
     const looked = !!m.lookup && (OPENERS.test(job) || !(JOB_VERBS.some(([ending]) => ending.test(job)) || DOING_NOUN.test(job)))
     if (!looked) { const { what, forms } = jobForms(job, true); return voiced(`${m.role}: ${[what, ledBy(forms, previous)].filter(Boolean).join(' ')}.`, m.voice) }
-    const what = job.endsWith('…') ? '' : aboutJob(job, now), items = listItems(m).length, list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
+    const what = job.endsWith('…') ? '' : aboutJob(job, now), items = kept ?? listItems(m).length, list = LIST_ASKED.test(m.brief.split('\n')[0]!) || askedCount(m.brief) > 0
     // Two ways each, so a lead never ends like the one before it (ledBy).
     const count = COUNTED_KO[items] ?? `${items}개`, said = list && items === 1 ? '확실한 건 하나예요.' : `${ledBy(list && items >= 2 ? [`${count} 있어요`, `${count} 나와요`] : ['이래요', '이렇게 나와요'], previous)}.`
     return voiced(`${m.role}: ${what ? `${josa(what, '은', '는')} ${said}` : `찾은 건 ${said}`}`, m.voice)
@@ -1106,20 +1122,20 @@ interface Period { from: Date; to: Date; label: string }
 export function askedPeriod(ask: string, now = new Date()): Period | undefined {
   const spans = periodSpans(ask, now), at = ['다음 달', '이번 주말', '이번 주', '내일'].map(name => spans.find(span => span.name === name)).find(Boolean)
   if (!at) return undefined
-  // "이번 주" is asked for what is recent: the last seven days count too, up to this Sunday.
-  const from = at.name === '이번 주' ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7) : at.from
+  // c10b C3: "이번 주" is this week, Monday to Sunday: 도윤's 11월 12일 was shown as this week's news on 11월 17일 (it had counted the last seven days).
+  const from = at.from
   return { from, to: at.to, label: at.name === '다음 달' ? `${from.getFullYear() === now.getFullYear() ? '올해' : '내년'} ${from.getMonth() + 1}월` : at.name }
 }
 // A day with its year ("2025년 12월 11일", "2025.08.19"), a day without ("12월 11일"), or a month ("12월", "2025년 12월").
 // shortcut: "12/11" is not read; c6a's dated task is what stops that.
 const A_DATE = /(\d{4})\s*(?:년\s*|[./-]\s?)(\d{1,2})\s*(?:월\s*|[./-]\s?)(\d{1,2})|(?:(\d{4})년\s*)?(?<!\d)(\d{1,2})월(?:\s*(\d{1,2})일)?/g
-const SAYS_NONE = /않았|없어요|없었|없습니다|안 보여|못 찾/u
+const SAYS_NONE = /않았|없어요|없었|없습니다|없고|없더라|없네|없대|안 보여|못 찾/u
 // A day as a colleague says it: "작년 7월 9일", "1월 20일" (this year), "2023년 5월".
 function dayWords(year: number | undefined, month: number, day: number | undefined, now: Date): string {
   const thisYear = now.getFullYear(), other = year && year !== thisYear ? year : undefined
   return `${!other ? '' : other === thisYear - 1 ? '작년 ' : other === thisYear + 1 ? '내년 ' : `${other}년 `}${month}월${day ? ` ${day}일` : ''}`
 }
-interface Outside { /** "올해 12월 일정은 아직 안 보여요." */ said: string; /** The nearest find's day: "작년 12월 11일". */ when: string; /** That find as the teammate wrote it, its year kept. */ line: string; /** Its year, when it is not this one. */ year?: number }
+interface Outside { /** "올해 12월 일정은 아직 안 보여요." */ said: string; /** The time asked, as said: "이번 주". */ period: string; /** The nearest find's day: "작년 12월 11일". */ when: string; /** That find as the teammate wrote it, its year kept. */ line: string; /** Its year, when it is not this one. */ year?: number }
 /** A result whose every dated find lies outside the time its job asked about, or undefined (no time named, no date given, or one find inside). */
 function outsideOf(brief: string, result: string, now = new Date()): Outside | undefined {
   const asked = (handedFrom(brief)?.brief ?? brief).split('\n')[0]!, period = askedPeriod(asked, now)
@@ -1145,7 +1161,7 @@ function outsideOf(brief: string, result: string, now = new Date()): Outside | u
   if (!nearest) return undefined
   const y = nearest.year, other = y && y !== now.getFullYear() ? y : undefined
   return {
-    said: `${period.label} ${/일정|행사|스케줄/u.test(asked) ? '일정은' : '새 소식은'} 아직 안 보여요.`,
+    said: `${period.label} ${/일정|행사|스케줄/u.test(asked) ? '일정은' : '새 소식은'} 아직 안 보여요.`, period: period.label,
     when: dayWords(y, nearest.month, nearest.day, now),
     line: clip(nearest.line.replace(LIST_MARK, '').replace(/[,·\s]+$/, ''), 160), ...(other ? { year: other } : {}),
   }
@@ -1155,6 +1171,15 @@ const outsideFor = (m: TeamMember, now?: Date): Outside | undefined => m.read ||
 // How such a part's result opens; its opening turns like any lead's.
 const outsideHead = (m: TeamMember, out: Outside): string => `${m.role}: ${out.said}`
 const nearestSaid = (out: Outside): string => `가장 가까운 건 ${out.when} 거예요.`
+// c10b C3: "노션은 이번 주엔 새로 낸 게 없어요. 최근엔 10월 19일에 …": a part whose newest find is older than the time asked says so first,
+// then that find in the teammate's words, without a label that sells it as new ("리니어 새 기능으로는, ").
+// c10b r1 (Codex): under the quiet lead 도윤's line read only "리니어는 최근엔 11월 12일에 BYOK 기능이 나왔어요.", which a reader of that
+// line alone takes as this week's news. Every such line says the period itself, quiet lead or not.
+const noneSince = (topic: string, out: Outside): string => {
+  const line = out.line.replace(/^[^,.!?]{0,20}(?:새\s*기능|신기능|새\s*소식|업데이트)(?:으로는|으로|은|는)\s*,?\s*/u, '')
+  const dated = /^(?:\d{4}\s*년\s*)?\d{1,2}\s*월/u.test(line) ? `최근엔 ${line}` : /\d{1,2}\s*월/u.test(line) ? line : `가장 최근 건 ${out.when} 거예요. ${line}`
+  return `${topic ? `${josa(topic, '은', '는')} ` : ''}${out.period}엔 새로 낸 게 없어요. ${dated}`
+}
 // Whether a text that uses such a find says it is not of this year, and (plain) that the time asked has nothing yet.
 const yearSaid = (text: string, out: { year?: number }, now: Date): boolean => !out.year || new RegExp(`${out.year}년|${out.year === now.getFullYear() - 1 ? '작년|지난해' : out.year === now.getFullYear() + 1 ? '내년' : '$^'}`).test(text)
 // c6b r3: "다음 달 서울에서 만나요." written from last year's event. A line made from a find outside the time asked that speaks of it as
@@ -1162,7 +1187,16 @@ const yearSaid = (text: string, out: { year?: number }, now: Date): boolean => !
 const SOON = /다음\s*달|내달|이번\s*주말|이번\s*주|금주|내일|올해|(?<![가-힣])곧(?![가-힣])/u
 const soldAsSoon = (line: string, out: Outside, now: Date): boolean => SOON.test(line) && !(out.year && yearSaid(line, out, now))
 // c7: a teammate says it their own way ("이번 주엔 조용해요. 제일 최근 건 1월에 나온 …").
+// NONE_YET's verdict words without the pointers at an old find ("가장 최근", "마지막"); "검색에서 확인되지 않았어요" stays the host's line.
+const NONE_SAID = /안 보여|안 보이|없어요|없었어요|없네요|없더라고요|없대요|안 나왔|조용/u
 const NONE_YET = /안 보여|안 보이|없어요|없었어요|없네요|없더라고요|없대요|안 나왔|조용|(?:제일|가장)\s*(?:최근|가까운)|마지막/u
+// c10b r2 (Codex): 지민's "노션의 가장 최근 업데이트는 10월 19일에 나온 …예요. 이번 주 새로 나온 건 없고, …" passed as honest: NONE_YET took
+// "가장 최근" as the verdict and read the whole text. A line about a part with nothing new in the time asked opens with that verdict;
+// "가장 최근 …" only points at the old find. The name or table cell in front of the line is skipped.
+const leadsNone = (text: string): boolean => {
+  const first = text.replace(/^\|[^|]*\|\s*/u, '').replace(/^[^\s:|]{1,10}:\s*/u, '').split(/(?<=[^\d\s][.!?])\s+/)[0] ?? ''
+  return NONE_SAID.test(first)
+}
 // stack-8 (c8b run C3, base code): "리니어만 새 소식이 있어요." stood over 도윤's "이번 주 리니어 신기능은 검색 결과로 확인이 안 되네요.": the
 // writer was told a part had news when its teammate's own first sentence said it had none. That first sentence, as they wrote it, decides.
 const NOT_FOUND = /못 찾|찾지 못|확인(?:이|은)?\s*안\s*(?:되|돼)|확인되지\s*않|나오지\s*않|안\s*나오/u
@@ -1219,21 +1253,24 @@ export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap
     // first cell to name it any more.
     const spoke = parts.map(m => {
       const text = delivered(m), topic = (topics.get(m.id) || m.topic || '').trim(), out = atWork(m) || m.empty ? undefined : outsideFor(m, now)
-      const own = text && !m.empty ? cellOf(read(m, text), topic) : '', honest = !!out && NONE_YET.test(own) && yearSaid(own, out, now) && !soldAsSoon(own, out, now)
+      // c10b C3: "슬랙은 이번 주엔 새로 낸 게 없더라고요!" is no find sold as this week's: soldAsSoon reads only the sentences that give a find.
+      const own = text && !m.empty ? cellOf(read(m, text), topic) : '', finds = own.split(/(?<=[.!?])\s+/).filter(one => !SAYS_NONE.test(one)).join(' ')
+      const honest = !!out && leadsNone(own) && yearSaid(own, out, now) && !soldAsSoon(finds, out, now)
       return { m, topic, out, own, link: partLink(m, text), other: own ? '' : foreign(m, text), quiet: !atWork(m) && (!!m.empty || !!out || saysNoneFirst(m) || NONE_YET.test(own.split(/(?<=[.!?])\s+/)[0] ?? '')), honest }
     })
     const open = parts.filter(atWork).length, count = ALL_OF[parts.length] ?? '다들', quiet = spoke.every(one => one.quiet)
     const when = /이번\s*주|오늘|이번\s*달|최근|요즘/u.exec(context.ask || parts[0]!.brief)?.[0]
     // GROKBOT rule 8's own milestone line when someone is still at it; one plain sentence when nobody found anything new.
     const head = open ? open === parts.length ? '아직 다들 찾는 중이에요.' : `${NUMBER_WORDS[parts.length] ?? `${parts.length}명`} 중 ${josa(NUMBER_WORDS[parts.length - open] ?? `${parts.length - open}명`, '은', '는')} 끝났어요.`
-      : quiet ? `${when ? josa(when, '은', '는') : '이번엔'} ${count} 새로 나온 게 없대요.`
+      // c10b C3: "셋 다 찾아봤어요." stood over three finds older than the week asked; the lead says it once, plainly.
+      : quiet ? `${when ? `${when}엔` : '이번엔'} ${count} 새로 낸 게 없어요. 가장 최근 것만 적었어요.`
       : `${count} ${ledBy(jobForms(jobOf(parts[0]!), true).forms, previous)}.`
     const lines = spoke.map(({ m, topic, out, own, link, other, honest }) => {
       const about = (text: string): string => !topic || text.includes(topic) ? text : `${topic} 쪽은 ${text}`
-      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true, now, quiet)
+      const line = atWork(m) ? about(STILL) : m.empty ? nothingNew(m, true, now)
         // c6: a find dated outside the time asked says so, in the teammate's own words when they already did. When the lead has said
         // nothing is new, the line gives the latest one and its day and does not say it again.
-        : out && !honest ? withLink(about(quiet ? `${out.when} 게 제일 최근이에요. ${out.line}` : `${out.said} ${nearestSaid(out)} ${out.line}`), link)
+        : out && !honest ? withLink(out.said.includes('일정') ? about(`${out.said} ${nearestSaid(out)} ${out.line}`) : noneSince(topic, out), link)
         : own ? withLink(about(own), link) : other ? `${about(`${FOREIGN}.`)} ${other}` : about(m.late ? NEVER_CAME : NOTHING)
       return `${m.role}: ${line}`
     })
@@ -1439,7 +1476,8 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     return pages.length > 0 && !pages.some(url => rowOf(m).includes(`](${url})`))
   })) return undefined
   // A part still at work says so, and one that looked and found nothing new is never "못 찾았어요" (c5 C3).
-  if (parts.some(m => atWork(m) ? !rowOf(m).includes('아직 찾는 중') : !!m.empty && /못 찾았/.test(rowOf(m)))) return undefined
+  // c10b r2 (Codex): and its line opens by saying nothing is new ("리니어는 작년 7월 9일 … 제일 최근이에요." alone reads as this week's news).
+  if (parts.some(m => atWork(m) ? !rowOf(m).includes('아직 찾는 중') : !!m.empty && (/못 찾았/.test(rowOf(m)) || !leadsNone(rowOf(m))))) return undefined
   // c7b r3: "도윤: 리니어는 새 발표 없네요. [출처]" passed and was shown ahead of the host's own line, which gives the 작년 7월 9일 find.
   // A part that found nothing new and read a dated result naming it gives that result: its month, its year when not this one, its link.
   if (parts.some(m => {
@@ -1458,7 +1496,7 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
     const own = outsideFor(m, now), from = handedFrom(m.brief), given = from && outsideOf(from.job, from.result, now)
     // c6b r3: the year anywhere in the text passed. It is said in the first line, and no line speaks of the find as coming up.
     // c7: with several teammates the lead may say once that nothing is new for all of them.
-    return (!!own && !(NONE_YET.test(spoken ? `${text.split('\n')[0]!} ${rowOf(m)}` : rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && (!yearSaid(text.split('\n')[0]!, given, now) || text.split('\n').some(line => soldAsSoon(line, given, now))))
+    return (!!own && !(leadsNone(rowOf(m)) && yearSaid(rowOf(m), own, now))) || (!!given && (!yearSaid(text.split('\n')[0]!, given, now) || text.split('\n').some(line => soldAsSoon(line, given, now))))
   })) return undefined
   if (table && (text.match(/^\|\s*:?-+/gm)?.length !== 1 || !/^\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$/m.test(text) || parts.some(m => !text.split('\n').some(row => row.startsWith('|') && row.includes(`(${m.role})`))))) return undefined
   // c7: several teammates each say their own line, their part named in it (BAR C3 reads the last bubble for the products), under a
@@ -1481,11 +1519,17 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   // One teammate's result opens with the host's own sentence, said by the teammate (c4 C5: "지민이 정리해 왔어요." never said what it was).
   // c6: a find outside the time asked is said in that first sentence, which only the writer can finish: its opening is held to.
   if (parts.length === 1 && delivered(parts[0]!)) {
-    const m = parts[0]!, [head = '', ...rest] = text.split('\n'), out = outsideFor(m, now)
+    const m = parts[0]!, [head = '', ...said] = text.split('\n'), out = outsideFor(m, now)
+    // c10b (C5-H5): the writer listed a concert under "IT 행사" from the rows it read. The written list keeps what the stored one keeps
+    // (settleMember keptItems); when that leaves one item the lead says so ("확실한 건 하나예요.", never "…가 제일 커요.").
+    const rest = keptItems(m.brief, said.join('\n')).split('\n'), items = rest.filter(line => line.trim()).length
+    const listHead = /^\s*([|>#*+-]|\d+[.)]\s)/.test(head), one = items === 1 && rest.length < said.length && LIST_ASKED.test(m.brief.split('\n')[0]!)
     if (out) { if (!head.startsWith(outsideHead(m, out))) return undefined }
+    else if (listHead) text = keptItems(m.brief, text)
+    else if (one) text = [resultLead(m, context.previous, now, '', 1), ...rest].join('\n')
     // c9 C5: the writer's opener stands when it is the teammate leading with the thing (short, no link, not "<job> 찾아봤어요").
     // c9b r3 (Codex): the writer's own opener is held to the teammate's voice too, as the host's is.
-    else if (!/^\s*([|>#*+-]|\d+[.)]\s)/.test(head)) text = [ownLead(head, m) ? voiced(head, m.voice) : resultLead(m, context.previous, now), ...rest].join('\n')
+    else text = [ownLead(head, m) ? voiced(head, m.voice) : resultLead(m, context.previous, now), ...rest].join('\n')
   }
   // c5 C6: "[소프트웨이브 2026](…) [ACC 2026](…)" read as one name, "소프트웨이브 2026 ACC 2026".
   return spaced(text)
@@ -1502,7 +1546,8 @@ export async function writtenReport(input: { ask: string; members: readonly Team
   // Nothing came back at all: the host's line already says exactly that. c7: one teammate's one sentence is the answer in their own
   // words, and no writer is asked to say it again.
   // stack-8: when every teammate says first that nothing new was found, the host's answer (their own lines under one lead) stands.
-  const quietAll = shown.length > 1 && shown.every(m => !atWork(m) && (!!m.empty || saysNoneFirst(m)))
+  // c10b C3: so is it when every part's finds are older than the time asked (outsideFor): the lead says nothing is new, once.
+  const quietAll = shown.length > 1 && shown.every(m => !atWork(m) && (!!m.empty || saysNoneFirst(m) || !!outsideFor(m, context.now)))
   // c9 C6/H5: a hand-off's result is the teammate's own lines under the host's opener; the writer only added a closing source sentence.
   if (!input.write || quietAll || shown.some(m => handedFrom(m.brief)) || !shown.some(m => findings(delivered(m)).lines.length) || (shown.length === 1 && !outsideFor(shown[0]!, context.now) && gistOf(shown[0]!))) return fallback
   let timer: ReturnType<typeof setTimeout> | undefined

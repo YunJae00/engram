@@ -1,0 +1,37 @@
+{
+ "notion": {
+  "brief": "이번 주 노션 신기능 조사해서 알려줘",
+  "result": "확인해 보니 노션의 가장 최근 업데이트는 2026년 10월 19일에 나온 \"Agents, 효율은 높이고 비용은 낮추다\"예요. 이번 주(11월 16일~22일) 새로 나온 건 없고, 더 강력해진 Notion Agents, 비용을 90% 낮춘 Auto 모델 라우터, 내 AI 가져오기(BYOK), 개선된 Notion MCP, 새로운 크레딧 시스템 등이 담긴 업데이트예요.\n출처: https://www.notion.com/ko/releases",
+  "sources": [
+   "https://www.notion.com/ko/releases",
+   "https://search.naver.com/search.naver?query=%EB%85%B8%EC%85%98%20%EC%95%B1%20%EC%83%88%20%EA%B8%B0%EB%8A%A5%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8&where=news&nso=so%3Ar%2Cp%3A1d%2Ca%3Aall",
+   "https://search.naver.com/search.naver?query=Notion%20releases%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8"
+  ]
+ },
+ "slack": {
+  "brief": "이번 주 슬랙 신기능 조사해서 알려줘",
+  "result": "슬랙은 이번 주(11/16~11/22)엔 새로 낸 게 없더라고요! 최근엔 2026년 11월 9일에 Slack 4.53.287(Mac)이 나왔는데, 그것도 보안 개선 위주라 눈에 띄는 기능 추가는 아니었어요.\nhttps://slack.com/intl/ko-kr/release-notes/mac",
+  "sources": [
+   "https://slack.com/intl/ko-kr/release-notes/mac",
+   "https://search.naver.com/search.naver?query=%EC%8A%AC%EB%9E%99%20%EC%95%B1%20%EC%83%88%20%EA%B8%B0%EB%8A%A5%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8&where=news&nso=so%3Ar%2Cp%3A1d%2Ca%3Aall",
+   "https://search.naver.com/search.naver?query=Slack%20release%20notes%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8"
+  ]
+ },
+ "linear": {
+  "brief": "이번 주 리니어 신기능 조사해서 알려줘",
+  "result": "리니어 새 기능으로는, 11월 12일에 'Bring your own key(BYOK)' 기능이 나왔어요. 리니어의 클라우드 코딩 에이전트에 자체 API 키(OpenAI, Anthropic, AWS Bedrock, Azure OpenAI 등)를 연결해서 기존 제공자 크레딧과 협상된 요금으로 쓸 수 있게 한 기능이에요. 워크스페이스 관리자가 설정에서 켤 수 있고, 모든 현재 플랜에서 사용 가능하다고 해요.\nhttps://linear.app/changelog",
+  "sources": [
+   "https://linear.app/changelog",
+   "https://search.naver.com/search.naver?query=%EB%A6%AC%EB%8B%88%EC%96%B4%20%EC%95%B1%20%EC%83%88%20%EA%B8%B0%EB%8A%A5%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8&where=news&nso=so%3Ar%2Cp%3A1d%2Ca%3Aall",
+   "https://search.naver.com/search.naver?query=Linear%20changelog%20%EC%97%85%EB%8D%B0%EC%9D%B4%ED%8A%B8"
+  ]
+ },
+ "it": {
+  "brief": "다음 달 서울 IT 행사 일정 정리",
+  "result": "12월 2일~4일, 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전)이 코엑스에서 열려요. AI·SW·클라우드·보안 분야 비즈니스 전시회로, 첫날(2일)은 비즈니스 데이이고 일반 참관객은 3~4일 방문을 권장한다고 해요. — https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94\n교육 및 행사 일정: 교육명 장소 [2026년 11월 교육] NAVER CLOUD PLATFORM AI Expert 공인교육 서울시 중구 퇴계로 243 (평광빌딩) 4층 강의장(클라우드스퀘어 전용 강의장) [2026년 12월] 네이버클라 https://www.ncloud.com/support/edu\n제11회 대한민국 소프트웨어 대전, 소프트웨이브 2026: 관람 시간 : 12/02(수) - 12/04(금), 관람 장소 : Hall · A · 주차정보, 행사 소개 : 소프트웨이브는 다양한 기술 및 산업과 융합해 새로운 가치를 창조하는 SW제품들이 고객과 만나는 비즈니스 https://www.coex.co.kr/exhibitions/%EC%A0%9C11%ED%9A%8C-%EB%8C%80%ED%95%9C%EB%AF%BC%EA%B5%AD-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%96%B4-%EB%8C%80%EC%A0%84-%EC%86%8C%ED%94%84%ED%8A%B8%EC%9B%A8%EC%9D%B4%EB%B8%8C-2026/\n2026 카즈미 타테이시 트리오 내한공연-크리스마스, 재즈를 만나다-(서울) · 강동구 · 12월 24일: 기간 : 12월 24일, 장소 : 강동아트센터 대극장 한강, 요금 : VIP석 88,000원 / R석 77,000원 / S석 66,000원 / A석 55,000원, 상태 : 예정, 유형 : 콘서트, 제공 : 서울 열 https://sujb.kr/events/2026-%EC%B9%B4%EC%A6%88%EB%AF%B8-%ED%83%80%ED%85%8C%EC%9D%B4%EC%8B%9C-%ED%8A%B8%EB%A6%AC%EC%98%A4-%EB%82%B4%ED%95%9C%EA%B3%B5%EC%97%B0-%ED%81%AC%EB%A6%AC%EC%8A%A4%EB%A7%88%EC%8A%A4%2C-%EC%9E%AC%EC%A6%88%EB%A5%BC-%EB%A7%8C%EB%82%98%EB%8B%A4-(%EC%84%9C%EC%9A%B8)--e-c626c63009c41b52/\n국내 자동차 모빌리티 박람회 일정 총정리 | 최근 3년 전수 조사와 2026·2027 향후 캘린더: 자동차와 모빌리티 산업은 단순한 이동 수단 제조를 넘어 소프트웨어 중심 자동차(SDV), 인공지능 자율주행, 배터리와 초급속 충전, 수소 밸류체인으로 무게중심이 빠르게 이동하고 있습니다. 그에 따라 국내에서 열리는 https://min-inter.co.kr/wiki/korea-auto-mobility-expo-3years-calendar/\n창업 행사 일정 찾기, 데모데이·밋업·네트워킹을 행사일 순서로: 창업 행사 찾기 ; K-Startup·기업마당·지자체 공고의 데모데이·밋업·네트워킹·포럼을 행사일 순서로 모았어요. 지역과 종류로 거르고, 민간 플랫폼 바로가기도 함께 볼 수 있어요. https://www.marketpilot.it/startup-events\n2026년 글로벌 행사 | GIB: KHF 2026 국제 병원 및 헬스테크 박람회 AI·IT·전자·디지털 기술 · 식품·유통·소비재 Automechanika Frankfurt 2026 https://gib-localbridge.com/events/2026/\n2026 CMK 임팩트프러너 데이: 2026년 K-하이테크 플랫폼 합동 비즈콘 시즌2✨ [RE:WORK 성수]✨ 먼저 준비한 조직이 앞서간다 : AI 인프라와 병원 AI의 미래 | ACRYL NEXT 2026 2026 CMK 임팩트프러너 데이 [피\n(시간 한도에서 멈춤: 여기까지 찾은 내용)",
+  "sources": [
+   "https://search.naver.com/search.naver?query=2026%EB%85%84%2012%EC%9B%94%20%EC%84%9C%EC%9A%B8%20IT%20%ED%96%89%EC%82%AC%20%EC%9D%BC%EC%A0%95",
+   "https://search.naver.com/search.naver?query=2026%EB%85%84%2012%EC%9B%94%20%EC%84%9C%EC%9A%B8%20IT%20%EC%BB%A8%ED%8D%BC%EB%9F%B0%EC%8A%A4%20%EC%84%B8%EB%AF%B8%EB%82%98%20%EB%B0%8B%EC%97%85"
+  ]
+ }
+}

@@ -554,7 +554,7 @@ test('the host\'s own table on the results as they were stored: no notes on the 
   // c3b r1: the quoted headline stayed ("Agents, rebuilt to do more for less"); no run of four English words is left, and the finding it led stays.
   expect(report).not.toMatch(/Agents, rebuilt|(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3}[A-Za-z]/)
   // c6: asked for this week on 2026-11-17, a find of 10월 19일 is said as what it is, its date kept.
-  expect(rows[1]).toContain('지민: 이번 주 새 소식은 아직 안 보여요. 가장 가까운 건 10월 19일 거예요. 2026-10-19: Notion Agent 대폭 개선')
+  expect(rows[1]).toContain('지민: 이번 주엔 새로 낸 게 없어요. 가장 최근 건 10월 19일 거예요. 2026-10-19: Notion Agent 대폭 개선')
   for (const row of rows) { const hosts = [...row.matchAll(/\]\(https?:\/\/([^/)]+)/g)].map(hit => hit[1]); expect(new Set(hosts).size, row).toBe(hosts.length) }
   // c4 C5: nothing is said about a result that was cut short.
   expect(report).not.toMatch(/여기까지|더 있을 수/)
@@ -960,9 +960,9 @@ test('c4 C7: "내 일정 뭐 있어?" is answered from the stored schedules, and
   for (const ask of ['내 일정 뭐 있어?', '일정 뭐 있어', '내 스케줄 알려줘']) expect(isDutyListAsk(ask), ask).toBe(true)
   for (const ask of ['내일 일정 정리해줘', '매주 월요일 9시에 요약해줘', '일정표 만들어줘']) expect(isDutyListAsk(ask), ask).toBe(false)
   // c9 fix 5: whose schedule it is is said (Engram's, not the person's calendar).
-  expect(dutyList([])).toBe('제가 따로 챙기는 일정은 아직 없어요.')
-  expect(dutyList([weekly, { id: 'r', name: 'x', goal: 'x', routineId: 'r1', schedule: { days: [1], hour: 8, minute: 0 } } as BotTask, { id: 'n', name: 'y', goal: 'y' } as BotTask])).toBe('제가 챙기는 건 매주 월요일 9시에 지난주 팀이 한 일 요약해 드리는 거 하나예요.')
-  expect(dutyList([weekly, kept('b', 'AI 뉴스 정리해줘', [0, 1, 2, 3, 4, 5, 6], 18)])).toBe('제가 챙기는 정기 일정은 2개예요.\n\n- 매주 월요일 9시: 지난주 팀이 한 일 요약\n- 매일 오후 6시: AI 뉴스 정리')
+  expect(dutyList([])).toBe('제가 따로 챙기는 일정은 아직 없어요. 다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
+  expect(dutyList([weekly, { id: 'r', name: 'x', goal: 'x', routineId: 'r1', schedule: { days: [1], hour: 8, minute: 0 } } as BotTask, { id: 'n', name: 'y', goal: 'y' } as BotTask])).toBe('제가 챙기는 건 매주 월요일 9시에 지난주 팀이 한 일 요약해 드리는 거 하나예요. 다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
+  expect(dutyList([weekly, kept('b', 'AI 뉴스 정리해줘', [0, 1, 2, 3, 4, 5, 6], 18)])).toBe('제가 챙기는 정기 일정은 2개예요.\n\n- 매주 월요일 9시: 지난주 팀이 한 일 요약\n- 매일 오후 6시: AI 뉴스 정리\n\n다른 약속은 제가 볼 수 있는 캘린더가 없어서 모르겠어요.')
   // Cancel: only one schedule, and the reply just before named it (the list above, or the line that confirmed it).
   expect(dutyToCancel('그거 취소해', [weekly], dutyList([weekly]))).toBe(weekly)
   expect(dutyToCancel('그 일정 없애줘', [weekly], '매주 월요일 9시에 지난주 팀이 한 일 요약해 드릴게요.')).toBe(weekly)
@@ -1234,7 +1234,7 @@ test('c5 C4: "다들 뭐 하고 있어?" is a sentence or two: people in the sam
   // Everyone idle: what the jobs share is said once.
   const idle = companyStatus(bots, [split], now)
   // c7 C4 (USER-NOTES): what they just did first, idle once and plainly, and nobody is "쉬고 있".
-  expect(idle).toBe('지민, 서연, 도윤 모두 방금 노션·슬랙·리니어 신기능 조사 끝냈어요. 지금은 다들 한가해요.')
+  expect(idle).toBe('지민, 서연, 도윤 다 방금 노션·슬랙·리니어 신기능 조사 끝내서 지금은 한가해요.')
   expect(idle).not.toContain('\n')
   // Later the same work is not "방금".
   expect(companyStatus(bots, [split], now + 5 * 3_600_000)).toBe('지민은 노션, 서연은 슬랙, 도윤은 리니어 신기능 조사를 끝낸 게 마지막이에요. 지금은 다들 한가해요.')
@@ -1515,7 +1515,7 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   // The time asked, read widely: next month whole, this week from seven days back to Sunday.
   expect(askedPeriod('다음 달 서울 IT 행사 일정 정리', NOV17)).toMatchObject({ from: new Date(2026, 11, 1), to: new Date(2026, 11, 31), label: '올해 12월' })
   expect(askedPeriod('다음 달 일정', new Date(2026, 11, 20))).toMatchObject({ from: new Date(2027, 0, 1), label: '내년 1월' })
-  expect(askedPeriod('이번 주 리니어 신기능 조사해서 알려줘', NOV17)).toMatchObject({ from: new Date(2026, 10, 10), to: new Date(2026, 10, 22) })
+  expect(askedPeriod('이번 주 리니어 신기능 조사해서 알려줘', NOV17)).toMatchObject({ from: new Date(2026, 10, 16), to: new Date(2026, 10, 22) })
   expect(askedPeriod('이번 주말 서울 날씨 찾기', NOV17)).toMatchObject({ from: new Date(2026, 10, 21), to: new Date(2026, 10, 22) })
   expect(askedPeriod('내일 날씨', NOV17)).toMatchObject({ from: new Date(2026, 10, 18), to: new Date(2026, 10, 18) })
   expect(askedPeriod('서울 IT 행사 일정 정리', NOV17)).toBeUndefined()
@@ -1545,7 +1545,7 @@ test('c6 item 4 (C5, C6): a find dated outside the time asked is never shown as 
   expect(inside('12월 2일 행사 A가 열려요. https://example.com/events\n---\n12월 9일 행사 B가 열려요. https://example.com/events', '다음 달 행사 일정 2개 정리')).toMatch(/1\. 12월 2일 행사 A가 열려요\. \[[^\]]+\]\([^)]+\)\n2\. 12월 9일 행사 B가 열려요\./)
   // In a table the part's row says it (C3's 노션 row: an offline mode of 2025.08.19 under "이번 주").
   const row = mergedReport(s5.c3, undefined, [], ctx).split('\n').find(line => line.startsWith('지민: '))!
-  expect(row).toContain('지민: 이번 주 새 소식은 아직 안 보여요. 가장 가까운 건 작년 8월 19일 거예요. 노션, 네트워크 없이도 작업 가능한 \'오프라인 모드\' 출시 (2025.08.19.)')
+  expect(row).toContain('지민: 노션은 이번 주엔 새로 낸 게 없어요. 가장 최근 건 작년 8월 19일 거예요. 노션, 네트워크 없이도 작업 가능한 \'오프라인 모드\' 출시 (2025.08.19.)')
   expect(row).not.toContain('— (헬로티)')
   // C6: the hand-over tells the next teammate, and still reads back as a hand-over.
   const handed = handoffBrief('홍보 문구 3개 뽑기', '지민', s5.c5[0]!.result!, s5.c5[0]!.brief, [], NOV17)
@@ -1608,13 +1608,14 @@ test('c6 item 5 (C10): the weekly summary says what the record says: no example 
   const bot = (await loadBots(e.paths)).find(one => one.name === '도윤')!
   await employeeWriteBack(e.paths, { botId: bot.id, brief: s5.c3[2]!.brief, result: s5.c3[2]!.result!.split('\n\n---')[0]!, title: s5.c3[2]!.title! }, now)
   const line = (await teamRecord(e.paths)).facts[0]!.text
-  expect(line).toMatch(/^이번 주 리니어 신기능 조사 → 리니어 신기능: BYOK\(자체 API 키 연결\) - 2026년 11월 12일, 클라우드 코딩 에이전트에서/)
+  expect(line).toMatch(/^이번 주 리니어 신기능 조사 → 이번 주 새 소식은 아직 안 보여요\. 가장 가까운 건 11월 12일 거예요\. 리니어 신기능: BYOK\(자체 API 키 연결\) - 2026년 11월 12일, 클라우드 코딩 에이전트에서/)
   expect(line).not.toContain('항목이 확인됐어요')
   // A find of another year is recorded as that, and the summary's writer is told the job found nothing for the time asked.
   await employeeWriteBack(e.paths, { botId: bot.id, brief: s5.c5[0]!.brief, result: s5.c5[0]!.result!, title: s5.c5[0]!.title! }, now)
   expect((await teamRecord(e.paths)).facts[1]!.text).toMatch(/^다음 달 서울 IT 행사 일정 정리 → 올해 12월 일정은 아직 안 보여요\. 가장 가까운 건 작년 12월 11일 거예요\. ACC 2025/)
   await teamSummary(e.paths, { bots: await loadBots(e.paths), message: '이번 주 팀이 한 일 요약해', now, write: async prompt => { asked.push(prompt); return '' } })
-  expect((JSON.parse(asked.at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([false, true])
+  // c10b: 11월 12일 is before this week (11월 16~22일), so the Linear job is recorded as nothing new this week too.
+  expect((JSON.parse(asked.at(-1)!.split('Record: ')[1]!) as { nothing: boolean }[]).map(job => job.nothing)).toEqual([true, true])
   // The lead's own note (no quick model) gives no copyable name either.
   expect(await companyNote(e.paths, { bots: await loadBots(e.paths), message: '이번 주 팀이 한 일 요약해', chief: true, now })).not.toMatch(/노션, 슬랙, 리니어 쪽은|서연이 지민 조사로|\(지민, 11월 16일\)/)
 })
@@ -1794,35 +1795,38 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   const said = mergedReport(s6.c3, undefined, [], ctx), lines = nameLed(said)
   expect(said).not.toMatch(/^\s*\|/m)
   expect(said).not.toMatch(/맡은 일|담당|조사 결과|쉬고 있/)
-  // All three found nothing new this week: the lead says that once, and each line gives the latest thing found, with its day.
-  expect(said.split('\n')[0]).toBe('이번 주는 셋 다 새로 나온 게 없대요.')
+  // All three found nothing new this week: the lead says so, and each line says it for its own part (c10b r1: a line is read on its own)
+  // with the latest thing found and its day.
+  expect(said.split('\n')[0]).toBe('이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.')
   expect(lines.map(line => line.split(': ')[0])).toEqual(['지민', '서연', '도윤'])
   for (const [i, part] of ['노션', '슬랙', '리니어'].entries()) { expect(lines[i]).toContain(part); expect(linksIn(lines[i]!), lines[i]).toHaveLength(1); expect(lines[i]).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
-  expect(lines[0]).toMatch(/^지민: 노션 쪽은 1월 20일 게 제일 최근이에요\. 2026년 1월 20일\(Notion 3\.2\) 업데이트로 모바일 AI 노트 탭이 추가돼 /)
-  expect(lines[1]).toMatch(/^서연: 4월 2일 게 제일 최근이에요\. 슬랙봇이 /)
+  expect(lines[0]).toMatch(/^지민: 노션은 이번 주엔 새로 낸 게 없어요\. 최근엔 2026년 1월 20일\(Notion 3\.2\) 업데이트로 모바일 AI 노트 탭이 추가돼 /)
+  expect(lines[1]).toMatch(/^서연: 슬랙은 이번 주엔 새로 낸 게 없어요\. 가장 최근 건 4월 2일 거예요\. 슬랙봇이 /)
   // c7b r2: 도윤 found nothing new either, and the line was only "리니어는 이번 주 새 소식이 안 보여요." and a link. The latest result that
   // names the part is said with its day, like the other two; the unrelated rows (motors, refrigerators) never are.
-  expect(lines[2]).toBe('도윤: 리니어 쪽은 작년 7월 9일 게 제일 최근이에요. 노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시 · [출처](https://ditoday.com/channel-talk-launches-mcp-host-feature/)')
+  expect(lines[2]).toBe('도윤: 리니어는 이번 주 새 소식이 안 보여요. 가장 가까운 건 작년 7월 9일 거예요. 노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시 · [출처](https://ditoday.com/channel-talk-launches-mcp-host-feature/)')
   expect(said).not.toMatch(/냉장고|리니어모터|아이폰/)
   // Alone, or when the others found something, the line first says nothing is new, then the latest and its day; so does the table's cell.
   expect(mergedReport([s6.c3[2]!], undefined, [], ctx)).toMatch(/^도윤: 리니어는 이번 주 새 소식이 안 보여요\. 가장 가까운 건 작년 7월 9일 거예요\. 노션·리니어 연동.+ · \[출처\]\(/)
   expect(mergedReport(s6.c3, undefined, [], { now: NOV17, ask: '노션, 슬랙, 리니어 이번 주 신기능 표로 정리해줘' })).toMatch(/\| 리니어 \(도윤\) \| 이번 주 새 소식은 안 보여요\. 가장 가까운 건 작년 7월 9일 거예요\. 노션·리니어 연동.+\]\(https:\/\/ditoday/)
-  // The lead said nothing is new this week; no line says it again.
-  expect(said.match(/이번 주/g)).toHaveLength(1)
-  expect(lines.filter(line => /이번 주/.test(line))).toHaveLength(0)
+  // c10b r1 (Codex): the lead and every line say it, once each.
+  expect(said.match(/이번 주/g)).toHaveLength(4)
+  expect(lines.filter(line => /이번 주/.test(line))).toHaveLength(3)
   // A note on a page's date is not its name, and no link is named by a cut title.
   expect(said).not.toMatch(/\[[^\]]*(?:작성 글|…)[^\]]*\]\(/)
   // BAR C3 reads the last bubble: the three products, the three names, three links. One bubble: the lead and three lines.
   expect(linksIn(said)).toHaveLength(3)
   expect(said.split('\n').filter(Boolean)).toHaveLength(4)
   // c7b r3: the written answer comes first, and its check passed 도윤's line with the find and its day left out (the reviewer's repro).
-  const [u0, u1, u2] = linksIn(said), written = (doyun: string): string => `이번 주는 셋 다 새로 나온 게 없대요.\n\n지민: 노션은 1월 모바일 AI 노트가 최근이에요. [출처](${u0})\n\n서연: 슬랙은 4월 AI 업데이트가 최근이에요. [출처](${u1})\n\n도윤: ${doyun}`
+  const [u0, u1, u2] = linksIn(said), written = (doyun: string): string => `이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.\n\n지민: 노션은 이번 주엔 새로 낸 게 없어요. 1월 모바일 AI 노트가 최근이에요. [출처](${u0})\n\n서연: 슬랙은 이번 주엔 새로 낸 게 없어요. 4월 AI 업데이트가 최근이에요. [출처](${u1})\n\n도윤: ${doyun}`
   const bare = written(`리니어는 새 발표 없네요. [출처](${u2})`)
   expect(checkedReport(bare, s6.c3, ctx)).toBeUndefined()
   // The day with no year reads as this year's; the find linked to another page is not the find.
   expect(checkedReport(written(`리니어는 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx)).toBeUndefined()
   expect(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${s6.c3[2]!.sources![0]})`), s6.c3, ctx)).toBeUndefined()
-  expect(nameLed(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx) ?? '')[2]).toBe(`도윤: 리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`)
+  // c10b r2 (Codex): a line that opens with the old find reads as this week's news on its own; the verdict leads, then the find.
+  expect(checkedReport(written(`리니어는 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx)).toBeUndefined()
+  expect(nameLed(checkedReport(written(`리니어는 이번 주엔 새로 낸 게 없어요. 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`), s6.c3, ctx) ?? '')[2]).toBe(`도윤: 리니어는 이번 주엔 새로 낸 게 없어요. 작년 7월 9일 채널톡 연동 소식이 제일 최근이에요. [출처](${u2})`)
   // So the bubble the person gets from the bare one is the host's own, and the writer is handed the find to say.
   expect(nameLed(await writtenReport({ ask: ctx.ask, members: s6.c3, now: NOV17, write: async () => bare }))[2]).toBe(lines[2])
   expect(reportPrompt(ctx.ask, s6.c3, undefined, ctx)).toContain(`"latest":{"day":"작년 7월 9일","what":"노션·리니어 연동으로 업무 자동화 확대... 채널톡, ‘MCP 호스트’ 기능 출시","page":"${u2}"}`)
@@ -1831,7 +1835,7 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   const early = mergedReport(waiting, undefined, [], ctx)
   expect(early.split('\n')[0]).toBe('셋 중 둘은 끝났어요.')
   expect(nameLed(early)[2]).toBe('도윤: 리니어 쪽은 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')
-  expect(nameLed(early)[0]).toContain('이번 주 새 소식은 아직 안 보여요. 가장 가까운 건 1월 20일 거예요.')
+  expect(nameLed(early)[0]).toContain('노션은 이번 주엔 새로 낸 게 없어요. 최근엔 2026년 1월 20일')
   // The person says 표: a table, as before. 비교 over parts that are sentences, not short values, stays the teammates' lines.
   const table = mergedReport(s6.c3, undefined, [], { now: NOV17, ask: '노션, 슬랙, 리니어 이번 주 신기능 표로 정리해줘' })
   expect(table.match(/^\|---/gm)).toHaveLength(1)
@@ -1840,13 +1844,14 @@ test('c7 C3: this run\'s stored results are one bubble of the teammates talking:
   // The writer's text in the same shape passes, its links named by the host; a table nobody asked for, a missing teammate, a missing
   // link, a part not named and English are refused, and the host's own lines stand in.
   const pages = s6.c3.map(m => linksIn(nameLed(said).find(line => line.startsWith(`${m.role}: `))!)[0]!)
-  const good = ['이번 주는 셋 다 새로 나온 게 없대요.', '', `지민: 노션은 이번 주엔 조용해요. 제일 최근 건 1월에 나온 모바일 AI 노트예요. [출처](${pages[0]})`, '', `서연: 슬랙도 이번 주 소식은 없더라고요! 4월 AI 업데이트가 마지막이에요. [출처](${pages[1]})`, '', `도윤: 리니어는 새 발표 없네요. 작년 7월 채널톡 연동 소식이 마지막이에요. [출처](${pages[2]})`].join('\n')
+  const good = ['이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.', '', `지민: 노션은 이번 주엔 조용해요. 제일 최근 건 1월에 나온 모바일 AI 노트예요. [출처](${pages[0]})`, '', `서연: 슬랙도 이번 주 소식은 없더라고요! 4월 AI 업데이트가 마지막이에요. [출처](${pages[1]})`, '', `도윤: 리니어는 새 발표 없네요. 작년 7월 채널톡 연동 소식이 마지막이에요. [출처](${pages[2]})`].join('\n')
   const passed = checkedReport(good, s6.c3, ctx)!
   expect(nameLed(passed).map(line => line.replace(/\[[^\]]+\]\(/, '[출처]('))).toEqual(nameLed(good))
   // stack-7: named by the one rule (c7a): a site's own name or the plain word, never a piece of the host.
   expect(passed).not.toMatch(/\[(?:blank|hellot|ditoday)[^\]]*\]\(/)
-  expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => good })).toBe(passed)
-  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace(' 작년 7월 채널톡 연동 소식이 마지막이에요.', ''), good.replace('이번 주는 셋 다 새로 나온 게 없대요.\n\n', ''),
+  // c10b: every part's finds are older than this week, so no writer is asked: the host's honest lead and lines stand.
+  expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => good })).toBe(said)
+  for (const bad of [stack6.c3.shown!, good.replace(/\n\n서연: .*/, ''), good.replace(` [출처](${pages[1]})`, ''), good.replace('도윤: 리니어는', '도윤: 거기는'), good.replace('리니어는 새 발표 없네요.', 'Linear shipped nothing new this week.'), good.replace(' 작년 7월 채널톡 연동 소식이 마지막이에요.', ''), good.replace('이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.\n\n', ''),
     // stack-7 (c7b r3 #1): the month, the year and the link with no word of what the find was.
     good.replace('리니어는 새 발표 없네요. 작년 7월 채널톡 연동 소식이 마지막이에요.', '리니어는 작년 7월에도 새 발표가 없네요.')])
     expect(await writtenReport({ ask: stack6.c3.goal, members: s6.c3, now: NOV17, timeoutMs: 1000, write: async () => bad }), bad.slice(0, 60)).toBe(said)

@@ -539,6 +539,42 @@ function saidOnce(answer: string, job: string): string {
 const LIST_ASK = /일정|목록|리스트|schedule|\blist\b|(?:\d{1,2}|두|세|네|다섯)\s*(?:개|가지|건|편)(?![가-힣]*월)/iu
 const DATED_LINE = /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}|(?<![\d.])\d{1,2}\/\d{1,2}(?![\d/])/
 const datedLines = (text: string): number => text.split('\n').filter(line => DATED_LINE.test(line)).length
+// c10b (C5-C10, H5: "12월 24일, … 카즈미 타테이시 트리오 내한공연" in "다음 달 서울 IT 행사"): a list job keeps only items of the kind asked, and
+// an item whose only link is a search page while another item has a real page. The last item is never dropped for its link; one of
+// another kind always goes (c10b r1, Codex: a lone concert stood as "확실한 건 하나예요." under the IT list), and then the list says none fit.
+const NONE_OF_KIND = 'IT 쪽으로 딱 맞는 행사는 못 찾았어요.'
+// shortcut: the kind is checked only for an IT-type ask against shows; add a pair here when a run shows another kind mixed in.
+const IT_WORDS = /(?<![A-Za-z])(?:IT|AI|SW|ICT|DX)(?![A-Za-z])|소프트웨어|개발|보안|클라우드|데이터|테크|스타트업|인공지능|반도체|게임|컨퍼런스|콘퍼런스|해커톤|밋업|서밋|세미나|포럼|엑스포/u
+const SHOW = /공연|콘서트|내한|뮤지컬|연극|오페라|발레|리사이틀|팬\s*미팅|재즈|클래식|미술|갤러리|축제|페스티벌|버스킹/u
+const offKind = (brief: string, line: string): boolean => { const plain = line.replace(/https?:\/\/\S+/g, ' '); return IT_WORDS.test(brief) && SHOW.test(plain) && !IT_WORDS.test(plain) }
+// c10b r3 (Codex r2: "12월 24일 재즈 공연\n강동아트센터 12월 24일 https://…" kept the venue line as a second event): the filter works on
+// items, not lines. An item starts at a top-level bullet or number, after a line that ends in its link (a read row is one line), or at a
+// line with a date the item so far does not carry; any other
+// line (venue, link, note) belongs to the item above it and goes or stays with it, unless it is itself of another kind (an undated show
+// under an IT item starts its own item, as it did when the filter read lines).
+const ITEM_MARK = /^(?:[-*•·]|\d{1,2}[.)])\s/
+const datesIn = (line: string): string[] => (line.match(new RegExp(DATED_LINE.source, 'g')) ?? []).map(day => day.replace(/\s+/g, ''))
+function itemsOf(lines: string[], apart: (line: string) => boolean): string[][] {
+  const items: string[][] = []
+  for (const line of lines) {
+    const item = items.at(-1), days = datesIn(line), known = new Set(item?.flatMap(datesIn))
+    if (!item || ITEM_MARK.test(line) || apart(line) || /https?:\/\/\S+\s*$/.test(item.at(-1)!) || days.length > 0 && !days.some(day => known.has(day))) items.push([line])
+    else item.push(line)
+  }
+  return items
+}
+/** A list job's items, less one of another kind than asked and one that stands only on a search page while another has a real one. */
+export function keptItems(brief: string, text: string): string {
+  const ask = brief.split('\n')[0]!
+  if (!LIST_ASK.test(ask)) return text
+  const said = (some: string[][]): boolean => some.some(item => /[가-힣A-Za-z]/.test(item.join(' ').replace(/https?:\/\/\S+/g, '')))
+  const links = (item: string[]): string[] => item.flatMap(addressesIn)
+  const items = itemsOf(text.split('\n'), line => offKind(ask, line)), ofKind = items.filter(item => !offKind(ask, item.join(' ')))
+  const real = ofKind.some(item => links(item).some(url => !isSearchPage(url)))
+  if (!said(ofKind)) return said(items) ? NONE_OF_KIND : text
+  const kept = ofKind.filter(item => !(real && links(item).length > 0 && links(item).every(isSearchPage)))
+  return (said(kept) ? kept : ofKind).flat().join('\n')
+}
 export function settleMember(member: TeamMember, outcome: MemberOutcome, at: string, korean = false): void {
   const said = saidOnce(outcome.answer.trim(), member.brief.split('\n')[0]!)
   // A member that was stopped, failed or asked keeps nothing of what it read (GROKBOT rule 4); one whose time or calls ran out does.
@@ -566,7 +602,7 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   const rest = !answer || empty ? read : tail && (!addressesIn(answer).length || (LIST_ASK.test(member.brief.split('\n')[0]!) && datedLines(answer) < datedLines(read))) ? unreached : ''
   if (rest) member.read = true
   if (empty) member.empty = true
-  member.result = cut([answer, rest].filter(Boolean).join('\n'), MEMBER_RESULT_CHARS - tail.length) + tail
+  member.result = cut(keptItems(member.brief, [answer, rest].filter(Boolean).join('\n')), MEMBER_RESULT_CHARS - tail.length) + tail
   if (sources.length) member.sources = sources
   // c5 C5: "https://itsight.zdnet.co.kr/acc2026/main.html" was stored as a file the teammate made, and the host gave the report up to the main
   // model. A file is something made in the workspace: an address is never one.
