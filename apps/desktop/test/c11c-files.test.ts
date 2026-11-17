@@ -136,6 +136,7 @@ describe('a garbled build is refused before any file exists', () => {
     expect(mistypedWords([{ where: 'slide 2', text: '매출 전놙0대름 확인' }])).toEqual(['전놙0대름 (slide 2)'])
     expect(mistypedWords([{ where: 'block 1', text: '고객 만족�도 조사' }])).toEqual(['만족�도 (block 1)'])
     expect(mistypedWords([{ where: 'slide 1', text: '분기 매ᅡ출' }])).toEqual(['매ᅡ출 (slide 1)'])
+    expect(mistypedWords([{ where: 'slide 4', text: '결과 보고\u0001서' }])).toEqual(['보고\u0001서 (slide 4)'])
     expect(mistypedWords([{ where: 'slide 1', text: '2025년 Q3 매출 1,240만 원, YoY +12% (Revenue up)' }, { where: 'slide 2', text: '담당: 한서연 · 기한 11월 20일' }])).toEqual([])
   })
 

@@ -24,7 +24,7 @@ const COMMON_HANGUL = ((): Set<string> => {
 // types, judged by its characters alone, never a word list: a Hangul syllable outside the common 2,350 (skipped where no decoder exists), a
 // combining mark on Hangul, a loose conjoining jamo, a replacement character (U+FFFD) or a control character. Each word is named with where it is.
 export function mistypedWords(texts: readonly { where: string; text: string }[]): string[] {
-  const odd = (one: string) => /[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F\u1100-\u11FF]/.test(one) || (COMMON_HANGUL.size > 0 && /[가-힣]/.test(one) && !COMMON_HANGUL.has(one))
+  const odd = (one: string) => /[\uFFFD\u1100-\u11FF]/.test(one) || (one < ' ' && !'\t\n\r'.includes(one)) || (COMMON_HANGUL.size > 0 && /[가-힣]/.test(one) && !COMMON_HANGUL.has(one))
   return texts.flatMap(({ where, text }) => (text.match(/[^\s,.:;()[\]"'“”‘’·/|-]+/g) ?? [])
     .filter(word => /[가-힣\u1100-\u11FF][\u0300-\u036f]/.test(word) || [...word].some(odd))
     .map(word => `${word} (${where})`)).slice(0, 8)
