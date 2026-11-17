@@ -1,12 +1,12 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, pointQueries, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, employeeNote, employeeWriteBack, handoffBrief, jobTitle, logTask, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, employeeNote, employeeWriteBack, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -144,13 +144,17 @@ export function teamRunner(deps: {
         if (search) {
           begun()
           // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
-          const held = laneSearches.get(leadChannel), already = held && sameWords(held.query, me.query!) ? held.found : undefined
-          // c9a R2: words for a price and a date are one search per point, each list under its own heading (pointQueries). One after the
-          // other: a member's searches share its one tab, and a second load cuts the first off (stack-6, comet-navigation-tools).
-          const queries = already !== undefined ? [me.query!] : pointQueries(me.query!), founds: string[] = []
-          if (already !== undefined) founds.push(await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => ''))
-          else for (const query of queries) founds.push(await search.run({ query }, { task: prompt, signal: control.signal }).catch(() => ''))
-          for (const [at, found] of founds.entries()) if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${queries[at]}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
+          const held = laneSearches.get(leadChannel), task = prompt
+          // c9 C3/C5 + c9a R2: a job about a product's updates, a list job, or a price-and-date ask opens with up to three searches (core
+          // firstSearches, the one helper). One after the other: a member's searches share its one tab, and a second load cuts the first
+          // off (stack-6, comet-navigation-tools). The maker's own rows come first; that one page is the one to read.
+          const founds: (FirstSearch & { found: string; own?: boolean })[] = []
+          for (const one of firstSearches(me, goal)) {
+            const already = held && sameWords(held.query, one.query) ? held.found : undefined, args = { query: one.query, ...(one.news ? { kind: 'news' } : {}) }
+            const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run(args, { task, signal: control.signal }).catch(() => '') : await search.run(args, { task, signal: control.signal }).catch(() => '')
+            if (/^results for "/.test(found)) founds.push({ ...one, ...(one.maker ? makerFirst(found, one.maker) : { found }) })
+          }
+          if (founds.length) { read = true; prompt += firstFound(founds) }
         }
         let priced = false
         for (let round = 0; ; round++) {
@@ -225,12 +229,14 @@ export function teamRunner(deps: {
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
       // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief, m.sources), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
-      return to
+      return { to, background: !!m.background }
     })
-    if (next) await runOne(taskId, leadChannel, next, signal, kit, budget)
+    // c9 H5: work nobody waits on shows the first teammate's own find the moment they hand it on: one bubble, then the next one's (company-tools handoffShown).
+    if (next?.background && !halting.has(leadChannel)) report?.(leadChannel, taskId)
+    if (next) await runOne(taskId, leadChannel, next.to, signal, kit, budget)
   }
 
   // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.

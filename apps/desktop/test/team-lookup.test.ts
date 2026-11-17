@@ -177,7 +177,9 @@ it('c6: a lookup member with search words starts with that search already run: r
   expect(searched.map(one => one.query)).toEqual(['아이폰 18 출고가', '아이폰 18 출시일'])
   expect(searched[0]!.task).toContain('Your part:\n아이폰 18의 가격과 출시일')
   const [withQuery, without] = [prompts.find(prompt => prompt.includes('아이폰 18의'))!, prompts.find(prompt => prompt.includes('갤럭시 S27의'))!]
-  for (const words of ['아이폰 18 출고가', '아이폰 18 출시일']) expect(withQuery).toContain(`Results of the search already run for you ("${words}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\nresults for "${words}" at `)
+  // stack-9: the per-point searches come in through the one first-search helper (core firstFound), each list under its own words.
+  expect(withQuery).toContain('Results of the searches already run for you')
+  for (const words of ['아이폰 18 출고가', '아이폰 18 출시일']) expect(withQuery).toContain(`[${words}]\nresults for "${words}" at `)
   expect(withQuery).toContain('- 아이폰 18 프로 179만 원부터 — https://www.apple.com/kr/iphone-18-pro/')
   expect(withQuery).toMatch(/^Today is \d{4}-\d{2}-\d{2} \(\w+\)\./)
   // The search page is on record as read (keepSources), as if the member had searched itself.
@@ -251,7 +253,9 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   expect(out.note).not.toContain('Review each member with review_member')
   const [doyun, seoyeon] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
   // Found nothing: the rows the host's search gave are kept under it (c5b nothingNew) and the page searched on is its source.
-  expect(doyun).toMatchObject({ empty: true, read: true, sources: [address('리니어 신기능')] })
+  // c9 fix 1: a product's updates are also searched on the maker's own page ("Linear changelog"), side by side; the job's own search comes first.
+  expect(doyun).toMatchObject({ empty: true, read: true })
+  expect(doyun!.sources).toEqual([address('리니어 신기능'), address('Linear changelog')])
   expect(doyun!.result).toContain('SMTECHNO PLC Trainer 660,000원')
   // Cut short with its finding and the address it came from: the answer once, no replies block, nothing it only read (c6b settleMember).
   expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
