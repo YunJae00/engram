@@ -108,11 +108,11 @@ describe('team hire tools', () => {
     // A lone lookup's answer names the page it read when its words gave no address; one that has an address is left alone.
     expect(citeOwn('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과', ['https://search.naver.com/search.naver?query=원달러 환율'], true)).toBe('지금 1달러에 1,335.40원이에요.\n\n네이버 환율 검색 결과 [네이버 금융](https://search.naver.com/search.naver?query=원달러%20환율)')
     // grokbar c3 L2/L4: "출처: bing.com" on a line of its own read like a printout. One named link after the last sentence, a page of its own before a results page.
-    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C. [source](https://www.weather.example/seoul)')
+    expect(citeOwn('Seoul is 12°C.', ['https://www.google.com/search?q=seoul', 'https://www.weather.example/seoul'])).toBe('Seoul is 12°C. [weather.example](https://www.weather.example/seoul)')
     expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).toBe('엔비디아는 159.22달러예요. [Bing 검색](https://www.bing.com/search?q=NVDA)')
     expect(citeOwn('엔비디아는 159.22달러예요.', ['https://www.bing.com/search?q=NVDA'], true)).not.toMatch(/출처|bing\.com\]/)
     // After a table or a list the link is a line of its own, never glued into the last row.
-    expect(citeOwn('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |', ['https://finance.example/nvda'], true)).toBe('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)')
+    expect(citeOwn('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |', ['https://finance.example/nvda'], true)).toBe('| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[finance.example](https://finance.example/nvda)')
     expect(citeOwn('- 첫째\n- 둘째', naver, true)).toBe('- 첫째\n- 둘째\n\n[네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)')
     const linked = '1,335원이에요. [네이버 금융](https://finance.naver.com)'
     expect(citeOwn(linked, naver, true)).toBe(linked)
@@ -127,7 +127,7 @@ describe('team hire tools', () => {
     expect(citeOwn(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요.\n\n[네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`, [], true))
       .toBe(`엔비디아(NVDA) 11월 16일 장마감 기준 156.14달러로, 전일 대비 6.71달러(-4.12%) 하락했어요. [네이버 증권](https://search.naver.com/search.naver?query=엔비디아 주가)${replies}`)
     // An answer with no link gets its link after the sentence, not after the replies.
-    expect(citeOwn(`1,335원이에요.${replies}`, ['https://finance.example/usd'], true)).toBe(`1,335원이에요. [출처](https://finance.example/usd)${replies}`)
+    expect(citeOwn(`1,335원이에요.${replies}`, ['https://finance.example/usd'], true)).toBe(`1,335원이에요. [finance.example](https://finance.example/usd)${replies}`)
     expect(citeOwn(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)${replies}`, [], true)).toBe(`| 종목 | 가격 |\n|---|---|\n| NVDA | 159 |\n\n[출처](https://finance.example/nvda)${replies}`)
 
     const { state, call } = world('봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합하고 너가 알려줘')
@@ -470,7 +470,7 @@ describe('team hire tools', () => {
     expect(citeMembers(cited, members, true)).toBe(cited)
     expect(cited).not.toContain('failed.example')
     // No source column: the row keeps its cells and gains the link.
-    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [출처](https://search.naver.com/search.naver?query=부산%20날씨) |')
+    expect(citeMembers('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 |', members.slice(1, 2), true)).toBe('| 도시 | 날씨 |\n|---|---|\n| **부산** | 비 14도 [네이버 날씨](https://search.naver.com/search.naver?query=부산%20날씨) |')
     // Someone on the person's team is named in their row (GROKBOT rule 7), and an empty source cell is filled with the site's name, never theirs.
     const staff = [member('m1', '지민', ['https://www.notion.com/releases'], 'released', 'bot-jimin'), member('m2', '서연', ['https://slack.com/changelog'], 'released', 'bot-seoyeon'), member('m3', '도윤', undefined, 'released', 'bot-doyun')]
     expect(citeMembers('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | - |\n| 슬랙(서연) | 캔버스 | 슬랙 블로그 |', staff, true)).toBe('| 회사 | 신기능 | 출처 |\n|---|---|---|\n| 노션(지민) | AI 회의록 | [노션](https://www.notion.com/releases) |\n| 슬랙(서연) | 캔버스 | [슬랙 블로그](https://slack.com/changelog) |')
@@ -730,7 +730,7 @@ describe('team hire tools', () => {
     // c6 R2: every row had its own source when the citations were finished, so nothing follows the table (제주's member page used to close the answer).
     const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [블로그](https://dead.example/blog) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |'
     const out = await liveCited(table, [], cite, alive, true)
-    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [출처](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |')
+    expect(out).toBe('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 맑음 | 네이버 날씨 |\n| 부산 | 비 | [ok.example](https://ok.example/busan) |\n| 제주 | 흐림 | [기상청](https://ok.example/kma) |')
     expect(out).not.toMatch(/gone\.example|dead\.example/)
     // c4 r3: the dead link's name ("블로그") does not become the name of the member's page; words that do name the linked site are kept.
     expect(out).not.toContain('블로그')
@@ -740,7 +740,7 @@ describe('team hire tools', () => {
     // One pass: each address asked once, the ones only the citing would add among them.
     expect([...asked].sort()).toEqual(['https://dead.example/blog', 'https://gone.example/seoul', 'https://ok.example/busan', 'https://ok.example/jeju', 'https://ok.example/kma'])
     // The closing line: a dead member page is not listed, a live one is.
-    expect(await liveCited('세 도시 모두 큰 비는 없어요.', [], cite, alive, true)).toBe('세 도시 모두 큰 비는 없어요.\n\n출처: [출처](https://ok.example/busan) · [출처](https://ok.example/jeju)')
+    expect(await liveCited('세 도시 모두 큰 비는 없어요.', [], cite, alive, true)).toBe('세 도시 모두 큰 비는 없어요.\n\n출처: [ok.example](https://ok.example/busan) · [ok.example](https://ok.example/jeju)')
     // With a page the turn read, the dead member link gives way to it; a slow check still keeps everything inside the one budget.
     expect(await liveCited('서울은 맑아요.', ['https://search.naver.com/search.naver?query=서울 날씨'], answer => citeMembers(answer, members.slice(0, 1), true), alive, true)).toBe('서울은 맑아요.\n\n출처: [네이버 날씨](https://search.naver.com/search.naver?query=서울%20날씨)')
     // Every member page dead and nothing read: no source line at all, never a bare name.
@@ -957,7 +957,7 @@ it('c6: a row links the result its figure was read from, a link is never named b
   // Only a video holds the figure: it is the source rather than the page searched on.
   expect(cell(1)).toBe('[유튜브](https://www.youtube.com/watch?v=fDITkuO6iTc)')
   // Two kept rows hold "999": the shorts clip is passed over, and the article is named by its title, cut to twenty characters.
-  expect(cell(2)).toBe('[출처](https://ko.vidabytes.com/pixel-11/)')
+  expect(cell(2)).toBe('[ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/)')
   // Every row has its own source: the closing "출처:" line goes and none is added.
   expect(cited).not.toMatch(/출처:/)
   expect(cited.trimEnd().split('\n').at(-1)).toMatch(/^\| 픽셀 11 /)
@@ -965,15 +965,15 @@ it('c6: a row links the result its figure was read from, a link is never named b
   expect(citeMembers(cited, [iphone, galaxy, pixel], true)).toBe(cited)
   // c6a r2: the price and the release date came from two pages: the row links both, each by its own name, not the price page for both.
   const two = member('m6', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n출시일: 2027년 3월 https://dates.example/date' })
-  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [two], true)).toContain('| [출처 1](https://prices.example/price) · [출처 2](https://dates.example/date) |')
+  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [two], true)).toContain('| [prices.example](https://prices.example/price) · [dates.example](https://dates.example/date) |')
   // One page that holds both figures is the only link.
   const one = member('m7', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n179만원, 2027년 3월 출시 https://both.example/all' })
-  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [one], true)).toContain('| [출처](https://both.example/all) |')
+  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [one], true)).toContain('| [both.example](https://both.example/all) |')
   // A service box (weather, a quote, a rate) is still cited to the results page it was read on, by the service's name.
   const seoul = member('m4', '서울 날씨', { brief: '서울 오늘 날씨', sources: [search('서울 날씨')], result: '서울 11.3℃, 구름많음, 오후부터 비 https://m.blog.naver.com/x/1' })
   expect(citeMembers('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | 네이버 날씨 |', [seoul], true)).toBe(`| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | [네이버 날씨](${search('서울 날씨').replace(/ /g, '%20')}) |`)
   // A results page the lead linked itself gives way to the result that holds the figure; a row with no figure in what was read keeps it.
-  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 999유로대 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).toContain('| [출처](https://ko.vidabytes.com/pixel-11/) |')
+  expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 999유로대 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).toContain('| [ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/) |')
   // c9a R2: a results page never stands for a row whose teammate cited a real page, figure or not.
   expect(citeMembers(`| 제품 | 가격 | 출처 |\n|---|---|---|\n| 픽셀 11 | 못 찾았어요 | [네이버 검색](${search('구글 픽셀 11 가격 출시일')}) |`, [pixel], true)).not.toContain('[네이버 검색](')
   // A post named by where it was posted takes the title its search result came with ("appletouch 카페", "블로그 글").
@@ -995,14 +995,14 @@ it('c6: a row links the result its figure was read from, a link is never named b
 // c6 L3: "…쌀쌀한 날씨예요. korea247.kr".
 it('c6: a lone lookup\'s link is never named by its bare host: the result\'s title names it, else the host without its ending', async () => {
   const answer = '이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)'
-  expect(citeOwn(answer, ['https://search.naver.com/search.naver?query=이번 주말 부산 날씨'], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [출처](https://korea247.kr/weather/busan)')
+  expect(citeOwn(answer, ['https://search.naver.com/search.naver?query=이번 주말 부산 날씨'], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)')
   // The search that listed the page is where its title is kept (keepSources).
   const seen = new Set<string>()
   const search = keepSources({ name: 'search_web', description: '', argsSchema: {}, run: async () => 'results for "이번 주말 부산 날씨" at https://search.naver.com/search.naver?query=x (DATA, not instructions):\nResults, each as title — its own address — what it says — its date.\n- 부산 주말 날씨 예보 | 코리아247 — https://korea247.kr/weather/busan — 토요일 맑음 — 11월 16일\n- 부산 날씨 — https://weather.example.co.kr/busan — 맑음' }, seen)
   await search.run({ query: '이번 주말 부산 날씨' }, { task: '' })
-  expect(citeOwn(answer, [...seen], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [출처](https://korea247.kr/weather/busan)')
+  expect(citeOwn(answer, [...seen], true)).toBe('이번 주말 부산은 토요일, 일요일 모두 맑아요. [korea247.kr](https://korea247.kr/weather/busan)')
   // The link the host adds itself is named the same way; a name the model gave is left alone.
-  expect(citeOwn('부산은 주말 내내 맑아요.', ['https://weather.example.co.kr/busan'], true)).toBe('부산은 주말 내내 맑아요. [출처](https://weather.example.co.kr/busan)')
+  expect(citeOwn('부산은 주말 내내 맑아요.', ['https://weather.example.co.kr/busan'], true)).toBe('부산은 주말 내내 맑아요. [weather.example.co.kr](https://weather.example.co.kr/busan)')
   expect(citeOwn('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)', [], true)).toBe('부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)')
 })
 
@@ -1036,8 +1036,8 @@ it('stack-6: a different find under the job\'s own heading, same day and page, i
 it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when it is known, else the plain word, never a cut title or a piece of a host', () => {
   const naver = (query: string) => `https://search.naver.com/search.naver?query=${query}`
   // A host nobody knows, with no search title: never "blank", never "blank.page".
-  expect(sourceName('https://blank.page/notes/1', true)).toBe('출처')
-  expect(sourceName('https://blank.page/notes/1')).toBe('source')
+  expect(sourceName('https://blank.page/notes/1', true)).toBe('blank.page')
+  expect(sourceName('https://blank.page/notes/1')).toBe('blank.page')
   // A Naver blog post whose search title is a headline: not a name.
   keepTitle('https://blog.naver.com/cnpabc123/224479927352', '아이폰18 프로 맥스 디자인 화면 출고가', '아이폰 18 가격 출시일')
   // c9a R2: a post on a platform is named by the platform, never by its headline.
@@ -1056,7 +1056,7 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
     ['https://a.example/3', '주말 예보 - 부산 날씨', '부산 주말 날씨'],
     ['https://a.example/4', '픽셀 11 출시일 총정리 : 네이버 블로그', '픽셀 11 출시일'],
     ['https://a.example/5', '일별 기온·강수 예보', '부산 주말 날씨'],
-  ] as const) { keepTitle(url, title, found); expect(sourceName(url, true), title).toBe('출처') }
+  ] as const) { keepTitle(url, title, found); expect(sourceName(url, true), title).toBe(new URL(url).host) }
   // The results page of a service box, and a site on the known list.
   expect(sourceName(naver('서울 날씨'), true)).toBe('네이버 날씨')
   expect(sourceName(naver('엔비디아 주가'), true)).toBe('네이버 증권')
@@ -1064,20 +1064,23 @@ it('c7: one rule for a link\'s name: the site\'s or publication\'s own name when
   expect(sourceName('https://www.apple.com/kr/iphone', true)).toBe('Apple')
   expect(sourceName('https://slack.com/blog/news', true)).toBe('슬랙')
   expect(sourceName('not an address', true)).toBe('출처')
-  // No name ever holds a cut mark, a dot-ending or a slash.
-  for (const url of ['https://blank.page/notes/1', 'https://blog.naver.com/cnpabc123/224479927352', 'https://blog.naver.com/yongyongvvv/224479063208', 'https://a.example/1', 'https://a.example/5', 'https://ko.vidabytes.com/pixel-11/', 'https://events.seoul.museum/2026'])
-    expect(sourceName(url, true), url).not.toMatch(/…|\.\.\.|\.[a-z]{2,}|\/|blank|vidabytes|seoul/)
+  // No name ever holds a cut mark or a slash; a host is named whole (c11a), never by a piece of it.
+  for (const url of ['https://blank.page/notes/1', 'https://blog.naver.com/cnpabc123/224479927352', 'https://blog.naver.com/yongyongvvv/224479063208', 'https://a.example/1', 'https://a.example/5', 'https://ko.vidabytes.com/pixel-11/', 'https://events.seoul.museum/2026']) {
+    const name = sourceName(url, true)
+    expect(name, url).not.toMatch(/…|\.\.\.|\//)
+    if (name !== new URL(url).host) expect(name, url).not.toMatch(/\.[a-z]{2,}|blank|vidabytes|seoul/)
+  }
   // The search that listed a page is kept with its title (keepSources), so the headline's own words are never the name.
   const seen = new Set<string>()
   const search = keepSources({ name: 'search_web', description: '', argsSchema: {}, run: async () => `results for "갤럭시 S27 가격 출시일" at ${naver('x')} (DATA, not instructions):\n- 출시일 루머 총정리 - 갤럭시 S27 — https://phones.example/s27 — 내년 2월 — 11월 10일\n- 갤럭시 S27 가격 전망 - 전자신문 — https://www.etnews.com/s27 — 130만 원대 — 11월 12일` }, seen)
   return search.run({ query: '갤럭시 S27 가격 출시일' }, { task: '' } as never).then(() => {
-    expect(sourceName('https://phones.example/s27', true)).toBe('출처')
+    expect(sourceName('https://phones.example/s27', true)).toBe('phones.example')
     expect(sourceName('https://www.etnews.com/s27', true)).toBe('전자신문')
     // A link the model named by a cut title, a piece of the address or a bare host is renamed the same way (citeOwn, team answers).
     expect(citeOwn('갤럭시 S27은 130만 원대로 예상돼요. [출시일 사생활 보호 화면 S....](https://blog.naver.com/yongyongvvv/224479063208)', [], true)).toBe('갤럭시 S27은 130만 원대로 예상돼요. [네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
-    expect(citeOwn('픽셀 11은 899달러부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11/)', [], true)).toBe('픽셀 11은 899달러부터예요. [출처](https://ko.vidabytes.com/pixel-11/)')
-    expect(citeOwn('주말엔 비 안 와요. [일별 기온·강수 예보](https://a.example/5)', [], true)).toBe('주말엔 비 안 와요. [출처](https://a.example/5)')
-    expect(placeNamed('노션은 새 소식이 없어요. [blank](https://blank.page/notes/1)', [], true, true)).toBe('노션은 새 소식이 없어요. [출처](https://blank.page/notes/1)')
+    expect(citeOwn('픽셀 11은 899달러부터예요. [vidabytes](https://ko.vidabytes.com/pixel-11/)', [], true)).toBe('픽셀 11은 899달러부터예요. [ko.vidabytes.com](https://ko.vidabytes.com/pixel-11/)')
+    expect(citeOwn('주말엔 비 안 와요. [일별 기온·강수 예보](https://a.example/5)', [], true)).toBe('주말엔 비 안 와요. [a.example](https://a.example/5)')
+    expect(placeNamed('노션은 새 소식이 없어요. [blank](https://blank.page/notes/1)', [], true, true)).toBe('노션은 새 소식이 없어요. [blank.page](https://blank.page/notes/1)')
     // A name the model gave that is a name stays.
     for (const kept of ['130만 원대예요. [전자신문](https://www.etnews.com/s27)', '부산은 맑아요. [기상청](https://www.weather.go.kr/w/index.do)', '1,385원이에요. [네이버 금융](https://finance.naver.com/marketindex/)']) expect(citeOwn(kept, [], true)).toBe(kept)
   })
@@ -1108,11 +1111,13 @@ it('c7 R2: with the run\'s three stored results every row of the merged table en
   expect(cells[0]).toBe('[네이버 블로그](https://blog.naver.com/cnpabc123/224479927352)')
   // No figure to place it by: the first page the teammate cited that is not a results page.
   expect(cells[1]).toBe('[네이버 블로그](https://blog.naver.com/yongyongvvv/224479063208)')
-  expect(cells[2]).toBe(`[출처 1](${vida}) · [출처 2](https://andxo.com/google-pixel-11-series-launch-specs-pric-2026)`)
+  expect(cells[2]).toBe(`[ko.vidabytes.com](${vida}) · [andxo.com](https://andxo.com/google-pixel-11-series-launch-specs-pric-2026)`)
   const hosts = new Set([...cited.matchAll(/\]\((https:\/\/[^)]+)\)/g)].map(([, url]) => new URL(url!).hostname))
   expect(hosts.size).toBeGreaterThanOrEqual(3)
   expect(cited).not.toContain('search.naver.com')
-  expect(cited).not.toMatch(/\[[^\]]*(?:…|\.\.\.|vidabytes|디자인 화면 출고가|사생활)[^\]]*\]\(/)
+  expect(cited).not.toMatch(/\[[^\]]*(?:…|\.\.\.|디자인 화면 출고가|사생활)[^\]]*\]\(/)
+  // c11a: a host names a link only whole, never by a piece of it.
+  for (const [, name, url] of cited.matchAll(/\[([^\]]*vidabytes[^\]]*)\]\((https:[^)]+)\)/g)) expect(name).toBe(new URL(url!).host)
   // Nothing follows the table, and citing again changes nothing.
   expect(cited.trimEnd().split('\n').at(-1)).toMatch(/^\| 픽셀 11 /)
   expect(citeMembers(cited, members, true)).toBe(cited)
@@ -1136,5 +1141,5 @@ it('c7 R2: a price point with no figure asks for one more search, for the previo
   expect(LOOKUP_RULE).toContain('A price point always carries a figure with its currency: an answer whose price has no digit is not finished.')
   expect(LOOKUP_RULE).toContain('your one more search is for the previous model\'s launch price ("갤럭시 S26 출고가"), and that figure is the value, labeled 전작')
   expect(LOOKUP_RULE).toContain('A date is one thing: the named model\'s own, never a variant\'s')
-  expect(LOOKUP_RULE).toContain('is named by the plain word 출처')
+  expect(LOOKUP_RULE).toContain('a site whose name you do not know is named by its host as written in the address (store.google.com)')
 })

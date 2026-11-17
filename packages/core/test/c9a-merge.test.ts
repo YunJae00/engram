@@ -61,7 +61,7 @@ test('c9a r3 (Codex r2): a source cell with a search page beside an article keep
   expect(links(two)).toEqual(['https://www.hankyung.com/article/2026111700001'])
 })
 
-test('c9a R2: platforms are named by the platform; a search page and an unknown site keep their names', () => {
+test('c9a R2: platforms are named by the platform; a search page and an unknown site keep their names (c11a: unknown site by host)', () => {
   expect(sourceName('https://cafe.naver.com/appletouch/2303631', true)).toBe('네이버 카페')
   expect(sourceName('https://m.blog.naver.com/a/1', true)).toBe('네이버 블로그')
   expect(sourceName('https://www.youtube.com/watch?v=s3wLAIMQpPs', true)).toBe('유튜브')
@@ -69,7 +69,8 @@ test('c9a R2: platforms are named by the platform; a search page and an unknown 
   expect(sourceName('https://someone.tistory.com/12', true)).toBe('티스토리')
   expect(sourceName('https://brunch.co.kr/@a/3', true)).toBe('브런치')
   expect(sourceName(search('아이폰 18 가격'), true)).toBe('네이버 검색')
-  expect(sourceName('https://phones.example/x', true)).toBe('출처')
+  // c11a: an unknown site is named by its host, never by the word 출처.
+  expect(sourceName('https://phones.example/x', true)).toBe('phones.example')
   expect(isSearchPage(search('x'))).toBe(true)
   expect(isSearchPage('https://cafe.naver.com/a/1')).toBe(false)
 })

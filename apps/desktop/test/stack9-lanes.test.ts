@@ -48,7 +48,9 @@ it('stack-9: one first-search helper, at most three searches, no words twice, ru
 // One search-page test: company-tools' page picking uses c9a's isSearchPage.
 it('stack-9: one search-page test', () => {
   const tools = readFileSync(fileURLToPath(new URL('../../../packages/core/src/company-tools.ts', import.meta.url)), 'utf8')
-  expect(tools).toContain('const search = isSearchPage')
+  // c11a: a fact's page and a part's sources are told apart from search pages by that one test.
+  expect(tools).toMatch(/import \{[^}]*\bisSearchPage\b[^}]*\} from '\.\/team-hire-tools\.js'/)
+  expect(tools).toContain('!isSearchPage(f.url)')
   expect(tools).not.toMatch(/\[\?&\]\(q\|query\)=/)
   expect(isSearchPage('https://www.bing.com/search?q=linear')).toBe(true)
   expect(isSearchPage('https://linear.app/changelog')).toBe(false)
@@ -79,7 +81,8 @@ it('stack-9 (c9a Codex r3): a held round the list left out joins it; "깜짝 …
   const out = shortSaid(ask, listOnly(newsItems(answer, [held], ask)))
   const items = out.split('\n').filter(line => /^\d+\. /.test(line))
   expect(items).toHaveLength(5)
-  expect(items[4]).toBe('5. 아크, 100억 원 투자 유치 — 11월 5일 [출처](https://news.example/4)')
+  expect(items[4]).toBe('5. 아크, 100억 원 투자 유치 — 11월 5일 [news.example](https://news.example/4)')
+  expect(out).not.toContain('[출처]')
   expect(out).not.toMatch(/확실한 (?:투자 유치 )?건은 \d개예요|네 개예요/)
   // A round already in the list under another article is not added again; nothing is added past the count.
   const other = answer.replace('https://news.example/0', 'https://other.example/medi')
@@ -92,13 +95,17 @@ it('stack-9 (c9a Codex r3): a held round the list left out joins it; "깜짝 …
 
 // stack-9 (c9b run C5-C10, H5, every judge quoted it): "12월 서울 IT 행사는 두 개 있어요." over one event; the teammate's own count line was an item.
 it('stack-9: a teammate\'s line on how many there are is no item and is not shown again under the opener', async () => {
-  const { mergedReport } = await import('core')
+  const { mergedReport, reportData } = await import('core')
   const m = { id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', botId: 'bot-1', voice: '차분하고 또박또박', title: '다음 달 서울 IT 행사 일정 정리', lookup: true as const, query: '2026년 12월 서울 IT 행사 일정', background: true as const, state: 'released' as const, sessionKey: 's', hiredAt: '2026-11-17T07:55:08.846Z', finishedAt: '2026-11-17T07:55:17.834Z',
     result: '12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - COEX Hall A, AI·SW 비즈니스 전시회 — https://www.coex.co.kr/exhibitions/sw-2026/\n\n확실한 일정은 이거 하나예요. 나머지 검색 결과는 날짜가 2026년 12월로 명시되지 않거나 서울 IT 행사와 직접 관련이 없었어요.',
     sources: ['https://search.naver.com/search.naver?query=x'], review: { ok: true, note: 'auto' } }
-  const out = mergedReport([m], new Map(), [], { ask: '이거 지민한테 맡겨: 다음 달 서울 IT 행사 일정 정리', now: new Date('2026-11-17T07:55:20.255Z') })
+  // c11a: the teammate hands back one fact and their remark on the count as their note; the host shows the one fact, never the note as an item.
+  const data = reportData('```report\n' + JSON.stringify({ facts: [{ text: '12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.', url: 'https://www.coex.co.kr/exhibitions/sw-2026/', date: '12월 2일' }], note: '확실한 일정은 이거 하나예요.' }) + '\n```', m, m.sources, true)
+  expect(data?.facts).toHaveLength(1)
+  const out = mergedReport([{ ...m, data: data! }])
   expect(out).not.toMatch(/두 개|2개/)
-  expect(out).toContain('확실한 건 하나예요.')
   expect(out).not.toContain('확실한 일정은 이거 하나예요')
-  expect(out).toContain('소프트웨이브 2026')
+  expect(out.split('\n')).toHaveLength(1)
+  expect(out).toMatch(/^다음 달 서울 IT 행사 일정 정리\(지민\): 12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw-2026\/\)$/)
+  expect(out).not.toContain('[출처]')
 })
