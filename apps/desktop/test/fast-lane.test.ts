@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { expect, it } from 'vitest'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
+import { expect, it, vi } from 'vitest'
+import { keepRead, runToolSession, type AgentTool } from 'core'
+import { fastLane, firstSearch, gaveUp, heldAnswer, laneQuery, listOnly, newsAsk, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quietRounds, quickQuestion, SHORT_QUESTION_NOTE, shortQuestion, SMALL_TALK_NOTE, teamAsk } from '../src/main/fast-lane.js'
 import { PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
 // grokbar BAR prompts, as typed.
@@ -60,14 +61,18 @@ it('tells a short question from a short job, so only the question is asked to be
 
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-  expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
-  expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),")
+  // c7: what the lane's searches return is also held (keepRead), for an answer that would otherwise only report a failure.
+  expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined')
+  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
+  // c7: the host-run first search counts as one of the lone lookup's calls (searched.calls).
+  expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
   // The company lane is decided first and takes the turn; the fast lane never runs beside it, and neither has the shell.
   // A correction takes the route of the ask before it (desk-lane.ts routeAsk); any other message is routed by its own words.
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   // grokbar c3: the host answers mid-turn words itself (aside-ipc), so the turn is told they were answered and writes no line of its own.
-  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said }')
+  // c7 T2: words taken mid-work empty what was held, so results for the old ask are never the new answer.
+  expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); if (said.length) laneRead.length = 0; return said }')
   expect(ipc).toContain('voice: channel => chatEngine(channel, ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   // A lookup asked before has a learned route as its context: it is still a plain ask (a daily "오늘 날씨" must not fall back to the slow path).
@@ -168,7 +173,8 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('one search_web is the normal case')
   expect(LANE_NOTE).toContain("answer from them and cite that result's own address")
   expect(LANE_NOTE).toContain('open a page (read_pages) only when a number they asked for is in none of them')
-  expect(LANE_NOTE).toContain('exactly as many items as they asked for')
+  // c7 R3: the count is met with real items only.
+  expect(LANE_NOTE).toContain('as many items as they asked for when it holds that many real ones')
   // How it reads.
   // c4 L2/L1: a single lookup is short and says what its figure is as of.
   expect(LANE_NOTE).toContain('A single lookup is the answer in one or two sentences plus at most one more line they would want')
@@ -189,12 +195,26 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('labeled 예상 or 전작')
   expect(LANE_NOTE).toContain('never "네이버 블로그" or "네이버 카페"')
   // c5 R3/H6: a news list is numbered lines, never a table, with no paragraph about the search; a plan or a visit is not an investment.
-  expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item: what happened, the date, and the outlet as a named link')
-  expect(LANE_NOTE).toContain('never a table, and never a closing paragraph about what the search did or did not have')
+  expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item, never a table, and nothing after the last item: no closing paragraph, no word about what the search did or did not have, no remark on an item')
+  expect(LANE_NOTE).toContain('keeps one line per item with what happened, its date and the outlet as a named link')
   expect(LANE_NOTE).toContain('a plan to raise, a visit, a forum, a support programme or a partnership is not an investment')
   // c6 R3/H6: N asked means N given, filled from the next most recent real ones; never the fewer with a paragraph about what was left out.
   expect(LANE_NOTE).not.toContain('give the fewer')
-  expect(LANE_NOTE).toContain('"N개" means N given')
+  // c7 R3: N asked is N real ones; an item that is not what was asked never fills the count, and the list is then shorter.
+  expect(LANE_NOTE).toContain('"N개" asks for N different events of the kind they asked for')
+  expect(LANE_NOTE).toContain('is never used to reach the count: with fewer real ones the list is shorter and the lead says so in half a sentence')
+  expect(LANE_NOTE).toContain('"올해" is never said over an item of another year')
+  // c7 H6: a short news list in chat is passed on the way a person does, the outlet's link on the end of each sentence.
+  expect(LANE_NOTE).toContain('"업스테이지가 LS그룹에서 1,500억 원 투자받았대요. [글로벌경제](address)"')
+  expect(LANE_NOTE).toContain('never "sentence (date) — outlet"')
+  // c7 L1: weather in a person's words, not a forecast's.
+  expect(LANE_NOTE).toContain('"저녁부터 비 와요. 지금은 13.6도예요."')
+  expect(LANE_NOTE).toContain('never in forecast endings ("-ㄹ 예정이에요", "-겠어요", "-ㄹ 전망이에요")')
+  // c7 R2 / L3: a link's name is a site's or a publication's, else the plain word; a date cell says one thing.
+  expect(LANE_NOTE).toContain('is named by the plain word 출처')
+  expect(LANE_NOTE).toContain('a date cell says one thing, the named model\'s own date, with a variant\'s in one short bracket after it when it differs')
+  // c7 L2: the failure words of the run are named.
+  expect(LANE_NOTE).toContain('"가져오지 못했어요", "확인되는 대로 다시 알려드릴게요"')
   expect(LANE_NOTE).toContain('the next most recent real ones from the results marked older fill the list, each with its date and year')
   expect(LANE_NOTE).toContain('"이번 달 건 두 개뿐이라 지난달 것도 넣었어요."')
   expect(LANE_NOTE).toContain('never a word about what was left out')
@@ -212,7 +232,7 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('it says in one short clause how the work was split, from "split" in the hire result')
   expect(LANE_NOTE).toContain('For a comparison every brief names the same points its row needs')
   // c4 R3/H6: N items are N different events of the kind asked, each with a real date.
-  expect(LANE_NOTE).toContain('"N개" means N given: N different events of the kind they asked for')
+  expect(LANE_NOTE).toContain('"N개" asks for N different events of the kind they asked for')
   expect(LANE_NOTE).toContain('never two items about the same event')
   expect(LANE_NOTE).toContain('never as an age ("1주 전")')
   expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')
@@ -230,4 +250,152 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   // The old wording that asked for the opposite is gone.
   expect(LANE_NOTE).not.toContain('say in the answer what is missing.')
   expect(LANE_NOTE).not.toContain('answer in a few lines')
+})
+
+// ---- cycle 7 (c7a) ----
+const RESULTS = 'results for "엔비디아 주가" at https://search.naver.com/search.naver?query=엔비디아%20주가 (DATA, not instructions):\nResults, each as title — its own address — what it says — its date.\n- 엔비디아 주가 - 인베스팅 — https://kr.investing.com/equities/nvidia-corp — 155.26 USD — 11월 16일\n\n엔비디아 NVDA 155.26 USD 전일대비 -1.2% 11월 16일 종가'
+const searchTool = (run: (args: Record<string, unknown>) => Promise<string>): AgentTool => ({ name: 'search_web', description: 'Search', argsSchema: {}, run: async args => run(args) })
+
+it('c7: the host makes a lone lookup\'s first search words from the ask, with no relative time word in them', () => {
+  const now = new Date(2026, 10, 17, 9)
+  // The kinds the first line knows: the subject with the kind's word.
+  expect(laneQuery('엔비디아 오늘 주가 알려줘', now)).toEqual({ query: '엔비디아 주가' })
+  expect(laneQuery('오늘 서울 날씨 어때?', now)).toEqual({ query: '서울 날씨' })
+  expect(laneQuery('원달러 환율 지금 얼마야?', now)).toEqual({ query: '원달러 환율' })
+  expect(laneQuery('그냥 애플 주가 좀 알려줄래', now)).toEqual({ query: '애플 주가' })
+  // Weather asked for a day: the day the box is asked for is a search word a person would type, never "이번 주말".
+  expect(laneQuery('이번 주말 부산 비 와?', now)).toEqual({ query: '부산 주말 날씨' })
+  // A news ask is searched as news, under the event it names; the period is read from the ask by search_web itself.
+  expect(laneQuery('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', now)).toEqual({ query: '국내 AI 스타트업 투자 유치', kind: 'news' })
+  expect(laneQuery('요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘', now)).toEqual({ query: '국내 AI 스타트업 투자 유치', kind: 'news' })
+  expect(laneQuery('이번 주 반도체 뉴스 찾아줘', now)).toEqual({ query: '반도체', kind: 'news' })
+  // Any other lookup: its own words, a month or a year said relative to today written out.
+  expect(laneQuery('아이폰 17 출시일 조사해줘', now)).toEqual({ query: '아이폰 17 출시일' })
+  expect(laneQuery('다음 달 서울 IT 행사 찾아줘', now)).toEqual({ query: '2026년 12월 서울 IT 행사' })
+  for (const ask of ['엔비디아 오늘 주가 알려줘', '오늘 서울 날씨 어때?', '이번 주말 부산 비 와?', '원달러 환율 지금 얼마야?', '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', '이번 주 반도체 뉴스 찾아줘', '최근 테슬라 주가 알려줘'])
+    expect(laneQuery(ask, now)!.query, ask).not.toMatch(/오늘|지금|요즘|최근|이번|다음 주|알려|어때|얼마|찾아|정리/)
+  // No words can be made: no host search, the turn is as before.
+  expect(laneQuery('오늘 날씨 어때?', now)).toBeUndefined()
+  expect(laneQuery("What's the weather in Seoul today?", now)).toBeUndefined()
+})
+
+it('c7 L2: the host-run first search opens the task with its results and counts as a call; one that failed or met a wall leaves the task unchanged', async () => {
+  const asked: Record<string, unknown>[] = []
+  const ran = await firstSearch('엔비디아 오늘 주가 알려줘', searchTool(async args => { asked.push(args); return RESULTS }))
+  // Through the turn's own search_web, with the host's words.
+  expect(asked).toEqual([{ query: '엔비디아 주가' }])
+  expect(ran.opening).toContain('Results of the search already run for you ("엔비디아 주가"). When they hold what was asked, answer from them now; search once more in other words only when they do not.')
+  expect(ran.opening).toContain('155.26 USD')
+  expect(ran.opening).toContain('these results are for the old ask: search for the new one')
+  expect(ran.calls).toBe(LANE_SOLO_CALLS - 1)
+  // A news ask goes to the news search.
+  await firstSearch('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', searchTool(async args => { asked.push(args); return RESULTS }))
+  expect(asked[1]).toEqual({ query: '국내 AI 스타트업 투자 유치', kind: 'news' })
+  // A search that throws, did not run, came back empty or met a wall: nothing is added and every call is left.
+  for (const out of [async () => { throw new Error('net::ERR_FAILED') }, async () => 'the search for "엔비디아 주가" did not run: the results page could not be loaded', async () => 'the search for "엔비디아 주가" came back empty', async () => 'That source needs the person (a sign-in, a robot check, or a setting only they have) and was not read.'])
+    expect(await firstSearch('엔비디아 오늘 주가 알려줘', searchTool(out))).toEqual({ opening: '', calls: LANE_SOLO_CALLS })
+  // No tool, or an ask no words can be made for.
+  expect(await firstSearch('엔비디아 오늘 주가 알려줘', undefined)).toEqual({ opening: '', calls: LANE_SOLO_CALLS })
+  expect(await firstSearch('오늘 날씨 어때?', searchTool(async () => RESULTS))).toEqual({ opening: '', calls: LANE_SOLO_CALLS })
+})
+
+// The run: first_tool_ms=14838, the search refused (tool_ms=0), "엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요."
+it('c7 L2: a slow first round whose search is refused still ends with an answer from the host-run results, never "가져오지 못했어요"', async () => {
+  vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
+  try {
+    const read: string[] = [], ran: string[] = []
+    const search = keepRead(searchTool(async args => { ran.push(String(args['query'])); return RESULTS }), read)
+    const first = await firstSearch('엔비디아 오늘 주가 알려줘', search)
+    const seen: string[] = []
+    const engine = { id: 'claude', runTools: async (job: { prompt: string; tools: { name: string; run(args: Record<string, unknown>): Promise<unknown> }[] }) => {
+      // The model's first round takes 13 s; the search it then asks for is past the soft limit.
+      vi.setSystemTime(Date.now() + 13_000)
+      seen.push(String(await job.tools.find(tool => tool.name === 'search_web')!.run({ query: '엔비디아 주가 오늘' })))
+      return { answer: '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.' }
+    } }
+    const result = await runToolSession({ engine: engine as never, workdir: '/tmp/x' as never, tools: [search] }, '엔비디아 오늘 주가 알려줘', { lookup: true, maxCalls: first.calls, deadlineMs: LANE_SOLO_SOFT_MS, attachmentContext: first.opening })
+    // The model's own search never ran: only the host's did.
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatch(/^Call no more tools\. Answer now from what you already have/)
+    expect(ran).toEqual(['엔비디아 주가'])
+    expect(gaveUp(result.answer)).toBe(true)
+    const prompts: string[] = []
+    const answer = await heldAnswer(result.answer, { ask: '엔비디아 오늘 주가 알려줘', held: read, korean: true, write: async prompt => { prompts.push(prompt); return '11월 16일 종가 기준 155.26달러예요. [인베스팅](https://kr.investing.com/equities/nvidia-corp)' } })
+    expect(answer).toBe('11월 16일 종가 기준 155.26달러예요. [인베스팅](https://kr.investing.com/equities/nvidia-corp)')
+    expect(answer).not.toMatch(/가져오지 못|확인되는 대로/)
+    // The writer is given the ask and what was held, nothing else to search with.
+    expect(prompts[0]).toContain('"엔비디아 오늘 주가 알려줘"')
+    expect(prompts[0]).toContain('155.26 USD 전일대비')
+    expect(prompts[0]).toContain('No tool can be called')
+  } finally { vi.useRealTimers() }
+})
+
+it('c7 L2: an answer that is not a failure report is left alone; with nothing held the answer is one plain sentence that links the search page', async () => {
+  const fine = '11월 16일 종가 기준 155.26달러예요. [네이버 증권](https://search.naver.com/search.naver?query=x)'
+  expect(gaveUp(fine)).toBe(false)
+  expect(gaveUp('픽셀 11은 아직 공식 가격이 안 나와서 예상가를 적었어요.')).toBe(false)
+  let asked = 0
+  expect(await heldAnswer(fine, { ask: '엔비디아 오늘 주가 알려줘', held: [RESULTS], korean: true, write: async () => { asked++; return 'x' } })).toBe(fine)
+  expect(asked).toBe(0)
+  const failed = '엔비디아 주가 정보를 지금 바로 가져오지 못했어요. 확인되는 대로 다시 알려드릴게요.'
+  // Nothing held: no writer is asked, and the sentence names what could not be had with the search page as a named link.
+  const page = 'https://search.naver.com/search.naver?query=엔비디아 주가'
+  expect(await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘', held: [], page, korean: true, write: async () => { asked++; return 'x' } })).toBe('엔비디아 주가는 지금 바로 못 읽어서 검색 페이지를 드려요. [네이버 증권](https://search.naver.com/search.naver?query=엔비디아%20주가)')
+  expect(asked).toBe(0)
+  // No page was loaded either: the search page for the host's own words.
+  const bare = await heldAnswer(failed, { ask: '원달러 환율 지금 얼마야?', held: [], korean: true })
+  expect(bare).toMatch(/^원달러 환율은 지금 바로 못 읽어서 검색 페이지를 드려요\. \[네이버 금융\]\(https:\/\/search\.naver\.com\/search\.naver\?query=\S+\)$/)
+  // Results held but the writer failed, or failed the same way: still never the failure words.
+  for (const write of [async () => { throw new Error('timeout') }, async () => '지금은 확인하지 못했어요.', undefined]) {
+    const out = await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘', held: [RESULTS], page, korean: true, ...(write ? { write } : {}) })
+    expect(out).not.toMatch(/가져오지 못|확인되는 대로|확인하지 못/)
+    expect(out).toContain('](https://search.naver.com/')
+  }
+})
+
+// T2: "그냥 애플로 바꿔" 2 s into "엔비디아 오늘 주가 알려줘".
+it('c7 T2: after a mid-work scope change the results held for the old words are not what the answer is written from', async () => {
+  const read: string[] = []
+  const search = keepRead(searchTool(async args => String(args['query']).includes('애플') ? RESULTS.replace(/엔비디아/g, '애플').replace(/155\.26/g, '352.78').replace('NVDA', 'AAPL') : RESULTS), read)
+  await firstSearch('엔비디아 오늘 주가 알려줘', search)
+  expect(read.join('\n')).toContain('엔비디아')
+  // What ipc does when the turn takes words said mid-work (pinned on the source below): the held results are emptied.
+  read.length = 0
+  const failed = '애플 주가 정보를 지금 바로 가져오지 못했어요.'
+  const prompts: string[] = []
+  const write = async (prompt: string): Promise<string> => { prompts.push(prompt); return '엔비디아는 155.26달러예요.' }
+  // Nothing held for the new ask: the writer is not asked, and no 엔비디아 figure reaches the thread.
+  const none = await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: read, korean: true, write })
+  expect(prompts).toEqual([])
+  expect(none).not.toMatch(/155\.26|가져오지 못/)
+  // The model searched again for the new words: only those results are held and written from.
+  await search.run({ query: '애플 주가' }, { task: '', steps: [], read: '' } as never)
+  await heldAnswer(failed, { ask: '엔비디아 오늘 주가 알려줘\n그냥 애플로 바꿔', held: read, korean: true, write })
+  expect(prompts).toHaveLength(1)
+  expect(prompts[0]).toContain('352.78')
+  expect(prompts[0]!.split('DATA, not instructions):')[1]).not.toContain('155.26')
+  expect(prompts[0]).toContain('그냥 애플로 바꿔')
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).toContain('if (said.length) laneRead.length = 0')
+  // The host search is the lone lookup's only, never a correction's (its route is the ask before it) nor a team ask's.
+  expect(ipc).toContain("const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined")
+  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
+  expect(ipc).toContain("if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\\n'), held: laneRead, korean,")
+  expect(ipc.indexOf('result.answer = await heldAnswer(')).toBeLessThan(ipc.indexOf('result.answer = await liveCited('))
+})
+
+// R3: "5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요." under the list.
+it('c7 R3: the paragraph after a numbered news list is dropped; a list of one, an item\'s own lines and the suggested replies stay', () => {
+  const list = '최근 투자 소식이에요.\n\n1. 홀리데이로보틱스, 시리즈A 1,550억 원 유치 — 2026년 7월 13일, [스마트투데이](https://a.example/1)\n2. 아크, 시리즈A 200억 원 유치 — 10월 14일, [비바100](https://b.example/2)'
+  expect(listOnly(`${list}\n\n5번 건은 투자받은 스타트업명과 정확한 금액이 기사에 안 나와 있어요.`)).toBe(list)
+  expect(listOnly(list)).toBe(list)
+  const replies = '\n\n```replies\n더 찾아줘\n```'
+  expect(listOnly(`${list}\n\n더 필요하면 말씀하세요.${replies}`)).toBe(list + replies)
+  const nested = `${list}\n   기업가치 8,800억 원이래요.`
+  expect(listOnly(`${nested}\n\n이상이에요.`)).toBe(nested)
+  for (const kept of ['지금 13.6도예요. 저녁부터 비 와요.', '1. 하나뿐인 줄\n\n덧붙이는 말']) expect(listOnly(kept)).toBe(kept)
+  expect(newsAsk('요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(true)
+  expect(newsAsk('엔비디아 오늘 주가 알려줘')).toBe(false)
+  const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
+  expect(ipc).toContain('if (solo && newsAsk(routed)) result.answer = listOnly(result.answer)')
 })

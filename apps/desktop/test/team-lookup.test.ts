@@ -260,6 +260,36 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
   // The cut-short part's link is named as a source, never by the host's own "시간 한도" line under the address.
-  expect(table).toContain('| 슬랙 신기능 조사 (서연) | 슬랙이 Huddles 요약을 냈어요. [slack](https://slack.com/blog/huddles) |')
+  expect(table).toContain('| 슬랙 신기능 조사 (서연) | 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles) |')
   expect(table).not.toContain('한도')
+})
+
+// c7 R2: m2 reported "가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상", a price with no figure, and LOOKUP_RULE alone did not hold.
+it('c7 R2: a price reported with no figure gets one host-run search for the previous model\'s launch price and one more round to write it in', async () => {
+  const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
+  const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-c7-')), '.engram') } as unknown as VaultPaths
+  const created = await createTask(paths, '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜', 'b1')
+  await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
+  const searched: string[] = []
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { searched.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.naver.com/search.naver?query=${encodeURIComponent(String(args['query']))} (DATA, not instructions):\n- 갤럭시 S26 출고가 115만 5천 원 확정 - 전자신문 — https://www.etnews.com/s26 — 256GB 115만 5천 원 — 2026.02.01.` } }
+  const prompts: string[] = []
+  const run: Run = async (_deps, prompt, options = {}) => {
+    options.onStart?.(); prompts.push(prompt)
+    if (prompt.includes('Your part:\n아이폰 18')) return { answer: '가격: 미발표, 프로 기준 200만원 이상 — https://blog.naver.com/a/1\n출시일: 내년 봄 예상 — https://blog.naver.com/a/1', steps: [], fellBack: false }
+    return prompt.startsWith('Your price has no figure.')
+      ? { answer: '가격: 미발표, 전작 S26 115만 5천 원 (https://www.etnews.com/s26)\n출시일: 미발표, 2027년 2월 예상 (https://blog.naver.com/b/2)', steps: [], fellBack: false }
+      : { answer: '가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상 (https://blog.naver.com/b/2)\n출시일: 미발표, 2027년 2월 예상 (https://blog.naver.com/b/2)', steps: [], fellBack: false }
+  }
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
+  const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
+  await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'iphone18', brief: '아이폰 18의 가격과 출시일 조사', lookup: true, query: '아이폰 18 가격 출시일' }, { role: 'galaxyS27', brief: '갤럭시 S27의 가격과 출시일 조사', lookup: true, query: '갤럭시 S27 가격 출시일' }] }, { task: '' })
+  // One more search, for the member whose price had no figure only, under the previous model's name.
+  expect(searched.sort()).toEqual(['갤럭시 S26 출고가', '갤럭시 S27 가격 출시일', '아이폰 18 가격 출시일'])
+  const again = prompts.filter(prompt => prompt.startsWith('Your price has no figure.'))
+  expect(again).toHaveLength(1)
+  expect(again[0]).toContain('labeled 전작')
+  expect(again[0]).toContain('갤럭시 S26 출고가 115만 5천 원 확정')
+  const [, galaxy] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
+  expect(galaxy!.result).toContain('가격: 미발표, 전작 S26 115만 5천 원')
+  expect(galaxy!.state).toBe('released')
 })

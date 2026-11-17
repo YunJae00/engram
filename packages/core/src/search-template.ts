@@ -168,12 +168,14 @@ export function searchResults(links: { text: string; url: string }[], text: stri
   // c5a r3: no exception for a site's own search either; one row per site is the rule everywhere.
   const seen = new Set<string>(), lead: typeof scored = []
   for (const one of (echoing.length >= 3 ? echoing : scored).sort((a, b) => b.score - a.score)) { const site = siteKey(one.result.url); if (!seen.has(site)) lead.push(one); seen.add(site) }
-  const sinks = (one: typeof scored[number]): number => Number(communityPost(one.result.url))
+  // c7 R2: a video post sinks with them: all three rows of a product comparison were cited to blog posts and a video.
+  const sinks = (one: typeof scored[number]): number => Number(communityPost(one.result.url) || VIDEO_POST.test(one.result.url))
   return lead.sort((a, b) => sinks(a) - sinks(b)).slice(0, cap).map(one => one.result)
 }
 const siteKey = (url: string): string => new URL(url).hostname.replace(/^(www|m)\./, '')
 // shortcut: a closed list of places where anyone posts; another one is ranked as a site of its own until it is added here.
 const COMMUNITY = /(^|\.)(blog\.naver\.com|cafe\.naver\.com|post\.naver\.com|tistory\.com|brunch\.co\.kr|dcinside\.com|clien\.net|fmkorea\.com|ppomppu\.co\.kr|velog\.io|medium\.com)$/
+const VIDEO_POST = /^https?:\/\/(?:[\w-]+\.)*(?:youtube\.com|youtu\.be|tv\.naver\.com|tiktok\.com)\//i
 // Whether an address is a post on one of them (team-hire-tools names such a source by its title, never by the place).
 export const communityPost = (url: string): boolean => { try { return COMMUNITY.test(siteKey(url)) } catch { return false } }
 
@@ -245,9 +247,29 @@ export function sameEvent(a: SearchResult, b: SearchResult, query: string): bool
   const receivers = (row: SearchResult): string[] => unasked(row.title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 3 && /(에|에게)$/.test(word)).flatMap(nameWords))
   const to = receivers(a), from = receivers(b)
   if (to.length && from.length && !held(to, b) && !held(from, a)) return false
+  // c7 (c6a review r3 #1): "카카오벤처스 뤼튼 깜짝 투자" and "카카오벤처스 업스테이지 깜짝 투자" were one event: the investor and "깜짝" made two
+  // shared words. Two rows are one event only when the company that was funded matches: when both titles open on the same name (the
+  // investor) and the name after it differs, each unknown to the other row, they are two rounds.
+  // shortcut: by position only (investor first, the funded company next); a headline in another order is told apart by the rules below.
+  if (mine.length > 1 && theirs.length > 1 && alike(mine[0]!, theirs[0]!) && !alike(mine[1]!, theirs[1]!) && !held([mine[1]!], b) && !held([theirs[1]!], a)) return false
   return held(mine, b) >= 2 || held(theirs, a) >= 2 || shared.some(word => word.length >= 3) && !!a.date && a.date === b.date && (held(mine, b) === mine.length || held(theirs, a) === theirs.length)
 }
 export const withoutRepeats = (rows: SearchResult[], query: string): SearchResult[] => rows.filter((row, i) => !rows.slice(0, i).some(earlier => sameEvent(earlier, row, query)))
+// c7 R3: five were asked for, the results held three funding rounds, and the list was filled with an acquisition mention and a row that
+// named no company. For a counted news ask the host orders the rows by their titles: 2 when the title names the event asked for beside
+// somebody (for an investment ask: a company with 유치 / 투자받 / 시리즈 A-C / an amount in 억 원), 0 when it only mentions it (a forum,
+// a visit, a portfolio, a plan to raise, an acquisition), 1 otherwise or when the ask is of a kind not listed here.
+// shortcut: one kind of event (investment), by title words and no name recognition; add a row here for another kind of counted news.
+const EVENTS: [ask: RegExp, names: RegExp, mentions: RegExp][] = [
+  [/투자|펀딩|\b(?:funding|invest\w*|raises?)\b/i, /유치|투자\s?받|시리즈\s?[A-C]|\d[\d,.]*\s*(?:억|조)\s*원?|\bseries [a-c]\b|\braises? \$/i, /포럼|방문|포트폴리오|간담회|설명회|엑스포|박람회|협약|\bMOU\b|인수|데모데이|모집|지원\s?사업|추진|검토|나선다|목표|언급|사례/i],
+]
+export function eventRank(row: SearchResult, ask: string): 0 | 1 | 2 {
+  const kind = EVENTS.find(([words]) => words.test(ask))
+  if (!kind) return 1
+  if (kind[2].test(row.title)) return 0
+  const asked = nameWords(ask)
+  return kind[1].test(row.title) && nameWords(row.title).some(word => !asked.some(one => alike(word, one))) ? 2 : 1
+}
 // How many the person asked for ("3개만", "다섯 건", "top 5", "three articles"), when they said.
 const KO_COUNT = ['한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'], EN_COUNT = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 export function askedCount(ask: string): number | undefined {

@@ -1,5 +1,5 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -116,7 +116,7 @@ export function teamRunner(deps: {
       let outcome: MemberOutcome
       // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
-      let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
+      let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
       const hardMs = me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS
       let startedAt: number | undefined
@@ -141,6 +141,7 @@ export function teamRunner(deps: {
           const found = await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
           if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${me.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
         }
+        let priced = false
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
             signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
@@ -153,6 +154,17 @@ export function teamRunner(deps: {
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
+          // c7 R2: a price reported with no figure gets one host-run search for the previous model's launch price and one more round
+          // to write it in (team-hire-tools priorPriceQuery), once, and only while the search and that round still fit the member's time.
+          // The search is the member's own time-boxed one: with too little time left for it and the answer it is not run.
+          whole = undefined
+          const prior = !priced && search && !result.asked && !result.budgetExhausted && !control.signal.aborted ? priorPriceQuery(me, outcome.answer) : ''
+          if (prior && search) {
+            priced = true
+            const found = await search.run({ query: prior }, { task: prompt, signal: control.signal }).catch(() => '')
+            // Stopped at the hard limit while writing it again, the member keeps the answer it had.
+            if (/^results for "/.test(found)) { whole = outcome; draft = ''; prompt = `${PRIOR_PRICE_NOTE}\n${found}`; round--; continue }
+          }
           // A member reports up only after it reviewed its own helpers; it gets one reminder.
           const open = unreviewed((await find(taskId))?.team, id)
           if (!open.length || result.asked || result.budgetExhausted || control.signal.aborted) break
@@ -164,7 +176,7 @@ export function teamRunner(deps: {
       // no tool call were thrown away as "조사하지 못했어요"). Only a lookup's one short line before its first tool call is still an opening line,
       // not findings (perf146 r3: "먼저 기상청부터 확인.").
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
-      if (timedOut && !signal?.aborted) outcome = { answer: opening ? '' : draft, timedOut: true }
+      if (timedOut && !signal?.aborted) outcome = whole ?? { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
