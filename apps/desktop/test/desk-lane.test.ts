@@ -46,7 +46,7 @@ describe('desk lane', () => {
     expect(ipc).toContain("...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),")
     expect(ipc).toContain("const deskNote = desk && !short ? [DESK_NOTE, given ? fileGiven(given) : ''].filter(Boolean).join('\\n\\n') : ''")
     // The shell is the normal lead's; the menu is the kind's own when it has one (c3c-voice-docs.test.ts), and every tool otherwise.
-    expect(ipc).toContain('tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
+    expect(ipc).toContain('const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name))')
     expect(ipc).toContain(': deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
     expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   })

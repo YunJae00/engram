@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
+import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, eventRank, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -182,18 +182,26 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const list = (from: typeof page, where: string) => searchResults((from.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), from.text, query, where, cap, now)
           const listed = list(page, at)
           // c5 R3/H6: whatever the page did with the period, a row dated outside it never reaches the model as recent news.
-          const fresh = period ? listed.filter(one => inPeriod(one.date, period, now)) : listed
+          // c7 R3: a counted news list with no period said still never takes a row dated more than twelve months back (a year in the ask lifts that).
+          const fresh = period ? listed.filter(one => inPeriod(one.date, period, now)) : news && count !== undefined && !/(?:19|20)\d\d/.test(asked) ? listed.filter(one => inPeriod(one.date, 'year', now)) : listed
           // One row per event among news rows, counted before anything is called short.
-          const recent = news ? withoutRepeats(fresh, query) : fresh
+          const every = news ? withoutRepeats(fresh, query) : fresh
+          // c7 R3: for a counted news ask the rows whose title names the event asked for come first, and the ones that only mention it
+          // (a forum, a plan, an acquisition) go last, after the older real ones (search-template eventRank). Order only: nothing is dropped.
+          const ranked = news && count !== undefined, rank = (one: typeof listed[number]): number => ranked ? eventRank(one, asked) : 1
+          const real = (rows: typeof listed): typeof listed => rows.filter(one => rank(one) > 0).sort((a, b) => rank(b) - rank(a))
+          const recent = real(every)
           let older: typeof listed = []
           if (period && (together || recent.length < NEWS_FEW)) {
             // The rows after the recent ones: the last year's, most recent first, each with its year, and none that repeats an event already listed.
             if (!together) more = await wide()
             const have = new Set(recent.map(one => one.url)), day = (one: typeof listed[number]): number => resultDay(one.date, now)?.getTime() ?? 0
             const rest = (more && !more.wall ? list(more, more.url || wideUrl!) : listed).filter(one => !have.has(one.url) && inPeriod(one.date, 'year', now)).sort((a, b) => day(b) - day(a))
-            older = withoutRepeats([...recent, ...rest], query).slice(recent.length).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
+            older = withoutRepeats([...every, ...rest], query).slice(every.length).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
           }
-          const picked = [...recent, ...older].slice(0, cap)
+          const aside = [...every, ...older].filter(one => rank(one) === 0)
+          older = real(older)
+          const picked = [...recent, ...older, ...aside].slice(0, cap)
           const behind = await resolveResultLinks(picked.map(one => ({ text: one.title, url: one.url })), at, courier.followRedirect?.bind(courier), context.signal)
           const links = picked.map((one, index) => ({ ...one, url: behind[index]?.url ?? one.url }))
           const found = [page.text, ...links.map((one) => `${one.title} ${one.url}`)].join(' ')
@@ -210,6 +218,7 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
               ? [
                   'Results, each as title — its own address — what it says — its date. Answer from them when they hold the fact and cite that result\'s address; open one (read_pages for several) only for a number none of them shows.',
                   ...(period && older.length ? [`${recent.length ? `The first ${recent.length} are from the last ${period}; the ones after them are` : `None is from the last ${period}: these are`} older, most recent first, and say their year. Each row is a different event. When the recent ones hold fewer of what the person asked for than the number they asked for, the next most recent older ones fill that number, each with its own date and year.`] : []),
+                  ...(aside.length && picked.length > recent.length + older.length ? [`The last ${picked.length - recent.length - older.length} only mention it (a forum, a visit, a plan, an acquisition, nobody named): never use one of them to reach the number asked for; with fewer real ones the list is shorter.`] : []),
                   ...links.map(one => `- ${[one.title.slice(0, RESULT_TITLE_CAP), one.url, one.snippet, one.date].filter(Boolean).join(' — ')}`),
                   '',
                 ]

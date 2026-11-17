@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, expect, it, vi } from 'vitest'
 import { plainPage } from '../src/main/plain-page.js'
-import { askedCount, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, sameEvent, searchResults, withoutRepeats } from 'core'
+import { askedCount, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, eventRank, sameEvent, searchResults, withoutRepeats } from 'core'
 
 // grokbar c3 R2/R3: "검색 결과 페이지에서 실제 기사 링크를 가져오지 못해서" - the reader kept the first 25 anchors of the page.
 // These are real results pages (saved 2026-11-17, scripts, styles and attributes other than href/role removed).
@@ -309,4 +309,74 @@ it('c6: a counted news ask loads the period page and then the wider page, never 
   // One row for the event of the month, then the older rounds, most recent first, each with its year; nothing from 2024.
   expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.businesspost.co.kr/2', '11월 10일'], ['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.']])
   expect(out).toContain('The first 1 are from the last month')
+})
+
+// ---- cycle 7 (c7a) ----
+// c6a review r3 #1: one investor, two rounds, no 에 ending and a shared descriptive word.
+it('c7: two rows are one event only when the funded company matches, not when only the investor does', () => {
+  const row = (title: string, date = '11월 17일', snippet = '') => ({ title, url: `https://example.com/${encodeURIComponent(title)}`, snippet, date })
+  const query = '국내 AI 스타트업 투자 유치'
+  const wrtn = row('카카오벤처스 뤼튼 깜짝 투자'), upstage = row('카카오벤처스 업스테이지 깜짝 투자')
+  expect(sameEvent(wrtn, upstage, query)).toBe(false)
+  expect(withoutRepeats([wrtn, upstage], query)).toEqual([wrtn, upstage])
+  for (const word of ['전격', '단독 후속', '대규모']) expect(sameEvent(row(`카카오벤처스, 뤼튼 ${word} 투자`), row(`카카오벤처스, 업스테이지 ${word} 투자`), query), word).toBe(false)
+  // The same round from two outlets is still one row: the company after the investor is the same, or the other row mentions it.
+  expect(sameEvent(wrtn, row('카카오벤처스 뤼튼 전격 투자'), query)).toBe(true)
+  expect(sameEvent(wrtn, row('카카오벤처스, 생성형 AI 깜짝 투자', '11월 17일', '카카오벤처스가 뤼튼에 투자했다.'), query)).toBe(true)
+  // The R3 repeat of cycle 6 is still one event: both titles name the same company after the investor.
+  const first = row('엔비디아, 국내 AI 스타트업 포인트투테크놀로지에 투자 발표…모티프테크놀로지스 등 추가 투자 계획', '11월 10일')
+  expect(sameEvent(first, row('엔비디아, 한국 AI 스타트업 4곳 투자 내역 공개…포인트투테크놀로지·업스테이지 포함', '11월 10일'), query)).toBe(true)
+  expect(sameEvent(first, row('엔비디아, 모티프테크놀로지스에 투자', '11월 10일', '포인트투테크놀로지 등 4곳이 대상이다.'), query)).toBe(true)
+})
+
+// R3 of the run: item 3 "…대학기술지주 투자 포트폴리오 내 인수 사례로 언급", item 5 "…(구체 금액·기업명 미확인)".
+it('c7 R3: a counted news ask gets the rows whose title names the event first, the ones that only mention it last, and nothing dated over twelve months back', async () => {
+  const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
+  const titled = (title: string) => ({ title, url: 'https://example.com/x', snippet: '', date: '' })
+  // A funded company beside 유치 / 투자받 / 시리즈 A-C / an amount in 억 원.
+  for (const title of ['홀리데이로보틱스, 시리즈A 1,550억 원 투자 유치', '업스테이지, LS그룹서 1500억 투자받아', '아크, 시리즈 B 마무리', '리벨리온 620억 원 확보']) expect(eventRank(titled(title), ask), title).toBe(2)
+  // The run's junk: an acquisition named inside a portfolio story, and a round with nobody named at an expo; a plan, a forum, a visit.
+  for (const title of ['대학기술지주 투자 포트폴리오 성과…리벨리온 인수 사례로 언급', '국내 AI 스타트업, 비즈니스엑스포 계기 미국 벤처투자자 대규모 투자 유치', 'AI 스타트업 투자 유치 포럼 개최', '○○, 시리즈B 투자 유치 추진', '장관, AI 스타트업 방문해 투자 확대 약속']) expect(eventRank(titled(title), ask), title).toBe(0)
+  // Neither: kept in the middle. Another kind of ask is not ranked at all.
+  expect(eventRank(titled('엔비디아 AI 스타트업 투자 내역 공개'), ask)).toBe(1)
+  // c7a r2: a country, a region or a word for who invested is nobody's name, so the title names no funded company.
+  for (const title of ['국내 AI 스타트업 미국 투자 유치', 'AI 스타트업, 해외 벤처투자자 대규모 투자 유치', '국내 스타트업 잇단 투자 유치 훈풍']) expect(eventRank(titled(title), ask), title).toBe(1)
+  expect(eventRank({ title: '국내 AI 스타트업 미국 투자 유치', url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘')).toBe(1)
+  expect(eventRank(titled('뤼튼, 미국서 300억 원 투자 유치'), ask)).toBe(2)
+  // c7a r3: a describing word no list holds is not a company either; the company is the word the headline marks (a comma, or the round right after it).
+  for (const title of ['국내 AI 스타트업 연쇄 투자 유치', '국내 AI 스타트업 사상 최대 투자 유치', '국내 AI 스타트업 역대급 투자 유치 행렬', '국내 AI 스타트업 미국서 300억 원 투자 유치', 'AI 스타트업, 투자 유치 빙하기 끝났나']) expect(eventRank({ title, url: 'https://example.com/news', snippet: '기업명 미확인', date: '11월 17일' }, ask), title).toBe(1)
+  for (const title of ['AI 스타트업 뤼튼, 사상 최대 투자 유치', 'AI 스타트업 리벨리온 620억 원 투자 유치', '뤼튼·업스테이지 나란히 투자 유치', 'Wrtn raises $30M in Series B']) expect(eventRank(titled(title), ask), title).toBe(2)
+  expect(eventRank(titled('AI 스타트업 투자 유치 포럼 개최'), '요즘 AI 신제품 뉴스 5개')).toBe(1)
+
+  vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
+  const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
+  const menu = Array.from({ length: 8 }, (_, i) => ({ text: `메뉴 ${i}`, url: `https://search.naver.com/search.naver?where=tab${i}&query=x` }))
+  const fresh = [...article('AI 스타트업 투자 유치 포럼 내달 개최', 'https://www.forum.example/1', '3일 전'), ...article('업스테이지, LS그룹서 1500억 투자 유치', 'https://www.globalnews.example/2', '1일 전')]
+  const wide = [...article('대학기술지주 AI 스타트업 투자 포트폴리오 성과…리벨리온 인수 사례 언급', 'https://www.economist.example/3', '2026.10.12.'), ...article('아크 AI 스타트업 시리즈A 200억 투자 유치', 'https://www.viva.example/4', '2026.10.14.'), ...article('홀리데이로보틱스 AI 스타트업 투자 유치 1550억', 'https://www.smart.example/5', '2026.07.13.'), ...article('서벌 AI 스타트업 투자 유치 120억', 'https://www.token.example/6', '2025.11.01.')]
+  const body = (rows: { text: string }[]) => rows.map(row => row.text).join('\n').padEnd(500, ' .')
+  const fetchPage = async (url: string) => { const rows = /p:1m/.test(new URL(url).searchParams.get('nso') ?? '') ? fresh : /p:1y/.test(new URL(url).searchParams.get('nso') ?? '') ? wide : [...fresh, ...wide]; return { url, text: body(rows), links: [...menu, ...rows] } }
+  const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!
+  // The host's words for this ask (fast-lane laneQuery), as a news search.
+  const out = await tool.run({ query: '국내 AI 스타트업 투자 유치', kind: 'news' }, { task: ask, steps: [], read: '' } as never)
+  const urls = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1])
+  // The month's round, then the year's rounds most recent first, then the two that only mention it; the one from over a year back is gone.
+  expect(urls).toEqual(['https://www.globalnews.example/2', 'https://www.viva.example/4', 'https://www.smart.example/5', 'https://www.forum.example/1', 'https://www.economist.example/3'])
+  expect(out).toContain('The first 1 are from the last month')
+  expect(out).toContain('The last 2 only mention it (a forum, a visit, a plan, an acquisition, nobody named): never use one of them to reach the number asked for; with fewer real ones the list is shorter.')
+  expect(out).not.toContain('token.example')
+  // With no period said, a counted news list still takes nothing dated over twelve months back; a list that was not counted is left as it was.
+  const counted = await tool.run({ query: 'AI 스타트업 투자 유치', kind: 'news' }, { task: 'AI 스타트업 투자 뉴스 5개 찾아줘', steps: [], read: '' } as never)
+  expect(counted).not.toContain('token.example')
+  expect(counted.split('\n').filter(line => line.startsWith('- ')).at(-1)).toContain('economist.example')
+  expect(await tool.run({ query: 'AI 스타트업 투자 유치', kind: 'news' }, { task: 'AI 스타트업 투자 뉴스 찾아줘', steps: [], read: '' } as never)).toContain('token.example')
+  vi.useRealTimers()
+})
+
+// c7 R2: every row of a product comparison was cited to a blog post or a video.
+it('c7 R2: in one result list a publication or an official site comes before a blog, café or video post; nothing is dropped', () => {
+  const links = [{ text: '갤럭시 S27 가격 출시일 총정리 영상', url: 'https://www.youtube.com/watch?v=abc' }, { text: '갤럭시 S27 가격 출시일 루머 정리', url: 'https://blog.naver.com/a/1' }, { text: '갤럭시 S27 출시일 가격 전망', url: 'https://www.etnews.com/s27' }, { text: '갤럭시 S27 가격 출시일 카페 글', url: 'https://cafe.naver.com/b/2' }, { text: '갤럭시 S27 가격 공개', url: 'https://news.samsung.com/kr/s27' }]
+  const urls = searchResults(links, links.map(link => link.text).join('\n'), '갤럭시 S27 가격 출시일', 'https://search.naver.com/search.naver?query=x').map(one => new URL(one.url).hostname)
+  expect(urls).toHaveLength(5)
+  expect(urls.slice(0, 2).sort()).toEqual(['news.samsung.com', 'www.etnews.com'])
+  expect(urls.slice(2).sort()).toEqual(['blog.naver.com', 'cafe.naver.com', 'www.youtube.com'])
 })

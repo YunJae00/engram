@@ -8,7 +8,7 @@ import { teammateSettingsTool } from './teammate-tools.js'
 import { registerStudyIpc } from './study-ipc.js'
 import { noteStopped, registerAsideIpc } from './aside-ipc.js'
 import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, followUpSaid, savedFollowUp, takeFollowUps } from './midstream-followup.js'
-import { fastLane, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
+import { fastLane, firstSearch, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneToday, listOnly, newsAsk, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
 import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, fileGiven, keptFix, namedText, routeAsk, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
@@ -145,7 +145,7 @@ import {
   type RoutineRunResult,
   type RunReport,
   type ErrandResult,
- appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
+ appendAudit, auditDir, type AuditKind, cutShortAnswer, skipWalls, keepRead, keepSources, citeOwn, liveCited, liveLinks, LINK_CHECK_MS, linkAnswers, localAddress, archiveBotTranscript, routineTask, routineTaskPrompt, markRoutineRun, type Routine, type TurnStep, artifactHref, PLAN_RULE, sessionShape, type PermissionMode, type NativeTools, type AgentTool, askText } from 'core'
 import { randomUUID } from 'node:crypto'
 import { activitySummary } from './activity-watch.js'
 import { notificationsTool } from './notification-watch.js'
@@ -2896,13 +2896,22 @@ export function registerIpc(ctx: VaultContext): void {
         // "3번 슬라이드 제목이 … 그 부분만 바꿔요.") were shown under it. Such a turn shows no round as it comes (first-line.ts heldRounds); what is shown replaces a line still waiting.
         const shown = (text: string): void => { firstLineSpoke(channel); broadcast({ type: 'chat:token', channel, text }) }
         const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined
+        // c7 L2: a lone lookup's first search is the host's (fast-lane.ts firstSearch): run through the turn's own search_web, its results open
+        // the task, and it counts as one of the turn's calls. What the turn's searches return is held, so an answer that only reports a
+        // failure is written from it (heldAnswer); only a change of the ask makes held results old, a complaint or an addition does not (heldFor).
+        // shortcut: the search runs before the model's session opens, not beside it (the task needs its results); open the session first if that ~1 s matters.
+        const laneRead: string[] = [], laneSaid: { text: string; at: number }[] = [], solo = lane && !teamAsk(request.message)
+        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(tool), read), laneRead)) : undefined
+        // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
+        const searched = solo && routed === request.message && !handed && !fixed ? await firstSearch(routed, laneTools!.find(tool => tool.name === 'search_web'), signal) : undefined
+        if (searched) flog('chat-phase', JSON.stringify({ channel, phase: 'lane-first-search', ran: !!searched.opening }))
         const result: Awaited<ReturnType<typeof runComet>> = handed ? { answer: handed, steps: direct ? [{ tool: direct.tool, args: direct.args, observation: handed }] : [], fellBack: false } : fixed ? { answer: fixed, steps: [{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations.' }], fellBack: false } : await runComet(
           {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
             // A page that wants a sign-in is left unread on a lookup, as for a member (grokbar T2: one such page ended the turn on a question).
-            tools: lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepSources(skipWalls(tool), read)) : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,
+            tools: lane ? laneTools! : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,
           },
           request.message,
           {
@@ -2915,9 +2924,9 @@ export function registerIpc(ctx: VaultContext): void {
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
             ...(company ? { modelHint: 'smart' as const, ...(summing ? { lookup: true } : {}) } : {}),
-            ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(teamAsk(request.message) ? { maxCalls: LANE_TEAM_CALLS } : { maxCalls: LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS }) } : {}),
+            ...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),
             // Words said mid-turn were already answered by the host in one line (aside-ipc): the model takes them in without a line of its own.
-            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); return said } }),
+            ...(turn?.verification ? {} : { steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said } }),
             compactObservations: process.env.ENGRAM_COMPACT_OBSERVATIONS !== '0',
             // A note the host already read, or something to remember: no long thinking (agent-session.ts light).
             ...(desk ? { modelHint: 'smart' as const, ...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {}) } : {}),
@@ -2926,7 +2935,7 @@ export function registerIpc(ctx: VaultContext): void {
             ...(resume ? { resume } : {}),
             persona: cometIdentity(bot, 'a colleague who gets the task done'),
             guided,
-            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, deskNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
+            ...((attachments.context || recovery || earlierOutputs.length || turn?.context || permission === 'plan' || firstSaid || laneNote || deskNote || team.note(channel) || company) ? { attachmentContext: [company, attachments.context, recovery, turn?.context, team.note(channel), priorOutputLines(earlierOutputs), permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid].filter(Boolean).join('\n\n') } : {}),
             ...(memory ? { memory } : {}),
             // What is already on screen. A person starts a turn looking at
             // their own screen; without this the turn starts blind and goes
@@ -2966,6 +2975,9 @@ export function registerIpc(ctx: VaultContext): void {
           // A lookup that reached its limit answered from what it had: that answer is the turn's, not unfinished work to continue.
           if (result.stopped === 'calls' && !result.incomplete) { result.answer = cutShortAnswer(result.answer); delete result.stopped }
           const korean = threadKorean(request.message, request.history ?? [])
+          // c7 L2: a lone lookup never ends on "가져오지 못했어요" while results are held; c7 R3: nothing follows a numbered news list (fast-lane.ts).
+          if (solo) result.answer = await heldAnswer(result.answer, { ask: [request.message, ...steered].join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })
+          if (solo && newsAsk(routed)) result.answer = listOnly(result.answer)
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.
           result.answer = await liveCited(result.answer, [...read], async answer => citeOwn(await team.cited(channel, answer), [...read], korean), alive, korean)

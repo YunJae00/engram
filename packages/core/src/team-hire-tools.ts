@@ -23,9 +23,9 @@ export const AUTO_REVIEW = 'auto: sourced lookup'
 // c6 R2: three members cut at their time limit were not accepted, and three review_member calls took 3.3 s before the first word of the answer.
 const ACCEPTED_NOTE = 'Members with accepted true are lookups, already accepted and released: do not call review_member for them, and write the answer now. One that stopped at its time limit handed back what it had read: answer its part from that. Report in one merged answer: several items go in one table, each row with the address it came from.'
 // grokbar c3 R1/T1: the merged answer opened with "세 봇이 조사한 … 취합해서 알려드릴게요." and the judge read it as a status report.
-export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"): a figure that belongs to a variant says so inside its cell ("프로 기준 179만 원부터"), a named model that is not out itself says that first ("일반형은 내년 봄 예상"), and a cell never holds another product\'s figure. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result ("셋이 하나씩 맡아 알아봤어요."); when "split" says someone joined mid-work, the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
+export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"): a figure that belongs to a variant says so inside its cell ("프로 기준 179만 원부터"), a named model that is not out itself says that first ("일반형은 내년 봄 예상"), a date cell says one thing - the named model\'s date, a variant\'s in one short bracket after it ("내년 봄 예상 (프로는 9월 18일)") - and a cell never holds another product\'s figure. When the person asked for the work to be split (bots, 나눠서, 각각 따로), that lead sentence, or one short sentence before the table, says in a few words how it was split, from "split" in this result ("셋이 하나씩 맡아 알아봤어요."); when "split" says someone joined mid-work, the person was told so when they added it, so the lead is one plain sentence with the gist and no word about the head count or who joined. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value that is not out yet says so and keeps the labeled figure its member reported ("미발표, 예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
-const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a blog or café post by its own title, never "네이버 블로그" or "네이버 카페", never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
+const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a blog or café post or a site you cannot name by the plain word 출처, never "네이버 블로그" or "네이버 카페", never a piece of a title or of an address, never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
 const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
@@ -57,7 +57,7 @@ export function timeBoxed(tool: AgentTool, left: () => number): AgentTool {
 // The search now hands over the results themselves (title, address, words, date), so one search is the normal case.
 // c5 R2/C3: a member whose one search held no figure reported "미발표, 전작보다 인상 예상" at 3 s of its 8; "Search once" and "when the
 // results hold one" let it. It now looks once more inside the same limits, and a price that is not out still carries a number.
-export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and, when that does not hold the answer, one more search or one page. Search first with the query in the person\'s language (when the results of a first search come with your part, that search is done: start from them): the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report - the maker\'s or the product\'s English name ("Galaxy S27 price", "Linear changelog"), or a news search (kind "news") - and never a third time. A source is named by its site or publication (삼성전자 뉴스룸, 연합뉴스), a blog or café post by its own title: never "네이버 블로그" or "네이버 카페". When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. The thing is called by the name in your part ("아이폰 18"), never by a variant\'s: a figure that belongs to a variant says so in the value ("프로 기준 179만 원부터"), when the named model itself is not out the value says that first ("일반형은 내년 봄 예상"), and a value never takes another product\'s figure. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A price that is not announced yet says so and still gives a number with its currency, labeled 예상 or 전작: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"); a date the same way, the expected month with its year ("미발표, 2027년 2월 예상"). That number comes from a result or is the previous model\'s known launch price, labeled as what it is: never a number of your own, and never a line with no number in it ("전작보다 인상 예상" alone is not a price); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
+export const LOOKUP_RULE = 'You only look things up: you have reading tools and about ten seconds, enough for one search and, when that does not hold the answer, one more search or one page. Search first with the query in the person\'s language (when the results of a first search come with your part, that search is done: start from them): the results come as a list, each with its title, its own address, what it says and its date. When they hold what the brief asks, report at once from them, each fact with the address of the result it came from (the maker\'s own page or a news article when the list has one, before a café or blog post); open a page only for a number none of them shows. When the first results do not hold what the brief asks (no figure, no date, nothing about that product or company), search once more in other words before you report - the maker\'s or the product\'s English name ("Galaxy S27 price", "Linear changelog"), or a news search (kind "news") - and never a third time. A source is named by its site or publication (삼성전자 뉴스룸, 연합뉴스); a blog or café post, or a site whose name you do not know, is named by the plain word 출처 ("source" in English): never "네이버 블로그" or "네이버 카페", never a piece of the page\'s title, never an address or a piece of one. When the brief names what to find about a thing (its price, its release date), report each on a line of its own, "가격: …", "출시일: …", each a short value with a figure in it. The thing is called by the name in your part ("아이폰 18"), never by a variant\'s: a figure that belongs to a variant says so in the value ("프로 기준 179만 원부터"), when the named model itself is not out the value says that first ("일반형은 내년 봄 예상"), and a value never takes another product\'s figure. A date is written as the results give it (11월 10일). Report in the person\'s language, in plain polite sentences (in Korean the -요 form): the facts first, each with its address (the page itself, never a search-results address, unless the fact was read on the results page itself). A figure read from the results page\'s own box (weather, a stock quote, a rate, a score) is cited to that service by name with the results page\'s address, the one after "results for … at" - [네이버 날씨](that address), [네이버 증권](that address) - never to a blog or any other result you did not take it from. A price point always carries a figure with its currency: an answer whose price has no digit is not finished. A price that is not announced yet says so and still gives a number with its currency, labeled 예상 or 전작: the reported expectation ("미발표, 예상 130만 원대") or the previous model\'s launch price ("미발표, 전작 S26 115만 원"); when the results give no expected price, your one more search is for the previous model\'s launch price ("갤럭시 S26 출고가"), and that figure is the value, labeled 전작. A date is one thing: the named model\'s own, with a variant\'s date in one short bracket after it when it matters ("내년 봄 예상 (프로는 9월 18일 출시)"), never two dates side by side; a date that is not announced is given the same way, the expected month with its year ("미발표, 2027년 2월 예상"). That number comes from a result or is the previous model\'s known launch price, labeled as what it is: never a number of your own, and never a line with no number in it ("전작보다 인상 예상" alone is not a price); never write about time, limits, attempts, tools, pages that did not open or what you failed to do. A page that wants a sign-in or a robot check is left alone, never worked around: read another source. If your part needs anything other than reading, say so in one line and stop.'
 
 // A lookup member reads public sources, and its tab closes when it ends, so a page that wants the person (a sign-in, a robot check) cannot be
 // handed over from it: the page is left unread and unpassed, another source is read, and the lead reports the gap (perf146 r2: one search page's
@@ -138,26 +138,31 @@ export function answeredLookup(answer: string, read: readonly string[] = []): bo
   return said.length >= 30 || /\d/.test(said) && said.length >= 4
 }
 const SOURCES_MAX = 3
+// Words that are a piece of the title the address's search result came with, and not that title's site part.
+const cutTitle = (words: string, url: string): boolean => { const [title, found] = TITLES.get(url) ?? TITLES.get(plainAddress(url)) ?? [], name = words.trim(); return !!title && name.length >= 2 && title.includes(name) && sitePart(title, found) !== name }
 // c6 L3/R2: a link was named by its bare host ("korea247.kr") or by where it was posted ("appletouch 카페", "블로그 글") because the host had
 // only the address. The title each search result came with is kept with its address, and names the link (siteName).
 // shortcut: in memory, the newest 400, for this run of the app; after a restart an older answer's link is named by its host again.
-const TITLES = new Map<string, string>()
-export const keepTitle = (url: string, title: string): void => { TITLES.delete(url); TITLES.set(url, title); if (TITLES.size > 400) TITLES.delete(TITLES.keys().next().value!) }
-// The title's own site part ("… - 조선일보", "… | 삼성전자 뉴스룸") when it has one, else its first twenty characters; a closing part
-// that only says where it was posted ("… : 네이버 블로그") is left off.
-const titleName = (title: string): string => {
+const TITLES = new Map<string, [title: string, found: string]>()
+/** found: the words of the search that listed it. */
+export const keepTitle = (url: string, title: string, found = ''): void => { TITLES.delete(url); TITLES.set(url, [title, found]); if (TITLES.size > 400) TITLES.delete(TITLES.keys().next().value!) }
+// c7 R2/L3: a link was named by a piece of its page's title ("디자인 화면 출고가", "출시일 사생활 보호 화면 S....", "일별 기온·강수 예보").
+// Words pass as a site's or a publication's name only when they are short, hold no digit and no cut mark, and are not where anyone posts.
+const NAME_MAX = 12
+const nameLike = (words: string): boolean => { const name = words.trim(); return name.length >= 2 && [...name].length <= NAME_MAX && !/\d|…|\.{2,}/.test(name) && !PLACE.test(name) && !HOSTISH.test(name) }
+// The title's own site part ("… - 조선일보", "… | 삼성전자 뉴스룸"), when it passes as a name and shares no word with the search that
+// found the page (a part of the headline repeats the search: "아이폰 18 - 출시일 총정리"); '' otherwise.
+const sitePart = (title: string, found = ''): string => {
   const parts = title.split(/\s[-|–—:]{1,2}\s/).map(part => part.replace(/[[\]|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean), site = parts.at(-1) ?? ''
-  const placed = parts.length > 1 && PLACE.test(site)
-  if (parts.length > 1 && !placed && site.length >= 2 && [...site].length <= 20) return site
-  const clean = placed ? parts.slice(0, -1).join(' ') : title.replace(/[[\]|]/g, ' ').replace(/\s+/g, ' ').trim(), cut = [...clean]
-  return cut.length <= 20 ? clean : `${cut.slice(0, 20).join('').trim()}…`
+  const searched = found.toLowerCase().split(/\s+/).filter(word => word.length >= 2)
+  return parts.length > 1 && nameLike(site) && !searched.some(word => site.toLowerCase().includes(word)) ? site : ''
 }
 // The pages a lookup member read are kept as it reads them, whatever its words say: a page it opened, the pages of a batch that were
 // ready, and the results page of a search that ran. A wall, a refusal or a failed read is no source.
 export function keepSources(tool: AgentTool, seen: Set<string>): AgentTool {
   const note = (args: Record<string, unknown>, out: string): void => {
     try {
-      if (tool.name === 'search_web') { const at = /^results for "[^\n]*" at (https?:\/\/\S+) \(DATA/.exec(out)?.[1]; if (at) { seen.add(at); for (const [, title, url] of out.matchAll(/^- (.+?) — (https?:\/\/\S+)/gm)) keepTitle(url!, title!) } }
+      if (tool.name === 'search_web') { const at = /^results for "[^\n]*" at (https?:\/\/\S+) \(DATA/.exec(out)?.[1]; if (at) { seen.add(at); for (const [, title, url] of out.matchAll(/^- (.+?) — (https?:\/\/\S+)/gm)) keepTitle(url!, title!, /^results for "([^\n]*)" at /.exec(out)?.[1] ?? '') } }
       else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string' && /^https?:\/\//i.test(args['url'])) seen.add(args['url']) }
       else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string') seen.add(page.url)
     } catch { /* An output that is not a report names no source. */ }
@@ -181,6 +186,8 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   // Only someone on the person's team is named in a row ("노션(지민)"); a bot made for the job has no name the person knows (c3 R1: "서울 (서울날씨봇)").
   const name = (m: TeamMember): string => m.botId ? m.role.replace(/[[\]|]/g, '').trim() : ''
   const lines = answer.split('\n')
+  // The addresses a member's own result names.
+  const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
   let sourceColumn = false
   for (const [i, line] of lines.entries()) {
     if (!/^\s*\|.*\|\s*$/.test(line) || TABLE_RULE.test(line)) continue
@@ -205,12 +212,18 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
       const held = !post && !bare && (!first || SEARCH_PAGE.test(first) && !boxed(first)) ? figureSources(own.result ?? '', cells.slice(1)) : []
       // The lead's words name the link unless they only say where it was posted ("appletouch 카페" on a café post), are a bare host, or
       // name the results page ("네이버 검색") that a result has taken the place of.
-      const words = (url: string, swapped = false): string => vague || HOSTISH.test(last.trim()) || /(?:카페|블로그|포스트)$/.test(last.trim()) && communityPost(url) || swapped && /검색|search/i.test(last) ? '' : last.replace(/^[-–—\s]*$/, '')
+      // c7: nor when they do not pass as a name: a cut title ("디자인 화면 출고가"), a piece of the address ("vidabytes").
+      const words = (url: string, swapped = false): string => vague || !nameLike(last) || hostPiece(last, url) || cutTitle(last, url) || /(?:카페|블로그|포스트)$/.test(last.trim()) && communityPost(url) || swapped && /검색|search/i.test(last) ? '' : last.replace(/^[-–—\s]*$/, '')
       // c6a r2: one link per page a figure came from, each under its own name; a lone link keeps the lead's words (or "출처" beside a value).
-      const cite = (urls: readonly string[], lone?: string): string => urls.map(url => `[${urls.length === 1 && lone || sourceName(url, korean)}](${escaped(url)})`).join(' · ')
+      // c7: two pages with one name are told apart by a number ("출처 1 · 출처 2").
+      const cite = (urls: readonly string[], lone?: string): string => { const names = urls.map(url => urls.length === 1 && lone || sourceName(url, korean)), same = new Set(names).size < names.length; return urls.map((url, at) => `[${same ? `${names[at]} ${at + 1}` : names[at]}](${escaped(url)})`).join(' · ') }
+      // c7 R2: "vidabytes" stood in a source cell as plain words: the row's teammate had only searched, so its one known page was a
+      // results page. A name with no address is linked to the first page that teammate cited which is not a results page.
+      const page = named(own).find(url => !SEARCH_PAGE.test(url))
       if (post) cells[cells.length - 1] = `[${post[1]}](${post[0]})`
       else if (bare) cells[cells.length - 1] = `[${sourceName(bare, korean)}](${bare})`
       else if (held.length) cells[cells.length - 1] = label ? cite(held, words(held[0]!, true)) : `${cells.at(-1)} ${cite(held, korean ? '출처' : 'source')}`
+      else if (page && (!first || SEARCH_PAGE.test(first) && !boxed(first))) cells[cells.length - 1] = label ? cite([page], words(page, true)) : `${cells.at(-1)} ${cite([page], korean ? '출처' : 'source')}`
       else if (cited.includes(own)) cells[cells.length - 1] = label ? `[${words(own.sources![0]!) || sourceName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
       else if (vague) cells[cells.length - 1] = postWord(!/카페|caf/i.test(last), korean)
     } else {
@@ -224,7 +237,6 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
   const fixed = placeNamed(lines.join('\n'), members, korean, true)
   // stack-3 (c3a run, R1/R2): a row that linked the page its member's own result named still counted as uncited, because that member had
   // only searched; the answer closed with "출처: 네이버 검색 · 네이버 검색" under a table that already linked every row.
-  const named = (m: TeamMember): string[] => (m.result?.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? []).map(url => url.replace(/[.,;:!?]+$/, ''))
   const missing = cited.filter(m => !m.sources!.some(url => fixed.includes(url)) && !fixed.includes(href(m)) && !named(m).some(url => fixed.includes(url)))
   // c6 R2: "출처: 네이버 검색" stood under a table whose every row had its own source. Nothing follows such a table: a closing source line
   // the lead wrote goes, and none is added.
@@ -261,24 +273,33 @@ const HOSTISH = /^(?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}\/?$/i
 // stack-5 (c5a run, R2): "[네이버 블로그 lsmsh28](…)", the place with the writer's id after it, is still only the place.
 const PLACE = /^(?:(?:네이버|다음|naver|daum)\s?)?(?:블로그|카페|포스트|blog|caf[eé]|post)(?:\s+[\w.-]+)?$|^(?:티스토리|브런치|tistory|brunch)$/i
 const postWord = (blog: boolean, korean: boolean): string => korean ? (blog ? '블로그 글' : '커뮤니티 글') : blog ? 'blog post' : 'forum post'
-const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title]) => !PLACE.test(title!.trim())).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim().slice(0, 60)]))
+// c7: only a name a member gave the address ("[삼성전자 뉴스룸](…)"): a post's whole title as the link's words read as a cut headline.
+const linked = (text: string): Map<string, string> => new Map([...text.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g)].filter(([, title, url]) => nameLike(title!) && !hostPiece(title!, url!)).map(([, title, url]) => [url!, title!.replace(/\|/g, ' ').trim()]))
+// "vidabytes" on ko.vidabytes.com, "blank" on blank.page: a piece of the address is not a name.
+const hostPiece = (words: string, url: string): boolean => { try { const name = words.trim().toLowerCase(); return /^[\w.-]+$/.test(name) && new URL(url).hostname.toLowerCase().includes(name) } catch { return false } }
 /** A link named only after where anyone posts ("[네이버 블로그](…)") takes the title a member gave that address, else what the address is. Also for a team result (company-tools teamAnswer). hosts (a lookup's answer): a link named by its bare host ("[korea247.kr](…)") is renamed too, by sourceName. */
 export function placeNamed(text: string, members: readonly TeamMember[], korean = false, hosts = false): string {
-  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')].filter(([, title]) => !hosts || !HOSTISH.test(title))))
-  return text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, words: string, url: string) => PLACE.test(words.trim()) || hosts && HOSTISH.test(words.trim()) ? `[${titles.get(url) ?? (hosts ? sourceName : siteName)(url, korean)}](${url})` : whole)
+  const titles = new Map(members.flatMap(m => [...linked(m.result ?? '')]))
+  // c7: so is one named by a cut title ("출시일 사생활 보호 화면 S....") or by a piece of its own address ("vidabytes").
+  const unnamed = (words: string, url: string): boolean => PLACE.test(words.trim()) || hosts && (HOSTISH.test(words.trim()) || /…|\.{3,}/.test(words) || hostPiece(words, url) || cutTitle(words, url))
+  return text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, (whole, words: string, url: string) => unnamed(words, url) ? `[${titles.get(url) ?? sourceName(url, korean)}](${url})` : whole)
 }
-// c6 L3/R2: the name a lookup's link gets. A known site and a results page keep siteName's; a post, and a site siteName could only name by
-// its bare host ("korea247.kr"), take the title their search result came with, else the host's name without its ending ("korea247").
+// c7: the one rule for a link's name, everywhere (citeMembers, placeNamed, citeOwn, company-tools pageLink / nothingNew). The site's or
+// publication's own name when the host knows it: the known list and the results-page boxes (siteName), or the site part of the title its
+// search result came with, when that passes as a name (sitePart). Otherwise the plain word "출처". Never a cut title, never "…", never
+// a host or a piece of one (c6: "blank" for blank.page, "slack", "seoul"), never where anyone posts ("블로그 글").
 export function sourceName(url: string, korean = false): string {
-  const plain = siteName(url, korean)
+  const plain = siteName(url, korean), word = korean ? '출처' : 'source'
   let host: string
-  try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return plain }
+  try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return word }
   if (plain !== host && !(communityPost(url) && !SEARCH_PAGE.test(url))) return plain
-  const title = TITLES.get(url) ?? TITLES.get(plainAddress(url))
-  return title ? titleName(title) : plain !== host ? plain : host.replace(/(?:\.(?:co|or|go|ne|ac|com))?\.[a-z]{2,}$/i, '').split('.').at(-1) || host
+  const [title, found] = TITLES.get(url) ?? TITLES.get(plainAddress(url)) ?? []
+  return title && sitePart(title, found) || word
 }
 // What a person calls the site an address is on: "네이버 검색", "apple.com".
-const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing']]
+// shortcut: a short closed list; a site that is not on it is named by its search title's site part, else "출처" (sourceName).
+const SITES: [RegExp, string, string][] = [[/(^|\.)naver\.com$/, '네이버', 'Naver'], [/(^|\.)daum\.net$/, '다음', 'Daum'], [/(^|\.)google\.[a-z.]+$/, '구글', 'Google'], [/(^|\.)bing\.com$/, 'Bing', 'Bing'],
+  [/(^|\.)apple\.com$/, 'Apple', 'Apple'], [/(^|\.)samsung\.(com|co\.kr)$/, '삼성전자', 'Samsung'], [/(^|\.)(youtube\.com|youtu\.be)$/, '유튜브', 'YouTube'], [/(^|\.)slack\.com$/, '슬랙', 'Slack'], [/(^|\.)notion\.(so|com)$/, '노션', 'Notion'], [/(^|\.)linear\.app$/, '리니어', 'Linear']]
 export function siteName(url: string, korean = false): string {
   let host: string
   try { host = new URL(url).hostname.replace(/^www\./, '') } catch { return url }
@@ -381,7 +402,7 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
       if (tool.name === 'search_web') {
         if (!/^results for "[^\n]*" at https?:\/\/\S+ \(DATA/.test(out)) return
         // stack-5: the note on which rows are older than the period asked (c5a's refill) is the host's English to the model, not something read.
-        const lines = out.split('\n').slice(1).filter(line => !/^(?:Results, each as |The first \d+ are from the last |None is from the last )/.test(line))
+        const lines = out.split('\n').slice(1).filter(line => !/^(?:Results, each as |The first \d+ are from the last |None is from the last |The last \d+ only mention )/.test(line))
         into.push(lines.map(line => { const [title, url, ...rest] = line.startsWith('- ') ? line.slice(2).split(' — ') : []; return title && url && /^https?:\/\//.test(url) ? `${title}${rest.length ? `: ${rest.join(', ')}` : ''} ${url}` : line }).join('\n').trim())
       } else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string') into.push(`${out}\n${args['url']}`) }
       else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown; observation?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string' && typeof page.observation === 'string') into.push(`${page.observation}\n${page.url}`)
@@ -454,6 +475,25 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
   if (files.length) member.files = [...new Set(files)].slice(0, 10)
   else if (member.lookup && member.state === 'done' && !tail && answer && answeredLookup(answer, member.sources)) member.review = { ok: true, note: AUTO_REVIEW }
 }
+
+// c7 R2: "가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상" - a price with no figure, and the rule alone did not hold. When a
+// lookup's part asks for a price and the price it reported carries no figure with a currency, the host searches once for the previous
+// model's launch price and the member writes its answer again with it (team-runner). '' when the price has a figure, the part asks for
+// none, or the thing's name holds no model number to step back from.
+// shortcut: the previous model is the name with its last number less one ("갤럭시 S27" -> "갤럭시 S26"); a line that names its models otherwise gets no second search.
+const MONEY = /\d[\d,.]*\s*(?:만\s?|천\s?|억\s?)?(?:원|달러|엔|유로|위안|파운드)|[$€₩¥£]\s?\d|\b(?:USD|KRW|EUR|JPY)\s?\d|\d\s?(?:USD|KRW|EUR|JPY|dollars?|won)\b/i
+const PRICE_ASK = /가격|출고가|얼마|\bprice\b/i
+export function priorPriceQuery(member: Pick<TeamMember, 'brief' | 'query'>, answer: string): string {
+  const part = member.query || member.brief.split('\n')[0]!
+  if (!PRICE_ASK.test(`${part} ${member.brief}`)) return ''
+  const price = /(?:^|\n)[^\n]*?(?:가격|출고가|price)\s*[:：]([^\n]*)/i.exec(answer)?.[1]
+  if (price === undefined || MONEY.test(price.replace(/https?:\/\/\S+/g, ' '))) return ''
+  const thing = part.replace(/(?:의|와|과|이랑|랑|및|,)?\s*(?:가격|출고가|출시일|발매일|스펙|사양|조사|비교|price|release date)[^\n]*$/i, '').trim()
+  const model = /^(.*?)(\d+)(\D*)$/.exec(thing)
+  if (!model || Number(model[2]) < 2) return ''
+  return `${model[1]}${Number(model[2]) - 1}${model[3]} ${/[가-힣]/.test(thing) ? '출고가' : 'launch price'}`.replace(/\s+/g, ' ').trim()
+}
+export const PRIOR_PRICE_NOTE = 'Your price has no figure. Results of a search for the previous model\'s launch price follow. Write your whole answer again, the same lines, with the price line now carrying that figure with its currency, labeled 전작 ("미발표, 전작 S26 115만 원"), and the address it came from; change nothing else, and write no word about searching again.'
 
 export const memberPersona = (member: TeamMember): string => `You are "${member.role}", a member of a hidden team working for one person through a lead. ${MEMBER_RULE}${member.lookup ? ` ${LOOKUP_RULE}` : ''}`
 
