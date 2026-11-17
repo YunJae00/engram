@@ -2,6 +2,7 @@ import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
 import { checkedWrite, isOutsideAsk, readProblems, type WrittenProblem } from 'core'
+import { readsKorean } from '../shared/reads-korean.js'
 
 // grokbar B7 (stack1-f4f6844c): everyday desk work ran on the work model with 73 tools and a 40k-char prompt, and most of the time was
 // that model's rounds: M1-M3 (remember, correct, recall) 9-12 s for one keep_in_mind call or none, F2 9 s with no call, F1 41 s (20 s
@@ -574,13 +575,14 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length, and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
     'Each thing goes under the one part it belongs to, by what the source says it is; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
   // c15c r2: what the check found wrong, in the last text it read (the rewrite when its own check named problems, else the draft).
-  let found: { text: string; problems: readonly WrittenProblem[] } = { text: input.draft, problems: [] }, rewrite: string | undefined, checks = 0
+  const found: { text: string; problems: readonly WrittenProblem[] }[] = []
+  let rewrite: string | undefined, checks = 0
   const text = await checkedWrite({
     data, ask: input.ask, parts: true, draft: input.draft, ...(input.signal ? { signal: input.signal } : {}), due: input.since + DESK_CHECK_DUE_MS, ...(input.now ? { now: input.now } : {}),
     check: async (prompt, ms) => {
       // checkedWrite reads the draft first and the rewrite second.
       const read = checks++ ? rewrite ?? input.draft : input.draft, raw = await quick(prompt, ms), problems = readProblems(raw)
-      if (problems?.length) found = { text: read, problems }
+      if (problems?.length) found.unshift({ text: read, problems })
       return raw
     },
     redo: async (note, ms) => (rewrite = (await quick(base + note, ms).catch(() => undefined))?.trim() || undefined),
@@ -588,21 +590,29 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   })
   // c15c r2: a text the check named problems in never reaches the thread as it is. The desk has no other rendering, so the host's fallback is
   // that text without the lines the check quoted (and a heading left with nothing under it): less, never wrong.
-  return text ?? withoutQuoted(found.text, found.problems)
+  // c15c r3: the latest such text first; when the check named every line of it, the one before. Never an empty answer: when nothing it read
+  // is left, one plain line says the summary was not given because it did not hold against the source.
+  if (text !== undefined) return text
+  if (!found.length) return input.draft
+  return found.map(one => withoutQuoted(one.text, one.problems)).find(Boolean)
+    ?? (readsKorean(input.ask) ? '정리해 봤는데 원문이랑 안 맞는 부분이 있어서 그대로 드리진 않을게요. 한 번 더 말씀해 주시면 다시 정리할게요.' : 'What I put together did not match the source, so I am not passing it on as is. Ask once more and I will redo it.')
 }
 const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
-const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`]/g, '').replace(/\s+/g, '')
-/** The text without each problem's line: the line the quote was copied from, or for a quote spanning lines, the last line it holds whole
- * (two parts that say the same thing keep the first). A heading whose every line went goes with them. */
+const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\-–—]/g, '').replace(/\s+/g, '')
+/** The text without each problem's line: the line the quote was copied from, or every line a quote spanning lines holds. When the same
+ * words stand in more than one part, the quote's own part name (its heading) picks the line; a quote that names no part removes every copy,
+ * since the host cannot tell the wrong copy from the right one (c15c r3: position is no evidence). A heading whose every line went goes too. */
+/** The nearest line above `at` that is not a list item: the part it sits under ('' when none). */
+const heading = (lines: readonly string[], at: number): string => { for (let j = at - 1; j >= 0; j--) if (lines[j]!.trim() && !ITEM.test(lines[j]!)) return lines[j]!; return '' }
 export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
   const lines = text.split('\n'), gone = new Set<number>()
   for (const { quote } of problems) {
     const q = bare(quote)
     if (!q) continue
     const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
-    const whole = at.filter(({ b }) => b.includes(q))
-    const pick = (whole.length ? whole : at).at(-1)
-    if (pick) gone.add(pick.i)
+    const whole = at.filter(({ b }) => b.includes(q)), cands = whole.length ? whole : at
+    const named = cands.filter(({ i, b }) => { const ctx = bare(heading(lines, i)) + b; return ctx.length > b.length && (ctx.includes(q) || q.includes(ctx)) })
+    for (const { i } of named.length ? named : cands) gone.add(i)
   }
   // A heading (a line that is not a list item) loses its place when every line under it, up to the next heading, went.
   lines.forEach((line, i) => {

@@ -3,6 +3,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { checkedDesk, structured, withoutQuoted } from '../src/main/desk-lane.js'
+import { readProblems } from 'core'
 import { MEMORY_YIELDS, turnStarting, yielding } from '../src/main/comet-memory.js'
 
 // c15c (cause D). Wordings are not the harness's: a product review split into 장점/단점.
@@ -70,7 +71,7 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
 })
 
 describe('withoutQuoted', () => {
-  it('drops the quoted line, the later copy of a repeated one, and a heading left empty', () => {
+  it('drops the quoted line, the copy under the part the quote names, and a heading left empty', () => {
     const text = '원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요'
     expect(withoutQuoted(text, [{ kind: 'overlap', quote: '대책: 캐시가 오래됐어요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n메모\n서버는 정상이에요')
     expect(withoutQuoted(text, [{ kind: 'contradicts', quote: '서버는 정상이에요', why: '' }])).toBe('원인\n- 캐시가 오래됐어요\n\n대책\n- 캐시가 오래됐어요\n\n메모')
@@ -118,5 +119,40 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
     await tick()
     stop.abort()
     await expect(call).rejects.toThrow('stopped')
+  })
+})
+
+// c15c r3. Wordings are not the harness's: a team retro note split into 합의한 것 / 각자 할 일.
+describe('the fallback never keeps the wrong copy and never answers empty (r3)', () => {
+  const RETRO = '합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기'
+  it('a false item repeated in two parts: the copy under the part the quote names goes, the other stays', () => {
+    // The check says the decision is false (the source left the day open); the same line under 할 일 is a task and stays.
+    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '합의한 것: 배포는 금요일에 하기로 했어요', why: '요일은 안 정했음' }]))
+      .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기')
+    // Named the other way round, the other copy goes: position decides nothing.
+    expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '각자 할 일 - 배포는 금요일에 하기로 했어요', why: '' }]))
+      .toBe('합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
+  })
+  it('a quote that names no part removes every copy: the host cannot tell which one is wrong', () => {
+    expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '배포는 금요일에 하기로 했어요', why: '' }]))
+      .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
+  })
+  it('every line quoted and the rewrite failed: never empty, the earlier text read or one plain line', async () => {
+    const draft = '좋은 점\n- 배터리가 오래 가요\n\n아쉬운 점\n- 무거워요'
+    const all = '{"problems":[{"kind":"contradicts","quote":"배터리가 오래 가요","why":""},{"kind":"contradicts","quote":"무거워요","why":""}]}'
+    expect(withoutQuoted(draft, readProblems(all) ?? [])).toBe('')
+    const said = [all, undefined]
+    const out = await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() })
+    expect(out.trim()).not.toBe('')
+    expect(out).toMatch(/[가-힣]/)
+    expect(out).not.toContain('배터리가 오래 가요')
+    expect(out).not.toContain('무거워요')
+  })
+  it('the rewrite fully quoted but the draft only partly: the draft without its quoted lines', async () => {
+    const draft = '좋은 점\n- 귀가 안 아파요\n- 배터리가 오래 가요\n\n아쉬운 점\n- 없어요'
+    const rewrite = '좋은 점\n- 하루 종일 가요'
+    const said = ['{"problems":[{"kind":"contradicts","quote":"배터리가 오래 가요","why":""}]}', rewrite, '{"problems":[{"kind":"contradicts","quote":"하루 종일 가요","why":""}]}']
+    expect(await checkedDesk({ ask: '이어폰 메모 좋은 점 아쉬운 점으로 나눠줘', draft, source: SOURCE, quick: async () => said.shift(), since: Date.now() }))
+      .toBe('좋은 점\n- 귀가 안 아파요\n\n아쉬운 점\n- 없어요')
   })
 })
