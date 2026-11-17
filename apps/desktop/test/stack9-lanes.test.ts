@@ -101,7 +101,7 @@ it('stack-9: a teammate\'s line on how many there are is no item and is not show
   expect(out).not.toMatch(/두 개|2개/)
   expect(out).not.toContain('확실한 일정은 이거 하나예요')
   expect(out.split('\n')).toHaveLength(1)
-  // c12a B1: a plain sentence of who brought it, never the job title as a label (this member was built without a part name).
-  expect(out).toMatch(/^지민이 찾아 왔어요\. 12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw-2026\/\)$/)
+  // c12a B1: never the job title as a label (this member was built without a part name). c13a (cause H): the find leads, then "(지민)".
+  expect(out).toMatch(/^12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요\. \(지민\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw-2026\/\)$/)
   expect(out).not.toContain('[출처]')
 })

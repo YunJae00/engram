@@ -164,7 +164,8 @@ test('r2: a hand-off whose receiver brought no data keeps the giver\'s sourced f
   const text = mergedReport([giver, receiver])
   expect(text).toContain('향수 팝업 전시')
   expect(text).toContain('(https://popup.example.kr/seongsu/77)')
-  expect(text).toMatch(/윤서[^\n]*못/)
+  // c13a: the receiver's line says it did not get there, and whose part it is.
+  expect(text).toMatch(/못[^\n]*\(윤서\)/)
   // A writer message that drops the giver's part is refused: the giver is a part of its own again.
   expect(checkedReport(JSON.stringify({ message: '윤서가 문장을 못 끝냈어요.', kept: [] }), [giver, receiver])).toBeUndefined()
 })

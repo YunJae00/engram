@@ -21,7 +21,7 @@ async function world(run: Run, quick?: (prompt: string) => Promise<string | unde
   const created = await createTask(paths, `지아한테 맡겨: ${brief}`, 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => found(String(args['query'])) }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, lookupHardMs: 300 })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 300 })
   const engine = (quick ? { id: 'claude', quick: (prompt: string) => quick(prompt) } : {}) as TurnKit['engine']
   const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const began = Date.now()

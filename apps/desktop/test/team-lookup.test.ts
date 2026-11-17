@@ -3,7 +3,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createTask, listTasks, mergedReport, reportData, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createTask, listTasks, mergedReport, reportData, LATE_CEILING_MS, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // perf146: "봇 3개 생성해서 서울 부산 제주 날씨 조사" ran three opus members with 65 tools each for 118-213 s; the lead waited for the slowest.
@@ -11,7 +11,7 @@ type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type Seen = { tools: string[]; options: NonNullable<Parameters<Run>[2]> }
 const tool = (name: string): AgentTool => ({ name, description: '', argsSchema: {}, run: async () => name })
 
-async function world(script: (seen: Seen) => Promise<Awaited<ReturnType<Run>>>, lookupHardMs?: number) {
+async function world(script: (seen: Seen) => Promise<Awaited<ReturnType<Run>>>, answerMs?: number) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-lookup-')), '.engram') } as unknown as VaultPaths
@@ -19,7 +19,7 @@ async function world(script: (seen: Seen) => Promise<Awaited<ReturnType<Run>>>, 
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
   const seen: Seen[] = []
   const run: Run = async (deps, _prompt, options = {}) => { const one = { tools: deps.tools.map(t => t.name), options }; seen.push(one); return script(one) }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, ...(lookupHardMs ? { lookupHardMs } : {}) })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, ...(answerMs ? { answerMs } : {}) })
   const nativeFor = vi.fn(async () => ({ cwd: '/task' }) as never)
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor,
     toolsFor: async lane => [...team.tools(lane, kit), ...['search_web', 'read_pages', 'open_page', 'look', 'ask_person', 'page_steps', 'app_click', 'excel_write', 'file_read'].map(tool)] }
@@ -33,9 +33,12 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const out = JSON.parse(await w.hire([{ role: '서울 조사', brief: '서울 오늘 날씨', lookup: true }, { role: '보고서', brief: '엑셀로 정리' }]))
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
-  expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS })
-  // grokbar B6: the lead waits for its slowest member, so the member phase is bounded at 15 s inside a 35 s answer (24 s left R1 at 38 s).
-  expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS]).toEqual([8_000, 15_000, 4])
+  expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS })
+  // c13a: one deadline from the person's message (28 s). A helper whose lead writes after it is due 6 s earlier (22 s); its soft point,
+  // where it starts no new tool call, is half of what is left of that from its start: ~11 s here, since it starts at once.
+  expect(lookup!.options.deadlineMs).toBeGreaterThan(10_000)
+  expect(lookup!.options.deadlineMs).toBeLessThanOrEqual(11_000)
+  expect([TEAM_ANSWER_MS, LATE_CEILING_MS, LOOKUP_MAX_CALLS]).toEqual([28_000, 90_000, 4])
   // No collection receipts for a member that only reads and reports.
   expect(lookup!.options.lookup).toBe(true)
   expect(lookup!.options.native).toBeUndefined()
@@ -134,7 +137,7 @@ it('hands the lead each member\'s pages and does not wait for a straggler past t
     if (city === '부산') return new Promise((_, reject) => { options.onToken?.('부산 비 14도'); options.signal!.addEventListener('abort', () => reject(new Error('aborted'))) })
     return { answer: `${city} 흐림 13도`, steps: [], fellBack: false }
   }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, lookupHardMs: 40 })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 40 })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => ({ cwd: '/task' }) as never, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const began = Date.now()
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: ['서울', '부산', '제주'].map(city => ({ role: `${city} 날씨`, brief: `${city} 오늘 날씨`, lookup: true })) }, { task: '' }))
@@ -194,7 +197,8 @@ it('c6: a lookup member with search words starts with that search already run: r
   expect(again.note).not.toContain('Review each member with review_member')
 })
 
-// c6 R2: results at ~7.2 s, a second search, cut at 15 s with nothing. The limit here is 1.5 s, so a tenth of the real clock.
+// c6 R2: results at ~7.2 s, a second search, cut at 15 s with nothing. c13a: the deadline here is 1.65 s for 28 s, so a helper's window
+// (due 6 s before the answer) is ~1.3 s for its real 22 s: the times below are its share of the real clock.
 it('c6: results early leave room for a second search; results late say to answer now, the next call is not run, and the member ends done with its answer', async () => {
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
   const outs: string[] = []
@@ -215,16 +219,16 @@ it('c6: results early leave room for a second search; results late say to answer
       outs.push(await tool.run({ query: 'Pixel 11 price' }, { task: '' }))
       return { answer: '가격: 미발표, 예상 999유로 https://ko.vidabytes.com/pixel-11/', steps: [], fellBack: false }
     }
-    const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, lookupHardMs: 1_500 })
+    const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 1_650 })
     const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
     return JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '픽셀 11', brief: '픽셀 11의 가격', lookup: true }] }, { task: '' }))
   }
-  // Results at 2 s of 15: nothing is added, and the second search runs.
+  // Results at ~3.4 s of 22: nothing is added, and the second search runs.
   await make(200)
   expect(outs[0]).not.toContain('No further tool call will run')
   expect(outs[1]).toMatch(/^results for "Pixel 11 price"/)
   expect(ran).toBe(2)
-  // Results at 8.5 s of 15: the call itself still fits, its result says to answer now, and the call after it is not run.
+  // Results at ~14.4 s of 22: the call itself still fits, its result says to answer now, and the call after it is not run.
   outs.length = 0; ran = 0
   const late = await make(850)
   expect(outs[0]).toMatch(/^results for "픽셀 11 가격"[^]*No further tool call will run\. Answer now from what you have/)
@@ -265,13 +269,13 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   doyun!.data = reportData(block({ facts: [], nothing_in_period: {} }), doyun!, doyun!.sources, true)!
   seoyeon!.data = reportData(block({ facts: [{ text: '슬랙이 Huddles 요약을 냈어요.', url: 'https://slack.com/blog/huddles' }] }), seoyeon!, seoyeon!.sources, true)!
   const table = mergedReport([doyun!, seoyeon!])
-  // c12a B1: no part names were given here, so each part leads with its teammate, never the job title as a label.
-  expect(table).toContain('도윤이 봤는데 이번엔 새로 나온 게 없어요.')
+  // c12a B1: never the job title as a label. c13a (cause H): no part names were given, so each line says whose it is in "(name)".
+  expect(table).toContain('이번엔 새로 나온 게 없어요. (도윤) [네이버 검색](')
   expect(table).not.toContain('신기능 조사(')
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
   // The cut-short part's link is named by its site, never by the host's own "시간 한도" line under the address.
-  expect(table).toContain('서연이 찾아 왔어요. 슬랙이 Huddles 요약을 냈어요. [슬랙](https://slack.com/blog/huddles)')
+  expect(table).toContain('슬랙이 Huddles 요약을 냈어요. (서연) [슬랙](https://slack.com/blog/huddles)')
   expect(table).not.toContain('한도')
   expect(table).not.toContain('출처')
 })

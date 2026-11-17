@@ -1,23 +1,36 @@
 import {
-  ANSWER_NOW, backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  ANSWER_NOW, backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, LATE_CEILING_MS, listTasks, LOOKUP_MAX_CALLS, PRIOR_PRICE_NOTE, priorPriceQuery, figurePages, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, TEAM_ANSWER_MS, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, logTask, makerFirst, markLate, REPORT_CAP_MS, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
-// c12a A1 (C3: 지민 and 서연 read their release pages and were cut at 15.0 s with nothing written): the last part of a lookup teammate's
-// time is for answering. At the hard limit less this, a teammate that read something and is not writing yet is told to answer now from
-// what it read, in a round with no tools; the quick model writes the same report from the kept rows in case that round is not back by
-// the limit. On the scale of the real limit (the test seam shortens it).
-const ANSWER_RESERVE_MS = 3_000
-// How long past the hard limit the quick model's report is waited for.
+// c13a (cause T; C3: three teammates on a fixed 15 s clock from their own start were cut at 12-15 s with 14.5 s of the 35 s bar unused,
+// and two parts were abandoned while the thread said they would follow). One clock per task, from the person's message: the answer is
+// due TEAM_ANSWER_MS after it (taskDue). Every lookup reads the time left to that point; nothing counts a fixed time from its own start.
+// - A helper whose lead writes the answer after it is due LEAD_ANSWER_MS earlier: the lead's merge round fits before the answer is due.
+// - Every part has at least MIN_PART_MS from its own start (one queued, or added by a steer, is not cut before it worked); the task's
+//   answer then waits for that part too (taskDue).
+// - The soft point (no new tool call) and the answer reserve are shares of the part's own window. The reserve is never less than one
+//   no-tool report round on the teammate's ~39-40k-character prompt (REPORT_ROUND_MS; a round with one tool call took 9.6-9.9 s in
+//   C3): at that point a teammate that read something writes its report with no tools, and the quick model writes a stand-in from the
+//   kept rows. A background part that can follow late is not cut at the deadline, so its report round may run past it.
+// - At the deadline a background part that can be reported late (core lateParts) is not stopped: it stays working, is shown as such,
+//   and its report follows in the same thread. LATE_CEILING_MS past the deadline it is stopped and recorded as not finished.
+// All on the scale of the real deadline (the test seam answerMs shortens it).
+const LEAD_ANSWER_MS = 6_000
+const MIN_PART_MS = TEAM_ANSWER_MS / 2
+const SOFT_SHARE = 0.5
+const RESERVE_SHARE = 0.25
+const REPORT_ROUND_MS = 6_000
+// How long past the stop the quick model's report is waited for.
 const ANSWER_GRACE_MS = 1_000
 // c12a B3: one more round to take a listing page apart into items, only with at least this much of the teammate's time left.
 const ITEMS_ROUND_MS = 6_000
@@ -59,12 +72,15 @@ export function teamRunner(deps: {
   /** A conversation has a turn of its own under way: an agent's finished job is written to their conversation after it. */
   busy?(channel: string): boolean
   run?: typeof runComet
-  // Test seam: a lookup member's hard time limit.
-  lookupHardMs?: number
-  // Test seam: how long a background job's report waits for its slowest part.
-  reportCapMs?: number
+  // Test seam: how long after the person's message the team's answer is due (TEAM_ANSWER_MS); every other time scales with it.
+  answerMs?: number
 }) {
   const { paths } = deps
+  const answerMs = deps.answerMs ?? TEAM_ANSWER_MS, scale = answerMs / TEAM_ANSWER_MS
+  // When a task's answer is due: its message time plus the answer time, or later when a part started late still needs its least time.
+  const taskDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + answerMs, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + MIN_PART_MS * scale))
+  // What each part at work has opened so far: put on the member when the others are reported without it (rule 7's line links it).
+  const reading = new Map<string, Set<string>>()
   setReportLog(line => flog('team-report', line))
   const live = new Map<string, { control: AbortController; channel: string }>()
   const waitingLanes = new Map<string, number>()
@@ -118,13 +134,15 @@ export function teamRunner(deps: {
     const control = new AbortController(), stop = () => control.abort()
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
-    let used = 0, role = id, goal = '', ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
+    let used = 0, role = id, goal = '', due = Date.now() + answerMs, ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
     // Tokens a lead session already counts are saved with the lead's turn, not again here.
     let charged = leads.has(leadChannel)
     try {
-      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
+      const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; due = taskDue(task); if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
       if (!member) return
       const { me, helpers } = member
+      // A helper's lead writes the answer after it: it is due that much earlier.
+      if (!me.botId) due -= LEAD_ANSWER_MS * scale
       role = me.role; roles.set(key, role)
       // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
@@ -132,16 +150,15 @@ export function teamRunner(deps: {
       // c11a: a lookup or a writer on the team hands back data (core REPORT_RULE / WRITER_RULE); a writer's deliverable carries no temperament.
       const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : me.lookup ? 'lookup' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
-      // A lookup member is time-boxed: the lead waits for it no longer than the hard limit, and gets what it wrote by then.
-      // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
+      // A lookup member is time-boxed by the task's one deadline (taskDue, c13a); a writer by its own time from when it starts.
+      // Its window counts from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
-      const hardMs = me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS
-      let startedAt: number | undefined
+      reading.set(key, sources)
+      let startedAt: number | undefined, stopAt = Infinity, reserveMs = 0
       // A teammate's tool rounds run on their own signal: the answer reserve ends a round without ending the teammate.
       const toolRound = new AbortController()
       control.signal.addEventListener('abort', () => toolRound.abort(), { once: true })
-      const scale = hardMs / LOOKUP_HARD_MS, reserveMs = ANSWER_RESERVE_MS * scale
       const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
       let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
       // stack-12 (T3): no wait after a teammate's own work (the stand-in report, the kind check) outlives a stop or a steer. The hard
@@ -155,10 +172,30 @@ export function teamRunner(deps: {
         if (/```|^\s*\{/.test(draft)) return
         answering = true; toolRound.abort()
       }
-      const begun = () => { if (me.lookup || me.writer) { startedAt ??= Date.now(); hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, hardMs); if (me.lookup && me.botId) reserve ??= setTimeout(answerNow, hardMs - reserveMs) } }
-      // Time until the hard stop, on the scale of the real limit (the test seam shortens the limit, and the share of it left is what counts):
-      // a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
-      const left = (): number => (hardMs - (startedAt === undefined ? 0 : Date.now() - startedAt)) * LOOKUP_HARD_MS / hardMs
+      const cut = (): void => { timedOut = true; control.abort() }
+      // At the deadline a background part that can follow on its own (core lateParts / followsLate: the others are reported without it)
+      // keeps working until the ceiling; any other part, a hand-off's too, stops there with what it has.
+      const atDue = async (): Promise<void> => {
+        const task = await find(taskId).catch(() => undefined), m = task?.team?.members.find(one => one.id === id)
+        if (!task || !m?.background || !me.botId || control.signal.aborted || !followsLate(m) || !(m.late || lateParts(task).includes(id))) return cut()
+        stopAt = due + LATE_CEILING_MS * scale
+        hardStop = setTimeout(cut, Math.max(0, stopAt - Date.now()))
+      }
+      const begun = () => {
+        if (!(me.lookup || me.writer) || startedAt !== undefined) return
+        startedAt = Date.now()
+        if (me.writer) { stopAt = startedAt + WRITER_HARD_MS; hardStop = setTimeout(cut, WRITER_HARD_MS); return }
+        due = Math.max(due, startedAt + MIN_PART_MS * scale)
+        stopAt = due
+        const window = due - startedAt
+        reserveMs = Math.min(window, Math.max(REPORT_ROUND_MS * scale, window * RESERVE_SHARE))
+        hardStop = setTimeout(() => void atDue(), window)
+        if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
+      }
+      // Time until the deadline on the real scale: a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
+      const left = (): number => (due - Date.now()) / scale
+      // The soft point: after this share of its window a lookup starts no new tool call and answers from what it has.
+      const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
@@ -196,7 +233,7 @@ export function teamRunner(deps: {
             ...(native ? { native } : {}),
             waitingForPerson: () => waitingLanes.has(lane) || deps.waitingForPerson(leadChannel),
             onStep: line => { read = true; deps.step(leadChannel, line) },
-            ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: LOOKUP_SOFT_MS, ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
+            ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: soft(), ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
@@ -241,7 +278,7 @@ export function teamRunner(deps: {
       // c12a A1: with no report by the limit, the quick model's report from the kept rows, waited for until the limit plus the grace.
       if (structured && !data && written) {
         let wait: ReturnType<typeof setTimeout> | undefined
-        const by = Math.max(0, (startedAt ?? Date.now()) + hardMs + ANSWER_GRACE_MS * scale - Date.now())
+        const by = Math.max(0, Math.min(stopAt, Date.now() + reserveMs) + ANSWER_GRACE_MS * scale - Date.now())
         data = reportData(await Promise.race([written, stopped, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
         clearTimeout(wait)
       }
@@ -251,13 +288,14 @@ export function teamRunner(deps: {
       // c12a B3: a listing page among the facts is taken apart in one more round while the teammate's time allows it (the hard stop still
       // applies); otherwise it stays, labeled where it is shown.
       const pages = me.lookup && !timedOut && !control.signal.aborted ? listingPages(data) : []
-      if (data && pages.length && (hardMs - (Date.now() - (startedAt ?? Date.now()))) / scale >= ITEMS_ROUND_MS) {
+      if (data && pages.length && left() >= ITEMS_ROUND_MS) {
         draft = ''
         const more = await turn(itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
         // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
         data = withItems(data, await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge))
       }
       clearTimeout(hardStop)
+      reading.delete(key)
       const report = structured ? data ?? null : undefined
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
@@ -266,10 +304,12 @@ export function teamRunner(deps: {
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
+          // c13a: a teammate that hands back data and ended with none is not finished (status and record read this, never "found nothing").
+          if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
         }
         ended = m?.state
         // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
-        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}), ...(ended === 'done' && m.data ? { data: m.data } : {}) }
+        if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty && partOutcome(m) !== 'unfinished' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}), ...(ended === 'done' && m.data ? { data: m.data } : {}) }
       })
       if (done) {
         // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
@@ -297,7 +337,7 @@ export function teamRunner(deps: {
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
       // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), ...(m.late ? { late: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return { to, background: !!m.background }
@@ -313,9 +353,23 @@ export function teamRunner(deps: {
     told.delete(taskId)
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
     const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
-    // c5 (GROKBOT rule 7): the report waited for the slowest part however long it took. At the cap what has come back is reported, the
-    // parts still at work are labeled there ("아직 찾는 중이에요. 끝나면 이어서 올릴게요."), and the report below, when they end, is theirs alone.
-    const cap = setTimeout(() => void change(taskId, markLate).then(late => { if (late?.length && !halting.has(leadChannel) && !told.has(taskId)) report?.(leadChannel, taskId) }).catch(error => flog('team', error)), deps.reportCapMs ?? REPORT_CAP_MS)
+    // c5 (GROKBOT rule 7): the report waited for the slowest part however long it took. When the answer is due (taskDue, c13a) what has
+    // come back is reported, the parts still at work are labeled there with the pages they have opened so far, and the report below, when
+    // they end, is theirs alone. A part added since (a steer) moves the due time, so the timer reads it again when it fires.
+    let cap: ReturnType<typeof setTimeout> | undefined
+    const arm = async (): Promise<void> => {
+      const task = await find(taskId)
+      if (!task) return
+      const wait = taskDue(task) - Date.now()
+      if (wait > 0) { cap = setTimeout(() => void arm().catch(error => flog('team', error)), wait); return }
+      const late = await change(taskId, t => {
+        const ids = markLate(t)
+        for (const m of t.team?.members ?? []) { const read = reading.get(`${taskId}/${m.id}`); if (ids.includes(m.id) && read?.size) m.sources = [...read] }
+        return ids
+      })
+      if (late?.length && !halting.has(leadChannel) && !told.has(taskId)) report?.(leadChannel, taskId)
+    }
+    await arm()
     void Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, undefined, kit, share)))).finally(() => clearTimeout(cap)).then(async () => {
       const task = await find(taskId)
       if (task && !TERMINAL.includes(task.state) && !halting.has(leadChannel) && !backgroundOpen(task) && !told.has(taskId)) { told.add(taskId); report?.(leadChannel, taskId) }

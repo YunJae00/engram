@@ -202,6 +202,14 @@ export type NewsPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year'
 const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\s?주|금주|\bthis week\b/i, 'week'], [/요즘|요새|최근|이번\s?달|\b(recent|recently|lately|these days|this month)\b/i, 'month']]
 const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, quarter: 92, year: 366 }
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
+// c13a (C3: a teammate's "이번 주" news was searched over one day): a period the ask names that has begun picks the period button by date
+// arithmetic, the smallest one that reaches back to its start. News about a time is written up to a day before it (a Friday forecast
+// for the weekend), so the search reaches PERIOD_LEAD_MS earlier. Only the search: a fact's own day is checked with no lead (inAskedPeriod).
+export const PERIOD_LEAD_MS = 86_400_000
+export function periodSince(from: Date, now = new Date()): NewsPeriod {
+  const days = (now.getTime() - from.getTime() + PERIOD_LEAD_MS) / 86_400_000
+  return (['day', 'week', 'month', 'quarter', 'year'] as const).find(period => PERIOD_DAYS[period] >= days) ?? 'year'
+}
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 // The day a result's date names, as searchResults writes it ("11월 13일", "2024년 4월 16일", "2024.04.16.", "2024-04-16", "Nov 15", "Apr 16, 2024"); null when it names none.
 // stack-11 (c11b run H6: "11월 9~13일" counted as undated): a day range, also after a few words ("11월 둘째주(9~15일)"), is its last day.

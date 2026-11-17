@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
+import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, periodSince, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -9,6 +9,9 @@ import { browserReadBatch } from './browser-read-batch.js'
 import { measuredCourier } from './harness-metrics.js'
 import { formatAsk } from './ask.js'
 import { localPageUrl } from './tool-args.js'
+import { periodSpans } from './team-hire-tools.js'
+// The host's own date line in a task (team-hire-tools dateLine).
+export const HOST_TODAY = /Today is \d{4}-\d{2}-\d{2} \([A-Za-z]+\)\./g
 
 const signInAsk = (task: string | undefined, search = false): string => formatAsk(/[가-힣]/.test(task ?? '')
   ? search ? '열린 검색 페이지에서 로그인을 마치고 다 되면 알려줘.' : '열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.'
@@ -157,7 +160,11 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const general = (await deps.searchTemplate?.()) || defaultSearchTemplate(query)
           const news = args['kind'] === 'news' || NEWS_ASK.test(query)
           // The period is the person's word ("요즘", "이번 주"), which the query may have left out.
-          const asked = `${query} ${context.task ?? ''}`, period = news ? newsPeriod(asked) : undefined
+          // c13a: a teammate's task opens with the host's own date line (team-hire-tools dateLine, "Today is …"): that is no period the person
+          // asked for, and it read as "today" (p:1d) for every teammate. A period that has begun is chosen by its dates (periodSince).
+          const asked = `${query} ${context.task ?? ''}`.replace(HOST_TODAY, ' '), asOf = new Date()
+          const begun = periodSpans(asked, asOf).filter(span => span.from.getTime() <= asOf.getTime()).sort((a, b) => a.from.getTime() - b.from.getTime())[0]
+          const period = news ? begun ? periodSince(begun.from, asOf) : newsPeriod(asked) : undefined
           const template = news ? newsTemplate(general, period) : general
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
