@@ -253,24 +253,22 @@ it('attaches word_write and ppt_build outputs the answer did not link, without r
   expect(linked).toContain(deck.markdownLink)
 })
 
-// qa143 p2 r3 #3: nothing after outputLinks hands over a word_write or ppt_build file, so the answer's link to one report.docx must not
-// hide another input's report.docx. The same input built again is a revision: the last one counts, once.
-it.each(['word_write', 'ppt_build'])('keeps another %s input under a linked name, and only the last build of one input', (tool) => {
+// qa143 p2 r3 #3 kept another input's report.docx beside the linked one. grokbar D3 (stack9): one deck rebuilt twice in a turn became three
+// cards. A deck or document made again under its name in one turn is that turn's own file made again (office-agent.ts replaces it): only the
+// last build is shown, and a link to an earlier build is the last one's.
+it.each(['word_write', 'ppt_build'])('shows only the last %s build of one name in a turn, and points a link to an earlier build at it', (tool) => {
   const ext = tool === 'word_write' ? 'docx' : 'pptx'
   const made = (id: number, input: string) => ({ tool, args: { title: 'report', blocks: [input] }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-00000000000${id}-report.${ext})` }) })
   const link = (step: { observation: string }) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
   const a1 = made(1, 'sales'), a2 = made(2, 'sales'), b = made(3, 'costs')
   const steps = [a1, b, a2] as unknown as Parameters<typeof outputLinks>[0]
-  // The answer quotes the final build of one input: its earlier build is the version it replaced; the other input is another file.
   const linked = outputLinks(steps, `보고서: ${link(a2)}`)
-  expect(linked).toContain(link(b))
-  expect(linked).not.toContain(link(a1))
-  expect(linked.split(link(a2)).length - 1).toBe(1)
-  // The answer quotes nothing: one file per input, the last build of each.
+  expect(linked).toBe(`보고서: ${link(a2)}`)
+  // The answer quotes the first build: the link is the last one's.
+  expect(outputLinks(steps, `보고서: ${link(a1)}`)).toBe(`보고서: ${link(a2)}`)
+  // The answer quotes nothing: one card, the last build.
   const unlinked = outputLinks(steps, '다 만들었어요.')
-  expect(unlinked).toContain(link(a2))
-  expect(unlinked).toContain(link(b))
-  expect(unlinked).not.toContain(link(a1))
+  expect(unlinked).toBe(`다 만들었어요.\n\n${link(a2)}`)
   // A file copy of that name is another source too; the host's own delivery still settles file receipts by name.
   const copy = { tool: 'file_create_copy', args: { name: `report.${ext}` }, observation: JSON.stringify({ markdownLink: `[report.${ext}](engram-artifact:11111111-2222-3333-4444-000000000009-report.${ext})` }) }
   expect(outputLinks([copy, b] as unknown as Parameters<typeof outputLinks>[0], `보고서: ${link(copy)}`)).toContain(link(b))
@@ -298,10 +296,13 @@ it('attaches only the last copy of one source when the answer links nothing, and
   // drive letter that the raw taskPath would not have).
   const written = copy(7, { content: 'v1' }, { taskPath: 'report.md' })
   expect(links([written, r3])).toEqual([link(r3)])
-  // Other file tools: the same input again is a revision, another input is another file.
+  // A workbook made fresh under one name in a turn is one file made again (grokbar D3): the last one, whatever its cells.
   const book = (id: number, rows: number[]) => ({ tool: 'file_create_workbook', args: { name: 'sales.xlsx', rows }, observation: JSON.stringify({ markdownLink: `[sales.xlsx](engram-artifact:11111111-2222-3333-4444-00000000001${id}-sales.xlsx)` }) })
   const b1 = book(1, [1]), b2 = book(2, [1]), b3 = book(3, [2])
-  expect(links([b1, b3, b2])).toEqual([link(b2), link(b3)])
+  expect(links([b1, b3, b2])).toEqual([link(b2)])
+  // One revised from a source file is not made fresh: two sources stay two files.
+  const fromA = { ...book(4, [1]), args: { name: 'sales.xlsx', sourcePath: 'a.xlsx' } }, fromB = { ...book(5, [1]), args: { name: 'sales.xlsx', sourcePath: 'b.xlsx' } }
+  expect(links([fromA, fromB])).toEqual([link(fromA), link(fromB)])
   // A linked name still leaves its other file receipts to the host.
   expect(links([r1, other, r3], `Done: ${link(r3)}`)).toEqual([])
 })

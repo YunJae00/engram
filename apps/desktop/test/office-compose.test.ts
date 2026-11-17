@@ -59,24 +59,63 @@ it('writes a Word document the same way, without opening Word', async () => {
   await expect(stat(join(fake.home, 'Engram'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
-// qa143 p2 r3 #3: two different inputs under one name are two files, known by name; the same input built again is the file already handed in.
-// The answer's link to one of them does not hide the other.
-it('hands in a second input under one name as report-2, and keeps both when the answer links one', async () => {
+// qa143 p2 r3 #3 said two inputs under one name in a turn were two files (report, report-2). grokbar D3 (stack9) showed what that does: one
+// deck rebuilt twice became three cards. The same name in one turn is now that turn's own file made again: one file, one card, the last one.
+it('replaces this turn\'s own file when a second input is built under its name, and shows only the last', async () => {
   const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
   for (const [name, ext, input] of [['word_write', 'docx', (text: string) => ({ title: 'report', blocks: [{ kind: 'paragraph', text }], theme: THEME })], ['ppt_build', 'pptx', (text: string) => ({ slides: [{ title: text }], saveAs: 'report.pptx', theme: THEME })]] as const) {
-    const tool = tools().find(t => t.name === name)!
-    const run = async (text: string) => { const args = input(text), observation = await tool.run(args, { task: '보고서' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { markdownLink: string; artifact: string; taskPath: string } } }
-    const sales = await run('sales'), costs = await run('costs'), again = await run('sales')
+    const tool = officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, `turn-${ext}`)).find(t => t.name === name)!
+    const run = async (text: string) => { const args = input(text), observation = await tool.run(args, { task: '보고서' }); return { step: { tool: name, args, observation }, receipt: JSON.parse(observation) as { markdownLink: string; artifact: string; taskPath: string; path: string } } }
+    const sales = await run('sales'), costs = await run('costs')
     expect(sales.receipt.markdownLink).toMatch(new RegExp(`^\\[report\\.${ext}\\]\\(engram-artifact:`))
-    expect(costs.receipt.markdownLink).toMatch(new RegExp(`^\\[report-2\\.${ext}\\]\\(engram-artifact:`))
-    expect(again.receipt.artifact).toBe(sales.receipt.artifact)
-    expect((await readdir(task)).filter(file => file.endsWith(`.${ext}`)).sort()).toEqual([`report-2.${ext}`, `report.${ext}`])
-    const steps = [sales.step, costs.step, again.step] as unknown as Parameters<typeof outputLinks>[0]
+    expect(costs.receipt.markdownLink).toMatch(new RegExp(`^\\[report\\.${ext}\\]\\(engram-artifact:`))
+    expect(costs.receipt.taskPath).toBe(sales.receipt.taskPath)
+    expect((await readdir(task)).filter(file => file.endsWith(`.${ext}`))).toEqual([`report.${ext}`])
+    // The draft's saved output is gone; the last one holds the task file's bytes.
+    await expect(stat(sales.receipt.path)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await readFile(costs.receipt.path)).equals(await readFile(costs.receipt.taskPath))).toBe(true)
+    const steps = [sales.step, costs.step] as unknown as Parameters<typeof outputLinks>[0]
     for (const quoted of [sales, costs]) {
       const answer = outputLinks(steps, `보고서: ${quoted.receipt.markdownLink}`)
-      for (const one of [sales, costs]) expect(answer.split(one.receipt.markdownLink).length - 1).toBe(1)
+      expect(answer.split(costs.receipt.markdownLink).length - 1).toBe(1)
+      expect(answer).not.toContain(sales.receipt.artifact)
     }
+    expect(outputLinks(steps, '다 만들었어요.').match(/engram-artifact:/g)).toHaveLength(1)
+    // The same input again after another replaced it is built again, not handed back as the draft that is gone.
+    const again = await run('sales')
+    expect((await readFile(again.receipt.path)).equals(await readFile(again.receipt.taskPath))).toBe(true)
   }
+})
+
+// A turn that only names the file an earlier turn made does not touch it: a new turn's build under that name keeps the earlier one as its
+// previous version (placeInTask), and the earlier saved output stays.
+it('keeps the file an earlier turn made when a later turn builds under its name', async () => {
+  const first = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-1')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
+  const later = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-2')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '4분기 계획' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
+  expect(later.artifact).not.toBe(first.artifact)
+  expect((await readFile(first.path)).subarray(0, 2).toString()).toBe('PK')
+})
+
+// grokbar D3 (stack9): the first deck the model built read "수시 입력", "대믱", "변류̈은", "거실론" (the stored 3분기 실적 보고.pptx); with only
+// "saved" in the receipt it read the deck back, built it again ("수지", "결맠") and once more. The receipt now lists the slides, says not to
+// read it back, and names the garbled words with their slide so they are fixed from the receipt.
+it('says a built deck is done, lists its slides and names garbled words (the stored stack-9 deck)', async () => {
+  const stored = [
+    { title: '3분기 실적 보고', subtitle: '팀 회의 자리' },
+    { title: '3분기 요약', bullets: ['매출: 수시 입력 (전분기 대믱 수시 입력)', '영업이익: 수시 입력', '목표 대매출: 수시 입력', '전사적인 추이: 수시 입력'] },
+    { title: '주요 지표', table: { rows: [['지표', '목표', '실적', '달성률'], ['매출', '수시 입력', '수시 입력', '수시 입력']] } },
+    { title: '변류\u0308은 달성 요인과 고전 요인', bullets: ['달성 요인: 내역 입력', '고전 요인: 내역 입력', '거실론: 내역 입력'] },
+    { title: '4분기 개선 계획', bullets: ['다음 분기 목표: 수시 입력'] },
+  ]
+  const receipt = JSON.parse(await tools().find(t => t.name === 'ppt_build')!.run({ slides: stored, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }))
+  expect(receipt.verification).toContain('do not read it back or build it again')
+  expect(receipt.verification).toContain('1. 3분기 실적 보고 / 2. 3분기 요약 / 3. 주요 지표')
+  expect(receipt.titles).toHaveLength(5)
+  expect(receipt.mistyped).toContain('대믱 (slide 2)')
+  expect(receipt.mistyped).toContain('변류\u0308은 (slide 4)')
+  expect(receipt.mistyped).toContain('file_edit_package')
+  const clean = JSON.parse(await tools().find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적 보고' }, { title: '요약', bullets: ['매출: 수치 입력 (전분기 대비 수치 입력)', '결론: 내역 입력'] }], theme: THEME }, { task: 'PPT' }))
+  expect(clean.mistyped).toBeUndefined()
 })
 
 it('hands in one file when the same deck is built again', async () => {
