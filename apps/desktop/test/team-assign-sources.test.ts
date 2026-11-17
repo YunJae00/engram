@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { createBot, createTask, listTasks, LOOKUP_HARD_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { createBot, createTask, listTasks, TEAM_ANSWER_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamCheckDue } from '../src/main/task-runner.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { answerHtml } from '../src/renderer/src/markdown.js'
@@ -20,7 +20,7 @@ async function world(run: Run, found = (query: string): string => `results for "
   const created = await createTask(paths, '경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', 'b1')
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => found(String(args['query'])) }
-  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, lookupHardMs: 40 })
+  const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, answerMs: 40 })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const assign = () => team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']].map(([who, topic]) => ({ who, topic, brief: `${topic} 신기능 조사` })) }, { task: '' })
   const task = async () => (await listTasks(paths)).find(t => t.id === created.id)!
@@ -65,8 +65,8 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   const makers: Record<string, string> = { 노션: 'Notion releases 업데이트', 슬랙: 'Slack release notes 업데이트', 리니어: 'Linear changelog 업데이트' }
   expect((await w.task()).team!.members.map(m => m.sources)).toEqual(['노션', '슬랙', '리니어'].map(topic => [address(`${topic} 새 기능 업데이트`), address(makers[topic]!), address(`${topic} 신기능`)]))
   expect(teamCheckDue(await w.task(), answer)).toBe(false)
-  // The agents are held 15 s at most inside the 35 s answer.
-  expect(LOOKUP_HARD_MS).toBe(15_000)
+  // c13a: the agents work to one deadline, 28 s after the message, inside the 35 s answer.
+  expect(TEAM_ANSWER_MS).toBe(28_000)
 })
 
 it('agents that reached no page are said so in their rows, and that answer is not re-checked either', async () => {

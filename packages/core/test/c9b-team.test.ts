@@ -80,31 +80,30 @@ test('c9 fix 2/3: C5 and C6 open with the thing, in two different ways, with no 
   const kim = member({ role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', title: '다음 달 서울 IT 행사 일정 정리', topic: topicOf('다음 달 서울 IT 행사 일정 정리'), background: true, result: C5_RESULT, data: C5_DATA })
   const c5 = mergedReport([kim])
   const c5lead = c5.split('\n')[0]!
-  expect(c5lead).toBe('지민이 서울 IT 행사 일정 3개를 찾아 왔어요.')
-  expect(c5lead).not.toMatch(/(?:찾아봤|정리해 왔|정리했|알아봤)어요\.$/u)
+  // c13a (cause H; C5 judge on "…일정 3개를 찾아 왔어요"): no host count lead; the first line is the first item, with whose it is.
+  expect(c5lead).toMatch(/^- .+ \(지민\) \[[^\]]+\]\(https:/u)
+  expect(c5).not.toMatch(/\d개를|찾아 왔어요/u)
   // The teammate's own "…은 이래요." intro line is not an item; the three are, each with its link. BAR C5: 행사 and a date.
   expect(c5).not.toContain('확인해 보니')
   expect(c5.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
   for (const f of C5_DATA.facts) expect(c5).toContain(`[${f.site}](${f.url})`)
   expect(c5).not.toContain('출처')
-  expect(c5).toMatch(/행사/); expect(c5).toMatch(/12월 2일/)
+  // c13a: the host's rendering adds no words of its own (the BAR's "행사" is the writer's lead); who and a date are in the data.
+  expect(c5).toMatch(/지민/); expect(c5).toMatch(/12월 2일/)
 
   const park = member({ id: 'm2', role: '서연', lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT, data: { facts: [], items: C6_ITEMS } })
   const c6 = mergedReport([park])
-  const c6lead = c6.split('\n')[0]!
-  // The hand-off is said once, on the opener: whose part, made from whose find.
-  // c12a B1: one plain sentence, never the job title "홍보 문구 3개 뽑기(서연, …):".
-  expect(c6lead).toMatch(/^서연이 지민이 찾은 서울 IT 행사 일정으로 3개 써 왔어요\. \[코엑스\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw2026\/\)/u)
-  // BAR C6: three list lines, each the item exactly; nothing after the list.
-  expect(c6.split('\n').slice(1)).toEqual(C6_ITEMS.map((item, i) => `${i + 1}. ${item}`))
+  // c12a B1: never the job title "홍보 문구 3개 뽑기(서연, …):". c13a (cause H): no host sentence on who made what from whose find;
+  // BAR C6: three list lines, each the item exactly, then whose they are with the find's page.
+  expect(c6.split('\n')).toEqual([...C6_ITEMS.map((item, i) => `${i + 1}. ${item}`), '(서연, 지민이 찾은 서울 IT 행사 일정) [코엑스](https://www.coex.co.kr/exhibitions/sw2026/) · [example.com](https://example.com/aisummit)'])
   expect(c6).toMatch(/행사/)
   expect(c6).not.toMatch(/에서 나온 거예요|찾아보니|찾은 걸 따랐어요|으로 뽑았어요\./u)
   // Two teammates never open the same way.
-  expect(c6lead).not.toBe(c5lead)
+  expect(c6.split('\n')[0]).not.toBe(c5lead)
   // A list job that brought one item shows it as one line with its link, not a list.
   const one = mergedReport([{ ...kim, data: { facts: [C5_DATA.facts[0]!] } }])
   expect(one.split('\n')).toHaveLength(1)
-  expect(one).toMatch(/^서울 IT 행사 일정은 지민이 찾아 왔어요\. .+\[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  expect(one).toMatch(/^[^-].+ \(지민\) \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
 })
 
 test('c9 fix 2: a writer\'s own closing line on where the facts came from is not shown (c11a: structure)', async () => {
@@ -115,8 +114,8 @@ test('c9 fix 2: a writer\'s own closing line on where the facts came from is not
   const park = member({ role: '서연', lookup: undefined, writer: true, background: true, brief })
   park.data = reportData(answer, park)!
   const h5 = mergedReport([park])
-  expect(h5.split('\n')[0]).toMatch(/^서연이 지민이 찾은 서울 날씨로 한 줄 써 왔어요\. \[기상청\]\(https:\/\/www\.weather\.go\.kr\/w\/a\)$/u)
-  expect(h5.split('\n').slice(1)).toEqual(['맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!'])
+  // c13a (cause H): the line itself, then whose it is with the page of the find it was made from.
+  expect(h5.split('\n')).toEqual(['맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!', '(서연, 지민이 찾은 서울 날씨) [기상청](https://www.weather.go.kr/w/a)'])
   expect(h5).not.toMatch(/나온 거예요|지민이가 찾아준/u)
 })
 
@@ -140,15 +139,15 @@ test('c9b r2 finding 2: C5 and C6 openers are said in each teammate\'s own store
   // c11a: no stock ending is forced on a teammate's lines; the same data reads the same in any voice.
   const plain = mergedReport([kim()])
   for (const voice of ['차분하고 또박또박', '밝고 시원시원하게', '담백하고 짧게', '사투리로']) expect(mergedReport([kim(voice)])).toBe(plain)
-  expect(plain.split('\n')[0]).toBe('지민이 서울 IT 행사 일정 3개를 찾아 왔어요.')
+  expect(plain.split('\n')[0]).toMatch(/^- .+ \(지민\) \[/u)
   expect(plain).not.toMatch(/더라고요!|네요\./u)
   const park = (voice?: string) => member({ id: 'm2', role: '서연', ...(voice ? { voice } : {}), lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT, data: { facts: [], items: C6_ITEMS } })
   const c6 = mergedReport([park('밝고 시원시원하게')])
   expect(c6).toBe(mergedReport([park()]))
-  expect(c6.split('\n')[0]).toMatch(/^서연이 지민이 찾은 서울 IT 행사 일정으로 3개 써 왔어요\. \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  expect(c6.split('\n').at(-1)).toMatch(/^\(서연, 지민이 찾은 서울 IT 행사 일정\) \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
   expect(c6.match(/^\d\. /gm)).toHaveLength(3)
   // The deliverable's items are copied exactly: a voice never rewrites them.
-  expect(c6.split('\n').slice(1)).toEqual(C6_ITEMS.map((item, i) => `${i + 1}. ${item}`))
+  expect(c6.split('\n').slice(0, -1)).toEqual(C6_ITEMS.map((item, i) => `${i + 1}. ${item}`))
 })
 
 test('c9b r3: the writer\'s own C5 opener is said in the teammate\'s stored voice, not passed through plain (c11a: structure)', async () => {

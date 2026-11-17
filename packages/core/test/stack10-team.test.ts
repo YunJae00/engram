@@ -12,7 +12,9 @@ test('stack-10 (c10b run C5): a schedule counts the items that give a day; the o
   const said = mergedReport([member({ brief: '다음 달 부산 IT 행사 일정 정리', data: { facts } })])
   // The teammate is named on the part's head (c12a B1: a sentence of who brought how many, no job title); every item stays listed, each
   // with its own link named by its site.
-  expect(said.split('\n')[0]).toBe('하린이 3개를 찾아 왔어요.')
+  // c13a (cause H): no host count lead; the first line is the first item, with whose it is.
+  expect(said.split('\n')[0]).toMatch(/^- 부산 클라우드 밋업.* \(하린\) \[/)
+  expect(said).not.toMatch(/\d개를/)
   expect(said.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
   expect(said).toContain('12월 9일')
   expect(said).toContain('부산 AI 위크')

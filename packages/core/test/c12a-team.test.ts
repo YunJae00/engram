@@ -46,7 +46,8 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
   try {
     const refused = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: invented, kept }), timeoutMs: 500, now: NOW })
     expect(refused).toBe(mergedReport(parts))
-    expect(lines.at(-1)).toMatch(/^writer=refused:missing-said ms=\d+ parts=3 missing=1$/)
+    // c13a: each part's outcome is on the line too.
+    expect(lines.at(-1)).toMatch(/^writer=refused:missing-said ms=\d+ parts=3 missing=1 outcomes=민준:found,지아:unfinished,하율:found$/)
     const shown = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message: good, kept }), timeoutMs: 500, now: NOW })
     expect(lines.at(-1)).toMatch(/^writer=accepted ms=\d+/)
     // The writer's message, then the host's rule-7 line for 지아 with where they looked. All three parts are linked.
@@ -64,12 +65,12 @@ test('A2: a part with no data is the host\'s own line with the page it looked at
 test('B1: a hand-off\'s fallback leads with who made what from whose find, never a job title head', () => {
   const giver = settled(member({ id: 'm1', role: '하율', brief: '이번 주 부산 맛집 찾아봐', title: '이번 주 부산 맛집 찾기', topic: topicOf('이번 주 부산 맛집 찾아봐'), then: { botId: 'bot-m2', who: '지아', brief: '인스타 문구 2개 써줘' } }), block({ facts: [{ text: '해운대 전포 돼지국밥집이 줄 서는 곳이에요.', url: 'https://busan.example.kr/eat/77' }] }))
   const writer = settled(member({ id: 'm2', role: '지아', lookup: undefined, writer: true, title: '인스타 문구 2개 쓰기', brief: handoffBrief('인스타 문구 2개 써줘', '하율', giver.result!, giver.brief) }), block({ items: ['국물 한 숟갈에 부산이 다 들어 있어요', '줄 서도 아깝지 않은 한 그릇'] }))
-  const shown = mergedReport([giver, writer]), first = shown.split('\n')[0]!
-  expect(first).toBe('지아가 하율이 찾은 부산 맛집으로 2개 써 왔어요. [busan.example.kr](https://busan.example.kr/eat/77)')
-  expect(shown).not.toMatch(/\(지아, |쓰기|찾기|인스타 문구 2개/)
-  expect(shown.split('\n').slice(1)).toEqual(['1. 국물 한 숟갈에 부산이 다 들어 있어요', '2. 줄 서도 아깝지 않은 한 그릇'])
+  const shown = mergedReport([giver, writer])
+  expect(shown).not.toMatch(/쓰기|찾기|인스타 문구 2개/)
+  // c13a (cause H): the items first, then whose they are with the page they were made from; no host sentence about who made what.
+  expect(shown.split('\n')).toEqual(['1. 국물 한 숟갈에 부산이 다 들어 있어요', '2. 줄 서도 아깝지 않은 한 그릇', '(지아, 하율이 찾은 부산 맛집) [busan.example.kr](https://busan.example.kr/eat/77)'])
   // The giver's own bubble (posted before the writer finishes): no job title either.
-  expect(mergedReport([giver])).toBe('부산 맛집은 하율이 찾아 왔어요. 해운대 전포 돼지국밥집이 줄 서는 곳이에요. [busan.example.kr](https://busan.example.kr/eat/77)')
+  expect(mergedReport([giver])).toBe('해운대 전포 돼지국밥집이 줄 서는 곳이에요. (하율) [busan.example.kr](https://busan.example.kr/eat/77)')
   // A part's name from the person's words when the lead gave none, without its time or its doing word.
   expect(['다음 달 대전 보드게임 모임 일정', '이번 주 광주 날씨 알아봐', '지난달 판교 밋업 정리'].map(topicOf)).toEqual(['대전 보드게임 모임 일정', '광주 날씨', '판교 밋업'])
 })
@@ -108,10 +109,10 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   // round 3: the pages are never taken out; they follow the items as where the full list is.
   expect(whole.facts.map(f => [f.url, f.rest])).toEqual([['https://board.example.kr/daejeon/1206', undefined], ['https://board.example.kr/daejeon/1220', undefined], [listing.url, true], [yearOnly.url, true]])
   const m = member({ id: 'm1', role: '서아', brief, topic: topicOf(brief), state: 'done', data: whole })
-  expect(mergedReport([m]).split('\n')).toEqual(['서아가 대전 보드게임 모임 일정 2개를 찾아 왔어요.', '- 12월 6일 둔산동에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)', '전체 목록은 여기 있어요. [board.example.kr](https://board.example.kr/daejeon/schedule) · [festa.example.kr](https://festa.example.kr/2026)'])
+  expect(mergedReport([m]).split('\n')).toEqual(['- 12월 6일 둔산동에서 보드게임 모임이 열려요. (서아) [board.example.kr](https://board.example.kr/daejeon/1206)', '- 12월 20일 유성에서 보드게임 모임이 열려요. [board.example.kr](https://board.example.kr/daejeon/1220)', '전체 목록은 여기 있어요. [board.example.kr](https://board.example.kr/daejeon/schedule) · [festa.example.kr](https://festa.example.kr/2026)'])
   // No time left (no extra round): the listing stays, labeled as not taken apart, never as an item of the list.
   const as = member({ id: 'm1', role: '서아', brief, state: 'done', data: { facts: [checked!.facts[0]!] } })
-  expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 하나씩은 아직 못 뽑았어요\. \[/)
+  expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 하나씩은 아직 못 뽑았어요\. \(서아\) \[/)
   expect(reportPrompt(brief, [as])).toContain('"listPage":true')
   // A writer message that runs one teammate's two items and links into one line is refused (link positions, not words).
   const run = JSON.stringify({ message: '서아가 찾았어요. 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206), 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
@@ -173,7 +174,7 @@ test('r2/r3 B3: a round that takes only part of a listing page, even one claimin
     const data = withItems({ facts: [page, other] }, more)
     expect(data.facts.map(f => [f.url, f.rest])).toEqual([[one.url, undefined], [page.url, true], [other.url, true]])
     const shown = mergedReport([member({ id: 'u', role: '나래', brief: '울산 러닝 모임', state: 'done', data })]).split('\n')
-    expect(shown).toEqual(['나래가 찾아 왔어요. 1월 9일 태화강에서 저녁 러닝이 있어요. [런크루](https://run.example.kr/ulsan/0109)', '전체 목록은 여기 있어요. [런크루](https://run.example.kr/ulsan) · [런크루](https://run.example.kr/pohang)'])
+    expect(shown).toEqual(['1월 9일 태화강에서 저녁 러닝이 있어요. (나래) [런크루](https://run.example.kr/ulsan/0109)', '전체 목록은 여기 있어요. [런크루](https://run.example.kr/ulsan) · [런크루](https://run.example.kr/pohang)'])
   }
   // A round that gave nothing leaves the pages labeled as not taken apart.
   expect(withItems({ facts: [page] }, undefined).facts).toEqual([page])

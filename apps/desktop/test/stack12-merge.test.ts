@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { createBot, createTask, inAskedPeriod, kindChecked, LOOKUP_HARD_MS, LOOKUP_SOFT_MS, mergedReport, reportData, settleMember, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
+import { createBot, createTask, inAskedPeriod, kindChecked, LATE_CEILING_MS, TEAM_ANSWER_MS, mergedReport, reportData, settleMember, updateTask, writtenReport, type AgentTool, type TeamMember, type VaultPaths } from 'core'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { itemCheck, teamAsk } from '../src/main/fast-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
@@ -44,13 +44,15 @@ describe('stack-12 merge: one item judge', () => {
 
 describe('stack-12 merge: time and the anonymous helpers', () => {
   it('c12b left the lookup limits as c12a\'s reserve reads them', () => {
-    expect([LOOKUP_SOFT_MS, LOOKUP_HARD_MS]).toEqual([8_000, 15_000])
-    expect(src('../src/main/team-runner.ts')).toMatch(/hardMs = me\.writer \? WRITER_HARD_MS : deps\.lookupHardMs \?\? LOOKUP_HARD_MS/)
+    // c13a: one deadline from the person's message replaces the fixed 8 s / 15 s; the runner and its test seam read it.
+    expect([TEAM_ANSWER_MS, LATE_CEILING_MS]).toEqual([28_000, 90_000])
+    expect(src('../src/main/team-runner.ts')).toMatch(/answerMs = deps\.answerMs \?\? TEAM_ANSWER_MS/)
+    expect(src('../src/main/team-runner.ts')).toMatch(/due = taskDue\(task\)/)
   })
   it('an anonymous hire_members helper gets no reserve round, no stand-in, no kind check, and a team ask no lone-lookup verdict', () => {
     const runner = src('../src/main/team-runner.ts')
     // The reserve is armed only for a teammate with a name (botId); a nameless helper's data is never structured, so nothing is judged.
-    expect(runner).toMatch(/if \(me\.lookup && me\.botId\) reserve \?\?=/)
+    expect(runner).toMatch(/if \(me\.botId\) reserve = setTimeout\(answerNow/)
     expect(runner).toMatch(/const structured = !!me\.botId && /)
     expect(runner).toMatch(/let data = structured \? reportData/)
     // The verdict runs only on a lone lookup; a "make N bots and …" ask is a team ask.
@@ -102,7 +104,7 @@ describe('stack-12: a stop ends a teammate at once, even while its stand-in repo
       options.onStep?.('search_web')
       return new Promise<never>((_, reject) => options.signal!.addEventListener('abort', () => reject(new Error('aborted'))))
     }
-    const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => { ended = Date.now() }, step: () => undefined, changed: () => undefined, run, lookupHardMs: 3_000 })
+    const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => { ended = Date.now() }, step: () => undefined, changed: () => undefined, run, answerMs: 3_000 })
     let standIn: (() => void) | undefined
     const asked = new Promise<void>(resolve => { standIn = resolve })
     // The quick model never answers the stand-in prompt.
@@ -139,7 +141,7 @@ describe('stack-12: a find is of the time asked, and a count is of single items'
     // Shown as a part that found nothing this week, with the latest and its link (rule 7), never as this week's find.
     const m = member('m1', '하람', brief, '은행 앱', { state: 'done', data: inAskedPeriod({ facts: [old, older] }, brief, NOW)! })
     const text = mergedReport([m])
-    expect(text).toMatch(/이번엔 새로 나온 게 없어요\. 가장 최근엔 다크 모드가 생겼어요 \(11월 2일\)\. \[[^\]]+\]\(https:\/\/bank\.example\/1\)/)
+    expect(text).toMatch(/이번엔 새로 나온 게 없어요\. 가장 최근엔 다크 모드가 생겼어요 \(11월 2일\)\. \(하람\) \[[^\]]+\]\(https:\/\/bank\.example\/1\)/)
   })
   it('a listing page is shown labeled but never counted among the items', () => {
     const facts = [
@@ -149,8 +151,9 @@ describe('stack-12: a find is of the time asked, and a count is of single items'
     ]
     const m = member('m1', '도담', '다음 달 성남 IT 행사 일정 정리', '성남 IT 행사 일정', { state: 'done', data: { facts } })
     const text = mergedReport([m])
-    expect(text).toMatch(/2개를 찾아 왔어요/)
-    expect(text).not.toMatch(/3개를/)
+    // c13a (cause H): no host count lead at all; the two single items are the list's lines, the page is labeled after them.
+    expect(text).not.toMatch(/\d개/)
+    expect(text.split('\n').filter(line => line.startsWith('- ') && !line.includes('하나씩은'))).toHaveLength(2)
     expect(text).toContain('하나씩은 아직 못 뽑았어요.')
   })
 })

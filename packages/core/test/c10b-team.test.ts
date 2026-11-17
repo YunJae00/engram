@@ -48,8 +48,8 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
   expect(alone.data).toBeUndefined()
   const lone = mergedReport([{ ...alone, role: '지민' }])
   expect(lone).not.toMatch(/재즈|공연|확실한 건/)
-  // c12a B1: named in a plain sentence, no job-title head.
-  expect(lone).toBe('지민은 이번엔 못 찾았어요.')
+  // c12a B1: no job-title head. c13a (cause H): no host sentence about the teammate; the line, then whose it is.
+  expect(lone).toBe('이번엔 못 찾았어요 (지민).')
   const searched = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(searched, { answer: '12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(searched.result).toContain('데브 밋업')
@@ -101,7 +101,8 @@ test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an Engl
   const said = mergedReport([m])
   expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
   // c12a B2: a text with no day of its own carries it once, after it.
-  expect(said).toMatch(/^- 소프트웨이브.* \(12월 2일\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
+  // c13a: whose the list is, once, on its first line.
+  expect(said).toMatch(/^- 소프트웨이브.* \(12월 2일\) \(지민\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
   expect(said).toMatch(/^- 데브 밋업 \(12월 9일\) \[[^\]]+\]\(https:\/\/www\.meetup\.com\/b\)$/m)
   expect(said).not.toMatch(/:\s*·|""|\[출처\]/)
   // A writer's message with an English run is refused; the host's rendering stands.

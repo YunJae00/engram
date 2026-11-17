@@ -38,8 +38,8 @@ export const LOOKUP_TOOLS = new Set(['search_web', 'read_pages', 'open_page', 'r
 // grokbar: at 40 s / 55 s / 10 calls three members took 36 s of a 71 s answer against a 35 s bar for the whole answer.
 // grokbar B6: at 18 s / 24 s / 6 calls the slowest member still took 22-24 s of a 38 s answer (plan 8 s, review 4 s, merge 4 s). A member that
 // answers from its one search is back in 10 s; the ones that went on to open articles read 0 of 2 pages and were cut with nothing written.
-export const LOOKUP_SOFT_MS = 8_000
-export const LOOKUP_HARD_MS = 15_000
+export const TEAM_ANSWER_MS = 28_000 // c13a: the answer is due this long after the person's message (BAR R 35 s less merge and link check); team-runner reads the time left to it
+export const LATE_CEILING_MS = 90_000 // c13a: a part not in by then keeps working in the background this long past it, then is recorded as not finished
 export const LOOKUP_MAX_CALLS = 4
 // c6 R2: all three members got their first results at ~7.2 s, under the soft limit, started a second search and were cut at 15 s inside it
 // with nothing written. Measured there: ~3.5 s for the model to emit a call, ~2.5 s for the results page, ~3 s to write the answer.
