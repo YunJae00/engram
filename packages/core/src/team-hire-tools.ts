@@ -2,6 +2,7 @@ import type { AgentTool } from './agent-loop.js'
 import { formatAsk, parseAsk } from './ask.js'
 import { communityPost } from './search-template.js'
 import { logTask, MEMBER_RESULT_CHARS, TEAM_MAX_DEPTH, TEAM_MAX_HIRES, type DelegatedTask, type TaskTeam, type TeamMember } from './delegated-tasks.js'
+const KOREAN_COUNT = ['', '하나', '둘', '셋', '넷', '다섯', '여섯']
 
 // The hidden team: the lead hires members for the parts of a job, a member may hire its own helpers.
 // Rules and text live here; pool slots, sessions and abort live in the desktop team-runner.
@@ -604,6 +605,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
   const open = new Map<string, Promise<void>>()
   // One early return per turn: words the turn does not take with the result (a check turn takes none) must not end every wait at once.
   let steerable = host.self === null && !!host.steered
+  // stack-8 (R2, stack7-b3ddda26): "3 took part" came back as "三 명이 하나씩 맡아서 알아봤어요.": the count is handed over in Korean words.
   // c5 T1/R2: the merged answer never said how the work was split. The lead's hires of this turn, call by call: who took part, and who was
   // hired after the person spoke mid-work, is the host's to say; the lead puts it in a clause (MERGED_SHAPE).
   const took: string[] = [], late = new Set<string>()
@@ -633,7 +635,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
     const base = partial ? PARTIAL_NOTE : ended.every(settled) ? ACCEPTED_NOTE : ended.some(settled) ? `${ACCEPTED_NOTE} For the others: ${REVIEW_NOTE}` : REVIEW_NOTE
     const note = `${ended.some(m => m.sources?.length) ? `${base} ${SOURCES_NOTE}` : base}${partial ? '' : ` ${MERGED_SHAPE}`}`
     const added = (team?.members ?? []).filter(m => late.has(m.id))
-    const split = host.self === null && took.length > 1 ? { split: `${took.length} took part, one part each${added.length ? `; ${added.length} of them joined after the person added to the job mid-work (${added.map(m => m.role).join(', ')}), and the person was told so then` : ''}` } : {}
+    const split = host.self === null && took.length > 1 ? { split: `${took.length} took part (said in Korean words: ${KOREAN_COUNT[took.length] ?? `${took.length}명`}, never a digit or a Han numeral), one part each${added.length ? `; ${added.length} of them joined after the person added to the job mid-work (${added.map(m => m.role).join(', ')}), and the person was told so then` : ''}` } : {}
     return (partial ? undefined : askUp(ended)) ?? JSON.stringify({ members: ended.map(view), hiresLeft, ...split, note })
   }
   const hire: AgentTool = {

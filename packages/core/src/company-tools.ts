@@ -352,7 +352,8 @@ export function isCompanyAsk(message: string, known: readonly string[], chief: b
 
 // Handing work to agents is also a sentence the lane can finish: the lead only hands off (assign), the agents work with their own full tools.
 const TO_STAFF = /(사원|주임|대리|과장|차장|부장|팀장|인턴|팀|님|씨)\s*(한테|에게)/u
-const DELEGATE = /맡겨|맡기|시켜|시키|넘겨|넘기/u
+// stack-8: "지민한테 3번 슬라이드 제목 바꾸라고 해" is a hand-off too (it went to the desk lane, which has no team): with 한테 and a teammate's name only.
+const DELEGATE = /맡겨|맡기|시켜|시키|넘겨|넘기|(?:라고|달라고)\s*(?:해|전해)/u
 /** Work is handed to agents by name ("지민한테 맡겨", "지민, 서연, 도윤한테 나눠서 시켜": one known name is enough, the others are added by assign). When unsure, false. */
 export function isAssignAsk(message: string, known: readonly string[]): boolean {
   if (message.length > COMPANY_ASK_CHARS || !DELEGATE.test(message)) return false
@@ -820,7 +821,8 @@ const CUT_SHORT = /\n\((?:[^()\n]*한도에서 멈춤[^()\n]*|stopped at [^()\n]
 const META = /시간\s*(?:한도|초과|내에|안에|이\s*(?:다|부족|모자))|한도|이번 턴|턴\s*안|시도|확인 불가|누락|실패|읽어오지 못|가져오지 못|열어보지 못|받지 못|확인하지 못|찾지 못|못 찾|열람|추가\s*(?:확인|검색)|검색\s*결과(?:에|와|는|\s*페이지)|조회\)|timed? ?out|could not|couldn't|unable to|failed/iu
 // c6 C3: "Slack 공식 업데이트 페이지에서 11월 소식 확인했어요.", "이번 주(11월 10~16일) 범위에 해당하는 항목이 확인됐어요." and the heading "리니어 신기능 조사
 // 결과" led their rows. A sentence that only says something was looked at or found, and a heading the teammate repeated, are no finding.
-const SAYS_IT_LOOKED = /(?:항목|소식|내용|결과|정보|자료|사항|페이지)[이가을를은는도]?\s*(?:확인(?:했|됐|되었)|찾았|살펴봤)(?:어요|습니다)[.!]?$/u
+// stack-8 (R2 replay): "갤럭시 S27 가격과 출시일 조사 결과를 보고드려요." opened the line: a sentence that only hands the result over is none either.
+const SAYS_IT_LOOKED = /(?:항목|소식|내용|결과|정보|자료|사항|페이지)[이가을를은는도]?\s*(?:(?:확인(?:했|됐|되었)|찾았|살펴봤)(?:어요|습니다)|(?:보고|알려|정리해\s*)드(?:려요|릴게요|립니다))[.!]?$/u
 const RESULT_HEADING = /^[^.!?]{0,40}(?:조사|검색|정리|확인)\s*결과[.:：]?$/u
 const HANGUL = /[가-힣]/
 // Four English words in a row nobody asked for (GROKBOT rule 12, U1). The writer's text is refused on it; the host's own table takes the run out.
@@ -833,13 +835,18 @@ function findings(text: string, links = false, marks = false, korean = HANGUL.te
   // An address goes with the name the teammate put after it ("https://www.hellot.net/news (헬로티)" left "— (헬로티)" in the row).
   const lines = text.replace(CUT_SHORT, '').replace(/\[([^\]]*)\]\([^)]*\)/g, links ? '$&' : '$1').replace(links ? /$^/ : new RegExp(`${ADDRESS.source}(?:\\s*\\([^()\\n]{1,40}\\))?`, 'g'), '').split('\n')
     .map(line => (marks ? line : line.replace(/^\s*(?:[-*•>#]+|\d+[.)])\s*/, '')).replace(/\*\*|`/g, '').replace(/\|/g, '/').replace(/\(\s*\)/g, '')
+      // stack-8 (R2, C3 replays): with the address taken out, "(출처: 출처 )", "… — 출처" and "출처 — 에서 확인했어요" were left behind.
+      .replace(links ? /$^/ : /\s*\(\s*(?:(?:출처|참고|sources?)\s*[:：]?\s*)+\)/gi, '').replace(/(?:출처|링크)\s*[—–:-]?\s+(?=에서)/g, links ? '$&' : '여기')
       // stack-4 (c4b run, C6/H5): "…서울 코엑스 Hall A — · ACC 2026: 12월 개최 — ·": the dash that led to an address stayed when the address was taken out.
-      .replace(links ? /$^/ : /\s+[—–-]\s*$/, '')
+      .replace(links ? /$^/ : /\s+[—–-]\s*(?:출처|참고)?\s*$/, '')
       // An English gloss in parentheses says the same thing twice in a Korean line ("BYOK(Bring Your Own Key)").
       .replace(korean ? /\s*\((?:[A-Za-z][\w'’-]*\s+){2,}[A-Za-z][\w'’-]*\)/g : /$^/, '')
       // shortcut: a link's words are left alone where links are kept (the team record, which a model reads back, never the thread).
       .replace(korean && !links ? ENGLISH_RUNS : /$^/, '').trim())
-    .filter(line => line && !/^[\s/:·,-]+$/.test(line) && !/^(출처|참고|sources?\b)/i.test(line) && !/[:：]$/.test(line) && !META.test(line) && !RESULT_HEADING.test(line))
+    // stack-8 (C3 replay of stack7-b3ddda26): "…검색 결과에 나오지 않았어요. 가장 최근으로 확인되는 건 1월 20일자 …" was one line and META
+    // dropped it whole, so all three teammates read "이번엔 못 찾았어요.". Only the sentence about the looking goes.
+    .map(line => META.test(line) ? line.split(/(?<=[^\d\s][.!?])\s+/).filter(sentence => !META.test(sentence)).join(' ') : line)
+    .filter(line => line && !/^[\s/:·,-]+$/.test(line) && !/^(출처|참고|sources?\b)/i.test(line) && !/[:：]$/.test(line) && !RESULT_HEADING.test(line))
     // A sentence with no Hangul in a Korean result is the agent thinking aloud; a quoted title or a bare figure is kept.
     .map(line => line.split(/(?<=[.!?])\s+/).filter(sentence => !SAYS_IT_LOOKED.test(sentence) && (!korean || HANGUL.test(sentence) || /^["'“‘]/.test(sentence) || !/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(sentence))).join(' '))
     .filter(Boolean)
@@ -1008,7 +1015,8 @@ function outsideOf(brief: string, result: string, now = new Date()): Outside | u
       const spans = (year ? [year] : [...new Set([period.from.getFullYear(), period.to.getFullYear()])]).map(y => [new Date(y, month - 1, day ?? 1), day ? new Date(y, month - 1, day) : new Date(y, month, 0)] as const)
       if (spans.some(([from, to]) => from <= period.to && to >= period.from)) return undefined
       const away = Math.min(...spans.map(([from]) => Math.abs(from.getTime() - period.from.getTime())))
-      if (!nearest || away < nearest.away) nearest = { away, ...(year ? { year } : {}), month, ...(day ? { day } : {}), line }
+      // stack-8: "가장 가까운 소식으로는 … (2025.08.19.)" only points at the item; the item's own line, on the same day, is the one shown.
+      if (!nearest || away < nearest.away || (away === nearest.away && /(?:제일|가장)\s*(?:최근|가까운)/u.test(nearest.line))) nearest = { away, ...(year ? { year } : {}), month, ...(day ? { day } : {}), line }
     }
   }
   if (!nearest) return undefined

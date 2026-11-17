@@ -25,7 +25,8 @@ const SENT = /보내|전송|올려|게시|메일|슬랙|노션|카톡|한테|에
 // stack-5: with ask_person off the document menu (c5c), a document ask that also sends, posts, deletes or buys had no way left to stop and
 // ask ("PPT 만들어서 민호한테 메일로 보내줘"); the menu has nothing to send with either. Such an ask keeps every tool, where those gates live.
 const GATED = /보내|전송|게시|메일|슬랙|카톡|삭제|지워|(?:결제|구매|주문)\s*해|\b(send|post|e-?mail|slack|delete|remove|buy|purchase|order|pay)\b/i
-const DECK_WORK = /만들|작성|바꿔|고쳐|수정|변경|추가|\b(make|create|build|change|rename|fix|add)\b/i
+// stack-8 (c8c r3 #1): "…슬라이드는 빼줘" was no document work, so deskLight never saw it. 지워 stays out: it is GATED (a deletion asks).
+const DECK_WORK = /만들|작성|바꿔|고쳐|수정|변경|추가|빼|\b(make|create|build|change|rename|fix|add)\b/i
 // grokbar H3: "fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘" took 31.6 s on the work model, which wrote a file for a chat-sized answer.
 // A summary, tidy-up or extraction of a named note or text file, with no document to make and nowhere to send it, is desk work answered in the chat.
 const NOTE = /\.(md|txt)(?![a-z])|회의록|메모|\bnotes?\b|\bminutes\b/i
@@ -86,7 +87,8 @@ export const DESK_TOOLS: Partial<Record<DeskKind, ReadonlySet<string>>> = {
 export function deskKind(message: string): DeskKind | undefined {
   const text = message.trim()
   if (!text || [...text].length > ASK_MAX || text.includes('\n') || text.startsWith('/')) return undefined
-  return KEEP.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : slideTitleFix(text) ? 'deck' : (DECK.test(text) || ((SHEET.test(text.replace(NAMED_FILE, ' ')) || OFFICE_FILE.test(text)) && !SENT.test(text) && !howTo(text))) && !GATED.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
+  // stack-8: "엔비디아 주가 기억해 뒀다가 알려줘" is work after the remembering; the keep menu (memory tools only) could never do it.
+  return KEEP.test(text) && !/(?:둬|두었|뒀|놨|놓았)다가/u.test(text) ? 'keep' : FILES.test(text) && TIDY.test(text) ? 'tidy' : slideTitleFix(text) ? 'deck' : (DECK.test(text) || ((SHEET.test(text.replace(NAMED_FILE, ' ')) || OFFICE_FILE.test(text)) && !SENT.test(text) && !howTo(text))) && !GATED.test(text) && DECK_WORK.test(text) ? 'deck' : NOTE.test(text) && NOTE_WORK.test(text) && !wantsOut(text) ? 'note' : DATA_FILE.test(text) && FILE_ASK.test(text) && !wantsOut(text) ? 'file' : shortAsk(text) ? 'ask' : shortQuestion(text) ? 'question' : undefined
 }
 
 // plain: an ordinary first turn by the person on a Claude brain (ipc.ts plainAsk): nothing attached, resumed, scheduled or re-checked.
