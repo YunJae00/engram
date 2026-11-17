@@ -8,7 +8,7 @@ vi.mock('electron', () => ({ app: { getPath: () => 'C:/home', isPackaged: false 
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 
-import { DESK_NOTE, DESK_TOOLS, deskKind, keptFix, TOLD_NOTE, withOffer } from '../src/main/desk-lane.js'
+import { DESK_NOTE, DESK_TOOLS, deskKind, deskLight, keptFix, TOLD_NOTE, withOffer } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE, SMALL_TALK_NOTE } from '../src/main/fast-lane.js'
 import { cleanLine, firstLinePrompt, koreanLead, smallTalkPrompt, talkOnly, toldPrompt, withoutHelpDesk } from '../src/main/first-line.js'
 import { learningTools } from '../src/main/learning-wiring.js'
@@ -134,8 +134,9 @@ describe('a kept fact is corrected by the host (M2)', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain("const fix = !handed && kind === 'keep' ? keptFix(request.message, remembered) : undefined")
     expect(ipc).toContain("scope: personMemory.facts.some(fact => fact.text === fix.old) ? 'everyone' : 'this bot'")
-    expect(ipc).toMatch(/: fixed \? \{ answer: fixed, steps: \[\{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations\.' \}\], fellBack: false \} : await runComet\(/)
-    expect(ipc).toContain("...((kind === 'note' && given) || kind === 'keep' ? { light: true } : {})")
+    expect(ipc).toMatch(/: fixed \? \{ answer: fixed, steps: \[\{ tool: 'keep_in_mind', args: fixArgs!, observation: 'Kept 1 for later conversations\.' \}\], fellBack: false \}\n/)
+    expect(ipc).toContain("...(deskLight(kind, routed, { given: !!given,")
+    expect(deskLight('keep', '내 생일은 3월 2일이야. 기억해', {})).toBe(true)
     expect(core('agent-session.ts')).toContain("...(options.lookup || options.light ? { effort: 'low' as const } : {}),")
   })
 })
@@ -202,7 +203,7 @@ describe('a marked blank is one the deck check lets through (D3)', () => {
 
 describe('a follow-up names what it points at (H1)', () => {
   it('asks for the thing to be named, and for a reaction rather than a promise to keep track', () => {
-    expect(SHORT_QUESTION_NOTE).toContain('When the ask points back at something said earlier ("그 여행", "그거", "아까 그"), the first words name it in the conversation\'s own words ("제주 가시면 이런 게 좋아요."')
+    expect(SHORT_QUESTION_NOTE).toContain('When the ask points back at something said earlier ("그 여행", "거기", "그거", "아까 그"), the answer opens with one sentence that names it in the conversation\'s own words')
     expect(SHORT_QUESTION_NOTE).toContain('you never ask which one they mean')
     const told = toldPrompt('다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어', true)
     expect(told).toContain('Never a promise to keep track of it or bear it in mind ("챙겨 둘게요", "기억해 둘게요", "참고할게요")')
@@ -216,15 +217,17 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
   const answer = '할 일만 뽑았어요.\n\n- 한서연: 온보딩 화면 시안 확정 (11월 20일)\n- 오태민: 결제 모듈 교체 일정 수립 (11월 24일)'
   it('adds one line of at most 60 characters when the answer has none', () => {
     const out = withOffer(ask, answer, [], true)
-    expect(out).toBe(`${answer}\n\n원하시면 담당자별로 표로 묶어 드릴게요.`)
+    expect(out).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
     expect([...out.split('\n').at(-1)!].length).toBeLessThanOrEqual(60)
     // Once: the result is left alone.
     expect(withOffer(ask, out, [], true)).toBe(out)
-    expect(withOffer('notes.md에서 숫자만 추려줘', '- 38%\n- 12명', [], true)).toBe('- 38%\n- 12명\n\n원하시면 표로도 정리해 드릴게요.')
-    expect(withOffer(ask, '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', [], true)).toMatch(/\n\n원하시면 워드 파일로도 만들어 드릴게요\.$/)
-    expect(withOffer('Extract the action items from notes.md', '- Seoyeon: finalize the screen', [], false)).toMatch(/\n\nI can group these by owner in a table if you'd like\.$/)
+    // c8c: an offer is the next step, never the same lines in another shape: nothing follows bare figures, dated lines get a timeline.
+    expect(withOffer('notes.md에서 숫자만 추려줘', '- 38%\n- 12명', [], true)).toBe('- 38%\n- 12명')
+    expect(withOffer('notes.md에서 마감만 추려줘', '- 시안 확정: 11월 20일\n- 공지 발송: 11/27', [], true)).toMatch(/\n\n원하시면 기한 순으로 일정표도 만들어 드릴게요\.$/)
+    expect(withOffer(ask, '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', [], true)).toMatch(/\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
+    expect(withOffer('Extract the action items from notes.md', '- Seoyeon: finalize the screen', [], false)).toMatch(/\n\nI can draft a reminder for each owner if you'd like\.$/)
     // Above the reply suggestions, not under them.
-    expect(withOffer(ask, `${answer}\n\n\`\`\`replies\n표로\n\`\`\``, [], true)).toBe(`${answer}\n\n원하시면 담당자별로 표로 묶어 드릴게요.\n\n\`\`\`replies\n표로\n\`\`\``)
+    expect(withOffer(ask, `${answer}\n\n\`\`\`replies\n표로\n\`\`\``, [], true)).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.\n\n\`\`\`replies\n표로\n\`\`\``)
   })
   it('adds nothing when the answer already offers, or an earlier reply in the thread did', () => {
     for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect(withOffer(ask, `${answer}\n\n${closing}`, [], true)).toBe(`${answer}\n\n${closing}`)

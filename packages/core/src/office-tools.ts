@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { auditDeck, describeDeckFindings, type DeckSlide } from './deck-audit.js'
 import { validateWorkbookFormula } from './file-workbook.js'
 import { officeEditTools } from './office-edit-tools.js'
-import { resolveTheme, THEME_NEEDED, type OfficeTheme } from './office-theme.js'
+import { HOUSE_THEME, resolveTheme, THEME_NEEDED } from './office-theme.js'
 
 // Office through its own doors. Excel, Word, PowerPoint and Outlook each
 // expose what their menus do as commands; these tools speak to that, so the
@@ -49,15 +49,18 @@ function text(value: unknown): string {
 }
 
 // A document renders in the look the model passes here - two brand colours and
-// the fonts - never one baked into the renderer. When the model gives no theme,
-// or gives one that is not usable, the tool asks the person instead of choosing
-// a look on its own.
+// the fonts. When the model gives no theme, or one that is not usable, the tool
+// builds in the house look (office-theme.ts) and says so in its result: the
+// person is never asked for a brand before a document they asked for (c8c D2).
 const THEME_SCHEMA = { type: 'object', additionalProperties: false, required: ['field', 'accent', 'fonts'], properties: { field: { type: 'string' }, accent: { type: 'string' }, ink: { type: 'string' }, paper: { type: 'string' }, chart: { type: 'array', maxItems: 12, items: { type: 'string' } }, fonts: { type: 'object', additionalProperties: false, required: ['title', 'body'], properties: { title: { type: 'string' }, body: { type: 'string' } } } } } as const
-const THEME_NOTE = 'theme carries the look: {field:"1F3B5B", accent:"C0603B", fonts:{title:"Georgia", body:"Segoe UI"}} - a main colour, an accent, and heading/body fonts; add chart:["hex", ...] only for a chart with many series. Without a usable theme the tool asks the person for one; pass what they choose.'
-// Resolves the model's theme, or returns the ask-the-person message so the
-// caller can hand it back to the model verbatim instead of building anything.
-function themeOrAsk(value: unknown): OfficeTheme | typeof THEME_NEEDED {
-  return resolveTheme(value) ?? THEME_NEEDED
+const THEME_NOTE = 'theme carries the look: {field:"1F3B5B", accent:"C0603B", fonts:{title:"Georgia", body:"Segoe UI"}} - a main colour, an accent, and heading/body fonts; add chart:["hex", ...] only for a chart with many series. theme is optional: without a usable one the file is built in a calm house look, so never ask the person for a brand or a look before making the document. Write Korean text as the characters themselves, never as \\u escapes.'
+// The model's theme, or the house look; and the tool's result with one sentence added when the house look was used.
+const themeOrHouse = (value: unknown): { theme: typeof HOUSE_THEME; house: boolean } => { const theme = resolveTheme(value); return theme ? { theme, house: false } : { theme: HOUSE_THEME, house: true } }
+function withLook(result: string, house: boolean): string {
+  if (!house) return result
+  // A receipt stays the JSON its readers parse.
+  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, look: THEME_NEEDED }) } catch { /* Not a receipt: the sentence follows it. */ }
+  return `${result}\n${THEME_NEEDED}`
 }
 
 function excelArgs(args: unknown, tool: string): Record<string, unknown> {
@@ -232,8 +235,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
       run: (args, context) => {
         if (!plain(args)) throw new Error('word_write takes an object.')
         only(args, ['blocks', 'title', 'subject', 'saveAs', 'theme'], 'word_write')
-        const theme = themeOrAsk(args['theme'])
-        if (theme === THEME_NEEDED) return Promise.resolve(THEME_NEEDED)
+        const { theme, house } = themeOrHouse(args['theme'])
         const blocks = args['blocks']
         if (!Array.isArray(blocks) || blocks.length === 0 || blocks.length > BLOCKS_CAP) throw new Error(`blocks must hold 1 to ${BLOCKS_CAP} entries.`)
         const listKinds = ['bullets', 'numbers']
@@ -259,7 +261,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         const title = optionalText(args['title'], 200, 'title'); if (title) out['title'] = title
         const subject = optionalText(args['subject'], 400, 'subject'); if (subject) out['subject'] = subject
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs'); if (saveAs) out['saveAs'] = saveAs
-        return call('word.write', out, context)
+        return call('word.write', out, context).then(result => withLook(result, house))
       },
     },
     {
@@ -286,8 +288,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
       run: async (args, context) => {
         if (!plain(args)) throw new Error('ppt_build takes an object.')
         only(args, ['slides', 'saveAs', 'theme'], 'ppt_build')
-        const theme = themeOrAsk(args['theme'])
-        if (theme === THEME_NEEDED) return THEME_NEEDED
+        const { theme, house } = themeOrHouse(args['theme'])
         const slides = args['slides']
         if (!Array.isArray(slides) || slides.length === 0 || slides.length > SLIDES_CAP) throw new Error(`slides must hold 1 to ${SLIDES_CAP} entries.`)
         const clean: (DeckSlide & { notes?: string; table?: unknown; chart?: unknown })[] = slides.map((slide) => {
@@ -318,7 +319,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         // the words are the model's to change before PowerPoint is touched.
         if (findings.length > 0) return describeDeckFindings(findings)
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs')
-        return call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context)
+        return withLook(await call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context), house)
       },
     },
     ...officeEditTools(courier),

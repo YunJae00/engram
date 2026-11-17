@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveTheme, THEME_NEEDED } from '../src/office-theme.js'
+import { faceFor, HOUSE_THEME, KOREAN_FACE, resolveTheme, THEME_NEEDED } from '../src/office-theme.js'
 
 describe('resolveTheme', () => {
   it('expands the two brand colours and fonts into a full theme', () => {
@@ -43,8 +43,19 @@ describe('resolveTheme', () => {
     expect(resolveTheme(input)).toBeNull()
   })
 
-  it('carries an ask-the-person message for when nothing was passed', () => {
-    expect(THEME_NEEDED).toContain('Ask the person')
+  // c8c D2: no theme no longer asks the person (GROKBOT rule 6): the house look is used and the result says so to the model.
+  it('carries a house look for when nothing usable was passed, and never an ask', () => {
+    expect(THEME_NEEDED).toContain('Never ask the person')
+    expect(THEME_NEEDED).not.toMatch(/^Ask|\bAsk the person for/)
+    expect(HOUSE_THEME.colors.onField).toBe('FFFFFF')
+    expect(HOUSE_THEME.colors.accent).not.toBe(HOUSE_THEME.colors.field)
+    expect(faceFor('매출: 수치 입력', HOUSE_THEME.fonts.body)).toBe(HOUSE_THEME.fonts.body)
+  })
+  it('gives text with Hangul a face that carries Korean, and leaves other text and Korean faces alone', () => {
+    expect(faceFor('매출: 수치 입력', 'Segoe UI')).toBe(KOREAN_FACE)
+    expect(faceFor('Q3 revenue', 'Segoe UI')).toBe('Segoe UI')
+    expect(faceFor('매출', 'Pretendard')).toBe('Pretendard')
+    expect(faceFor('매출', '맑은 고딕')).toBe('맑은 고딕')
   })
 
   it('keeps text readable on light fields and rejects malformed optional values', () => {

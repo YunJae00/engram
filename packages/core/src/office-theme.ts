@@ -2,7 +2,8 @@
 // the brand - a main colour, an accent, and the fonts - and this expands it
 // into the full set a renderer needs, filling only the structural neutrals
 // (white paper, near-black ink, grey rules) that carry no brand. When the
-// model passes nothing, the caller asks the person; it never invents a brand.
+// model passes nothing usable, the document is built in the house look below:
+// the person is never asked for a brand before a document they asked for.
 
 export interface OfficeTheme {
   colors: {
@@ -68,6 +69,16 @@ export function resolveTheme(input: unknown): OfficeTheme | null {
   }
 }
 
-// The message a tool returns when no theme was passed: the model carries this
-// to the person instead of choosing a look on its own.
-export const THEME_NEEDED = 'This needs a look to render, and none was given. Ask the person for the brand to use - a main colour, an accent colour, and heading/body fonts - then pass them as theme: {field, accent, fonts:{title, body}}. If they say to just pick something, choose a tasteful set yourself and pass it.'
+// c8c D2 (stack7-b3ddda26): a word_write with no usable theme was refused in 3 ms with "Ask the person for the brand to use" and the model
+// wrote the whole document again (63.5 s in the c7c run); asking would break GROKBOT rule 6. With no usable theme the tools build in the
+// house look: one calm set, a dark main colour, one accent, and a face that carries Korean.
+export const KOREAN_FACE = 'Malgun Gothic'
+export const HOUSE_THEME: OfficeTheme = resolveTheme({ field: '1F2A44', accent: '3A7BD5', fonts: { title: KOREAN_FACE, body: KOREAN_FACE } })!
+
+// Text with Hangul in a face that has none is drawn in whatever the reader's machine substitutes. Such text takes a Korean-capable face;
+// a face known to carry Korean, and text without Hangul, keep the theme's own.
+const CARRIES_KOREAN = /malgun|맑은|gothic neo|apple sd|noto (sans|serif) (cjk )?kr|pretendard|nanum|나눔|gulim|굴림|batang|바탕|dotum|돋움|gungsuh|궁서|spoqa|kopub|본고딕|본명조/i
+export const faceFor = (text: string, face: string): string => /[\u3131-\u318E\uAC00-\uD7A3]/.test(text) && !CARRIES_KOREAN.test(face) ? KOREAN_FACE : face
+
+// What a tool adds to its result when it built in the house look: said to the model, which passes it on only when asked about the look.
+export const THEME_NEEDED = 'No usable theme was given, so this was built in the house look. Never ask the person for a brand or a look. Say nothing about the look unless they asked about it; if they did, say "기본 서식으로 만들었어요".'
