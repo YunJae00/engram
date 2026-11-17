@@ -172,7 +172,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
           const outcome = await withinBudget(tool.name, signal, own => tool.runRich!(args, { ...context, signal: own }), waitingForPerson)
           observation = outcome.text
           image = outcome.image
-          modelObservation = compactPage(options.compactObservations === false ? undefined : outcome.page)
+          // Deltas are for work that acts on one page again and again; a lookup or short ask gets whole pages, so its rules carry no delta rule.
+          modelObservation = compactPage(options.compactObservations === false || kind !== 'work' ? undefined : outcome.page)
           observedAfterAction = outcome.observedAfterAction === true
           committed ||= outcome.committed === true
         } else observation = await withinBudget(tool.name, signal, own => tool.run(args, { ...context, signal: own }), waitingForPerson)

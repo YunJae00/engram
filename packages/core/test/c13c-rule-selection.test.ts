@@ -7,6 +7,8 @@ import { COLLECTION_RULE } from '../src/collection-progress.js'
 import { DOCUMENT_CHECK_RULE } from '../src/office-verification.js'
 import { LOOKUP_TOOLS } from '../src/team-hire-tools.js'
 import type { Engine, EngineCwd, NativeTools, ToolSessionJob } from '../src/engine/types.js'
+import { pageTools } from '../src/comet-page-tools.js'
+import type { WebPage } from '../src/errand.js'
 
 // c13c cause P: every session carried the whole desk/browser rule set (37-48k chars), and a short ask got three reply-shape rules that
 // disagreed ("just the line" vs "two to four messages" vs "say what you chose"). Rules are now chosen by the tools a session has and the
@@ -31,8 +33,8 @@ describe('c13c: a session is sent the rules for its tools and its turn kind', ()
     for (const rules of [teammate, lone]) {
       for (const rule of [COLLECTION_RULE, OFFICE_FILE_RULE, DOCUMENT_CHECK_RULE, DESKTOP_TASK_RULE, ...WORK_ONLY]) expect(count(rules, rule)).toBe(0)
       expect(count(rules, COLLEAGUE_CORE_RULE)).toBe(1)
-      // It reads pages, so the page rules it can act on stay.
-      expect(count(rules, PAGE_DELTA_RULE)).toBe(1)
+      // r2 (Codex r1 #1): it is sent whole pages (no deltas), so it carries no page-delta rule.
+      expect(count(rules, PAGE_DELTA_RULE)).toBe(0)
     }
     expect(count(teammate, TEAM_LEAD_RULE)).toBe(0)
     expect(count(lone, TEAM_LEAD_RULE)).toBe(1)
@@ -94,5 +96,42 @@ describe('c13c: the turn kind reaches the session from its options', () => {
     const engine = { id: 'claude' } as Engine
     const shape = sessionShape({ engine, tools: DECK_MENU.map(name => ({ name, description: name, argsSchema: {}, run: async () => '' })) })
     expect(shape.system).toBe(work.system)
+  })
+})
+
+// c13c r2 (Codex r1): the delta rule and the native file rules were gated by tools only, not by the turn kind.
+describe('c13c r2: rules follow the turn kind, not just the tools offered', () => {
+  const fileTools = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'open_page', 'read_open_page']
+  it('a short ask or lookup with every file tool gets no make, hand-in, move, command, Office or delta rule, only where a named file is', () => {
+    const work = sessionRules({ ...base, workflow: true, planned: true, kind: 'work', tools: fileTools })
+    const make = (text: string): boolean => /file_create_copy|file_move|Commands (run|are not)/.test(text)
+    expect(make(work)).toBe(true)
+    expect(count(work, PAGE_DELTA_RULE)).toBe(1)
+    for (const kind of ['short', 'lookup'] as const) {
+      const rules = sessionRules({ ...base, workflow: true, planned: true, kind, tools: fileTools })
+      expect(make(rules)).toBe(false)
+      for (const rule of [OFFICE_FILE_RULE, PAGE_DELTA_RULE, COMMAND_STEP_RULE]) expect(count(rules, rule)).toBe(0)
+      expect(rules).toContain(`workspace folder is ${native.workspace}`)
+    }
+  })
+
+  // Not a harness wording: a lookup scrolling one page three times.
+  it('a lookup is sent whole pages, so it never sees a delta it has no rule for; a work turn still gets deltas', async () => {
+    const page = (revision: number): WebPage => ({ url: 'https://example.com/', title: '시간표', text: Array.from({ length: 24 }, (_, n) => `${n}번 줄 ${n === 9 ? `값 ${revision}` : ''} ${'변하지 않는 내용. '.repeat(3)}`).join('\n'), controls: ['#1 [button] 다음'], observation: { page: 'one', document: 1, revision } })
+    const reads = async (options: Parameters<typeof runToolSession>[2]): Promise<string[]> => {
+      let revision = 0
+      const tools = pageTools({}, { fetchPage: async () => page(0), readOpen: async () => page(++revision), scroll: async () => ({ ok: true, changed: true }) })
+      tools.push({ name: 'open_page', description: '', argsSchema: {}, run: async () => 'unused' })
+      const sent: string[] = []
+      const engine = { id: 'mock', runTools: async (job: ToolSessionJob) => {
+        const scroll = job.tools.find(tool => tool.name === 'scroll')!
+        for (let i = 0; i < 3; i++) sent.push(String(await scroll.run({ to: 'down' })))
+        return { answer: '찾았어요' }
+      } } as Engine
+      await runToolSession({ engine, tools, workdir: '.' as EngineCwd }, '이 페이지 시간표 끝까지 읽어줘', options)
+      return sent
+    }
+    expect((await reads({})).some(text => text.includes('delta from'))).toBe(true)
+    for (const options of [{ lookup: true }, { short: true }]) expect((await reads(options)).some(text => text.includes('delta from'))).toBe(false)
   })
 })
