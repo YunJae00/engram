@@ -15,7 +15,7 @@ test('C3: a teammate who found nothing new this week keeps their own sentence an
     member('m3', '도윤', '이번 주 리니어 신기능 조사해서 알려줘', '이번 주(11/16~11/22) 리니어 신기능 관련 자료는 찾지 못했네요. 가장 최근에 확인된 건 리니어 대안/경쟁사 비교 글 정도였어요(2025년 기준, 신기능 발표 아님) — https://clickup.com/ko/blog/67806/linear-alternatives', '리니어'),
   ], new Map(), [], { ask: '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', now })
   expect(out).not.toMatch(/찾아봤어요|못 찾았어요|출처 —/)
-  expect(out.split('\n')[0]).toBe('이번 주는 셋 다 새로 나온 게 없대요.')
+  expect(out.split('\n')[0]).toBe('이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.')
   for (const words of ['1월 20일', '라이팅 스타일', '경쟁사 비교 글']) expect(out).toContain(words)
   expect(out.match(/\]\(https:\/\//g)).toHaveLength(3)
 })
@@ -41,7 +41,7 @@ test('C3 (c8b run): when every teammate says first that nothing new was found, n
   const write = vi.fn(async () => '리니어만 새 소식이 있어요.')
   const out = await writtenReport({ ask: '이번 주 경쟁사 3곳(노션, 슬랙, 리니어) 신기능 조사해서 알려줘. 지민, 서연, 도윤한테 나눠서 시켜', members, write, now: new Date('2026-11-17T05:29:19.705Z') })
   expect(write).not.toHaveBeenCalled()
-  expect(out.split('\n')[0]).toBe('이번 주는 셋 다 새로 나온 게 없대요.')
+  expect(out.split('\n')[0]).toBe('이번 주엔 셋 다 새로 낸 게 없어요. 가장 최근 것만 적었어요.')
   expect(out).toContain('10월 19일')
   expect(out).toContain('버그 수정')
 })
