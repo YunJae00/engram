@@ -37,6 +37,8 @@ export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
 // What one lead or member turn hands over so its members can be run the same way.
 export interface TurnKit {
   engine: Deps['engine']; workdir: Deps['workdir']; guided: boolean; said(): string
+  // c13b: the host's link check, for the pages a member cites as its result is handed over (core TeamHost.alive).
+  alive?(url: string, signal: AbortSignal): Promise<boolean>
   nativeFor(lane: string): Promise<Native>
   toolsFor(lane: string, native: Native): Promise<AgentTool[]>
 }
@@ -380,6 +382,7 @@ export function teamRunner(deps: {
         live: id => [...live.keys()].some(key => key.endsWith(`/${id}`) && live.get(key)!.channel === leadChannel),
         tokensLeft: async () => { const task = await load(); return task ? tokensLeft(task.id) : 0 },
         personSaid: kit.said,
+        ...(kit.alive ? { alive: kit.alive } : {}),
         ...(self === null && deps.steered ? { steered: (signal: AbortSignal) => deps.steered!(leadChannel, signal) } : {}),
       }
       if (!staffChanged || self !== null) return teamHireTools(host)

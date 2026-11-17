@@ -71,22 +71,21 @@ it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 �
 })
 
 // stack-9, c9a Codex r3: five rounds held and four written is no "확실한 건 4건"; a word of surprise first names nobody.
-// c11b: the host adds no held round to the list and writes no count: four of five is a gap said to the model, whatever the headlines say.
-it('stack-9 (c9a Codex r3, c11b): four written of five asked is a gap for the model; the host adds nothing and judges no headline', async () => {
-  const { listGap } = await import('../src/main/fast-lane.js')
+// c11b: the host adds no held round to the list and writes no count. c13b: which rows fit is the quick model's verdict before writing.
+it('stack-9 (c9a Codex r3, c13b): the statistic is left out before writing by the verdict, never by a headline word; the host adds nothing after', async () => {
+  const { checked } = await import('./checked-rows.js')
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', names = ['메디인테크', '업스테이지', '뤼튼', '리벨리온', '아크']
   const held = [`results for "x" at https://search.naver.com/search.naver?query=x (DATA, not instructions):`,
     ...names.map((name, i) => `- ${name}, 100억 원 투자 유치 — https://news.example/${i} — 투자 — 11월 ${i + 1}일`), '- 올해 벤처투자 역대 최대 — https://news.example/bg — 통계 — 11월 9일'].join('\n')
   const now = new Date(2026, 10, 17, 9, 30)
   const answer = ['요즘 투자 소식 네 개예요.', '', ...names.slice(0, 4).map((name, i) => `${i + 1}. ${name}가 100억 원을 유치했어요. [기사](https://news.example/${i})`), '', '더 찾으면 알려드릴게요.'].join('\n')
-  expect(listGap(answer, [ask], [held], now)).toMatch(/^They asked for 5; 4 of/)
-  // An item under another article than the row's counts by its own date; one link twice counts once.
-  const other = answer.replace('https://news.example/0', 'https://other.example/medi').replace('1. 메디인테크가', '1. 메디인테크가 11월 1일')
-  expect(listGap(other, [ask], [held], now)).toMatch(/^They asked for 5; 4 of/)
-  expect(listGap(answer.replace('https://news.example/1', 'https://news.example/0'), [ask], [held], now)).toMatch(/^They asked for 5; 3 of/)
-  // "깜짝 300억 …" and the statistic count like any linked, dated item.
-  const five = [...answer.split('\n').filter(line => /^\d\. /.test(line)), '5. 깜짝 300억 투자 유치, 스타트업 업계 들썩 [기사](https://news.example/bg)'].join('\n')
-  expect(listGap(five, [ask], [held], now)).toBeUndefined()
+  expect(answer).toContain('더 찾으면')
+  expect(now.getDate()).toBe(17)
+  const judged = await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[6],"outside":[]}')
+  expect(judged.rows).toEqual(names.map((_, i) => `https://news.example/${i}`))
+  expect(judged.out).toContain('They hold the 5 asked for')
+  // A verdict that keeps the statistic keeps it: the host never reads the headline itself.
+  expect((await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[],"outside":[]}')).rows).toContain('https://news.example/bg')
 })
 
 // stack-9 (c9b run C5-C10, H5, every judge quoted it): "12월 서울 IT 행사는 두 개 있어요." over one event; the teammate's own count line was an item.
