@@ -111,10 +111,14 @@ async function composeOffice(op: 'ppt.build' | 'word.write', asked: Record<strin
   const receipt = await outputs.save(name, built.data)
   const count = 'slides' in built ? { slides: built.slides } : { blocks: built.blocks }
   const { titles } = written(op, args)
+  // c15c (D3: a deck built clean was read back with file_read_package and built a third time, 20-25 s of writing each): the receipt says what
+  // the host verified in the file - how many slides and their titles - and any words it corrected, so nothing is left to read back.
   const listed = titles.length ? ` ${op === 'ppt.build' ? 'Slides' : 'Headings'}: ${titles.map((title, at) => `${at + 1}. ${title}`).join(' / ')}.` : ''
+  const counted = 'slides' in built ? `${built.slides} slides` : `${built.blocks} blocks`
+  const corrected = fixes.length ? ` The host corrected these words in the file: ${fixes.map(([wrong, right]) => `${wrong} → ${right}`).join(', ')}.` : ''
   return {
     ...receipt, ...count, ...(titles.length ? { titles } : {}),
-    verification: `Saved as ${name} and compared byte for byte by the host; no Office window was opened.${listed} It is done: do not read it back or build it again. Answer now with its markdownLink.`,
+    verification: `Saved as ${name} and compared byte for byte by the host; no Office window was opened. Verified in the file: ${counted}, every one with the text you gave${fixes.length ? ' but for the words below' : ''}.${listed}${corrected} It is done: do not read it back or build it again. Answer now with its markdownLink.`,
   }
 }
 

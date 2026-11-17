@@ -35,6 +35,45 @@ type EngineCwd = Parameters<typeof collectResult>[1]['workdir']
 // they go one at a time and are given room to wait for it.
 const REMEMBER_TIMEOUT_MS = 120_000
 let remembering: Promise<unknown> = Promise.resolve()
+
+// c15c (cause D, D3: a memory call of the turn before ran next to the deck turn's start, 41 s to its first token; C5: 27 s to a teammate's
+// first token next to three of them): a person's turn that is starting - opened and not yet given its first token or tool - holds back
+// every memory call: none starts while one is starting, and one under way is cut and run again after it. Memory is best-effort.
+const starting = new Set<object>()
+const opened = new Set<() => void>()
+let waiters: (() => void)[] = []
+/** A person's turn is starting; the returned function says it has its first token or tool (or ended). Idempotent. */
+export function turnStarting(): () => void {
+  const key = {}
+  starting.add(key)
+  for (const cut of opened) cut()
+  return () => {
+    if (!starting.delete(key) || starting.size) return
+    const ready = waiters; waiters = []
+    for (const go of ready) go()
+  }
+}
+const noTurnStarting = (): Promise<void> => starting.size ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve()
+// shortcut: a memory call cut this many times by starting turns is dropped (its turn's facts are not kept); queue it for an idle moment if facts go missing.
+export const MEMORY_YIELDS = 3
+/** Runs `call` once no person's turn is starting; a turn that starts while it runs cuts it, and it runs again later. Undefined when dropped. */
+export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T | undefined> {
+  for (let attempt = 0; attempt < MEMORY_YIELDS; attempt++) {
+    await noTurnStarting()
+    if (signal?.aborted) return undefined
+    const cut = new AbortController(), stop = (): void => cut.abort()
+    signal?.addEventListener('abort', stop, { once: true })
+    opened.add(stop)
+    try {
+      const said = await call(cut.signal)
+      // A cut call may still hand back what it had: only a call that ran whole counts.
+      if (!cut.signal.aborted) return said
+      if (signal?.aborted) return undefined
+    } catch (err) { if (!cut.signal.aborted || signal?.aborted) throw err } finally { opened.delete(stop); signal?.removeEventListener('abort', stop) }
+  }
+  flog('comet-memory', 'dropped: turns kept starting')
+  return undefined
+}
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export function taskRecall(store: Pick<NoteStore, 'search' | 'get'>, task: string): string {
@@ -97,7 +136,7 @@ export async function rememberTurn(deps: {
     const call = remembering.then(async () => {
       // Read when this call's turn comes, so it sees what the calls queued before it kept.
       known = mergeMemory(await loadBotMemory(deps.paths, PERSON_MEMORY), await loadBotMemory(deps.paths, deps.botId)).facts.map((f) => f.text)
-      return collectResult(deps.engine, {
+      return yielding(signal => collectResult(deps.engine, {
       prompt: rememberPrompt(
         { user: withoutSecrets(deps.message, deps.message), answer: withoutSecrets(deps.answer, deps.message), ...(deps.previous ? { previous: withoutSecrets(deps.previous, deps.message) } : {}), ...(deps.places?.length ? { places: deps.places.map((place) => withoutSecrets(place, deps.message)) } : {}) },
         known,
@@ -107,11 +146,15 @@ export async function rememberTurn(deps: {
       timeoutMs: REMEMBER_TIMEOUT_MS,
       modelHint: 'fast',
       maxTokens: REMEMBER_TOKENS,
-      ...(deps.signal ? { signal: deps.signal } : {}),
-      })
+      // A short extraction on the small model: no long thinking, so it is quick and light next to a person's turn.
+      effort: 'low',
+      signal,
+      }), deps.signal)
     })
     remembering = call.catch(() => undefined)
-    raw = await call
+    const said = await call
+    if (said === undefined) return
+    raw = said
   } catch (err) {
     if (deps.signal?.aborted) return
     flog('comet-memory', `remembering failed — ${errorText(err)}`)

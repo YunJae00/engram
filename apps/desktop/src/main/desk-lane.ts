@@ -558,3 +558,30 @@ function rewritten(reply: string, last: string): number {
   const matched = new Set(units(reply).map(unit => { const own = pairs(unit); return before.reduce((best, one) => shared(own, one.pairs) > shared(own, best.pairs) ? one : best) }))
   return [...matched].reduce((sum, one) => sum + [...one.text].length, 0)
 }
+
+// c15c (cause D, D1: "결정사항" and "할 일" held the same four items, the decisions the discussion settled were never said): a desk answer was
+// written once and nothing read it against its ask and the source it came from. An answer with structure - two or more blocks or a list,
+// read by shape, never by words - goes through the same meaning check as every writer path (core checkedWrite, with kind "overlap" for parts
+// that say the same thing or hold another part's content), and is rewritten once by the quick model inside the turn's own time. A one-line
+// answer is never held: the short asks' bar has no room for a check.
+const LIST_LINE = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*\S/
+export const structured = (text: string): boolean => {
+  const blocks = text.trim().split(/\n\s*\n/).filter(block => block.trim())
+  return text.split('\n').filter(line => LIST_LINE.test(line)).length >= 2 || blocks.length >= 3 || (blocks.length >= 2 && text.trim().split('\n').filter(line => line.trim()).length >= 4)
+}
+// shortcut: one budget for every desk kind from the turn's start (the summary row has 20 s); a desk turn already past it keeps its draft.
+export const DESK_CHECK_DUE_MS = 18_000
+export const SOURCE_CHARS = 6000
+export async function checkedDesk(input: { ask: string; draft: string; source: string; quick: ((prompt: string, ms?: number) => Promise<string | undefined>) | undefined; since: number; now?: () => number; signal?: AbortSignal; log?: (outcome: string, kinds: readonly string[]) => void }): Promise<string> {
+  if (!input.quick || !structured(input.draft)) return input.draft
+  const data = { source: input.source.slice(0, SOURCE_CHARS) }, quick = input.quick
+  const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length, and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
+    'Each thing goes under the one part it belongs to, by what the source says it is; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
+  const text = await checkedWrite({
+    data, ask: input.ask, parts: true, draft: input.draft, check: quick, due: input.since + DESK_CHECK_DUE_MS, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}),
+    redo: async (note, ms) => (await quick(base + note, ms).catch(() => undefined))?.trim() || undefined,
+    log: (outcome, problems) => input.log?.(outcome, problems.map(problem => problem.kind)),
+  })
+  // A rewrite that failed its own check leaves the draft: the desk has no other rendering to fall back on.
+  return text ?? input.draft
+}

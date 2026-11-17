@@ -11,7 +11,7 @@ import { afterTurn, answerFollowUps, dropFollowUps, followingUp, followUpFor, fo
 import { fastLane, firstSearch, swapRounds, heldAnswer, heldFor, LANE_NOTE, LANE_SOLO_CALLS, LANE_SOLO_SOFT_MS, LANE_TEAM_CALLS, LANE_TOOLS, laneFirstLine, laneTidy, laneToday, namesSubject, quickQuestion, quietRounds, SHORT_QUESTION_NOTE, SMALL_TALK_NOTE, teamAsk, weekendAnswer } from './fast-lane.js'
 import { afterChecks, answering, offeredIn, studying, takeAsides, turnGoals, unlessStudying, workSoFar } from './turn-state.js'
 import { pickQuickFiles } from './quick-files.js'
-import { DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
+import { checkedDesk, DESK_NOTE, DESK_TOOLS, deskKind, deskLane, deskLight, fileGiven, fixSlideTitle, inKoreanWords, keptFix, namedText, plainKeep, slideTitleFix, sortByKind, reshapeAsk, RESHAPE_MS, askedBefore, routeAsk, isCorrection, onlyAsked, onlyTells, shareReady, tidyCounts, TOLD_NOTE, withOffer, withoutSameDecisions } from './desk-lane.js'
 import type { EngineStatusDto } from '../shared/types.js'
 import { synchronizeFilingProbe } from './vault.js'
 import {
@@ -156,7 +156,7 @@ import { botAvatarImage, clearBotAvatarImage, setBotAvatarImage } from './bot-av
 import { createFromTemplate, exportTemplateTo, importTemplateFrom, templateList } from './bot-templates-ipc.js'
 import { readArchivedTranscript, readBotTranscriptPage } from 'core/src/bot-transcript'
 import { deleteSummary } from 'core/src/bot-delete'
-import { registerCometMemoryIpc, rememberTurn, taskRecall } from './comet-memory.js'
+import { registerCometMemoryIpc, rememberTurn, taskRecall, turnStarting } from './comet-memory.js'
 import { approvalsStore } from './approvals.js'
 import { isPersonSentence, preferencesChat } from './preferences-chat.js'
 import { fetchClaudeModels, forgetClaudeModels, closeClaudeSession, tierPurpose } from './engine-claude.js'
@@ -336,6 +336,9 @@ export {
   revalidateEngines,
   startEngineWatch,
 } from './engine-health.js'
+
+// A person's turn per channel that has not yet had its first token or tool: background memory calls wait on it.
+const startingTurns = new Map<string, () => void>()
 
 export const LIBRARIAN_RUN_OPTS = { concurrency: 1, modelHint: 'fast' } as const
 
@@ -2332,11 +2335,16 @@ export function registerIpc(ctx: VaultContext): void {
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
+    // c15c: background memory calls wait until this turn has its first token or tool (comet-memory.ts turnStarting).
+    const memoryWait = !request.scheduled && !savedRoutine && !turn?.quiet ? turnStarting() : undefined
+    if (memoryWait) { startingTurns.get(entry.channel)?.(); startingTurns.set(entry.channel, memoryWait) }
     try {
       if (savedRoutine?.task) await markRoutineRun(paths, savedRoutine.id, 'failed')
       // A person's own turn holds its engine like a delegated task; nested task contexts keep their ids.
       return await withTurnPriority({ interactive: !request.scheduled && !savedRoutine && !turn?.quiet, korean: threadKorean(request.message, request.history ?? []), say: line => broadcast({ type: 'comet:step', channel: entry.channel, line }) }, () => withModelCallContext({ channel: entry.channel, purpose: 'task' }, () => handleChatSend(request, controller.signal, recovery, savedRoutine, turn)))
     } finally {
+      memoryWait?.()
+      if (startingTurns.get(entry.channel) === memoryWait) startingTurns.delete(entry.channel)
       chatAborts.delete(entry)
       answering.delete(entry.channel)
       turnGoals.delete(entry.channel); workSoFar.delete(entry.channel); endFirstLine(entry.channel)
@@ -3005,7 +3013,7 @@ export function registerIpc(ctx: VaultContext): void {
             tokenBudget: turn?.tokenBudget,
             onUsage: tokens => { tokensUsed += tokens },
             waitingForPerson: () => tasks.waitingForPerson(channel) || team.waiting(channel) || pressAskWaiters.has(channel) || routineWaiting.has(channel) || permissionWaiting(channel),
-            onToolStart: () => { toolStarted = true },
+            onToolStart: () => { toolStarted = true; startingTurns.get(channel)?.() },
             // Index only; bodies and current staleness are checked on open_skill.
             skills: company || lane ? [] : await skillShortlist(annotateStaleCards(await listSkills(paths), skillLedger, ctx.store.getAll()), skillLedger, request.message),
             // With no quick model the lead sums up from the record in its prompt: a few lines to put in order, so at low effort.
@@ -3040,7 +3048,7 @@ export function registerIpc(ctx: VaultContext): void {
               if (said && /^(open|read|look|press|page_steps|scroll|hover|type_text|choose|reveal|desktop_|read_desktop|look_desktop|open_app)/.test(said[1]!)) clearApplicationWork(channel)
               audit('step', said ? { tool: said[1]!, detail: said[2]! } : { detail: line })
             },
-            onToken: (text) => { if (!quiet) firstLineSpoke(channel); if (firstToken) { firstToken = false; flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
+            onToken: (text) => { if (!quiet) firstLineSpoke(channel); if (firstToken) { firstToken = false; startingTurns.get(channel)?.(); flog('chat-phase', JSON.stringify({ channel, phase: 'first-token', ms: Date.now() - nativeSince })) }; if (!signal.aborted && !turn?.verification) { if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text }) } },
             // A waiting line is not frozen into a bubble by a tool call: it stays live text until the first real words (first-line.ts).
             onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast({ type: 'chat:token', channel, text: '', reset: true, ...(drop ? { drop: true } : {}), ...(tool ? { tool } : {}) }) },
             onObservation: (tool: string, observation: string) => {
@@ -3096,6 +3104,13 @@ export function registerIpc(ctx: VaultContext): void {
         if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)
         // c5c H4: an extraction from a named note ends with one short offer, once per thread (desk-lane.ts withOffer).
         if (kind === 'note' && !result.asked) result.answer = withOffer(routed, result.answer, savedHistory, threadKorean(request.message, request.history ?? []))
+        // c15c (cause D): a desk answer with structure is read against its ask and the source it was built from, one rewrite at most (desk-lane.ts checkedDesk).
+        // A host-made answer (a kept fact, a sorted folder, a retitled slide, a reshape) is not a draft; nor is a sort or a keep, which have no source.
+        if (desk && kind !== 'tidy' && kind !== 'keep' && !handed && !fixed && !keptPlain && !retitled && !sorted && !reshaped && !result.asked && !result.stopped) result.answer = await checkedDesk({
+          ask: routed, draft: result.answer, quick: writer, since: nativeSince, signal,
+          source: given?.text ?? result.steps.filter(step => /^file_read/.test(step.tool)).map(step => step.observation).join('\n'),
+          log: (outcome, kinds) => flog('chat-phase', JSON.stringify({ channel, phase: 'desk-check', outcome, kinds, ms: Date.now() - nativeSince })),
+        })
         // stack-11: in a Korean thread, a line the quick model judges a working note goes (first-line.ts dropWorkingNotes), and a reply with no
         // Korean word in it gets the few words that hand it over (withTheirWords). Neither changes the words that stay.
         if (!result.asked && !laneShaped && threadKorean(request.message, request.history ?? [])) {
