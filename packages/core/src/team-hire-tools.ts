@@ -202,19 +202,21 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
       // c6 R2: a row was cited to the results page its member searched on ("네이버 검색") though the figure came from one result. Unless that
       // page's own box holds the figure (weather, a quote, a rate), the row links the result that holds the cell's number.
       const first = cited.includes(own) ? own.sources![0]! : undefined
-      const held = !post && !bare && (!first || SEARCH_PAGE.test(first) && !boxed(first)) ? figureSource(own.result ?? '', cells.slice(1)) : undefined
+      const held = !post && !bare && (!first || SEARCH_PAGE.test(first) && !boxed(first)) ? figureSources(own.result ?? '', cells.slice(1)) : []
       // The lead's words name the link unless they only say where it was posted ("appletouch 카페" on a café post), are a bare host, or
       // name the results page ("네이버 검색") that a result has taken the place of.
       const words = (url: string, swapped = false): string => vague || HOSTISH.test(last.trim()) || /(?:카페|블로그|포스트)$/.test(last.trim()) && communityPost(url) || swapped && /검색|search/i.test(last) ? '' : last.replace(/^[-–—\s]*$/, '')
+      // c6a r2: one link per page a figure came from, each under its own name; a lone link keeps the lead's words (or "출처" beside a value).
+      const cite = (urls: readonly string[], lone?: string): string => urls.map(url => `[${urls.length === 1 && lone || sourceName(url, korean)}](${escaped(url)})`).join(' · ')
       if (post) cells[cells.length - 1] = `[${post[1]}](${post[0]})`
       else if (bare) cells[cells.length - 1] = `[${sourceName(bare, korean)}](${bare})`
-      else if (held) cells[cells.length - 1] = label ? `[${words(held, true) || sourceName(held, korean)}](${escaped(held)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${escaped(held)})`
+      else if (held.length) cells[cells.length - 1] = label ? cite(held, words(held[0]!, true)) : `${cells.at(-1)} ${cite(held, korean ? '출처' : 'source')}`
       else if (cited.includes(own)) cells[cells.length - 1] = label ? `[${words(own.sources![0]!) || sourceName(own.sources![0]!, korean)}](${href(own)})` : `${cells.at(-1)} [${korean ? '출처' : 'source'}](${href(own)})`
       else if (vague) cells[cells.length - 1] = postWord(!/카페|caf/i.test(last), korean)
     } else {
       // The same for a results page the lead linked itself.
-      const own1 = /\[[^\]\n]*\]\((https?:\/\/[^)\s]+)\)\s*$/.exec(cells.at(-1)!), held = own1 && SEARCH_PAGE.test(own1[1]!) && !boxed(own1[1]!) ? figureSource(own.result ?? '', cells.slice(1, -1)) : undefined
-      if (held) cells[cells.length - 1] = `[${sourceName(held, korean)}](${escaped(held)})`
+      const own1 = /\[[^\]\n]*\]\((https?:\/\/[^)\s]+)\)\s*$/.exec(cells.at(-1)!), held = own1 && SEARCH_PAGE.test(own1[1]!) && !boxed(own1[1]!) ? figureSources(own.result ?? '', cells.slice(1, -1)) : []
+      if (held.length) cells[cells.length - 1] = held.map(url => `[${sourceName(url, korean)}](${escaped(url)})`).join(' · ')
     }
     lines[i] = `| ${cells.join(' | ')} |`
   }
@@ -235,14 +237,21 @@ export function citeMembers(answer: string, members: readonly TeamMember[], kore
 // A results page whose own box holds the figure (weather, a quote, a rate): the one results page a row may cite.
 const boxed = (url: string): boolean => { try { return BOXES.some(([words]) => words.test(new URL(url).searchParams.get('query') ?? '')) } catch { return false } }
 const VIDEO = /youtube\.com|youtu\.be|\/shorts\b|tv\.naver\.com/i
-// The address beside one of the row's figures in what its member wrote or read (a kept search row is "title: words, date address"); a video
-// only when no other line holds the figure. A year alone is no figure.
-function figureSource(result: string, cells: readonly string[]): string | undefined {
+// The addresses beside the row's figures in what its member wrote or read (a kept search row is "title: words, date address"): the fewest
+// pages that between them hold every figure found, a video only for a figure no other line holds. A year alone is no figure.
+// c6a r2: the first page holding any one figure was the whole row's source, so a price from one page and a release date from another were
+// both shown as the price page's; a month with its year ("2027년 3월") was no figure at all.
+function figureSources(result: string, cells: readonly string[]): string[] {
   const squeeze = (words: string): string => words.replace(/\s+/g, '')
-  const figures = (squeeze(cells.join(' ').replace(ADDRESS, '')).match(/\d{1,2}월\d{1,2}일|\d[\d,.]{2,}/g) ?? []).filter(figure => !/^20\d\d$/.test(figure))
-  if (!figures.length) return undefined
-  const found = result.split('\n').flatMap(line => { const url = (line.match(ADDRESS) ?? []).map(one => one.replace(/[.,;:!?]+$/, '')).find(one => !SEARCH_PAGE.test(one)), said = squeeze(line.replace(ADDRESS, '')); return url && figures.some(figure => said.includes(figure)) ? [url] : [] })
-  return found.find(url => !VIDEO.test(url)) ?? found[0]
+  const figures = [...new Set((squeeze(cells.join(' ').replace(ADDRESS, '')).match(/20\d\d년\d{1,2}월(?:\d{1,2}일)?|\d{1,2}월\d{1,2}일|\d[\d,.]{2,}/g) ?? []).filter(figure => !/^20\d\d$/.test(figure)))]
+  const pages = result.split('\n').flatMap(line => { const url = (line.match(ADDRESS) ?? []).map(one => one.replace(/[.,;:!?]+$/, '')).find(one => !SEARCH_PAGE.test(one)), said = squeeze(line.replace(ADDRESS, '')); return url ? [{ url, holds: figures.filter(figure => said.includes(figure)) }] : [] })
+  const open = new Set(figures), chosen: string[] = []
+  for (const video of [false, true]) for (;;) {
+    const best = pages.filter(page => VIDEO.test(page.url) === video).map(page => ({ page, gain: page.holds.filter(figure => open.has(figure)).length })).sort((a, b) => b.gain - a.gain)[0]
+    if (!best?.gain) break
+    chosen.push(best.page.url); for (const figure of best.page.holds) open.delete(figure)
+  }
+  return [...new Set(chosen)].slice(0, SOURCES_MAX)
 }
 // A link named by its address ("korea247.kr") has no name yet.
 const HOSTISH = /^(?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}\/?$/i

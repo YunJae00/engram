@@ -897,6 +897,12 @@ it('c6: a row links the result its figure was read from, a link is never named b
   expect(cited.trimEnd().split('\n').at(-1)).toMatch(/^\| 픽셀 11 /)
   expect(cited).not.toContain('search.naver.com')
   expect(citeMembers(cited, [iphone, galaxy, pixel], true)).toBe(cited)
+  // c6a r2: the price and the release date came from two pages: the row links both, each by its own name, not the price page for both.
+  const two = member('m6', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n출시일: 2027년 3월 https://dates.example/date' })
+  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [two], true)).toContain('| [prices](https://prices.example/price) · [dates](https://dates.example/date) |')
+  // One page that holds both figures is the only link.
+  const one = member('m7', '아이폰 18', { sources: [search('iphone18')], result: '가격: 179만원 https://prices.example/price\n179만원, 2027년 3월 출시 https://both.example/all' })
+  expect(citeMembers('| 제품 | 가격 | 출시일 | 출처 |\n|---|---|---|---|\n| 아이폰 18 | 179만원 | 2027년 3월 | 네이버 검색 |', [one], true)).toContain('| [both](https://both.example/all) |')
   // A service box (weather, a quote, a rate) is still cited to the results page it was read on, by the service's name.
   const seoul = member('m4', '서울 날씨', { brief: '서울 오늘 날씨', sources: [search('서울 날씨')], result: '서울 11.3℃, 구름많음, 오후부터 비 https://m.blog.naver.com/x/1' })
   expect(citeMembers('| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | 네이버 날씨 |', [seoul], true)).toBe(`| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 11.3℃, 구름많음 | [네이버 날씨](${search('서울 날씨').replace(/ /g, '%20')}) |`)

@@ -271,6 +271,10 @@ it('c6: a news row that names the same parties as an earlier one is the same eve
   expect(sameEvent(a, b, '스타트업 투자 뉴스')).toBe(false)
   // One investor, two rounds on different days, one name shared: two events.
   expect(sameEvent(row('카카오벤처스, 뤼튼에 100억 투자', '11월 3일'), row('카카오벤처스, 업스테이지에 200억 투자', '11월 12일'), query)).toBe(false)
+  // c6a r2: the same investor, two rounds on the SAME day: each names a company the other does not, so both are kept.
+  const wrtn = row('카카오벤처스 뤼튼에 100억 투자', '11월 17일'), upstage = row('카카오벤처스 업스테이지에 200억 투자', '11월 17일')
+  expect(sameEvent(wrtn, upstage, query)).toBe(false)
+  expect(withoutRepeats([wrtn, upstage], query)).toEqual([wrtn, upstage])
   expect(withoutRepeats([first, a, second, b], query)).toEqual([first, a, b])
 })
 
