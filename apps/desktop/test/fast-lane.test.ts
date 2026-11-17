@@ -192,14 +192,27 @@ it('asks a lookup for a colleague\'s short answer from the results, with no offe
   expect(LANE_NOTE).toContain('A news list is a numbered list (1. 2. 3.), one line per item: what happened, the date, and the outlet as a named link')
   expect(LANE_NOTE).toContain('never a table, and never a closing paragraph about what the search did or did not have')
   expect(LANE_NOTE).toContain('a plan to raise, a visit, a forum, a support programme or a partnership is not an investment')
-  expect(LANE_NOTE).toContain('give the fewer and say so in half a sentence')
+  // c6 R3/H6: N asked means N given, filled from the next most recent real ones; never the fewer with a paragraph about what was left out.
+  expect(LANE_NOTE).not.toContain('give the fewer')
+  expect(LANE_NOTE).toContain('"N개" means N given')
+  expect(LANE_NOTE).toContain('the next most recent real ones from the results marked older fill the list, each with its date and year')
+  expect(LANE_NOTE).toContain('"이번 달 건 두 개뿐이라 지난달 것도 넣었어요."')
+  expect(LANE_NOTE).toContain('never a word about what was left out')
+  // c6 L2: "오늘 주가" before the market opens says why it is yesterday's close.
+  expect(LANE_NOTE).toContain('the first sentence says why in a few words and gives the latest one ("미국 장이 아직 안 열려서 어제 종가 기준 156.14달러예요.")')
+  // c6 R2: each lookup member gets its search words, and a row is the thing as the person named it.
+  expect(LANE_NOTE).toContain('each with its query (the search words for that item, "아이폰 18 가격 출시일")')
+  expect(LANE_NOTE).toContain('one row per thing named as they named it ("아이폰 18", never a variant such as "아이폰 18 프로"')
+  expect(LANE_NOTE).toContain('never another product\'s figure in a cell')
+  // c6 T1: the mid-work reply already said one more was put on it.
+  expect(LANE_NOTE).toContain('when someone joined mid-work they were already told, so the lead does not explain the head count again')
+  expect(LANE_NOTE).not.toContain('대구는 한 명 더 붙여서 넷이 나눠 봤어요')
   expect(LANE_NOTE).toContain('(a news list is not one)')
   // c5 T1/R2: asked for a split, the lead says in one clause how it was split.
   expect(LANE_NOTE).toContain('it says in one short clause how the work was split, from "split" in the hire result')
-  expect(LANE_NOTE).toContain('"대구는 한 명 더 붙여서 넷이 나눠 봤어요."')
   expect(LANE_NOTE).toContain('For a comparison every brief names the same points its row needs')
   // c4 R3/H6: N items are N different events of the kind asked, each with a real date.
-  expect(LANE_NOTE).toContain('"N개" means N different events of the kind they asked for')
+  expect(LANE_NOTE).toContain('"N개" means N given: N different events of the kind they asked for')
   expect(LANE_NOTE).toContain('never two items about the same event')
   expect(LANE_NOTE).toContain('never as an age ("1주 전")')
   expect(LANE_NOTE).toContain('no "출처:" label line, no bare address on a line of its own')

@@ -1,7 +1,7 @@
 import type { AgentTool } from './agent-loop.js'
 import type { CometToolDeps } from './comet-tools.js'
 import { pageDoTool } from './page-do.js'
-import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, searchResults, searchUrlFor } from './search-template.js'
+import { answersTheQuestion, askedCount, calendarDates, datedWithYear, defaultSearchTemplate, deriveSearchTemplate, inPeriod, NEWS_ASK, newsPeriod, newsTemplate, resultDay, searchResults, searchUrlFor, withoutRepeats } from './search-template.js'
 import { namedTarget, resolveResultLinks } from './search-links.js'
 import { findOf, linkReport, pageReport, partOf, str } from './page-report.js'
 import { pageTools } from './comet-page-tools.js'
@@ -17,6 +17,8 @@ const signInAsk = (task: string | undefined, search = false): string => formatAs
 const RESULTS_CAP = 8
 // A news list is asked for by the handful ("5개"), and some rows are the same event twice.
 const NEWS_CAP = 12
+// c6 R3: a counted list about a period is filled from older news too, so it gets more rows to pick different events from.
+const NEWS_COUNTED_CAP = 16
 // With no count said, a recent-news list this short is filled from older news.
 const NEWS_FEW = 3
 // A results page often holds the answer itself (weather, a price, a rate) a few hundred characters in.
@@ -160,25 +162,34 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
           const url = searchUrlFor(template, query)
           if (!url) return 'ASK: That saved search address no longer works — could you paste a fresh results page address?'
           let page: Awaited<ReturnType<typeof courier.fetchPage>>
+          // The same news search over the last year, for the rows that fill a list the period leaves short. A failure there is no failure of the search.
+          const wideUrl = period ? searchUrlFor(newsTemplate(general, 'year'), query) : null
+          const wide = async (): Promise<typeof page | null> => wideUrl && wideUrl !== url ? courier.fetchPage(wideUrl, context.signal).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null }) : null
+          // c6 R3/H6: the wider page was loaded only after the period's rows were counted short, and they were not short: one event filled them
+          // twice. For a counted ask ("5개") both pages are loaded at the same time, so the older rows cost no wall time.
+          const count = askedCount(asked), together = !!period && count !== undefined
+          let more: typeof page | null | undefined
           // perf146: a search that failed in 20 ms read like a search that found nothing. The two are told apart for the model.
-          try { page = await courier.fetchPage(url, context.signal) } catch (err) {
+          try { [page, more] = await Promise.all([courier.fetchPage(url, context.signal), together ? wide() : undefined]) } catch (err) {
             if (context.signal?.aborted) throw err
             return `the search for "${query}" did not run: the results page could not be loaded (${err instanceof Error ? err.message.slice(0, 200) : String(err)}). Nothing was searched, so this says nothing about what exists — search again once, or open a site that would hold it with open_page`
           }
           if (page.wall) return signInAsk(context.task, true)
           // The results are picked first and only those are followed through the engine's redirector: the page's tabs and filters cost a request each before.
-          const at = page.url || url, now = new Date(), cap = news ? NEWS_CAP : RESULTS_CAP
+          const at = page.url || url, now = new Date(), cap = news ? together ? NEWS_COUNTED_CAP : NEWS_CAP : RESULTS_CAP
           const list = (from: typeof page, where: string) => searchResults((from.links ?? []).map(link => ({ ...link, url: namedTarget(link.url) ?? link.url })), from.text, query, where, cap, now)
           const listed = list(page, at)
           // c5 R3/H6: whatever the page did with the period, a row dated outside it never reaches the model as recent news.
-          const recent = period ? listed.filter(one => inPeriod(one.date, period, now)) : listed
+          const fresh = period ? listed.filter(one => inPeriod(one.date, period, now)) : listed
+          // One row per event among news rows, counted before anything is called short.
+          const recent = news ? withoutRepeats(fresh, query) : fresh
           let older: typeof listed = []
-          if (period && recent.length < (askedCount(asked) ?? NEWS_FEW)) {
-            // Fewer than asked: the same search once more with no period, and those rows go after the recent ones with their year.
-            const wide = searchUrlFor(newsTemplate(general), query)
-            const more = wide && wide !== url ? await courier.fetchPage(wide, context.signal).catch((err: unknown) => { if (context.signal?.aborted) throw err; return null }) : null
-            const have = new Set(recent.map(one => one.url))
-            older = (more && !more.wall ? list(more, more.url || wide!) : listed).filter(one => !have.has(one.url)).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
+          if (period && (together || recent.length < NEWS_FEW)) {
+            // The rows after the recent ones: the last year's, most recent first, each with its year, and none that repeats an event already listed.
+            if (!together) more = await wide()
+            const have = new Set(recent.map(one => one.url)), day = (one: typeof listed[number]): number => resultDay(one.date, now)?.getTime() ?? 0
+            const rest = (more && !more.wall ? list(more, more.url || wideUrl!) : listed).filter(one => !have.has(one.url) && inPeriod(one.date, 'year', now)).sort((a, b) => day(b) - day(a))
+            older = withoutRepeats([...recent, ...rest], query).slice(recent.length).map(one => ({ ...one, date: datedWithYear(one.date, now) }))
           }
           const picked = [...recent, ...older].slice(0, cap)
           const behind = await resolveResultLinks(picked.map(one => ({ text: one.title, url: one.url })), at, courier.followRedirect?.bind(courier), context.signal)
@@ -196,14 +207,14 @@ export function navigationTools(deps: CometToolDeps): AgentTool[] {
             ...(links.length > 0
               ? [
                   'Results, each as title — its own address — what it says — its date. Answer from them when they hold the fact and cite that result\'s address; open one (read_pages for several) only for a number none of them shows.',
-                  ...(period && older.length ? [`${recent.length ? `The first ${recent.length} are from the last ${period}; the ones after them are` : `None is from the last ${period}: these are`} older and say their year. Use an older one only when the recent ones are fewer than the person asked for, with its own date and year.`] : []),
+                  ...(period && older.length ? [`${recent.length ? `The first ${recent.length} are from the last ${period}; the ones after them are` : `None is from the last ${period}: these are`} older, most recent first, and say their year. Each row is a different event. When the recent ones hold fewer of what the person asked for than the number they asked for, the next most recent older ones fill that number, each with its own date and year.`] : []),
                   ...links.map(one => `- ${[one.title.slice(0, RESULT_TITLE_CAP), one.url, one.snippet, one.date].filter(Boolean).join(' — ')}`),
                   '',
                 ]
               : []),
             // c4 R3: the page's own words carry the same ages ("1주 전") as its results; they read as dates too.
             // A page that did not keep to the period carries the old articles in its words too: they are left out with their rows.
-            period && recent.length < listed.length ? '' : calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), now, false, /[가-힣]/.test(query) || undefined),
+            period && fresh.length < listed.length ? '' : calendarDates(page.text.slice(0, RESULTS_PROSE_CAP), now, false, /[가-힣]/.test(query) || undefined),
           ].join('\n')
         },
       },

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, expect, it, vi } from 'vitest'
 import { plainPage } from '../src/main/plain-page.js'
-import { askedCount, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, searchResults } from 'core'
+import { askedCount, calendarDates, cometTools, datedWithYear, inPeriod, newsPeriod, newsTemplate, resultDay, sameEvent, searchResults, withoutRepeats } from 'core'
 
 // grokbar c3 R2/R3: "검색 결과 페이지에서 실제 기사 링크를 가져오지 못해서" - the reader kept the first 25 anchors of the page.
 // These are real results pages (saved 2026-11-17, scripts, styles and attributes other than href/role removed).
@@ -71,8 +71,10 @@ it('search_web hands over results a lookup can answer from, and a news ask is se
   expect(news).not.toMatch(/\d+\s*(분|시간|일|주|개월)\s*전/)
   // c5: a news list gets up to 12 rows; a plain search keeps 8. One row per site either way (c5a r2), so the web page's six sites are six rows.
   const newsRows = news.split('\n').filter(line => line.startsWith('- '))
-  expect(newsRows).toHaveLength(12)
-  expect(new Set(newsRows.map(line => new URL(/ — (https?:\S+)/.exec(line)![1]!).hostname.replace(/^(www|m)\./, ''))).size).toBe(12)
+  // c6 R3/H6: 7 of this page's 12 rows are one announcement (엔비디아's investment in four startups); one of them is listed.
+  expect(newsRows).toHaveLength(6)
+  expect(newsRows.filter(line => line.includes('엔비디아'))).toHaveLength(1)
+  expect(new Set(newsRows.map(line => new URL(/ — (https?:\S+)/.exec(line)![1]!).hostname.replace(/^(www|m)\./, ''))).size).toBe(6)
   await tool.run({ query: '국내 AI 스타트업 투자', kind: 'news' }, context)
   expect(new URL(asked[1]!).searchParams.get('where')).toBe('news')
   expect((await tool.run({ query: '국내 AI 스타트업 투자' }, context)).split('\n').filter(line => line.startsWith('- '))).toHaveLength(6)
@@ -223,25 +225,88 @@ it('search_web searches recent news with the period, drops rows outside it and f
   const body = (rows: { text: string }[]) => rows.map(row => row.text).join('\n').padEnd(500, ' .')
   const asked: string[] = []
   // The period page did not keep to its period: it lists a 2024 article too.
-  const fetchPage = async (url: string) => { asked.push(url); const rows = new URL(url).searchParams.get('nso') ? [...fresh, ...old.slice(0, 2)] : [...old, ...fresh]; return { url, text: body(rows), links: [...menu, ...rows] } }
+  const fetchPage = async (url: string) => { asked.push(url); const rows = /p:1m/.test(new URL(url).searchParams.get('nso') ?? '') ? [...fresh, ...old.slice(0, 2)] : [...old, ...fresh]; return { url, text: body(rows), links: [...menu, ...rows] } }
   const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!
   const rowsOf = (out: string) => out.split('\n').filter(line => line.startsWith('- '))
-  // Three asked, two recent: one more fetch with no period, the older rows after the recent ones.
+  // Three asked, two recent: the older rows after the recent ones. c6: a counted ask loads the wider page (the last year) with the
+  // period page, and a row older than a year (the 2024 one) fills nothing.
   const out = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 국내 AI 스타트업 투자 뉴스 3개만 찾아줘', steps: [], read: '' } as never)
-  expect(asked.map(url => new URL(url).searchParams.get('nso'))).toEqual(['so:r,p:1m,a:all', null])
-  expect(rowsOf(out).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2024.11.19.', '2026년 9월 17일'])
+  expect(asked.map(url => new URL(url).searchParams.get('nso'))).toEqual(['so:r,p:1m,a:all', 'so:r,p:1y,a:all'])
+  expect(rowsOf(out).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2026년 9월 17일'])
   expect(out).toContain('The first 2 are from the last month')
+  expect(out).toContain('the next most recent older ones fill that number, each with its own date and year')
   // The page's own words named the 2024 article: they are left out with its row.
   expect(out.split('\n').filter(line => !line.startsWith('- ')).join('\n')).not.toContain('파네시아')
-  // Enough recent rows: one fetch, and nothing older is shown.
+  // c6: a counted ask always has the older rows behind the recent ones (the rows may be fewer events than they look), never a 2024 one.
   asked.length = 0
   const two = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 AI 스타트업 투자 뉴스 2개만', steps: [], read: '' } as never)
-  expect(asked).toHaveLength(1)
-  expect(rowsOf(two).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일'])
+  expect(asked).toHaveLength(2)
+  expect(rowsOf(two).map(line => line.split(' — ').at(-1))).toEqual(['11월 14일', '11월 10일', '2026년 9월 17일'])
   expect(two).not.toContain('2024')
+  // No count said and the recent rows are few: the wider page is loaded after the count, as before.
+  asked.length = 0
+  const some = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 AI 스타트업 투자 뉴스 찾아줘', steps: [], read: '' } as never)
+  expect(asked.map(url => new URL(url).searchParams.get('nso'))).toEqual(['so:r,p:1m,a:all', 'so:r,p:1y,a:all'])
+  expect(rowsOf(some)).toHaveLength(3)
   // No period word: searched as before, nothing dropped.
   asked.length = 0
   const plain = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: 'AI 스타트업 투자 뉴스', steps: [], read: '' } as never)
   expect(new URL(asked[0]!).searchParams.has('nso')).toBe(false)
   expect(rowsOf(plain)).toHaveLength(4)
+})
+
+// c6 R3/H6: "엔비디아 … 포인트투테크놀로지 … 투자" came back from 딜라이트닷넷 and 비즈니스포스트 and was listed as items 1 and 2 of 5.
+it('c6: a news row that names the same parties as an earlier one is the same event and is dropped; two rounds that share a word are not', () => {
+  const row = (title: string, date = '', snippet = '') => ({ title, url: `https://example.com/${encodeURIComponent(title)}`, snippet, date })
+  const query = '국내 AI 스타트업 투자 뉴스'
+  const first = row('엔비디아, 국내 AI 스타트업 포인트투테크놀로지에 투자 발표…모티프테크놀로지스 등 추가 투자 계획', '11월 10일')
+  const second = row('엔비디아, 한국 AI 스타트업 4곳 투자 내역 공개…포인트투테크놀로지·업스테이지 포함', '11월 10일')
+  expect(sameEvent(first, second, query)).toBe(true)
+  // The second outlet's title names one party only: the other is in the words under it, or the two carry the same date.
+  expect(sameEvent(first, row('엔비디아 국내 스타트업 4곳에 투자한다', '11월 12일', '엔비디아가 포인트투테크놀로지 등 국내 AI 스타트업에 투자한다고 밝혔다.'), query)).toBe(true)
+  expect(sameEvent(first, row('엔비디아 국내 스타트업 4곳에 투자한다', '11월 10일'), query)).toBe(true)
+  // Two different rounds: the words they share are the query's own, a common news word, or "AI" with a query that left it out.
+  const a = row('리벨리온, 620억 시리즈C 투자 유치…AI 반도체 양산 속도', '11월 14일'), b = row('업스테이지, 1000억 투자 유치…AI 모델 고도화', '11월 14일')
+  expect(sameEvent(a, b, query)).toBe(false)
+  expect(sameEvent(a, b, '스타트업 투자 뉴스')).toBe(false)
+  // One investor, two rounds on different days, one name shared: two events.
+  expect(sameEvent(row('카카오벤처스, 뤼튼에 100억 투자', '11월 3일'), row('카카오벤처스, 업스테이지에 200억 투자', '11월 12일'), query)).toBe(false)
+  // c6a r2: the same investor, two rounds on the SAME day: each names a company the other does not, so both are kept.
+  const wrtn = row('카카오벤처스 뤼튼에 100억 투자', '11월 17일'), upstage = row('카카오벤처스 업스테이지에 200억 투자', '11월 17일')
+  expect(sameEvent(wrtn, upstage, query)).toBe(false)
+  expect(withoutRepeats([wrtn, upstage], query)).toEqual([wrtn, upstage])
+  // c6a r3: the same pair with a funding word in both ("시드", "후속", a word no list holds): the investor and that word are not two shared parties.
+  for (const stage of ['시드', '후속', '프리A', '깜짝']) {
+    const one = row(`카카오벤처스 뤼튼에 ${stage} 투자`, '11월 17일'), other = row(`카카오벤처스 업스테이지에 ${stage} 투자`, '11월 17일')
+    expect(sameEvent(one, other, query)).toBe(false)
+    expect(withoutRepeats([one, other], query)).toEqual([one, other])
+  }
+  // Without the ending that marks who received it, the funding word is still no party.
+  expect(sameEvent(row('카카오벤처스, 뤼튼 시드 투자', '11월 17일'), row('카카오벤처스, 업스테이지 시드 투자', '11월 17일'), query)).toBe(false)
+  // One round reported twice stays one row: the second outlet names the same receiver, or mentions it under the title.
+  expect(sameEvent(row('카카오벤처스 뤼튼에 시드 투자', '11월 17일'), row('카카오벤처스, 뤼튼에 시드 투자 단행', '11월 17일'), query)).toBe(true)
+  expect(sameEvent(first, row('엔비디아, 모티프테크놀로지스에 투자', '11월 10일', '포인트투테크놀로지 등 4곳이 대상이다.'), query)).toBe(true)
+  expect(withoutRepeats([first, a, second, b], query)).toEqual([first, a, b])
+})
+
+it('c6: a counted news ask loads the period page and the wider page at the same time, and a repeat of a recent event does not fill the list', async () => {
+  vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
+  const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
+  const menu = Array.from({ length: 8 }, (_, i) => ({ text: `메뉴 ${i}`, url: `https://search.naver.com/search.naver?where=tab${i}&query=x` }))
+  // The month holds one event, reported by two outlets.
+  const fresh = [...article('엔비디아, AI 스타트업 포인트투테크놀로지 투자 발표', 'https://www.delighti.co.kr/1', '1주 전'), ...article('엔비디아 AI 스타트업 투자 내역 공개…포인트투테크놀로지 포함', 'https://www.businesspost.co.kr/2', '1주 전')]
+  // The year holds the same event once more, two older rounds and a 2024 article.
+  const wide = [...article('엔비디아, 포인트투테크놀로지 AI 스타트업 투자', 'https://www.yna.co.kr/3', '1주 전'), ...article('뤼튼 AI 스타트업 투자 유치 830억', 'https://www.hankyung.com/4', '2026.09.17.'), ...article('리벨리온 AI 스타트업 투자 620억', 'https://www.etnews.com/5', '2026.10.20.'), ...article('파네시아 AI 스타트업 투자 800억', 'https://www.viva100.com/6', '2024.11.19.')]
+  const body = (rows: { text: string }[]) => rows.map(row => row.text).join('\n').padEnd(500, ' .')
+  const open: string[] = []
+  let together = 0
+  const fetchPage = async (url: string) => { open.push(url); together = Math.max(together, open.length); await new Promise(resolve => setTimeout(resolve, 5)); open.splice(open.indexOf(url), 1); const rows = /p:1m/.test(new URL(url).searchParams.get('nso') ?? '') ? fresh : wide; return { url, text: body(rows), links: [...menu, ...rows] } }
+  const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!
+  const out = await tool.run({ query: 'AI 스타트업 투자 뉴스' }, { task: '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', steps: [], read: '' } as never)
+  // Both pages were open at once: the older rows cost no wall time.
+  expect(together).toBe(2)
+  const rows = out.split('\n').filter(line => line.startsWith('- '))
+  // One row for the event of the month, then the older rounds, most recent first, each with its year; nothing from 2024.
+  expect(rows.map(line => [/ — (https?:\S+)/.exec(line)![1], line.split(' — ').at(-1)])).toEqual([['https://www.businesspost.co.kr/2', '11월 10일'], ['https://www.etnews.com/5', '2026.10.20.'], ['https://www.hankyung.com/4', '2026.09.17.']])
+  expect(out).toContain('The first 1 are from the last month')
 })

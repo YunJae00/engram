@@ -1,5 +1,5 @@
 import {
-  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
+  backgroundOpen, citeMembers, cutShortAnswer, failOnRestart, keepRead, timeBoxed, keepSources, listTasks, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, LOOKUP_TOOLS, MEMBER_BLOCKED, MEMBER_RESULT_CHARS, memberPersona, memberTask, releaseAll, runComet, SCREEN_TOOL, settleMember, skipWalls, TASK_TOKEN_BUDGET, teamHireTools, teamNote, unreviewed, updateTask,
   type AgentTool, type DelegatedTask, type Engine, type MemberOutcome, type MemberRedo, type TeamHost, type TeamMember, type ToolSessionJob, type VaultPaths,
 } from 'core'
 import type { Ask } from './page-actions.js'
@@ -118,13 +118,28 @@ export function teamRunner(deps: {
       // The limit counts the member's own working time, from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined
       const sources = new Set<string>(), kept: string[] = []
-      const begun = () => { if (me.lookup || me.writer) hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS) }
+      const hardMs = me.writer ? WRITER_HARD_MS : deps.lookupHardMs ?? LOOKUP_HARD_MS
+      let startedAt: number | undefined
+      const begun = () => { if (me.lookup || me.writer) { startedAt ??= Date.now(); hardStop ??= setTimeout(() => { timedOut = true; control.abort() }, hardMs) } }
+      // Time until the hard stop, on the scale of the real limit (the test seam shortens the limit, and the share of it left is what counts):
+      // a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
+      const left = (): number => (hardMs - (startedAt === undefined ? 0 : Date.now() - startedAt)) * LOOKUP_HARD_MS / hardMs
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? keepRead(keepSources(skipWalls(tool), sources), kept) : tool, taskId, me))
+        const tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(tool), sources), kept), left) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
+        // c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member. The search the lead gave words for is run
+        // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
+        // The time counts against the member's limit. A search that did not run, or met a wall, leaves the task as it was.
+        // shortcut: the search runs before the session opens, not beside it (~1.2 s of start-up is not overlapped); warm the session first if that matters.
+        const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
+        if (search) {
+          begun()
+          const found = await search.run({ query: me.query }, { task: prompt, signal: control.signal }).catch(() => '')
+          if (/^results for "/.test(found)) { read = true; prompt += `\n\nResults of the search already run for you ("${me.query}"). When they hold what your part asks, answer from them now; search once more in other words only when they do not.\n${found}` }
+        }
         for (let round = 0; ; round++) {
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
             signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),

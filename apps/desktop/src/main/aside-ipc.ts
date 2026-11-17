@@ -3,7 +3,7 @@ import { taskQueued, clientTaskQueued, clearClientTaskQueues } from './task-noti
 import { ipcMain } from 'electron'
 import { appendBotTurn, engineCwd, readBotTranscript, withoutSecrets, type Engine, type VaultPaths } from 'core'
 import { cleanLine, quickAnswerPrompt } from './first-line.js'
-import { quickQuestion } from './fast-lane.js'
+import { quickQuestion, teamAsk } from './fast-lane.js'
 import { changeCheckpoint, readCheckpoint } from './comet-checkpoint.js'
 import { tapBroadcast } from './engine-health.js'
 import { flog } from './flog.js'
@@ -53,12 +53,18 @@ const FIXED: Record<AsideShape, [string, string]> = {
   // Never a bare yes (GROKBOT rule 1): the line says what happens with their words.
   other: ['지금 하는 일에 반영할게요.', 'Working that into this now.'],
 }
-export const fixedAsideReply = (text: string, korean: boolean): string => FIXED[asideShape(text)][korean ? 0 : 1]
+// c6 T1: "대구도 함께 조사할게요." and then four cities from "봇 3개": the judge read the fourth as unexplained. While a split job runs
+// (the job's own words ask for one, fast-lane teamAsk), the reply to an added part says how it is taken in: one more looks at it.
+const TEAM_ADD: [string, string] = ['그것도 한 명 더 붙여서 볼게요.', 'Putting one more on that too.']
+export const fixedAsideReply = (text: string, korean: boolean, team = false): string => (team && asideShape(text) === 'add' ? TEAM_ADD : FIXED[asideShape(text)])[korean ? 0 : 1]
 export function asideReplyPrompt(goal: string, said: string, korean: boolean): string {
+  const team = teamAsk(goal)
   return [
     'You are the person\'s capable, friendly coworker on a messenger. You are in the middle of the job below and they just sent you the message below.',
     `Reply with ONE short line of at most ${ASIDE_REPLY_MAX} characters in ${korean ? 'Korean, polite -요 form (never -습니다)' : 'the language of the message'}, the way a colleague answers while still working:`,
-    `- it adds something to the job: say you are adding it, naming it${korean ? ' ("대구도 넣을게요.")' : ' ("Adding Daegu too.")'}`,
+    team
+      ? `- it adds something to the job, which several of you are doing one part each: say one more is put on it, naming it${korean ? ' ("대구도 한 명 더 붙여서 볼게요.")' : ' ("Putting one more on Daegu too.")'}`
+      : `- it adds something to the job: say you are adding it, naming it${korean ? ' ("대구도 넣을게요.")' : ' ("Adding Daegu too.")'}`,
     `- it replaces part of the job: say you are switching, naming the new thing${korean ? ' ("애플로 바꿔서 볼게요.")' : ' ("Switching to Apple now.")'}`,
     `- it is a complaint or impatience: say warmly where it stands, with at most one apology and at most two short sentences${korean ? ' ("거의 다 찾았어요, 금방 올릴게요.")' : ' ("Almost there, posting it shortly.")'}`,
     `- it is thanks: one warm short line${korean ? ' ("별말씀을요, 금방 마무리할게요.")' : ''}`,
@@ -85,7 +91,7 @@ const fits = (line: string | undefined, said: string, korean: boolean): line is 
 // One line within the budget, whatever the voice does.
 export async function asideReply(voice: Voice | Promise<Voice>, workdir: string, goal: string, said: string, korean: boolean, budgetMs = ASIDE_REPLY_MS): Promise<string> {
   const line = await voiceLine(voice, asideReplyPrompt(goal, said, korean), workdir, budgetMs)
-  return fits(line, `${goal} ${said}`, korean) && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) ? line : fixedAsideReply(said, korean)
+  return fits(line, `${goal} ${said}`, korean) && !/^(네|넵|예|알겠\S*|okay|ok|sure|yes)[\s,.!]/i.test(line) ? line : fixedAsideReply(said, korean, teamAsk(goal))
 }
 // c3a review r2 #2: "1년은 몇 초야?" said mid-work had no answer until the work ended (GROKBOT rule 2). A short general-knowledge
 // question (fast-lane quickQuestion, the same test and prompt as on an idle thread) is answered whole by the quick voice, at once.
