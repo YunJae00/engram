@@ -70,7 +70,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
   const files = deps.tools.some((tool) => tool.name.startsWith('file_'))
   const workflow = desktop || files
   // A lookup turn reads and reports: no collection receipts and no multi-stage rules (grokbar B6: one member spent 4 rounds, 10 s, on collect_results).
-  const browser = !options.lookup && deps.tools.some(tool => tool.name === 'open_page')
+  // Only a work turn acts on pages (collect_results receipts, the browser call budget); a lookup or short ask reads them.
+  const browser = !options.lookup && !options.short && deps.tools.some(tool => tool.name === 'open_page')
   const planned = workflow || browser
   // The turn kind picks which rules the session is sent (agent-session-shape sessionRules): a lookup or a short ask carries no work rules.
   const kind = options.lookup ? 'lookup' as const : options.short ? 'short' as const : 'work' as const

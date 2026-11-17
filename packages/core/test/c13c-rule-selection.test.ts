@@ -135,3 +135,28 @@ describe('c13c r2: rules follow the turn kind, not just the tools offered', () =
     for (const options of [{ lookup: true }, { short: true }]) expect((await reads(options)).some(text => text.includes('delta from'))).toBe(false)
   })
 })
+
+// c13c r3 (Codex r2 #2): DOCUMENT_CHECK_RULE was still gated by Office tools alone. Every act flag is now off for a non-work turn, so a short
+// ask or a lookup offered every capability gets exactly the rules it gets with none, beyond what its tool list itself names.
+describe('c13c r3: a short ask or a lookup gets no act rule, whatever flags and tools it has', () => {
+  const every = ['file_read', 'find_files', 'file_create_copy', 'file_move', 'file_create_workbook', 'file_edit_package', 'file_read_package', 'word_write', 'ppt_build', 'excel_write', 'open_page', 'read_open_page', 'read_pages', 'page_steps', 'page_do', 'search_web', 'desktop_sequence']
+  it('all flags on equals all flags off, and holds no Office, receipt, desktop or download rule', () => {
+    for (const kind of ['short', 'lookup'] as const) {
+      const on = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind, tools: every })
+      const off = sessionRules({ ...base, workflow: false, planned: false, kind, tools: every })
+      expect(on).toBe(off)
+      for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(on, rule)).toBe(0)
+      expect(on).not.toContain('file download')
+    }
+    const work = sessionRules({ ...base, desktop: true, workflow: true, browser: true, planned: true, pageSteps: true, pageDo: true, kind: 'work', tools: every })
+    for (const rule of [DOCUMENT_CHECK_RULE, OFFICE_FILE_RULE, COLLECTION_RULE, DESKTOP_TASK_RULE, PAGE_DELTA_RULE]) expect(count(work, rule)).toBe(1)
+  })
+  it('a short ask offered a page tool is opened without the receipt tool or rule', async () => {
+    const jobs: ToolSessionJob[] = []
+    const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '네' } } } as unknown as Engine
+    const tools = ['open_page', 'read_open_page', 'file_read'].map(name => ({ name, description: name, argsSchema: {}, run: async () => '' }))
+    await runToolSession({ engine, workdir: '/tmp' as EngineCwd, tools }, '이 링크 제목만 말해줘', { short: true })
+    expect(count(jobs[0]!.system, COLLECTION_RULE)).toBe(0)
+    expect(jobs[0]!.tools.some(tool => tool.name === 'collect_results')).toBe(false)
+  })
+})

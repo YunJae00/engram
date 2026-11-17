@@ -518,6 +518,9 @@ export async function reshapeAsk(message: string, lastReply: string | undefined,
   if (!reply || !RESHAPE_FORMS.includes(said.form as typeof RESHAPE_FORMS[number]) || squash(reply) === squash(lastReply!)) return undefined
   if (said.form !== 'shorter') return reply
   // "Shorter" is checked against the asked thing, not the commentary around it: a "was" not found in the last reply cannot be checked.
-  const was = typeof said.was === 'string' ? squash(said.was) : ''
+  // c13c r3: "was" is the voice's own word, so dropping lines is not taken as shortening: a reply found word for word in the last reply
+  // (quotes aside) cut only the commentary around the asked thing and left the thing itself as it was.
+  const was = typeof said.was === 'string' ? squash(said.was) : '', bare = (text: string): string => squash(text).replace(/["'“”‘’「」]/g, '')
+  if (bare(lastReply!).includes(bare(reply))) return undefined
   return was && squash(lastReply!).includes(was) && [...squash(reply)].length < [...was].length ? reply : undefined
 }

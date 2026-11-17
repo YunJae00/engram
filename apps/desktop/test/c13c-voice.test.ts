@@ -38,6 +38,13 @@ describe('c13c: reshape returns the asked form and "shorter" is checked', () => 
     // A "was" that is not in the last reply cannot be checked.
     expect(await reshapeAsk('더 간단하게', last, voice({ form: 'shorter', was: 'Thanks a lot for everything you did for us all this year.', reply: 'Thanks!' }))).toBeUndefined()
   })
+  // c13c r3 (Codex r2 #1): the voice copied the whole last reply as "was" and dropped only the explanation; not a harness wording.
+  it('a reply cut word for word out of the last reply is no shorter form, whatever "was" says', async () => {
+    const line = '明日は休みをいただきます。'
+    const last = `이렇게 보내면 돼요. "${line}" 내일 휴가라는 뜻을 공손하게 전하는 문장이에요.`
+    for (const reply of [line, `"${line}"`, `이렇게 보내면 돼요. "${line}"`]) expect(await reshapeAsk('조금만 줄여줘', last, voice({ form: 'shorter', was: last, reply }))).toBeUndefined()
+    expect(await reshapeAsk('조금만 줄여줘', last, voice({ form: 'shorter', was: last, reply: '"明日休みます。"' }))).toBe('"明日休みます。"')
+  })
   it('a table is not length-checked, and an unknown form or plain text is no reshape', async () => {
     const table = '| 내용 |\n|---|\n| 출시 도움 감사 |'
     expect(await reshapeAsk('표로 바꿔줘', LAST, voice({ form: 'table', was: LAST, reply: table }))).toBe(table)
