@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, teamAnswer, teamSummary, lateShown, lateOwed, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2843,7 +2843,7 @@ export function registerIpc(ctx: VaultContext): void {
         const kept = !handoff && !hire && !split && !change && company && chief && !turn?.report && request.scheduled !== true ? plainSchedule(request.message) : undefined
         const direct = handoff ? { tool: 'assign', args: handoff } : split ? { tool: 'assign', args: split } : hire ? { tool: 'agents', args: hire } : change ? { tool: 'agents', args: change } : kept ? { tool: 'schedule', args: kept } : undefined
         // The quick model writes the team's merged answer from their results; the host checks it and keeps its own table as the fallback.
-        const writer = engine.id === 'claude' && engine.quick ? (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: REPORT_WRITER_MS }) : undefined
+        const writer = engine.id === 'claude' && engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) : undefined
         // c5 C10: what the team did is written from its record by the quick model (company-tools teamSummary), also for the kept weekly ask.
         // The lane's waiting line goes up first: the writer takes a few seconds.
         // Words that set a regular time keep a schedule; only the kept ask's own run is summed up.
@@ -2851,7 +2851,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (summing) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
         const reporting = !direct && company && turn?.report ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
-          : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer)
+          : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer, lastTeamResult(await listTasks(paths), reporting))
             : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: SUMMARY_WRITER_MS }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
               : aboutEmployee(request.message, everyone, await listTasks(paths))
         // GROKBOT rule 7: this report was made without the parts still at work and the next one is theirs, or it was theirs (company-tools lateShown).

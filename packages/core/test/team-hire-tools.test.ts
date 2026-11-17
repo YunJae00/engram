@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import stack5 from './fixtures/grokbar-stack5-team.json' with { type: 'json' }
 import { createTask, listTasks, parseAsk, updateTask, type DelegatedTask, type TeamMember, type VaultPaths } from '../src/index.js'
 import { TEAM_LEAD_RULE } from '../src/agent-voice.js'
 import { foundNothing, liveLinks, liveCited, localAddress, linkAnswers, siteName, LINK_CHECK_MS, LOOKUP_RULE, LOOKUP_HARD_MS, LOOKUP_MAX_CALLS, LOOKUP_SOFT_MS, citeMembers, citeOwn, keepRead, keepSources, answeredLookup, AUTO_REVIEW, skipWalls, cutShortAnswer, failOnRestart, memberPersona, memberTask, settleMember, withoutExtras, teamHireTools, teamNote, teamReviewIssue, teamTree, teamUnverified, TEAM_TOKEN_RESERVE, type MemberRedo, type TeamHost } from '../src/team-hire-tools.js'
@@ -247,9 +248,18 @@ describe('team hire tools', () => {
     expect(one).toMatchObject({ state: 'done', read: true, result: `12월 2일 소프트웨이브\n${events}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)` })
     expect(one.review).toBeUndefined()
     // A row whose address the answer already names is not said twice; an answer that was not cut short is the whole result.
-    const cited: Parameters<typeof settleMember>[0] = { ...m }
+    // c6: under a schedule with fewer dated items than the rows read; an answer to a plain ask that gives its address stands alone (below).
+    const cited: Parameters<typeof settleMember>[0] = { ...m, brief: '12월 서울 IT 행사 일정 정리' }
     settleMember(cited, { answer: '12월 2일 소프트웨이브 (https://example.com/a)', timedOut: true, read: events }, 'now', true)
     expect(cited.result).toBe('12월 2일 소프트웨이브 (https://example.com/a)\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
+    const plain: Parameters<typeof settleMember>[0] = { ...m }
+    settleMember(plain, { answer: '12월 2일 소프트웨이브 (https://example.com/a)', timedOut: true, read: events }, 'now', true)
+    expect(plain.result).toBe('12월 2일 소프트웨이브 (https://example.com/a)\n(시간 한도에서 멈춤: 여기까지 찾은 내용)')
+    expect(plain.read).toBeUndefined()
+    // A schedule that already gives as many dated items as were read is whole.
+    const allThree: Parameters<typeof settleMember>[0] = { ...m, brief: '12월 서울 IT 행사 일정 정리' }
+    settleMember(allThree, { answer: '12월 2일 소프트웨이브 https://example.com/a\n12월 5일 개발자 행사 https://example.com/b\n12월 9일 AI 행사 https://example.com/c', timedOut: true, read: events }, 'now', true)
+    expect(allThree.read).toBeUndefined()
     const whole: Parameters<typeof settleMember>[0] = { ...m }
     settleMember(whole, { answer: '12월 2일 소프트웨이브', read: events }, 'now', true)
     expect(whole).toMatchObject({ result: '12월 2일 소프트웨이브' })
@@ -360,6 +370,41 @@ describe('team hire tools', () => {
     const memory = { name: 'search_memory', description: '', argsSchema: {}, run: async () => 'https://not-a-source.example' }
     expect(keepSources(memory, seen)).toBe(memory)
     expect([...seen]).toEqual(['https://search.naver.com/search.naver?query=%EB%B6%80%EC%82%B0+%EB%82%A0%EC%94%A8', 'https://weather.naver.com/today/08', 'https://kma.go.kr/busan'])
+  })
+
+  // c6 C3 (stack5-4e940bf4): 도윤's stored result was its answer, "---", the same answer again under a heading, its replies block, then a
+  // shopping row and a workshop on linear colliders it had only read; "agenda.linearcollider.org" reached the row as a source.
+  it('c6: a teammate\'s stored result is its answer, once: no replies block, no repeated half, no rows that were only read', () => {
+    const doyun = (stack5.c3.members as TeamMember[])[2]!, stored = doyun.result!, cut = stored.indexOf('SMTECHNO')
+    const answer = stored.slice(0, cut).trim(), read = stored.slice(cut).trim(), first = answer.split('\n\n---')[0]!
+    expect(answer).toContain('```replies')
+    const m: TeamMember = { id: 'm3', parentId: null, depth: 1, role: '도윤', brief: doyun.brief, lookup: true, state: 'working', sessionKey: 'k', hiredAt: '' }
+    settleMember(m, { answer, timedOut: true, read, sources: doyun.sources! }, 'now', true)
+    expect(m.result).toBe(`${first}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
+    expect(m.result).not.toMatch(/replies|조사 결과|SMTECHNO|linearcollider|shopping/)
+    expect(m.result!.match(/https:\/\/linear\.app\/changelog\/2026-11-12-bring-your-own-key/g)).toHaveLength(1)
+    expect(m.read).toBeUndefined()
+    expect(m.state).toBe('done')
+    // Not cut short: the same answer is kept once too. A second half that brings another page is kept.
+    const whole: TeamMember = { ...m, state: 'working' }
+    delete whole.result
+    settleMember(whole, { answer, sources: doyun.sources! }, 'now', true)
+    expect(whole.result).toBe(first)
+    const other: TeamMember = { ...m, state: 'working' }
+    settleMember(other, { answer: `${first}\n\n---\n\n모바일에서도 변경 내용을 볼 수 있어요.\nhttps://linear.app/changelog/2026-11-04-mobile-diffs` }, 'now', true)
+    expect(other.result).toContain('mobile-diffs')
+    // The paths this does not touch: an answer with no address keeps what it read; a found-nothing answer keeps it and is marked; no answer is what was read.
+    const bare: TeamMember = { ...m, state: 'working' }
+    settleMember(bare, { answer: 'BYOK가 11월 12일에 나왔어요.', timedOut: true, read }, 'now', true)
+    expect(bare).toMatchObject({ read: true })
+    expect(bare.result).toContain('SMTECHNO')
+    const none: TeamMember = { ...m, state: 'working' }
+    delete none.read
+    settleMember(none, { answer: '이번 주 리니어 새 소식은 없어요.', read, sources: doyun.sources! }, 'now', true)
+    expect(none).toMatchObject({ empty: true, read: true })
+    const silent: TeamMember = { ...m, state: 'working' }
+    settleMember(silent, { answer: '', timedOut: true, read }, 'now', true)
+    expect(silent.result!.startsWith('SMTECHNO')).toBe(true)
   })
 
   it('hands every member\'s pages to the lead with its result, a page of its own before the results page, also for a member cut short', async () => {

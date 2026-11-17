@@ -44,7 +44,7 @@ it('every agent stopped at the time limit still gets a link in their row, at the
   for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) {
     const row = rows.find(line => line.startsWith(`| ${topic} (${who}) |`))!
     expect(row).toContain(`${topic}이 AI 요약 기능을 냈다`)
-    expect(row).toContain(`[search.naver.com](${address(`${topic} 신기능`)})`)
+    expect(row).toContain(`[네이버 검색](${address(`${topic} 신기능`)})`)
   }
   // Codex cap (b7 r3): the row of an agent cut at the limit says so the way a colleague would, never with the host's limit note.
   expect(answer).not.toMatch(/한도|멈춤|stopped at/)
@@ -84,6 +84,6 @@ it('c4: agents stopped before they wrote anything still fill their rows from wha
   })
   const answer = await w.assign()
   expect(answer).not.toMatch(/못 찾았어요|한도|멈춤|여기까지|더 있을 수/)
-  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`| ${topic} (${who}) |`))).toBe(`| ${topic} (${who}) | 새 기능 · [search.naver.com](${address(`${topic} 신기능`)}) |`)
+  for (const [who, topic] of [['지민', '노션'], ['서연', '슬랙'], ['도윤', '리니어']]) expect(answer.split('\n').find(line => line.startsWith(`| ${topic} (${who}) |`))).toBe(`| ${topic} (${who}) | 새 기능 · [네이버 검색](${address(`${topic} 신기능`)}) |`)
   expect((await w.task()).team!.members.map(m => [m.state, m.read])).toEqual([['released', true], ['released', true], ['released', true]])
 })
