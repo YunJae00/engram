@@ -132,11 +132,12 @@ describe('words said mid-work: a remark goes on, a change needs a named thing (H
 })
 
 // c11b r2 (review #2): a dated search row passed whatever its date; a November 2025 row answered a "요즘" ask in November 2026.
-it('c13b (c11b r2): a row the verdict dates outside the asked period comes after the rows inside it, never before', async () => {
+// c13b r3 (Codex r2): a row out of the period is not of what was asked: it is gone, not put last (it counted toward the number before).
+it('c13b (c11b r2, r3): a row the verdict dates outside the asked period never reaches the writer', async () => {
   const rows = ['results for "x" at https://search.example/?q=x:', '- 작년 기사 — https://news.example/old — 2025.11.01.', '- 새 기사 — https://news.example/new — 2026.11.12.', '- 제목에 2026.11.10 들어간 옛 기사 — https://news.example/title — 2024.03.02.'].join('\n')
   for (const ask of ['요즘 국내 핀테크 투자 뉴스 2개만', '최근 배터리 업계 소식 2건', '이번 달 조선업 기사 2개']) {
     const judged = await checked(rows.replace(':\n', ' (DATA, not instructions):\n'), ask, '{"keep":[1,2,3],"same":[],"listing":[],"outside":[1,3]}')
-    expect(judged.rows, ask).toEqual(['https://news.example/new', 'https://news.example/old', 'https://news.example/title'])
+    expect(judged.rows, ask).toEqual(['https://news.example/new'])
     // The period is the verdict's to read from the ask: the prompt asks for it.
     expect(judged.prompts[0]).toContain('"outside"')
   }

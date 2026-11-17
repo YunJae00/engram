@@ -51,13 +51,13 @@ const rowsOf = (out: string): Row[] => out.split('\n').flatMap(line => {
   const parts = line.slice(2).split(' — '), url = parts.find(part => /^https?:\/\/\S+$/.test(part))
   return url ? [{ line, url, text: parts.filter(part => part !== url).join(' — ').slice(0, 300) }] : []
 })
-/** The rows that fit, in order: kept, single (no listing, nothing the ask needs missing), the first of a same-event group; those outside the
- * asked period after the rest. */
+/** The rows that fit, in order: kept, single (no listing, nothing the ask needs missing), inside the asked period, the first of a same-event
+ * group. c13b r3: a row the judge dates outside the period is not of what was asked, like any row of another kind: it is gone, so it never
+ * counts toward the asked number and a short list still widens. */
 function fitting(rows: readonly Row[], verdict: ItemJudgment | undefined): Row[] {
   if (!verdict) return [...rows]
-  const out = new Set([...verdict.listing, ...verdict.lists, ...verdict.same.flatMap(group => group.filter(n => n !== (group.find(one => verdict.keep.includes(one)) ?? group[0])))])
-  const kept = rows.filter((_, i) => verdict.keep.includes(i + 1) && !out.has(i + 1))
-  return [...kept.filter(row => !verdict.outside.includes(rows.indexOf(row) + 1)), ...kept.filter(row => verdict.outside.includes(rows.indexOf(row) + 1))]
+  const out = new Set([...verdict.listing, ...verdict.lists, ...verdict.outside, ...verdict.same.flatMap(group => group.filter(n => n !== (group.find(one => verdict.keep.includes(one)) ?? group[0])))])
+  return rows.filter((_, i) => verdict.keep.includes(i + 1) && !out.has(i + 1))
 }
 export interface CheckedSearchOptions {
   /** What is asked now (the ask and any words said mid-work, a line each). */

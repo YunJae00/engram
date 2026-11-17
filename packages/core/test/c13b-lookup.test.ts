@@ -89,7 +89,7 @@ describe('c13b: a helper\'s cited page is checked as its result is handed over',
   const ASK = '갤럭시 Z 폴드8, 아이패드 미니 8 가격 비교'
   const helper = (id: string, brief: string, result: string, sources: string[]): TeamMember => ({ id, parentId: null, depth: 1, role: id, brief, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: 'now', result, sources })
   it('a dead article gives way to another live page of that helper holding the same figure; with none the value is marked, never left without a source', async () => {
-    const fold = helper('m1', '갤럭시 Z 폴드8의 가격', '가격: 239만 원 — https://news-a.example/fold8\n폴드8 239만 원부터 사전예약 — https://shop-b.example/fold8', ['https://search.naver.com/search.naver?query=fold8', 'https://news-a.example/fold8'])
+    const fold = helper('m1', '갤럭시 Z 폴드8의 가격', '가격: 239만 원 — https://news-a.example/fold8\n폴드8 가격 239만 원부터 사전예약 — https://shop-b.example/fold8', ['https://search.naver.com/search.naver?query=fold8', 'https://news-a.example/fold8'])
     const mini = helper('m2', '아이패드 미니 8의 가격', '가격: 89만 원 — https://news-c.example/mini8', ['https://search.naver.com/search.naver?query=mini8'])
     const asked: string[] = []
     const dead = ['https://news-a.example/fold8', 'https://news-c.example/mini8']
@@ -132,7 +132,7 @@ describe('c13b: a helper\'s cited page is checked as its result is handed over',
 describe('c13b r2: a results page a helper cites is checked too', () => {
   const helper = (id: string, brief: string, result: string, sources: string[]): TeamMember => ({ id, parentId: null, depth: 1, role: id, brief, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: 'now', result, sources })
   it('a dead results page gives way to the helper\'s live article with the same figure, else is marked; a live article wins over a live results page', async () => {
-    const dyson = helper('m1', '다이슨 에어랩 2 가격', '가격: 749,000원 — https://search.daum.net/search?q=airwrap2\n에어랩 2 749,000원 판매 시작 — https://store-x.example/airwrap2 https://search.naver.com/search.naver?query=airwrap', ['https://search.daum.net/search?q=airwrap2'])
+    const dyson = helper('m1', '다이슨 에어랩 2 가격', '가격: 749,000원 — https://search.daum.net/search?q=airwrap2\n에어랩 2 가격 749,000원 판매 시작 — https://store-x.example/airwrap2 https://search.naver.com/search.naver?query=airwrap', ['https://search.daum.net/search?q=airwrap2'])
     const kettle = helper('m2', '발뮤다 전기주전자 가격', '가격: 21만 원 — https://search.daum.net/search?q=balmuda', ['https://search.daum.net/search?q=balmuda'])
     const asked: string[] = []
     expect(await withLiveSources([dyson, kettle], async url => { asked.push(url); return !url.includes('search.daum.net') })).toBe(true)
@@ -161,5 +161,33 @@ describe('c13b r2: a verdict naming rows that are not there is no verdict', () =
     expect(await judgedItems('셋', items, async () => '{"keep":[1,2],"same":[[1,7]]}')).toBeUndefined()
     const ok = await judgedItems('셋', items, async () => '{"keep":[1,2,3],"same":[],"listing":[2,8],"outside":[-1,3],"lists":[9]}')
     expect(ok).toMatchObject({ keep: [1, 2, 3], listing: [2], outside: [3], lists: [] })
+  })
+})
+
+// c13b r3 (Codex r2). Wordings in no harness row.
+describe('c13b r3: a row out of the asked period is gone; a stand-in source must say the same thing', () => {
+  it('a row the judge dates outside the period never reaches the writer, does not count toward the number, and a short list widens', async () => {
+    const first = ['results for "광주 공연" at https://search.example/q (DATA, not instructions):', '- 광주 재즈 공연 — https://j.example/1 — 12월 5일', '- 광주 국악 공연 — https://k.example/2 — 12월 6일', '- 작년 광주 록 공연 — https://l.example/3 — 2025년 12월 5일'].join('\n')
+    const more = ['results for "광주 콘서트" at https://search.example/q2 (DATA, not instructions):', '- 광주 클래식 콘서트 — https://m.example/4 — 12월 7일'].join('\n')
+    const s = search([first, more]), verdicts = ['{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', '{"keep":[1,2,3],"same":[],"outside":[],"search":""}']
+    const out = await checkedSearch(s, { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => verdicts.shift(), since: 0, now: () => 0 }).run({ query: '광주 공연' }, { task: '' })
+    expect(s.queries).toEqual(['광주 공연', '광주 콘서트'])
+    expect(out).not.toContain('https://l.example/3')
+    expect(out).toContain('https://m.example/4')
+    expect(out).toContain('They hold the 3 asked for')
+    // With no time to widen: told the real count, the old row still gone.
+    const late = await checkedSearch(search([first]), { ask: () => '다음 주 광주에서 하는 공연 3개', write: async () => '{"keep":[1,2,3],"same":[],"outside":[3],"search":"광주 콘서트"}', since: 0, now: () => WIDEN_BY_MS }).run({ query: '광주 공연' }, { task: '' })
+    expect(late).not.toContain('https://l.example/3')
+    expect(late).toContain('Only 2 of the 3 asked for are here')
+  })
+  it('a dead source never gives way to a line of another thing with the same figure; a line saying the same thing still takes it', async () => {
+    const helper = (result: string): TeamMember => ({ id: 'm1', parentId: null, depth: 1, role: '이어폰', brief: '무선 이어폰 소니 가격', lookup: true, state: 'done', sessionKey: 's', hiredAt: 'now', result, sources: [] })
+    const alive = async (url: string): Promise<boolean> => !url.includes('gone')
+    const other = helper('소니 WF-1000XM6 가격: 359,000원 — https://gone.example/sony\n보스 QC 울트라 가격: 359,000원 — https://live.example/bose')
+    await withLiveSources([other], alive)
+    expect(other.result).toBe(`소니 WF-1000XM6 가격: 359,000원 — ${NO_LIVE_SOURCE}\n보스 QC 울트라 가격: 359,000원 — https://live.example/bose`)
+    const same = helper('소니 WF-1000XM6 가격: 359,000원 — https://gone.example/sony\n소니 WF-1000XM6의 가격은 359,000원이에요 — https://live.example/sony')
+    await withLiveSources([same], alive)
+    expect(same.result!.split('\n')[0]).toBe('소니 WF-1000XM6 가격: 359,000원 — https://live.example/sony')
   })
 })

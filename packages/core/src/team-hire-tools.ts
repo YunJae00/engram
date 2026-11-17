@@ -489,7 +489,11 @@ export async function withLiveSources(members: TeamMember[], alive: (url: string
       const figures = (words(line).match(/\d[\d,.]{2,}/g) ?? []).filter(figure => !m.brief.includes(figure))
       // A live article is taken before a live results page.
       const live = (other: string): string | undefined => addressesIn(other).filter(url => !dead.has(url)).sort((a, b) => Number(isSearchPage(a)) - Number(isSearchPage(b)))[0]
-      const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) ? live(other) : undefined).find(Boolean) : undefined
+      // c13b r3: a figure alone is no fact ("태블릿 B 가격: 749,000원" is not "태블릿 A"'s price): the stand-in line holds the figure and
+      // every word the dead line states (a Korean ending may follow: "XM6의", "가격은"), so it says the same thing of the same thing.
+      const said = (text: string): string[] => figures.reduce((rest, figure) => rest.split(figure).join(' '), words(text)).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+      const claim = said(line), same = (other: string): boolean => { const has = said(other); return claim.every(w => has.some(t => t.startsWith(w) && /^[가-힣]*$/.test(t.slice(w.length)))) }
+      const to = figures.length ? lines.map(other => other !== line && figures.some(figure => words(other).includes(figure)) && same(other) ? live(other) : undefined).find(Boolean) : undefined
       return gone.reduce((text, url) => text.replace(new RegExp(`\\[([^\\]\\n]*)\\]\\(${literal(url)}\\)`, 'g'), to ? `[${sourceName(to, /[가-힣]/.test(m.brief))}](${to})` : NO_LIVE_SOURCE).split(url).join(to ?? NO_LIVE_SOURCE), line)
     }).join('\n')
     const sources = m.sources?.filter(url => !dead.has(url))
