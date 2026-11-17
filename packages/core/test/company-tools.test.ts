@@ -1232,7 +1232,7 @@ test('c4b r3: with no written answer, a part that read only English pages is sai
 })
 
 // --- grokbar cycle 5 (c5b) ---
-import { lateParts, lateShown, markLate, teamAnswer, teamSummary } from '../src/company-tools.js'
+import { followsLate, lateParts, lateShown, markLate, teamAnswer, teamSummary } from '../src/company-tools.js'
 const SEARCHED = 'https://search.naver.com/search.naver?query=%EB%A6%AC%EB%8B%88%EC%96%B4%20%EC%8B%A0%EA%B8%B0%EB%8A%A5'
 const teamTask = (members: TeamMember[], over: Partial<DelegatedTask> = {}): DelegatedTask => ({ ...task({ id: 'job', botId: 'lead', state: 'running', goal: '맡긴 일', ...over }), team: { members, hires: members.length, maxHires: 8, maxDepth: 3, big: false } })
 const unlinked = (text: string): string => text.replace(/\]\(https?:\/\/[^)\s]*\)/g, ')')
@@ -1457,6 +1457,10 @@ test('c5 rule 7: a part still at work when the others are reported is labeled th
   // c13a r2: nothing back yet: every part at work follows (none is cut for want of another's result). A hand-off under way: none.
   expect(lateParts(teamTask([{ ...kim, state: 'working', result: undefined }, { ...doyun, state: 'working', late: undefined }]))).toEqual(['m1', 'm3'])
   expect(lateParts(teamTask([{ ...kim, then: { botId: 'b', who: '서연', brief: '문구' } }, part('m2', '서연', handoffBrief('문구 쓰기', '지민', 'x'), { background: true, state: 'working' })]))).toEqual([])
+  // c13a r3: a plain part at work beside a hand-off at work follows; the hand-off's part is labeled too (its result comes after), never cut from the report.
+  const mixed = teamTask([{ ...kim, then: { botId: 'b', who: '서연', brief: '문구' } }, part('m2', '서연', handoffBrief('문구 쓰기', '지민', 'x'), { background: true, state: 'working' }), { ...doyun, state: 'working', late: undefined, result: undefined }])
+  expect(lateParts(mixed)).toEqual(['m2', 'm3'])
+  expect(mixed.team!.members.filter(followsLate).map(m => m.id)).toEqual(['m3'])
 })
 
 // c5b review r1: the C3 record kept no read text, only the page searched on, and the row still read "이번엔 못 찾았어요." with no link.

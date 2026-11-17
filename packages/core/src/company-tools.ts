@@ -1017,12 +1017,16 @@ export function inAskedPeriod(data: MemberData | undefined, brief: string, now =
   // c13a r2: a fact's date is its own day (REPORT_RULE: "the day or period it has"), never when it was written: a forecast for the weekend
   // carries the weekend's day. So no lead: a day before the period is outside it. A day not written with its year is read against the
   // period's end, so a coming day inside a begun period ("이번 주" on a Wednesday, an event that Friday) is not taken for last year's.
-  const dayOf = (f: MemberFact): number => (f.date ? resultDay(f.date, asked.to)?.getTime() : undefined) ?? Infinity
-  const inside = data.facts.filter(f => dayOf(f) >= asked.from.getTime())
+  // c13a r3: the period has an end as well as a start (asked.to is its last day): a day after it (next Monday on a "이번 주" ask) is
+  // outside it too. A fact with no readable day stays.
+  const dayOf = (f: MemberFact): number | undefined => f.date ? resultDay(f.date, asked.to)?.getTime() : undefined
+  const end = asked.to.getTime() + 86_400_000, before = (f: MemberFact): boolean => (dayOf(f) ?? Infinity) < asked.from.getTime()
+  const inside = data.facts.filter(f => { const at = dayOf(f); return at === undefined || (at >= asked.from.getTime() && at < end) })
   if (inside.length === data.facts.length) return data
   if (inside.length) return { ...data, facts: inside }
-  const { facts, ...rest } = data
-  return { ...rest, facts: [], nothing: { latest: facts.reduce((a, b) => dayOf(b) > dayOf(a) ? b : a) } }
+  // The latest it saw is the newest fact from before the period; a fact from after it is no "latest" for it.
+  const { facts, ...rest } = data, earlier = facts.filter(before)
+  return { ...rest, facts: [], nothing: earlier.length ? { latest: earlier.reduce((a, b) => dayOf(b)! > dayOf(a)! ? b : a) } : {} }
 }
 /** c11a r2: which items of a teammate's list are the kind of thing their job asks for is judged once, by meaning, where the data comes
  * in (team-runner, before settle), so the writer, the host's own rendering and a hand-off all show the same items. One quick-model call
@@ -1134,13 +1138,19 @@ const reportable = (task: DelegatedTask | undefined): TeamMember[] | undefined =
   const members = partsOf(task, true)
   return !members.length || handsIn(members) ? undefined : members
 }
-/** GROKBOT rule 7: the parts of a background job still at work at the deadline, by id; none when a hand-off is under way (its first half alone is not what was asked), or when this was already done once. */
+/** A part that keeps working past the deadline when it is still at work there: one whose own result is the answer, not a hand-off's half
+ * (a hand-off's teammate is stopped at the deadline with what it has, so the one after still gets its time). team-runner atDue. */
+export const followsLate = (m: TeamMember): boolean => !m.then && !handedFrom(m.brief)
+/** GROKBOT rule 7: the parts of a background job still at work at the deadline, by id: each is labeled in the answer made then and comes
+ * in the report after it. None when no part there follows (followsLate: a hand-off alone ends in moments and is reported whole), or when
+ * this was already done once. */
 export function lateParts(task: DelegatedTask): string[] {
-  const parts = (task.team?.members ?? []).filter(m => m.background && !!m.botId && m.parentId === null), plain = (m: TeamMember): boolean => !m.then && !handedFrom(m.brief)
+  const parts = (task.team?.members ?? []).filter(m => m.background && !!m.botId && m.parentId === null)
   const open = parts.filter(atWork)
-  // c13a r2: whether a part follows is its own state, never whether another part came in first: with every part still at work at the
-  // deadline, all are labeled in the answer and follow (before, none was late and all were cut, rule 7's promise broken).
-  return task.team?.lateTold || parts.some(m => m.late) || !open.length || !open.every(plain) ? [] : open.map(m => m.id)
+  // c13a r2: whether a part follows is its own state, never whether another part came in first.
+  // c13a r3: nor whether another part is a hand-off's: a hand-off at work beside a plain part no longer kept the plain part from following
+  // (before, it was cut with the rest). The hand-off's part is labeled too, so its result lands in the report after (partsOf), not lost.
+  return task.team?.lateTold || parts.some(m => m.late) || !open.some(followsLate) ? [] : open.map(m => m.id)
 }
 /** Marks them (team-runner, at the cap). */
 export function markLate(task: DelegatedTask): string[] { const ids = lateParts(task); for (const m of task.team?.members ?? []) if (ids.includes(m.id)) m.late = true; return ids }

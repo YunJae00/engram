@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { companyStatus, createBot, createTask, employeesReport, lateShown, listTasks, loadBots, updateTask, type AgentTool, type VaultPaths } from 'core'
+import { companyStatus, createBot, createTask, employeesReport, handoffShown, lateShown, listTasks, loadBots, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
 // c13a (cause T): one deadline per task, from the person's message. The seam answerMs = 280 ms stands for the real 28 s, so 10 ms is 1 s.
@@ -25,7 +25,7 @@ const teammate = (plan: Record<string, number | 'stall'>, calls: string[]): Run 
 }
 let started = 0
 
-async function world(plan: Record<string, number | 'stall'>, parts: [string, string][]) {
+async function world(plan: Record<string, number | 'stall'>, parts: [string, string, string?][]) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-c13a-')), '.engram') } as unknown as VaultPaths
@@ -39,7 +39,7 @@ async function world(plan: Record<string, number | 'stall'>, parts: [string, str
   const reported: number[] = []
   team.reportTo(() => { reported.push(Date.now()) })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: false, to: parts.map(([who, topic]) => ({ who, topic, brief: `이번 주 ${topic} 업데이트 조사` })) }, { task: '' })
+  await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: false, to: parts.map(([who, topic, next]) => ({ who, topic, brief: `이번 주 ${topic} 업데이트 조사`, ...(next ? { then: { who: next, brief: `이번 주 ${topic} 사용자 후기 조사` } } : {}) })) }, { task: '' })
   await updateTask(paths, created.id, t => { t.state = 'waiting' })
   const task = async () => (await listTasks(paths)).find(t => t.id === created.id)!
   return { paths, team, task, reported, calls, ended, id: created.id }
@@ -96,6 +96,34 @@ it('r2: every part still at work at the deadline (34 s and 38 s): none is cut, a
   expect(last).not.toContain('끝까지 못 봤어요')
   await wait(60)
   expect(w.reported).toHaveLength(2)
+})
+
+it('r3: a plain part (40 s) at work beside a hand-off at work at the deadline still follows; the hand-off\'s part is labeled and lands in the report after', async () => {
+  // 이든 finds 캔바 news at 10 s and hands on to 소율, who would need 34 s; 하람's 피그마 part needs 40 s.
+  const w = await world({ 하람: 40, 이든: 10, 소율: 34 }, [['하람', '피그마'], ['이든', '캔바', '소율']])
+  // 이든's own bubble when they hand on (c9 H5).
+  await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
+  await updateTask(w.paths, w.id, handoffShown)
+  await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })
+  expect(w.reported[1]! - started).toBeLessThan(33 * S)
+  const at = await w.task()
+  // 하람 keeps working (before, a hand-off at work had 하람 cut with it). 소율 is stopped at the deadline: back before the cap report is
+  // made, it is in it with its result; still at work then, it is labeled and comes in the report after. Either way it is shown once.
+  const [haram, soyul] = ['하람', '소율'].map(who => at.team!.members.find(m => m.role === who)!)
+  expect(haram.late).toBe(true)
+  const first = employeesReport(at)!
+  expect(first).toContain('피그마(하람): 아직 찾는 중이에요. 끝나면 이어서 올릴게요.')
+  if (soyul.late) expect(first).toContain('아직 찾는 중이에요. 끝나면 이어서 올릴게요. (소율')
+  else expect(first.split('\n').find(line => line.includes('소율'))).not.toContain('아직 찾는 중')
+  await updateTask(w.paths, w.id, lateShown)
+  await vi.waitFor(() => expect(w.reported).toHaveLength(3), { timeout: 2_000 })
+  expect(w.reported[2]! - started).toBeGreaterThanOrEqual(39 * S)
+  const last = employeesReport(await w.task())!
+  expect(last).toContain('하람의 업데이트 소식이에요.')
+  expect(last.includes('소율')).toBe(!!soyul.late)
+  expect(last).not.toContain('아직 찾는 중')
+  await wait(60)
+  expect(w.reported).toHaveLength(3)
 })
 
 it('stop during a late part halts it within 3 s and nothing is posted after', async () => {

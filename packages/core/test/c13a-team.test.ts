@@ -130,4 +130,12 @@ test('the period searched matches the period asked, by date arithmetic, and the 
   const sun = fact('캔바가 새 영상 편집기를 냈어요.', 'https://www.canva.com/newsroom/9', '11월 15일'), mon = fact('캔바 표 기능이 나왔어요.', 'https://www.canva.com/newsroom/10', '11월 16일'), coming = fact('캔바 행사가 금요일에 열려요.', 'https://www.canva.com/newsroom/11', '11월 20일')
   expect(inAskedPeriod({ facts: [sun, mon, coming] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [mon, coming] })
   expect(inAskedPeriod({ facts: [sun] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: { latest: sun } })
+  // c13a r3: the period ends too: next Monday's item (no year written, or with one) is not this week's, and alone it is no "latest".
+  const nextMon = fact('캔바 새 요금제가 나와요.', 'https://www.canva.com/newsroom/12', '11월 23일'), nextYear = fact('캔바 연례 행사 일정이 나왔어요.', 'https://www.canva.com/newsroom/13', '2026년 11월 23일')
+  expect(inAskedPeriod({ facts: [mon, nextMon, nextYear] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [mon] })
+  expect(inAskedPeriod({ facts: [nextMon] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: {} })
+  expect(inAskedPeriod({ facts: [sun, nextMon] }, '이번 주 캔바 소식', WED)).toEqual({ facts: [], nothing: { latest: sun } })
+  // The weekend's Sunday is its last day and inside it; the Monday after is not.
+  const sunShow = fact('대전 공연 마지막 회차예요.', 'https://news.example/3', '11월 22일'), monShow = fact('대전 공연 추가 회차가 열려요.', 'https://news.example/4', '11월 23일')
+  expect(inAskedPeriod({ facts: [sat, sunShow, monShow] }, '이번 주말 대전 공연 일정', SAT)).toEqual({ facts: [sat, sunShow] })
 })

@@ -6,7 +6,7 @@ import type { Ask } from './page-actions.js'
 import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool.js'
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
-import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -171,11 +171,11 @@ export function teamRunner(deps: {
         answering = true; toolRound.abort()
       }
       const cut = (): void => { timedOut = true; control.abort() }
-      // At the deadline a background part that can follow on its own (core lateParts: the others are reported without it) keeps working
-      // until the ceiling; any other part stops there with what it has.
+      // At the deadline a background part that can follow on its own (core lateParts / followsLate: the others are reported without it)
+      // keeps working until the ceiling; any other part, a hand-off's too, stops there with what it has.
       const atDue = async (): Promise<void> => {
         const task = await find(taskId).catch(() => undefined), m = task?.team?.members.find(one => one.id === id)
-        if (!task || !m?.background || !me.botId || control.signal.aborted || !(m.late || lateParts(task).includes(id))) return cut()
+        if (!task || !m?.background || !me.botId || control.signal.aborted || !followsLate(m) || !(m.late || lateParts(task).includes(id))) return cut()
         stopAt = due + LATE_CEILING_MS * scale
         hardStop = setTimeout(cut, Math.max(0, stopAt - Date.now()))
       }
@@ -335,7 +335,7 @@ export function teamRunner(deps: {
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
       // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
-      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
+      team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), ...(m.late ? { late: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return { to, background: !!m.background }
