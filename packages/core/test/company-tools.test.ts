@@ -1587,12 +1587,13 @@ const linksIn = (text: string): string[] => [...text.matchAll(/\]\((https?:\/\/[
 
 test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s, and before the cap never more than is left', async () => {
   const at = Date.parse('2026-11-17T00:00:00Z'), hired = (agoMs: number): TeamMember[] => [reported(part('m1', '지민', '노션 신기능 조사', { hiredAt: new Date(at - agoMs).toISOString() }), { facts: [{ text: '노션이 AI 회의록을 냈어요.', url: 'https://notion.so/releases' }, { text: '노션 메일도 나왔어요.', url: 'https://notion.so/mail' }] })]
-  // 20 s of the cap left: 8 s. 6 s left: those 6 s. 3 s left: those 3 s (c6b r3: it was given 4). At the cap or long past it (a late part's own report): the 4 s it always had.
+  // 20 s of the cap left: 8 s. 6 s left: those 6 s. c13a: less than 4 s left, at the cap or long past it: the 4 s it always had (the cap
+  // is now the deadline, which leaves the merge its margin inside the bar, and the writer's time never shrinks as the report nears it).
   expect(writerMs(hired(REPORT_CAP_MS - 20_000), at)).toBe(REPORT_WRITER_MAX_MS)
   expect(REPORT_WRITER_MAX_MS).toBe(8000)
   expect(writerMs(hired(REPORT_CAP_MS - 6000), at)).toBe(6000)
-  expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(3000)
-  expect(writerMs(hired(REPORT_CAP_MS - 500), at)).toBe(500)
+  expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(REPORT_WRITER_MS)
+  expect(writerMs(hired(REPORT_CAP_MS - 500), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs(hired(REPORT_CAP_MS), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs(hired(90_000), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs([part('m1', '지민', '조사')], at)).toBe(REPORT_WRITER_MS)

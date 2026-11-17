@@ -782,6 +782,7 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
   const words = (day: string): string => day === back(0) ? '오늘' : day === back(1) ? '어제' : day >= back(monday) ? WEEKDAYS[new Date(`${day}T12:00:00`).getDay()]! : `${Number(day.slice(5, 7))}월 ${Number(day.slice(8))}일`
   // A part that looked and found nothing new (TeamMember.empty), by the name and the job its record line was written under.
   const emptied = new Set((input.tasks ?? []).flatMap(task => task.team?.members ?? []).filter(m => m.empty).map(m => `${m.role}|${m.title?.trim() || jobTitle(m.brief)}`))
+  const spanned = (job: string): string => spanWords ? job.replace(spanWords, '').trim() || job : job
   const jobs: DoneJob[] = (await teamRecord(paths)).facts.flatMap(fact => {
     const line = RECORD_LINE.exec(fact.text.replace(/\s+/g, ' ').trim())
     if (!line || line[5]! < from || line[5]! > to) return []
@@ -789,10 +790,10 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
     const got = line[3]!.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(ADDRESS, '').replace(/\s+/g, ' ').trim()
     // c9 C10: a summary that names the span does not say it again inside each job ("이번 주 노션 신기능 조사" → "노션 신기능 조사").
     const unfinished = got === UNFINISHED
-    return [{ who: name(line[4]!), did: spanWords ? line[1]!.replace(spanWords, '').trim() || line[1]! : line[1]!, got, day: words(line[5]!), ...(line[2] ? { from: name(line[2]) } : {}), nothing: !unfinished && (got === '못 찾았어요' || emptied.has(`${line[4]!}|${line[1]!}`) || /아직 안 보여요/u.test(got) || foundNothing(got)), ...(unfinished ? { unfinished: true as const } : {}) }]
+    return [{ who: name(line[4]!), did: spanned(line[1]!), got, day: words(line[5]!), ...(line[2] ? { from: name(line[2]) } : {}), nothing: !unfinished && (got === '못 찾았어요' || got === NOTHING_NEW || emptied.has(`${line[4]!}|${line[1]!}`) || /아직 안 보여요/u.test(got) || foundNothing(got)), ...(unfinished ? { unfinished: true as const } : {}) }]
   }).slice(-20)
   // c13a: a part still at work has no record line yet; it is said as under way, from live state, when the span asked holds today.
-  if (to === back(0)) for (const task of input.tasks ?? []) for (const m of task.team?.members ?? []) if (m.botId && atWork(m) && ['running', 'waiting'].includes(task.state)) jobs.push({ who: name(m.role), did: m.title?.trim() || jobTitle(m.brief), got: '', day: words(back(0)), nothing: false, working: true })
+  if (to === back(0)) for (const task of input.tasks ?? []) for (const m of task.team?.members ?? []) if (m.botId && atWork(m) && ['running', 'waiting'].includes(task.state)) jobs.push({ who: name(m.role), did: spanned(m.title?.trim() || jobTitle(m.brief)), got: '', day: words(back(0)), nothing: false, working: true })
   // c13a (C10: 서연 had been taken off the team and the summary did not say so): who is no longer on the team is data for the writer.
   for (const job of jobs) if (!staff.some(bot => bot.name.trim() === job.who)) job.left = true
   if (!jobs.length) return `${span ? `${span} ` : ''}아직 팀이 끝낸 일이 없어요.`
@@ -905,12 +906,13 @@ export async function employeeWriteBack(paths: VaultPaths, job: { botId: string;
 }
 const WRITE_BACK_POLL_MS = 500
 const UNFINISHED = '다 못 끝냈어요'
+const NOTHING_NEW = '새로 나온 게 없었어요'
 // What came of a job in one clause: the deliverable's count, nothing new, or the count with the first item's short name (kindChecked).
 // stack-12: a listing page or the full-list line is not an item, so it is not counted (the same rule as partLines).
 const brought = (d: MemberData): string => {
   const items = d.facts.filter(f => !f.listing && !f.rest), first = items[0]?.name?.trim()
   if (d.items?.length) return `${d.items.length}개 써 왔어요`
-  if (d.nothing || !d.facts.length) return d.nothing ? '새로 나온 게 없었어요' : '못 찾았어요'
+  if (d.nothing || !d.facts.length) return d.nothing ? NOTHING_NEW : '못 찾았어요'
   return items.length > 1 ? `${first ? `${first} 등 ` : ''}${items.length}개 찾았어요` : first ? `${josa(first, '을', '를')} 찾았어요` : '찾았어요'
 }
 
@@ -1213,12 +1215,13 @@ export const REPORT_WRITER_MAX_MS = 8000
 // GROKBOT rule 7: nobody holds the answer past this. Parts still at work then are labeled in the report and follow by themselves
 // (team-runner later, lateParts). c13a: the one deadline every teammate works to (team-runner taskDue), not a clock of its own.
 export const REPORT_CAP_MS = TEAM_ANSWER_MS
-// c6 C3: the writer gets what is left of the report's cap, counted from when the work was handed out, at most 8 s. A report made at
-// the cap or after it (a late part's own) has the 4 s it always had.
+// c6 C3: the writer gets what is left of the report's cap, counted from when the work was handed out, at most 8 s. c13a: never less than
+// the 4 s it always had: the deadline (TEAM_ANSWER_MS) already leaves the merge its margin inside the bar, and a report made a second
+// before the cap was given less time than one made after it (more answers fell to the host's rendering as reports came nearer the cap).
 export function writerMs(members: readonly TeamMember[], now = Date.now()): number {
   const since = Math.min(...members.map(m => Date.parse(m.hiredAt)).filter(at => !Number.isNaN(at)))
   const left = Number.isFinite(since) ? REPORT_CAP_MS - (now - since) : 0
-  return left > 0 ? Math.min(REPORT_WRITER_MAX_MS, left) : REPORT_WRITER_MS
+  return Math.max(REPORT_WRITER_MS, Math.min(REPORT_WRITER_MAX_MS, left))
 }
 // Each fact the writer may use, with an id it reports back in "kept".
 const factIds = (parts: readonly TeamMember[]): { id: string; m: TeamMember; fact: MemberFact }[] => {
