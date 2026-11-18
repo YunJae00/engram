@@ -3,7 +3,7 @@ import { recordFacts } from '../src/bot-memory.js'
 import { createBot, loadBots } from '../src/bots.js'
 import { mergedReport, reportData, setReportLog, staffTool, teamSummary, TEAM_MEMORY, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
-import { checkedLead, turnHelpers } from '../src/lead-check.js'
+import { checkedLead, keepsForm, turnHelpers } from '../src/lead-check.js'
 import { settleMember } from '../src/team-hire-tools.js'
 import { initVault } from '../src/vault.js'
 import { checkedWrite } from '../src/written-check.js'
@@ -185,13 +185,51 @@ test('turnHelpers takes the helpers the lead hired on this turn only, never a te
   expect(turnHelpers([old, named, hotels()[2]!], since).map(m => m.role)).toEqual(['후쿠오카호텔'])
 })
 
-test('checkedWrite with shape problems: no time → host fallback; a repair with no meaning verdict in time is shown', async () => {
+test('checkedWrite with shape problems: no time → host fallback; a repair with no meaning verdict is not shown (round 2)', async () => {
   const shape = [{ kind: 'shape' as const, quote: '', why: '하은 is missing' }]
   let now = 0
   expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => 'r', due: 1500, now: () => now })).toBeUndefined()
-  // The repair took the time: no check after it, the repair stands like any draft nobody found wrong.
-  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => { now = 4500; return 'r' }, due: 5000, now: () => now })).toBe('r')
+  // The repair took the time: no check after it, so the repair is unverified → the host fallback.
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => { now = 4500; return 'r' }, due: 5000, now: () => now })).toBeUndefined()
   now = 0
   // A repair the host refuses again: the fallback.
   expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => undefined, due: 5000, now: () => now })).toBeUndefined()
+  // No meaning checker at all: nothing can verify the repair, so it is not even asked for.
+  let redos = 0
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: undefined, redo: async () => { redos++; return 'r' }, due: 5000, now: () => now })).toBeUndefined()
+  expect(redos).toBe(0)
+  // With a clean verdict the repair is shown.
+  expect(await checkedWrite({ data: {}, ask: 'a', draft: 'd', shape, check: async () => none, redo: async () => 'r', due: 5000, now: () => now })).toBe('r')
+})
+
+test('round 2 (finding 1): a structural repair whose meaning check gives no verdict, or an unreadable one, is never shown', async () => {
+  const shape = [{ kind: 'shape' as const, quote: '', why: '광주 지점 is missing' }]
+  const data = { branch: '광주 지점', sales: '1,240만 원' }
+  for (const verdict of ['', 'not json', '{"verdict":"ok"}']) {
+    let checks = 0
+    const out = await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: async () => { checks++; return verdict }, redo: async () => '대구 지점 매출은 900만 원이에요.', due: Date.now() + 6000 })
+    expect(out).toBeUndefined()
+    expect(checks).toBe(1)
+  }
+  // A repair found wrong on its check is not shown either.
+  expect(await checkedWrite({ data, ask: '지점별 매출 정리해줘', draft: '대전 지점만 있어요.', shape, check: async () => JSON.stringify({ problems: [{ kind: 'contradicts', quote: '900만 원', why: '1,240만 원' }] }), redo: async () => '광주 지점 매출은 900만 원이에요.', due: Date.now() + 6000 })).toBeUndefined()
+})
+
+test('round 2 (finding 2): a rewrite of the lead\'s answer that drops the comparison table or a link is refused, the draft stands; one that keeps them is shown', async () => {
+  const S = 'https://sq.example/racket', W = 'https://wl.example/racket'
+  const helper = (id: string, role: string, result: string, url: string): TeamMember => ({ id, parentId: null, depth: 1, role, brief: `${role} 라켓 가격`, lookup: true, state: 'released', result: `${result} ${url}`, sources: [url], sessionKey: id, hiredAt: new Date().toISOString() })
+  const helpers = [helper('h1', '요넥스', '요넥스 아스트록스 21만 원', S), helper('h2', '윌슨', '윌슨 블레이드 25만 원', W)]
+  const draft = `| 브랜드 | 가격 | 출처 |\n|---|---|---|\n| 요넥스 | 23만 원 | [링크](${S}) |\n| 윌슨 | 25만 원 | [링크](${W}) |`
+  const wrong = JSON.stringify({ problems: [{ kind: 'contradicts', quote: '23만 원', why: '21만 원' }] })
+  const run = async (rewrite: string): Promise<string> => {
+    let n = 0
+    return checkedLead({ ask: '배드민턴 라켓 두 브랜드 가격 비교표로, 출처 달아서', helpers, draft, quick: async () => ++n === 1 ? wrong : n === 2 ? rewrite : none, due: Date.now() + 8000 })
+  }
+  // Prose without the table and links.
+  expect(await run('요넥스는 21만 원, 윌슨은 25만 원이에요.')).toBe(draft)
+  // The table kept, one row and its link lost.
+  expect(await run(`| 브랜드 | 가격 | 출처 |\n|---|---|---|\n| 요넥스 | 21만 원 | [링크](${S}) |`)).toBe(draft)
+  const fixed = draft.replace('23만 원', '21만 원')
+  expect(await run(fixed)).toBe(fixed)
+  expect(keepsForm(draft, fixed)).toBe(true)
 })

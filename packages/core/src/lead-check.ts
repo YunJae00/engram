@@ -8,6 +8,10 @@ import { checkedWrite, type QuickText } from './written-check.js'
 const clip = (text: string, n: number): string => text.length > n ? `${text.slice(0, n)}…` : text
 const LINK = /\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s)\]>"'|]+/g
 const links = (text: string): string[] => [...text.matchAll(LINK)].map(m => m[1] ?? m[0])
+const rows = (text: string): number => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line)).length
+/** A rewrite keeps the draft's form: every link it had and, when it had a table, at least as many table lines (round 2: a fix of one
+ * price came back as one sentence without the comparison table and its links). The check reads meaning; this is the form it cannot see. */
+export const keepsForm = (draft: string, again: string): boolean => links(draft).every(url => links(again).includes(url)) && rows(again) >= rows(draft)
 const brought = (m: TeamMember): boolean => !!m.result?.trim() && m.state !== 'failed' && !m.empty
 
 /** The helpers the lead hired itself on this turn (no teammate of the person's team: those answers are writtenReport's). */
@@ -48,10 +52,11 @@ export async function checkedLead(input: {
   const text = await checkedWrite({
     data, ask: input.ask, draft, askConstraints: true, check: quick, due: input.due, ...(input.now ? { now: input.now } : {}), ...(input.signal ? { signal: input.signal } : {}),
     log: (done, problems) => { outcome = done; kinds = [...new Set(problems.map(p => p.kind))].join('+') },
-    // The rewrite is shown only when it is a message of the same kind: not empty, Korean when the draft was, no address nobody read.
+    // The rewrite is shown only when it is a message of the same kind: not empty, Korean when the draft was, no address nobody read, the
+    // draft's links and table kept.
     redo: async (note, ms) => {
       const again = (await quick(leadRewritePrompt(input.ask, data) + note, ms))?.replace(/^```\w*\n?|\n?```\s*$/g, '').trim()
-      return again && (!korean || /[가-힣]/.test(again)) && again.length <= 2 * draft.length + 400 && links(again).every(url => known.has(url)) ? again : undefined
+      return again && (!korean || /[가-힣]/.test(again)) && again.length <= 2 * draft.length + 400 && links(again).every(url => known.has(url)) && keepsForm(draft, again) ? again : undefined
     },
   })
   input.log?.(`lead=${text === undefined ? 'kept' : outcome}${kinds ? `:${kinds}` : ''} ms=${(input.now ?? Date.now)() - began} parts=${helpers.length} missing=${helpers.filter(m => !brought(m)).length}`)

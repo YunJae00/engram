@@ -81,8 +81,8 @@ export type CheckOutcome = 'unchecked' | 'clean' | 'rewritten' | 'refused'
  * own structurally accepted text or undefined), checked again; a rewrite that is late, refused, unchecked or still wrong → undefined, and
  * the caller shows its host fallback. Never more than one rewrite, never past `due`.
  * c15b (cause F): a draft the host's structural check refused is not thrown away: its `shape` problems go straight into that one rewrite
- * (no meaning check of a draft that cannot be shown). Its rewrite is checked for meaning; with no verdict in time it is shown, like any
- * draft nobody found wrong.
+ * (no meaning check of a draft that cannot be shown). Its rewrite passed the structural check again (`redo`) and must also get a clean
+ * meaning verdict, like every rewrite: no check, no time or no verdict → undefined (round 2: an unverified rewrite was shown).
  */
 export async function checkedWrite(input: CheckInput & {
   draft: string
@@ -98,7 +98,7 @@ export async function checkedWrite(input: CheckInput & {
 }): Promise<string | undefined> {
   const now = input.now ?? Date.now, signal = input.signal, left = (): number => signal?.aborted ? 0 : input.due - now(), log = input.log ?? (() => undefined)
   const shape = input.shape ?? []
-  if (shape.length && left() < 2 * CHECK_MIN_MS) { log('refused', []); return undefined }
+  if (shape.length && (!input.check || left() < 2 * CHECK_MIN_MS)) { log('refused', []); return undefined }
   if (!shape.length && (!input.check || left() < CHECK_MIN_MS)) { log('unchecked', []); return input.draft }
   const problems = shape.length ? [] : await writtenProblems(input.check!, input, input.draft, left(), signal)
   if (!problems) { log('unchecked', []); return input.draft }
@@ -107,11 +107,8 @@ export async function checkedWrite(input: CheckInput & {
   if (left() < 2 * CHECK_MIN_MS) { log('refused', problems); return undefined }
   const again = await within(input.redo(problemsNote(input.draft, [...shape, ...problems]), left() - CHECK_MIN_MS), left() - CHECK_MIN_MS, signal)
   if (!again || signal?.aborted) { log('refused', problems); return undefined }
-  // A repaired shape with no meaning verdict in time is shown like any draft nobody found wrong.
-  if (shape.length && !problems.length && (!input.check || left() < CHECK_MIN_MS)) { log('rewritten', []); return again }
   if (left() < CHECK_MIN_MS) { log('refused', problems); return undefined }
   const still = await writtenProblems(input.check!, input, again, left(), signal)
-  if (shape.length && !problems.length && !still) { log('rewritten', []); return again }
   if (!still || still.length) { log('refused', still ?? problems); return undefined }
   log('rewritten', problems)
   return again
