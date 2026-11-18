@@ -7,7 +7,7 @@ import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, checkedSearch, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, checkedSearch, ITEM_CHECK_MS, type Proof, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 // Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
 // grokbar C6 has 45 s for a lookup (15 s at most) and then this.
@@ -16,7 +16,10 @@ const OPENING_LINE_CHARS = 60
 // c13a (cause T; C3: three teammates on a fixed 15 s clock from their own start were cut at 12-15 s with 14.5 s of the 35 s bar unused,
 // and two parts were abandoned while the thread said they would follow). One clock per task, from the person's message: the answer is
 // due TEAM_ANSWER_MS after it (taskDue). Every lookup reads the time left to that point; nothing counts a fixed time from its own start.
-// - A helper whose lead writes the answer after it is due LEAD_ANSWER_MS earlier: the lead's merge round fits before the answer is due.
+// - A helper is due earlier by ONE reserve, for what really follows it on its path (c17a, cause B: two stacked constants stood for one step).
+//   With a quick writer its answer is the team's one writer's (lead-check helperAnswer → writtenReport), due REPORT_WRITER_MS after the
+//   parts (the house report due, as reportDue and checkedLead): the helper is due that writer's draft and one check before it, i.e.
+//   ITEM_CHECK_MS before the task's answer due. Only with no writer does the lead model write after it: then LEAD_ANSWER_MS.
 // - Every part has at least MIN_PART_MS from its own start (one queued, or added by a steer, is not cut before it worked); the task's
 //   answer then waits for that part too (taskDue).
 // - The soft point (no new tool call) and the answer reserve are shares of the part's own window. The reserve is never less than one
@@ -160,8 +163,6 @@ export function teamRunner(deps: {
       const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; due = taskDue(task); if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
       if (!member) return false
       const { me, helpers } = member
-      // A helper's lead writes the answer after it: it is due that much earlier.
-      if (!me.botId) due -= LEAD_ANSWER_MS * scale
       role = me.role; roles.set(key, role)
       // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
@@ -181,6 +182,9 @@ export function teamRunner(deps: {
       const toolRound = new AbortController()
       control.signal.addEventListener('abort', () => toolRound.abort(), { once: true })
       const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
+      // c17a (cause B): decided where the due is set: a writer follows (its draft + one check, inside the report due) or the lead model does.
+      // The writer's due is the task's answer due plus REPORT_WRITER_MS, so its draft and one check end ITEM_CHECK_MS before the task's.
+      if (!me.botId) due -= (quick ? ITEM_CHECK_MS : LEAD_ANSWER_MS) * scale
       let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
       // stack-12 (T3): no wait after a teammate's own work (the stand-in report, the kind check) outlives a stop or a steer. The hard
       // limit aborts the same signal, but it sets timedOut first and its stand-in keeps its grace.
@@ -219,7 +223,16 @@ export function teamRunner(deps: {
       // c15a (cause L, R2: a helper cited a café post and a wiki where news pages said the same): an anonymous helper's searches pass the one
       // item judge (core checkedSearch) on its own deadline less its answer reserve, so first-hand rows lead and a counted part looks further.
       // A named teammate's facts are judged once they come in (kindChecked) instead.
-      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup && !me.botId && quick ? checkedSearch(tool, { ask: () => me.brief, write: quick, due: () => due - reserveMs }) : tool
+      // c17a (cause E): when no row it holds states a point, the judge's page is opened through the helper's own open_page (its sources and
+      // read text kept as for any page it opens), and what the lookup proved, and the points it did not, go on the member (helperParts).
+      const proof = new Map<string, Proof>(), unproven = new Set<string>()
+      let judged = false
+      let opener: AgentTool | undefined
+      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup && !me.botId && quick ? checkedSearch(tool, {
+        ask: () => me.brief, write: quick, due: () => due - reserveMs,
+        ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
+        proved: (found, missing) => { judged = true; for (const one of found) proof.set(`${one.point}\n${one.url}`, one); for (const point of missing) unproven.add(point) },
+      }) : tool
       // The soft point: after this share of its window a lookup starts no new tool call and answers from what it has.
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
@@ -227,7 +240,10 @@ export function teamRunner(deps: {
       try {
         // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
-        tools = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name))).map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left) : tool, taskId, me))
+        const menu = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name)))
+        const open = menu.find(tool => tool.name === 'open_page')
+        if (open) opener = keepRead(keepSources(skipWalls(open), sources), kept)
+        tools = menu.map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         // c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member. The search the lead gave words for is run
         // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
@@ -343,12 +359,17 @@ export function teamRunner(deps: {
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
+          // c17a: the quotes its lookup verified, and the points no page it held stated (a point proven by a later search is not missing).
+          const proven = [...proof.values()], lacking = [...unproven].filter(point => !proven.some(one => one.point === point))
+          // c17a r3: a judged lookup with nothing verified still says so (proof []), so its unverified prose is never shown as evidence.
+          if (judged) m.proof = proven
+          if (lacking.length) m.missing = lacking
           // c13a: a teammate that hands back data and ended with none is not finished (status and record read this, never "found nothing").
           if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
           // c14a (cause E): a lookup part that ended with no data, not stopped, with time left, goes back in line for one more run (chain),
           // from the person's own words. The empty run is not recorded; only where it looked is carried.
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
-            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt'] as const) delete m[field]
+            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'proof', 'missing'] as const) delete m[field]
             m.state = 'hired'; retry = true
             // Where it looked stays with it: a part that again finds nothing still links the pages it searched (c5b).
             looked.set(key, { sources: [...sources], kept: [...kept] })

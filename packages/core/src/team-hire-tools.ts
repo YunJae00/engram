@@ -678,6 +678,8 @@ export function settleMember(member: TeamMember, outcome: MemberOutcome, at: str
 // shortcut: the previous model is the name with its last number less one ("갤럭시 S27" -> "갤럭시 S26"); a line that names its models otherwise gets no second search.
 const MONEY = /\d[\d,.]*\s*(?:만\s?|천\s?|억\s?)?(?:원|달러|엔|유로|위안|파운드)|[$€₩¥£]\s?\d|\b(?:USD|KRW|EUR|JPY)\s?\d|\d\s?(?:USD|KRW|EUR|JPY|dollars?|won)\b/i
 const PRICE_ASK = /가격|출고가|얼마|\bprice\b/i
+// shortcut: c17a's judged `points` with quoted evidence (item-check checkedSearch: a point no row states gets its own search words) supersede
+// this word test for helpers on the judged path; kept because the previous-model step has no equivalent there yet. Drop it once a test proves it.
 export function priorPriceQuery(member: Pick<TeamMember, 'brief' | 'query'>, answer: string): string {
   const part = member.query || member.brief.split('\n')[0]!
   if (!PRICE_ASK.test(`${part} ${member.brief}`)) return ''
@@ -691,6 +693,8 @@ export function priorPriceQuery(member: Pick<TeamMember, 'brief' | 'query'>, ans
 // c9a R2 (c8a 1b): "구글 픽셀 11 가격 출시일" was one search for two points; its rows held launch articles and no price, and the helper
 // wrote "정확한 금액은 결과에 숫자로 안 나와 있어요". Search words that ask for a price and a date are run as one search per point, side by
 // side (two at most), the price one in the words people use for a launch price (출고가). Any other words stay one search.
+// shortcut: c17a's judged `points` (a search for the point still missing) cover this inside the lookup; it stays as the first-search split
+// until a test proves the judged loop alone keeps the two-point first round.
 export function pointQueries(query: string): string[] {
   if (!/가격|출고가|\bprice\b/i.test(query) || !/출시일|출시|발매일|\brelease date\b/i.test(query)) return [query]
   const thing = query.replace(/(?:의|와|과|이랑|랑|및|,)?\s*(?:가격|출고가|출시일|출시|발매일|price|release date)(?:이랑|랑|과|와|및|,)?/gi, ' ').replace(/\s+/g, ' ').trim()

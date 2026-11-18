@@ -14,7 +14,7 @@ import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-s16-${tag}-`)), '.engram') } as unknown as VaultPaths }
-const CHECK = 'Judge meaning only', JUDGE = 'List in "holds"'
+const CHECK = 'Judge meaning only', JUDGE = 'In "holds", for each item'
 const none = JSON.stringify({ problems: [] })
 const PAGE: Record<string, string> = { 강릉: 'https://surf.example/gangneung', 속초: 'https://surf.example/sokcho', 양양: 'https://surf.example/yangyang', 고성: 'https://surf.example/goseong' }
 const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line)).slice(1)
@@ -30,7 +30,7 @@ function quickModel(log: { kind: string; at: number; prompt: string }[], opts: {
       log.push({ kind: 'judge', at: Date.now(), prompt }); await tick(opts.judgeMs ?? 0)
       // Round 1: the first row is about the town, the second states the wave height; round 2 (held row as context) adds the new row.
       const held = /Items 1 to (\d+) were already judged/.exec(prompt)
-      return held ? JSON.stringify({ keep: [Number(held[1]) + 1], holds: [Number(held[1]) + 1], asked: 1, search: '' }) : JSON.stringify({ keep: [1, 2], holds: [], asked: 1, search: '파도 높이 예보', open: 2 })
+      return held ? JSON.stringify({ keep: [Number(held[1]) + 1], holds: { [Number(held[1]) + 1]: { '파도 높이': '파도 0.8~1.2m' } }, asked: 1, search: '' }) : JSON.stringify({ keep: [1, 2], holds: {}, points: ['파도 높이'], asked: 1, search: '파도 높이 예보', open: 2 })
     }
     if (prompt.includes(CHECK)) {
       log.push({ kind: 'check', at: Date.now(), prompt }); await tick(opts.checkMs ?? 0)
@@ -54,7 +54,7 @@ async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => {
     const q = String(args['query']); searches.push(q); await tick(opts.searchMs ?? 0)
     const town = Object.keys(PAGE).find(name => q.includes(name)) ?? '강릉'
-    return q.includes('예보') ? results(q, [`- ${town} 파도 0.8~1.2m, 서핑 적기 — ${PAGE[town]}/forecast — 예보 — 11월 21일`]) : results(q, [`- ${town} 해변 서핑 숍 소개 — https://blog.example/${encodeURIComponent(town)} — 블로그 — 11월 2일`, `- ${town} 이번 주말 파도 1m 안팎 — ${PAGE[town]} — 예보 — 11월 20일`])
+    return q.includes('예보') ? results(q, [`- ${town} 파도 예보 — ${PAGE[town]}/forecast — 파도 0.8~1.2m, 서핑 적기 — 11월 21일`]) : results(q, [`- ${town} 해변 서핑 숍 소개 — https://blog.example/${encodeURIComponent(town)} — 블로그 — 11월 2일`, `- ${town} 이번 주말 파도 1m 안팎 — ${PAGE[town]} — 예보 — 11월 20일`])
   } }
   const run: Run = async (deps, prompt, options = {}) => {
     options.onStart?.(); models.push(prompt.slice(0, 20))
@@ -83,7 +83,7 @@ const members = (towns: string[]) => towns.map(town => ({ role: `${town} 조사`
 describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
   it('a fact the judge says holds the value leads the writer data and the host fallback; a nothing part with no short name uses latestName', async () => {
     const facts = [{ text: '대구는 미세먼지 이야기가 많아요.', url: 'https://blog.example/daegu', site: '블로그' }, { text: '대구 오늘 미세먼지는 보통(42㎍/㎥)이에요.', url: 'https://air.example/daegu', site: '에어코리아' }]
-    const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', async () => JSON.stringify({ keep: [1, 2], holds: [2], asked: 1 }))
+    const judged = await kindChecked({ facts }, '대구 오늘 미세먼지 농도', async () => JSON.stringify({ keep: [1, 2], holds: { 2: { 농도: '보통(42㎍/㎥)' } }, points: ['농도'], asked: 1 }))
     expect(judged!.facts.map(f => f.url)).toEqual(['https://air.example/daegu', 'https://blog.example/daegu'])
     const at = new Date().toISOString()
     const m = (id: string, role: string, data: TeamMember['data']): TeamMember => ({ id, parentId: null, depth: 1, role, topic: role, brief: `${role} 조사`, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: id, hiredAt: at, result: 'x', data })

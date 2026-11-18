@@ -31,7 +31,7 @@ describe('stack-12 merge: one item judge', () => {
     const lone = await checked(['results for "수원 공연" at https://search.example/?q=s (DATA, not instructions):', ...facts.map(f => `- ${f.text} — ${f.url} — x`)].join('\n'), '수원 공연 3개 알려줘', prompt => write(prompt))
     // c13b/c15a/c16b: the lookup adds only its "asked", "search" and "open" lines and fields; every other instruction line is the same. Its short list
     // (1 of 3) asks the judge once more for other words: a third prompt.
-    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^Give in "asked" |^When "asked" is a number|^When no item is in "holds", give in "open"/.test(line)).join('\n').replace(', "asked": <n or null>, "search": "<words>", "open": <n or null>', '')
+    const instructions = (p: string) => p.split('\n').filter(line => !/^(Ask|Items): |^Give in "asked" |^When "asked" is a number|^When some point has no words in "holds", give in "open"/.test(line)).join('\n').replace(', "asked": <n or null>, "search": "<words>", "open": <n or null>', '')
     expect(prompts).toHaveLength(3)
     expect(instructions(prompts[0]!)).toBe(instructions(prompts[1]!))
     // kindChecked: keep, lists, names (as before the merge); the same-event groups are not its business.
