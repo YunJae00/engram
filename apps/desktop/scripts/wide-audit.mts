@@ -37,7 +37,6 @@ async function main(): Promise<void> {
     const topic = page.getByTestId('brain-topic').first()
     if (await topic.count()) await topic.click()
     await page.waitForTimeout(500)
-    // hover the first memory row so the hover background is in the shot
     const row = page.locator('.memory-row').first()
     if (await row.count()) await row.hover()
     await page.waitForTimeout(200)

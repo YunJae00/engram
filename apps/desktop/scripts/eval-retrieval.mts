@@ -1,17 +1,3 @@
-// Retrieval quality harness over the golden set (golden-set.mts). Headless —
-// no Electron. Mirrors the chat retrieval path in src/main/ipc.ts stage by
-// stage so every layer gets its own score and a regression names its layer:
-//   lexical   minisearch + CJK bigrams          (store.search)
-//   semantic  bge-m3 cosine, prod floor          (semanticQuery)
-//   hybrid    reciprocal-rank fusion             (hybridMerge)
-//   full      + activation rerank + spreading    (buildRetrievedContext)
-// The embedding model, pooling, dtype and the vector-index file format are
-// exactly production's, so numbers here transfer to the app.
-//
-// Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/eval-retrieval.mts
-// First run downloads bge-m3 (~600MB) into tmp/hf-cache; later runs reuse the
-// vault's .engram vector index and skip everything unchanged.
 import {
   activationRerank,
   applyEmbeddings,
@@ -41,7 +27,6 @@ import { GOLDEN_NOTES, GOLDEN_QUERIES, type GoldenQuery } from './golden-set.mts
 const ROOT = fileURLToPath(new URL('../../../tmp/golden-vault/', import.meta.url))
 const HF_CACHE = fileURLToPath(new URL('../../../tmp/hf-cache/', import.meta.url))
 const MODEL = 'Xenova/bge-m3'
-// Mirrors ipc.ts: CHAT_RETRIEVE_LIMIT / CHAT_NEIGHBOR_LIMIT.
 const RETRIEVE = 8
 const NEIGHBORS = 6
 const NOW = new Date('2026-08-17T12:00:00Z')
@@ -50,8 +35,8 @@ type Mode = 'lexical' | 'semantic' | 'hybrid' | 'full'
 const MODES: Mode[] = ['lexical', 'semantic', 'hybrid', 'full']
 
 interface Scored {
-  ranked: string[] // ordered candidate ids (the retrieval list)
-  context: string[] // what the chat model would actually see (full mode adds neighbours)
+  ranked: string[]
+  context: string[]
 }
 
 async function buildVault(): Promise<Note[]> {
@@ -75,9 +60,6 @@ async function buildVault(): Promise<Note[]> {
 }
 
 async function ensureEmbeddings(notes: Note[]): Promise<{ index: VectorIndex; embedQuery: (q: string) => Promise<Float32Array> }> {
-  // Persist vectors OUTSIDE the vault (the vault is wiped each run; the
-  // embeddings only depend on note content digests, which are stable).
-  // saveVectorIndex/loadVectorIndex only touch paths.cache.
   const cacheDir = fileURLToPath(new URL('../../../tmp/golden-vectors/', import.meta.url))
   const paths = { cache: cacheDir } as unknown as Parameters<typeof loadVectorIndex>[0]
   await mkdir(cacheDir, { recursive: true })
@@ -88,7 +70,6 @@ async function ensureEmbeddings(notes: Note[]): Promise<{ index: VectorIndex; em
   const ensurePipe = async () => {
     if (pipe) return
     process.stderr.write(`loading ${MODEL} (first run downloads ~600MB)...\n`)
-    // Same knobs as src/main/semantic.ts loadExtractor().
     pipe = (await tf.pipeline('feature-extraction', MODEL, {
       dtype: 'q8',
       session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 },
@@ -136,10 +117,8 @@ async function ensureEmbeddings(notes: Note[]): Promise<{ index: VectorIndex; em
 
 function fullMode(notes: Note[], lex: SearchHit[], sem: { id: string; score: number }[]): Scored {
   const byId = new Map(notes.map((n) => [n.front.id, n]))
-  // ipc.ts buildRetrievedContext: merge(cap 12) → activation rerank → top 8.
   const hits = activationRerank(hybridMerge(lex, sem, RETRIEVE + 4), (id) => byId.get(id) ?? null, NOW)
   const ranked = hits.map((h) => h.id).slice(0, RETRIEVE)
-  // linkNeighbours: spread from the hit set over links, excluding the hits.
   const exclude = new Set(hits.map((h) => h.id))
   const seeds = new Map(hits.map((h) => [h.id, h.score]))
   const neighbours = spreadActivation(seeds, notes, NOW, { limit: NEIGHBORS + exclude.size })
@@ -152,11 +131,11 @@ function fullMode(notes: Note[], lex: SearchHit[], sem: { id: string; score: num
 interface QueryResult {
   query: GoldenQuery
   mode: Mode
-  rankOfFirst: number // 1-based rank of first expected id, Infinity if absent
+  rankOfFirst: number
   hitAt5: boolean
   hitAt8: boolean
-  inContext: number // how many expected ids the assembled context holds
-  pass: boolean // category-aware verdict (synthesis/2hop use needInTop8)
+  inContext: number
+  pass: boolean
 }
 
 function score(query: GoldenQuery, mode: Mode, scored: Scored): QueryResult {
@@ -183,7 +162,7 @@ async function main(): Promise<void> {
   process.stderr.write(`vault: ${notes.length} notes, ${GOLDEN_QUERIES.length} queries\n`)
   const lexIndex = buildIndex(notes)
   const { index, embedQuery } = await ensureEmbeddings(notes)
-  const diag = process.env['DIAG'] // substring of a query to dump channels for
+  const diag = process.env['DIAG']
   const results: QueryResult[] = []
   for (const query of GOLDEN_QUERIES) {
     const lex = searchIndex(lexIndex, query.q)
@@ -216,7 +195,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── report ──
   const categories = [...new Set(GOLDEN_QUERIES.map((q) => q.category))]
   const fmt = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : '0.00')
   console.log('\n=== per mode (all queries) ===')
@@ -247,7 +225,6 @@ async function main(): Promise<void> {
     console.log(`[${f.query.category}] "${f.query.q}"`)
     console.log(`  expected ${f.query.expected.join(', ')} — in context ${f.inContext}/${f.query.needInTop8 ?? 1}, first rank ${Number.isFinite(f.rankOfFirst) ? f.rankOfFirst : '—'}`)
   }
-  // Machine-readable line for loop automation.
   const full = results.filter((r) => r.mode === 'full')
   console.log(
     `\nSCORE full pass=${full.filter((r) => r.pass).length}/${full.length} hit@8=${fmt(full.filter((r) => r.hitAt8).length / full.length)}`,

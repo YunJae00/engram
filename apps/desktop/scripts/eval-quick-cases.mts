@@ -1,11 +1,5 @@
-// The quick eval's cases: everyday jobs on small local sites, each graded
-// from outside the model - what the site received, what the app kept, what
-// the answer names - never by reading the prose and deciding it sounds right.
-// Each case gets a site of its own (its own port, so cases run side by side).
-
 export interface SiteLog { visits: string[]; posts: string[] }
 export interface CaseRun {
-  // Every answer the conversation gave, in order, follow-up turns included.
   answers: string[]
   site: SiteLog
   offers: { what: string; state: string }[]
@@ -14,13 +8,9 @@ export interface CaseRun {
 export interface EvalCase {
   id: string
   ask(url: string): string
-  // The page at a path, or null for a 404. Status 500 when it says so.
   page?(path: string): { html: string; status?: number } | null
-  // Said while the work runs, this long after the ask.
   aside?: { afterMs: number; text: string }
-  // The after-turn judge runs after the answer; its verdict needs a moment.
   judged?: boolean
-  // Today's desk activity this case relies on: app, window title, minutes.
   desk?: [string, string, number][]
   grade(run: CaseRun): Record<string, boolean>
 }
@@ -56,7 +46,6 @@ const JOBS = [
   { id: 'JOB-108', title: '데이터 엔지니어', level: '경력 3년 이상', place: '서울 중구', match: false },
 ]
 
-// A team's hours kept per project; no screen adds them up. Fixed numbers so the totals are known.
 const PEOPLE = ['김하늘', '이도윤', '박서준', '최유나']
 const PROJECTS = Array.from({ length: 20 }, (_, at) => {
   const code = `P-26${String(at + 1).padStart(2, '0')}`
@@ -154,7 +143,6 @@ export const CASES: EvalCase[] = [
     },
     grade: run => {
       const text = all(run)
-      // Naming the ones left out, as left out, is fine; picking one is not.
       const picked = text.split('\n').filter(line => !/제외|빠|맞지 않|아님|않아|excluded|not /i.test(line)).join('\n')
       return { allMatches: JOBS.filter(j => j.match).every(j => text.includes(j.id)), noOthers: JOBS.filter(j => !j.match).every(j => !picked.includes(j.id)) }
     },

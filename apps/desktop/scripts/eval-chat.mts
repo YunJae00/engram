@@ -1,8 +1,3 @@
-// Dogfood evaluation phase 2: chat quality against the tidied eval vault.
-// Q1 cross-note synthesis, Q2 freshness (stale vs current fact), Q3
-// hallucination control (asks about something never recorded).
-// Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/eval-chat.mts
 import { _electron as electron } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -12,9 +7,6 @@ const VAULT = fileURLToPath(new URL('../../../tmp/eval-vault/', import.meta.url)
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const OUT = fileURLToPath(new URL('../../../tmp/eval-shots/', import.meta.url))
 
-// Default set: Q1 cross-note synthesis (+citations), Q2 freshness (must give
-// the current fact, not the superseded one), Q3 hallucination control (never
-// recorded — must say so). Override via CLI args for ad-hoc probes.
 const DEFAULT_QUESTIONS = [
   '우리 RAG 검색 품질을 높이려고 지금까지 뭘 결정하고 확인했지? 근거 노트와 함께 정리해줘.',
   '파트너 API rate limit이 지금 분당 몇이지?',
@@ -47,7 +39,6 @@ async function main(): Promise<void> {
     const t0 = Date.now()
     await page.getByTestId('chat-input').fill(q)
     await page.getByTestId('chat-send').click()
-    // wait for a NEW assistant bubble, then poll until its text is stable 6s
     const answer = page.locator('.chat-message.assistant').nth(i)
     await answer.waitFor({ state: 'visible', timeout: 60_000 })
     const firstTokenMs = Date.now() - t0

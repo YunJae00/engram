@@ -63,7 +63,6 @@ globalThis.backgroundClose = async () => {closeWorkPreview();closeDesktopAccess(
 `, resolveDir: root },
   outfile: main, bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { core: join(root, 'packages/core/src/index.ts') }, logLevel: 'warning',
 })
-// Resolve workspace packages for the bundled probe without changing global installs.
 await mkdir(join(run, 'node_modules'))
 for (const base of ['apps/desktop/node_modules', 'packages/core/node_modules']) {
   for (const name of await readdir(join(root, base))) {

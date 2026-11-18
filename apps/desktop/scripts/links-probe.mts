@@ -25,14 +25,11 @@ const app = await electron.launch({
 })
 const page = await app.firstWindow()
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 30_000 })
-// Window-first boot: the shell paints before the vault finishes reading —
-// wait for the first star (notes actually loaded) before using the palette.
 await page.locator('[data-node-id]').first().waitFor({ state: 'visible', timeout: 30_000 })
 await page.waitForTimeout(500)
 await page.keyboard.press('Control+p')
 await page.getByTestId('palette-input').waitFor({ state: 'visible', timeout: 10_000 })
 await page.getByTestId('palette-input').fill('허브')
-// let the palette filter render its rows before committing
 await page.waitForTimeout(600)
 const { mkdir: mk } = await import('node:fs/promises')
 await mk(OUT, { recursive: true })

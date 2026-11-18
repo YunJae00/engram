@@ -1,5 +1,3 @@
-// Optional real-Office integration: missing/uninitialized Office is a reported skip.
-// Once a baseline document can be created and saved, backend failures are failures.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -51,7 +49,6 @@ try {
       } else {
         const before = invoke(`${kind}.read`, { file })
         assert(Array.isArray(before.content))
-        // Baseline PowerPoint may be blank; native composition has its own policy tests.
         if (kind === 'word') {
           const body = before.content.find(item => item.key === 'body')
           invoke('word.edit', { file, expected: before.content, plan: [{ key: 'body', before: body.text, after: body.text.replace('baseline', 'verified'), mode: 'replace', positions: [body.text.indexOf('baseline')], find: 'baseline', text: 'verified' }] })

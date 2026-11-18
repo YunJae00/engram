@@ -1,21 +1,12 @@
-// Small sites that each hide one way a web agent goes wrong - a look-alike
-// link, a link that lands somewhere else, a dialog in the way, results that
-// arrive late, a list over pages, a dead menu entry, the wrong tab, a session
-// that has to be retried. Every task is graded by where the run ended, from
-// the site's own record, never by what the agent says about itself.
-
 export interface SiteLog { visits: string[]; served: Map<string, 'real' | 'expired'> }
 export interface GateTask {
   id: string
-  // dev: what the gate was designed against; test: held out, then used to revise it; final: written after the last revision, run once.
   set: 'dev' | 'test' | 'final' | 'final2'
   trap: string
   goal: string
   text?: string
   start: string
-  // The page at a path (query included), or null for a 404; a redirect when it says so.
   page(path: string, log: SiteLog): { html: string; status?: number; location?: string } | null
-  // Whether the run ended where the goal is.
   reached(finalPath: string, log: SiteLog): boolean
 }
 
@@ -128,8 +119,6 @@ export const TASKS: GateTask[] = [
   },
 ]
 
-// Held out: other instances of the same traps, and two plain paths that cost
-// the gate nothing to get right.
 const LEAVE: [string, string][] = [['/leave/41', '휴가 신청 (반려)'], ['/leave/42', '휴가 신청 (승인)'], ['/leave/43', '휴가 신청 (대기)']]
 const EVENTS = (mine: boolean): [string, string][] => mine ? [['/event/my-review', '분기 리뷰 미팅 (내 일정)'], ['/event/my-lunch', '팀 점심']] : [['/event/team-review', '분기 리뷰 미팅 (팀 전체)'], ['/event/offsite', '워크숍']]
 const PRODUCTS = ['문서 협업', '일정 관리', '보안 점검']
@@ -231,8 +220,6 @@ export const HELD_OUT: GateTask[] = [
   },
 ]
 
-// Final: written after the gate was last changed and run once, so nothing in
-// the gate was shaped by them.
 const RELEASES: [string, string][] = [['/notes/2-10', 'v2.10 릴리스 노트'], ['/notes/2-1', 'v2.1 릴리스 노트'], ['/notes/2-0', 'v2.0 릴리스 노트'], ['/notes/2-1-draft', 'v2.1 릴리스 노트 (작성 중)']]
 const ROOMS: [string, string][] = [['/ga/rooms/a', 'A 회의실 예약'], ['/ga/rooms/b', 'B 회의실 예약']]
 const LOAD_MORE = `document.getElementById('more').onclick = () => { document.getElementById('list').insertAdjacentHTML('beforeend', '<li><a href="/member/kim-jiwoo">김지우</a></li><li><a href="/member/lee-hana">이하나</a></li>'); document.getElementById('more').remove() }`
@@ -330,10 +317,6 @@ export const FINAL: GateTask[] = [
   },
 ]
 
-// Second final set, for going back with the page put back as it was and for
-// comparing the pages two close picks lead to: views that change in place
-// without a new address, and goals whose words only fit one item once read
-// for what they mean. Written before those parts were run against anything.
 const YEAR_LISTS = `const lists = { '2025': '<li><a href="/doc/audit-2025">감사 보고서</a></li>', '2026': '<li><a href="/doc/summary-2026">감사 보고서 (요약본)</a></li><li><a href="/doc/audit-2026">감사 보고서</a></li>' }
 document.querySelectorAll('button[data-year]').forEach(button => button.onclick = () => { document.getElementById('docs').innerHTML = lists[button.dataset.year]; document.getElementById('year').textContent = button.dataset.year + '년' })`
 const BOX_LISTS = `const lists = { team: '<li><a href="/doc/team-budget">예산 품의</a></li><li><a href="/doc/team-trip">출장 계획</a></li>', mine: '<li><a href="/doc/my-budget">예산 품의</a></li><li><a href="/doc/my-leave">휴가 신청</a></li>' }

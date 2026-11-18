@@ -1,6 +1,3 @@
-// Empty-state audit: boots on a FRESH vault and captures every canvas tab so
-// the shared empty grammar can be reviewed at a glance.
-// Run from apps/desktop:  ../../packages/core/node_modules/.bin/tsx scripts/empty-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'

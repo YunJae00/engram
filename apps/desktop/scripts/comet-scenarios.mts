@@ -1,9 +1,3 @@
-// Scenarios that take more than one turn, with the person in the loop: a
-// page behind a sign-in they clear themselves, a choice they make from
-// chips, a job they show once and then ask for, a submit they approve or
-// refuse, a long read followed up on, a thing to remember, a turn cut short.
-// Each check is judged from outside - what the office received, what the
-// answer holds - and every answer is kept for a reader afterwards.
 import { launchApp } from './launch-app.mts'
 import { startOffice, type Office } from './office-site.mts'
 import { Person, type Outcome } from './scenario-hands.mts'
@@ -73,8 +67,6 @@ const SCENARIOS: Scenario[] = [
   {
     name: 'a job kept from last time runs again, and stops at the gate',
     async run(person, office, botId) {
-      // What a comet kept the last time it did this: the same moves, with the
-      // parts that change left as blanks.
       await person.kept('회의실 예약', [
         { kind: 'open', url: `${office.url}rooms` },
         { kind: 'type', target: { text: 'Room' }, text: '{{회의실}}', example: '회의실 A' },
@@ -99,8 +91,6 @@ const SCENARIOS: Scenario[] = [
       person.gate = 'cancel'
       const before = office.booked.length
       let first = await person.say(botId, '회의실 B 모레 오전 11시 예약해줘')
-      // A job that posts and already ran today is asked about first; the
-      // person says to go ahead.
       if (first.gates === 0 && (first.offer === 'asked' || has(first.answer, /이미|already|다시|again/i)))
         first = await person.say(botId, first.options.find((one) => /새로|다시|진행|new|again/i.test(one)) ?? '응, 새로 예약해줘')
       person.gate = 'approve'
@@ -108,7 +98,6 @@ const SCENARIOS: Scenario[] = [
         checks: [
           { name: 'reached the gate', ok: first.gates >= 1 },
           { name: 'nothing reached the office', ok: office.booked.length === before },
-          // "not booked" carries the same words as "booked"; the denial wins.
           {
             name: 'does not claim it was booked',
             ok:
@@ -142,8 +131,6 @@ const SCENARIOS: Scenario[] = [
     async run(person, _office, botId) {
       const cardsBefore = (await listCards(paths)).map((c) => c.id)
       const first = await person.say(botId, '내 자리 내선번호는 4410이야. 기억해줘')
-      // What a comet is told goes to the vault as a card; the person approves
-      // it there, and from then on every comet can find it.
       const card = (await listCards(paths)).find((c) => !cardsBefore.includes(c.id) && /4410/.test(c.proposed))
       if (card) await person.app.evaluate((id) => window.engram.approveCard(id, {}), card.id)
       await new Promise((r) => setTimeout(r, 15_000))
@@ -244,7 +231,6 @@ const SCENARIOS: Scenario[] = [
     name: 'chips offered, none of them right: the person types their own',
     async run(person, _office, botId) {
       const first = await person.say(botId, '점심 관련해서 알아봐줘')
-      // Asking is one honest move; reading the cafeteria page and saying it all is another.
       const checks: Check[] = [{ name: 'asks what about lunch, or tells all of it', ok: first.offer === 'asked' || has(first.answer, /어떤|무엇|뭘/) || has(first.answer, /11시 30분|비빔밥|2층/) }]
       const second = await person.say(botId, '채식 코너가 몇 층인지')
       checks.push({ name: 'answers the typed-in choice from the page', ok: has(second.answer, /2층/) })
@@ -325,7 +311,6 @@ const SCENARIOS: Scenario[] = [
   },
 ]
 
-// ── the run ──────────────────────────────────────────────────────────────
 const paths = await initVault(VAULT, { git: false })
 await mkdir(USERDATA, { recursive: true })
 spawnSync('cmd.exe', ['/c', 'mklink', '/J', join(USERDATA, 'models'), join(process.env['APPDATA']!, 'desktop', 'models')], { windowsHide: true })

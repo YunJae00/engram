@@ -1,6 +1,3 @@
-// What the comets tab shows in its first second: the order the states
-// appear in, sampled every few frames. "No comets yet" before the list has
-// been read is a claim the app cannot make.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'
@@ -20,7 +17,6 @@ const app = await electron.launch({
 const page = await app.firstWindow()
 const seen: string[] = []
 for (let i = 0; i < 1600; i++) {
-  // A string, not a function: the runner's helpers do not exist in the page.
   const state = (await page
     .evaluate(`(() => {
       const has = (id) => document.querySelector('[data-testid="' + id + '"]') !== null

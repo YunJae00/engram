@@ -1,5 +1,3 @@
-// The first two seconds of the app, filmed: what colour is on screen when,
-// and when the shell arrives. The flash the user sees is in here.
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'

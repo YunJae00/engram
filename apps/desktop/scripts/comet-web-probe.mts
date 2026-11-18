@@ -1,8 +1,3 @@
-// The session the person actually had, reproduced against a real brain: a
-// question the vault cannot answer, then a follow-up that only makes sense in
-// context.
-//
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/comet-web-probe.mts"
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -18,15 +13,11 @@ const paths = await initVault(VAULT, { git: false })
 await mkdir(join(USERDATA, 'models'), { recursive: true })
 console.log(`comet-web-probe: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 
-// The person has already pasted a results address once, as they would in
-// Settings — the app itself still knows no engines.
 await writeFile(
   join(USERDATA, 'settings.json'),
   JSON.stringify({ defaultEngine: 'claude', autoStart: false, teamSync: 'auto', searchTemplate: process.env['PROBE_SEARCH'] ?? '' }),
 )
 
-// A vault about this person's own product — the notes that were wrongly
-// served as an answer about the AI industry.
 for (const body of [
   '# Strata 기능 변경\n\n보내기 버튼을 하나로 통합하고 웹 스위치를 옆에 두기로 결정했다.',
   '# 오늘 한 일\n\n리플레이어와 제출 승인 게이트를 끝냈다.',

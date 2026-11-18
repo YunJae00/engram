@@ -1,10 +1,3 @@
-// The comet as a working colleague, for real: the REAL Gemma model, a vault
-// holding today's work and a taught procedure with a blank, and one Korean
-// sentence asking for the day's chore. Measures what the 2B actually does in
-// the tool loop — which tools it picks, whether it fills the blank, whether
-// the submit gate stands between it and the site — and prints the trace.
-//
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/comet-work-probe.mts"
 import { _electron as electron } from '@playwright/test'
 import { addRoutine, createNote, initVault, listCards } from 'core'
 import { spawnSync } from 'node:child_process'
@@ -23,7 +16,6 @@ await mkdir(join(USERDATA, 'models'), { recursive: true })
 
 console.log(`comet-work-probe: free memory ${(os.freemem() / 1e9).toFixed(1)}GB`)
 
-// The real model, via junction — gigabytes do not get copied for a probe.
 const realGguf = join(process.env['APPDATA']!, 'desktop', 'models', 'gguf')
 const linked = join(USERDATA, 'models', 'gguf')
 const mk = spawnSync('cmd.exe', ['/c', 'mklink', '/J', linked, realGguf], { windowsHide: true })
@@ -32,7 +24,6 @@ if (mk.status !== 0) {
   process.exit(1)
 }
 
-// A work-log site: a form that records what was posted.
 const posted: string[] = []
 const server = createServer((req, res) => {
   res.setHeader('content-type', 'text/html')
@@ -57,8 +48,6 @@ const address = server.address()
 if (address === null || typeof address === 'string') throw new Error('no site')
 const siteUrl = `http://127.0.0.1:${address.port}/`
 
-// The vault: what was done today, and how the log is filed (taught once).
-// The vault is written in the person's own language, as a real one is.
 await createNote(paths, { body: '# 오늘 한 일: 리플레이어 배포\n\n루틴 재생기와 제출 승인 게이트를 끝냈다. e2e 27개 전부 통과.' })
 await createNote(paths, { body: '# 오늘 한 일: 메모리 게이트 수정\n\n로드 계획이 캐시와 버퍼까지 세도록 고쳤다. 더 이상 먹통 없음.' })
 const routine = await addRoutine(paths, {
@@ -85,7 +74,6 @@ const app = await electron.launch({
 const page = await app.firstWindow()
 await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 
-// Wait for the local engine to be detected before asking anything of it.
 for (let i = 0; i < 30; i++) {
   const engines = (await page.evaluate(() => window.engram.engines())) as { id: string }[]
   if (engines.some((e) => e.id === 'claude')) break
@@ -108,8 +96,6 @@ await page.evaluate(() => {
     if (event.type === 'chat:done') w.__probe(`done  ${event.text.slice(0, 500).replace(/\n/g, ' / ')}`)
     if (event.type === 'chat:error') w.__probe(`error ${event.message}`)
   })
-  // The person approves the submit the moment it is shown — the probe's
-  // stand-in for reading the gate and pressing "Post it".
   window.engram.onEvent((event) => {
     if (event.type === 'routine:submit') setTimeout(() => void window.engram.routineSubmitDone('approve'), 500)
   })
@@ -128,7 +114,6 @@ await page.evaluate(
   { botId: bot.id, message: ask },
 )
 
-// Give the loop room: several 2B calls plus a Chrome replay.
 for (let i = 0; i < 150; i++) {
   if (trace.some((line) => line.startsWith('done') || line.startsWith('error'))) break
   await new Promise((r) => setTimeout(r, 2_000))

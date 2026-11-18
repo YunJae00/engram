@@ -1,10 +1,3 @@
-// The gate experiments: page_do run alone with the real browser and the
-// real decision model against the trap sites, every step traced, graded by
-// where each run ended. One app, runs side by side, each task on its own port.
-//
-// Run from apps/desktop after a build, with a decision model connected in the app:
-//   node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/research/gate-bench.mts [--gate=off|on|always] [--repeat=N] [--parallel=N] [--only=a,b]
-// Writes tmp/research/<run>/runs.jsonl and summary.json.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServer, type Server } from 'node:http'
 import { appendFile, copyFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
@@ -17,7 +10,6 @@ import { FINAL, FINAL_TWO, HELD_OUT, TASKS, type GateTask, type SiteLog } from '
 const arg = (name: string) => process.argv.find(one => one.startsWith(`--${name}=`))?.slice(name.length + 3)
 const gate = arg('gate') ?? 'off'
 const margin = arg('margin') ? Number(arg('margin')) : undefined
-// Parts of the gate switched on or off for measuring: --with=explore, --without=replay
 const withParts = arg('with')?.split(',') ?? []
 const without = arg('without')?.split(',') ?? []
 const variant = [...withParts.map(part => `with-${part}`), ...without.map(part => `without-${part}`)].join('-')
@@ -63,7 +55,6 @@ const root = join(out, 'profile')
 const paths = await initVault(join(root, 'vault'), { git: false })
 const userdata = join(root, 'userdata')
 await mkdir(userdata, { recursive: true })
-// The decision model the person connected, with the key that unseals it on this machine.
 const installed = join(process.env['APPDATA']!, 'desktop')
 for (const name of ['Local State', 'connections.json']) await copyFile(join(installed, name), join(userdata, name))
 await writeFile(join(userdata, 'settings.json'), JSON.stringify({ computerUse: true, workMap: false }))

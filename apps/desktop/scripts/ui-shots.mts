@@ -1,4 +1,3 @@
-// Screenshots of the surfaces the polish touched, for a human look.
 import { launchApp } from './launch-app.mts'
 import { createCard, createNote, initVault } from 'core'
 import { mkdir } from 'node:fs/promises'

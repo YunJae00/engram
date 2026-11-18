@@ -1,5 +1,3 @@
-// The update banner over a live conversation: does it float, or does it
-// push the thread and the composer down?
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -24,7 +22,6 @@ await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 await page.getByTestId(`bot-${bot.id}`).click()
 const box = page.locator('.bots-write textarea')
 const before = await box.boundingBox()
-// The event the updater sends when a download has landed.
 await app.evaluate(({ BrowserWindow }) => {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'update:changed', update: { state: 'ready', version: '9.9.9', selfInstalls: true } })
 })

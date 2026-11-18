@@ -1,5 +1,3 @@
-// The comet's hand on the picture: a turn that presses something, and a
-// screenshot the moment the pointer is announced.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -49,8 +47,6 @@ for (let i = 0; i < 150 && !done; i++) {
     await page.waitForTimeout(350)
     await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/pointer-shot.png', import.meta.url)) })
     shot = true
-    // The person puts a hand on the page mid-turn: a press on the page's
-    // margin. The comet should step aside, then carry on once still.
     const lane = await page.evaluate(async () => (await window.engram.agentState()).lane ?? '')
     await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
     await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.985, y: 0.985, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)

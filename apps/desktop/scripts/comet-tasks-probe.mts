@@ -1,8 +1,3 @@
-// Four chores a working person would actually hand over, run against the REAL
-// model in one session, with the trace and a verdict per task. This is the
-// measurement that decides whether the comet is useful or merely wired up.
-//
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/comet-tasks-probe.mts"
 import { _electron as electron } from '@playwright/test'
 import { addRoutine, createNote, initVault, listCards } from 'core'
 import { spawnSync } from 'node:child_process'
@@ -27,7 +22,6 @@ if (mk.status !== 0) {
   process.exit(1)
 }
 
-// The company portal: a notices page worth reading every morning.
 const server = createServer((_req, res) => {
   res.setHeader('content-type', 'text/html')
   res.end(
@@ -42,7 +36,6 @@ const address = server.address()
 if (address === null || typeof address === 'string') throw new Error('no site')
 const siteUrl = `http://127.0.0.1:${address.port}/`
 
-// A week of real work, written the way this person writes.
 for (const body of [
   '# 배포 방식 결정\n\n쿠버네티스 배포는 helm 차트로 통일하기로 했다. values 정리는 화요일까지.',
   '# 배포 일정 변경\n\n금요일 배포는 위험해서 목요일 오후로 당기기로 팀에서 합의했다.',
@@ -52,8 +45,6 @@ for (const body of [
 ])
   await createNote(paths, { body })
 
-// A read-only morning round: no blanks, nothing to post — the simplest thing
-// the comet could actually DO with its hands.
 const rounds = await addRoutine(paths, {
   name: '포털 공지 확인',
   steps: [{ kind: 'open', url: siteUrl }, { kind: 'read' }],
@@ -87,7 +78,6 @@ await page.evaluate(() => {
       if (event.offer) {
         const taken = event.offer
         w.__probe(`OFFER  ${taken.name}`)
-        // The person sees the offer and takes it — one press.
         setTimeout(() => void window.engram.routineRun(taken.routineId, false, taken.slots), 400)
       }
       w.__probe(`ANSWER ${event.text.slice(0, 400).replace(/\n/g, ' / ')}`)
@@ -124,7 +114,6 @@ for (const task of TASKS) {
     if (trace.some((l) => l.startsWith('ANSWER') || l.startsWith('ERROR'))) break
     await new Promise((r) => setTimeout(r, 2_000))
   }
-  // An offer taken means a replay is now running; wait for its hands.
   if (trace.some((l) => l.startsWith('OFFER')))
     for (let i = 0; i < 45; i++) {
       if (trace.some((l) => l.startsWith('hands'))) break

@@ -1,6 +1,3 @@
-// Two comets, each with a recorded procedure, pressed in the rail moments
-// apart: both must replay side by side on their own tabs and answer in
-// their own threads.
 import { _electron as electron } from '@playwright/test'
 import { addRoutine, createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'

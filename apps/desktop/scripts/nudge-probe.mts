@@ -1,9 +1,3 @@
-// Does the floating question actually appear, where it should, without taking
-// the keyboard away from whatever the user is doing?
-//
-// The whole premise is that it interrupts as little as a notification does. A
-// window that steals focus mid-sentence is worse than the queue it replaces,
-// so that is the property worth measuring, not the pixels.
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault, createCard } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -32,15 +26,12 @@ const app = await electron.launch({
     ENGRAM_NO_GIT: '1',
     ENGRAM_NO_AUTOTIDY: '1',
     ENGRAM_ENGINE: 'mock',
-    // The real thing waits five minutes for boot to settle and then polls every
-    // ten. Neither is testable, so the probe asks for it directly.
     ENGRAM_NUDGE_NOW: '1',
   },
 })
 const shell = await app.firstWindow()
 await shell.getByTestId('shell').waitFor({ state: 'visible', timeout: 60_000 })
 
-// Which window has the keyboard BEFORE the card appears?
 const focusedBefore = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.id ?? null)
 
 const nudge = await app.waitForEvent('window', { timeout: 30_000 })
@@ -56,9 +47,6 @@ const geometry = await app.evaluate(({ BrowserWindow, screen }) => {
   const area = screen.getPrimaryDisplay().workArea
   return {
     onTop: win.isAlwaysOnTop(),
-    // No isSkipTaskbar() exists in Electron — only the setter — so the first
-    // version of this probe reported `!undefined` and claimed the card was in
-    // the taskbar when it is not. Read what can actually be read.
     rightGap: area.x + area.width - (b.x + b.width),
     insideScreen: b.x >= area.x && b.y >= area.y && b.x + b.width <= area.x + area.width && b.y + b.height <= area.y + area.height,
   }
@@ -68,8 +56,6 @@ console.log(`geometry: ${JSON.stringify(geometry)}`)
 console.log('\ncard text:')
 console.log((await nudge.getByTestId('nudge').innerText()).split('\n').map((l) => `  ${l}`).join('\n'))
 
-// Answering must close it and settle the card — the point is that the question
-// is gone without ever opening the app.
 await nudge.screenshot({ path: 'C:/Users/ykwon060/AppData/Local/Temp/claude/C--Users-ykwon060-Desktop-pjt-strata-strata/d0e46e2e-b585-4b06-8d29-bdb2b98c9cc8/scratchpad/nudge.png', omitBackground: true })
 
 await nudge.getByTestId('nudge-reject').click()

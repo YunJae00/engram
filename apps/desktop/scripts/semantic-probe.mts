@@ -1,6 +1,3 @@
-// Can the embedder get here at all? On a network that inspects TLS the model
-// download is the thing most likely to be refused, and the comet's ability to
-// tell one subject from another rests on it.
 import { launchApp } from './launch-app.mts'
 import { initVault } from 'core'
 import { mkdir } from 'node:fs/promises'
@@ -23,7 +20,6 @@ const app = await launchApp({
   ENGRAM_NO_GIT: '1',
   ENGRAM_NO_AUTOTIDY: '1',
   ENGRAM_INDEX_NOW: '1',
-  // Packaged builds search by meaning; a probe has to be the same app.
   ENGRAM_SEMANTIC: '1',
 })
 await app.page.getByTestId('shell').waitFor({ state: 'visible', timeout: 120_000 })

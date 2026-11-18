@@ -1,10 +1,3 @@
-// Start the built app and take hold of its window.
-//
-// Playwright's own Electron launcher attaches through the Node inspector, and
-// a machine whose endpoint protection refuses that attach leaves the process
-// alive with no window and no error — the app never runs a line. Starting the
-// binary the way a person does and connecting over the DevTools port keeps the
-// probes working there.
 import { chromium, type Browser, type Page } from '@playwright/test'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
@@ -28,7 +21,6 @@ async function portFrom(userData: string, deadline: number): Promise<number> {
       const port = Number(text.split('\n')[0])
       if (port > 0) return port
     } catch {
-      /* the app has not written it yet */
     }
     if (Date.now() > deadline) throw new Error('the app never opened a debugging port')
     await new Promise((r) => setTimeout(r, 250))
@@ -39,9 +31,6 @@ export async function launchApp(env: Record<string, string>): Promise<RunningApp
   try {
     return await start(env, 45_000)
   } catch {
-    // A compositor that cannot draw a custom title bar hangs the window
-    // constructor outright; the app itself falls back after one such
-    // launch, and a probe cannot afford to wait for the next one.
     console.log('golden: no window with the app drawing its own title bar — retrying with the system frame')
     return await start({ ...env, ENGRAM_SYSTEM_FRAME: '1' }, 90_000)
   }
@@ -50,9 +39,6 @@ export async function launchApp(env: Record<string, string>): Promise<RunningApp
 async function start(env: Record<string, string>, budgetMs: number): Promise<RunningApp> {
   const userData = env['ENGRAM_USERDATA']
   if (!userData) throw new Error('launchApp needs ENGRAM_USERDATA')
-  // A previous instance on the same profile leaves its port file behind, and
-  // reading that means dialling a port nobody answers until the deadline
-  // (measured: the second batch of a run died exactly here).
   await rm(join(userData, 'DevToolsActivePort'), { force: true }).catch(() => undefined)
   const child: ChildProcess = spawn(
     ELECTRON,
@@ -70,7 +56,6 @@ async function start(env: Record<string, string>, budgetMs: number): Promise<Run
       page = context?.pages()[0] ?? (await context?.waitForEvent('page', { timeout: 30_000 }))
       if (page) break
     } catch {
-      /* the window is still on its way */
     }
     if (Date.now() > deadline) {
       await browser?.close().catch(() => {})
@@ -83,16 +68,11 @@ async function start(env: Record<string, string>, budgetMs: number): Promise<Run
     page,
     close: async () => {
       await browser?.close().catch(() => {})
-      // Gone means gone: the next instance must not race a dying one for the
-      // same profile and port file.
       const exited = new Promise<void>((resolve) => {
         if (child.exitCode !== null) return resolve()
         child.once('exit', () => resolve())
         setTimeout(resolve, 8_000)
       })
-      // The whole tree: the inference worker and the agent browser are the
-      // app's children, and a bare kill leaves them holding gigabytes between
-      // batches.
       if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
       else child.kill()
       await exited

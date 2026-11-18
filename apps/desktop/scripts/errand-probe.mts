@@ -1,10 +1,3 @@
-// The web errand, end to end, for real: the packaged main process, the REAL
-// Gemma model (symlinked in), the REAL Chrome driven by the agent browser,
-// real DuckDuckGo searches. Three errands a person would actually give:
-// research, a mail draft grounded on a vault note, and a comparison. Each
-// must end as a new-note proposal card in review.
-//
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/errand-probe.mts"
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault, vaultPaths } from 'core'
 import { execSync } from 'node:child_process'
@@ -137,7 +130,6 @@ for (const scenario of scenarios) {
 
 await app.close()
 
-// Zombie check: the agent's Chrome must be gone with the app.
 await new Promise((r) => setTimeout(r, 2_000))
 const left = execSync('pgrep -f agent-browser-profile || true', { encoding: 'utf8' }).trim()
 if (left) {

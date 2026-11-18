@@ -1,6 +1,3 @@
-// Does the connect banner stay inside the window, and does the canvas stay put?
-// The bug was an unstyled div in normal flow: it ran off the right edge and
-// pushed the star field left. Numbers, at several window widths.
 import { _electron as electron } from '@playwright/test'
 import { initVault, createNote } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -11,7 +8,6 @@ const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 await mkdir(REPO_TMP, { recursive: true })
 const root = await mkdtemp(join(REPO_TMP, 'banner-'))
 const paths = await initVault(root, { git: false })
-// A few stars, so the canvas has something whose position can shift.
 for (let i = 0; i < 6; i += 1) {
   await createNote(paths, { id: `n-star-${i}`, body: `# Star ${i}\n\nbody` })
 }
@@ -25,10 +21,6 @@ await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 60_000 })
 await page.getByTestId('connect-banner').waitFor({ state: 'visible', timeout: 60_000 })
 
 for (const width of [1274, 1000, 820]) {
-  // Resize the REAL window, not just the viewport: the top bar is sized by
-  // env(titlebar-area-width), which only tracks actual window geometry. A
-  // viewport-only resize leaves that env value stale and invents an overflow
-  // that no user can produce.
   await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0]?.setSize(w, 800), width)
   await page.waitForTimeout(900)
   const m = await page.evaluate(() => {
@@ -56,8 +48,6 @@ for (const width of [1274, 1000, 820]) {
   )
 }
 
-
-// Who is actually wider than the window?
 await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(900, 800))
 await page.waitForTimeout(400)
 const wide = await page.evaluate(() => {
@@ -78,7 +68,6 @@ const wide = await page.evaluate(() => {
 console.log('\nwider than the 900px window:')
 for (const w of wide) console.log(`  ${w.tag}.${w.cls} [${w.testid}] ${w.left}-${w.right}`)
 
-// It must not sit on top of the Today dock either.
 const clash = await page.evaluate(() => {
   const b = document.querySelector('[data-testid="connect-banner"]')!.getBoundingClientRect()
   const t = document.querySelector('[data-testid="today-button"]')?.getBoundingClientRect()

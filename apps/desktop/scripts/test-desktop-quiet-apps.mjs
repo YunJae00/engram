@@ -46,7 +46,6 @@ try {
           const field = scan.controls.find(item => item.can.set && /TextArea|TextField|Edit|Document/.test(item.type) && !item.secret && item.enabled && !item.offscreen && !item.value?.trim())
           if (action === 'set' || keys) {
             if (!field) throw new Error('No empty editable control; existing text was preserved')
-            // Key probes use an empty editor so Enter cannot submit a message.
             receipt = await helper.request(keys ? 'quietPress' : 'quietSet', { ...target, snapshot: scan.snapshot, control: field.id, ...(keys ? { key: action } : { text: 'Engram quiet lane probe' }) })
           } else {
             const control = scan.controls.find(item => action === 'menu' ? item.can.press && /^(menu|more|more options)$/i.test(item.name) : item.can.scroll)

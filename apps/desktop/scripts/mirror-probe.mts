@@ -1,6 +1,3 @@
-// What the mirror actually carries: the size of a streamed frame, the size of
-// the still the large view asks for, and how many kilobytes each costs.
-// Read-only - it opens one public page and looks at it.
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -47,8 +44,6 @@ await page.waitForTimeout(4_000)
 const sharp = (await page.evaluate(`window.__seen`)) as { w: number; h: number; kb: number; px: string }[]
 console.log(`the large view's still: ${sharp.map((one) => `${one.px} ${one.kb}KB`).join(', ') || '(none)'}`)
 
-
-// The pane says it is tall: the page should lay itself out to fit it.
 await page.evaluate(`window.__seen = []`)
 await page.evaluate(() => window.engram.agentHeight(1500))
 await page.waitForTimeout(1_500)

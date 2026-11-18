@@ -46,11 +46,8 @@ const time = async (label: string, work: () => Promise<unknown>) => {
   catch (e) { console.log(label, 'FAILED after', Date.now() - t0, 'ms:', String(e).slice(0, 120)) }
 }
 
-// 1. quiet screenshot — no polling running
 await time('shot-quiet', () => page.screenshot({ timeout: 15000 }))
 
-// 2. the mission view itself: seat both comets and screenshot over the
-// live-updating tiles, the same order the e2e walks.
 await page.getByTestId('activity-mission').click()
 await page.getByTestId('mission-add-0').click()
 await page.getByTestId('mission-add-menu').getByRole('button', { name: 'A', exact: true }).click()

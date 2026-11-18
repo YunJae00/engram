@@ -1,7 +1,3 @@
-// Brain topic panel probe: seeds a vault with one linked topic (hub synthesis
-// + members carrying link_reasons) plus unconnected strays, opens the Brain
-// tab, selects the topic and screenshots the detail panel. Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/topic-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault, readNote, writeNote } from 'core'
 import { mkdir, rm } from 'node:fs/promises'
@@ -43,7 +39,6 @@ const MEMBERS: Seed[] = [
   },
 ]
 
-// reasons[i] = why member i links to member i-1 (a chain keeps one component).
 const REASONS = [
   '',
   'Same retrieval-quality experiment series',
@@ -75,7 +70,6 @@ async function seed(): Promise<void> {
     const note = await createNote(paths, { body: s.body, type: s.type, decay: s.decay }, new Date(s.date))
     ids.push(note.front.id)
   }
-  // Chain the members and attach the link reasons (J2 would normally write these).
   for (let i = 1; i < ids.length; i++) {
     const note = await readNote(paths, ids[i])
     note.front.derived_from = [ids[i - 1]]
@@ -110,7 +104,6 @@ async function main(): Promise<void> {
   await page.waitForTimeout(800)
   await page.screenshot({ path: join(OUT, '01-topic-panel.png') })
   console.log('shot: 01-topic-panel')
-  // The unconnected bucket page, same section grammar.
   const stray = page.getByTestId('brain-unconnected')
   if (await stray.count()) {
     await stray.click()

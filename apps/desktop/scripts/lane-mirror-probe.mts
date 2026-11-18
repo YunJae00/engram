@@ -1,6 +1,3 @@
-// The user's report: two chats, the pane shows the same page on both.
-// alpha browses; bravo never does. Looking at bravo must not show alpha's
-// picture.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'

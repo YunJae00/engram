@@ -28,8 +28,6 @@ const app = await electron.launch({
 })
 const page = await app.firstWindow()
 await page.waitForSelector('[data-testid="shell"]', { timeout: 60000 })
-// The first lane browses the way the person does: chat open, mirror
-// streaming — the shape the pull API is asked in after a live session.
 await page.evaluate(async () => {
   const installed = (await window.engram.browsersInstalled()) as { path: string }[]
   if (installed[0]) await window.engram.browserChoose(installed[0].path)

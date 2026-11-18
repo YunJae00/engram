@@ -1,7 +1,3 @@
-// Dogfood evaluation seed: a Korean dev-notes corpus with planted ground
-// truth (hub cluster, duplicate pair, contradiction pair, supersede pair,
-// distractors). Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/eval-seed.mts
 import { createNote, initVault } from 'core'
 import { rm, mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -41,7 +37,6 @@ const SEEDS: Seed[] = [
     type: 'note',
     body: `# RAG 평가 하네스\n\n골든 질문 30개로 recall@5를 상시 측정하는 하네스를 만들었다. 청킹/임베딩/리랭커 변경마다 회귀 확인용. 현재 기준선 recall@5 = 0.74. 질문 세트는 실제 사용자 질의 로그에서 추출.`,
   },
-  // ── Duplicate pair (expected: J7 dedupe card) ──
   {
     date: '2026-06-15T09:00:00Z',
     type: 'note',
@@ -52,7 +47,6 @@ const SEEDS: Seed[] = [
     type: 'note',
     body: `# 미팅 노트는 당일에\n\n미팅 노트는 다음날이 되기 전에 정리하자. 하루 지나면 맥락을 다 까먹어서 노트가 반쪽짜리가 된다. 미팅 끝나고 바로 15분 확보하는 게 제일 확실하다.`,
   },
-  // ── Contradiction pair (expected: conflict/supersede card) ──
   {
     date: '2026-06-10T10:00:00Z',
     type: 'decision',
@@ -63,7 +57,6 @@ const SEEDS: Seed[] = [
     type: 'decision',
     body: `# 배포 정책 갱신: 금요일 오전 배포 허용\n\n카나리 배포 + 자동 롤백이 도입돼서 금요일 오전(11시 이전) 배포는 허용하기로 했다. 금요일 오후는 여전히 금지. 자동 롤백이 15분 안에 완료되는 걸 두 번 확인했음.`,
   },
-  // ── Supersede/stale pair (expected: stale or supersede card) ──
   {
     date: '2026-06-05T10:00:00Z',
     type: 'note',
@@ -75,7 +68,6 @@ const SEEDS: Seed[] = [
     type: 'note',
     body: `# 파트너 API rate limit 상향\n\n파트너사가 우리 플랜의 rate limit을 분당 600으로 상향해줬다 (7월 계약 갱신). 배치 스로틀 상수 업데이트 필요. 429 백오프 로직은 그대로 두는 게 안전.`,
   },
-  // ── Standalone but linkable to A cluster ──
   {
     date: '2026-06-30T15:00:00Z',
     type: 'log',
@@ -86,9 +78,6 @@ const SEEDS: Seed[] = [
     type: 'decision',
     body: `# 워크스페이스 임베딩 100MB 제한 해제\n\n단일 파일 100MB 제한을 600MB로 상향. 스트리밍 파싱/청킹으로 대용량 파일도 RAG 임베딩 가능하게 함. 기존 제한은 파일 전체를 메모리에 적재해 OOM이 나기 때문에 둔 안전장치였음.`,
   },
-  // ── Triple-note same issue (card-dedupe limit probe: J7 may pair A-B,
-  // A-C, B-C — distinct target sets defeat issuance dedup; sibling
-  // dismissal on approval is what must collapse them) ──
   {
     date: '2026-06-12T09:30:00Z',
     type: 'note',
@@ -104,7 +93,6 @@ const SEEDS: Seed[] = [
     type: 'note',
     body: `# 스탠드업 또 길어짐\n\n이번 주 스탠드업이 두 번이나 30분을 넘었다. 15분 컷 원칙 재합의 — 타이머를 켜고, 초과 주제는 주차장 목록으로 미룬다.`,
   },
-  // ── Distractors (should NOT link into cluster A) ──
   {
     date: '2026-06-18T08:00:00Z',
     type: 'note',

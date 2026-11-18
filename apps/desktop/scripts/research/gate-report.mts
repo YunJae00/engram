@@ -1,9 +1,3 @@
-// The gate experiments read back: for each condition, how often runs reached
-// the goal, how often they claimed a goal they had not reached, what they
-// cost, and - from each run's own trace - which way the failures went wrong.
-//
-//   node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/research/gate-report.mts <run dir> [<run dir> ...]
-// Prints a markdown report.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
@@ -13,7 +7,6 @@ const runs: any[] = []
 for (const dir of dirs) for (const line of (await readFile(join(dir, 'runs.jsonl'), 'utf8')).trim().split('\n')) runs.push({ ...JSON.parse(line), dir: basename(dir) })
 
 const pathOf = (url: string) => { try { const at = new URL(url); return at.pathname + at.search } catch { return url } }
-// How a run went wrong, read from its steps; a run can go wrong more than one way.
 function failures(run: any): string[] {
   const kinds = new Set<string>()
   const steps: any[] = run.trace ?? []

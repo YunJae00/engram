@@ -346,7 +346,6 @@ try {
   assert.equal(protectedView.focusedEditable, false)
   await assert.rejects(helper.request('bind', { ...target, grant: randomUUID() }))
   result.stage = 'browser-input'
-  // The foreground consent owner may grant activation to its owned helper.
   await fixture.request('grantForeground', { pid: helper.child.pid })
   result.browserInputPassed = await testDesktopBrowser(helper, desktop, output, until)
   result.stage = 'external-stop-overlay'

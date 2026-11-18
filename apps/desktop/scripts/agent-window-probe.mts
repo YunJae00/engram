@@ -1,6 +1,3 @@
-// Opens the agent window the way the app does and reports what a page can
-// tell about it (the webdriver flag), holding it on screen for a capture.
-// AGENT_PROBE_DROP lists default driver switches to leave out, semicolon-separated.
 import { chromium } from 'playwright-core'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'

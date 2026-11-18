@@ -5,8 +5,6 @@ import { fileURLToPath } from 'node:url'
 const USERDATA = fileURLToPath(new URL('../../../tmp/warm-probe-userdata/', import.meta.url))
 await rm(USERDATA, { recursive: true, force: true })
 
-// ENGRAM_PROBE_EXE points at a PACKAGED build (dist/win-unpacked/Engram.exe)
-// to verify the real installer payload; unset, the dev build runs.
 const exe = process.env.ENGRAM_PROBE_EXE
 const app = await electron.launch({
   ...(exe

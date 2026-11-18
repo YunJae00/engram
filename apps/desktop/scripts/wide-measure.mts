@@ -1,4 +1,3 @@
-// Companion to wide-audit.mts: hard numbers for the Brain page geometry.
 import { _electron as electron } from '@playwright/test'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'

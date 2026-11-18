@@ -1,5 +1,3 @@
-// Where a cloud turn's seconds go: the runtime's own start, one answer with
-// no tools, and one answer that makes a tool call first.
 import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 const model = process.env['PROBE_MODEL'] ?? 'sonnet'

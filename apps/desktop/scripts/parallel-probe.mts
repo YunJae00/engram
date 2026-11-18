@@ -1,5 +1,3 @@
-// Two comets at once, each on the web: do both answer, on their own tabs,
-// and does the pane show the tab of whichever comet is being looked at?
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -41,7 +39,6 @@ const ask = async (botId: string, text: string) => {
 const started = Date.now()
 await ask(a.id, 'open https://en.wikipedia.org/wiki/Seoul and tell me its population in one line')
 await page.waitForTimeout(1_500)
-// The second comet must accept the ask while the first is still working.
 await ask(b.id, 'open https://en.wikipedia.org/wiki/Busan and tell me its population in one line')
 const sendable = await page.locator('.bots-write textarea').isEnabled()
 console.log(`second comet's composer while the first works: ${sendable ? 'open' : 'LOCKED'}`)
@@ -50,7 +47,6 @@ for (let i = 0; i < 120 && done.size < 2; i++) await page.waitForTimeout(2_000)
 console.log(`both answered: ${done.size === 2 ? 'yes' : 'NO'} in ${Math.round((Date.now() - started) / 1000)}s`)
 for (const [channel, text] of done) console.log(`  ${channel}: ${text.replace(/\s+/g, ' ')}`)
 
-// The pane follows the comet being looked at.
 await page.getByTestId(`bot-${a.id}`).click()
 await page.waitForTimeout(800)
 const urlA = await page.getByTestId('live-address').inputValue().catch(() => '(no pane)')

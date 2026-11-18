@@ -1,9 +1,3 @@
-// A brand-new user, as literally as this machine allows: empty userData, empty
-// vault, and the app pointed at a HOME with no ~/.claude at all. Reading code
-// finds the failures you thought of; booting finds the ones you did not.
-//
-// Everything is written under a throwaway root, so the real profile, the real
-// vault and the real ~/.claude/CLAUDE.md are untouched.
 import { _electron as electron } from '@playwright/test'
 import { mkdir, mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -25,12 +19,10 @@ const app = await electron.launch({
   args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
   env: {
     ...process.env,
-    // A fresh account: no ~/.claude, no config, nothing.
     HOME: home,
     USERPROFILE: home,
     ENGRAM_VAULT: vault,
     ENGRAM_USERDATA: userData,
-    // The interesting case is "no engine on the machine".
     ENGRAM_ENGINE: 'none',
   },
 })
@@ -74,8 +66,6 @@ await step('capture works with no engine', async () => {
   await page.getByTestId('chat-kept').last().waitFor({ state: 'visible', timeout: 30_000 })
 })
 await step('Today opens', async () => {
-  // Escape deliberately does NOT close the composer (it would discard what you
-  // typed) — the close button is the way out, same as the e2e does it.
   await page.getByTestId('chat-close').click()
   await page.getByTestId('today-button').click()
   await page.getByTestId('today-sheet').waitFor({ state: 'visible', timeout: 20_000 })
@@ -87,8 +77,6 @@ await step('Settings opens', async () => {
   await page.keyboard.press('Escape')
 })
 
-// Let the background work (detection, context sync, session watch, auto-tidy
-// boot pass) actually run before judging it.
 await page.waitForTimeout(20_000)
 
 console.log('\nwhat the app wrote outside the vault:')

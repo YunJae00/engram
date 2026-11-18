@@ -1,5 +1,3 @@
-// The person's side of a scenario: what they type, what they do in the
-// agent window with their own hands, and what they answer when asked.
 import { chromium, type Browser, type Page } from 'playwright-core'
 import type { Page as AppPage } from '@playwright/test'
 
@@ -11,7 +9,6 @@ export interface Outcome {
   options: string[]
   gates: number
   seconds: number
-  // Pieces of the reply that arrived while it was being written.
   tokens: number
   error: string | null
 }
@@ -22,7 +19,6 @@ export class Person {
   private readonly trace: string[] = []
   private history: { role: 'user' | 'assistant'; text: string }[] = []
   gate: GateAnswer = 'approve'
-  // Every turn of the scenario under way, kept even when it ends in an error.
   turns: Outcome[] = []
 
   constructor(
@@ -30,14 +26,12 @@ export class Person {
     readonly cdpPort: number,
   ) {}
 
-  // Wires the events once per app window: steps, answers, gates.
   async attach(): Promise<void> {
     await this.app.exposeFunction('__probe', (line: string) => {
       this.trace.push(line)
     })
     await this.app.exposeFunction('__gateAnswer', () => this.gate)
     await this.app.evaluate(() => {
-      // An exposed function answers with a promise on this side of the bridge.
       const w = window as unknown as { __probe(line: string): void; __gateAnswer(): Promise<'approve' | 'always' | 'cancel'> }
       window.engram.onEvent((event) => {
         if (event.type === 'comet:step') w.__probe(`step ${event.line}`)
@@ -46,8 +40,6 @@ export class Person {
           w.__probe('GATE')
           setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.routineSubmitDone(verdict)), 400)
         }
-        // The same question, asked about a press the comet is making itself
-        // on a page it found: one gate, whichever way the job was done.
         if (event.type === 'press:ask') {
           w.__probe('GATE')
           setTimeout(() => void w.__gateAnswer().then((verdict) => window.engram.pressAskDone(verdict)), 400)
@@ -65,8 +57,6 @@ export class Person {
     return bot.id
   }
 
-  // Types a message to the comet and waits for its answer. The conversation
-  // carries on inside one comet; a new comet starts it over.
   async say(botId: string, text: string, limitS = 300): Promise<Outcome> {
     this.trace.length = 0
     const started = Date.now()
@@ -103,7 +93,6 @@ export class Person {
     await this.app.evaluate((botId) => window.engram.chatAbort(`bot-${botId}`), botId)
   }
 
-  // Their own hands in the agent window: the page the comet left open.
   async hands<T>(work: (page: Page) => Promise<T>): Promise<T> {
     let browser: Browser | null = null
     let last: unknown
@@ -128,10 +117,6 @@ export class Person {
     throw last ?? new Error('the agent window never answered on the debug port')
   }
 
-  // Shows the comet a job once, by doing it in the teach window, then keeps
-  // it under a name.
-  // A job a comet did once and kept: the moves, saved under a name, exactly
-  // as the offer at the end of a turn saves them.
   async kept(name: string, steps: unknown[]): Promise<string> {
     const routine = (await this.app.evaluate(({ name, steps }) => window.engram.routineAdd({ name, steps: steps as never }), { name, steps })) as { id: string }
     return routine.id

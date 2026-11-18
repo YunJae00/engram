@@ -1,8 +1,3 @@
-// A small office on a local port, for scenarios that need a website with
-// the things a real one has: pages to read, a search that searches, a form
-// that posts, a page behind a sign-in, a page behind a human check, a
-// booking with a choice to make. Everything it receives is kept in memory
-// so a scenario can check what the office actually got.
 import { createServer, type Server } from 'node:http'
 
 export interface Office {
@@ -38,8 +33,6 @@ const PAGES: Record<string, string> = {
   '/promo': '<h1>우리 브라우저 받기</h1><p>더 빠른 브라우저를 지금 설치하세요.</p>',
 }
 
-// Pages the search knows by their door, not their contents: what is behind
-// them is for the person who can open them.
 const DOORS: Record<string, string> = {
   '/expense': '<h1>사내 경비 시스템</h1><p>경비 내역 조회와 신청. 로그인이 필요합니다.</p>',
   '/vpn': '<h1>VPN 안내</h1><p>사내망 VPN 주소와 포트 안내 페이지.</p>',
@@ -114,8 +107,6 @@ export async function startOffice(): Promise<Office> {
     if (at.pathname === '/vpn')
       return jar.has('human=ok') ? page('<h1>VPN 안내</h1><p>새 VPN 주소는 vpn2.example이며 9월 2일부터 씁니다. 접속 포트는 443입니다.</p>') : page(CHECK, 'One last step')
     if (at.pathname === '/find') return page(searchPage(url, at.searchParams.get('q') ?? ''))
-    // A week at a time, turned with a press - the way a timesheet app works -
-    // with a save button that must never be pressed on the person's behalf.
     if (at.pathname === '/timesheet') {
       const previous = at.searchParams.get('week') === 'prev'
       const week = previous

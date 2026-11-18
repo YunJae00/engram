@@ -1,6 +1,3 @@
-// What the window shows in its first second: the frames a person actually
-// sees while the app opens. Opening and closing is part of the product, so
-// this is photographed like any other screen.
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -25,7 +22,6 @@ const app = await electron.launch({
   env: { ...process.env, ENGRAM_VAULT: VAULT, ENGRAM_USERDATA: USERDATA, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none' },
 })
 const page = await app.firstWindow()
-// A burst through the first second, then one settled frame.
 for (const at of [0, 120, 250, 400, 700, 1100]) {
   await page.waitForTimeout(at === 0 ? 0 : at - (at === 120 ? 0 : 0))
   await page.screenshot({ path: join(OUT, `t${String(at).padStart(4, '0')}.png`) }).catch(() => {})

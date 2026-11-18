@@ -1,7 +1,3 @@
-// A person's own hands on the mirrored page: does a click land where the
-// picture shows it, and does typing reach the page? A local page answers
-// both by navigating: a full-page link, and a box that goes where you
-// typed on Enter.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { createServer } from 'node:http'
@@ -38,7 +34,6 @@ await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 await page.getByTestId(`bot-${bot.id}`).click()
 await page.evaluate((url) => window.engram.agentGo(url), `${base}/start`)
 await page.getByTestId('web-pane').waitFor({ state: 'visible', timeout: 30_000 })
-// How the picture's shape settles against the stage, second by second.
 for (let i = 1; i <= 6; i++) {
   await page.waitForTimeout(1_000)
   const shape = await page.evaluate(() => {
@@ -51,9 +46,6 @@ for (let i = 1; i <= 6; i++) {
 const canvas = page.locator('.mirror-screen canvas')
 const box = await canvas.boundingBox()
 if (!box) throw new Error('no picture')
-// A press near the picture's corner: the band, if any, is where a mapping
-// against the box would go wrong.
-// Asked by hand: does the page take the height at all?
 await page.evaluate(() => window.engram.agentHeight(1620))
 await page.waitForTimeout(2_500)
 console.log(`  after asking for 1620 by hand: ${await page.evaluate(() => { const c = document.querySelector('.mirror-screen canvas') as HTMLCanvasElement | null; return `canvas ${c?.width}x${c?.height}` })}`)
@@ -67,7 +59,6 @@ await page.waitForTimeout(1_500)
 const afterClick = ((await page.evaluate(() => window.engram.agentState())) as { url?: string }).url ?? ''
 console.log(`a click on the picture: ${afterClick.endsWith('/clicked') ? 'landed' : 'MISSED'} (${afterClick})`)
 if (!afterClick.endsWith('/clicked')) {
-  // The same press sent straight down the wire, past the canvas.
   const lane = await page.evaluate(async () => (await window.engram.agentState()).lane ?? '')
   await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'pressed', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)
   await page.evaluate((lane) => window.engram.agentInput({ kind: 'mouse', type: 'released', x: 0.5, y: 0.5, button: 'left', clicks: 1, modifiers: 0 }, lane), lane)

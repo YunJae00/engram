@@ -1,5 +1,3 @@
-// Empty-vault sweep: every tab's empty state on a brand-new vault.
-// Run from apps/desktop:  ../../packages/core/node_modules/.bin/tsx scripts/empty-tabs-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'

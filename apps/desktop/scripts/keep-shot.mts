@@ -1,6 +1,3 @@
-// A real read-only turn that takes a few steps, so the comet offers to keep
-// it: the picture shows what the offer looks like now, and what the page in
-// the dock looks like with its images.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -51,7 +48,6 @@ for (let i = 0; i < 150 && !done; i++) {
 }
 await page.waitForTimeout(3_000)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/keep-shot.png', import.meta.url)) })
-// Folded: where does the tab sit, and does the work list read as one thing?
 await page.getByTestId('composer-web').click().catch(() => {})
 await page.getByTestId('comet-work-toggle').click().catch(() => {})
 await page.waitForTimeout(400)

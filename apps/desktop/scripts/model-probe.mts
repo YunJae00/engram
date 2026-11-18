@@ -1,6 +1,3 @@
-// Whether the model a person picks is the model that answers. Asked twice on
-// one comet, with the pick changed in between: the runtime's own answer to
-// "which model are you" is the evidence.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'

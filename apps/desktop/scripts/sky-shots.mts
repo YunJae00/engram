@@ -1,6 +1,3 @@
-// Engram sky check: home boots into the constellation; empty vault shows the
-// starter sky. Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/sky-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'

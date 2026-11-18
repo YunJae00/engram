@@ -1,4 +1,3 @@
-// Why is the List empty state off-centre? Dump the ancestor boxes.
 import { _electron as electron } from '@playwright/test'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'

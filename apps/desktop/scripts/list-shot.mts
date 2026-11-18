@@ -1,4 +1,3 @@
-// The List tab with a few notes: does the table fill its slot?
 import { _electron as electron } from '@playwright/test'
 import { createNote, initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'

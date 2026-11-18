@@ -1,6 +1,3 @@
-// What the app feels like to use, in milliseconds: opening a long
-// conversation, typing into it, and moving between tabs. No engine is asked
-// anything - this is the window's own work, which is what "sluggish" means.
 import { _electron as electron } from '@playwright/test'
 import { appendBotTurn, createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -15,7 +12,6 @@ const paths = await initVault(VAULT, { git: false })
 await mkdir(USERDATA, { recursive: true })
 await writeFile(join(USERDATA, 'settings.json'), JSON.stringify({ defaultEngine: 'claude', autoStart: false, teamSync: 'auto' }))
 
-// A conversation somebody has actually been having for a while.
 const bot = await createBot(paths, { name: 'reader', purpose: 'reads pages' })
 const PARAGRAPH = 'This is the kind of answer a comet writes: a few sentences of markdown, a **bold** word, a [link](https://example.test) and a list.\n\n- one\n- two\n- three\n'
 for (let i = 0; i < 30; i++) {
@@ -68,7 +64,6 @@ await page.getByTestId(`bot-${bot.id}`).click()
 await page.locator('.bots-thread .bubble-msg').last().waitFor({ state: 'visible', timeout: 20_000 })
 console.log(`a 60-turn conversation opens: ${Date.now() - openAt}ms`)
 
-// Typing: how long the window takes to answer each keystroke.
 const box = page.locator('.bots-write textarea')
 await box.click()
 const typed: number[] = []
@@ -80,7 +75,6 @@ for (const ch of 'what did we decide about the release'.split('')) {
 typed.sort((a, b) => a - b)
 console.log(`typing: median ${typed[Math.floor(typed.length / 2)]}ms, worst ${typed[typed.length - 1]}ms over ${typed.length} keys`)
 
-// Moving between the tabs, which unmounts and remounts whole views.
 const swaps: number[] = []
 for (let i = 0; i < 5; i++) {
   let at = Date.now()

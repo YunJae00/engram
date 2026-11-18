@@ -1,5 +1,3 @@
-// The comets surfaces, photographed: rail, empty state, tab - where the mark
-// actually lives.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -26,7 +24,6 @@ await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 40_000 })
 await page.keyboard.press('Control+l')
 await page.getByTestId('bots-view').waitFor({ state: 'visible', timeout: 20_000 })
 await page.waitForTimeout(800)
-// A kept routine, so the rail's own list of them is in the picture.
 await page.evaluate(async () => {
   const bots = await window.engram.botsList()
   if (bots[0]) await window.engram.botTaskAdd(bots[0].id, { name: 'Morning headlines', goal: 'Open the news front page and list the headlines' })
@@ -34,7 +31,6 @@ await page.evaluate(async () => {
 await page.waitForTimeout(400)
 await page.locator('.app-sidebar button', { hasText: 'reader' }).first().click().catch(() => {})
 await page.waitForTimeout(400)
-// The model picker, open, beside the composer - once the plan's list is in.
 for (let i = 0; i < 40; i++) {
   const rows = (await page.evaluate(() => window.engram.modelsList())) as unknown[]
   if (rows.length > 0) break

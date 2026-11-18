@@ -1,5 +1,3 @@
-// Two things the person doubts: that a conversation can be started over
-// mid-turn, and that a kept routine pressed in the rail actually runs.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm, writeFile, readdir } from 'node:fs/promises'
@@ -27,7 +25,6 @@ for (let i = 0; i < 30; i++) {
 }
 await page.getByTestId(`bot-${bot.id}`).click()
 
-// ── 1. Fresh start, mid-turn ─────────────────────────────────────────────
 const box = page.locator('.bots-write textarea')
 await box.click()
 await box.fill('open https://en.wikipedia.org/wiki/Seoul and read me the whole History section, slowly and in detail')
@@ -40,7 +37,6 @@ const enabled = await box.isEnabled()
 console.log(`after New chat mid-turn: bubbles ${bubbles}, composer ${enabled ? 'open' : 'LOCKED'}`)
 const chats = (await readdir(join(VAULT, 'workspace', '.engram', 'bot-chats')).catch(() => [])) as string[]
 console.log(`transcripts on disk: ${chats.join(', ') || '(none)'}`)
-// The next turn starts clean and answers.
 let done = ''
 await page.exposeFunction('__done', (text: string) => (done = text))
 await page.evaluate(`window.engram.onEvent((e) => { if (e.type === 'chat:done') window.__done(e.text || ''); if (e.type === 'chat:error') window.__done('ERROR ' + e.message) })`)
@@ -50,8 +46,6 @@ await box.press('Enter')
 for (let i = 0; i < 60 && !done; i++) await page.waitForTimeout(2_000)
 console.log(`the turn after: ${done.replace(/\s+/g, ' ').slice(0, 60) || '(no answer)'}`)
 
-// ── 2. A web turn, kept as a routine: the path is recorded, and pressing
-//      it in the rail runs it as an ordinary turn in this chat ────────────
 done = ''
 await box.click()
 await box.fill('open https://en.wikipedia.org/wiki/Seoul, press the "Talk" tab, and tell me the page title')

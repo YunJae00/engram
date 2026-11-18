@@ -1,7 +1,3 @@
-// One-off reproduction harness: boots the app on an EXISTING vault (no seeding)
-// and captures the curated board, expanded shelf and folder fan-out — for
-// diagnosing layout overlap reports against a real user vault copied to tmp/.
-// Run from apps/desktop:  ../../packages/core/node_modules/.bin/tsx scripts/repro-shots.mts <vault-root> <out-dir>
 import { _electron as electron } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -58,7 +54,6 @@ async function main(): Promise<void> {
     await page.waitForTimeout(300)
   }
 
-  // List: sticky month header vs scrolled rows.
   await page.getByTestId('activity-list').click()
   await page.waitForTimeout(600)
   await page.locator('.list-scroll').evaluate((el) => { el.scrollTop = 60 })
@@ -67,7 +62,6 @@ async function main(): Promise<void> {
   await page.getByTestId('activity-board').click()
   await page.waitForTimeout(400)
 
-  // Brain view: topic pages built from the link graph.
   await page.getByTestId('activity-brain').click()
   await page.waitForTimeout(800)
   await shot('06-brain-topic')
@@ -80,7 +74,6 @@ async function main(): Promise<void> {
   await page.getByTestId('brain-graph-open').click()
   await page.waitForTimeout(900)
   await shot('09-brain-constellation')
-  // Clicking a node must close the overlay and open that note's sheet.
   await page.locator('[data-node-id]').first().click()
   await page.waitForTimeout(600)
   await shot('10-constellation-node-open')
@@ -89,8 +82,6 @@ async function main(): Promise<void> {
   await page.getByTestId('activity-board').click()
   await page.waitForTimeout(500)
 
-  // Resize behaviour: the help button must ride its corner, the constellation
-  // sheet must stay centered and scale.
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.waitForTimeout(700)
   await shot('11-resized-large')
@@ -103,7 +94,6 @@ async function main(): Promise<void> {
   await page.getByTestId('activity-board').click()
   await page.waitForTimeout(400)
 
-  // A short window is where the shelf/folder collisions were reported.
   await page.setViewportSize({ width: 1100, height: 640 })
   await page.waitForTimeout(800)
   await shot('04-short-window')

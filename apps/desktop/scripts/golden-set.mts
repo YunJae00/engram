@@ -1,17 +1,3 @@
-// The golden retrieval set: a realistic mixed Korean/English personal vault
-// with stable note ids, plus queries whose correct answers are known. The
-// eval runner (eval-retrieval.mts) builds this vault and scores every layer
-// of the retrieval stack against EXPECTED ids, so a constant change shows up
-// as a number, not a feeling.
-//
-// Design rules, so additions keep the set honest:
-// - Query wording must NOT quote the note verbatim unless category is
-//   'exact' — paraphrase/crosslingual queries are the point of the set.
-// - Every cluster ships distractors: notes near in topic but wrong as an
-//   answer. A retriever that "just returns the cluster" must lose points.
-// - '2hop' queries name note A; the expected note B is only reachable via
-//   the derived_from link fabric (spreading activation), not by wording.
-
 export interface GoldenNote {
   id: string
   date: string
@@ -26,14 +12,11 @@ export type QueryCategory = 'exact' | 'paraphrase' | 'crosslingual' | 'distracto
 export interface GoldenQuery {
   q: string
   category: QueryCategory
-  // Any of these counts as a hit for hit@k / MRR.
   expected: string[]
-  // For 'synthesis': how many of `expected` must appear in top-8 to pass.
   needInTop8?: number
 }
 
 export const GOLDEN_NOTES: GoldenNote[] = [
-  // ── RAG / 검색 클러스터 (개발) ──
   {
     id: 'g-rag-chunk',
     date: '2026-06-20T10:00:00Z',
@@ -77,7 +60,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 워크스페이스 임베딩 100MB 제한 해제\n\n단일 파일 100MB 제한을 600MB로 상향. 스트리밍 파싱/청킹으로 대용량 파일도 RAG 임베딩 가능하게 함. 기존 제한은 파일 전체를 메모리에 적재해 OOM이 나기 때문에 둔 안전장치였음.`,
   },
 
-  // ── 배포 정책 (supersede 체인) ──
   {
     id: 'g-deploy-fri',
     date: '2026-06-10T10:00:00Z',
@@ -98,7 +80,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 카나리 배포 세팅\n\n신규 버전을 트래픽 5%에 10분 → 25%에 10분 → 100% 순서로 올린다. 에러율이 기준선 대비 2배를 넘으면 자동 롤백. 롤백 소요는 평균 12분, 최대 15분 관측.`,
   },
 
-  // ── API rate limit (supersede 체인) ──
   {
     id: 'g-api-60',
     date: '2026-06-05T10:00:00Z',
@@ -112,7 +93,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 파트너 API rate limit 상향\n\n파트너사가 우리 플랜의 rate limit을 분당 600으로 상향해줬다 (7월 계약 갱신). 배치 스로틀 상수 업데이트 필요. 429 백오프 로직은 그대로 두는 게 안전.`,
   },
 
-  // ── 스탠드업 (중복 3형제) ──
   {
     id: 'g-standup-1',
     date: '2026-06-12T09:30:00Z',
@@ -129,7 +109,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 스탠드업 또 길어짐\n\n이번 주 스탠드업이 두 번이나 30분을 넘었다. 15분 컷 원칙 재합의 — 타이머를 켜고, 초과 주제는 주차장 목록으로 미룬다.`,
   },
 
-  // ── 회의록 (중복 쌍) ──
   {
     id: 'g-meeting-1',
     date: '2026-06-15T09:00:00Z',
@@ -141,7 +120,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 미팅 노트는 당일에\n\n미팅 노트는 다음날이 되기 전에 정리하자. 하루 지나면 맥락을 다 까먹어서 노트가 반쪽짜리가 된다. 미팅 끝나고 바로 15분 확보하는 게 제일 확실하다.`,
   },
 
-  // ── 영어 업무 노트 (crosslingual 표적) ──
   {
     id: 'g-en-pg-index',
     date: '2026-06-17T11:00:00Z',
@@ -175,7 +153,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# Engineering onboarding checklist\n\nNew hires: repo access day 1, first PR by day 3 (docs fix counts), production shadow on week 2, first on-call shadow week 4. Each new hire gets a buddy who owns unblocking them for the first month.`,
   },
 
-  // ── 인프라 ──
   {
     id: 'g-infra-k8s',
     date: '2026-06-23T14:00:00Z',
@@ -197,7 +174,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 시크릿 로테이션 정책\n\nAPI 키와 DB 크리덴셜은 90일 주기로 로테이션. 로테이션은 Vault 동적 시크릿으로 자동화, 사람 손으로 도는 키는 목록화해서 분기 점검. 유출 시 즉시 폐기 절차 문서화 완료.`,
   },
 
-  // ── 팀/HR ──
   {
     id: 'g-team-rubric',
     date: '2026-06-16T14:00:00Z',
@@ -215,7 +191,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 1on1 진행 방식\n\n격주 30분, 아젠다는 팀원이 먼저 채운다. 상태 보고 금지 — 성장/막힌 것/피드백만. 액션 아이템은 다음 1on1 시작 때 확인.`,
   },
 
-  // ── 건강 ──
   {
     id: 'g-health-shoulder',
     date: '2026-06-18T08:00:00Z',
@@ -238,7 +213,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 피부과 처방 메모\n\n트레티노인 0.025% 격일 밤, 보습 먼저 바르고 그 위에. 낮에는 선크림 필수. 4주차부터 각질 줄어드는 게 보인다고 함. 다음 진료 8월 20일.`,
   },
 
-  // ── 요리 ──
   {
     id: 'g-cook-kimchi',
     date: '2026-06-26T19:00:00Z',
@@ -255,7 +229,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 일본식 카레 개선\n\n양파 2개를 30분 캐러멜라이즈하는 게 맛의 8할. 고형 루 반 + 카레가루 반으로 하면 텁텁함이 줄어든다. 마지막에 우스터소스 1큰술.`,
   },
 
-  // ── 독서 ──
   {
     id: 'g-read-brain',
     date: '2026-07-02T21:00:00Z',
@@ -272,7 +245,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 독서: 프로젝트 헤일메리\n\n과학적 문제 해결의 연속이 플롯 그 자체인 소설. 로키 챕터부터 급가속. 아마추어 과학자 주인공이 실험-가설-검증 루프를 도는 구조가 일하는 방식이랑 닮았다.`,
   },
 
-  // ── 재정 ──
   {
     id: 'g-fin-tax',
     date: '2026-06-30T12:00:00Z',
@@ -291,7 +263,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 주담대 금리 비교\n\nA은행 4.1% 변동 vs B은행 4.5% 5년 고정. 금리 인하기라 변동 쪽으로 기울지만, 월 상환액 차이가 9만원이라 고정의 심리적 안정도 무시 못 함. 8월 중 결정.`,
   },
 
-  // ── 여행 ──
   {
     id: 'g-trip-osaka',
     date: '2026-07-05T19:00:00Z',
@@ -309,7 +280,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
     body: `# 항공권 구매 원칙\n\n국제선은 출발 8~10주 전이 대체로 저점. 화·수 출발이 금·일보다 15% 싸다. 가격 알림 걸어두고 두 번 떨어지면 산다 — 바닥 잡으려다 세 번 놓쳤다.`,
   },
 
-  // ── 기타 distractors ──
   {
     id: 'g-misc-move',
     date: '2026-06-25T18:00:00Z',
@@ -341,7 +311,6 @@ export const GOLDEN_NOTES: GoldenNote[] = [
 ]
 
 export const GOLDEN_QUERIES: GoldenQuery[] = [
-  // ── exact: 키워드가 노트에 그대로 있음 (어휘 검색 sanity) ──
   { q: 'bge-m3 recall 얼마나 좋았지', category: 'exact', expected: ['g-rag-bge'] },
   { q: '금요일 배포 정책', category: 'exact', expected: ['g-deploy-fri-am', 'g-deploy-fri'] },
   { q: '파트너 API rate limit 지금 분당 몇이지', category: 'exact', expected: ['g-api-600'] },
@@ -349,7 +318,6 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
   { q: '청킹 전략 실험 결과', category: 'exact', expected: ['g-rag-chunk'] },
   { q: '연금저축 세액공제 얼마 남았지', category: 'exact', expected: ['g-fin-tax'] },
 
-  // ── paraphrase: 같은 뜻, 다른 단어 (시맨틱이 살려야 함) ──
   { q: '문서를 몇 글자 단위로 자르는 게 좋았더라', category: 'paraphrase', expected: ['g-rag-chunk'] },
   { q: '회의 끝나고 기록은 언제까지 남기기로 했지', category: 'paraphrase', expected: ['g-meeting-1', 'g-meeting-2'] },
   { q: '아침 회의가 자꾸 길어질 때 정한 규칙', category: 'paraphrase', expected: ['g-standup-1', 'g-standup-2', 'g-standup-3'] },
@@ -359,7 +327,6 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
   { q: '비밀키 주기적으로 바꾸는 정책 있었나', category: 'paraphrase', expected: ['g-infra-secrets'] },
   { q: '면 삶아서 마늘이랑 기름으로 만드는 요리 비율', category: 'paraphrase', expected: ['g-cook-pasta'] },
 
-  // ── crosslingual: 질문 언어 ≠ 노트 언어 (bge-m3 다국어 검증) ──
   { q: '대시보드 쿼리 느렸던 거 인덱스 어떻게 고쳤지', category: 'crosslingual', expected: ['g-en-pg-index'] },
   { q: '리액트 리스트 렌더링 느린 문제 해결한 방법', category: 'crosslingual', expected: ['g-en-react-perf'] },
   { q: '결제 웹훅 밀렸던 장애 회고 내용', category: 'crosslingual', expected: ['g-en-incident'] },
@@ -367,7 +334,6 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
   { q: 'how to make Korean kimchi stew', category: 'crosslingual', expected: ['g-cook-kimchi'] },
   { q: '신규 입사자 온보딩 절차 정리한 것', category: 'crosslingual', expected: ['g-en-onboarding', 'g-team-buddy'] },
 
-  // ── distractor: 비슷한 노트가 여럿, 정답은 하나 ──
   { q: '임베딩 모델 뭐 쓰기로 했지', category: 'distractor', expected: ['g-rag-bge'] },
   { q: '자동 롤백 조건이 뭐였지', category: 'distractor', expected: ['g-deploy-canary'] },
   { q: '작업 기억에 대해 책에서 읽은 것', category: 'distractor', expected: ['g-read-brain'] },
@@ -375,13 +341,11 @@ export const GOLDEN_QUERIES: GoldenQuery[] = [
   { q: '알람 너무 많아서 정리한 기준', category: 'distractor', expected: ['g-infra-monitor'] },
   { q: '오사카 갈 때 항공권 언제 사기로 했지', category: 'distractor', expected: ['g-trip-osaka', 'g-trip-flight'] },
 
-  // ── 2hop: 질문은 A를 가리키고 정답 B는 링크로만 연결 ──
   { q: '검색이 같은 문서만 반복해서 나오던 문제', category: '2hop', expected: ['g-rag-incident', 'g-rag-topn'], needInTop8: 2 },
   { q: '429 백오프 어떻게 하기로 했지', category: '2hop', expected: ['g-api-60', 'g-api-600'], needInTop8: 2 },
   { q: '카나리 배포 도입하고 뭐가 바뀌었지', category: '2hop', expected: ['g-deploy-canary', 'g-deploy-fri-am'], needInTop8: 2 },
   { q: '버디 제도 왜 만들었지', category: '2hop', expected: ['g-team-buddy', 'g-en-onboarding'], needInTop8: 2 },
 
-  // ── synthesis: 여러 노트가 함께 나와야 답이 되는 질문 ──
   { q: 'RAG 검색 품질 높이려고 결정하고 확인한 것들 정리해줘', category: 'synthesis', expected: ['g-rag-bge', 'g-rag-chunk', 'g-rag-rerank', 'g-rag-topn', 'g-rag-harness'], needInTop8: 3 },
   { q: '배포 정책이 어떻게 바뀌어왔지', category: 'synthesis', expected: ['g-deploy-fri', 'g-deploy-fri-am'], needInTop8: 2 },
   { q: '스탠드업 관련해서 적어둔 것 전부', category: 'synthesis', expected: ['g-standup-1', 'g-standup-2', 'g-standup-3'], needInTop8: 2 },

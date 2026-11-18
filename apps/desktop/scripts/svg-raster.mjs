@@ -1,4 +1,3 @@
-// Rasterizes the small SVG subset the app icon masters use. Pure arithmetic, so every machine gets the same pixels.
 const ALLOWED = {
   svg: ['xmlns', 'viewBox'],
   defs: [],
@@ -99,7 +98,6 @@ function paintAt(paint, x, y) {
   for (let c = 0; c < 4; c++) rgba[c] = a[c + 1] + (b[c + 1] - a[c + 1]) * f
 }
 
-// Straight-alpha RGBA at px × px; the body rect clips every shape and its coverage is the output alpha.
 export function rasterize(svgText, px = 1024, ss = 2) {
   const { size, shapes } = parse(svgText)
   const body = shapes[0]

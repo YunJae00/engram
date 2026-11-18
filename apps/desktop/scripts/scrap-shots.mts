@@ -1,5 +1,3 @@
-// Scrap-pile redesign check: board shots with 1 and 4 inbox captures.
-// Run from apps/desktop:  ../../packages/core/node_modules/.bin/tsx scripts/scrap-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'

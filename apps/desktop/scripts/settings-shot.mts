@@ -1,7 +1,3 @@
-// Settings sheet snapshot + row geometry. The picture alone was not enough:
-// a CSS fix that could not possibly work still LOOKED plausible in the diff
-// (.brief-box input { width: 100% } was sizing the checkboxes, which no amount
-// of flex on the label could beat). The printed right edges make it checkable.
 import { _electron as electron } from '@playwright/test'
 import { initVault } from 'core'
 import { mkdir, mkdtemp } from 'node:fs/promises'
@@ -35,14 +31,11 @@ const sheet = page.getByTestId('settings-view')
 await sheet.waitFor({ state: 'visible' })
 await page.waitForTimeout(300)
 await sheet.screenshot({ path: join(OUT, 'settings.png') })
-// The connections section, opened: the part that reads as one grey block
-// when its margins are wrong.
 await page.getByTestId('settings-more').locator('summary').click()
 await page.waitForTimeout(300)
 await page.getByTestId('setting-audit').scrollIntoViewIfNeeded()
 await sheet.screenshot({ path: join(OUT, 'settings-more.png') })
 
-// Every control should stop at one right edge, and no label should wrap.
 const rows = await page.evaluate(() => {
   const box = document.querySelector('[data-testid="settings-view"]') as HTMLElement
   const scroll = box.querySelector('.settings-scroll') as HTMLElement

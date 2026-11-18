@@ -1,11 +1,3 @@
-// Can the agent browser be the person's OWN browser — already signed in to
-// the accounts they use — instead of an empty profile they must log into
-// again? Chrome blocks remote-debugging on the default profile, so the only
-// routes are (a) launch a COPY of the profile, or (b) a fresh profile that
-// inherits the OS sign-in. This measures both, and reports only whether a
-// session was recognised — never what it contains.
-//
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/profile-probe.mts"
 import { chromium, type BrowserContext } from 'playwright-core'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -30,8 +22,6 @@ const EDGE = findExe(
   join(process.env['PROGRAMFILES'] ?? '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
 )
 
-// Copy only what carries a session: the key store and the cookie jar. The rest
-// of a profile is gigabytes of cache nobody needs.
 async function copySession(from: string, into: string): Promise<boolean> {
   try {
     await mkdir(join(into, 'Default', 'Network'), { recursive: true })
@@ -43,8 +33,6 @@ async function copySession(from: string, into: string): Promise<boolean> {
   }
 }
 
-// Where a redirect lands is the whole answer: a live session stays put, a dead
-// one is bounced to a sign-in host.
 const PROBES = [
   { name: 'google', url: 'https://myaccount.google.com/', signedOut: /accounts\.google\.com|ServiceLogin|signin/i },
   { name: 'microsoft', url: 'https://outlook.office.com/mail/', signedOut: /login\.microsoftonline\.com|login\.live\.com/i },
@@ -88,20 +76,16 @@ if (!CHROME) {
   process.exit(1)
 }
 
-// 1) What ships today: an empty profile of our own.
 const fresh = await mkdtemp(join(TMP, 'profile-fresh-'))
 await check('chrome, empty profile (today)', CHROME, fresh)
 await rm(fresh, { recursive: true, force: true }).catch(() => undefined)
 
-// 2) The person's own session, copied into a profile we may drive.
 const copied = await mkdtemp(join(TMP, 'profile-copied-'))
 const ok = await copySession(CHROME_USER_DATA, copied)
 if (ok) await check('chrome, copied session', CHROME, copied)
 else console.log('chrome, copied session          could not read the profile (Chrome holds it open)')
 await rm(copied, { recursive: true, force: true }).catch(() => undefined)
 
-// 3) Edge with a fresh profile: on a work machine the OS sign-in often
-//    carries into it without any copying at all.
 if (EDGE) {
   const edgeFresh = await mkdtemp(join(TMP, 'profile-edge-'))
   await check('edge, empty profile', EDGE, edgeFresh)

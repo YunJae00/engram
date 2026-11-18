@@ -1,4 +1,3 @@
-// Onboarding full walk: capture every step for the spacing audit.
 import { _electron as electron } from '@playwright/test'
 import { mkdir, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'

@@ -1,10 +1,3 @@
-// The trap sites run by a whole comet - Claude or Codex working the page
-// itself, no decision model - to see how often the brains fall into the same
-// traps, and what the gate in their own loop changes. Graded by the last page
-// the site served, never by what the comet says.
-//
-// Run from apps/desktop after a build:
-//   node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/research/brain-bench.mts --brain=claude|codex [--gate=off|on] [--set=dev|test|final|all] [--repeat=N] [--parallel=N] [--only=a,b]
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServer, type Server } from 'node:http'
 import { appendFile, mkdir, mkdtemp, readdir, symlink, writeFile } from 'node:fs/promises'

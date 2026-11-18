@@ -1,11 +1,3 @@
-// Cold-start audit: a brand-new user's first 15 minutes on the REAL claude
-// engine. Fresh home (no vault) → onboarding walk → empty shell → first
-// capture → time-to-visible-change → chat on an empty vault → more captures
-// (echo) → first Tidy. Every stage is screenshotted and timestamped so the
-// "does the screen say what to do / did my action visibly land" questions
-// can be judged from evidence.
-// Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/coldstart-shots.mts
 import { _electron as electron } from '@playwright/test'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -18,7 +10,6 @@ const HOME = join(REPO_TMP, 'coldstart-home')
 const VAULT_PARENT = join(REPO_TMP, 'coldstart')
 const VAULT = join(VAULT_PARENT, 'Engram')
 
-// What a real first-time user might actually type (not dev notes).
 const FIRST_CAPTURE = '금요일까지 연말정산 서류 제출해야 함'
 const LATER_CAPTURES = [
   '이사 갈 집 조건: 역세권 10분 이내, 방 2개, 관리비 포함 90 이하',
@@ -45,11 +36,10 @@ async function main(): Promise<void> {
     args: [MAIN_ENTRY, '--no-sandbox'],
     env: {
       ...process.env,
-      ENGRAM_VAULT: '', // no vault → onboarding must appear
+      ENGRAM_VAULT: '',
       ENGRAM_USERDATA: HOME,
       ENGRAM_ONBOARD_ROOT: VAULT,
       ENGRAM_NO_GIT: '1',
-      // ENGRAM_ENGINE unset → auto-detect → real claude CLI
     },
   })
   const page = await app.firstWindow()
@@ -65,13 +55,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── onboarding walk ──────────────────────────────────────────────
   await page.getByTestId('onboarding').waitFor({ state: 'visible', timeout: 30_000 })
   await shot('01-onboard-vault')
   await page.getByTestId('onboard-next').click()
 
   await page.getByTestId('onboard-step-2').waitFor({ state: 'visible' })
-  await page.waitForTimeout(1200) // engine detection
+  await page.waitForTimeout(1200)
   const lights = await page.locator('.engine-lights').textContent()
   log('onboard engines:', lights?.trim())
   await shot('02-onboard-ai')
@@ -92,7 +81,6 @@ async function main(): Promise<void> {
   await page.getByTestId('onboard-finish').click()
   log('onboarding finished, first capture submitted:', FIRST_CAPTURE)
 
-  // ── land in the shell: what does a brand-new board say? ──────────
   await page.getByTestId('shell').waitFor({ state: 'visible', timeout: 60_000 })
   const tShell = Date.now()
   log(`shell visible ${((tShell - tFinish) / 1000).toFixed(1)}s after finish`)
@@ -103,7 +91,6 @@ async function main(): Promise<void> {
   log('engine banner:', await page.getByTestId('engine-banner').count())
   log('engine status:', (await page.getByTestId('engine-status').textContent().catch(() => ''))?.trim())
 
-  // ── chat on an (almost) empty vault ──────────────────────────────
   const askChat = async (q: string, name: string) => {
     await page.keyboard.press('Control+l')
     await page.getByTestId('chat-panel').waitFor({ state: 'visible', timeout: 10_000 })
@@ -131,14 +118,11 @@ async function main(): Promise<void> {
     log(`chat total: ${((Date.now() - t0) / 1000).toFixed(1)}s`)
     log('chat answer:', prev.replace(/\s+/g, ' ').trim().slice(0, 1200))
     await shot(name)
-    await page.keyboard.press('Control+l') // close panel
+    await page.keyboard.press('Control+l')
     await page.waitForTimeout(400)
   }
   await askChat(EMPTY_CHAT_Q, '11-chat-empty-vault')
 
-  // ── wait for the FIRST capture to become a visible note ──────────
-  // (the pipeline has been running since onboarding finish; chat above ran
-  // in parallel wall-clock — we report both raw and since-finish times)
   let firstNoteAt: number | null = null
   for (let i = 0; i < 360; i++) {
     const notes = await page.locator('[data-board-note]').count()
@@ -157,21 +141,17 @@ async function main(): Promise<void> {
   await shot('12-first-note-visible')
   log('scrap pile now:', await page.getByTestId('scrap-pile').count())
 
-  // ── later captures via composer: echo + time-to-note each ────────
   for (const [i, text] of LATER_CAPTURES.entries()) {
-    // Capture and chat share one panel now — the launcher is only on screen
-    // while it rests, so opening is a no-op once the panel is up.
     const launcher = page.getByTestId('remember-button')
     if (await launcher.count()) await launcher.click()
     await page.getByTestId('chat-input').fill(text)
-    await page.waitForTimeout(1200) // echo debounce
+    await page.waitForTimeout(1200)
     const echoRows = await page.locator('[data-testid="capture-echo"] .echo-row').allTextContents().catch(() => [])
     log(`echo[${i}]:`, JSON.stringify(echoRows))
     if (i === 0) await shot('13-capture-composer')
     const notesBefore = await page.locator('[data-board-note]').count()
     const t0 = Date.now()
     await page.getByTestId('capture-submit').click()
-    // watch for visible change: note count up, or scrap pile change
     let landed: number | null = null
     for (let j = 0; j < 90; j++) {
       const notes = await page.locator('[data-board-note]').count()
@@ -189,10 +169,6 @@ async function main(): Promise<void> {
   }
   await shot('15-board-after-captures')
 
-  // ── first Tidy ───────────────────────────────────────────────────
-  // The auto-tidy (90s settle after the last capture) may already be running —
-  // the librarian tidies WITHOUT the button. Ride it out first; click Tidy
-  // manually only if pending work remains afterwards.
   const sweepBtn = page.getByTestId('sweep-button')
   const tTidy = Date.now()
   const waitForIdle = async () => {
@@ -230,9 +206,6 @@ async function main(): Promise<void> {
   await page.waitForTimeout(2000)
   await shot('17-board-after-tidy')
 
-  // First-brief auto-reveal: the sheet may already be open (once-ever) — that
-  // IS the "it organized my stuff" moment; record it, then continue via the
-  // manual path so both routes are exercised.
   const autoOpened = (await page.getByTestId('today-sheet').count()) > 0
   log('today sheet auto-opened after first brief:', autoOpened)
   if (autoOpened) {
@@ -244,7 +217,6 @@ async function main(): Promise<void> {
   const reviewBadge = await page.getByTestId('review-count').locator('.badge').textContent().catch(() => '0')
   log('review pending after first tidy:', reviewBadge)
 
-  // Today brief — is there a "this is what got organized" moment?
   await page.getByTestId('today-button').click()
   await page.getByTestId('today-sheet').waitFor({ state: 'visible', timeout: 10_000 })
   await page.waitForTimeout(800)
@@ -253,7 +225,6 @@ async function main(): Promise<void> {
   log('brief:', brief?.replace(/\s+/g, ' ').trim().slice(0, 1000))
   await page.keyboard.press('Escape')
 
-  // Brain view on a ~5-note vault
   await page.getByTestId('activity-brain').click()
   await page.waitForTimeout(1200)
   await shot('19-brain')
@@ -261,12 +232,10 @@ async function main(): Promise<void> {
   await page.getByTestId('activity-board').click()
   await page.waitForTimeout(500)
 
-  // ── chat again now that notes exist ──────────────────────────────
   await askChat(LATER_CHAT_Q, '20-chat-after-notes')
 
   await shot('21-final-board')
 
-  // ── vault evidence ───────────────────────────────────────────────
   const notesDir = join(VAULT, 'workspace', 'notes')
   const notes = await readdir(notesDir).catch(() => [] as string[])
   log('vault notes on disk:', notes.length)

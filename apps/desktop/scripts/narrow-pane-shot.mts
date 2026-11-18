@@ -1,5 +1,3 @@
-// The comets tab at a small window, pane open and folded: what the fold
-// area looks like when there is little room.
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'

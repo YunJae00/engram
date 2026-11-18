@@ -2,7 +2,6 @@ import { deflateSync, inflateSync } from 'node:zlib'
 
 const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-// Decodes an 8-bit, non-interlaced RGB or RGBA PNG into RGBA { width, height, data }.
 export function decodePng(buf, name = 'png') {
   if (!buf.subarray(0, 8).equals(SIG)) throw new Error(`${name}: not a PNG`)
   let width = 0, height = 0, bpp = 4
@@ -80,7 +79,6 @@ export function encodePng(px, rgba) {
   return Buffer.concat([SIG, chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))])
 }
 
-// Area-average resample of a square straight-alpha RGBA image, in premultiplied space.
 export function resample(img, px) {
   const n = img.width
   const out = Buffer.alloc(px * px * 4)

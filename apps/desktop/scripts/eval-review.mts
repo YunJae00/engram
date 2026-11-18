@@ -1,8 +1,3 @@
-// Dogfood evaluation phase 3: work through the review stack like a real
-// user (Keep B on conflicts, approve merges/supersedes, retire stale),
-// logging every card seen — then one more tidy and a final state dump.
-// Run from apps/desktop:
-//   ../../packages/core/node_modules/.bin/tsx scripts/eval-review.mts
 import { _electron as electron } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -54,7 +49,6 @@ async function main(): Promise<void> {
       await btn(/^Approve/).click()
     }
     console.log(`card ${i + 1}: [${action}] ${head}`)
-    // wait for the stack to advance (detail content changes or empties)
     await page
       .waitForFunction(
         (prev) => {
@@ -67,8 +61,6 @@ async function main(): Promise<void> {
       .catch(() => console.log('  (stack did not advance in 30s)'))
     console.log(`  action took ${Date.now() - t0}ms`)
     await page.waitForTimeout(400)
-    // Sibling-dismissal evidence: one decision should drop the pending count
-    // by MORE than 1 when twin cards target the same notes.
     const badgeNow = await page.getByTestId('review-count').locator('.badge').textContent().catch(() => null)
     console.log(`  pending after decision: ${badgeNow ?? '0'}`)
   }
@@ -78,7 +70,6 @@ async function main(): Promise<void> {
   await page.waitForTimeout(1000)
   await page.screenshot({ path: join(OUT, '09-after-review.png') })
 
-  // ── tidy round 2 (post-approval) ──
   const sweepBtn = page.getByTestId('sweep-button')
   const unswept = await sweepBtn.locator('.badge').textContent().catch(() => null)
   console.log('unswept after approvals:', unswept ?? '0')

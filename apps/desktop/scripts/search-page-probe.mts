@@ -1,6 +1,3 @@
-// What a search page answers the agent window with: title, a slice of the
-// text, and how many outward links it offers. SEARCH_URLS is a
-// semicolon-separated list of results-page addresses to try.
 import { chromium } from 'playwright-core'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'

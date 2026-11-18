@@ -1,11 +1,3 @@
-// Assemble the binary bundle shipped under resources/bin.
-//  - git (Windows): MinGit — the official minimal Git for Windows — downloaded
-//    and extracted into bundle/git so the packaged app never needs a system
-//    git. Override the source with ENGRAM_MINGIT_URL.
-//  - git (Linux/macOS): snapshot of the build machine's git (binary +
-//    git-core + templates).
-//  - whisper: downloaded from ENGRAM_WHISPER_URL when provided; otherwise the
-//    audio pipeline stays behind its feature flag.
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -15,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 const root = dirname(fileURLToPath(import.meta.url))
 const bundleDir = join(root, '..', 'bundle')
 
-// Official MinGit release (busybox variant is smaller but lacks templates).
 const MINGIT_URL =
   process.env.ENGRAM_MINGIT_URL ??
   'https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip'
@@ -35,12 +26,8 @@ function which(cmd) {
   }
 }
 
-// ── git ──────────────────────────────────────────────────────────
 if (process.platform === 'win32') {
   const gitDir = join(bundleDir, 'git')
-  // Cache the MinGit zip OUTSIDE bundleDir (which is wiped every run) and
-  // keyed by URL basename, so flaky networks stop failing repeat builds and
-  // an URL/version bump still re-downloads.
   const cacheDir = join(root, '..', 'bundle-cache')
   mkdirSync(cacheDir, { recursive: true })
   const zipPath = join(cacheDir, MINGIT_URL.split('/').pop() ?? 'mingit.zip')
@@ -64,10 +51,6 @@ if (process.platform === 'win32') {
   } else {
     console.log(`bundle: MinGit zip from cache (${zipPath})`)
   }
-  // Checked on EVERY build, cached or fresh — the cache directory is ordinary
-  // writable disk, so a stale entry deserves the same scrutiny as a download.
-  // A pinned URL that suddenly hashes differently is the supply-chain event
-  // this exists to catch, so it fails the build rather than warning.
   const actualSha = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
   if (MINGIT_SHA256 && actualSha !== MINGIT_SHA256) {
     rmSync(zipPath, { force: true })
@@ -83,9 +66,6 @@ if (process.platform === 'win32') {
   execFileSync(existsSync(bsdtar) ? bsdtar : 'tar', ['-xf', zipPath, '-C', gitDir], { stdio: 'inherit' })
   const gitExe = join(gitDir, 'cmd', 'git.exe')
   if (!existsSync(gitExe)) throw new Error('MinGit extraction produced no cmd/git.exe')
-  // The authenticity half: a signature the vendor controls, verified against
-  // the OS trust store — independent of GitHub and of the hash above. This is
-  // what makes MINGIT_SHA256 worth pinning rather than merely self-consistent.
   const windowsPowerShell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0')
   const powershellExe = join(windowsPowerShell, 'powershell.exe')
   const securityModule = join(windowsPowerShell, 'Modules', 'Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Security.psd1')
@@ -112,26 +92,15 @@ if (process.platform === 'win32') {
   console.log(`bundle: MinGit signature ok (${MINGIT_SIGNER})`)
   console.log(`bundle: MinGit ready (${gitExe})`)
 } else if (process.platform === 'darwin') {
-  // No git in the macOS bundle, deliberately. `which git` on a build runner
-  // resolves to Homebrew's git, which is a symlink into Cellar AND links
-  // against Homebrew dylibs: copying the link ships a path that dangles on
-  // every other machine, and copying the target ships a binary that cannot
-  // start without Homebrew. The second is the worse of the two — a bundled
-  // file that exists passes the provider's executable check and only fails
-  // when it runs. Every Mac carrying the command line tools has a
-  // self-contained /usr/bin/git, which the provider falls through to.
   console.log('bundle: macOS uses the system git (/usr/bin/git) — nothing bundled')
 } else {
   const gitBin = which('git')
   if (!gitBin) {
     console.error('bundle: no git on the build machine — bundle will fall back to system git')
   } else {
-    // dereference: `which` can answer with a symlink into a package manager's
-    // store, and the bundle must hold the binary itself.
     cpSync(gitBin, join(bundleDir, 'git', 'bin', 'git'), { dereference: true })
     const execPath = execFileSync(gitBin, ['--exec-path'], { encoding: 'utf8' }).trim()
     if (existsSync(execPath)) {
-      // git-core holds the subcommands git shells out to (init, commit, ...).
       cpSync(execPath, join(bundleDir, 'git', 'libexec', 'git-core'), { recursive: true, dereference: true })
     }
     const templates = '/usr/share/git-core/templates'
@@ -142,7 +111,6 @@ if (process.platform === 'win32') {
   }
 }
 
-// ── whisper ──────────────────────────────────────────────────────
 const whisperUrl = process.env.ENGRAM_WHISPER_URL
 if (whisperUrl) {
   const target = join(bundleDir, 'whisper')
@@ -161,7 +129,6 @@ if (whisperUrl) {
   const cacheDir = join(root, '..', 'bundle-cache', 'model', ...MODEL_ID.split('/'))
   const complete = () => MODEL_FILES.every((f) => existsSync(join(cacheDir, f)))
   if (!complete()) {
-    // Seed from this machine's runtime cache when it already fetched the model.
     const appData =
       process.platform === 'win32'
         ? process.env.APPDATA
@@ -193,10 +160,6 @@ if (whisperUrl) {
   console.log(`bundle: semantic model bundled (${MODEL_ID})`)
 }
 
-// ── engram MCP server ────────────────────────────────────────────
-// Single-file CJS bundle of core's MCP server, shipped under resources/bin
-// and run through the app's own executable in Node mode. Bridge connections
-// execute through the running app; legacy memory-only configurations stay standalone.
 {
   const { build } = await import('esbuild')
   await build({

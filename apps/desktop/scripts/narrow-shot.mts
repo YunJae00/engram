@@ -1,5 +1,3 @@
-// The shell at the width a small display gives it: does a floating notice
-// land on the rail's own fold button?
 import { _electron as electron } from '@playwright/test'
 import { createBot, initVault } from 'core'
 import { mkdir, rm } from 'node:fs/promises'
@@ -28,6 +26,4 @@ const close = await page.getByTestId('app-sidebar-close').boundingBox()
 const overlaps = !!banner && !!close && banner.x < close.x + close.width && close.x < banner.x + banner.width && banner.y < close.y + close.height && close.y < banner.y + banner.height
 console.log(`window 880 wide: banner x ${Math.round(banner?.x ?? -1)}–${Math.round((banner?.x ?? 0) + (banner?.width ?? 0))}, rail fold button x ${Math.round(close?.x ?? -1)}–${Math.round((close?.x ?? 0) + (close?.width ?? 0))} → ${overlaps ? 'OVERLAP' : 'clear'}`)
 await page.screenshot({ path: fileURLToPath(new URL('../../../tmp/narrow-shot.png', import.meta.url)) })
-// A hidden window never reports its fonts as ready, so a click here would
-// wait forever: the geometry above is the evidence.
 await app.close()

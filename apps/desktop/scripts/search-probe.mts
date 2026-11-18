@@ -1,8 +1,3 @@
-// Which search engine answers an automated Chrome, and what makes the
-// difference. Google refuses a plainly-automated browser; this measures
-// whether hiding the automation signals (and warming the profile) changes
-// that, so the courier's choice of engine rests on evidence.
-// Run: pnpm --filter core exec tsx "$PWD/apps/desktop/scripts/search-probe.mts"
 import { chromium, type BrowserContext } from 'playwright-core'
 import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'

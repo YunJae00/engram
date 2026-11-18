@@ -1,8 +1,3 @@
-// The field set: everyday chores from many kinds of work, put to a comet on
-// a cloud brain against the real web. Nothing here is judged by a regex -
-// every answer is recorded beside its steps and its time, for a reader to
-// judge afterwards. FIELD_TASKS points at the JSON list; FIELD_OFFSET and
-// FIELD_LIMIT pick a slice; FIELD_BRAIN picks the brain (claude by default).
 import { type Page } from '@playwright/test'
 import { launchApp } from './launch-app.mts'
 import { createNote, initVault } from 'core'
@@ -40,8 +35,6 @@ const VAULT = fileURLToPath(new URL(`../../../tmp/field-${RUN}-vault/`, import.m
 const USERDATA = fileURLToPath(new URL(`../../../tmp/field-${RUN}-userdata/`, import.meta.url))
 const OUT = fileURLToPath(new URL(`../../../tmp/field-${RUN}.json`, import.meta.url))
 const BRAIN = process.env['FIELD_BRAIN'] ?? 'claude'
-// A search page that answers an automated window with results rather than
-// a human check (measured: two of the big ones do not).
 const SEARCH = process.env['FIELD_SEARCH'] ?? 'https://html.duckduckgo.com/html/?q={q}'
 const BATCH = 8
 const TURN_LIMIT_S = 300
@@ -59,13 +52,9 @@ console.log(`comet-field: ${tasks.length} task(s) from #${offset} on ${BRAIN}`)
 
 const paths = await initVault(VAULT, { git: false })
 await mkdir(USERDATA, { recursive: true })
-// The whole model shelf: the embedder is a big download, and a fresh profile
-// every run would fetch it every run.
 spawnSync('cmd.exe', ['/c', 'mklink', '/J', join(USERDATA, 'models'), join(process.env['APPDATA']!, 'desktop', 'models')], { windowsHide: true })
 await writeFile(join(USERDATA, 'settings.json'), JSON.stringify({ defaultEngine: BRAIN, autoStart: false, teamSync: 'auto', searchTemplate: SEARCH }))
 
-// A small, lived-in notebook so the memory tools have something to find and
-// the rest of the asks meet a comet that knows its person a little.
 for (const body of [
   '# Vendor onboarding checklist\n\nSteps: W-9 on file, security questionnaire, insurance certificate, NDA, reference call. Last quarter we dropped the reference call and the insurance certificate for vendors under $5k.',
   '# Deploy decision\n\nDeploys move to Thursday afternoon; helm charts everywhere. Friday deploys are banned.',
@@ -108,8 +97,6 @@ async function openApp(): Promise<Running> {
     await new Promise((r) => setTimeout(r, 2_000))
   }
   const trace: string[] = []
-  // Each line carries the second it landed on, so a slow turn shows which
-  // step took the time.
   await page.exposeFunction('__probe', (line: string) => {
     trace.push(line.startsWith('step ') ? `${line} @${Math.round((Date.now() - turnStart) / 1000)}s` : line)
   })
@@ -136,8 +123,6 @@ for (const [i, task] of tasks.entries()) {
     inBatch = 0
   }
   inBatch++
-  // Every ask is its own comet: nothing from the last ask sits in the
-  // brain's context, and each turn is the cold first turn a person meets.
   const { page, trace } = running
   const botId = ((await page.evaluate((n) => window.engram.botCreate({ name: 'Field comet ' + n, purpose: '' }), i)) as { id: string }).id
   trace.length = 0

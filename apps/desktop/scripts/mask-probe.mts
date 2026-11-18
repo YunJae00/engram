@@ -1,5 +1,3 @@
-// The picture a brain would be shown, of a page with a password field and
-// a card number: are those two black, and is the rest of the page intact?
 import { chromium } from 'playwright-core'
 import { createServer } from 'node:http'
 import { maskSecrets } from '../src/main/page-mask.js'
@@ -17,15 +15,12 @@ await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
 const port = (server.address() as { port: number }).port
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ viewport: { width: 600, height: 300 } })
-// The runner names every function with a helper that does not exist in a
-// page; the built app has no such helper. Given to the page, for the probe.
 await page.addInitScript('window.__name = (f) => f')
 await page.goto(`http://127.0.0.1:${port}/`)
 const masked = await maskSecrets(page)
 const shot = await page.screenshot({ type: 'png' })
 await masked.uncover()
 const after = await page.evaluate(() => document.querySelectorAll('[data-engram-mask]').length)
-// Read pixels back through a fresh page: the PNG decoded on a canvas.
 const probe = await browser.newPage()
 await probe.addInitScript('window.__name = (f) => f')
 await probe.goto('about:blank')

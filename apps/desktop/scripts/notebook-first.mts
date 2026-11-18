@@ -1,6 +1,3 @@
-// Whether a question about the person's own work is answered from their
-// notebook rather than from a search engine. Two asks: one the vault holds,
-// one it plainly does not.
 import { _electron as electron } from '@playwright/test'
 import { createBot, createNote, initVault } from 'core'
 import { mkdir, rm, writeFile } from 'node:fs/promises'

@@ -1,10 +1,3 @@
-// The quick eval: everyday jobs run by the real brains, side by side in one
-// app per brain, graded from outside the model. Meant to run on every change
-// to the rules a comet works by, on both brains, before trusting it.
-//
-// Run from apps/desktop after a build:
-//   node ../../packages/core/node_modules/tsx/dist/cli.mjs scripts/eval-quick.mts [--brain=claude|codex|both] [--repeat=N] [--parallel=N] [--only=a,b]
-// Writes tmp/eval/<run>/report.json and adds one line per brain to tmp/eval/history.jsonl.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { execFileSync } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
@@ -44,8 +37,6 @@ async function serve(one: EvalCase, log: SiteLog): Promise<{ url: string; server
 async function seedDesk(paths: { workspace: string }): Promise<void> {
   const lines = cases.flatMap(one => one.desk ?? [])
   if (!lines.length) return
-  // Today's activity ends a minute ago and starts after local midnight; just
-  // after midnight the same day is squeezed into the time there is.
   const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
   const room = (Date.now() - 60_000 - midnight.getTime()) / 60_000
   const wanted = lines.reduce((sum, [, , minutes]) => sum + minutes, 0)
@@ -62,7 +53,6 @@ async function seedDesk(paths: { workspace: string }): Promise<void> {
   for (const [day, rows] of files) await writeFile(join(paths.workspace, '.engram', 'activity', `${day}.jsonl`), rows.join('\n') + '\n')
 }
 
-// One answer of one conversation: waits for its done event and for the lane to let go.
 async function turnEnds(win: Page, channel: string, answersBefore: number, deadline: number): Promise<void> {
   for (; Date.now() < deadline; await wait(2000)) {
     const seen = await win.evaluate(c => (window as any).__eval[c]?.done.length ?? 0, channel)
@@ -86,12 +76,10 @@ async function runCase(win: Page, brain: string, one: EvalCase, round: number): 
     if (one.aside) {
       await wait(one.aside.afterMs)
       const said = await win.evaluate(({ channel, text }) => (window as any).engram.chatSay(channel, text), { channel, text: one.aside.text }) as any
-      // What the voice set aside for after this turn goes on as the next message, as the conversation does.
       if (said?.ok && said.action === 'later' && said.instruction) { await turnEnds(win, channel, 0, started + 480_000); await send(said.instruction); laterSent = true }
     }
     await turnEnds(win, channel, 0, started + 480_000)
     if (one.judged) await wait(35_000)
-    // Words the turn left undone come back after it, and the conversation sends them on by itself.
     const returned = (await win.evaluate(c => (window as any).__eval[c]?.returned ?? [], channel) as string[]).length
     if (returned) await turnEnds(win, channel, returned + (laterSent ? 1 : 0), Date.now() + 360_000)
   } catch (cause) { error = cause instanceof Error ? cause.message : String(cause) }
@@ -111,7 +99,6 @@ async function runBrain(brain: string): Promise<any[]> {
   const userdata = join(root, 'userdata')
   await mkdir(userdata, { recursive: true })
   if (brain === 'claude') {
-    // The runtime the installed app downloaded, shared rather than fetched again.
     const runtimes = join(process.env['APPDATA']!, 'desktop', 'runtimes', 'claude')
     const version = (await readdir(runtimes)).sort().at(-1)!
     await mkdir(join(userdata, 'runtimes', 'claude'), { recursive: true })
@@ -155,7 +142,6 @@ async function runBrain(brain: string): Promise<any[]> {
     console.log(`${brain}: ${cause instanceof Error ? cause.message : String(cause)}`)
     rows.push({ brain, id: '(setup)', pass: false, error: cause instanceof Error ? cause.message : String(cause) })
   } finally {
-    // A brain's helper processes can hold the app open; it is not waited on for long.
     await Promise.race([app.close().catch(() => undefined), wait(20_000)])
     child.kill()
   }
@@ -173,5 +159,4 @@ const summary = brains.map(brain => {
 for (const line of summary) await appendFile(join(repo, 'tmp', 'eval', 'history.jsonl'), JSON.stringify(line) + '\n')
 for (const line of summary) console.log(`${line.brain}: ${line.passed}/${line.runs} passed  ${Object.entries(line.byCase).map(([id, score]) => `${id} ${score}`).join(' | ')}`)
 console.log('report', join(out, 'report.json'))
-// Playwright's connection can keep the process alive after the apps are gone.
 process.exit(rows.length === brains.length * cases.length * repeat && rows.every(row => row.pass) ? 0 : 1)

@@ -1,13 +1,3 @@
-// The update feed names the file the app will download. If that name does not
-// match the file actually published, every self-update 404s — silently, on
-// every machine, forever. That is exactly what shipped: the default installer
-// name carried spaces, electron-builder wrote them into latest.yml as hyphens,
-// and GitHub served the asset with dots. Nobody noticed because a failed
-// update looks identical to no update.
-//
-// So the build refuses to finish unless the feed, the file on disk, and the
-// name GitHub will serve all agree.
-
 import { readdirSync, statSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -40,8 +30,6 @@ for (const feed of feeds) {
     continue
   }
   for (const url of new Set(urls)) {
-    // GitHub rewrites spaces in an asset name; the feed spells them another
-    // way, and the two never meet again.
     if (/\s/.test(url)) {
       console.error(`verify-feed: ${feed} → "${url}" contains a space, which GitHub will rewrite on upload`)
       bad++
