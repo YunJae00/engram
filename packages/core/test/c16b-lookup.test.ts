@@ -131,6 +131,41 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
   })
 })
 
+describe('c16b r2: a later search whose page states the value in its own words, with no rows', () => {
+  it('reviewer repro: the second page (no rows) holds the price and no verdict comes for it: its words still reach the model', async () => {
+    const s = search([page('q', [row(1, '코인 뉴스')]), page('w', [], '비트코인 현재가 1억 3천만 원')])
+    const out = await run(s, '비트코인 지금 시세 알려줘', ['{"keep":[1],"asked":1,"holds":[],"search":"w"}', undefined])
+    expect(s.queries).toEqual(['q', 'w'])
+    expect(out).toContain('1억 3천만 원')
+    expect(out).toContain('https://search.example/?q=w')
+    expect(out).toContain("When a results page's own words below state it, answer from those")
+  })
+
+  it('new wording: the later page is judged to hold it, looking ends there and the model is told to answer from it', async () => {
+    const s = search([page('q', [row(1, '엔화 약세 지속 전망'), row(2, '여행 수요 일본 쏠림')]), page('엔 원 환율 실시간', [], '100엔 = 912.40원 전일 대비 +3.1'), page('z', [row(9, 'x')])])
+    const prompts: string[] = []
+    const out = await run(s, '지금 엔화 환율 얼마예요', ['{"keep":[1,2],"asked":1,"holds":[],"search":"엔 원 환율 실시간"}', '{"keep":[],"holds":[3],"asked":1,"search":""}'], prompts)
+    expect(prompts[1]).toContain("(the results page's own words) 100엔 = 912.40원")
+    expect(s.queries).toEqual(['q', '엔 원 환율 실시간'])
+    expect(out).toContain("the results page's own words below do")
+    expect(out).toContain('100엔 = 912.40원')
+  })
+
+  it('a first page with no rows: its own words are judged and carried', async () => {
+    const s = search([page('q', [], '속초 내일 오전 비 강수확률 70%')])
+    const prompts: string[] = []
+    const out = await run(s, '속초 내일 비 와?', ['{"keep":[],"holds":[1],"asked":null,"search":""}'], prompts)
+    expect(prompts[0]).toContain("(the results page's own words) 속초 내일 오전 비")
+    expect(out.match(/속초 내일 오전 비/g)).toHaveLength(1)
+  })
+
+  it('a counted list still drops page words (they hold the titles of rows left out)', async () => {
+    const s = search([page('q', [row(1, '가 행사'), row(2, '나 행사')], '다 행사 라 행사')])
+    const out = await run(s, '이번 주 행사 2개', ['{"keep":[1,2],"asked":2,"holds":[1,2],"search":""}'])
+    expect(out).not.toContain('다 행사')
+  })
+})
+
 describe('c16b (c): c15a r3 #1, identical fact text', () => {
   it('the official page replaces the blog (reviewer\'s 별빛 도서관 repro)', async () => {
     const old = { text: '별빛 도서관은 3월 2일 개관해요', url: 'https://blog.example/old', site: '블로그' }

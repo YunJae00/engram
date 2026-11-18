@@ -94,6 +94,14 @@ const rowsOf = (out: string): Row[] => out.split('\n').flatMap(line => {
   const parts = line.slice(2).split(' — '), url = parts.find(part => /^https?:\/\/\S+$/.test(part))
   return url ? [{ line, url, text: parts.filter(part => part !== url).join(' — ').slice(0, 300) }] : []
 })
+// c16b r2 (cause K2 (b), every search: a later search's page that held the value in its own words, with no rows, was never read): the
+// results page's own words, after its header and rows, for any search the lookup runs, with or without rows.
+type Page = { url?: string; lines: string[]; words: string }
+const pageOf = (out: string): Page => {
+  const lines = out.split('\n'), head = lines.findIndex(line => line.startsWith('- ')), rest = lines.slice(head < 0 ? 1 : head).filter(line => !line.startsWith('- '))
+  const url = /^results for "[^\n]*" at (https?:\/\/\S+)/.exec(out)?.[1]
+  return { ...(url ? { url } : {}), lines: rest, words: rest.join(' ').replace(/\s+/g, ' ').trim().slice(0, 800) }
+}
 // c16b (cause K2 (a), R3: 4 rows fit in round 1 and 3 were left after five rounds, because every round judged every row again and its
 // verdict replaced the earlier ones, while the quick judge is not consistent from call to call): a fit stays a fit. The held rows are the
 // judge's context (items 1..held); only the rows after them (the unsure ones and the new ones) are judged. A judged row joins the fits when
@@ -155,14 +163,14 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       const write = by.write, ask1 = write && (async (prompt: string, ms: number) => Promise.race([write(prompt, ms), stopped]))
       const st: Held = { held: [], unsure: [], holds: new Set(), second: new Set() }, dead = new Set<string>(), live = (row: Row): boolean => !dead.has(row.url)
       let first: ItemJudgment | undefined, count: number | undefined, known = false
-      const lines = out.split('\n'), head = lines.findIndex(line => line.startsWith('- ')), pageUrl = /^results for "[^\n]*" at (https?:\/\/\S+)/.exec(out)?.[1]
-      // c16b (cause K2 (b)): the results page's own words (a weather box, a quote) can hold the asked value when no row does: the judge reads
-      // them as one more item, for "holds" only.
-      const pageWords = (head < 0 ? [] : lines.slice(head).filter(line => !line.startsWith('- '))).join(' ').replace(/\s+/g, ' ').trim().slice(0, 800)
+      const lines = out.split('\n'), head = lines.findIndex(line => line.startsWith('- '))
+      // c16b (cause K2 (b)): a results page's own words (a weather box, a quote) can hold the asked value when no row does: the judge reads
+      // them as one more item, for "holds" only. Every search's page is kept, so a single-value answer can come from any of them.
+      const page1 = pageOf(out), pages = [page1]
       // One judged round: the held rows as context, the unsure and the new rows judged, their links checked meanwhile.
-      const judge = async (fresh: Row[], page = false): Promise<ItemJudgment | undefined> => {
-        const rows = [...st.unsure, ...fresh], items: { text: string; link?: string }[] = [...st.held, ...rows].map(row => ({ text: row.text, link: row.url })), pageN = page && pageWords ? items.length + 1 : 0
-        if (pageN) items.push({ text: `(the results page's own words) ${pageWords}`, ...(pageUrl ? { link: pageUrl } : {}) })
+      const judge = async (fresh: Row[], page?: Page): Promise<ItemJudgment | undefined> => {
+        const rows = [...st.unsure, ...fresh], items: { text: string; link?: string }[] = [...st.held, ...rows].map(row => ({ text: row.text, link: row.url })), pageN = page?.words ? items.length + 1 : 0
+        if (pageN) items.push({ text: `(the results page's own words) ${page!.words}`, ...(page!.url ? { link: page!.url } : {}) })
         const [gone, raw] = await Promise.all([by.alive && fresh.length ? deadOf(fresh.map(row => row.url), by.alive, by.linkMs ?? LINK_CHECK_MS) : Promise.resolve<string[]>([]), !signal?.aborted ? judgedItems(ask, items, ask1, judgeMs(), { tried: [...searched] }, ++round, st.held.length) : undefined])
         for (const url of gone) dead.add(url)
         // With no judgment, a first round's rows wait as unsure; a later round's new rows are never shown.
@@ -187,7 +195,7 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       // What is still wanted: a counted list's number, or (an ask with no set number or for one thing) a row or page that states it.
       const single = (): boolean => known && (!count || count === 1), answered = (): boolean => !!st.page || st.held.some(row => st.holds.has(row.url))
       const need = (): boolean => !first || (single() ? !answered() : !!count && st.held.length < count)
-      let words = (await judge(rowsOf(out), true))?.search, retried = false
+      let words = (await judge(rowsOf(out), page1))?.search, retried = false
       const seen = new Set(rowsOf(out).map(row => row.url))
       // c15a (cause K, R3: the loop ended 8 s into a 20 s deadline because the judge's words were empty or already tried): while something is
       // still wanted and a round fits, the judge is asked once more for other words (or for its first verdict), told every search already run;
@@ -204,11 +212,12 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
         searched.add(words)
         const more = await tool.run({ ...args, query: words }, context).catch(() => '')
         if (!/^results for "/.test(more)) break
-        const fresh = rowsOf(more).filter(row => !seen.has(row.url))
+        const fresh = rowsOf(more).filter(row => !seen.has(row.url)), page = pageOf(more)
         for (const row of fresh) seen.add(row.url)
-        // Nothing new under these words: other words are asked for (once) before looking ends.
-        if (!fresh.length) { words = undefined; continue }
-        const both = await judge(fresh)
+        if (page.words) pages.push(page)
+        // Nothing new under these words (no new row, no words of its own): other words are asked for (once) before looking ends.
+        if (!fresh.length && !page.words) { words = undefined; continue }
+        const both = await judge(fresh, page)
         // With no judgment of the new rows in time, none of them is shown: an unjudged row never reaches the writer.
         if (!both) break
         words = both.search; retried = false
@@ -224,15 +233,17 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       const second = (row: Row): boolean => st.second.has(row.url), stating = st.held.filter(row => st.holds.has(row.url)).length
       // c16b (cause K2 (b), L2: "종가 수치는 이번 결과에 나와있지 않네요" from five stories about the company): the model is told, as data, which
       // rows state the asked value, and when none does, which page to open before it answers.
+      // A single-value ask carries every results page's own words (they are not rows: nothing is counted or cited from them unread).
+      const carried = single() ? pages.filter(page => page.words) : []
       const said = single()
         ? [stating ? `These rows were checked against the ask. The first ${stating === 1 ? 'row states' : `${stating} rows state`} what was asked itself: answer from ${stating === 1 ? 'it' : 'them'}, leading with that.`
           : st.page ? 'These rows were checked against the ask: none of them states what was asked itself, but the results page\'s own words below do: answer from those.'
-          : `These rows were checked against the ask: none of them states what was asked itself; they are only about it. Before answering, open ${st.open ?? 'the first-hand page (its own site, an official page, a quote or forecast page)'} (read_pages) and answer from what it says; never answer that the results do not say it.`]
+          : `These rows were checked against the ask: none of them states what was asked itself; they are only about it. ${carried.length ? 'When a results page\'s own words below state it, answer from those and cite that page; otherwise, before answering, open' : 'Before answering, open'} ${st.open ?? 'the first-hand page (its own site, an official page, a quote or forecast page)'} (read_pages) and answer from what it says; never answer that the results do not say it.`]
         : count ? [`These rows were checked against the ask: each is one single item of what was asked, a different event, with a page that opens. ${st.held.length >= count ? `They hold the ${count} asked for: list ${count} of them.` : st.held.length ? `${st.held.length} of the ${count} asked for were found. Lead with the items; you may end with one short plain line that the rest did not turn up.` : `None of the ${count} asked for turned up in these results.`}`] : []
       const shown = single() ? firstHand(firstHand(st.held, second), row => !st.holds.has(row.url)) : firstHand(st.held, second)
       // For a judged list the page's own words go too: they hold the titles of the rows that were left out.
-      const before = lines.slice(0, head < 0 ? lines.length : head).filter(line => !(said.length && /^They asked for \d+: /.test(line)))
-      const after = count && !st.page ? [''] : lines.slice(head < 0 ? lines.length : head).filter(line => !line.startsWith('- '))
+      const before = lines.slice(0, head < 0 ? 1 : head).filter(line => !(said.length && /^They asked for \d+: /.test(line)))
+      const after = single() ? carried.flatMap(page => ['', `The results page's own words${page.url ? ` at ${page.url}` : ''}:`, ...page.lines]) : count && !st.page ? [''] : page1.lines
       return [...before, ...said, ...shown.map(row => row.line), ...after].join('\n')
     },
   }
