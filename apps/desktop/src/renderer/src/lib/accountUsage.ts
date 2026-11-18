@@ -11,7 +11,6 @@ const listeners = new Set<() => void>()
 const emit = () => { for (const listener of listeners) listener() }
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } }
 export const useAccountUsage = () => useSyncExternalStore(subscribe, () => accounts)
-export const useAccountUsageChecking = () => useSyncExternalStore(subscribe, () => pending !== undefined)
 
 export function refreshAccountUsage(force = false): Promise<void> {
   if (pending) { if (force) refreshAgain = true; return pending }
