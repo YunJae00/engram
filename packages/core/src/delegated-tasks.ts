@@ -5,9 +5,9 @@ import { renameWithRetry } from './rename-with-retry.js'
 import type { VaultPaths } from './vault.js'
 
 export const SOURCE_TITLES_RULE = 'A headline or title a source wrote in another language is given in the person\'s language, not quoted in the original; only names of products, companies and people stay as written.'
-export type TaskState = 'queued' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped'
+type TaskState = 'queued' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped'
 
-export interface TaskApproval {
+interface TaskApproval {
   id: string
   words: string
   host: string

@@ -19,7 +19,7 @@ const listOrEmpty = (dir) => {
   }
 }
 
-export function codexCandidates(root, { platform, arch, override, listDir = listOrEmpty, pathEnv } = {}) {
+function codexCandidates(root, { platform, arch, override, listDir = listOrEmpty, pathEnv } = {}) {
   const paths = []
   const push = (path) => {
     if (path && !paths.includes(path)) paths.push(path)

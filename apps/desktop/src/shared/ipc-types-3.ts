@@ -246,7 +246,7 @@ export interface AppSettingsDto {
   appsOff?: { app: string; label: string }[]
 }
 
-export interface WorkMapStatusDto { builtAt: string | null; places: number }
+interface WorkMapStatusDto { builtAt: string | null; places: number }
 
 export interface FirstSetupDto {
   waiting: boolean
@@ -292,7 +292,7 @@ export interface EngineLoginDto {
   message?: string
 }
 
-export interface InstalledBrowserDto {
+interface InstalledBrowserDto {
   id: string
   name: string
   path: string

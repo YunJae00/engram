@@ -6,7 +6,7 @@ export const PREFERENCE_ACTIONS = [
   'review_rules', 'ask_first', 'auto_allow', 'activity_log', 'export_logs',
   'backup_connect', 'backup_disconnect', 'backup_now', 'backup_auto', 'computer_control', 'theme',
 ] as const
-export type PreferenceAction = typeof PREFERENCE_ACTIONS[number]
+type PreferenceAction = typeof PREFERENCE_ACTIONS[number]
 export interface PreferenceAsk { do: PreferenceAction; on?: boolean; name?: string }
 
 export interface PreferenceHost {

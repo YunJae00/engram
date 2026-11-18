@@ -7,8 +7,7 @@ export type RowStatus = CheckStatus | 'partial'
 export interface Check { what: string; selector: string; measured: number | string | null; expected: string; status: CheckStatus }
 export interface RowRecord { row: number; status: RowStatus; checks: Check[] }
 
-export const STATES = ['chat', 'sidebar-states', 'info-overview', 'info-routines', 'create-dialog', 'empty-bot', 'toast', 'settings-review', 'onboarding-bot', 'avatar-gallery', 'avatar-picker'] as const
-export type StateName = typeof STATES[number]
+export type StateName = 'chat' | 'sidebar-states' | 'info-overview' | 'info-routines' | 'create-dialog' | 'empty-bot' | 'toast' | 'settings-review' | 'onboarding-bot' | 'avatar-gallery' | 'avatar-picker'
 export const ROW_STATUSES: readonly RowStatus[] = ['pass', 'fail', 'missing', 'partial', 'deferred']
 export const CHECK_STATUSES: readonly CheckStatus[] = ['pass', 'fail', 'missing', 'deferred']
 
@@ -82,7 +81,7 @@ const pxOf = (value: string | undefined): number | null => {
 }
 const numOf = (value: string | undefined): number | null => (value !== undefined && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null)
 
-export function rowStatus(checks: Check[]): RowStatus {
+function rowStatus(checks: Check[]): RowStatus {
   const has = (s: CheckStatus) => checks.some(c => c.status === s)
   if (!checks.length) return 'missing'
   if (checks.every(c => c.status === 'deferred')) return 'deferred'
@@ -110,7 +109,7 @@ function previewHolder(ownText: string, wholeText: string): boolean {
   const whole = squash(wholeText)
   return whole !== '' && squash(ownText) === whole
 }
-export function equals(what: string, selector: string, value: string | null, want: string): Check {
+function equals(what: string, selector: string, value: string | null, want: string): Check {
   return make(what, selector, value, want, value === null ? null : value === want)
 }
 export const deferred = (what: string, selector: string, reason: string): Check => ({ what, selector, measured: null, expected: reason, status: 'deferred' })

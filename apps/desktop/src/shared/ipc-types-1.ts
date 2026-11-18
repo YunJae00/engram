@@ -43,7 +43,7 @@ export interface NoteDto {
   excerpt: string
 }
 
-export type LoopUrgencyDto = 'overdue' | 'today' | 'this-week' | 'later' | 'no-deadline'
+type LoopUrgencyDto = 'overdue' | 'today' | 'this-week' | 'later' | 'no-deadline'
 
 export interface OpenLoopDto {
   id: string
@@ -155,7 +155,7 @@ export interface BotFactDto {
   touchedAt: string
 }
 
-export interface RoutineTargetDto {
+interface RoutineTargetDto {
   css?: string[]
   text?: string
 }

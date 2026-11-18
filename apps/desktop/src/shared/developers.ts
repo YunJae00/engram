@@ -21,7 +21,7 @@ export interface DevUsage {
   updatedAt?: number
   unavailable?: string
 }
-export interface DevQuestion { id: string; text: string; options: string[]; multiple?: boolean }
+interface DevQuestion { id: string; text: string; options: string[]; multiple?: boolean }
 export interface DevApproval {
   id: string
   kind: 'permission' | 'question'

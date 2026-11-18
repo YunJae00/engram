@@ -3,7 +3,7 @@ import process from 'node:process'
 import { dirname, join } from 'node:path'
 import { git } from './runtime.mjs'
 
-export const BUILD_OUTPUTS = ['apps/desktop/out', 'apps/desktop/native-bin']
+const BUILD_OUTPUTS = ['apps/desktop/out', 'apps/desktop/native-bin']
 const ENTRY = 'apps/desktop/out/main/index.js'
 const KEEP = 3
 

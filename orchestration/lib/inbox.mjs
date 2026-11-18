@@ -8,7 +8,7 @@ import { briefPath, loadBrief, note, readJsonOrNull, save } from './runtime.mjs'
 const inboxDir = (ctx) => join(ctx.logs, 'pending-adds')
 export const pidPath = (ctx) => join(ctx.logs, 'run.pid')
 
-export function itemFromBrief(brief) {
+function itemFromBrief(brief) {
   return {
     id: brief.id, title: brief.title, area: brief.area, difficulty: brief.difficulty, state: 'queued', bounces: 0,
     allowedFiles: brief.allowedFiles, criteria: brief.criteria, scenarios: brief.scenarios ?? [], attempts: [], verdicts: [],
@@ -20,7 +20,7 @@ export function runnerPid(ctx) {
   return pid && pid !== process.pid && alive(pid) ? pid : null
 }
 
-export function enqueue(ctx, id) {
+function enqueue(ctx, id) {
   const dir = inboxDir(ctx)
   mkdirSync(dir, { recursive: true })
   const stamp = `${String(Date.now()).padStart(15, '0')}-${String(process.hrtime.bigint()).padStart(20, '0')}`

@@ -1,4 +1,4 @@
-export const TIERS = ['quick', 'full']
+const TIERS = ['quick', 'full']
 const SMOKE = ['note-open', 'cosmos', 'ui-activity-status']
 
 export function integrationTier(roles, args = []) {

@@ -337,7 +337,7 @@ export async function checkImplementation(ctx, ledger, item, attempt) {
   save(ctx, ledger)
 }
 
-export async function timeoutImplementation(ctx, ledger, item, attempt) {
+async function timeoutImplementation(ctx, ledger, item, attempt) {
   const next = implementTimeout(attempt, ctx.roles)
   await finish(ctx, attempt, 'timeout')
   await dropWorktree(ctx, attempt.worktree)

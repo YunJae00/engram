@@ -527,7 +527,7 @@ export function builtLine(tool: string, args: Record<string, unknown>, korean: b
   const sheets = list('sheets').length || 1, title = said(textOf(args['name']).replace(/\.xlsx$/i, ''))
   return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
 }
-export function buildReply(reply: unknown, korean: boolean, known = ''): string | undefined {
+function buildReply(reply: unknown, korean: boolean, known = ''): string | undefined {
   const text = textOf(reply).replace(/\s+/g, ' ')
   if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
   return korean && (text.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).some(word => !known.toLowerCase().includes(word.toLowerCase())) ? undefined : text

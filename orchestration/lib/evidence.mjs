@@ -13,7 +13,7 @@ const E2E_CMD = /playwright|e2e|verify-cli|run verify\b|electron/i
 export const hiddenUnset = (cmd) => (E2E_CMD.test(cmd) ? [] : ['ENGRAM_HIDDEN'])
 
 export const outputTail = (text, lines = 40, chars = 4000) => String(text ?? '').split('\n').slice(-lines).join('\n').slice(-chars)
-export const screenshots = (text) => [...new Set(String(text ?? '').match(/[\w./-]+\.png\b/g) ?? [])]
+const screenshots = (text) => [...new Set(String(text ?? '').match(/[\w./-]+\.png\b/g) ?? [])]
 
 export function sandboxOnlyCannotVerify(verdict) {
   if (verdict?.verdict !== 'cannot_verify' || (verdict.findings ?? []).length) return false

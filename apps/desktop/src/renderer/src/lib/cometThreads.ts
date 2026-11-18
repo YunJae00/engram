@@ -18,7 +18,7 @@ function withWork(messages: CometMessage[], work: string[]): CometMessage[] {
   return messages.map((message, index) => index === at ? { ...message, work } : message)
 }
 
-export type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']>
+type CometOffer = NonNullable<Extract<EngramEvent, { type: 'chat:done' }>['offer']>
 
 export interface CometThread {
   unapplied: string[]

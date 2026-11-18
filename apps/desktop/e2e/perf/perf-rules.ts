@@ -1,9 +1,9 @@
 type Stat = { median: number; p95: number }
-export type PartResult = { median: number | null; p95: number | null }
+type PartResult = { median: number | null; p95: number | null }
 export type MetricResult = { median: number; p95: number; referenceOnly?: true; parts: Record<string, PartResult> }
 export type MetricId = 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8'
 
-export const FRAME_MS = 1000 / 60
+const FRAME_MS = 1000 / 60
 const DROPPED_FACTOR = 1.5
 
 const TARGETS: Record<MetricId, Record<string, number>> = {

@@ -22,7 +22,7 @@ const action = z.discriminatedUnion('action', [
   z.object({ action: z.literal('move-item'), id, folder: id.nullable(), before: id.optional() }).strict(),
   z.object({ action: z.literal('pin-item'), id, pinned: z.boolean() }).strict(),
 ])
-export const sidebarChange = z.object({ kind: z.enum(['chat', 'routine']), change: action }).strict()
+const sidebarChange = z.object({ kind: z.enum(['chat', 'routine']), change: action }).strict()
 export type SidebarChange = z.infer<typeof sidebarChange>
 
 function reconcile(value: SidebarLayout, ids: SidebarIds): SidebarLayout {

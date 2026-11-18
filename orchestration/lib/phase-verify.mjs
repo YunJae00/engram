@@ -277,7 +277,7 @@ async function supersede(ctx, item, losers) {
   }
 }
 
-export async function bounce(ctx, ledger, item, why) {
+async function bounce(ctx, ledger, item, why) {
   for (const attempt of item.attempts) await cleanAttempt(ctx, item, attempt)
   for (const attempt of item.attempts.filter((a) => a.outcome !== 'pass')) await dropBranch(ctx, attempt)
   item.bounces += 1

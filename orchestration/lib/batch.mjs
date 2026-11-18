@@ -5,9 +5,9 @@ import { runCommands } from './evidence.mjs'
 import { overlaps } from './overlap.mjs'
 import { dropWorktree, freshDetached, git, isCloud, loadJobs, saveJobs } from './runtime.mjs'
 
-export const MAX_BATCH = 4
+const MAX_BATCH = 4
 const DEFAULT_BATCH = 3
-export const BATCH_PREFIX = 'batch-'
+const BATCH_PREFIX = 'batch-'
 
 export function batchSize(args, env = process.env) {
   const i = args.indexOf('--batch')

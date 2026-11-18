@@ -1,0 +1,49 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/*.mjs",
+        "scripts/verify-scenarios/*.mjs",
+        "orchestration/run.mjs",
+        "orchestration/**/*.test.mjs"
+      ],
+      "project": [
+        "scripts/**/*.mjs",
+        "orchestration/**/*.mjs"
+      ]
+    },
+    "apps/desktop": {
+      "entry": [
+        "src/main/index.ts",
+        "src/main/{embedding,process,codex,claude-history,vault-git}-worker.ts",
+        "src/renderer/index.html",
+        "native/macos/Office.js",
+        "scripts/**/*.{mjs,mts}",
+        "e2e/**/*.spec.ts",
+        "test/**/*.test.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "e2e/**/*.ts",
+        "scripts/**/*.{mjs,mts}",
+        "test/**/*.ts",
+        "native/**/*.js"
+      ]
+    },
+    "packages/core": {
+      "entry": [
+        "bin/*.mjs",
+        "scripts/**/*.{mjs,mts,ts}",
+        "src/**/*.test.ts",
+        "test/**/*.test.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "bin/**/*.mjs",
+        "scripts/**/*.{mjs,mts,ts}",
+        "test/**/*.ts"
+      ]
+    }
+  }
+}

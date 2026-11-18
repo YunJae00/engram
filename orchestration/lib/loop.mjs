@@ -20,7 +20,7 @@ export function globToRegExp(glob) {
   return new RegExp(`^${out}$`)
 }
 
-export const matchesAny = (path, globs) => globs.some((glob) => globToRegExp(glob).test(path))
+const matchesAny = (path, globs) => globs.some((glob) => globToRegExp(glob).test(path))
 
 export function machineCheck({ itemId, report, reportErrors, changed, allowedFiles, reportPath, tip, parent }) {
   if (!report) return { ok: false, reason: 'no report on the branch' }

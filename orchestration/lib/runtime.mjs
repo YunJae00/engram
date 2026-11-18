@@ -153,7 +153,7 @@ export async function dropWorktree(ctx, path) {
   await git(ctx.root, 'worktree', 'prune').catch(() => '')
 }
 
-export const NODE_MODULES = ['node_modules', 'apps/desktop/node_modules', 'packages/core/node_modules']
+const NODE_MODULES = ['node_modules', 'apps/desktop/node_modules', 'packages/core/node_modules']
 
 export function linkNodeModules(root, worktree) {
   for (const rel of NODE_MODULES) linkEntries(root, worktree, rel)

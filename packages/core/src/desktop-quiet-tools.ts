@@ -2,7 +2,7 @@ import { desktopReadOptions, DESKTOP_READ_PROPERTIES, DESKTOP_READ_GUIDANCE, typ
 import type { AgentTool, AgentToolContext } from './agent-loop.js'
 import { exactKeys, plainRecord, printable, requireNoLocalPage, requirePublicText } from './tool-args.js'
 
-export const QUIET_KEYS = ['Enter', 'Escape', 'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Control+Enter'] as const
+const QUIET_KEYS = ['Enter', 'Escape', 'Tab', 'Shift+Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Control+Enter'] as const
 export interface QuietPressOptions { key?: typeof QUIET_KEYS[number]; state?: 'checked' | 'unchecked' | 'selected' | 'expanded' | 'collapsed'; action?: 'scroll_up' | 'scroll_down' | 'scroll_left' | 'scroll_right' | 'scroll_into_view' }
 export interface QuietCourier {
   scan(app: string, find: string | undefined, signal?: AbortSignal, options?: DesktopReadOptions): Promise<string>
