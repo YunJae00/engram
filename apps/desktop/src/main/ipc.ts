@@ -2867,7 +2867,7 @@ export function registerIpc(ctx: VaultContext): void {
         const reporting = !direct && company && turn?.report ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
           : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer, lastTeamResult(await listTasks(paths), reporting))
-            : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string, ms = SUMMARY_WRITER_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
+            : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, signal, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string, ms = SUMMARY_WRITER_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
               : aboutEmployee(request.message, everyone, await listTasks(paths))
         // GROKBOT rule 7: this report was made without the parts still at work and the next one is theirs, or it was theirs (company-tools lateShown).
         if (reporting && lateOwed(reporting)) await updateTask(paths, reporting.id, lateShown)
@@ -2953,17 +2953,21 @@ export function registerIpc(ctx: VaultContext): void {
         let helpersWrote: string | undefined
         const helpersAnswer = async (within: AbortSignal | undefined): Promise<string | undefined> => {
           const task = (await listTasks(paths)).find(one => one.state === 'running' && one.botId === bot.id)
-          const text = await helperAnswer({ ask: [lookup.ask(), ...steered].join('\n'), members: task?.team?.members, since: nativeSince, write: writer, due: nativeSince + TEAM_ANSWER_MS + REPORT_WRITER_MS, signal: within ?? signal })
+          const text = await helperAnswer({ ask: [askedNow(), ...steered].join('\n'), members: task?.team?.members, since: nativeSince, write: writer, due: nativeSince + TEAM_ANSWER_MS + REPORT_WRITER_MS, signal: within ?? signal })
           if (text) helpersWrote = text
           return text
         }
         // c17a (cause E): the lone lookup opens the judge's first-hand page itself, through the same open_page and keeping, when no row states it.
         const opener = everyTool.find(tool => tool.name === 'open_page'), readPage = opener && keepRead(keepSources(skipWalls(opener), read), laneRead)
-        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), ...(readPage ? { read: (url: string, within?: AbortSignal) => readPage.run({ url }, { task: lookup.ask(), ...(within ? { signal: within } : {}) }) } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined
+        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [askedNow(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), ...(readPage ? { read: (url: string, within?: AbortSignal) => readPage.run({ url }, { task: askedNow(), ...(within ? { signal: within } : {}) }) } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
         // the old ask), and the turn starts again on the new ask (fast-lane swappedAsk): the host's search for it, then one fresh round.
         // An addition or anything the host cannot name for sure is taken by the running round at its next step, as before.
+        // stack-17 (c17b askNow × c17a points): a correction after a lookup ("그거 말고 대전으로") keeps its plain words for the rounds and the
+        // host's swaps, but every reader of what is asked (the item judge's points, a page read, the writers, the lead check) reads the
+        // meaning; after a host swap the swapped ask is the meaning.
+        const askedNow = (): string => lookup.ask() === request.message ? meant : lookup.ask()
         const lookup = swapRounds(request.message, signal), laneSearch = laneTools?.find(tool => tool.name === 'search_web')
         if (solo && !handed && !fixed) laneChanges.set(channel, said => {
           if (!lookup.change(said)) return
@@ -2983,7 +2987,7 @@ export function registerIpc(ctx: VaultContext): void {
         let laneShaped = false
         const shapeLane = async (raw: string): Promise<string> => {
           laneShaped = true
-          const korean = threadKorean(request.message, request.history ?? []), asks = [lookup.ask(), ...steered]
+          const korean = threadKorean(request.message, request.history ?? []), asks = [askedNow(), ...steered]
           let answer = raw
           // c7 L2: a lone lookup never ends on "가져오지 못했어요" while results are held; c7 R3: nothing follows a numbered news list (fast-lane.ts).
           if (solo) answer = await heldAnswer(answer, { ask: asks.join('\n'), held: heldFor(laneRead, laneSaid), korean, ...([...read][0] ? { page: [...read][0]! } : {}), ...(writer ? { write: (prompt: string) => writer(prompt) } : {}) })

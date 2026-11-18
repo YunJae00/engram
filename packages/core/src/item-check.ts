@@ -71,9 +71,11 @@ export async function judgedItems(ask: string, items: readonly JudgedItem[], wri
   const began = Date.now()
   // stack-15: why no verdict came (late or stopped, the call failed, or an answer that holds no readable JSON), for the next run's log.
   let why = 'unreadable'
+  // stack-17 (L3 in c17a's run went three rounds with holds=2 in round 2; why a quote failed was nowhere): quotes offered by the judge, for the log.
+  let offered = 0
   const said = (verdict: ItemJudgment | undefined): ItemJudgment | undefined => {
     const words = verdict?.search ? look?.tried.includes(verdict.search) ? 'tried' : 'new' : 'none', took = Date.now() - began
-    judgeLog(verdict ? `round=${round} sure=${verdict.keep.length} unsure=${verdict.unsure.length} holds=${verdict.holds?.length ?? '-'} points=${verdict.points?.length ?? '-'}${verdict.kind ? ' kind' : ''} held=${held} secondhand=${verdict.secondhand.length} asked=${verdict.asked === null ? 'null' : verdict.asked ?? '-'} words=${words} ms=${took} left=${ms - took}` : `round=${round} verdict=none why=${why} ms=${took} left=${ms - took}`)
+    judgeLog(verdict ? `round=${round} sure=${verdict.keep.length} unsure=${verdict.unsure.length} holds=${verdict.holds?.length ?? '-'} points=${verdict.points?.length ?? '-'}${verdict.kind ? ' kind' : ''} held=${held} secondhand=${verdict.secondhand.length} asked=${verdict.asked === null ? 'null' : verdict.asked ?? '-'} words=${words} quoted=${offered} ms=${took} left=${ms - took}` : `round=${round} verdict=none why=${why} ms=${took} left=${ms - took}`)
     return verdict
   }
   try {
@@ -103,6 +105,7 @@ export async function judgedItems(ask: string, items: readonly JudgedItem[], wri
       const n = Number(n0)
       if (!Number.isInteger(n) || !real(n) || !quotes || typeof quotes !== 'object') continue
       for (const [key, quote] of Object.entries(quotes as Record<string, unknown>)) {
+        if (typeof quote === 'string') offered++
         const point = typeof quote === 'string' ? pointOf(key) : undefined
         if (point && evidenced(quote as string, items[n - 1]!, ask, point !== 'kind')) (evidence[n] ??= {})[point] = norm(quote as string)
       }

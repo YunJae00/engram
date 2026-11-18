@@ -155,27 +155,31 @@ export class ClaudeEngine implements CloudEngine {
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
     const metric = modelCall('claude', prompt.length, 'low')
     tier('first-line', chosenModel('fast'), 'fast')
-    try { return await askInTurn(() => this.voiceFor(options.workdir), prompt, options.timeoutMs) }
+    let lane: number | undefined
+    try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes()) }
     catch (error) {
       // An answer given up on may never come; a voice left waiting for it would turn every later line away.
-      if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir).catch(() => undefined) }
+      const voice = lane === undefined ? undefined : voices[lane]
+      if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir, lane).catch(() => undefined) }
       throw error
     }
     finally {
       metric.end()
       // A used-up voice is renewed now, so the next first line finds it warm.
-      if (voice?.spent) void this.voiceFor(options.workdir).catch(() => undefined)
+      if (lane !== undefined && voices[lane]?.spent) void this.voiceFor(options.workdir, lane).catch(() => undefined)
     }
   }
-  private async voiceFor(workdir: string): Promise<VoiceSession | undefined> {
+  private async voiceFor(workdir: string, lane = 0): Promise<VoiceSession | undefined> {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
-    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast') }
+    // stack-17: a lane past the first is opened only when the others are busy, and closes after a short rest.
+    const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
     // One account's voice never answers for another: the profile is part of what it is.
     const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
-    if (!voice || voice.closed || voice.spent || voiceKey !== key) { voice?.close(); voice = new VoiceSession(spec); voiceKey = key }
-    return voice
+    const voice = voices[lane]
+    if (!voice || voice.closed || voice.spent || voiceKeys[lane] !== key) { voice?.close(); voices[lane] = new VoiceSession(spec); voiceKeys[lane] = key }
+    return voices[lane]
   }
   confirmAuth(): void { this.status.set({ installed: true, loggedIn: true, conclusive: true }) }
 
@@ -324,7 +328,7 @@ export class ClaudeEngine implements CloudEngine {
 
 const sessions = new SessionPool()
 // The voice is one more warm runtime under the cap.
-export function trimWarm(): void { sessions.trim(workerPool.target + 1 - (voice && !voice.closed ? 1 : 0)) }
+export function trimWarm(): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
 setInterval(() => { sessions.sweep(); trimWarm() }, 60_000).unref()
 workerPool.onTarget(() => trimWarm())
 
@@ -338,10 +342,14 @@ export function closeClaudeSession(key: string): void {
 
 export function closeClaudeSessions(): void {
   sessions.closeAll()
-  voice?.close()
+  for (const voice of voices) voice?.close()
 }
-let voice: VoiceSession | undefined
-let voiceKey = ''
+// The quick voices (askInTurn lanes): one per lane, at most the pool's live target, so memory pressure narrows them as it does work.
+// shortcut: QUICK_LANES is the most teammates a split runs side by side today (3, +1 added mid-work shares a lane); raise it with them.
+const QUICK_LANES = 3, EXTRA_VOICE_IDLE_MS = 2 * 60_000
+const quickLanes = (): number => Math.max(1, Math.min(QUICK_LANES, workerPool.target))
+const voices: (VoiceSession | undefined)[] = []
+const voiceKeys: string[] = []
 
 async function sdkModule(): Promise<SessionSdk> {
   return (await loadClaudeSdk()) as SessionSdk

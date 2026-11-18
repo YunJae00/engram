@@ -32,3 +32,17 @@ it('gives up on a question whose own time ran out while it waited', async () => 
   await expect(first).resolves.toBe('answer to long')
   await expect(askInTurn(async () => undefined, 'none', 100)).rejects.toThrow('The voice is not ready.')
 })
+
+// stack-17 (c17a's R1/R2: three helpers' judges asked together came back at 5.0, 9.9 and 10.1 s): with lanes, questions asked together
+// go to idle voices side by side; each voice still answers one at a time. Wording in no harness row.
+it('questions asked together go side by side to the idle voices, one lane each, and a fourth waits for the least busy', async () => {
+  const lanes = [slowVoice(200), slowVoice(200), slowVoice(200)]
+  const began = Date.now()
+  const answers = await Promise.all(['목포', '여수', '통영'].map(prompt => askInTurn(async lane => lanes[lane], prompt, 2000, 3)))
+  expect(answers).toEqual(['answer to 목포', 'answer to 여수', 'answer to 통영'])
+  expect(Date.now() - began).toBeLessThan(380)
+  expect(lanes.map(voice => voice.asked)).toEqual([['목포'], ['여수'], ['통영']])
+  const four = await Promise.all(['a', 'b', 'c', 'd'].map(prompt => askInTurn(async lane => lanes[lane], prompt, 2000, 3)))
+  expect(four).toHaveLength(4)
+  expect(lanes.map(voice => voice.asked.length).sort()).toEqual([2, 2, 3])
+})

@@ -11,7 +11,7 @@ import { spawnRuntime } from './process-client.js'
 const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
-export interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string }
+export interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; /** How long it stays open unused (IDLE_MS). */ idleMs?: number }
 
 export class VoiceSession {
   private inbox: SdkUserMessage[] = []
@@ -24,8 +24,10 @@ export class VoiceSession {
   private readonly abort = new AbortController()
   closed = false
   readonly key: string
+  private readonly idleMs: number
 
   constructor(spec: VoiceSpec) {
+    this.idleMs = spec.idleMs ?? IDLE_MS
     this.key = JSON.stringify([spec.binary, spec.model, spec.workdir])
     const stream = spec.sdk.query({
       prompt: this.questions(),
@@ -96,7 +98,7 @@ export class VoiceSession {
 
   private rest(): void {
     clearTimeout(this.idle)
-    this.idle = setTimeout(() => this.close(), IDLE_MS)
+    this.idle = setTimeout(() => this.close(), this.idleMs)
     this.idle.unref?.()
   }
 }

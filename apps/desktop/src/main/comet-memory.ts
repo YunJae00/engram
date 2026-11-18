@@ -63,7 +63,8 @@ export const MEMORY_YIELDS = 3
 // dropped, so a "기억해" fact is not lost to busy turns.
 export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, asked = false): Promise<T | undefined> {
   for (let attempt = 0; asked || attempt < MEMORY_YIELDS; attempt++) {
-    await noTurnRunning()
+    // stack-17 (c17b r3 #2): a turn may start between the wait's end and this continuation; it is asked again until none runs.
+    do await noTurnRunning(); while (running.size)
     if (signal?.aborted) return undefined
     const cut = new AbortController(), stop = (): void => cut.abort()
     signal?.addEventListener('abort', stop, { once: true })

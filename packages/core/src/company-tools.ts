@@ -752,7 +752,10 @@ const outcome = (job: DoneJob): string => {
 const PARTICLES = /^(?:에서|에게|한테|으로|이랑|하고|까지|부터|이나|라는|쪽|이|가|은|는|을|를|의|에|도|만|와|과|랑|로|나|엔|선|요)*$/u
 const JOINS = /(?:이랑|하고|랑|와|과)$/u
 function unnamedSubjects(text: string, jobs: readonly DoneJob[]): string[] {
-  const tokens = (job: DoneJob): string[] => job.did.split(/[\s·,()/]+/u).filter(word => word.length >= 2 && !JOB_FILLER.test(word))
+  // stack-17 (c17c r3 #1: "주말 소식 조사" is filler word for word, so it was never checked): a job with no word beyond filler is known by
+  // its subject (thingOf: the job less its action word), so every job is checked.
+  const split = (did: string): string[] => did.split(/[\s·,()/]+/u).filter(word => word.length >= 2)
+  const tokens = (job: DoneJob): string[] => { const words = split(job.did).filter(word => !JOB_FILLER.test(word)); return words.length ? words : split(thingOf(job)) }
   // A word of the record ending in a particle ("노션의") is also matched without it.
   const stem = (word: string): string => word.length >= 3 && /[의은는이가을를에도와과랑]$/u.test(word) ? word.slice(0, -1) : word
   const wordsOf = (job: DoneJob): string[] => [...new Set(tokens(job).map(stem))]
@@ -817,7 +820,7 @@ function plainSummary(jobs: readonly DoneJob[], span = ''): string {
   }), gone(jobs)].filter(Boolean).join(' ')
 }
 /** What the team did, from its record: two or three short sentences by the quick model, checked by the host (Korean, no address, no list, everyone named, each day in words). No record for the time asked is said by the host. Undefined when there is no quick model: the lead answers from the record in its prompt (companyNote). */
-export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot[]; tasks?: readonly DelegatedTask[]; message: string; /** Given at most `ms` per call. */ write?: ReportWriter; now?: Date; timeoutMs?: number }): Promise<string | undefined> {
+export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot[]; tasks?: readonly DelegatedTask[]; message: string; /** Given at most `ms` per call. */ write?: ReportWriter; now?: Date; timeoutMs?: number; /** stack-17: the person's stop: the writer, its check and its repair end at once (writtenReport's rule). */ signal?: AbortSignal }): Promise<string | undefined> {
   const now = input.now ?? new Date(), staff = employees(input.bots)
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()), back = (days: number): string => { const day = new Date(today); day.setDate(today.getDate() - days); return ymd(day) }
   // The week starts on Monday.
@@ -860,8 +863,8 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
   const fallback = (why: string): string => { reportLog(`summary=${why} ms=${Date.now() - began} jobs=${jobs.length} left=${jobs.filter(job => job.left).length}`); return plainSummary(jobs, span) }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms) })
-    const raw = await Promise.race([write(prompt, ms), late])
+    const late = new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); input.signal?.addEventListener('abort', () => resolve(undefined), { once: true }) })
+    const raw = input.signal?.aborted ? undefined : await Promise.race([write(prompt, ms), late])
     if (raw === undefined) return fallback('late')
     if (!raw.trim()) return fallback('empty')
     // c15b (cause F, C10): a draft that breaks a structural rule goes back to the writer with that rule for the one rewrite.
@@ -873,7 +876,7 @@ export async function teamSummary(paths: VaultPaths, input: { bots: readonly Bot
     // stack-14: the outcome is logged like the team answer's (C10 left no trace of what its check said).
     let outcome = 'unchecked' as CheckOutcome, kinds = ''
     const text = await checkedWrite({
-      data: jobs, ask: input.message, subjects: [...new Set(jobs.map(thingOf))], draft: 'text' in first ? first.text : said(raw), shape, check: write, due, log: (done, problems) => { outcome = done; kinds = [...new Set([...shape, ...problems].map(p => p.kind))].join('+') },
+      data: jobs, ask: input.message, subjects: [...new Set(jobs.map(thingOf))], draft: 'text' in first ? first.text : said(raw), shape, check: write, due, ...(input.signal ? { signal: input.signal } : {}), log: (done, problems) => { outcome = done; kinds = [...new Set([...shape, ...problems].map(p => p.kind))].join('+') },
       redo: async (note, left) => { const again = summaryOk(said(await write(prompt + note, left)), jobs, everyone, span); if ('text' in again) return again.text; redone = again.refused; return undefined },
     })
     if (text === undefined) return fallback(`${shape.length ? `fallback:${'refused' in first ? first.refused : ''}` : `refused:meaning:${kinds}`}${redone ? `>${redone}` : ''}`)
