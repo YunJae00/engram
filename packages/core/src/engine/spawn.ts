@@ -72,12 +72,10 @@ export function killAllEngineChildrenSync(): number {
   return count
 }
 
-// npm CLIs on Windows are .cmd shims, which Node spawns only through a shell; argv is flags only there.
 const NEEDS_SHELL = process.platform === 'win32'
 
 const shellSafe = (cmd: string): string => (NEEDS_SHELL ? `"${cmd}"` : cmd)
 
-// Node does not escape argv in shell mode, so cmd.exe metacharacters would be command injection.
 const SHELL_META = /["'&|<>^%`\r\n]/
 
 function assertShellSafeArgs(cmd: string, args: string[]): void {
