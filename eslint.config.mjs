@@ -8,11 +8,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/out/**',
-      // agent worktrees (subagent checkouts live under .claude/worktrees)
       '.claude/**',
       '**/test-results/**',
       '**/playwright-report/**',
-      // generated binary bundle (MinGit + the esbuild'd MCP server)
       'apps/desktop/bundle/**',
       'apps/desktop/native-bin/**',
       'tmp/**',
