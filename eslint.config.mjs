@@ -2,6 +2,115 @@ import js from '@eslint/js'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const KOREAN_IN_CODE = 'Put Korean text in the locale catalog or the system prompt file; never match Korean words in code.'
+const KOREAN_TODAY = [
+  'apps/desktop/src/main/activity-watch.ts',
+  'apps/desktop/src/main/agent-courier.ts',
+  'apps/desktop/src/main/approval-tools.ts',
+  'apps/desktop/src/main/approvals.ts',
+  'apps/desktop/src/main/aside-ipc.ts',
+  'apps/desktop/src/main/away-summary.ts',
+  'apps/desktop/src/main/comet-title.ts',
+  'apps/desktop/src/main/desk-lane.ts',
+  'apps/desktop/src/main/desktop-agent.ts',
+  'apps/desktop/src/main/desktop-opt-in.ts',
+  'apps/desktop/src/main/desktop-outcome.ts',
+  'apps/desktop/src/main/desktop-permission-state.ts',
+  'apps/desktop/src/main/desktop-permission.ts',
+  'apps/desktop/src/main/desktop-quiet-confirm.ts',
+  'apps/desktop/src/main/desktop-quiet-do.ts',
+  'apps/desktop/src/main/desktop-quiet.ts',
+  'apps/desktop/src/main/desktop-sparse.ts',
+  'apps/desktop/src/main/fast-lane.ts',
+  'apps/desktop/src/main/file-work.ts',
+  'apps/desktop/src/main/first-line.ts',
+  'apps/desktop/src/main/ipc.ts',
+  'apps/desktop/src/main/native-tools.ts',
+  'apps/desktop/src/main/notification-watch.ts',
+  'apps/desktop/src/main/office-agent.ts',
+  'apps/desktop/src/main/office-mac.ts',
+  'apps/desktop/src/main/page-target.ts',
+  'apps/desktop/src/main/page-wall.ts',
+  'apps/desktop/src/main/result-check.ts',
+  'apps/desktop/src/main/review-gate.ts',
+  'apps/desktop/src/main/task-closing.ts',
+  'apps/desktop/src/main/task-notify.ts',
+  'apps/desktop/src/main/task-runner.ts',
+  'apps/desktop/src/main/team-runner.ts',
+  'apps/desktop/src/main/teammate-tools.ts',
+  'apps/desktop/src/main/usage-limit.ts',
+  'apps/desktop/src/main/web-trail.ts',
+  'apps/desktop/src/main/work-guide-learn.ts',
+  'apps/desktop/src/main/worker-pool.ts',
+  'packages/core/src/agent-prompt.ts',
+  'packages/core/src/agent-session-shape.ts',
+  'packages/core/src/agent-session.ts',
+  'packages/core/src/agent-voice.ts',
+  'packages/core/src/aliases.ts',
+  'packages/core/src/approval.ts',
+  'packages/core/src/ask.ts',
+  'packages/core/src/audit-log.ts',
+  'packages/core/src/bot-memory.ts',
+  'packages/core/src/bot-templates.ts',
+  'packages/core/src/bots-reset.ts',
+  'packages/core/src/collection-progress.ts',
+  'packages/core/src/comet-navigation-tools.ts',
+  'packages/core/src/comet-page-tools.ts',
+  'packages/core/src/company-tools.ts',
+  'packages/core/src/deck-audit.ts',
+  'packages/core/src/delegated-tasks.ts',
+  'packages/core/src/document-tools.ts',
+  'packages/core/src/import.ts',
+  'packages/core/src/item-check.ts',
+  'packages/core/src/jobs/librarian.ts',
+  'packages/core/src/lead-check.ts',
+  'packages/core/src/office-theme.ts',
+  'packages/core/src/parsers.ts',
+  'packages/core/src/preferences-tools.ts',
+  'packages/core/src/press-guard.ts',
+  'packages/core/src/prose.ts',
+  'packages/core/src/repeat.ts',
+  'packages/core/src/routine-task.ts',
+  'packages/core/src/schedule-tools.ts',
+  'packages/core/src/search-template.ts',
+  'packages/core/src/search.ts',
+  'packages/core/src/secrets.ts',
+  'packages/core/src/skills.ts',
+  'packages/core/src/team-hire-tools.ts',
+  'packages/core/src/untitled-bot.ts',
+  'packages/core/src/work-map.ts',
+  'packages/core/src/written-check.ts',
+]
+const HANGUL = '/[가-힣]/'
+
+const koreanInCode = {
+  files: ['apps/desktop/src/main/**/*.{ts,tsx,mts}', 'packages/core/src/**/*.{ts,tsx,mts}'],
+  ignores: ['**/locale/**', '**/*.test.ts', ...KOREAN_TODAY],
+  rules: {
+    'no-restricted-syntax': ['error',
+      { selector: `Literal[regex.pattern=${HANGUL}]`, message: KOREAN_IN_CODE },
+      { selector: `Literal[value=${HANGUL}]`, message: KOREAN_IN_CODE },
+      { selector: `TemplateElement[value.raw=${HANGUL}]`, message: KOREAN_IN_CODE },
+    ],
+  },
+}
+
+const SKIPPED = 'Never skip or narrow tests. Update them to the spec.'
+const TEST_API = "/^(it|test|describe)$/"
+
+const noSkippedTests = {
+  files: ['**/*.{test,spec}.{ts,tsx,mts,cts,js,mjs,cjs}'],
+  rules: {
+    'no-restricted-syntax': ['error',
+      { selector: `MemberExpression[object.name=${TEST_API}][property.name=/^(only|todo|fixme)$/]`, message: SKIPPED },
+      { selector: `MemberExpression[object.name=${TEST_API}][property.name='skip']:not(.callee)`, message: SKIPPED },
+      { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.length=0]`, message: SKIPPED },
+      { selector: `CallExpression[callee.object.name=${TEST_API}][callee.property.name='skip'][arguments.0.type=/^(Literal|TemplateLiteral)$/]`, message: SKIPPED },
+      { selector: 'CallExpression[callee.name=/^x(it|describe|test)$/]', message: SKIPPED },
+    ],
+  },
+}
+
 export default tseslint.config(
   {
     ignores: [
@@ -39,4 +148,6 @@ export default tseslint.config(
     languageOptions: { globals: { ObjC: 'readonly', Application: 'readonly', Path: 'readonly', $: 'readonly' } },
     rules: { 'no-control-regex': 'off' },
   },
+  koreanInCode,
+  noSkippedTests,
 )
