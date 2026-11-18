@@ -122,7 +122,7 @@ it('the chat handler answers a preference sentence before it checks that an AI i
   const says = handler.indexOf('settingsChat.say(channel, request.message)')
   expect(says).toBeGreaterThan(0)
   expect(handler.slice(0, says)).toContain('isPersonSentence(request, turn, recovery, savedRoutine)')
-  expect(says).toBeLessThan(handler.indexOf('chatEngine(channel, ctx.engines)'))
+  expect(says).toBeLessThan(handler.indexOf('chatEngine(ctx.engines)'))
   expect(says).toBeLessThan(handler.indexOf("isLimited('claude', channel)"))
   const opens = handler.indexOf("broadcast({ type: 'chat:token', channel, text: `${opening}\\n\\n` })")
   expect(opens).toBeGreaterThan(handler.indexOf('settingsChat.opening(channel, request.message)'))

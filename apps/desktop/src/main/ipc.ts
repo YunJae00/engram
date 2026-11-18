@@ -844,10 +844,10 @@ let onFilingProbe: ((states: EngineStatusDto[]) => Promise<void>) | null = null
 
 export function registerIpc(ctx: VaultContext): void {
   tapBroadcast(firstLineSaw)
-  setDesktopEngineResolver(async (lane) => {
+  setDesktopEngineResolver(async () => {
     const current = await loadSettings()
     if (current.computerUse !== true) throw new Error('Enable computer use in Settings before using an app.')
-    return chatEngine(lane, ctx.engines)
+    return chatEngine(ctx.engines)
   })
   onEnginesChanged = async () => {
     await revalidateEngines(ctx)
@@ -939,7 +939,7 @@ export function registerIpc(ctx: VaultContext): void {
     answered: (channel) => !answering.has(channel) && tasks.activeChannels().includes(channel),
     setOffersAside,
     stop: stopChat,
-    voice: channel => chatEngine(channel, ctx.engines),
+    voice: () => chatEngine(ctx.engines),
   })
 
   const ERRAND_MIN_FREE = 1.5e9
@@ -1101,7 +1101,7 @@ export function registerIpc(ctx: VaultContext): void {
     if (typeof input !== 'string' || !input.trim() || input.length > 20_000) throw new Error('Enter a message of up to 20,000 characters.')
     const message = input.trim()
     await readChatAttachments(paths, attachments)
-    if (!await chatEngine('new-comet', ctx.engines)) throw new Error('Connect an AI in Engram Settings before starting a Comet.')
+    if (!await chatEngine(ctx.engines)) throw new Error('Connect an AI in Engram Settings before starting a Comet.')
     const { bot, channel, history } = await quickPrimary(paths, lane => answering.has(lane) || tasks.activeChannels().includes(lane))
     await rememberSelections([channel])
     broadcast({ type: 'comet:quick', botId: bot.id, message, attachments })
@@ -1377,7 +1377,7 @@ export function registerIpc(ctx: VaultContext): void {
             const execution = routine.task.execution
             await updateSettings(settings => ({ ...settings, aiSelections: { ...settings.aiSelections, [`bot-${botId}`]: execution } }))
           }
-          if (!await chatEngine(`bot-${botId}`, ctx.engines)) return false
+          if (!await chatEngine(ctx.engines)) return false
           await sendChat({ engineId: '', botId, channel: `bot-${botId}`, message, history: [] }, context, routine)
           return true
         },
@@ -1935,7 +1935,7 @@ export function registerIpc(ctx: VaultContext): void {
     offeredIn.delete(entry.channel)
     const hostAnswers = !!request.botId && !request.scheduled && !recovery && !savedRoutine && !turn?.report && !turn?.verification && !turn?.quiet && !request.attachments?.length && !studying.has(entry.channel)
       && await loadBots(paths).then(async bots => bots.find(bot => bot.id === request.botId)?.primary === true && (answersItself(request.message, bots, lastReplyOf(request.history)) || (steerShaped(request.message) && !!plainSteer(request.message, await listTasks(paths), request.botId!))), () => false)
-    beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(entry.channel, ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (request.botId ? await readBotTranscript(paths, request.botId, 8) : request.history ?? []).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), said: async () => (request.botId ? await readBotTranscript(paths, request.botId, 12) : request.history ?? []).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), fallback: said => fallbackLine(request.message, threadKorean(request.message, request.history ?? []), said), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })
+    beginFirstLine({ host: hostAnswers, channel: entry.channel, message: request.message, korean: threadKorean(request.message, request.history ?? []), interactive: !request.scheduled && !savedRoutine && !turn?.quiet && !turn?.verification && !recovery, studying: studying.has(entry.channel), limited: isLimited('claude', entry.channel), followUp: followingUp(entry.channel), secret: secretsIn(request.message).length > 0, engine: () => chatEngine(ctx.engines), workdir: engineCwd(paths), signal: controller.signal, ...(request.attachments?.length || (turn?.context && !turn.learned) ? {} : fastLane(request.message, true) ? { line: laneFirstLine(request.message, threadKorean(request.message, request.history ?? [])) } : { told: onlyTells(request.message, [...(request.history ?? [])].reverse().find(one => one.role === 'assistant')?.text), context: async () => (request.botId ? await readBotTranscript(paths, request.botId, 8) : request.history ?? []).filter(one => !one.progress && !one.error).map(one => `${one.role === 'user' ? 'Person' : 'You'}: ${one.text.slice(0, 300)}`).join('\n'), whole: quickQuestion(request.message) }), said: async () => (request.botId ? await readBotTranscript(paths, request.botId, 12) : request.history ?? []).filter(one => one.role === 'assistant' && one.progress && !one.error && !one.text.trim().includes('\n')).map(one => one.text.trim()), fallback: said => fallbackLine(request.message, threadKorean(request.message, request.history ?? []), said), show: line => broadcast({ type: 'chat:token', channel: entry.channel, text: `${line}\n\n` }), hide: () => broadcast({ type: 'chat:token', channel: entry.channel, text: '', reset: true, drop: true }) })
     workSoFar.delete(entry.channel)
     flog('chat-phase', JSON.stringify({ channel: entry.channel, phase: 'started' }))
     const releaseBrowser = holdAgentBrowser()
@@ -2107,7 +2107,7 @@ export function registerIpc(ctx: VaultContext): void {
     }
     const settings = await loadSettings()
     const wanted = 'claude'
-    const engine = await chatEngine(channel, ctx.engines)
+    const engine = await chatEngine(ctx.engines)
     try { assertDesktopChatEngine(channel, engine) }
     catch (error) { broadcast({ type: 'chat:error', channel, message: error instanceof Error ? error.message : 'Computer access is unavailable for this connection.' }); return }
     if (!engine) {

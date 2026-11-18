@@ -488,7 +488,7 @@ async function bootVault(root: string): Promise<VaultContext> {
     void revalidateEngines(ctx).then(() => {
       enginesDetected = true
       broadcast({ type: 'engines:detected' })
-      void chatEngine('bot-first-line', ctx.engines).then(live => warmFirstLine(live, engineCwd(ctx.paths))).catch(() => undefined)
+      void chatEngine(ctx.engines).then(live => warmFirstLine(live, engineCwd(ctx.paths))).catch(() => undefined)
     })
     setBrainChoiceHook(() => revalidateEngines(ctx, true))
     startEngineWatch(ctx)

@@ -118,7 +118,7 @@ describe('usage limit in a conversation', () => {
     const source = await readFile(resolve(__dirname, '../src/main/ipc.ts'), 'utf8')
     expect(source).not.toMatch(/switch: \$\{brainName/)
     expect(source).not.toMatch(/switchTo = /)
-    expect(source).not.toMatch(/chatEngine\(channel, ctx\.engines, request\.engineId\)/)
+    expect(source).not.toMatch(/chatEngine\(ctx\.engines, request\.engineId\)/)
     expect(source).toMatch(/usageLimitMessage\(/)
     expect(source).toMatch(/message: quota \? usageLimitMessage\(/)
     expect(source).toMatch(/if \(turn\?\.verification && kind !== 'quota'\) throw err/)

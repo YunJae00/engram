@@ -60,7 +60,7 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')
   expect(ipc).toContain('steerReplied: true, takeSteer: () => { const said = takeFollowUps(channel); steered.push(...said); laneSaid.push(...said.map(text => ({ text, at: laneRead.length }))); return said }')
-  expect(ipc).toContain('voice: channel => chatEngine(channel, ctx.engines),')
+  expect(ipc).toContain('voice: () => chatEngine(ctx.engines),')
   expect(ipc).toContain('acknowledgeHanded(paths, bot.id, [...stored.pending, ...steered], checkpoint)')
   expect(ipc).toContain('(!turn?.context || turn.learned === true)')
   expect(readFileSync(new URL('../src/main/task-runner.ts', import.meta.url), 'utf8')).toContain('playbook ? { context: playbookContext(playbook), learned: true } : undefined')

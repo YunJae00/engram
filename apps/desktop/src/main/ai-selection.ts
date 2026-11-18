@@ -42,7 +42,7 @@ export const limitedAt = (id: string, scope: string): number | undefined => {
 export const isLimited = (id: string, scope: string, now = Date.now()): boolean => (limitedUntil.get(`${scope}:${id}`)?.until ?? 0) > now
 export const brainName = (id: string): string => id === 'claude' ? 'Claude' : id === 'codex' ? 'ChatGPT' : id
 
-export async function chatEngine(scope: string, engines: Engine[]): Promise<Engine | undefined> {
+export async function chatEngine(engines: Engine[]): Promise<Engine | undefined> {
   if (process.env['ENGRAM_ENGINE'] === 'none') return undefined
   if (process.env['ENGRAM_ENGINE'] === 'mock') return engines.find(engine => engine.id === 'mock')
   const engine = createEngine('claude')

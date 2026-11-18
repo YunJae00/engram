@@ -51,7 +51,7 @@ function addBullets(slide: PptxGenJS.Slide, bullets: string[], top: number, heig
   )
 }
 
-function addTable(pptx: PptxGenJS, slide: PptxGenJS.Slide, table: DeckTable, top: number, rowHeights: number[], t: OfficeTheme): void {
+function addTable(slide: PptxGenJS.Slide, table: DeckTable, top: number, rowHeights: number[], t: OfficeTheme): void {
   const rows = table.rows.map((row, r) =>
     row.map((cell) => ({
       text: String(cell),
@@ -110,7 +110,7 @@ async function composeDeck(spec: DeckSpec): Promise<Buffer> {
     const s = contentFrame(pptx, slide, index + 1, spec.slides.length, t)
     const layout = deckBodyLayout(slide)
     if (slide.bullets && slide.bullets.length > 0) addBullets(s, slide.bullets, layout.top, layout.bulletsHeight, t)
-    if (slide.table) addTable(pptx, s, slide.table, layout.tableTop, layout.rowHeights, t)
+    if (slide.table) addTable(s, slide.table, layout.tableTop, layout.rowHeights, t)
     if (slide.chart) addChart(pptx, s, slide.chart, layout.chartTop, t)
     if (slide.notes) s.addNotes(slide.notes)
   })

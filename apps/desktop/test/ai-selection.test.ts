@@ -16,12 +16,12 @@ vi.mock('core', async (original) => ({
 
 it('keeps every conversation on Claude, even with a stored codex choice or while Claude is at its usage limit', async () => {
   vi.mocked(loadSettings).mockResolvedValue({ defaultEngine: 'codex', claudeModel: 'opus', codexModel: 'gpt', autoStart: false, teamSync: 'manual', aiSelections: { 'bot-1': { engine: 'codex', model: 'gpt' } } })
-  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
+  expect((await chatEngine([]))!.id).toBe('claude')
   noteLimited('claude', 'bot-1', 60_000)
   expect(isLimited('claude', 'bot-1')).toBe(true)
-  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
+  expect((await chatEngine([]))!.id).toBe('claude')
   noteLimited('codex', 'bot-1')
-  expect((await chatEngine('bot-1', []))!.id).toBe('claude')
+  expect((await chatEngine([]))!.id).toBe('claude')
   expect(limitedAt('claude', 'bot-1')).toBeGreaterThan(Date.now())
   expect(isLimited('claude', 'bot-1', Date.now() + 61_000)).toBe(false)
   noteLimited('claude', 'bot-9')
@@ -32,9 +32,9 @@ it('keeps every conversation on Claude, even with a stored codex choice or while
 it('goes ahead when the sign-in check could not tell, and stops only on a real sign-out', async () => {
   vi.mocked(loadSettings).mockResolvedValue({ defaultEngine: 'claude', claudeModel: 'opus', autoStart: false, teamSync: 'manual', aiSelections: {} })
   status.current = { installed: true, loggedIn: false, conclusive: false }
-  expect((await chatEngine('bot-3', []))?.id).toBe('claude')
+  expect((await chatEngine([]))?.id).toBe('claude')
   status.current = { installed: true, loggedIn: false, conclusive: true }
-  expect(await chatEngine('bot-3', [])).toBeUndefined()
+  expect(await chatEngine([])).toBeUndefined()
   status.current = { installed: true, loggedIn: true }
 })
 
