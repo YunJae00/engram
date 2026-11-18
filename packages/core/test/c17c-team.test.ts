@@ -120,9 +120,9 @@ test('a draft that opens on a sentence about the work, before the items, is refu
   const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, repair]).write })
   expect(out.split('\n')).toEqual([...LINES, `하은이 찾은 연말 할인으로 준이 쓴 거예요. [shop.example.kr](${SALE})`])
   expect(logged).toEqual([expect.stringMatching(/^writer=repaired:items-first /)])
-  // A repair that is no repair: a rule of shape never withholds the draft, so it is shown as written.
+  // A repair that is no repair: the draft is never withheld, and (c18b r3) the host still opens it on the items, its sentence after them.
   logged.length = 0
-  expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')[0]).toBe(`준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`)
+  expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')).toEqual([...LINES, '', `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`])
   expect(logged).toEqual([expect.stringMatching(/^writer=kept:items-first /)])
 })
 

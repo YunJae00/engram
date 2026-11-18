@@ -215,6 +215,31 @@ export function withoutSentences(text: string, problems: readonly Problem[]): st
   }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+// c18b r3 (review: "register" was soft, so when its repair did not land the 한다체 line stood in a 해요체 answer): one register is the
+// standing tone rule, not polish, so the host guarantees it when the repair did not. The host conjugates nothing (it matches no endings):
+// a flagged sentence copied from the data is shown as what it is, a quotation, in the message's own form ("…"라고 적혀 있어요); one the
+// data does not hold goes like a false sentence, unless it is all there is. By the check's quote and the data only, for any wording.
+export function inOneRegister(text: string, problems: readonly Problem[], data: unknown): string {
+  const units = messageUnits(text), flagged = new Set(problems.filter(p => p.kind === 'register').flatMap(p => quotedUnits(units, p.quote)))
+  if (!flagged.size) return text
+  const held = words(JSON.stringify(data) ?? ''), cut = new Set<number>(), framed = new Map<number, string>()
+  for (const i of flagged) {
+    const unit = units[i]!.text
+    if (/^\s*[|#]/.test(unit)) continue
+    const marker = /^\s*(?:[-*•·>]|\d+[.)])\s*/.exec(unit)?.[0] ?? '', links = /(?:\s*\[[^\]]*\]\([^)\s]*\))+\s*$/.exec(unit)?.[0] ?? ''
+    const core = unit.slice(marker.length, unit.length - links.length).trim().replace(/[.。!]+$/u, '')
+    if (words(core).length >= 2 && held.includes(words(core))) framed.set(i, `${marker}"${core}"라고 적혀 있어요.${links ? ` ${links.trim()}` : ''}`)
+    else cut.add(i)
+  }
+  if (cut.size && cut.size === units.length) cut.clear()
+  return text.split('\n').flatMap((line, at) => {
+    const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
+    if (!own.some(({ i }) => cut.has(i) || framed.has(i))) return [line]
+    const left = own.filter(({ i }) => !cut.has(i)).map(({ u, i }) => framed.get(i) ?? u.text)
+    return left.length ? [/^\s*/.exec(line)![0] + left.join(' ')] : []
+  }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 export interface Written {
   /** What may be shown: the draft, its repair, less the sentences a meaning problem still names. '' when nothing of it holds. */
   text: string
@@ -262,6 +287,7 @@ export async function repairedWrite(input: CheckInput & {
   if (repaired) still = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? (await writtenProblems(input.check, input, text, time(), signal))?.filter(p => !SOFT.has(p.kind)) ?? [] : []
   const gone = still.filter(p => REMOVABLE.has(p.kind)), left = still.filter(p => !REMOVABLE.has(p.kind) && !SOFT.has(p.kind))
   if (gone.length) text = (input.cut ?? withoutSentences)(text, gone)
+  text = inOneRegister(text, problems, input.data)
   return done(text, !text.trim() || left.length ? 'refused' : repaired ? 'repaired' : 'kept', all, left)
 }
 /** repairedWrite for a caller that has its own rendering: the text, or undefined when a meaning problem is left that no sentence cut fixes. */

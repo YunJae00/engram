@@ -1664,22 +1664,49 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
 // named in the sentence their own link closes ("민지가 찾아보니 …", quietLines' form), else in one short sentence after the message.
 // By the member's own links and name only, for any teammate, part or wording.
 export function withEveryone(text: string, members: readonly TeamMember[], said: readonly string[] = []): string {
-  const plain = (t: string): string => t.replace(/\[[^\]]*\]\([^)]*\)/g, ' '), left: string[] = []
+  const plain = (t: string): string => t.replace(/\[[^\]]*\]\([^)]*\)/g, ' '), left: string[] = [], named_: string[] = []
   let lines = text.split('\n')
   for (const m of shownParts(members).filter(one => !missing(one))) {
     if (plain(lines.join('\n')).includes(m.role) || toldHandoff(m, said)) continue
     // Every page that is theirs: what they found, their latest when nothing was new, where they looked.
-    const urls = [...shownFacts(m), m.data?.nothing?.latest, lookedAt(m)].flatMap(f => f ? [`](${named('x', f.url).slice(4, -1)})`] : [])
-    const at = lines.findIndex(line => !/^\s*\|/.test(line) && urls.some(url => line.includes(url)))
-    const line = lines[at] ?? '', link = line.lastIndexOf('[', Math.min(...urls.map(url => line.indexOf(url)).filter(i => i >= 0)))
-    // The sentence the link closes: from the last sentence end, a link that closed the sentence before (or the list marker) before it.
-    const head = line.slice(0, Math.max(0, link)).trimEnd(), marker = /^\s*(?:[-*•·]|\d+[.)])\s*/.exec(line)?.[0].length ?? 0
-    const start = Math.max(marker, ...[...head.slice(0, -1).matchAll(/(?:[.!?。]|\]\([^)\s]*\))\s+/gu)].map(one => one.index! + one[0].length))
-    if (at < 0 || !head.slice(start).trim() || /^\[/.test(head.slice(start))) { left.push(m.role); continue }
-    lines = lines.map((one, i) => i === at ? `${line.slice(0, start)}${josa(m.role, '이', '가')} 찾아보니 ${line.slice(start)}` : one)
+    const own = [...shownFacts(m), m.data?.nothing?.latest, lookedAt(m)].flatMap(f => f ? [f] : [])
+    const urls = own.map(f => `](${named('x', f.url).slice(4, -1)})`), mine = letterPairs(own.map(f => f.text).join(' '))
+    // c18b r3 (review: two teammates citing one page were both put before the first sentence it closes): a page is no owner. Of the
+    // sentences their links close, theirs is the one whose words are most like their own facts; one already said as another's is not.
+    let best: { at: number; start: number; score: number } | undefined
+    lines.forEach((line, at) => {
+      if (/^\s*\|/.test(line)) return
+      for (const url of urls) for (let i = line.indexOf(url); i >= 0; i = line.indexOf(url, i + 1)) {
+        // The sentence the link closes: from the last sentence end, a link that closed the sentence before (or the list marker) before it.
+        const head = line.slice(0, Math.max(0, line.lastIndexOf('[', i))).trimEnd(), marker = /^\s*(?:[-*•·]|\d+[.)])\s*/.exec(line)?.[0].length ?? 0
+        const start = Math.max(marker, ...[...head.slice(0, -1).matchAll(/(?:[.!?。]|\]\([^)\s]*\))\s+/gu)].map(one => one.index! + one[0].length))
+        const sentence = head.slice(start)
+        if (!sentence.trim() || /^\[/.test(sentence) || named_.some(name => sentence.startsWith(`${josa(name, '이', '가')} 찾아보니 `))) continue
+        const score = pairShare(mine, letterPairs(sentence))
+        if (!best || score > best.score) best = { at, start, score }
+      }
+    })
+    if (!best) { left.push(m.role); continue }
+    const { at, start } = best
+    lines = lines.map((one, i) => i === at ? `${one.slice(0, start)}${josa(m.role, '이', '가')} 찾아보니 ${one.slice(start)}` : one)
+    named_.push(m.role)
   }
   const out = lines.join('\n')
   return left.length ? `${out.trimEnd()}\n${josa(listed(left), '이', '가')} 맡아서 했어요.` : out
+}
+const letterPairs = (text: string): Set<string> => { const flat = [...text.replace(/[\s.,!?'"“”‘’]/g, '')]; return new Set(flat.slice(1).map((c, i) => flat[i]! + c)) }
+const pairShare = (a: Set<string>, b: Set<string>): number => a.size + b.size ? 2 * [...a].filter(pair => b.has(pair)).length / (a.size + b.size) : 0
+// c18b r3 (review: an items-first draft whose repair did not land opened on who made the items, GROKBOT 5): when every part brought
+// items, they are the answer, so the host guarantees it opens on them: lines before the first item go right after the last one. By the
+// items' own text, for any items and any wording around them.
+export function itemsFirst(text: string, members: readonly TeamMember[]): string {
+  const parts = shownParts(members).filter(m => !missing(m)), items = parts.flatMap(m => m.data?.items ?? []).map(item => item.trim()).filter(Boolean)
+  if (!items.length || parts.some(m => !m.data?.items?.length)) return text
+  const lines = text.split('\n'), isItem = (line: string): boolean => items.some(item => line.includes(item))
+  const first = lines.findIndex(isItem), head = lines.slice(0, Math.max(0, first)).filter(line => line.trim())
+  if (first < 0 || !head.length) return text
+  const last = lines.length - 1 - [...lines].reverse().findIndex(isItem)
+  return [...lines.slice(first, last + 1), '', ...head, ...lines.slice(last + 1)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 // c12a: where the conductor reads why a team answer was the writer's or the host's (the desktop sets it to its log).
 let reportLog: (line: string) => void = () => undefined
@@ -1726,7 +1753,7 @@ export async function writtenReport(input: { ask: string; members: readonly Team
     })
     // A hard rule is met only by a repair the check took: otherwise there is no draft that may be shown.
     // c18b r2: with no repair the hard refusal stands (accept re-reads the draft without its "kept", so it cannot see a links mismatch).
-    const shown = hard ? written.outcome === 'repaired' ? accept(written.text) : undefined : written.text.trim() ? written.text : undefined, text = shown === undefined || helpers ? shown : withEveryone(shown, members, said)
+    const shown = hard ? written.outcome === 'repaired' ? accept(written.text) : undefined : written.text.trim() ? written.text : undefined, text = shown === undefined ? undefined : helpers ? itemsFirst(shown, members) : withEveryone(itemsFirst(shown, members), members, said)
     if (text === undefined) { log(hard ? `fallback:${hard.refused}` : `refused:meaning:${kinds}`); return fallback }
     // Every outcome says why (c15b): what the check found, and the host's rules the draft broke.
     const broke = ('text' in out ? out.soft : [out]).map(one => one.refused)
