@@ -95,26 +95,40 @@ function handOff(): TeamMember[] {
   return [haeun, jun]
 }
 
-test('a writer draft that says whose find it was made from but copies no link is accepted; the host closes that sentence with the link', async () => {
+// c17c r2 (rule 5, review #1): the items are the answer, so they come first; whose they are is one sentence after them.
+const LINES = ['1. 올해 마지막 할인, 놓치지 마세요', '2. 12월 20일, 장바구니를 채우세요']
+test('a writer draft that opens on the items and then says whose find they came from, with no link, is accepted; the host closes that sentence with the link', async () => {
   setReportLog(line => logged.push(line))
   const members = handOff()
-  const draft = JSON.stringify({ message: '준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n1. 올해 마지막 할인, 놓치지 마세요\n2. 12월 20일, 장바구니를 채우세요', kept: [] })
+  const draft = JSON.stringify({ message: `${LINES.join('\n')}\n\n하은이 찾은 연말 할인으로 준이 쓴 거예요.`, kept: [] })
   const out = await writtenReport({ ask: '할인 행사 찾아서 준한테 넘겨 문구 써줘', members, write: model([draft], [none]).write })
-  expect(out.split('\n')[0]).toBe(`준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`)
-  expect(out).toContain('1. 올해 마지막 할인, 놓치지 마세요')
+  expect(out.split('\n').slice(0, 2)).toEqual(LINES)
+  expect(out.trimEnd().split('\n').at(-1)).toBe(`하은이 찾은 연말 할인으로 준이 쓴 거예요. [shop.example.kr](${SALE})`)
   expect(out).not.toMatch(/^\(/m)
   expect(logged).toEqual([expect.stringMatching(/^writer=accepted /)])
 })
 
-test('a draft that names nobody it was made from is refused; the host\'s fallback opens with the attribution sentence, never a "(name, …)" tag', async () => {
+test('a draft that opens on a sentence about the work, before the items, is refused as items-first and falls back to the items first', async () => {
+  setReportLog(line => logged.push(line))
   const members = handOff()
-  const nobody = JSON.stringify({ message: '준이 문구 두 개를 써 봤어요.\n\n1. 올해 마지막 할인, 놓치지 마세요\n2. 12월 20일, 장바구니를 채우세요', kept: [] })
+  const narrated = JSON.stringify({ message: `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n${LINES.join('\n')}`, kept: [] })
+  const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })
+  expect(out.split('\n')[0]).toBe(LINES[0])
+  expect(logged).toEqual([expect.stringMatching(/^writer=fallback:items-first>items-first /)])
+})
+
+test('a draft that names nobody it was made from is refused; the host\'s fallback opens on the items and says whose they are after, never a "(name, …)" tag', async () => {
+  const members = handOff()
+  const nobody = JSON.stringify({ message: `${LINES.join('\n')}\n\n준이 써 봤어요.`, kept: [] })
   const out = await writtenReport({ ask: '할인 행사 찾아서 준한테 넘겨 문구 써줘', members, write: model([nobody, nobody]).write })
   expect(out).toBe(mergedReport(members))
-  const lines = out.split('\n')
-  expect(lines[0]).toBe(`준이 하은이 찾은 연말 할인 행사로 프로모션 문구를 만들었어요. [shop.example.kr](${SALE})`)
-  expect(lines.slice(1)).toEqual(['1. 올해 마지막 할인, 놓치지 마세요', '2. 12월 20일, 장바구니를 채우세요'])
+  expect(out.split('\n')).toEqual([...LINES, `준이 하은이 찾은 연말 할인 행사로 만든 거예요. [shop.example.kr](${SALE})`])
   expect(out).not.toMatch(/\(준|\(하은/)
+})
+
+test('one writer with no hand-off: the items first, then whose they are', () => {
+  const solo = reported(part('m1', '다온', '송년회 초대 문구 두 줄', { lookup: false, writer: true }), { items: ['한 해 수고 많으셨어요, 같이 마무리해요', '12월 27일 저녁, 자리 비워 두세요'] })
+  expect(mergedReport([solo]).split('\n')).toEqual(['1. 한 해 수고 많으셨어요, 같이 마무리해요', '2. 12월 27일 저녁, 자리 비워 두세요', '다온이 만든 거예요.'])
 })
 
 test('side by side, each part keeps its "part(name):" row label (rule 7)', () => {
@@ -124,4 +138,24 @@ test('side by side, each part keeps its "part(name):" row label (rule 7)', () =>
   expect(shown).toMatch(/^쿠팡\(하은\): /m)
   expect(shown).toMatch(/^마켓컬리\(준\): /m)
   expect(shown).not.toContain('찾아보니')
+})
+
+// c17c r2 (review #2): one job's subject inside another's ("쿠팡" in "쿠팡이츠") is still that job's own word, and is not said by the longer one.
+test('a job whose subject is part of another job\'s word is still checked: naming only the longer one is missing', async () => {
+  setReportLog(line => logged.push(line))
+  const paths = await initVault(await tmpVaultRoot('c17c-r2'), { git: false })
+  await createBot(paths, { name: '엔그램' })
+  const staff = staffTool(paths, () => undefined)
+  await staff.run({ add: [{ name: '하은', role: '리서치 담당' }, { name: '준', role: '리서치 담당' }] }, { task: '' })
+  await recordFacts(paths, TEAM_MEMORY, [
+    '쿠팡 수수료 조사 → 못 찾았어요 (하은, 2026-11-18)',
+    '쿠팡이츠 수수료 조사 → 못 찾았어요 (준, 2026-11-18)',
+  ], new Date('2026-11-18T01:00:00.000Z'))
+  const bots = await loadBots(paths), now = new Date(2026, 10, 18, 10)
+  const half = '오늘은 준이 쿠팡이츠 수수료를 봤는데 새로 나온 게 없었어요. 하은도 같이 봤어요.'
+  const both = '오늘은 하은이 쿠팡, 준이 쿠팡이츠 수수료를 봤는데 둘 다 새로 나온 게 없었어요.'
+  const { write, calls } = model([half, both], [none])
+  expect(await teamSummary(paths, { bots, message: '오늘 다들 뭐 했어', now, write })).toBe(both)
+  expect(calls[1]).toContain('쿠팡 수수료')
+  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
 })

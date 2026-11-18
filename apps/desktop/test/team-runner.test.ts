@@ -290,8 +290,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     // c11a: the host's rendering of a writer's part is its head with whose find it was made from, then the items as a numbered list.
     const handed = await w.assign({ wait: true, to: [{ who: '지민', brief: '행사 조사', then: { who: '서연', brief: '홍보 문구 3개' } }] })
     // c12a B1: never the job title; one item is that line alone. c13a (cause H): the item first, then whose it is with the find's link.
-    // c17c (cause S, C6): the attribution sentence, closed by the find's page, leads; never a "(서연, …)" tag.
-    expect(handed.split('\n')).toEqual(['서연이 지민이 찾은 행사로 홍보 문구를 만들었어요. [example.com](https://example.com/summit)', '문구 3개 <- 지민 자료'])
+    // c17c (cause S, C6): never a "(서연, …)" tag. c17c r2 (rule 5): the item, then whose it is in a sentence closed by the find's page.
+    expect(handed.split('\n')).toEqual(['문구 3개 <- 지민 자료', '서연이 지민이 찾은 행사로 만든 거예요. [example.com](https://example.com/summit)'])
     // grokbar C6: the next one's job is writing from what was handed over, so they run as a writer: no tools at all, the handed result in the prompt.
     expect((await w.members())[1]).toMatchObject({ writer: true, title: '홍보 문구 3개' })
     expect((await w.members())[1]!.lookup).toBeUndefined()
@@ -344,7 +344,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       const second = employeesReport(await w.task())!
       // c12a B1 (H5 judge: "작업명과 담당자 중심으로 적어 … 딱딱"): never the job title "…쓰기(서연, …):". c13a (H5 judge: "서울 날씨 2개를
       // 찾아 왔어요 … 어색"): no host sentence about who made what; the line itself, then whose it is and the find's page.
-      expect(second.split('\n')).toEqual(['서연이 지민이 찾은 서울 날씨로 나들이 추천 문구를 만들었어요. [기상청](https://www.weather.go.kr/w/a)', '맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!'])
+      // c17c r2 (rule 5): the line, then whose it is in a sentence.
+      expect(second.split('\n')).toEqual(['맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!', '서연이 지민이 찾은 서울 날씨로 만든 거예요. [기상청](https://www.weather.go.kr/w/a)'])
       expect(second).not.toContain('(지민)')
       seconds.push(second)
     }
@@ -410,7 +411,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       vi.useRealTimers()
       written = await answer
       // c13a (cause H): the items, then whose they are with the page the find came from; no host lead.
-      expect(written.split('\n')).toEqual(['서연이 지민이 찾은 노션 신기능으로 홍보 문구를 만들었어요. [Notion](https://www.notion.com/releases)', '1. 일은 AI 도우미에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로'])
+      // c17c r2 (rule 5): the items, then whose they are in a sentence.
+      expect(written.split('\n')).toEqual(['1. 일은 AI 도우미에게', '2. 하루를 맡기세요', '3. 더 적은 비용으로', '서연이 지민이 찾은 노션 신기능으로 만든 거예요. [Notion](https://www.notion.com/releases)'])
     } finally { vi.useRealTimers() }
     expect((await w.members())[1]).toMatchObject({ role: '서연', writer: true, state: 'released', review: { ok: true } })
     await vi.waitFor(async () => expect((await loadBotMemory(w.paths, '_team')).facts.map(fact => fact.text.replace(/ \(.., \d{4}-\d\d-\d\d\)$/, ''))).toEqual(['노션 신기능 조사 → 찾았어요', '홍보 문구 3개 뽑기 (지민한테 받아서) → 3개 써 왔어요']))

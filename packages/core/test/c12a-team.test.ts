@@ -67,9 +67,9 @@ test('B1: a hand-off\'s fallback leads with who made what from whose find, never
   const writer = settled(member({ id: 'm2', role: '지아', lookup: undefined, writer: true, title: '인스타 문구 2개 쓰기', brief: handoffBrief('인스타 문구 2개 써줘', '하율', giver.result!, giver.brief) }), block({ items: ['국물 한 숟갈에 부산이 다 들어 있어요', '줄 서도 아깝지 않은 한 그릇'] }))
   const shown = mergedReport([giver, writer])
   expect(shown).not.toMatch(/쓰기|찾기|인스타 문구 2개/)
-  // c17c (cause S, C6): whose they are and whose find they were made from is the lead sentence, closed by that find's page, then the
-  // items; no "(지아, …)" tag and no count.
-  expect(shown.split('\n')).toEqual(['지아가 하율이 찾은 부산 맛집으로 인스타 문구를 만들었어요. [busan.example.kr](https://busan.example.kr/eat/77)', '1. 국물 한 숟갈에 부산이 다 들어 있어요', '2. 줄 서도 아깝지 않은 한 그릇'])
+  // c17c (cause S, C6): no "(지아, …)" tag and no count. c17c r2 (rule 5): the items first, then whose they are and whose find, closed by
+  // that find's page.
+  expect(shown.split('\n')).toEqual(['1. 국물 한 숟갈에 부산이 다 들어 있어요', '2. 줄 서도 아깝지 않은 한 그릇', '지아가 하율이 찾은 부산 맛집으로 만든 거예요. [busan.example.kr](https://busan.example.kr/eat/77)'])
   // The giver's own bubble (posted before the writer finishes): no job title either.
   // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(mergedReport([giver])).toBe('하율이 찾아보니 해운대 전포 돼지국밥집이 줄 서는 곳이에요. [busan.example.kr](https://busan.example.kr/eat/77)')
