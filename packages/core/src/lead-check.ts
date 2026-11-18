@@ -132,7 +132,14 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
       facts.splice(0, facts.length, ...facts.filter(f => own.has(key(f.url))))
       const asked = new Set([...m.proof.map(one => one.point), ...(m.missing ?? [])].filter(point => point !== 'kind'))
       const missing = (m.missing ?? []).filter(point => !facts.some(f => asked.size === 1 || f.text.includes(pointName(point))))
-      for (const one of m.proof) if (one.url && !facts.some(f => key(f.url) === key(one.url))) facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url })
+      // c18a r2 (review r1 #2: "무게 1.2kg" cited to a page dropped that page's verified "배터리 58Wh"): a page's fact covers the points
+      // it states, not the page: a verified quote stays unless a fact on its page already states that point.
+      const states = (f: { text: string }, one: { point: string; quote: string }): boolean => one.point === 'kind' || asked.size === 1 || f.text.includes(pointName(one.point)) || f.text.includes(one.quote)
+      for (const one of m.proof) {
+        if (!one.url || facts.some(f => key(f.url) === key(one.url) && states(f, one))) continue
+        const label = facts.find(f => key(f.url) === key(one.url))?.label
+        facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url, ...(label ? { label } : {}) })
+      }
       if (missing.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${missing.map(notFoundLine).join(' ')}` }
     }
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }

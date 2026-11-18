@@ -44,20 +44,60 @@ function inOrder(need: readonly string[], hay: string): boolean {
  * the ask did not already say. Where it may come from is by structure, no list:
  * - a value point: never a quote the title alone holds (a headline names the topic, and its date is no value: "11월 18일 오늘 날씨
  *   요약"); a value split across title and snippet or page holds;
- * - "kind": the item's own words beyond its title whenever it has any (a headline "투자 유치 추진" over a demo-day snippet is not one;
- *   a headline whose every word the snippet also says is);
- *   a title counts only when it is all there is. */
-export function evidenced(quote: string, item: JudgedItem, ask: string, value: boolean): boolean {
+ * - a value point that names its units ("가격: 원화 금액 (원)"): a figure written in one of them;
+ * - "kind": the item's own words beyond its title whenever it has any, through the end of their sentence (c18a r2); a title counts only
+ *   when it is all there is. */
+// c18a r2 (review r1 #1: "4%가량 하락" held a price point "주가: 원화 금액"; "투자 유치 추진" held the kind "투자를 받았다" over a snippet
+// saying funding was only pursued, never received): words being there is not the point being stated. Two structural rules, no word list:
+// - a value point whose figure has units names them ("주가: 원화 금액 (원)", given by the judge from the ask): a quote of it holds only a
+//   figure written in one of them, so a percentage, a date or a count is never a price;
+// - a kind quote is a statement, not a fragment: it covers the end of its own sentence word for word (an ending the text adds to a word,
+//   "유치를" for "유치", aside), so what the sentence goes on to say about it ("…추진 중이며 실제 투자는 받지 못했다") is never cut off.
+const unitsOf = (point: string): string[] => (/\(([^()]*)\)\s*$/.exec(point)?.[1] ?? '').split(/[,/]/).map(unit => flat(`0${unit.trim()}`).slice(1)).filter(Boolean)
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Korean number words may stand between a figure and its unit ("1만 8천 원"): they are the number system, not a topic.
+const inUnits = (quote: string, units: readonly string[]): boolean => units.some(unit => new RegExp(`\\d[\\d.,\\s만천백억조]*${escaped(unit)}|${escaped(unit)}\\s*\\d`, 'u').test(flat(quote)))
+const SENTENCE = /(?<!\d)[.!?。…]+|[.!?。…]+(?!\d)|\n|\s[—|]\s/u
+function statesTail(quote: string, text: string): boolean {
+  const q = parts(quote), joined = q.join(''), bounds: number[] = []
+  for (const part of q) bounds.push((bounds.at(-1) ?? 0) + part.length)
+  const next = (c: number): number => bounds.find(b => b > c) ?? joined.length
+  const words = text.split(SENTENCE).flatMap(one => { const t = parts(one); return t.map((word, i) => ({ word, end: i === t.length - 1 })) })
+  for (let i = 0; i < words.length; i++) {
+    let c = 0, j = i
+    for (; j < words.length && c < joined.length; j++) {
+      const word = words[j]!.word
+      if (joined.startsWith(word, c)) {
+        c += word.length
+        // A particle the quote added ("맑음이" for "맑음").
+        if (!bounds.includes(c) && next(c) - c === 1 && word.length >= 2) c = next(c)
+        continue
+      }
+      // An ending the text adds to a word the quote has ("유치를" for "유치"); a figure is whole ("32" is not "320").
+      let k = word.length - 1
+      while (k > 0 && !(bounds.includes(c + k) && joined.startsWith(word.slice(0, k), c))) k--
+      if (k <= 0 || isNumber(word)) break
+      c += k
+    }
+    if (c === joined.length && j > i && words[j - 1]!.end) return true
+  }
+  return false
+}
+export function evidenced(quote: string, item: JudgedItem, ask: string, value: boolean | string): boolean {
   const asked = parts(ask), askText = squash(ask)
   const said = (part: string): boolean => isNumber(part) ? asked.includes(part) : askText.includes(part) || asked.some(one => one.length >= 2 && part.includes(one))
   const all = parts(quote), need = all.filter(part => isNumber(part) || !said(part))
   if (!need.some(part => !said(part))) return false
   // An opened page repeats its own headline: that copy is still the headline, never words beyond it.
-  const text = norm(item.text), title = norm(item.title ?? ''), body = (title && text.startsWith(title) ? text.slice(title.length) : text).split(title || '\u0000').join(' ')
+  // c18a r2: its lines and " — " parts stay apart (sentences end there), and only a part that is the headline itself is dropped ("로봇랩이
+  // 시리즈B를 유치" keeps the name a short headline "로봇랩" also says).
+  const title = norm(item.title ?? ''), body = item.text.trim().split(/\n| — | \| /).map(norm).filter(one => one && one !== title).join('\n')
   const hasBody = !!squash(body)
-  // A headline quote for the kind holds when each of its words is also the item's own beyond the headline (in any order there).
-  if (!value) return hasBody ? inOrder(need, squash(body)) || (inOrder(need, squash(title)) && need.every(part => inOrder([part], squash(body)))) : inOrder(need, squash(title))
+  // A kind quote covers the end of a sentence of the item's own words beyond the headline (the headline only when it is all there is).
+  if (value === false) return statesTail(quote, hasBody ? body : title)
   if (!hasBody) return false
+  const units = typeof value === 'string' ? unitsOf(value) : []
+  if (units.length && !inUnits(quote, units)) return false
   if (inOrder(need, squash(body))) return true
   return !(title && inOrder(need, squash(title))) && inOrder(need, squash(`${title} ${body}`))
 }
@@ -93,9 +133,9 @@ export async function judgedItems(ask: string, items: readonly JudgedItem[], wri
     ...(wants ? [`What each answer must state ("points"): ${JSON.stringify(wants.points)}${wants.kind ? `; what counts as one of the things asked ("kind"): ${JSON.stringify(wants.kind)}` : ''}.`] : [
       // c18a (cause V, L1: "어때" split into three points, four rounds; L2: a price point a "4% 하락" held): the points are the ask's own
       // things, each with the measure that makes a value of it, so the count and the strictness no longer vary call to call.
-      'Give in "points" what each answer to the ask must itself state, taken from the ask\'s own words: one entry per thing the ask names to know and no more, in the ask\'s language; an open question about one thing ("어때", "알려줘", "어떻게 돼") is ONE point, never split into parts. Each entry is "<thing>: <the measure that makes a value of it>": a price is an amount in a currency, weather is a temperature or a sky state, a date is a day ("가격: 원화 금액", "날씨: 기온이나 하늘 상태", "출시일: 날짜"); when the ask sets the measure (which model, which unit, which day), the entry carries it ("가격: 기본 모델 국내 출고가"). For an ask for things (news, events, places, products), give in "kind" one line defining what counts as one of them by what it is and what happened ("스타트업이 투자를 받았다는 보도"), else "".',
+      'Give in "points" what each answer to the ask must itself state, taken from the ask\'s own words: one entry per thing the ask names to know and no more, in the ask\'s language; an open question about one thing ("어때", "알려줘", "어떻게 돼") is ONE point, never split into parts. Each entry is "<thing>: <the measure that makes a value of it>": a price is an amount in a currency, weather is a temperature or a sky state, a date is a day ("가격: 원화 금액", "날씨: 기온이나 하늘 상태", "출시일: 날짜"); when the ask sets the measure (which model, which unit, which day), the entry carries it ("가격: 기본 모델 국내 출고가"). When every value of it is a figure, the entry ends with the units such a figure is written in, in parentheses ("가격: 원화 금액 (원)", "무게: 킬로그램 (kg, g)"); a measure that can be words (a sky state, a day of the week) has none. For an ask for things (news, events, places, products), give in "kind" one line defining what counts as one of them by what it is and what happened ("스타트업이 투자를 받았다는 보도"), else "".',
     ]),
-    'In "holds", for each item whose own text states a point (or, for an ask for things, shows it is one of "kind"), copy the words of that item that state it, exactly as they are written there, keyed by the point (use "kind" as the key for the words that make it one of them; for "kind", copy them from what the item says after its headline, the text after its first " — ", whenever it has such words): the value itself with what it is of (the figure, the state, the time or the day: "최저 -2° 맑음"), never only the words of the ask or a headline that only names the topic ("오늘 날씨 요약"). An item only about it (a story about a company that does not give the price asked, an event near the kind but not of it) states nothing and is not in "holds".',
+    'In "holds", for each item whose own text states a point (or, for an ask for things, shows it is one of "kind"), copy the words of that item that state it, exactly as they are written there, keyed by the point (use "kind" as the key for the words that make it one of them; for "kind", copy them from what the item says after its headline, the text after its first " — ", whenever it has such words, word for word through the end of their sentence, so that what the sentence goes on to say about it is in the copy): the value itself with what it is of (the figure, the state, the time or the day: "최저 -2° 맑음"), never only the words of the ask or a headline that only names the topic ("오늘 날씨 요약"). An item only about it (a story about a company that does not give the price asked, an event near the kind but not of it) states nothing and is not in "holds".',
     ...(held ? [`Items 1 to ${held} were already judged to fit in an earlier round: do not judge them again; use them only to group a later item in "same" with one of them, and in "secondhand" and "holds".`] : []),
     // c15a (cause K: whether the ask is a counted list was read from a few counter words, so "3곳", "5명", "2권" were not): read by meaning.
     ...(look ? [
@@ -148,7 +188,7 @@ export async function judgedItems(ask: string, items: readonly JudgedItem[], wri
         if (typeof quote === 'string') offered++
         const point = typeof quote === 'string' ? pointOf(key) : undefined
         if (point) (offeredQuotes[n] ??= {})[point] = norm(quote as string)
-        if (point && evidenced(quote as string, items[n - 1]!, [ask, ...points].join('\n'), point !== 'kind')) (evidence[n] ??= {})[point] = norm(quote as string)
+        if (point && evidenced(quote as string, items[n - 1]!, [ask, ...points].join('\n'), point === 'kind' ? false : point)) (evidence[n] ??= {})[point] = norm(quote as string)
       }
     }
     return said({ keep, unsure: only(unsure).filter(n => !keep.includes(n)), same: same.filter(group => group.length > 1), lists: only(lists), names: names && typeof names === 'object' ? names as Record<string, string> : {}, listing: only(listing), outside: only(outside), secondhand: only(o?.['secondhand']), ...count, ...(holds !== undefined && holds !== null ? { holds: Object.keys(evidence).map(Number), evidence, quotes: offeredQuotes } : {}), ...(points.length ? { points } : {}), ...(kind ? { kind } : {}), ...(Number.isInteger(open) && real(open as number) ? { open: open as number } : {}), ...(typeof search === 'string' && search.trim() ? { search: search.trim().slice(0, 80) } : {}) })
@@ -332,7 +372,7 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
       const points = (): string => [ask, ...(wants?.points ?? [])].join('\n')
       // A quote the judge offered for a row is read again against that row with its page: a quote the page holds proves the row, no new call.
       const reread = (row: Row): void => {
-        const item = itemOf(row), quotes = Object.entries(offered.get(row.url) ?? {}).filter(([point, quote]) => evidenced(quote, item, points(), point !== 'kind'))
+        const item = itemOf(row), quotes = Object.entries(offered.get(row.url) ?? {}).filter(([point, quote]) => evidenced(quote, item, points(), point === 'kind' ? false : point))
         if (!quotes.length) return
         st.proof.set(row.url, { ...st.proof.get(row.url), ...Object.fromEntries(quotes) })
         if (single() && !st.held.some(one => one.url === row.url)) st.held.push(row)
@@ -358,7 +398,8 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
             if (signal?.aborted) return undefined
             const unsettled: Row[] = []
             urls.forEach((url, i) => {
-              const text = norm(texts[i] ?? '').slice(0, PAGE_CHARS)
+              // c18a r2: its lines stay lines, so its own headline line is still the headline and a sentence ends at its line's end.
+              const text = (texts[i] ?? '').split('\n').map(norm).filter(Boolean).join('\n').slice(0, PAGE_CHARS)
               if (!text) return
               pageText.set(url, text)
               const was = [...st.held, ...st.unsure].find(row => row.url === url), row: Row = was ?? { line: `- ${text.slice(0, 120)} — ${url}`, url, text: '' }

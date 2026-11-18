@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkedSearch, evidenced, LOOKUP_RESERVE_MS, type Proof } from '../src/item-check.js'
+import { checkedSearch, evidenced, judgedItems, LOOKUP_RESERVE_MS, type Proof } from '../src/item-check.js'
 import { helperParts } from '../src/lead-check.js'
 import { TEAM_ANSWER_MS } from '../src/team-hire-tools.js'
 import type { AgentTool } from '../src/agent-loop.js'
@@ -39,7 +39,9 @@ describe('c18a rule 1: a quote holds by numbers and words in order, against what
   it('kind: a headline is evidence only when it is all the item has, or the item\'s other words say it too', () => {
     const ask = '요즘 국내 배터리 스타트업 투자 유치 뉴스 6개'
     expect(evidenced('셀볼트, 투자 유치 추진', { title: '셀볼트, 투자 유치 추진', text: '셀볼트, 투자 유치 추진 — 셀볼트가 이번 주 데모데이에 참가해 사업을 소개했다' }, ask, false)).toBe(false)
-    expect(evidenced('셀볼트, 시리즈A 80억 투자 유치', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치 — 셀볼트가 80억 원 규모 시리즈A 투자를 유치했다' }, ask, false)).toBe(true)
+    expect(evidenced('셀볼트가 80억 원 규모 시리즈A 투자를 유치했다', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치 — 셀볼트가 80억 원 규모 시리즈A 투자를 유치했다' }, ask, false)).toBe(true)
+    // c18a r2: with words beyond the headline, the headline is not the statement; the item's own sentence is.
+    expect(evidenced('셀볼트, 시리즈A 80억 투자 유치', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치 — 셀볼트가 80억 원 규모 시리즈A 투자를 유치했다' }, ask, false)).toBe(false)
     expect(evidenced('셀볼트, 시리즈A 80억 투자 유치', { title: '셀볼트, 시리즈A 80억 투자 유치', text: '셀볼트, 시리즈A 80억 투자 유치' }, ask, false)).toBe(true)
   })
 })
@@ -197,5 +199,61 @@ describe('c18a rule 3: a first-hand read is the helper\'s evidence', () => {
     expect(parts[0]!.data!.facts.map(f => f.text).join(' ')).toBe('제천 청풍 케이블카는 어른 왕복 1만 8천 원이에요')
     expect(parts[1]!.data).toBeUndefined()
     expect(parts[2]!.data!.facts[0]!.text).not.toContain('못 찾았어요')
+  })
+})
+
+// c18a r2 (review r1): words being there is not the point being stated. Wordings are in no harness row (생수 값, 노트북 무게, 축구 이적,
+// 로봇 스타트업 투자).
+describe('c18a r2 #1: a value is in the point\'s units, a kind quote is a whole statement', () => {
+  it('a point that names its units holds only a figure written in one of them', () => {
+    const price = '생수 2L 가격: 원화 금액 (원)', item = { title: '생수값 소식', text: '생수값 소식 — 생수 2L 값이 3% 올라 1,250원이 됐다' }
+    expect(evidenced('3% 올라', item, price, price)).toBe(false)
+    expect(evidenced('1,250원', item, price, price)).toBe(true)
+    expect(evidenced('1만 2천 원', { title: '할인', text: '할인 — 묶음은 1만 2천 원' }, price, price)).toBe(true)
+    expect(evidenced('2026년 3월', { title: '할인', text: '할인 — 2026년 3월 출시' }, price, price)).toBe(false)
+    const weight = '노트북 무게: 킬로그램 (kg, g)'
+    expect(evidenced('15% 가벼워', { title: '신형 노트북', text: '신형 노트북 — 전작보다 15% 가벼워졌다' }, weight, weight)).toBe(false)
+    expect(evidenced('1.2kg', { title: '신형 노트북', text: '신형 노트북 — 무게 1.2 kg' }, weight, weight)).toBe(true)
+    // A measure that can be words names no units: a sky state still holds.
+    const sky = '날씨: 기온이나 하늘 상태'
+    expect(evidenced('흐림', { title: '세종 날씨', text: '세종 날씨 — 오후 흐림' }, sky, sky)).toBe(true)
+  })
+  it('a kind quote covers the end of its sentence: a fragment that leaves off "not done" is no evidence', () => {
+    const kind = '구단이 선수를 영입했다는 보도'
+    const pending = { title: '수원, 센터백 영입 협상', text: '수원, 센터백 영입 협상 — 수원이 센터백 영입 협상을 진행 중이지만 아직 계약하지 않았다' }
+    expect(evidenced('센터백 영입 협상', pending, kind, false)).toBe(false)
+    expect(evidenced('수원, 센터백 영입 협상', pending, kind, false)).toBe(false)
+    const done = { title: '수원, 센터백 영입', text: '수원, 센터백 영입 — 수원이 센터백 박도현을 영입했다고 2일 밝혔다. 계약 기간은 3년이다' }
+    expect(evidenced('박도현을 영입했다고 2일 밝혔다', done, kind, false)).toBe(true)
+    expect(evidenced('센터백 박도현을 영입', done, kind, false)).toBe(false)
+    // In English the denial sits inside the sentence: no word of it may be skipped.
+    const en = { title: 'Robotics startup Arko', text: 'Robotics startup Arko — Arko has not raised its Series A yet' }
+    expect(evidenced('Arko raised its Series A yet', en, 'news of a startup raising funding', false)).toBe(false)
+    // An ending the text adds to a word the quote has, and a particle the quote adds, are still the same words.
+    expect(evidenced('로봇랩 시리즈B 유치', { title: '로봇랩', text: '로봇랩 — 로봇랩이 시리즈B를 유치' }, '로봇 스타트업 투자 보도', false)).toBe(true)
+  })
+  it('the judge is asked for units and whole sentences; its percentage for a price and its fragment for a kind are not holds', async () => {
+    const prompts: string[] = []
+    const items = [{ title: '생수값 소식', text: '생수값 소식 — 생수 2L 값이 3% 올라 1,250원이 됐다' }, { title: '수원, 센터백 영입 협상', text: '수원, 센터백 영입 협상 — 수원이 센터백 영입 협상을 진행 중이지만 아직 계약하지 않았다' }]
+    const verdict = await judgedItems('생수 2L 값 얼마야', items, async p => { prompts.push(p); return JSON.stringify({ keep: [1], points: ['생수 2L 가격: 원화 금액 (원)'], holds: { 1: { '생수 2L 가격': '3% 올라' } } }) })
+    expect(prompts[0]).toContain('in parentheses ("가격: 원화 금액 (원)"')
+    expect(prompts[0]).toContain('through the end of their sentence')
+    expect(verdict?.holds).toEqual([])
+    const kinds = await judgedItems('센터백 영입 소식 2개', items, async () => JSON.stringify({ keep: [2], points: [], kind: '구단이 선수를 영입했다는 보도', holds: { 2: { kind: '센터백 영입 협상' } } }))
+    expect(kinds?.holds).toEqual([])
+  })
+})
+
+describe('c18a r2 #2: a page\'s fact covers the points it states, not the page', () => {
+  const at = new Date().toISOString()
+  const member = (said: string, proof: Proof[]): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '조사', topic: '에어북', brief: '에어북 무게와 화면 크기', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, proof, missing: [], sources: ['https://maker.example/air'] })
+  it('a verified point the helper\'s words on that page leave out stays in its cell, with the page\'s name', () => {
+    const [part] = helperParts([member('에어북 무게는 980g이에요. [메이커](https://maker.example/air)', [{ point: '무게', quote: '980g', url: 'https://maker.example/air' }, { point: '화면 크기', quote: '13.6인치', url: 'https://maker.example/air' }])])
+    expect(part!.data!.facts.map(f => f.text)).toEqual(['에어북 무게는 980g이에요.', '화면 크기: 13.6인치'])
+    expect(part!.data!.facts.every(f => f.site === '메이커')).toBe(true)
+  })
+  it('a point the helper\'s words already state is not repeated', () => {
+    const [part] = helperParts([member('에어북 무게는 980g, 화면 크기는 13.6인치예요. [메이커](https://maker.example/air)', [{ point: '무게', quote: '980g', url: 'https://maker.example/air' }, { point: '화면 크기', quote: '13.6인치', url: 'https://maker.example/air' }])])
+    expect(part!.data!.facts).toHaveLength(1)
   })
 })

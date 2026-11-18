@@ -7,10 +7,10 @@ import type { AgentTool } from '../src/agent-loop.js'
 // satisfied only by a row that states the value, not by rows about the topic (L2: five stories about a company, no price). Wordings are in
 // no harness row.
 const page = (query: string, rows: string[], words = ''): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows, ...(words ? ['', words] : [])].join('\n')
-// c18a: a snippet that says what its headline says in its own order (as a news row's does), so a kind quote from the headline is also
-// the item's own words beyond its title.
+// c18a: a snippet that says what its headline says (as a news row's does), so a kind quote is also the item's own words beyond its title.
+// c18a r2: and says it as a whole statement, the event at the end of its sentence (a kind quote covers its sentence's end).
 const row = (n: number, title: string, host = 'news.example', snippet = 'x'): string => `- ${title} — https://${host}/${n} — ${snippet} — 11월 ${n}일`
-const told = (n: number, title: string, host = 'news.example'): string => row(n, title, host, `${title.split(' ').reverse().join(' ')}, 관계자가 밝혔다`)
+const told = (n: number, title: string, host = 'news.example'): string => row(n, title, host, `관계자 설명: ${title.split(' ').slice(1).join(' ')}`)
 function search(outs: string[]): AgentTool & { queries: string[] } {
   const queries: string[] = []
   return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
@@ -177,7 +177,7 @@ describe('c16b r2: a later search whose page states the value in its own words, 
 describe('c16b r3: page words never join a counted list', () => {
   it('page words judged to hold an item: only the checked row is listed, the shortfall is data, the page prose is not passed on', async () => {
     const s = search([page('q', [told(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
-    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"대전 북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
+    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
     expect(urls(out)).toEqual(['https://books.example/3'])
     expect(out).toContain('1 of the 2 asked for were found')
     expect(out).not.toContain('대전 북토크 둘')
