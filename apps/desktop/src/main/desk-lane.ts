@@ -568,15 +568,18 @@ function rewritten(reply: string, last: string): number {
 // written once and nothing read it against its ask and the source it came from. An answer with structure - more than one line, read by shape,
 // never by words (c15c r2: two short sections "장점: …" / "단점: …" are parts too) - goes through the same meaning check as every writer path
 // (core checkedWrite, with kind "overlap" for parts that say the same thing or hold another part's content), and is rewritten once by the
-// quick model inside the turn's own time. A one-line answer is never held: the short asks' bar has no room for a check.
+// quick model inside the turn's own time. A one-line short-ask answer is not held (c16c r2: see checkedDesk's fromSource).
 export const structured = (text: string): boolean => text.split('\n').filter(line => line.trim()).length >= 2
 // shortcut: one budget for every desk kind from the turn's start (the summary row has 20 s); a desk turn already past it keeps its draft.
 export const DESK_CHECK_DUE_MS = 18_000
 export const SOURCE_CHARS = 6000
-export async function checkedDesk(input: { ask: string; draft: string; source: string; quick: ((prompt: string, ms?: number) => Promise<string | undefined>) | undefined; since: number; now?: () => number; signal?: AbortSignal; log?: (outcome: string, kinds: readonly string[]) => void }): Promise<string> {
-  if (!input.quick || !structured(input.draft)) return input.draft
+// c16c r2 (Codex r1: a one-line summary of a meeting note asked as 결정사항 and 할 일 skipped the check): the line count stood in for "this turn's
+// bar has room for a check", but a one-line draft is exactly how a named part goes missing. What has room is the kind of turn: an answer drawn
+// from a named note or file (fromSource: desk kinds note and file, bars 20 s and up) is checked at any length; a short ask (8 s) only when structured.
+export async function checkedDesk(input: { ask: string; draft: string; source: string; fromSource?: boolean; quick: ((prompt: string, ms?: number) => Promise<string | undefined>) | undefined; since: number; now?: () => number; signal?: AbortSignal; log?: (outcome: string, kinds: readonly string[]) => void }): Promise<string> {
+  if (!input.quick || !input.draft.trim() || !(input.fromSource || structured(input.draft))) return input.draft
   const data = { source: input.source.slice(0, SOURCE_CHARS) }, quick = input.quick
-  const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length, and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
+  const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length (save the room a missing part needs), and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
     'Every part the person named is its own part of the answer, under the name they used. Each thing goes under the one part it belongs to, by what the source says it is, not by the source\'s own headings; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
   // c15c r2: what the check found wrong, in the last text it read (the rewrite when its own check named problems, else the draft).
   const found: { text: string; problems: readonly WrittenProblem[] }[] = []

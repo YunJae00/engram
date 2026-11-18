@@ -60,3 +60,25 @@ describe('a reshape keeps the facts of the earlier ask (Q4 class)', () => {
     expect(calls).toHaveLength(4)
   })
 })
+
+// c16c r2 (Codex r1 #1): a one-line draft skipped the check by its line count, so a one-line answer to an ask naming two parts went out
+// with one of them missing. Wordings not the harness's: a workshop memo asked as 원인 and 대책.
+describe('a one-line answer drawn from a named file is checked too (Codex r1 #1)', () => {
+  const memo = '# 워크숍 메모\n- 배포가 늦어진 건 테스트 서버가 하루 내내 꺼져 있어서였다.\n- 앞으로 테스트 서버 상태를 매일 아침 확인하기로 했다 — 담당: 오하늘'
+  const ask = '워크숍 메모 원인이랑 대책으로 나눠서 정리해줘'
+  const oneLine = '배포가 늦어진 건 테스트 서버가 하루 꺼져 있어서였어요.'
+  const fixed = '원인: 테스트 서버가 하루 내내 꺼져 있었어요.\n대책: 오하늘 님이 매일 아침 서버 상태를 확인해요.'
+  const lacks = JSON.stringify({ problems: [{ kind: 'missing', quote: '대책', why: '대책이 없어요' }] })
+  it('the check reads it, finds the named part missing, and the rewrite with both parts is shown', async () => {
+    const said = [lacks, fixed, '{"problems":[]}'], prompts: string[] = []
+    const out = await checkedDesk({ ask, draft: oneLine, source: memo, fromSource: true, quick: async (p: string) => { prompts.push(p); return said.shift() }, since: Date.now() })
+    expect(out).toBe(fixed)
+    expect(prompts[0]).toContain('"missing"')
+    expect(prompts[1]).toContain('save the room a missing part needs')
+  })
+  it('a one-line short-ask answer (no named source) is still delivered without a check', async () => {
+    const quick = vi.fn(async () => lacks)
+    expect(await checkedDesk({ ask: '하루는 몇 분이야?', draft: '하루는 1,440분이에요.', source: '', quick, since: Date.now() })).toBe('하루는 1,440분이에요.')
+    expect(quick).not.toHaveBeenCalled()
+  })
+})

@@ -3109,7 +3109,7 @@ export function registerIpc(ctx: VaultContext): void {
         // c15c (cause D): a desk answer with structure is read against its ask and the source it was built from, one rewrite at most (desk-lane.ts checkedDesk).
         // A host-made answer (a kept fact, a sorted folder, a retitled slide, a reshape) is not a draft; nor is a sort or a keep, which have no source.
         if (desk && kind !== 'tidy' && kind !== 'keep' && !handed && !fixed && !keptPlain && !retitled && !sorted && !reshaped && !result.asked && !result.stopped) result.answer = await checkedDesk({
-          ask: routed, draft: result.answer, quick: writer, since: nativeSince, signal,
+          ask: routed, draft: result.answer, fromSource: kind === 'note' || kind === 'file', quick: writer, since: nativeSince, signal,
           source: given?.text ?? result.steps.filter(step => /^file_read/.test(step.tool)).map(step => step.observation).join('\n'),
           log: (outcome, kinds) => flog('chat-phase', JSON.stringify({ channel, phase: 'desk-check', outcome, kinds, ms: Date.now() - nativeSince })),
         })
