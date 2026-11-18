@@ -170,7 +170,7 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
 
 describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () => {
   const GU = 'https://www.suyeong.go.kr/fireworks', BLOG = 'https://blog.naver.com/someone/123', TICKET = 'https://www.suyeong.go.kr/seats'
-  it('one part, a fact found twice: one row, the first-hand link, and no other day beside a text that states its own', async () => {
+  it('one part, an event told twice in other words: both rows stay, first-hand first (c19a r3 #1), and no other day beside a text that states its own', async () => {
     const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '이든', brief: '부산 불꽃축제 날짜 찾기', topic: '부산 불꽃축제', botId: 'bot-m1', lookup: true, state: 'done', sessionKey: 's1', hiredAt: new Date().toISOString() }
     const facts = [
       { text: '부산 불꽃축제는 11월 15일 광안리에서 열린대요.', url: BLOG, site: '네이버 블로그', date: '11월 2일' },
@@ -181,12 +181,12 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
     m.data = await kindChecked({ facts }, m.brief, judge)
     const out = mergedReport([m])
     expect(out).toContain(GU)
-    expect(out).not.toContain(BLOG)
+    expect(out.indexOf(GU)).toBeLessThan(out.indexOf(BLOG))
     expect(out).not.toMatch(/\((?:11월 2일|10월 30일|10월 28일)\)/)
     expect(out.match(/이든/g)).toHaveLength(1)
     expect(out).toMatch(/^- 이든이 찾아보니 부산 불꽃축제는 /)
     expect(out).not.toContain('(이든)')
-    expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(2)
+    expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)
   })
 
   it('a fact with no day in its text keeps its date; one with a day of its own shows no other', () => {

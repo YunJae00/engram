@@ -71,7 +71,7 @@ describe('stack-16 replays', () => {
     expect(late).not.toMatch(/\(read_pages\)|never answer that the results do not say it/)
   })
 
-  it('H5: 지민\'s three same-fact weather rows → one row in the fallback, no (지민) tag, no publication day', async () => {
+  it('H5: 지민\'s three weather rows in other words → all three stay, first-hand first (c19a r3 #1), no (지민) tag, no other day beside the forecast that states its own', async () => {
     const facts = [
       { text: '기상청 중기예보에 따르면 11월 22일(일) 아침 기온은 영하 7~영하 4도, 낮 기온은 5~6도로 평년보다 낮겠어요.', url: 'https://www.weather.go.kr/w/weather/forecast/mid-term.do', site: '기상청' },
       { text: '이번 주말 서울 기온이 영하 4도까지 떨어지며 추위가 절정에 달할 것으로 전했어요.', url: 'https://news.sbs.co.kr/1', site: 'SBS', date: '11월 18일' },
@@ -81,11 +81,11 @@ describe('stack-16 replays', () => {
     const jimin: TeamMember = { id: 'j', parentId: null, depth: 1, role: '지민', botId: 'bot-j', topic: '이번 주말 서울 날씨', brief: '이번 주말 서울 날씨 찾아보기', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 'sj', hiredAt: at, result: 'x', data: data! }
     const out = mergedReport([jimin])
     console.log(`H5 fallback:\n${out}`)
-    expect(data!.facts).toHaveLength(1)
+    expect(data!.facts).toHaveLength(3)
     expect(out).not.toContain('(지민)')
-    expect(out).not.toMatch(/11월 1[18]일/)
+    expect(out).not.toMatch(/기상청 중기예보[^\n]*\(11월/)
     expect(out).toContain('weather.go.kr')
-    expect(out).not.toContain('sbs.co.kr')
+    expect(out.indexOf('weather.go.kr')).toBeLessThan(out.indexOf('sbs.co.kr'))
   })
 
   it('D1: the fixture and stack15\'s draft (no 할 일) → the check prompt carries the missing line', async () => {

@@ -858,14 +858,18 @@ export async function kindChecked(data: MemberData | undefined, brief: string, w
   if (!raw) return data
   const off = inHand.length, held0 = (n: number): boolean => raw.keep.includes(n) || raw.unsure.includes(n)
   const lead = (group: number[]): number => { const g = firstHand(group, n => raw.secondhand.includes(n)); return g.find(n => raw.keep.includes(n)) ?? g.find(held0) ?? g[0]! }
+  // c19a r3 (cause H): "same" is the judge's reading of meaning; only facts with the very same words and day are one fact (from two pages, the first-hand one stands), so each
+  // group splits by that exact key and a different event the judge grouped is never taken out.
+  const every = [...inHand, ...data.facts], key = (n: number): string => { const f = every[n - 1]!; return JSON.stringify([f.text.replace(/\s+/g, ' ').trim(), f.date ?? '']) }
+  const same = raw.same.flatMap(g => [...new Set(g.map(key))].map(k => g.filter(n => key(n) === k))).filter(g => g.length > 1)
   const instead = new Map<number, string[]>(), again = new Set<number>()
-  for (const group of raw.same.filter(g => g.some(n => n <= off))) {
+  for (const group of same.filter(g => g.some(n => n <= off))) {
     const top = lead(group), first = top > off && !raw.secondhand.includes(top) && group.some(n => n <= off && raw.secondhand.includes(n))
     if (first) instead.set(top - off, group.filter(n => n <= off).map(n => inHand[n - 1]!.text))
     for (const n of group) if (!first || n !== top) again.add(n)
   }
   const page = (n: number): boolean => raw.lists.includes(n) || raw.listing.includes(n)
-  for (const group of raw.same.filter(g => g.every(n => n > off))) { const top = lead(group); if (held0(top) && !page(top)) for (const n of group) if (n !== top && !page(n)) again.add(n) }
+  for (const group of same.filter(g => g.every(n => n > off))) { const top = lead(group); if (held0(top) && !page(top)) for (const n of group) if (n !== top && !page(n)) again.add(n) }
   const mine = (ns: readonly number[]): number[] => ns.filter(n => n > off && !again.has(n)).map(n => n - off)
   const said = { ...raw, keep: mine(raw.keep), unsure: mine(raw.unsure), lists: mine(raw.lists), listing: mine(raw.listing), secondhand: mine(raw.secondhand), names: Object.fromEntries(Object.entries(raw.names).flatMap(([k, v]) => Number(k) > off ? [[String(Number(k) - off), v]] : [])) }
   const nameOf = (n: number): string => clip(plainWords(String(said.names[String(n)] ?? '')), 30).replace(/…$/u, '')
@@ -1127,6 +1131,15 @@ export function checkedReport(raw: string | undefined, members: readonly TeamMem
   const out = reportCheck(raw, members, helpers)
   return 'text' in out && !out.soft.length && !out.adds.length && !out.unlinked.length ? out.text : undefined
 }
+// c19a r3 (USER-NOTES class 2): one page can carry several facts, so a link in the message stands for one fact, not for the page. A page's
+// link must be there as many times as it has facts; when it falls short (or a fact has no link), a fact whose own words are not in the
+// message is the one left out. Exact: link counts and the fact's own words, no reading of meaning.
+function uncited(text: string, facts: readonly MemberFact[]): MemberFact[] {
+  const flat = (s: string): string => s.replace(/\s+/g, ' ').replace(/[.。!?]+$/u, '').trim(), words = flat(text.replace(/\[[^\]]*\]\([^)]*\)/g, ' '))
+  const one = [...new Map(facts.map(f => [JSON.stringify([f.url, flat(f.text)]), f])).values()]
+  const times = (url: string): number => text.split(`](${named('x', url).slice(4, -1)})`).length - 1
+  return one.filter(f => f.url && !times(f.url) ? true : (!f.url || times(f.url) < one.filter(o => o.url === f.url).length) && !words.includes(flat(f.text)))
+}
 export type ReportRefusal = { refused: string; why: string; quote?: string; form?: true }
 // c19a (cause H: T1 "서울 날씨는 이번엔 못 찾았어요" and a dropped 대구 beside four found parts, R1 an empty cell, C6 the writer's lead moved to the
 // end): the check holds only what the host can tell exactly, and fixes it in the draft, never by throwing the draft away. A link to a page
@@ -1168,8 +1181,8 @@ export function reportCheck(raw: string | undefined, members: readonly TeamMembe
   // c19a r2 (USER-NOTES class 2): every fact a present part brought reaches the person. One the message leaves without its link, whatever
   // "kept" says, goes back as its own line; a part counts as present by one link, so its other facts are checked one by one. A full-list
   // page its items were taken from ("rest") is where they came from, not a fact of its own.
-  const bare = [...new Map(ids.filter(one => one.fact.url && !one.fact.rest && !linked(one.fact.url) && !adds.includes(one.m) && !atWork(one.m)).map(one => [one.fact.url, one.fact])).values()]
-  if (bare.length) soft.push(no('links', `every fact the message uses is followed by its own "link", copied exactly: ${bare.map(f => datedText(f)).join(' / ')}`))
+  const bare = uncited(text, ids.filter(one => !one.fact.rest && !adds.includes(one.m) && !atWork(one.m)).map(one => one.fact))
+  if (bare.length) soft.push(no('links', `every fact is in the message, each followed by its own "link" (when it has one), copied exactly: ${bare.map(f => datedText(f)).join(' / ')}`))
   for (const m of adds) soft.push(no(atWork(m) ? 'still' : 'part-dropped', atWork(m) ? `a part with "still" says exactly "아직 찾는 중이에요. 끝나면 이어서 올릴게요.": ${names([m])}` : `every part is in the message with its own facts and links: ${names([m])}'s is missing`))
   const unnamed = parts.length > 1 ? parts.filter(m => !adds.includes(m) && !words.includes(who(m))) : []
   const findOf = (m: TeamMember): string => { const urls = shownFacts(m).map(f => `](${named('x', f.url).slice(4, -1)})`); return messageUnits(text).find(u => urls.some(url => u.text.includes(url)))?.text ?? '' }
@@ -1233,12 +1246,12 @@ export async function writtenReport(input: { ask: string; members: readonly Team
     // helper's sentences and links, or rule 7's still line). The host writes nothing into the draft; its own rendering is for no draft.
     const again = shown === undefined ? undefined : reportCheck(JSON.stringify({ message: shown }), members, helpers), final = again && 'text' in again ? again : 'text' in out && shown !== undefined ? out : undefined
     if (!final) { log(hard ? `fallback:${hard.refused}` : `refused:meaning:${kinds}`); return fallback }
-    const unlinked = ('text' in out ? out.unlinked : []).filter(f => !final.text.includes(`](${named('x', f.url).slice(4, -1)})`) && !final.adds.some(m => shownFacts(m).includes(f)))
+    const unlinked = final.unlinked.filter(f => !final.adds.some(m => shownFacts(m).includes(f)))
     // c19a r2 (rule 7): in a message merging two or more teammates' parts, who found what is exact data. A teammate the draft (and its one
     // repair) left unnamed gets their name as a label beside their own find, and so does a fact the host adds back; no sentence is composed.
     const merged = !helpers && all.filter(m => !missing(m)).length > 1, ownerOf = (f: MemberFact): TeamMember | undefined => all.find(m => shownFacts(m).includes(f))
     const tag = (f: MemberFact): string => { const m = merged ? ownerOf(f) : undefined; return m ? ` (${m.role})` : '' }
-    const text = [withNames(final.text, merged ? all.filter(m => !missing(m) && !final.adds.includes(m)) : [], topics), ...(unlinked.length ? [unlinked.map(f => `- ${datedText(f)}${tag(f)} ${linkOf(f)}`).join('\n')] : []), ...final.adds.map(m => helpers ? helperBody([m], topics) : partLines(m, topics, members, all.length > 1, false))].join('\n\n')
+    const text = [withNames(final.text, merged ? all.filter(m => !missing(m) && !final.adds.includes(m)) : [], topics), ...(unlinked.length ? [unlinked.map(f => `- ${datedText(f)}${tag(f)} ${linkOf(f)}`.trimEnd()).join('\n')] : []), ...final.adds.map(m => helpers ? helperBody([m], topics) : partLines(m, topics, members, all.length > 1, false))].join('\n\n')
     const broke = ('text' in out ? out.soft : [out]).map(one => one.refused)
     log(`${checked === 'clean' || checked === 'unchecked' ? 'accepted' : `${checked}${kinds ? `:${kinds}` : ''}${broke.length ? `:${[...new Set(broke)].join('+')}` : ''}`}${final.adds.length || unlinked.length ? `:added=${final.adds.length}+${unlinked.length}` : ''}`)
     return [[...hired, text].join(' '), ...after].join('\n\n')

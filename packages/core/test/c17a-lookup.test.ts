@@ -143,15 +143,15 @@ describe('c17a r2 (c19a): a helper\'s words stand; only a link to a page it was 
     expect(table).not.toMatch(/\]\(|search\.example|blog\.example/)
     expect(table).not.toContain('못 찾았어요')
   })
-  it('of two cited facts, the one on a page never shown joins the one before it (a trailing slash aside); nothing is labelled missing', () => {
+  it('of two cited facts, the one on a page never shown stays as its own fact with no link (c19a r3 #3; a trailing slash aside); nothing is labelled missing', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루 \'보통\'이에요 [기상청](https://weather.example/pollen/). 일요일엔 비 소식이 있어요 [카페](https://cafe.example/3).', ['https://weather.example/pollen'])])
-    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen/'])
-    expect(m!.data!.facts[0]!.text).toBe("수원은 주말 꽃가루 '보통'이에요 일요일엔 비 소식이 있어요")
+    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen/', ''])
+    expect(m!.data!.facts.map(f => f.text)).toEqual(["수원은 주말 꽃가루 '보통'이에요", '일요일엔 비 소식이 있어요'])
   })
-  it('a page the helper opened and read itself stands; a sentence cited to a page it never saw stays, under the read page', () => {
+  it('a page the helper opened and read itself stands; a sentence cited to a page it never saw stays with no link (c19a r3 #3)', () => {
     const [m] = helperParts([{ ...helper('수원은 주말 꽃가루 \'높음\'이에요 [기상청](https://weather.example/pollen). 토요일이 제일 심해요 [뉴스](https://news.example/9).', ['https://search.example/?q=x']), sources: ['https://weather.example/pollen', 'https://search.example/?q=x'] }])
-    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen'])
-    expect(m!.data!.facts[0]!.text).toContain('토요일이 제일 심해요')
+    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen', ''])
+    expect(m!.data!.facts[1]!.text).toContain('토요일이 제일 심해요')
   })
   it('a helper with no record of what it was shown keeps its cited words as before', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루가 낮음이에요. [블로그](https://blog.example/7)')])

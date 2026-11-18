@@ -77,9 +77,10 @@ test('4. a link the helper was never shown loses its link; the sentence stays', 
   const said = `전주 시외버스 첫차는 6시 10분이에요. [전주터미널](${seen}) 막차는 22시 30분이에요. [버스정보](https://made-up.example/last-bus)`
   const [one] = helperParts([helper('전주 버스', said, seen)])
   const facts = one!.data!.facts
-  expect(facts.map(f => f.url)).toEqual([seen])
-  expect(facts[0]!.text).toContain('막차는 22시 30분이에요.')
-  expect(facts[0]!.text).toContain('첫차는 6시 10분이에요.')
+  // r3 #3: the unseen-link sentence is its own fact with no link, not joined under the first sentence's page.
+  expect(facts.map(f => f.url)).toEqual([seen, ''])
+  expect(facts[0]!.text).toBe('전주 시외버스 첫차는 6시 10분이에요.')
+  expect(facts[1]!.text).toBe('막차는 22시 30분이에요.')
 })
 
 const rows = (n: number, from: number, inPeriod: number): string => [
@@ -224,4 +225,46 @@ test('r2 #5: a helper whose only citation is a page it was never shown keeps its
   expect(host).toContain('흑산도 가는 쾌속선은 하루 두 번 다녀요.')
   expect(host).not.toMatch(/ferry\.example|made-up\.example|\]\(/)
   expect(host).not.toContain('못 찾았어요')
+})
+
+// c19a r3: Codex r2 findings. Wordings and topics are in no harness row (안동·영주 축제, 남해 펜션, 울릉도 배편).
+test('r3 #1: the kind check takes out only a fact with the very same words and day; two events the judge calls "same" both stay', async () => {
+  const U = 'https://fest.example/gyeongbuk'
+  const facts = [{ text: '안동 탈춤축제가 열려요.', url: `${U}/andong`, site: '축제', date: '10월 3일' }, { text: '영주 사과축제가 열려요.', url: `${U}/yeongju`, site: '축제', date: '10월 24일' }]
+  const judge = (same: number[][]) => async (): Promise<string> => JSON.stringify({ keep: [1, 2], same })
+  expect((await kindChecked({ facts }, '경북 가을 축제', judge([[1, 2]])))?.facts.map(f => f.text)).toEqual(facts.map(f => f.text))
+  // A fact already in hand with other words: the new one stays; the very same fact in hand: the new one is a repeat and goes.
+  expect((await kindChecked({ facts: [facts[1]!] }, '경북 가을 축제', judge([[1, 2]]), undefined, [facts[0]!]))?.facts.map(f => f.text)).toEqual([facts[1]!.text])
+  expect((await kindChecked({ facts: [{ ...facts[0]!, text: ' 안동 탈춤축제가  열려요.' }, facts[1]!] }, '경북 가을 축제', judge([[1, 2]]), undefined, [facts[0]!]))?.facts.map(f => f.text)).toEqual([facts[1]!.text])
+  // The same words and day on two pages are one fact: one stays. Another day is another fact: both stay.
+  expect((await kindChecked({ facts: [facts[0]!, { ...facts[0]!, url: `${U}/andong-2` }] }, '경북 가을 축제', judge([[1, 2]])))?.facts).toHaveLength(1)
+  expect((await kindChecked({ facts: [facts[0]!, { ...facts[0]!, date: '10월 4일' }] }, '경북 가을 축제', judge([[1, 2]])))?.facts).toHaveLength(2)
+})
+
+test('r3 #2: two facts on one page need the link twice; the fact whose words the message lacks goes back as its own line', async () => {
+  const P = 'https://stay.example/namhae'
+  const m: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '하람', brief: '남해 바다 보이는 펜션 두 곳', botId: 'bot-m1', lookup: true, state: 'done', sessionKey: 's1', hiredAt: at, result: 'x', data: { facts: [
+    { text: '물건리 바다펜션은 1박 12만 원이에요.', url: P, site: '숙소' }, { text: '상주 은모래펜션은 1박 15만 원이에요.', url: P, site: '숙소' },
+  ] } }
+  const one = `물건리 바다펜션은 1박 12만 원이에요. [숙소](${P})`
+  const checked = reportCheck(JSON.stringify({ message: one, kept: ['f1', 'f2'] }), [m])
+  expect('text' in checked ? checked.unlinked.map(f => f.text) : []).toEqual(['상주 은모래펜션은 1박 15만 원이에요.'])
+  const out = await writtenReport({ ask: '남해 펜션 알아봐줘', members: [m], write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : JSON.stringify({ message: one }), timeoutMs: 15_000 })
+  expect(out.startsWith(one)).toBe(true)
+  expect(out).toContain(`상주 은모래펜션은 1박 15만 원이에요. [숙소](${P})`)
+  // Both facts' own words in one sentence with the one link: nothing is missing, nothing added. Each with its link: nothing either.
+  const both = reportCheck(JSON.stringify({ message: `물건리 바다펜션은 1박 12만 원이에요, 상주 은모래펜션은 1박 15만 원이에요. [숙소](${P})` }), [m])
+  expect('text' in both ? both.unlinked : ['x']).toEqual([])
+  const each = reportCheck(JSON.stringify({ message: `물건리는 12만 원이에요. [숙소](${P})\n상주는 15만 원이에요. [숙소](${P})` }), [m])
+  expect('text' in each ? each.unlinked : ['x']).toEqual([])
+})
+
+test('r3 #3: a sentence citing a page the helper never saw keeps its words with no link, never under the page of the sentence next to it', () => {
+  const seen = 'https://ferry.example/pohang-ulleung'
+  const said = `포항에서 울릉도 가는 배는 하루 한 번이에요. [해운](${seen}) 후포에서 가는 배는 주말에만 있어요. [해운](https://made-up.example/hupo)`
+  const [one] = helperParts([helper('울릉도 배편', said, seen)])
+  expect(one!.data!.facts).toEqual([
+    { text: '포항에서 울릉도 가는 배는 하루 한 번이에요.', url: seen, site: expect.any(String) },
+    { text: '후포에서 가는 배는 주말에만 있어요.', url: '', site: expect.any(String) },
+  ])
 })

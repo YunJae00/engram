@@ -80,7 +80,7 @@ describe('c14a: a counted lookup looks further on the one deadline', () => {
 })
 
 describe('kindChecked with entries in hand', () => {
-  it('drops only the item judged the same as one in hand, keeps a different one on the same page, and renumbers lists and names', async () => {
+  it('keeps an item the judge calls the same as one in hand when its words differ (c19a r3 #1), and renumbers lists and names', async () => {
     const { kindChecked, withItems } = await import('../src/company-tools.js')
     const PAGE = 'https://hall.example.kr/gwangju/winter'
     const inHand = [{ text: '광주 시립 합창단 송년 음악회 12월 20일', url: PAGE, site: '시립', date: '12월 20일' }]
@@ -92,8 +92,8 @@ describe('kindChecked with entries in hand', () => {
     let seen = ''
     const out = await kindChecked(more, '광주 겨울 공연 일정', async prompt => { seen = prompt; return '{"keep":[1,2,3,4],"same":[[1,2]],"lists":[4],"names":{"3":"국악 발표회","4":"공연 모음"}}' }, 1000, inHand)
     expect(seen).toContain('"n":1,"text":"광주 시립 합창단 송년 음악회 12월 20일"')
-    expect(out?.facts.map(f => [f.text, f.name ?? '', f.listing ?? false])).toEqual([['광주 청소년 국악 발표회 1월 10일', '국악 발표회', false], ['광주 겨울 공연 모음', '공연 모음', true]])
-    const merged = withItems({ facts: [...inHand, { text: '겨울 공연 목록', url: 'https://hall.example.kr/list', site: '시립', listing: true }] }, { facts: [out!.facts[0]!] })
+    expect(out?.facts.map(f => [f.text, f.name ?? '', f.listing ?? false])).toEqual([['시립 합창단 송년회 공연, 12월 20일 저녁', '', false], ['광주 청소년 국악 발표회 1월 10일', '국악 발표회', false], ['광주 겨울 공연 모음', '공연 모음', true]])
+    const merged = withItems({ facts: [...inHand, { text: '겨울 공연 목록', url: 'https://hall.example.kr/list', site: '시립', listing: true }] }, { facts: [out!.facts[1]!] })
     expect(merged.facts.map(f => f.text)).toEqual(['광주 시립 합창단 송년 음악회 12월 20일', '광주 청소년 국악 발표회 1월 10일', '겨울 공연 목록'])
   })
 })
