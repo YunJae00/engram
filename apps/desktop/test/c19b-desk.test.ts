@@ -119,7 +119,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     const read = reader()
     let after = 0
     const engine = brain(async job => {
-      await job.tools.find(tool => tool.name === name)!.run(args)
+      await job.tools.find(tool => tool.name === name)!.run({ more: false, ...args })
       await pause(400)
       after++
       await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
@@ -163,7 +163,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     const engine = brain(async job => {
       await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동아리 소개' }], more: true })
       await pause(400)
-      await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동아리 소개', reply: '동아리 소개 발표 자료랑 문서 만들었어요.' })
+      await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동아리 소개', reply: '동아리 소개 발표 자료랑 문서 만들었어요.', more: false })
       second = true
       await pause(400)
       return { answer: 'late' }
@@ -175,7 +175,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
     for (const one of files) expect(result.answer).toContain(one.markdownLink)
   })
 
-  it('a passed build with no reply and no more still ends the turn on the host line, nothing read back', async () => {
+  it('a passed build marked more: false with no usable reply ends the turn on the host line, nothing read back', async () => {
     for (const args of [{ slides: SLIDES }, { slides: SLIDES, reply: '' }, { slides: SLIDES, more: false }]) {
       const { result, read, after } = await run(deckTools(), args)
       expect(result.answer.split('\n')[0]).toBe('신제품 소개, 3장으로 만들었어요.')
@@ -225,7 +225,7 @@ describe('item 4: a build the host audit passed closes the turn', () => {
       let built = 0
       const engine = brain(async job => {
         await pause(20_760)
-        await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES, reply: '신제품 소개 3장 만들었어요.' })
+        await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES, reply: '신제품 소개 3장 만들었어요.', more: false })
         built = Date.now()
         await pause(9_244)
         await job.tools.find(tool => tool.name === 'file_read_package')!.run({})

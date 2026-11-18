@@ -7,7 +7,7 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
-import { checkedDesk, closingBuilds, reshapeAsk } from '../src/main/desk-lane.js'
+import { builtLine, checkedDesk, closingBuilds, reshapeAsk } from '../src/main/desk-lane.js'
 import { dropWorkingNotes, withTheirWords } from '../src/main/first-line.js'
 import { laneTidy, laneToday } from '../src/main/fast-lane.js'
 
@@ -137,7 +137,7 @@ describe('stack-19: one clock (fake time) across both branches', () => {
     const reader: AgentTool = { name: 'file_read_package', description: 'reads a package', argsSchema: { type: 'object' }, run: async () => { read++; return '{}' } }
     const engine = brain(async job => {
       await wait(25_000)
-      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES })
+      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES, more: false })
       await wait(15_000)
       await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
       await wait(15_000)
@@ -265,7 +265,7 @@ describe('stack-19: fixes after the branch results', () => {
     const ask = 'fixtures/budget.csv로 월별 지출 엑셀 만들고 차트도 넣어줘'
     const reply = 'budget.csv 월별 지출 합계를 엑셀로 만들었어요. 추이를 보기 좋게 막대 차트로 넣었어요.'
     const book: AgentTool = { name: 'file_create_workbook', description: 'book', argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify({ markdownLink: '[월별 지출.xlsx](engram-artifact:b1)' }) }
-    const close = async (said: string) => (await runToolSession({ engine: brain(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }], reply }); await wait(400); return { answer: 'late' } }), workdir: WORKDIR, tools: closingBuilds([book], true, said) }, ask)).answer
+    const close = async (said: string) => (await runToolSession({ engine: brain(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }], reply, more: false }); await wait(400); return { answer: 'late' } }), workdir: WORKDIR, tools: closingBuilds([book], true, said) }, ask)).answer
     const kept = await close(ask)
     expect(kept.startsWith(reply), kept).toBe(true)
     expect((await close('')).split('\n')[0]).toBe('월별 지출 파일을 시트 1개로 만들었어요.')
@@ -273,6 +273,27 @@ describe('stack-19: fixes after the branch results', () => {
 })
 
 describe('stack-19: Codex-cap decisions', () => {
+  it('c19b r3 #1: a build title with an English run nobody asked for stays out of the Korean line', () => {
+    expect(builtLine('ppt_build', { slides: [{ title: 'Spring planning and team goals 안내' }, { title: '일정' }] }, true)).toBe('발표 자료를 2장으로 만들었어요.')
+    expect(builtLine('ppt_build', { slides: [{ title: 'Spring planning and team goals 안내' }] }, true, 'Spring planning and team goals 안내 슬라이드 만들어줘')).toBe('Spring planning and team goals 안내, 1장으로 만들었어요.')
+    expect(builtLine('ppt_build', { slides: [{ title: 'Galaxy Buds 소개' }] }, true)).toBe('Galaxy Buds 소개, 1장으로 만들었어요.')
+  })
+  it('c19b r3 #2: a build that does not say it finishes the ask leaves the turn to the model, so a second file is still made', async () => {
+    const made: string[] = []
+    const fake = (name: string, link: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async () => { made.push(name); return JSON.stringify({ markdownLink: link }) } })
+    const tools = closingBuilds([fake('ppt_build', '[동네 축제.pptx](engram-artifact:p2)'), fake('word_write', '[동네 축제.docx](engram-artifact:w2)')], true)
+    expect(tools.find(tool => tool.name === 'ppt_build')!.argsSchema).toMatchObject({ required: ['more'] })
+    const result = await runToolSession({ engine: brain(async job => {
+      await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '동네 축제' }] })
+      await wait(300)
+      await job.tools.find(tool => tool.name === 'word_write')!.run({ title: '동네 축제', more: false })
+      await wait(300)
+      return { answer: 'late' }
+    }), workdir: WORKDIR, tools }, '동네 축제 PPT랑 워드 둘 다 만들어줘')
+    expect(made).toEqual(['ppt_build', 'word_write'])
+    expect(result.answer).toContain('engram-artifact:p2')
+    expect(result.answer).toContain('engram-artifact:w2')
+  })
   const page = 'https://fest.example/gangwon', at = new Date().toISOString()
   const member: TeamMember = { id: 'm', parentId: null, depth: 1, role: '하람', brief: '강원 축제 두 개', lookup: true, state: 'done', sessionKey: 's', hiredAt: at, data: { facts: [{ text: '강릉 커피축제는 토요일에 열려요.', url: page, site: '축제' }, { text: '속초 오징어축제는 일요일에 열려요.', url: page, site: '축제' }] } }
   const unlinked = (message: string) => { const out = reportCheck(JSON.stringify({ message }), [member]); return 'unlinked' in out ? out.unlinked.map(f => f.text) : ['refused'] }

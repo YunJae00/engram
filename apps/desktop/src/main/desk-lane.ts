@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, closingTool, fencedLines, tidied, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
+import { checkedWrite, closingTool, fencedLines, foreignRun, tidied, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아니라)\s*\S+(이야|야|이에요|예요|입니다)|\bremember (that|this|my|i)\b/i
@@ -508,13 +508,13 @@ function withoutLines(lines: readonly string[], gone: Set<number>): string {
 
 const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
 const REPLY_NOTE = 'Your answer to the person once this file is made, in their language and polite form, at most two short sentences: what you made and, where the ask left a choice to you, the choice you took (e.g. "월별 합계를 엑셀로 만들고 추이를 보는 막대 차트도 넣었어요.").'
-const MORE_NOTE = 'true only when this ask still needs another file after this one. Otherwise leave it out: a build that passes ends the turn with every file made so far, so nothing is read back after it.'
+const MORE_NOTE = 'true when this ask still needs another file after this one; false when this file finishes it: a build that passes with false ends the turn with every file made so far, so nothing is read back after it.'
 const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
 const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply' && key !== 'more'))
 const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
-const ownKorean = (value: unknown): string[] => typeof value === 'string' ? (/[가-힣]/.test(value) ? [value] : []) : value && typeof value === 'object' ? Object.values(value).flatMap(ownKorean) : []
-export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean): string {
-  const said = (title: string): string => !korean || (ownKorean(title).length && plainWords(title) === title) ? title : ''
+const ownKorean = (value: unknown, ask = ''): string[] => typeof value === 'string' ? (/[가-힣]/.test(value) && !foreignRun(value, value, ask) ? [value] : []) : value && typeof value === 'object' ? Object.values(value).flatMap(one => ownKorean(one, ask)) : []
+export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean, ask = ''): string {
+  const said = (title: string): string => !korean || (ownKorean(title, ask).length && plainWords(title) === title) ? title : ''
   const list = (key: string): Record<string, unknown>[] => Array.isArray(args[key]) ? (args[key] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object') : []
   if (tool === 'ppt_build') {
     const slides = list('slides'), title = said(textOf(slides[0]?.['title']) || textOf(args['saveAs']).replace(/\.pptx$/i, ''))
@@ -535,16 +535,16 @@ export function buildReply(reply: unknown, korean: boolean, known = ''): string 
 export function closingBuilds(tools: readonly AgentTool[], korean: boolean, ask = ''): AgentTool[] {
   return tools.map(tool => {
     if (!BUILDS.has(tool.name)) return tool
-    const schema = tool.argsSchema as { properties?: Record<string, unknown> }
+    const schema = tool.argsSchema as { properties?: Record<string, unknown>; required?: string[] }
     const given: AgentTool = {
       ...tool,
-      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE }, more: { type: 'boolean', description: MORE_NOTE } } },
+      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE }, more: { type: 'boolean', description: MORE_NOTE } }, required: [...(schema.required ?? []), 'more'] },
       run: (args, context) => tool.run(withoutReply(args), context),
     }
     return closingTool(given, async (out, args) => {
-      if (!receiptOf(out) || args['more'] === true) return undefined
+      if (!receiptOf(out) || args['more'] !== false) return undefined
       const built = withoutReply(args)
-      return { said: out, answer: buildReply(args['reply'], korean, [...ownKorean(built), ask].join(' ')) ?? builtLine(tool.name, built, korean) }
+      return { said: out, answer: buildReply(args['reply'], korean, [...ownKorean(built, ask), ask].join(' ')) ?? builtLine(tool.name, built, korean, ask) }
     })
   })
 }
