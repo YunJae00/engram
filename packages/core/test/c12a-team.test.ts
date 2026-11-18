@@ -118,9 +118,12 @@ test('B3: a listing page is flagged by meaning, taken apart into items when time
   // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(mergedReport([as])).toMatch(/여러 개가 올라와 있어요\. 여러 건이 한 페이지에 모여 있어요\. \[/)
   expect(reportPrompt(brief, [as])).toContain('"listPage":true')
-  // A writer message that runs one teammate's two items and links into one line is refused (link positions, not words).
+  // A writer message that runs one teammate's two items and links into one line is found (link positions, not words).
+  // c18b: a rule of shape: it goes to the scoped repair as `soft`, never a refusal.
   const run = JSON.stringify({ message: '서아가 찾았어요. 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206), 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
-  expect(reportCheck(run, [m])).toMatchObject({ refused: 'one-line' })
+  const ran = reportCheck(run, [m])
+  expect('soft' in ran ? ran.soft.map(one => one.refused) : []).toContain('one-line')
+  expect(checkedReport(run, [m])).toBeUndefined()
   const apart = JSON.stringify({ message: '서아가 찾았어요.\n- 12월 6일 둔산동 모임 [a](https://board.example.kr/daejeon/1206)\n- 12월 20일 유성 모임 [b](https://board.example.kr/daejeon/1220)', kept: ['f1', 'f2'] })
   expect(checkedReport(apart, [m])).toBeDefined()
 })

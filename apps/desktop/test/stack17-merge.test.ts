@@ -79,7 +79,8 @@ describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenRepo
     expect(text).not.toContain('이용 안내 총정리')
     expect(text).not.toContain('blog.example')
     const table = mergedReport(parts(), new Map(), [], true)
-    expect(tableRows(table)).toHaveLength(2)
+    // c18b: two parts are said in sentences (a table only for 3+ things on 2+ points); the verified value and the missing point are said.
+    expect(tableRows(table)).toHaveLength(0)
     expect(table).toContain('자유수영 성인 4,500원')
     expect(table).toContain('pool.example/mokdong')
     expect(table).toContain('운영시간은 못 찾았어요')
@@ -185,12 +186,14 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     const calls: string[] = []
     const write = agreeing((prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
       calls.push(prompt)
-      resolve(prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : JSON.stringify({ message: `스타벅스랑 투썸은 신메뉴가 나왔고 메가커피는 없어요.\n\n${body(prompt.includes('Your earlier draft was') ? ['하윤', '다인', '로운'] : ['하윤', '다인'])}`, kept: ['f1', 'f2', 'f3'] }))
+      // c18b: the one repair is scoped: it adds a line naming 로운; the draft's sentences stay.
+      resolve(prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : prompt.includes('You fix a message') ? JSON.stringify({ insert_after: { 4: ['메가커피는 로운이 봤어요.'] } }) : JSON.stringify({ message: `스타벅스랑 투썸은 신메뉴가 나왔고 메가커피는 없어요.\n\n${body(['하윤', '다인'])}`, kept: ['f1', 'f2', 'f3'] }))
     }, 1_500)))
     const pending = writtenReport({ ask: '스타벅스 투썸 메가커피 이번 주 신메뉴 하윤 다인 로운한테 나눠서 알아봐줘', members, write })
     await vi.runAllTimersAsync()
     const out = await pending
-    expect(calls).toHaveLength(3) // draft, repair, check of the repair
+    expect(calls).toHaveLength(3) // draft, its meaning check, the one repair (a shape problem only: no second check)
+    // c18b r2: the repair answers after the writer's 4 s (1.5 s a call, three calls): 로운 is still named, by the host (withEveryone).
     expect(out).toContain('로운')
     for (const link of ['sb', 'ts', 'mg']) expect(out).toContain(`menu.example/${link}`)
     expect(Date.now() - T0).toBeLessThan(35_000)
@@ -244,12 +247,14 @@ describe('stack-17: a job said only in filler words is still checked in the summ
       await createBot(paths, { name: '엔그램' })
       await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
       await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
-      const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', fixed = '오늘은 하윤이 주말 소식을 찾았고, 다인은 스타벅스 신메뉴를 봤어요.'
-      const drafts = [left, fixed], calls: string[] = []
+      // c18b: the subject is not in any sentence of the draft, so the scoped repair adds it as a line; the draft's sentences stay.
+      const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', added = '하윤은 주말 소식을 찾았어요.', fixed = `${left}\n${added}`
+      const drafts = [left, JSON.stringify({ insert_after: { 1: [added] } })], calls: string[] = []
       const write = agreeing(async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : drafts.shift() ?? '' })
       expect(await teamSummary(paths, { bots: await loadBots(paths), message: '오늘 팀 뭐 했어', now: new Date(2026, 10, 18, 10), write })).toBe(fixed)
-      expect(calls[1]).toContain('주말 소식')
-      expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
+      expect(calls[2]).toContain('You fix a message')
+      expect(calls[2]).toContain('주말 소식')
+      expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:missing /)])
     } finally { setReportLog(() => undefined) }
   })
 })

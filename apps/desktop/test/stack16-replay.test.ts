@@ -33,7 +33,9 @@ describe('stack-16 replays', () => {
     const failing = async (prompt: string): Promise<string | undefined> => prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : undefined
     const host = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: agreeing(failing), due: Date.now() + 14_000 }))!
     console.log(`R1 fallback:\n${host}`)
-    expect(tableRows(host).map(row => row.split('|')[1]!.trim())).toEqual(['서울', '부산', '제주'])
+    // c18b: the host's rendering says each part in sentences (a table only for 3+ things on 2+ points), each with its link.
+    expect(tableRows(host)).toHaveLength(0)
+    for (const city of ['서울', '부산', '제주']) expect(host).toMatch(new RegExp(`^${city}`, 'm'))
     expect(host.match(/https:\/\/search\.naver\.com/g)).toHaveLength(3)
   })
 

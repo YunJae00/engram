@@ -10,7 +10,9 @@ import { tmpVaultRoot } from './helpers.js'
 // c17c (cause S: the team's own summary and hand-off messages were shaped by rules that deleted what the person reads, C10 "신기능 세 곳"
 // with no 노션/슬랙/리니어, and whose fallback wrote metadata, C6 "(서연, 지민이 찾은 …) 링크"). Wordings are not the harness's:
 // 쿠팡 / 마켓컬리 / 11번가 배송 정책, 하은 / 준 / 소윤, 연말 프로모션 문구, "오늘 팀 뭐 했어".
-const CHECK = 'Judge meaning only', REDO = 'Your earlier draft was'
+// c18b: the one fix after a check is a scoped repair (written-check repairedWrite): replacements of the units a problem names, and new lines.
+const CHECK = 'Judge meaning only', REDO = 'You fix a message'
+const insert = (after: number, ...lines: string[]): string => JSON.stringify({ insert_after: { [after]: lines } })
 const none = JSON.stringify({ problems: [] })
 function model(drafts: string[], verdicts: string[] = []) {
   const calls: string[] = []
@@ -42,20 +44,21 @@ const FOLDED = '오늘은 하은, 준, 소윤이 배송 정책 세 곳을 봤는
 test('a summary that folds jobs into a count ("배송 정책 세 곳") is refused as missing, naming the subject, and the repair names every one', async () => {
   setReportLog(line => logged.push(line))
   const { paths, bots, now } = await today()
-  const fixed = '오늘은 하은, 준, 소윤이 쿠팡·마켓컬리·11번가 배송 정책을 봤는데 새로 나온 게 없었어요. 준이 하은이 찾은 걸로 연말 프로모션 문구를 썼어요. 소윤은 이제 팀에 없어요.'
-  const { write, calls } = model([FOLDED, fixed], [none])
-  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(fixed)
+  // c18b: the repair adds the subjects as a line; the draft's own sentences stay as written.
+  const added = '쿠팡·마켓컬리·11번가 배송 정책이었어요.'
+  const { write, calls } = model([FOLDED, insert(1, added)], [none])
+  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(`${FOLDED}\n${added}`)
   // The writer is told each job's subject is named, never folded into a count.
   expect(calls[0]).toContain('never folded into a count')
-  // The repair note says which subjects are missing.
-  expect(calls[1]).toContain(REDO)
-  expect(calls[1]).toContain('"kind":"shape"')
-  for (const subject of ['쿠팡 배송 정책', '마켓컬리 배송 정책', '11번가 배송 정책']) expect(calls[1]).toContain(subject)
   // The meaning check is offered the "missing" kind with the jobs' subjects as its parts.
-  expect(calls[2]).toContain(CHECK)
-  expect(calls[2]).toContain('"missing": the message must name what each of these was about')
-  expect(calls[2]).toContain('연말 프로모션 문구')
-  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
+  expect(calls[1]).toContain(CHECK)
+  expect(calls[1]).toContain('"missing": the message must name what each of these was about')
+  expect(calls[1]).toContain('연말 프로모션 문구')
+  // The repair note says which subjects are missing.
+  expect(calls[2]).toContain(REDO)
+  expect(calls[2]).toContain('"kind":"shape"')
+  for (const subject of ['쿠팡 배송 정책', '마켓컬리 배송 정책', '11번가 배송 정책']) expect(calls[2]).toContain(subject)
+  expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:missing /)])
 })
 
 test('a summary refused twice is the host\'s, and it names every subject, the hand-off, and who has left', async () => {
@@ -66,7 +69,7 @@ test('a summary refused twice is the host\'s, and it names every subject, the ha
   for (const subject of ['쿠팡', '마켓컬리', '11번가', '연말 프로모션 문구']) expect(out).toContain(subject)
   expect(out).not.toContain('세 곳')
   expect(out).toContain('소윤은 이제 팀에 없어요.')
-  expect(logged).toEqual([expect.stringMatching(/^summary=fallback:missing>missing /)])
+  expect(logged).toEqual([expect.stringMatching(/^summary=fallback:missing /)])
 })
 
 test('grouping by listing the subjects passes; a meaning check that still finds one missing sends it to the repair', async () => {
@@ -74,8 +77,8 @@ test('grouping by listing the subjects passes; a meaning check that still finds 
   const listed = '오늘은 하은, 준, 소윤이 쿠팡·마켓컬리·11번가 배송 정책을 봤는데 새로 나온 게 없었어요. 준은 하은이 찾은 걸로 연말 프로모션 문구를 썼어요. 소윤은 이제 팀에 없어요.'
   expect(await teamSummary(paths, { bots, message: ASK, now, write: model([listed], [none]).write })).toBe(listed)
   const flagged = JSON.stringify({ problems: [{ kind: 'missing', quote: '11번가 배송 정책', why: '안 나왔어요' }] })
-  const { write, calls } = model([listed, listed], [flagged, none])
-  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(listed)
+  const { write, calls } = model([listed, insert(1, '11번가 배송 정책도 소윤이 봤어요.')], [flagged, none])
+  expect(await teamSummary(paths, { bots, message: ASK, now, write })).toBe(`${listed}\n11번가 배송 정책도 소윤이 봤어요.`)
   expect(calls[2]).toContain(REDO)
   expect(calls[2]).toContain('"kind":"missing"')
 })
@@ -112,18 +115,27 @@ test('a draft that opens on a sentence about the work, before the items, is refu
   setReportLog(line => logged.push(line))
   const members = handOff()
   const narrated = JSON.stringify({ message: `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요.\n\n${LINES.join('\n')}`, kept: [] })
-  const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })
-  expect(out.split('\n')[0]).toBe(LINES[0])
-  expect(logged).toEqual([expect.stringMatching(/^writer=fallback:items-first>items-first /)])
+  // c18b: the opening sentence is the problem's quote: the repair drops it and says whose they are after the items.
+  const repair = JSON.stringify({ replace: { 1: '' }, insert_after: { 3: ['하은이 찾은 연말 할인으로 준이 쓴 거예요.'] } })
+  const out = await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, repair]).write })
+  expect(out.split('\n')).toEqual([...LINES, `하은이 찾은 연말 할인으로 준이 쓴 거예요. [shop.example.kr](${SALE})`])
+  expect(logged).toEqual([expect.stringMatching(/^writer=repaired:items-first /)])
+  // A repair that is no repair: the draft is never withheld, and (c18b r3) the host still opens it on the items, its sentence after them.
+  logged.length = 0
+  expect((await writtenReport({ ask: '연말 세일 알아보고 준이 카피 뽑게 해', members, write: model([narrated, narrated]).write })).split('\n')).toEqual([...LINES, '', `준이 하은이 찾은 연말 할인으로 문구 두 개를 써 봤어요. [shop.example.kr](${SALE})`])
+  expect(logged).toEqual([expect.stringMatching(/^writer=kept:items-first /)])
 })
 
 test('a draft that names nobody it was made from is refused; the host\'s fallback opens on the items and says whose they are after, never a "(name, …)" tag', async () => {
   const members = handOff()
   const nobody = JSON.stringify({ message: `${LINES.join('\n')}\n\n준이 써 봤어요.`, kept: [] })
+  // c18b: a rule of shape never withholds the draft: unrepaired it is shown as written, the pages it was made from closing its sentence.
   const out = await writtenReport({ ask: '할인 행사 찾아서 준한테 넘겨 문구 써줘', members, write: model([nobody, nobody]).write })
-  expect(out).toBe(mergedReport(members))
-  expect(out.split('\n')).toEqual([...LINES, `준이 하은이 찾은 연말 할인 행사로 만든 거예요. [shop.example.kr](${SALE})`])
-  expect(out).not.toMatch(/\(준|\(하은/)
+  expect(out.split('\n').filter(Boolean)).toEqual([...LINES, `준이 써 봤어요. [shop.example.kr](${SALE})`])
+  // The host's own rendering (no draft at all) opens on the items and says whose they are after.
+  const host = mergedReport(members)
+  expect(host.split('\n')).toEqual([...LINES, `준이 하은이 찾은 연말 할인 행사로 만든 거예요. [shop.example.kr](${SALE})`])
+  expect(host).not.toMatch(/\(준|\(하은/)
 })
 
 test('one writer with no hand-off: the items first, then whose they are', () => {
@@ -154,10 +166,12 @@ test('a job whose subject is part of another job\'s word is still checked: namin
   const bots = await loadBots(paths), now = new Date(2026, 10, 18, 10)
   const half = '오늘은 준이 쿠팡이츠 수수료를 봤는데 새로 나온 게 없었어요. 하은도 같이 봤어요.'
   const both = '오늘은 하은이 쿠팡, 준이 쿠팡이츠 수수료를 봤는데 둘 다 새로 나온 게 없었어요.'
-  const { write, calls } = model([half, both], [none])
-  expect(await teamSummary(paths, { bots, message: '오늘 다들 뭐 했어', now, write })).toBe(both)
-  expect(calls[1]).toContain('쿠팡 수수료')
-  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
+  // c18b: "쿠팡 수수료" stands in no sentence of the draft, so the repair adds it as a line; the draft's sentences stay.
+  const { write, calls } = model([half, insert(2, '하은은 쿠팡 수수료를 봤어요.')], [none])
+  expect(await teamSummary(paths, { bots, message: '오늘 다들 뭐 했어', now, write })).toBe(`${half}\n하은은 쿠팡 수수료를 봤어요.`)
+  expect(calls[2]).toContain('쿠팡 수수료')
+  expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:missing /)])
+  void both
 })
 
 // c17c r3 (review #3): one job's words all inside another's ("배민 광고 요금" beside "배민 광고 요금 인상") left the first with no word of its own,
@@ -175,10 +189,11 @@ test('a job whose words are all inside another job\'s is still checked: naming o
   const { paths, bots, now } = await nested(['배민 광고 요금 조사', '배민 광고 요금 인상 조사'])
   const half = '오늘은 하은이랑 준이 배민 광고 요금 인상을 봤는데 새로 나온 게 없었어요.'
   const both = '오늘은 하은이 배민 광고 요금이랑 준이 배민 광고 요금 인상을 봤는데 둘 다 새로 나온 게 없었어요.'
-  const { write, calls } = model([half, both], [none])
+  // c18b: the quoted subject stands inside the draft's one sentence, so the repair replaces that sentence.
+  const { write, calls } = model([half, JSON.stringify({ replace: { 1: both } })], [none])
   expect(await teamSummary(paths, { bots, message: '오늘 누가 뭐 했어', now, write })).toBe(both)
-  expect(calls[1]).toContain('배민 광고 요금')
-  expect(logged).toEqual([expect.stringMatching(/^summary=rewritten:shape:missing /)])
+  expect(calls[2]).toContain('배민 광고 요금')
+  expect(logged).toEqual([expect.stringMatching(/^summary=repaired:shape:missing /)])
 })
 test('nested jobs said in separate sentences both pass the first time', async () => {
   setReportLog(line => logged.push(line))

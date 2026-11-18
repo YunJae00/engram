@@ -204,6 +204,8 @@ import { releaseDesktop, setDesktopLaneWorking } from './desktop-access.js'
 import { removeScheduled } from './notices-ipc.js'
 // The reply just before this message: "그거 취소해" means what that reply named (core dutyToCancel).
 const lastReplyOf = (history?: readonly { role: string; text: string }[]): string | undefined => [...(history ?? [])].reverse().find(one => one.role === 'assistant')?.text
+// c18b: what the thread showed since the person last wrote (an ack such as "지민이 한 걸 서연한테 넘겼어요."): a later report does not say it again.
+const turnSaid = (history: readonly { role: string; text: string }[]): string[] => { const at = history.map(one => one.role).lastIndexOf('user'); return at < 0 ? [] : history.slice(at + 1).filter(one => one.role === 'assistant').map(one => one.text) }
 import { agentCourier } from './agent-courier.js'
 import { agentViewGo, agentViewInput, agentViewState, laneState, lookAtLane, refreshAgentView, resetLaneView, showAgentWindow, startAgentView, watchAgentView } from './agent-view.js'
 import { browserHistory, browserNavigate, browserResize } from './browser-navigation.js'
@@ -2866,7 +2868,7 @@ export function registerIpc(ctx: VaultContext): void {
         if (summing) firstLineNow(channel, request.message, threadKorean(request.message, request.history ?? []))
         const reporting = !direct && company && turn?.report ? (await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id) : undefined
         const handed = direct ? await everyTool.find(tool => tool.name === direct.tool)?.run(direct.args, { task: request.message, signal }).catch((error: unknown) => { flog('company', error); return undefined })
-          : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer, lastTeamResult(await listTasks(paths), reporting))
+          : !company ? undefined : turn?.report ? await employeesAnswer(reporting, writer, lastTeamResult(await listTasks(paths), reporting), turnSaid(request.history ?? []))
             : summing ? await teamSummary(paths, { bots: everyone, tasks: await listTasks(paths), message: request.message, signal, ...(engine.id === 'claude' && engine.quick ? { write: (prompt: string, ms = SUMMARY_WRITER_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) } : {}) }).catch((error: unknown) => { flog('company', error); return undefined })
               : aboutEmployee(request.message, everyone, await listTasks(paths))
         // GROKBOT rule 7: this report was made without the parts still at work and the next one is theirs, or it was theirs (company-tools lateShown).
