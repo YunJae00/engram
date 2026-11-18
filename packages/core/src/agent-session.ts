@@ -197,7 +197,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const whole = tool.closesOn?.(observation)
       if (closing && (whole ?? !composing) && !said.length && !observation.startsWith('that did not work')) {
         if (whole) composing = false
-        closeLines.push(observation)
+        closeLines.push(tool.closeAnswer?.(observation) ?? observation)
         held ??= []
         const mark = startedCalls
         setTimeout(() => { if (startedCalls === mark && queued === 0 && !composing && !asked && !signal.aborted) { closed = closeLines.join('\n'); close?.({ answer: closed }) } }, CLOSE_GRACE_MS)
@@ -361,7 +361,8 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
     options.onMetric?.({ kind: 'host', operation: 'runtime-and-model-overhead', ms: Math.max(0, Math.round(Date.now() - started - toolMs)) })
   }
   if (options.signal?.aborted) throw options.signal.reason ?? new Error('canceled')
-  if (closed !== undefined) return { answer: withoutSecrets(closed, task), steps, fellBack: false, tokensUsed }
+  // A turn closed on a build still hands in the file it made (its receipt is the step).
+  if (closed !== undefined) return { answer: withoutSecrets(outputLinks(steps, closed, deps.workdir), task), steps, fellBack: false, tokensUsed }
   if (budgetExhausted) return { answer: withoutSecrets(outputLinks(steps, [`${budgetNote} Work so far is preserved; inspect the current state before continuing.`, collection.summary()].filter(Boolean).join("\n\n"), deps.workdir), task), steps, fellBack: false, tokensUsed, budgetExhausted: true, incomplete: budgetNote }
   if (asked) {
     const { question, options: choices } = asked as { question: string; options: string[] }

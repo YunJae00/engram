@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, fencedLines, isOutsideAsk, repairedWrite, type WrittenProblem } from 'core'
+import { checkedWrite, closingTool, fencedLines, foreignRun, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아니라)\s*\S+(이야|야|이에요|예요|입니다)|\bremember (that|this|my|i)\b/i
@@ -509,4 +509,47 @@ function withoutLines(lines: readonly string[], gone: Set<number>): string {
     if (under.length && under.every(j => gone.has(j))) gone.add(i)
   })
   return lines.filter((_, i) => !gone.has(i)).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
+const REPLY_NOTE = 'One short line for the chat once the file is made, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."): what you made, in a few words. A build that passes ends the turn with this line and the file, so nothing is read back after it; when the person asked for several files, call every build in the same step.'
+const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
+const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply'))
+const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
+/** The plain line the host says for a build, from the build itself: its title and its slide or sheet count. */
+export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean): string {
+  const list = (key: string): Record<string, unknown>[] => Array.isArray(args[key]) ? (args[key] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object') : []
+  if (tool === 'ppt_build') {
+    const slides = list('slides'), title = textOf(slides[0]?.['title']) || textOf(args['saveAs']).replace(/\.pptx$/i, '')
+    return korean ? `${title ? `${title}, ` : '발표 자료를 '}${slides.length}장으로 만들었어요.` : `Made ${title ? `"${title}", ` : 'the deck, '}${slides.length} slides.`
+  }
+  if (tool === 'word_write') {
+    const title = textOf(args['title']) || textOf(list('blocks').find(block => block['kind'] === 'title')?.['text']) || textOf(args['saveAs']).replace(/\.docx$/i, '')
+    return korean ? `${title ? `${title} ` : ''}문서로 만들었어요.` : `Made the document${title ? ` "${title}"` : ''}.`
+  }
+  const sheets = list('sheets').length || 1, title = textOf(args['name']).replace(/\.xlsx$/i, '')
+  return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
+}
+/** The model's own reply when it reads right in this thread (its language, at most two sentences, no technical words); else none. */
+export function buildReply(reply: unknown, korean: boolean): string | undefined {
+  const text = textOf(reply).replace(/\s+/g, ' ')
+  if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
+  return korean && foreignRun(text, text, '') ? undefined : text
+}
+/** The desk lane's build tools: a build that passed the host's audit (a receipt with its file) is final and ends the turn on one short line,
+ * so the model never reads its own file back. An audit refusal or an error goes back to the model as before. */
+export function closingBuilds(tools: readonly AgentTool[], korean: boolean): AgentTool[] {
+  return tools.map(tool => {
+    if (!BUILDS.has(tool.name)) return tool
+    const schema = tool.argsSchema as { properties?: Record<string, unknown> }
+    const given: AgentTool = {
+      ...tool,
+      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE } } },
+      run: (args, context) => tool.run(withoutReply(args), context),
+    }
+    return closingTool(given, async (out, args) => {
+      if (!receiptOf(out)) return undefined
+      return { said: out, answer: buildReply(args['reply'], korean) ?? builtLine(tool.name, withoutReply(args), korean) }
+    })
+  })
 }

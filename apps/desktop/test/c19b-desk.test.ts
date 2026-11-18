@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn() } }))
 vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
-import { messageUnits, wellFormed } from 'core'
-import { checkedDesk, onceEach, reshapeAsk, withPart, withoutQuoted } from '../src/main/desk-lane.js'
+import { messageUnits, officeTools, runToolSession, wellFormed, type AgentTool, type Engine, type EngineCwd, type ToolSessionJob, type ToolSessionResult } from 'core'
+import { builtLine, checkedDesk, closingBuilds, onceEach, reshapeAsk, withPart, withoutQuoted } from '../src/main/desk-lane.js'
 
 const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
 const quickOf = (check: (string | undefined)[], repair: (string | undefined)[]) => {
@@ -94,5 +94,98 @@ describe('item 3: a shorter reshape that passed the form test goes out as writte
     const voice = async (p: string): Promise<string> => p.includes(CHECK) || p.includes(REPAIR) ? (await quick(p)) ?? '' : JSON.stringify({ form: 'tone', was: LAST, reply: polite })
     expect(await reshapeAsk('좀 부드럽게', LAST, voice, ASK)).toBeUndefined()
     expect(prompts.some(p => p.includes(CHECK))).toBe(true)
+  })
+})
+
+describe('item 4: a build the host audit passed closes the turn', () => {
+  const WORKDIR = '/Users/kwon-yunjae/engram-orch/tmp/c19b' as EngineCwd
+  const brain = (script: (job: ToolSessionJob) => Promise<ToolSessionResult>): Engine => ({ id: 'mock', desktopToolIsolation: true, detect: async () => ({ installed: true, loggedIn: true }), run: async function* () { yield { type: 'result', text: 'x' } }, runTools: script }) as unknown as Engine
+  const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+  const receipt = { artifact: 'a1', path: '/out/신제품 소개.pptx', markdownLink: '[신제품 소개.pptx](engram-artifact:a1)', completeReadback: true }
+  const deckTools = (delay = 0) => officeTools({ run: async () => { await pause(delay); return receipt } })
+  const SLIDES = [{ title: '신제품 소개', subtitle: '마케팅팀' }, { title: '핵심 기능', bullets: ['한 번 충전으로 3일 사용', '방수 등급 IP68'] }, { title: '출시 일정', bullets: ['12월 첫 주 사전 예약'] }]
+  const reader = () => { const read = { name: 'file_read_package', description: 'reads a package', argsSchema: { type: 'object' }, calls: 0, run: async () => { read.calls++; return '{}' } }; return read }
+  const run = async (tools: AgentTool[], args: Record<string, unknown>, name = 'ppt_build') => {
+    const read = reader()
+    let after = 0
+    const engine = brain(async job => {
+      await job.tools.find(tool => tool.name === name)!.run(args)
+      await pause(400)
+      after++
+      await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
+      return { answer: '다시 읽어 보고 고쳤어요.' }
+    })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(tools, true), read] }, '신제품 소개 슬라이드 만들어줘')
+    return { result, read, after }
+  }
+
+  it('the s18 D3 receipt tells the model not to read back (finding): the read-back was the model\'s own choice, and now it never gets a turn for it', async () => {
+    const out = await deckTools().find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES }, { task: 'x' })
+    expect(out).toContain('do not read it back or change it; answer now')
+    expect(out).not.toMatch(/verify|read (it|the file) (back|again) (before|to)/i)
+  })
+
+  it('a deck with a Korean reply ends on that reply and the file, with no further model turn', async () => {
+    const { result, read } = await run(deckTools(), { slides: SLIDES, reply: '신제품 소개 자료 3장으로 만들었어요.' })
+    expect(result.answer).toBe('신제품 소개 자료 3장으로 만들었어요.\n\n[신제품 소개.pptx](engram-artifact:a1)')
+    expect(result.steps.map(step => step.tool)).toEqual(['ppt_build'])
+    expect(JSON.parse(result.steps[0]!.observation).markdownLink).toBe(receipt.markdownLink)
+    expect(read.calls).toBe(0)
+  })
+
+  it('an English, long or technical reply gets the host line from the build instead', async () => {
+    for (const reply of ['I made the product deck with three slides for you.', '세 장 만들었어요. 표지도 넣었어요. 일정도 넣었어요.', 'ppt_build로 만들었어요.', undefined]) {
+      const { result } = await run(deckTools(), { slides: SLIDES, ...(reply === undefined ? {} : { reply }) })
+      expect(result.answer.split('\n')[0], String(reply)).toBe('신제품 소개, 3장으로 만들었어요.')
+    }
+  })
+
+  it('an audit refusal goes back to the model, which keeps working', async () => {
+    const read = reader()
+    const engine = brain(async job => {
+      const said = await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: [{ title: '신제품 소개' }, { title: '신제품 소개', bullets: ['TBD'] }], reply: '만들었어요.' })
+      expect(said).toContain('nothing was built')
+      await pause(300)
+      return { answer: '다시 만들게요.' }
+    })
+    const result = await runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools(), true), read] }, 'x')
+    expect(result.answer).toBe('다시 만들게요.')
+  })
+
+  it('a doc build and a sheet build close the same way, each with its host line when the reply is unusable', async () => {
+    const fake = (name: string, link: string): AgentTool => ({ name, description: name, argsSchema: { type: 'object', properties: {} }, run: async args => { expect(args['reply']).toBeUndefined(); return JSON.stringify({ markdownLink: link }) } })
+    const doc = await run([fake('word_write', '[동아리 회칙.docx](engram-artifact:d1)')], { title: '동아리 회칙', blocks: [{ kind: 'paragraph', text: '제1조' }], reply: 'Done.' }, 'word_write')
+    expect(doc.result.answer).toBe('동아리 회칙 문서로 만들었어요.\n\n[동아리 회칙.docx](engram-artifact:d1)')
+    expect(doc.read.calls).toBe(0)
+    const sheet = await run([fake('file_create_workbook', '[가계부.xlsx](engram-artifact:s1)')], { name: '가계부.xlsx', sheets: [{ sheet: '11월', rows: [['a']] }, { sheet: '12월', rows: [['b']] }], reply: '가계부 엑셀 만들었어요.' }, 'file_create_workbook')
+    expect(sheet.result.answer).toBe('가계부 엑셀 만들었어요.\n\n[가계부.xlsx](engram-artifact:s1)')
+    expect(builtLine('file_create_workbook', { name: '가계부.xlsx', sheets: [{}, {}] }, true)).toBe('가계부 파일을 시트 2개로 만들었어요.')
+    // Edits keep their path: they are never wrapped.
+    const edit: AgentTool = { name: 'file_edit_package', description: 'edit', argsSchema: {}, run: async () => '{}' }
+    expect(closingBuilds([edit], true)[0]).toBe(edit)
+  })
+
+  it('on the s18 D3 latencies (20.8 s to the build, a 1.0 s build) the turn ends within 1 s of the passed build', async () => {
+    vi.useFakeTimers()
+    try {
+      const read = reader()
+      let built = 0
+      const engine = brain(async job => {
+        await pause(20_760)
+        await job.tools.find(tool => tool.name === 'ppt_build')!.run({ slides: SLIDES, reply: '신제품 소개 3장 만들었어요.' })
+        built = Date.now()
+        await pause(9_244)
+        await job.tools.find(tool => tool.name === 'file_read_package')!.run({})
+        await pause(15_934)
+        return { answer: 'late' }
+      })
+      let ended = 0
+      const turn = runToolSession({ engine, workdir: WORKDIR, tools: [...closingBuilds(deckTools(1_004), true), read] }, 'x').then(result => { ended = Date.now(); return result })
+      await vi.advanceTimersByTimeAsync(23_000)
+      const result = await turn
+      expect(result.answer.startsWith('신제품 소개 3장 만들었어요.')).toBe(true)
+      expect(ended - built).toBeLessThan(1000)
+      expect(read.calls).toBe(0)
+    } finally { vi.useRealTimers() }
   })
 })

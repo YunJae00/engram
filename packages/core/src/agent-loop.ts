@@ -35,6 +35,8 @@ export interface AgentTool {
   runRich?(args: Record<string, unknown>, context: AgentToolContext): Promise<ToolOutcome>
   closes?: true | ((args: Record<string, unknown>) => boolean)
   closesOn?: (observation: string) => boolean
+  /** The answer a confirmed close ends the turn on, when it is not the call's reply itself (a build: its receipt stays the step). */
+  closeAnswer?: (observation: string) => string | undefined
 }
 
 export interface AgentLoopDeps {
