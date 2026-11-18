@@ -120,7 +120,7 @@ export const gaveUp = (answer: string): boolean => { const words = answer.replac
 // results stayed held and a failure line was written again from them: the old ask answered after the change. Words that end by
 // naming another thing to do it for ("… 걸로", "… 거로 해줘") are a change of ask here too.
 const SWAPS = /[가-힣A-Za-z0-9]\s*(?:걸|거|것으)로(?:\s*(?:해|바꿔|줘|해\s?줘|부탁해|봐\s?줘))?요?[.!~\s]*$/
-export const swaps = (text: string): boolean => asideShape(text) === 'replace'
+const swaps = (text: string): boolean => asideShape(text) === 'replace'
 // c9a T2: "그냥 애플로 바꿔" said 2 s into "엔비디아 오늘 주가 알려줘" waited 14 s for a model round on 엔비디아. The lane stops that round and
 // starts again on the ask with the new thing in the old one's place ("애플 오늘 주가 알려줘"). Only a thing it can name for sure: a
 // day ("내일로"), a form ("표로") or anything it cannot read leaves the change to the running round, as before.

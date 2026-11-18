@@ -2,7 +2,7 @@ import type { Frame, Page } from 'playwright-core'
 import { readClickListeners } from './page-listeners.js'
 import { takesRoom } from './page-frame-room.js'
 import type { FrameReading, PageReading } from './page-reading.js'
-export type { FrameReading, PageReading } from './page-reading.js'
+export type { FrameReading } from './page-reading.js'
 
 
 type ControlPlace = { frame: Frame; local: number; control: string }

@@ -2,7 +2,7 @@ import type { DesktopNodeDto, DesktopObservationDto, QuietObservationDto } from 
 
 // The settle core lives in desktop-guarded-sequence.ts: plain-node fixtures load that file without a bundler, so it cannot import this one.
 import { settle, observationKey, STILL_CHANGING, type Settled } from './desktop-guarded-sequence.js'
-export { CAP_MS, observationKey, POLL_MS, settle, STILL_CHANGING, type Settled } from './desktop-guarded-sequence.js'
+export { observationKey, settle, STILL_CHANGING } from './desktop-guarded-sequence.js'
 
 export const NO_EFFECT = 'The click showed no visible change, also after one retry. Say it did not work; do not click it again.'
 export const TARGET_MOVING = 'The target kept moving. Read the app again before clicking.'

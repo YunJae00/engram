@@ -7,7 +7,7 @@ type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: stri
 // A work-guide rule with nothing to apply to in this result is neither passed nor open: it does not hold the result back, and stays in the report as set aside (qa145 B14).
 const NOT_APPLICABLE = 'not_applicable'
 /** What a not_applicable check is held to: the person's work guide as the turn carried it, and what they asked for. */
-export type Standing = { guide: string; request: string }
+type Standing = { guide: string; request: string }
 const plain = (value: string): string => value.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
 // The host cannot judge relevance, so it accepts only what it can prove: the requirement is a whole line of the work guide, and the request does not state it itself.
 // Anything the person asked for, and anything the host cannot place in the guide, has to be pass, fail or unknown (qa145 r2).

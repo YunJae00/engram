@@ -5,8 +5,8 @@ export const EXIT_MS = 160
 export const HOLD_MS = 1200
 const MEMORY_LIMIT = 48
 export type StageSize = { id: string; width: number; height: number }
-export type Painted = { size: StageSize | null; image?: string }
-export type Gone<T> = { item: T; until: number }
+type Painted = { size: StageSize | null; image?: string }
+type Gone<T> = { item: T; until: number }
 const memory = new Map<string, Painted>()
 
 export function recordStageSize(previous: StageSize | null, id: string, width: number, height: number): StageSize | null {

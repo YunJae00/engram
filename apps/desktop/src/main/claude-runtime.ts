@@ -9,7 +9,6 @@ import { renameWithRetry } from 'core'
 
 import { CLAUDE_RUNTIME_VERSION } from './claude-runtime-version.js'
 
-export { CLAUDE_RUNTIME_VERSION }
 export const CLAUDE_INSTALL_HELP = 'https://code.claude.com/docs/en/setup'
 const LIMIT = 300 * 1024 * 1024
 

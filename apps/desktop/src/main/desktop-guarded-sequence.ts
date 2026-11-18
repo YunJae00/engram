@@ -3,8 +3,8 @@ import type { DesktopAction, DesktopGuardedAction } from 'core'
 import type { DesktopObservationDto, DesktopNodeDto } from '../shared/desktop.js'
 import type { ClickDeps, ClickResult } from './desktop-settle.js'
 
-export const POLL_MS = 100
-export const CAP_MS = 1500
+const POLL_MS = 100
+const CAP_MS = 1500
 export const STILL_CHANGING = 'The app was still changing 1.5 s after the action. Read it again before saying it worked.'
 
 export interface Settled<T> { view: T; settled: boolean }

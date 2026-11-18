@@ -31,7 +31,7 @@ interface AsideIpcDeps {
 // 1.3 s for the voice leaves room for the two writes around it inside the 2 s the person waits.
 export const ASIDE_REPLY_MS = 1300
 export const ASIDE_REPLY_MAX = 60
-export { asideShape, type AsideShape }
+export { asideShape }
 const FIXED: Record<AsideShape, [string, string]> = {
   add: ['그것도 넣을게요.', 'Adding that too.'],
   replace: ['바꿔서 볼게요.', 'Switching to that now.'],

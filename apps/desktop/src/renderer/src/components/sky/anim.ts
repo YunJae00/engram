@@ -28,7 +28,7 @@ export const EASE = cubicBezier(0.25, 0.1, 0.25, 1)
 export const EASE_OUT = cubicBezier(0, 0, 0.58, 1)
 
 /** A keyframed run: fixed start, fixed duration, optional delay. */
-export interface Run {
+interface Run {
   p: number
   live: boolean
 }

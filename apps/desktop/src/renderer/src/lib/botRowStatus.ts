@@ -1,7 +1,7 @@
 import type { BotDto } from '../../../shared/types.js'
 import type { CometActivity } from './cometActivity.js'
 
-export type RowStatus = 'attention' | 'working' | 'unread' | null
+type RowStatus = 'attention' | 'working' | 'unread' | null
 
 export function rowStatus(activity: CometActivity, unread: boolean): RowStatus {
   if (activity === 'waiting' || activity === 'error') return 'attention'

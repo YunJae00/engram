@@ -2,8 +2,7 @@ export * from './ipc-types-1.js'
 export * from './ipc-types-2.js'
 export * from './ipc-types-3.js'
 export * from './ipc-types-4.js'
-export type { SidebarLayout, SidebarChange, SidebarKind } from 'core'
-export type { DesktopWindowDto, DesktopBindingDto, DesktopObservationDto, DesktopControlStatusDto } from './desktop.js'
+export type { SidebarLayout, SidebarChange } from 'core'
 
 export interface PermissionCardDto {
   permission: 'accessibility' | 'screenRecording' | 'inputMonitoring'

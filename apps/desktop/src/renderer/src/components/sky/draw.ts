@@ -28,7 +28,7 @@ export interface Palette {
   font: string
 }
 
-export interface Scene {
+interface Scene {
   nodes: readonly SkyNode[]
   edges: readonly (readonly [number, number])[]
   fabric?: readonly (readonly [number, number])[]

@@ -1,4 +1,4 @@
-export type Seats = (string | null)[]
+type Seats = (string | null)[]
 
 export function readSeats(raw: string | null): Seats {
   try {

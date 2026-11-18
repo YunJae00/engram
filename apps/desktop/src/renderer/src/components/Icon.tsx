@@ -1,29 +1,3 @@
-import {
-  MessageCircle,
-  Minus,
-  Plus,
-  Search,
-  Settings,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react'
-
-// Icon set: Lucide (consistent 24-grid line icons) at a calm 1.8 stroke.
-const ICONS: Record<string, LucideIcon> = {
-  zap: Zap,
-  chat: MessageCircle,
-  search: Search,
-  settings: Settings,
-  plus: Plus,
-  minus: Minus,
-}
-
-export function Icon({ name, size = 16 }: { name: keyof typeof ICONS | string; size?: number }) {
-  const Component = ICONS[name]
-  if (!Component) return null
-  return <Component size={size} strokeWidth={1.8} aria-hidden />
-}
-
 // The comet: a five-point star leaning into flight, its tips rounded by a
 // thick round-joined stroke in the same colour, and three fading dots trailing
 // down-left. Nothing on it is sharp. Same numbers as the app icon

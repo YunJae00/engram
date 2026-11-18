@@ -68,12 +68,6 @@ export function freshTone(badge: string): 'green' | 'amber' | 'red' | null {
   return null
 }
 
-// YYYY.MM.DD from an ISO date/datetime string (date part only, no timezone math).
-export function ymd(iso: string | undefined): string {
-  if (!iso) return ''
-  return iso.slice(0, 10).replace(/-/g, '.')
-}
-
 // Strip pictographic emoji (plus their variation selectors and ZWJ joiners) from
 // a string so titles/excerpts read as clean paper. Newlines survive; only runs
 // of spaces collapse. NoteSheet keeps the raw text — only surfaces that quote a

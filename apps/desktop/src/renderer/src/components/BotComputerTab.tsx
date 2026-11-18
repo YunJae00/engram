@@ -1,10 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import type { BotDto, BrowserTabDto } from '../../../shared/types.js'
+import type { ReactNode } from 'react'
+import type { BrowserTabDto } from '../../../shared/types.js'
 import type { DesktopBindingDto, DesktopControlStatusDto } from '../../../shared/desktop.js'
-import { api } from '../api.js'
 import { t } from '../i18n.js'
-import { cometChannel } from '../lib/cometThreads.js'
-import { useDesktopSession } from '../lib/desktopSession.js'
 import { computerStateLabel } from './ComputerStatus.js'
 
 export function browserTabRows(value: unknown): BrowserTabDto[] {
@@ -61,21 +58,3 @@ export function BotComputerView({ tabs, binding, control, empty }: { tabs: Brows
   )
 }
 
-export function BotComputerTab({ bot, empty }: { bot: BotDto; empty: ReactNode }) {
-  const lane = cometChannel(bot.id)
-  const { bindings, control } = useDesktopSession()
-  const [tabs, setTabs] = useState<BrowserTabDto[]>([])
-  useEffect(() => {
-    let current = true
-    let received = false
-    const off = api.onEvent(event => {
-      if (event.type !== 'agent:tabs' || event.lane !== lane) return
-      received = true
-      setTabs(browserTabRows(event.tabs))
-    })
-    void api.browserTabs(lane).then(result => { if (current && !received) setTabs(browserTabRows(result)) }).catch(() => {})
-    return () => { current = false; off() }
-  }, [lane])
-  const shown = control && control.lane === lane && control.state !== 'idle' ? control : undefined
-  return <BotComputerView tabs={tabs} binding={laneBinding(bindings, lane)} control={shown} empty={empty} />
-}

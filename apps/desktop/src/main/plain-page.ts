@@ -11,7 +11,7 @@ const PLAIN_TIMEOUT_MS = 10_000
 const TEXT_CAP = 60_000
 // Below this a plain read is taken for a script-drawn shell, not the page.
 const PLAIN_TEXT_MIN = 200
-export const LINKS_MAX = 200
+const LINKS_MAX = 200
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
 const decode = (text: string): string => text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {

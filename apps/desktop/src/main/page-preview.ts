@@ -3,7 +3,7 @@ import { flog } from './flog.js'
 import { createPreviewPool } from './preview-pool.js'
 import { serialWork } from './serial-work.js'
 
-export interface PreviewFrame { data: string; width: number; height: number }
+interface PreviewFrame { data: string; width: number; height: number }
 interface CastFrame { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
 
 const captures = new WeakMap<Page, Promise<PreviewFrame>>()
