@@ -27,18 +27,9 @@ const NEWS_FEW = 3
 // A results page often holds the answer itself (weather, a price, a rate) a few hundred characters in.
 const RESULTS_PROSE_CAP = 1200
 const RESULT_TITLE_CAP = 100
-const SNIPPET_CAP = 160
 const RETRY_AFTER_MS = 2_500
 const PAGE_TEXT_MIN = 400
 const NAVIGATION_LINKS = 8
-
-export function snippetFor(text: string, title: string): string {
-  const head = title.trim().slice(0, 60)
-  if (head.length < 4) return ''
-  const at = text.indexOf(head)
-  if (at < 0) return ''
-  return text.slice(at + title.trim().length, at + title.trim().length + SNIPPET_CAP).replace(/\s+/g, ' ').trim()
-}
 
 export function looksLikeSearchFor(url: string, task: string, page: { links?: { text: string; url: string }[] }): boolean {
   if (!deriveSearchTemplate(url) || (page.links?.length ?? 0) < NAVIGATION_LINKS) return false

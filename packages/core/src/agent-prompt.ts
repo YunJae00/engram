@@ -166,7 +166,7 @@ export function skillIndexLines(skills?: { name: string; description: string }[]
 export type TurnKind = 'short' | 'lookup' | 'work'
 // A rule is sent only to a session that has the tools it speaks of and the turn kind it governs. No tool list means every
 // tool (the guided loop, and callers that render the full set).
-export interface RuleScope { kind?: TurnKind; tools?: readonly string[] }
+interface RuleScope { kind?: TurnKind; tools?: readonly string[] }
 export function openRuleLines(scope: RuleScope = {}): string[] {
   const kind = scope.kind ?? 'work', work = kind === 'work', short = kind === 'short'
   const has = (...names: string[]): boolean => !scope.tools || names.some(name => scope.tools!.includes(name))

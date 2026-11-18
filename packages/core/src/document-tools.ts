@@ -42,7 +42,7 @@ function deckOutline(parts: Map<string, Buffer>): { slide: number; title: string
 // text of the XML as it stands, and the outline is complete only when, part by part, the words it shows are every character of text the
 // XML holds: slide text under other prefixes leaves it incomplete and the parts are read instead.
 const bare = (text: string): string => text.replace(/\s/g, '')
-export function deckWords(parts: Map<string, Buffer>, textParts: readonly string[], slides: readonly { title: string; texts: string[] }[]): { otherTexts: { part: string; texts: string[] }[]; complete: boolean } {
+function deckWords(parts: Map<string, Buffer>, textParts: readonly string[], slides: readonly { title: string; texts: string[] }[]): { otherTexts: { part: string; texts: string[] }[]; complete: boolean } {
   const slideNames = slideParts(parts)
   const otherTexts = textParts.filter(name => !slideNames.includes(name)).map(part => ({ part, texts: parts.get(part)!.toString('utf8').split(/<[^>]*>/).map(text => plain(text).trim()).filter(Boolean) }))
   const shown = new Map([...slideNames.map((name, at): [string, string[]] => [name, [slides[at]!.title, ...slides[at]!.texts]]), ...otherTexts.map((other): [string, string[]] => [other.part, other.texts])])

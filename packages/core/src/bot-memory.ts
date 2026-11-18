@@ -35,7 +35,7 @@ const HALF_LIFE_DAYS = 30
 const FACT_CHARS = 160
 // Each layer is capped by rendered characters and lines, the shared one first so the prompt head stays cache-stable.
 export const MEMORY_BUDGET = { shared: { chars: 1200, lines: 14 }, own: { chars: 600, lines: 8 } } as const
-export const DISK_CAP = 200
+const DISK_CAP = 200
 const DAY_MS = 86_400_000
 
 function memoryPath(paths: VaultPaths, botId: string): string {
@@ -88,7 +88,7 @@ export function memorableTurn(message: string, answer: string): boolean {
 
 // Leftovers of an answer rather than a fact: headings, table rows, tool
 // markup, the job's own name, a question, a label with nothing after it.
-export function notAFact(text: string): boolean {
+function notAFact(text: string): boolean {
   const line = text.trim()
   return /^(#|\||<\/?[a-z]|```)|comet-remember|[?？:：](\*\*)?$/i.test(line) || eitherForm(PROMISE, line) || OWN_REPORT.test(line)
 }

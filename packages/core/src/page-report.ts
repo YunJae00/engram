@@ -99,7 +99,7 @@ export function markNewControls(controls: string[], previous?: Set<string>): { c
 // A dialog standing open, and the fields the page has marked as wrong: the
 // two things a person would see before anything else, said before anything
 // else. Answering the dialog IS the next move; the page behind it can wait.
-export function frontOf(page: ReadablePage): string[] {
+function frontOf(page: ReadablePage): string[] {
   const lines: string[] = []
   if (page.dialog)
     lines.push(

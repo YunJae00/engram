@@ -1,5 +1,5 @@
 import { navigationTools } from './comet-navigation-tools.js'
-export { snippetFor, looksLikeSearchFor, isResultsPage } from './comet-navigation-tools.js'
+export { looksLikeSearchFor, isResultsPage } from './comet-navigation-tools.js'
 import { type DecidePage } from './page-do.js'
 import { createCard } from './cards.js'
 import { readNote } from './notes.js'

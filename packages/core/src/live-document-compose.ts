@@ -42,7 +42,7 @@ function validateStyle(value: Record<string, unknown>): void {
   for (const key of ['bold', 'autoFit']) if (key in value && typeof value[key] !== 'boolean') throw new Error('Expected a boolean style flag.')
   if ('text' in value && (typeof value.text !== 'string' || value.text.length > 8000 || [...value.text].some(char => char.charCodeAt(0) < 32 && !'\t\n'.includes(char)))) throw new Error('Invalid composition text.')
 }
-export function validateComposition(args: Record<string, unknown>): void {
+function validateComposition(args: Record<string, unknown>): void {
   record(args, ['snapshot', 'slides', 'paragraphs', 'format'])
   if (typeof args.snapshot !== 'string' || !/^[a-f0-9]{32}$/.test(args.snapshot) || JSON.stringify(args).length > 48000) throw new Error('Use a fresh snapshot and at most 48 KB.')
   if (['slides', 'paragraphs', 'format'].filter(key => key in args).length !== 1) throw new Error('Choose exactly one composition payload.')

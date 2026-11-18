@@ -26,7 +26,7 @@ const ASKING_TAIL = /(해\s*주세요|해\s*줄래|해\s*줘|해\s*봐|해\s*라
 // The verbs of asking carry no subject: "check the deploy notice" and
 // "check the parking policy" share "check" and nothing else worth sharing.
 const GENERIC = /^(좀|확인|처리|정리|진행|부탁|알려|보여|찾아|please|check|run|do|get|make|show|tell|find|look|the|a|an|to|me|my|it|and|for|of)$/
-export function askWords(text: string): string[] {
+function askWords(text: string): string[] {
   return contentWords(text.normalize('NFKC'))
     .map((w) => w.replace(ASKING_TAIL, ''))
     .filter((w) => w.length > 1 && !GENERIC.test(w))
