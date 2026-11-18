@@ -130,7 +130,7 @@ describe('a tidy job answers with counts, not a file list (F1)', () => {
     expect(DESK_NOTE).toContain('one line per folder and nothing else on it ("- PDF 6개"), no table')
     expect(DESK_NOTE).toContain('move every file in ONE file_move call')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them, or for the one or two files that fit no group.')
-    expect(source('ipc.ts')).toContain("if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(routed, result.answer)")
+    expect(source('ipc.ts')).toContain("if (kind === 'tidy' && !result.asked) result.answer = tidyCounts(meant, result.answer)")
   })
 
   it('turns the stored F1 answer into a short list of counts, with every count kept for F2', () => {
@@ -218,10 +218,10 @@ describe('a share-ready summary says what it chose and stays short (H3)', () => 
     expect(DESK_NOTE).toContain('at most about eight short lines: who does what by when, then what is still open, then the next meeting')
     expect(DESK_NOTE).toContain('something not settled yet goes under 미결, never under 결정사항')
     const ipc = source('ipc.ts')
-    expect(ipc.indexOf("result.answer = withoutSameDecisions(routed, result.answer)")).toBeGreaterThan(0)
-    expect(ipc.indexOf("result.answer = withoutSameDecisions(routed, result.answer)")).toBeLessThan(ipc.indexOf('result.answer = withOffer(routed, result.answer, savedHistory'))
-    expect(ipc.indexOf('result.answer = withoutSameDecisions(routed, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = shareReady(routed, result.answer)'))
-    expect(ipc.indexOf('result.answer = shareReady(routed, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = withOffer(routed, result.answer, savedHistory'))
+    expect(ipc.indexOf("result.answer = withoutSameDecisions(meant, result.answer)")).toBeGreaterThan(0)
+    expect(ipc.indexOf("result.answer = withoutSameDecisions(meant, result.answer)")).toBeLessThan(ipc.indexOf('result.answer = withOffer(meant, result.answer, savedHistory'))
+    expect(ipc.indexOf('result.answer = withoutSameDecisions(meant, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = shareReady(meant, result.answer)'))
+    expect(ipc.indexOf('result.answer = shareReady(meant, result.answer)')).toBeLessThan(ipc.indexOf('result.answer = withOffer(meant, result.answer, savedHistory'))
     const todo = '- 한서연: 온보딩 화면 시안 확정 (11/20)\n- 오태민: 결제 모듈 교체 일정 수립 (11/24)'
     const H4 = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
     expect(withOffer(H4, withoutSameDecisions(H4, todo), [], true)).toBe(`${todo}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
@@ -248,7 +248,7 @@ it('stack-6: "할 일만" gets the tasks only: the 미결 block and the lone hea
   // No 미결 block, or an ask that does not say "only": untouched (H3, D1).
   expect(onlyAsked(ask, tasks.join('\n'))).toBe(tasks.join('\n'))
   expect(onlyAsked('fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', shown)).toBe(shown)
-  expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = onlyAsked(routed, result.answer)")
+  expect(source('ipc.ts')).toContain("if (kind === 'note' && !result.asked) result.answer = onlyAsked(meant, result.answer)")
 })
 
 // stack-6: where c6c's host corrections may act, pinned on the merged tree (stack6-brief section 1).
@@ -258,6 +258,6 @@ it('stack-6: the repeat check is the quick voice\'s only, and the block correcti
   expect(first.slice(first.indexOf('export function firstLineNow'))).not.toContain('saidBefore')
   expect(source('aside-ipc.ts')).not.toMatch(/saidBefore|splitLine|fallbackLine/)
   // Never on a team result, a lookup or a document: each call hangs on the desk kind, which those turns do not have.
-  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked']) expect(ipc.split('\n').filter(line => line.includes(`${fix}(`) && !line.includes('import'))).toEqual([expect.stringContaining(`if (kind === 'note' && !result.asked) result.answer = ${fix}(routed, result.answer)`)])
+  for (const fix of ['withoutSameDecisions', 'shareReady', 'onlyAsked']) expect(ipc.split('\n').filter(line => line.includes(`${fix}(`) && !line.includes('import'))).toEqual([expect.stringContaining(`if (kind === 'note' && !result.asked) result.answer = ${fix}(meant, result.answer)`)])
   expect(ipc.split('\n').filter(line => line.includes('tidyCounts(') && !line.includes('import'))).toEqual([expect.stringContaining("if (kind === 'tidy' && !result.asked)")])
 })

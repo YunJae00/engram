@@ -76,7 +76,7 @@ describe('a question about a named file', () => {
     expect(deskKind(routed)).toBe('file')
     expect(deskKind('아 그거 말고 11월 걸로')).not.toBe('file')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
-    expect(ipc).toContain("kind === 'note' || kind === 'file' ? await namedText(routed, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(routed, path))")
+    expect(ipc).toContain("kind === 'note' || kind === 'file' ? await namedText(meant, { workspace: paths.workspace, closed: [paths.cache, paths.privateDir] }, path => namedBy(meant, path))")
   })
 
   it('hands the turn a small text file the person named inside the workspace, and nothing else', async () => {

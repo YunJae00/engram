@@ -37,31 +37,33 @@ const REMEMBER_TIMEOUT_MS = 120_000
 let remembering: Promise<unknown> = Promise.resolve()
 
 // c15c (cause D, D3: a memory call of the turn before ran next to the deck turn's start, 41 s to its first token; C5: 27 s to a teammate's
-// first token next to three of them): a person's turn that is starting - opened and not yet given its first token or tool - holds back
-// every memory call: none starts while one is starting, and one under way is cut and run again after it. Memory is best-effort.
-const starting = new Set<object>()
+// first token next to three of them): a person's turn holds back every memory call: none starts while one runs, and one under way is cut
+// and run again after it. Memory is best-effort.
+// c17b (cause W a, D2/D3: the hold ended at the turn's first token or tool, so the earlier turn's memory call ran again mid-turn, 32 s and
+// 43 s, next to the live steps): the hold now lasts the whole turn, from its start to its release.
+const running = new Set<object>()
 const opened = new Set<() => void>()
 let waiters: (() => void)[] = []
-/** A person's turn is starting; the returned function says it has its first token or tool (or ended). Idempotent. */
-export function turnStarting(): () => void {
+/** A person's turn is running; the returned function says it was released. Idempotent. */
+export function turnRunning(): () => void {
   const key = {}
-  starting.add(key)
+  running.add(key)
   for (const cut of opened) cut()
   return () => {
-    if (!starting.delete(key) || starting.size) return
+    if (!running.delete(key) || running.size) return
     const ready = waiters; waiters = []
     for (const go of ready) go()
   }
 }
-const noTurnStarting = (): Promise<void> => starting.size ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve()
-// shortcut: a memory call cut this many times by starting turns is dropped (its turn's facts are not kept); queue it for an idle moment if facts go missing.
+const noTurnRunning = (): Promise<void> => running.size ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve()
+// shortcut: a memory call cut this many times by turns is dropped (its turn's facts are not kept); queue it for an idle moment if facts go missing.
 export const MEMORY_YIELDS = 3
-/** Runs `call` once no person's turn is starting; a turn that starts while it runs cuts it, and it runs again later. Undefined when dropped. */
+/** Runs `call` once no person's turn is running; a turn that starts while it runs cuts it, and it runs again later. Undefined when dropped. */
 // stack-15 (c15c review): `asked` is a turn where the person asked to keep something and nothing kept it yet: it still yields, but is never
 // dropped, so a "기억해" fact is not lost to busy turns.
 export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal, asked = false): Promise<T | undefined> {
   for (let attempt = 0; asked || attempt < MEMORY_YIELDS; attempt++) {
-    await noTurnStarting()
+    await noTurnRunning()
     if (signal?.aborted) return undefined
     const cut = new AbortController(), stop = (): void => cut.abort()
     signal?.addEventListener('abort', stop, { once: true })
@@ -73,7 +75,7 @@ export async function yielding<T>(call: (signal: AbortSignal) => Promise<T>, sig
       if (signal?.aborted) return undefined
     } catch (err) { if (!cut.signal.aborted || signal?.aborted) throw err } finally { opened.delete(stop); signal?.removeEventListener('abort', stop) }
   }
-  flog('comet-memory', 'dropped: turns kept starting')
+  flog('comet-memory', 'dropped: turns kept running')
   return undefined
 }
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))

@@ -45,6 +45,11 @@ export interface SessionSpec {
 }
 
 const IDLE_MS = 60 * 60_000
+// c17b (cause W b, D2: a step streamed nothing for 121 s, no host tool ran, then went on): a step with no stream event (token, thinking,
+// tool call) for this long while no tool is open is cut and asked again once, on a fresh request in the same session, which keeps the tool
+// results it already has. stack16 log: a turn's first-token p90 was 19.2 s (61 calls, its tools included; the tail above is the stall turns), rounded up.
+export const STEP_IDLE_MS = 25_000
+const RETRY_STEP = 'Your last request got no reply in time and was cut. Carry on from exactly where you were: the tool calls already made have their results above, so do not make them again.'
 export const PRELOADED_TOOLS_MAX = 16
 
 function textOf(content: unknown): string {
@@ -73,14 +78,20 @@ interface Turn {
   onReset?: (dropDraft?: boolean, tool?: string) => void
   onContextReset?: () => void
   onUsage?: (tokens: number) => void
+  // c17b: tool calls opened and not yet answered (the idle clock stops while one is open), the clock, and whether the one retry was used.
+  calls: Set<string>
+  idle?: ReturnType<typeof setTimeout>
+  stalled?: boolean
+  retried?: boolean
 }
 
 // The pieces of a reply as the runtime writes it.
 interface PartialEvent {
   type?: string
   delta?: { type?: string; text?: string; thinking?: unknown; partial_json?: unknown }
-  content_block?: { type?: string; name?: string }
+  content_block?: { type?: string; name?: string; id?: string }
 }
+const blocks = (content: unknown): { type?: string; id?: string; tool_use_id?: string }[] => Array.isArray(content) ? content.filter(block => block && typeof block === 'object') : []
 
 export class WarmSession {
   private resetNative: () => void = () => {}
@@ -130,10 +141,13 @@ export class WarmSession {
           const turn = this.turn
           const started = performance.now()
           const gap = turn ? Math.round(started - turn.lastToolEnd) : 0
+          const open = `host:${started}:${Math.random()}`
+          turn?.calls.add(open); this.watch()
           const outcome = await (async () => {
             try { return tool ? await inTurnSlot(turn?.lease, () => tool.run(args as Record<string, unknown>)) : 'that tool is not available this turn' }
             finally {
               const ended = performance.now()
+              turn?.calls.delete(open); this.watch()
               if (turn) turn.lastToolEnd = ended
               flog('engine-tool-latency', `tool=${one.name} between_tools_ms=${gap} tool_ms=${Math.round(ended - started)}`)
             }
@@ -203,6 +217,7 @@ export class WarmSession {
         if (this.turn) {
           const tokens = this.usage(message)
           if (tokens) this.turn.onUsage?.(tokens)
+          this.track(message)
         }
         if (message.type === 'system') {
           const system = message as { subtype?: string; estimated_tokens_delta?: unknown }
@@ -237,6 +252,16 @@ export class WarmSession {
           continue
         }
         if (message.type !== 'result') continue
+        // c17b: the step cut for silence ended; it is asked again once, on a fresh request, and the turn goes on.
+        if (this.turn?.stalled && (message as { subtype?: string }).subtype !== 'success') {
+          this.turn.stalled = false
+          this.turn.retried = true
+          this.queue.push({ type: 'user', message: { role: 'user', content: RETRY_STEP }, parent_tool_use_id: null, session_id: '' })
+          this.wake?.()
+          this.wake = null
+          this.watch()
+          continue
+        }
         const result = message as Extract<SdkMessage, { type: 'result' }>
         const spoken = this.turn?.answer ?? ''
         if (result.is_error || (result.subtype !== 'success' && !spoken)) {
@@ -259,11 +284,33 @@ export class WarmSession {
 
   // c11b r2 (review #3): words before a tool call were the model working aloud ("Looking for the export figures first…"): they are moved
   // out of the answer, so a turn that says nothing after its last call has no answer rather than its note as one.
+  // c17b: every message the runtime sends is a sign of life; a tool call is open from its first block to its result.
+  private track(message: SdkMessage): void {
+    const turn = this.turn!
+    const event = message.type === 'stream_event' ? (message as { event?: PartialEvent }).event : undefined
+    if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') turn.calls.add(event.content_block.id ?? event.content_block.name ?? '')
+    if (message.type === 'assistant') for (const block of blocks((message as { message: { content: unknown } }).message.content)) if (block.type === 'tool_use' && block.id) turn.calls.add(block.id)
+    if (message.type === 'user') for (const block of blocks((message as { message?: { content?: unknown } }).message?.content)) if (block.type === 'tool_result' && block.tool_use_id) turn.calls.delete(block.tool_use_id)
+    this.watch()
+  }
+  private watch(): void {
+    const turn = this.turn
+    if (!turn) return
+    clearTimeout(turn.idle)
+    turn.idle = turn.calls.size || turn.retried || turn.stalled ? undefined : setTimeout(() => {
+      if (this.turn !== turn || turn.calls.size) return
+      turn.stalled = true
+      flog('engine-stall', JSON.stringify({ idle_ms: STEP_IDLE_MS, turn_ms: Math.round(performance.now() - turn.startedAt) }))
+      void this.query?.interrupt().catch(() => undefined)
+    }, STEP_IDLE_MS)
+  }
+
   private noteBeforeCall(): void { if (this.turn?.answer) { this.turn.note = this.turn.answer; this.turn.answer = '' } }
   private finish(result: ToolSessionResult): void {
     const turn = this.turn
     if (!turn) return
     this.turn = null
+    clearTimeout(turn.idle)
     this.native = undefined
     this.resetNative()
     turn.detachAbort()
@@ -292,13 +339,14 @@ export class WarmSession {
       }
       const onAbort = (): void => cut('canceled')
       const now = performance.now()
-      const turn: Turn = { lease: currentLease(), resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
+      const turn: Turn = { calls: new Set(), lease: currentLease(), resolve, answer: '', detachAbort: () => job.signal?.removeEventListener('abort', onAbort), startedAt: now, lastToolEnd: now, firstTool: false, ...(job.onToken ? { onToken: job.onToken } : {}), ...(job.onProgress ? { onProgress: job.onProgress } : {}), ...(job.onReset ? { onReset: job.onReset } : {}), ...(job.onContextReset ? { onContextReset: job.onContextReset } : {}) }
       this.turn = turn
       turn.onUsage = job.onUsage
       job.signal?.addEventListener('abort', onAbort, { once: true })
       this.queue.push({ type: 'user', message: { role: 'user', content }, parent_tool_use_id: null, session_id: '' })
       this.wake?.()
       this.wake = null
+      this.watch()
     })
   }
 

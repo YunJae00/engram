@@ -405,7 +405,7 @@ it('c7 T2: after a mid-work scope change the results held for the old words are 
   // The host search is the lone lookup's only, never a correction's (its route is the ask before it) nor a team ask's.
   expect(ipc).toContain("let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(routed, lookup.signal()) : undefined")
   expect(ipc).toContain("const found = await firstSearch(ask, laneSearch, within)")
-  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, firstSaid]")
+  expect(ipc).toContain("permission === 'plan' ? PLAN_RULE : '', laneNote, searched?.opening, deskNote, changedNote, firstSaid]")
   expect(ipc).toContain("if (solo) answer = await heldAnswer(answer, { ask: asks.join('\\n'), held: heldFor(laneRead, laneSaid), korean,")
   expect(ipc.indexOf('answer = await heldAnswer(answer')).toBeLessThan(ipc.indexOf('answer = await liveCited(answer'))
 })
