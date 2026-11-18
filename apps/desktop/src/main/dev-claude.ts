@@ -72,7 +72,6 @@ export class DevClaude {
       settingSources: this.session.mode === 'full-access' && this.session.loadProjectSettings ? ['user', 'project', 'local'] : [], strictMcpConfig: !(this.session.mode === 'full-access' && this.session.loadProjectSettings), permissionMode: 'default',
       ...(this.session.model ? { model: this.session.model } : {}), ...(this.session.effort ? { effort: this.session.effort } : {}),
       ...(this.session.runtimeId ? { resume: this.session.runtimeId, forkSession: fork } : {}),
-      // Human approval must outlive the SDK's hook deadline.
       hooks: { PreToolUse: [{ hooks: [async (_raw: Data, _id: string, options: { signal: AbortSignal }) => ({
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: this.closed || this.abort.signal.aborted || options.signal.aborted ? 'deny' : 'ask' },
       })] }] },
@@ -189,7 +188,6 @@ export class DevClaude {
         const timer = setTimeout(() => this.abort.abort(), 5000)
         try { await this.query?.interrupt() }
         catch (error) {
-          // A closed query cannot acknowledge interruption; owned processes are still reaped below.
           if (!(error instanceof Error) || !/Query closed before response received/.test(error.message)) throw error
         }
         finally { clearTimeout(timer); this.abort.abort(); this.updates.finished() }

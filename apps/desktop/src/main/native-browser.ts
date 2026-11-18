@@ -111,8 +111,6 @@ export async function openNativeBrowser(): Promise<BrowserContext> {
   running = helper
   try {
     await helper.ready
-    // NewWindow replaces a WebView target that initially reports as "other".
-    // Attach before that transition so popup pages keep their automation session.
     process.env['PW_CHROMIUM_ATTACH_TO_OTHER'] = '1'
     const { chromium } = await import('playwright-core')
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: 15000 })
@@ -169,7 +167,6 @@ export class NativeBrowser {
       child.once('error', fail)
       child.stdin.on('error', fail)
       child.once('exit', () => fail(new Error('Embedded browser exited')))
-      // Drain diagnostics without storing page addresses or profile contents.
       child.stderr.resume()
       createInterface({ input: child.stdout }).on('line', (line) => {
         if (line.length > 32768) return
@@ -207,7 +204,6 @@ export class NativeBrowser {
   close(): Promise<void> {
     if (this.ending) return this.ending
     this.ending = (async () => {
-      // A stalled CDP disconnect must not prevent the host from receiving EOF.
       void this.browser?.close().catch(() => undefined)
       this.child.stdin.end()
       let timer: ReturnType<typeof setTimeout> | undefined

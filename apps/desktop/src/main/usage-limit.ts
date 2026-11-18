@@ -1,7 +1,5 @@
 import { parseRetryAfterMs } from 'core'
 
-// How long until Claude's limit resets, from its own error text when it says:
-// "usage limit reached|<epoch>", "resets 3pm", "retry after 120", "resets at <epoch>".
 export function claudeRetryAfterMs(text: string, now = Date.now()): number | undefined {
   const generic = parseRetryAfterMs(text, now)
   if (generic && generic > 0) return generic
@@ -15,8 +13,6 @@ export function claudeRetryAfterMs(text: string, now = Date.now()): number | und
   return at.getTime() - now
 }
 
-// What the person reads when Claude is at its usage limit: when it can pick up
-// again, in their language. No other engine takes over.
 export function usageLimitMessage(korean: boolean, until?: number, now = Date.now()): string {
   const at = until && until > now ? new Date(until) : undefined
   if (korean) {
@@ -30,7 +26,6 @@ export function usageLimitMessage(korean: boolean, until?: number, now = Date.no
   return `AI usage limit reached. I can pick this up again around ${clock}.`
 }
 
-// The thread's language: the latest message when it has letters, else the recent thread.
 export function threadKorean(message: string, history: { text: string }[]): boolean {
   if (/[가-힣]/.test(message)) return true
   if (/[A-Za-z]/.test(message)) return false

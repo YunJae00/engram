@@ -37,7 +37,6 @@ export class DevOutbox {
     if (this.draining.has(session.id) || !this.store.data.preferences.enabled || session.state !== 'idle' || session.outbox?.[0]?.state !== 'queued') return
     const pending = this.drain(session).catch(() => { pauseOutbox(session); this.changed(session) }).finally(() => {
       this.draining.delete(session.id)
-      // A turn may finish while its dispatch is still being persisted.
       this.schedule(session)
     })
     this.draining.set(session.id, pending)
@@ -50,7 +49,6 @@ export class DevOutbox {
         message.state = 'sending'; this.changed(session)
         try {
           await this.store.save()
-          // Stop/disable may happen while the durable dispatch marker is being saved.
           if (!this.store.data.preferences.enabled || session.state !== 'idle' || message.state !== 'sending') { message.state = 'paused'; break }
           await this.send(session.id, message.text)
           session.outbox = session.outbox!.filter(value => value !== message)

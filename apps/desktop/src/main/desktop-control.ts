@@ -120,7 +120,6 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     flog('desktop-foreground', JSON.stringify({ lane, tool: 'openApp', app, before, after, restored: false, changed: false, alreadyOpen: true, hiddenMs: 0, cycles: 0, windowVerified: true }))
     return JSON.stringify({ alreadyOpen: true, opened: false, window: binding.window, pid: binding.pid, title: binding.name, windowVerified: true, foregroundChanged: false, foregroundRestored: false, hiddenMs: 0, cycles: 0, hint: 'The app was already open; it was not launched again. Read it with app_read.' })
   } catch (error) {
-    // Already open at a sign-in window: show it to the person rather than fail the call.
     const waiting = await alreadyOpenSignIn(lane, app, error)
     signal?.throwIfAborted(); if (epoch !== cancellation) throw stoppedError(lane)
     if (waiting) return waiting
@@ -140,7 +139,6 @@ export async function openDesktopApp(lane: string, app: string, signal?: AbortSi
     if (result?.hidden && !result.hiddenFallback && result.pid) { keepHiddenHost = true; rememberHiddenApp(lane, result.pid, host) }
     signal?.throwIfAborted()
     if (epoch !== cancellation) throw stoppedError(lane)
-    // Only a launch that is still in front needs the next read to restore; the guard already handled the rest, and a window the person raised stays theirs.
     if (result?.opened && result.foregroundChanged && !result.foregroundRestored) rememberOpenedForeground(lane, result)
     if (result?.opened && result.pid) rememberLaunchedApp(lane, result.pid)
     let signIn: SignIn | undefined

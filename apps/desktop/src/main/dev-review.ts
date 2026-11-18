@@ -43,7 +43,6 @@ async function undoReview(cwd: string, review: DevFileReview, fingerprint: strin
   if (await readFile(preview.path, 'utf8') !== review.after) throw new Error('The file changed before writing. Nothing was discarded.')
   const pending = `${preview.path}.${randomUUID()}.review`
   await writeFile(pending, content, { flag: 'wx', mode: info.mode })
-  // Keep the recovery file if replacement fails; never discard the only copy.
   await rename(pending, preview.path)
   const next = { ...review, after: content, fingerprint: createHash('sha256').update(review.before).update('\0').update(content).digest('hex'), hunks: changeHunks(review.before, content) }
   return { review: next, backup }

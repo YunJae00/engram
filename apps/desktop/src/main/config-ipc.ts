@@ -14,11 +14,6 @@ import { aiSelection } from './ai-selection.js'
 import { deskSettingChanged, workMapSettingChanged } from './work-map-job.js'
 import { checkAISelection } from './check-ai.js'
 
-// Settings are app-level, not vault-level — the onboarding and quick-capture
-// windows read them (language, shortcut) before any vault is booted, so these
-// handlers must exist from registerBaseIpc, not from bootVault.
-// Choosing another brain must reach the engine list at once, not at the
-// next scheduled detection; the vault owner installs this when it is up.
 let onBrainChoice: (() => void | Promise<void>) | null = null
 export function setBrainChoiceHook(hook: () => void | Promise<void>): void {
   onBrainChoice = hook
@@ -68,8 +63,6 @@ export function registerSettingsIpc(): void {
     }))
     if (settings.theme !== undefined) nativeTheme.themeSource = saved.theme
     if (settings.autoStart !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: saved.autoStart })
-    // Watch folders / shortcut / schedule re-arm on next launch (kept simple).
-    // Live surfaces (the agent terminal's colours) restyle immediately.
     broadcast({ type: 'settings:changed', settings: saved })
     if (settings.workMap === true && !held.workMap) workMapSettingChanged(true)
     if ((settings.workFiles === true && !held.workFiles) || (settings.workApps === true && !held.workApps)) deskSettingChanged()
@@ -114,7 +107,6 @@ export function registerConfigIpc(ctx: VaultContext): void {
   })
 }
 
-// The logs a person hands to whoever is helping them, written as one new folder inside `into`.
 export async function writeLogs(ctx: VaultContext, into: string): Promise<string> {
     const target = join(into, `engram-logs-${Date.now()}`)
     await mkdir(target, { recursive: true })

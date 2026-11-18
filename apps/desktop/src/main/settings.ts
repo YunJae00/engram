@@ -10,37 +10,18 @@ export interface AppSettings {
   codexEffort?: import('core').ReasoningEffort
   theme: 'system' | 'light' | 'dark'
   uiLanguage: 'system' | 'ko' | 'en'
-  // Which brain answers: the one on this disk, or one of the two the person
-  // signed in to. Chosen once, never switched behind their back.
   defaultEngine: 'claude' | 'codex'
-  autoStart: boolean // ⑦
-  teamSync: 'auto' | 'manual' // ⑧ — surfaced in the GitHub backup dialog
-  // The address the person searches with, with {q} where the words go. Empty
-  // until they say: naming engines in code fixes the answer for everyone and
-  // can never learn a company's own search.
+  autoStart: boolean
+  teamSync: 'auto' | 'manual'
   searchTemplate: string
-  // Which installed browser the agent drives. Empty until the person says:
-  // where several are installed, picking one for them is picking their
-  // working day for them.
   agentBrowser: string
-  // Which model each brain answers with, by the names the runtimes take -
-  // an alias like "opus" for Claude, a model id for ChatGPT. Empty means
-  // the runtime's own default, which follows the person's plan.
   claudeModel: string
   codexModel: string
-  // Apps are always within reach: reading needs no permission, and anything
-  // that cannot be taken back is asked about where it happens.
   computerUse: boolean
-  // Learn where the person works from their browser history and bookmarks,
-  // once a day. Opt-in: offered at onboarding and in Settings.
   workMap: boolean
-  // The files opened and apps used on this computer, by name. Each opt-in.
   workFiles: boolean
   workApps: boolean
-  // The runtime's own file, search and shell tools for comets, governed by Engram.
   nativeTools: boolean
-  // Apps the person keeps out of Engram's reach: not recorded, not learned
-  // from, not worked in. By process name, with the name the app shows.
   appsOff: { app: string; label: string }[]
 }
 
@@ -49,7 +30,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   uiLanguage: 'system',
   defaultEngine: 'claude',
-  // On unless the person says otherwise in chat ("컴퓨터 켜면 자동으로 실행 꺼줘"): standing duties need the app running.
   autoStart: true,
   teamSync: 'auto',
   searchTemplate: '',
@@ -73,7 +53,6 @@ async function readSettings(): Promise<AppSettings> {
     const raw = JSON.parse(await readFile(settingsPath(), 'utf8')) as Partial<AppSettings> & { recordTasks?: unknown }
     delete raw.recordTasks
     const merged = { ...DEFAULT_SETTINGS, ...raw }
-    // In-app work runs on Claude only; an old 'codex' choice reads as Claude.
     merged.defaultEngine = 'claude'
     merged.computerUse = true
     merged.workMap = merged.workMap === true
@@ -85,7 +64,6 @@ async function readSettings(): Promise<AppSettings> {
       /^(filing|cosmos|panel|bot-[a-zA-Z0-9_-]{1,100})$/.test(scope) && value && ['claude', 'codex'].includes(value.engine) && typeof value.model === 'string' && value.model.length <= 200))
     if (!['system', 'light', 'dark'].includes(merged.theme)) merged.theme = 'system'
     if (!['system', 'ko', 'en'].includes(merged.uiLanguage)) merged.uiLanguage = 'system'
-    // Effort has no control left, so a stored one must not keep throttling chat.
     for (const selection of Object.values(merged.aiSelections)) { selection.engine = 'claude'; delete selection.effort }
     delete merged.claudeEffort
     delete merged.codexEffort

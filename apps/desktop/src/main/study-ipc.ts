@@ -8,20 +8,14 @@ import { afterChecks, offeredIn, studying } from './turn-state.js'
 
 interface StudyIpcDeps {
   paths: VaultPaths
-  // A turn is running, or a task is still finishing, in this conversation.
   busy(channel: string): boolean
-  // Runs a turn the person did not type - a study, one more pass - quietly in the conversation.
   sendQuiet(request: ChatRequestDto): Promise<void>
-  // Stops whatever runs in the conversation.
   stop(channel: string): void
 }
 
 export function registerStudyIpc(deps: StudyIpcDeps) {
   ipcMain.removeHandler('study:list')
   ipcMain.removeHandler('study:answer')
-  // A job not known is offered as a study; agreed, it runs as a turn of its
-  // own in the same conversation, reading only, and comes back as a how-to.
-  // Writing on instead of answering the card is moving on: the offer goes.
   const setOffersAside = async (botId: string): Promise<void> => {
     await dismissStudyOffers(deps.paths, botId, afterChecks)
     broadcast({ type: 'study:changed', botId })
@@ -54,7 +48,6 @@ export function registerStudyIpc(deps: StudyIpcDeps) {
         .then(() => 'declined' as const, (error: unknown) => { flog('study', error); return 'offered' as const })
         .then(async (after) => {
           studying.delete(channel)
-          // A study that finished without findings has said where it stopped; one cut short can be offered again.
           await changeStudies(deps.paths, list => list.map(one => one.id === study.id && one.state === 'studying' ? { ...one, state: after } : one)).catch(() => undefined)
           broadcast({ type: 'study:changed', botId: study.botId })
         })

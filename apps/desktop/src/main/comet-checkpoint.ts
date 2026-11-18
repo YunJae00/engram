@@ -28,15 +28,10 @@ async function read(file: string): Promise<Checkpoint> {
     const returned = Array.isArray(data.returned) ? data.returned.filter((text): text is string => typeof text === 'string') : []
     return { ...(typeof data.context === 'string' ? { context: data.context } : {}), pending: [...new Set([...pending, ...returned])] }
   } catch (error) {
-    // A damaged checkpoint (an older build redacted the serialized text and
-    // could break its JSON) must not stop the chat for good: it is only a
-    // resume hint, so start over from the saved history and rewrite it on the next change.
     flog('checkpoint', `unreadable checkpoint ignored: ${(error as Error).name}`)
     return { pending: [] }
   }
 }
-// The resume context is itself a serialized record (resumeCheckpoint): it is
-// cleaned as data and serialized again, so it stays valid JSON too.
 function recordIn(context: string | undefined): object | undefined {
   if (context === undefined) return undefined
   try { const parsed: unknown = JSON.parse(context); return parsed !== null && typeof parsed === 'object' ? parsed : undefined } catch { return undefined }
@@ -52,9 +47,6 @@ export function changeCheckpoint(paths: VaultPaths, id: string, change: (state: 
     const next = change(await read(file))
     await mkdir(join(paths.cache, 'checkpoints'), { recursive: true })
     const scratch = `${file}.${process.pid}.tmp`
-    // Only the stored texts are cleaned; the checkpoint's own field names stay as they are.
-    // The context's decoded texts join the source: a value labelled inside it is spelled with
-    // escapes in the serialized text, and the pending messages are cleaned of it too.
     const record = recordIn(next.context)
     const source = [next.context ?? '', ...(record ? textsIn(record) : []), ...next.pending].join('\n')
     const clean: Checkpoint = { ...(next.context !== undefined ? { context: cleanContext(next.context, source) } : {}), pending: withoutSecretsIn(next.pending, source) }

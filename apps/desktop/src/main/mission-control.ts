@@ -8,8 +8,6 @@ import { isNativePage } from './native-browser.js'
 
 const pending = new Map<Page, Promise<MissionFrameDto>>()
 
-// Monitoring never changes the active lane or the page viewport. A slow
-// capture has one owner even when a view is reopened before it finishes.
 export async function missionFrames(requested: string[]): Promise<MissionFrameDto[]> {
   const lanes = [...new Set(requested.filter((lane) => typeof lane === 'string' && lane.startsWith('bot-')))].slice(0, 4)
   return Promise.all(lanes.map(async (lane) => {
@@ -76,7 +74,6 @@ function reconcile(): void {
   if (!watched.length) { clearInterval(heartbeat); heartbeat = undefined }
 }
 
-// A renewable lease also tears down encoders after a renderer crash/reload.
 export function watchMission(lanes: string[]): void {
   watched = [...new Set(lanes.filter((lane) => typeof lane === 'string' && lane.startsWith('bot-')))].slice(0, 4)
   expires = Date.now() + 12000

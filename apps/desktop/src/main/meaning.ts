@@ -1,16 +1,11 @@
 import { relevantSkillCards, type SkillCard, type SkillsLedger } from 'core'
 import { embedLive } from './semantic.js'
 
-// Matching by meaning, for asks put in other words or another language than
-// the work they resemble. It uses the embedder only while it is already up,
-// so a turn never waits for the model to load; word matching stays the floor.
-
 const unit = (vector: Float32Array): Float32Array => {
   const length = Math.hypot(...vector) || 1
   return vector.map(value => value / length)
 }
 
-// How close in meaning each candidate is to the text, from -1 to 1; null when the embedder is not up.
 export async function meaningScores(text: string, candidates: string[]): Promise<number[] | null> {
   if (!text.trim() || !candidates.length) return null
   const vectors = await embedLive([text, ...candidates])
@@ -19,7 +14,6 @@ export async function meaningScores(text: string, candidates: string[]): Promise
   return rest.map(vector => vector.reduce((sum, value, index) => sum + value * first![index]!, 0))
 }
 
-// A how-to close in meaning is a hint worth offering even when no word matches.
 const SKILL_MEANING = 0.6
 const SHORTLIST = 5
 

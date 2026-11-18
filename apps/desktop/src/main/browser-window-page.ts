@@ -1,7 +1,5 @@
 import type { BrowserContext, Page } from 'playwright-core'
 
-// Separate top-level surfaces keep visible lanes painting independently.
-// They still share the same browser context, profile and session cookies.
 export async function createWindowPage(context: BrowserContext, size: { width: number; height: number }): Promise<Page> {
   const existing = context.pages().find((page) => !page.isClosed())
   if (!existing) return context.newPage()
@@ -11,7 +9,6 @@ export async function createWindowPage(context: BrowserContext, size: { width: n
   let resolvePage!: (page: Page) => void
   let rejectPage!: (error: Error) => void
   const ready = new Promise<Page>((resolve, reject) => { resolvePage = resolve; rejectPage = reject })
-  // Attach the rejection handler before either the target or the page arrives.
   void ready.catch(() => undefined)
   const inspect = async (page: Page) => {
     candidates.add(page)
@@ -22,7 +19,6 @@ export async function createWindowPage(context: BrowserContext, size: { width: n
       const { targetInfo } = await session.send('Target.getTargetInfo')
       if (targetInfo.targetId === targetId) resolvePage(page)
     } catch {
-      // A popup that closes before inspection cannot be the usable target.
     } finally { await session.detach().catch(() => undefined) }
   }
   const arrived = (page: Page) => { void inspect(page) }

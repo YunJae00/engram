@@ -1,11 +1,6 @@
 import { z, type ZodTypeAny } from 'zod'
 import type { ToolSessionCall } from 'core'
 
-// The comet's tools, in the shape the Claude runtime takes them: a name,
-// a description and a schema it can validate against. The loop's tools
-// describe their arguments as plain JSON schema; the runtime wants zod, so
-// the few shapes the tools actually use are translated here.
-
 interface JsonSchema {
   description?: string
   type?: string
@@ -78,7 +73,6 @@ export function shapeOf(schema: object): Record<string, ZodTypeAny> {
 
 export const TOOL_SERVER = 'engram'
 
-// Discovery loads deferred schemas; execution stays scoped to the offered tools.
 export function allowedToolNames(tools: ToolSessionCall[]): string[] {
   return [...(tools.length ? ['ToolSearch'] : []), ...tools.map((tool) => `mcp__${TOOL_SERVER}__${tool.name}`)]
 }

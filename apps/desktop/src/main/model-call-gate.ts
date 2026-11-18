@@ -4,7 +4,6 @@ import { currentModelCallContext, withModelCallContext } from './model-call-metr
 
 const scopes = new AsyncLocalStorage<Map<string, () => void>>()
 const engines = new Map<string, { tasks: number; idleAt: number }>()
-// A hold that lands after its task finished would never be released, so it is ignored.
 const finished = new WeakSet<Map<string, () => void>>()
 export const MODEL_IDLE_MS = 30_000
 
@@ -72,7 +71,6 @@ export function gateModelCalls<T extends Engine>(engine: T): T {
     finally { release() }
   }
   const quick = engine.quick?.bind(engine)
-  // Asides answer words said while a comet works, so they never wait for the engine to go idle.
   if (quick) engine.quick = (prompt, options) => withModelCallContext({ channel: currentModelCallContext()?.channel ?? 'aside', purpose: 'aside' }, () => quick(prompt, options))
   return engine
 }

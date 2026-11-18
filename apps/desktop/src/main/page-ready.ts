@@ -21,13 +21,9 @@ export async function readWhenReady(page: Page, read: (signal?: AbortSignal) => 
   }
 }
 
-// Fewer words than this, beside the page's own buttons, is often only the
-// frame an app draws before its content.
 const THIN_CHARS = 200
-// A page that fetched nothing new for this long has stopped building.
 const QUIET_MS = 1_500
 
-// How many of its own parts the page has fetched from its own host so far.
 const ownParts = (page: Page): Promise<number> =>
   Promise.resolve().then(() => page.evaluate(() => performance.getEntriesByType('resource').filter((entry) => {
     try { return new URL(entry.name).host === location.host } catch { return false }
@@ -35,12 +31,7 @@ const ownParts = (page: Page): Promise<number> =>
 
 async function readUntilReady(page: Page, read: (signal?: AbortSignal) => Promise<WebPage>, signal?: AbortSignal): Promise<WebPage> {
   const started = Date.now()
-  // A page still fetching its own parts is still being built: an app shell
-  // draws nothing until they arrive, and on a slow network that runs past
-  // the first wait. Waiting goes on while they keep coming, up to the last.
   const deadline = started + 12_000, last = started + 30_000
-  // Each poll is a full multi-frame read; back off so a slow page costs a
-  // handful of reads rather than thirty.
   let wait = 400, parts = -1, grew = started
   while (true) {
     if (signal?.aborted) throw new Error('stopped')
@@ -55,7 +46,6 @@ async function readUntilReady(page: Page, read: (signal?: AbortSignal) => Promis
     parts = await ownParts(page)
     const building = before >= 0 && parts > before
     if (building) grew = Date.now()
-    // A thin read stands once the page has stopped fetching its parts.
     if (thin && (parts < 0 || Date.now() - grew >= QUIET_MS || Date.now() >= last)) return result
     if (!thin && Date.now() >= (building ? last : deadline)) {
       throw new Error('The page has not exposed readable content after waiting. Use look to inspect the rendered page and verify its address. Do not infer that it is empty, that login is required, or that the requested information is absent.')

@@ -12,16 +12,7 @@ import { fetchPlainPage, tabOrPlain } from './plain-page.js'
 
 const SLOW_OPEN_MS = 5_000
 
-// What a comet is given when it can reach the web: one browser, one reused
-// tab, and the hands that move around a page without committing anything.
-// It knows nothing at all about search engines - where to go is the caller's
-// judgement, which is what lets it be sent somewhere new.
-
-// A hand on a page answers within a budget, or answers that it did not: a
-// page that swallows a click must not swallow the turn with it.
 const HAND_BUDGET_MS = 45_000
-// A person deciding whether a press may go is not the page being slow: while
-// `held` hands back their pending answer, the budget waits for it and starts over.
 function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: () => Promise<unknown> | null): Promise<PageMove> {
   if (awaitCompletion) return work
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -40,7 +31,6 @@ function withinBudget(work: Promise<PageMove>, awaitCompletion = false, held?: (
   }).finally(() => { settled = true; clearTimeout(timer) })
 }
 
-// Changes to one conversation's site take turns without blocking other chats.
 const hostTurns = new Map<string, Promise<unknown>>()
 async function inTurnOn(lane: string, url: string, work: () => Promise<PageMove>, signal?: AbortSignal): Promise<PageMove> {
   signal?.throwIfAborted()
@@ -68,13 +58,6 @@ async function inTurnOn(lane: string, url: string, work: () => Promise<PageMove>
   finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel) }
 }
 
-// One browser, one tab per lane. It knows how to open, read, type and click
-// - and nothing at all about search engines: where to go is the caller's
-// judgement, which is what lets it be sent somewhere new.
-// A colleague whose page you have just put your hands on does not keep
-// pressing things under them. Every hand below first waits for the person's
-// hands to have been still for a moment - reading never waits - and says
-// so once on the way in and once on the way back.
 const HANDS_STILL_MS = 4_000
 const ASIDE_AT_MOST_MS = 5 * 60_000
 
@@ -96,7 +79,6 @@ export function agentCourier(
   const lane = deps.lane ?? DEFAULT_LANE
   const ensurePage = () => ensureAgentPage(lane)
   const aside = (signal?: AbortSignal) => stepAside(lane, signal, deps.onAside)
-  // The controls of the last reading of each page, so the next reading can mark what is new.
   let seen: { at: string; names: Set<string> } | null = null
   const placeOf = (url: string) => { try { const parsed = new URL(url); return parsed.origin + parsed.pathname } catch { return url } }
   const markReading = (read: WebPage): WebPage => {
@@ -135,8 +117,6 @@ export function agentCourier(
       await aside(signal)
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      // The press is bounded like every hand, except while the person is
-      // answering whether it may go.
       let asking: Promise<unknown> | null = null
       const held: typeof ask = ask && Object.assign((what: Parameters<typeof ask>[0]) => { const answer = ask(what); asking = answer; return answer.finally(() => { asking = null }) }, ask.reading ? { reading: ask.reading } : {})
       return inTurnOn(lane, page.url(), () => withinBudget(pressOn(page, target, signal, held), deps.awaitCompletion, () => asking), signal)
@@ -186,19 +166,12 @@ export function agentCourier(
     async look(signal) {
       const page = await withAbort(ensurePage(), signal)
       armIdleClose()
-      // The visible part only, so a point on the picture is a point on the
-      // page: the fractions a press is given mean the same thing to both.
-      // The fields the page declares secret are covered for the picture,
-      // and the picture is the one thing here that leaves for a brain, so
-      // it is written down: where, and how many fields were covered.
       const masked = await maskSecrets(page).catch(() => null)
       const shot = await withAbort(page.screenshot({ type: 'jpeg', quality: 60, scale: 'css', fullPage: false }), signal).catch(() => null)
       await masked?.uncover().catch(() => undefined)
       if (shot) deps.onLook?.(page.url(), masked?.covered ?? 0)
       return shot ? { data: shot.toString('base64'), mimeType: 'image/jpeg' } : null
     },
-    // net.fetch with a manual redirect throws instead of answering with the
-    // redirect, so the request is stopped at its first hop and read there.
     followRedirect(url, signal) {
       return new Promise((resolve) => {
         if (signal?.aborted) { resolve(null); return }
@@ -213,13 +186,10 @@ export function agentCourier(
       })
     },
     async fetchPage(url, signal) {
-      // No room for another tab: a read still answers, from a plain fetch, or after its turn in line for a tab.
       const got = await withAbort(tabOrPlain(ensurePage, /^https?:\/\//i.test(url) ? () => fetchPlainPage(url, signal, (to, init) => net.fetch(to, init)) : undefined, signal), signal)
       if ('read' in got) { flog('browser', `read without a tab: ${new URL(url).host}`); return got.read }
       const page = got.tab
       armIdleClose()
-      // A slow open is logged with where the time went: a page can answer at once and still
-      // hold its loaded event behind a third-party script that never responds.
       const started = performance.now()
       const response = await withAbort(page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }), signal)
       const status = response?.status() ?? 0

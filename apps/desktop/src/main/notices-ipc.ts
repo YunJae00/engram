@@ -5,8 +5,6 @@ import { broadcast } from './engine-health.js'
 import type { VaultContext } from './vault.js'
 import { openHabit } from './habits-ipc.js'
 
-// The bell: what Engram brought on its own, and what is set to run later.
-
 async function scheduledTasks(paths: VaultPaths): Promise<ScheduledDto[]> {
   return (await loadBots(paths)).flatMap(bot => (bot.tasks ?? [])
     .filter(task => task.schedule && !task.routineId)
@@ -27,7 +25,6 @@ const dto = (item: NoticeItem): NoticesDto['items'][number] => ({ id: item.id, k
 export function registerNoticesIpc(ctx: VaultContext): void {
   const list = async (): Promise<NoticesDto> => ({ items: (await readNotices(ctx.paths)).map(dto), scheduled: await scheduledTasks(ctx.paths) })
   ipcMain.handle('notices:list', list)
-  // Opening an item reads it and gives the conversation to show.
   ipcMain.handle('notices:open', async (_event, id: unknown): Promise<string> => {
     const item = (await readNotices(ctx.paths)).find(one => one.id === id)
     if (!item) throw new Error('That notification is gone.')

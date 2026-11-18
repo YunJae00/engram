@@ -9,22 +9,15 @@ import { showWorkPreview } from './work-preview.js'
 import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 
-// Background input targets the app process. A mutation waits
-// while the person uses the target app; providers may still activate themselves.
 const STILL_MS = 4_000
 const WAIT_AT_MOST_MS = 60_000
 const WAIT_POLL_MS = 500
 const SETTLE_AT_MOST_MS = 180_000
 const SETTLE_POLL_MS = 1_000
-// Windows the quiet lane has read with controls in them, per chat: the hands
-// tools are turned away from these, since the person would lose the mouse for
-// nothing the providers could not do.
 const COVERED_MS = 15 * 60_000
 type Coverage = { title: string; aliases?: string[]; at: number; verdict: 'covered' | 'bare'; truncated?: boolean; searched?: boolean }
 const covered = new Map<string, Map<string, Coverage>>()
 
-// What the quiet lane last found in a window: 'covered' when it exposed controls (the hands tools stay away),
-// 'bare' when it exposed none or a provider refused to act (the hands tools may step in), 'unknown' before any read.
 export function quietVerdict(lane: string, app?: string): { verdict: 'covered' | 'bare' | 'unknown'; title?: string; truncated?: boolean; searched?: boolean } {
   const windows = covered.get(lane)
   if (!windows) return { verdict: 'unknown' }
@@ -38,11 +31,9 @@ export function quietVerdict(lane: string, app?: string): { verdict: 'covered' |
 function remember(lane: string, binding: DesktopBinding, verdict: 'covered' | 'bare', result: QuietObservationDto, find?: string, full = true): void {
   const windows = covered.get(lane) ?? new Map<string, Coverage>()
   const previous = windows.get(binding.window)
-  // Only a full read judges coverage; a narrowed read with no match must not hand the window to the hands tools.
   windows.set(binding.window, { title: binding.name, aliases: binding.aliases, at: Date.now(), verdict: full || !previous ? verdict : previous.verdict, truncated: result.truncated, searched: previous?.searched === true || (!!find && result.searchComplete === true) })
   covered.set(lane, windows)
 }
-// A provider that offers a control but will not act on it hands the window to the hands tools.
 export function forgetQuietCoverage(lane?: string): void { if (lane) covered.delete(lane); else covered.clear() }
 
 const pause = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
@@ -55,7 +46,6 @@ const pause = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((
 async function windowFor(lane: string, app: string, signal?: AbortSignal): Promise<DesktopBinding> {
   signal?.throwIfAborted()
   assertDesktopTurnNotStopped(lane)
-  // The window bound for this chat is kept while its title still matches: listing windows again costs up to seconds and re-selects every window.
   const current = desktopBinding(lane)
   const binding = current && current.readable && !current.stopped && !current.host.closed && (current.source === app.trim() || appNameMatch(current, app, true)) ? current : await bindDesktopForLane(lane, { app })
   signal?.throwIfAborted()
@@ -96,7 +86,6 @@ async function personBusyIn(binding: DesktopBinding, signal?: AbortSignal): Prom
   return state.foreground && state.idleMs < STILL_MS
 }
 
-// Wait for the person to leave the app alone before changing anything in it.
 export async function awaitPersonAway(binding: DesktopBinding, signal?: AbortSignal): Promise<void> {
   const until = Date.now() + WAIT_AT_MOST_MS
   let waited = false
@@ -108,7 +97,6 @@ export async function awaitPersonAway(binding: DesktopBinding, signal?: AbortSig
   if (waited) flog('desktop-quiet', `waited for the person to leave ${binding.name}`)
 }
 
-// Control names by snapshot, so an action can be judged by what it pressed.
 const NAMED_SNAPSHOTS = 12
 const named = new Map<string, QuietObservationDto>()
 export function quietSnapshot(snapshot: string): QuietObservationDto | undefined { return named.get(snapshot) }
@@ -118,7 +106,6 @@ export async function quietScan(lane: string, app: string, find: string | undefi
   const binding = await refreshHiddenApp(await windowFor(lane, app, signal))
   const result = await request<QuietObservationDto>(binding, 'quietScan', { ...options, ...(find ? { find } : {}) }, signal)
   signal?.throwIfAborted()
-  // Window chrome does not establish access to the app's working area.
   const chrome = /^(close|minimi[sz]e|maximi[sz]e|restore|닫기|최소화|최대화|복원)$/i
   const actionable = result.controls.some(control => !chrome.test(control.name ?? '') && (control.can?.set || control.can?.press))
   showWorkPreview(binding)
@@ -147,14 +134,10 @@ export async function quietPress(lane: string, app: string, snapshot: string, co
   return result
 }
 
-// While an app is still answering it offers a way to stop it, usually where
-// its send control was; a status line that holds still is not an answer.
 const STOP_CONTROL = /^\s*(stop|cancel)(\s+(generating|response|responding|streaming|answer))?\s*$|^\s*((응답|답변|생성)\s*)?(중지|정지|멈추기)\s*$/i
 const answeringControl = (observation: QuietObservationDto): string | undefined =>
   observation.controls.find(control => control.enabled && !control.offscreen && control.can.press && STOP_CONTROL.test(control.name))?.name
 
-// Read text once, or keep reading until it has stopped changing for a while
-// and the app no longer offers to stop an answer: a finished one returns at once.
 export async function quietText(lane: string, app: string, snapshot: string | undefined, control: string | undefined, settleMs: number, signal?: AbortSignal): Promise<QuietReadResultDto & { settled: boolean; waitedMs: number; stillAnswering?: string }> {
   const binding = await windowFor(lane, app, signal)
   const read = () => request<QuietReadResultDto>(binding, 'quietRead', { ...(snapshot ? { snapshot } : {}), ...(control ? { control } : {}) }, signal)

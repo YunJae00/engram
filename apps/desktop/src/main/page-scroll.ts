@@ -48,7 +48,6 @@ export async function scrollDirection(page: Page, direction: string): Promise<bo
         await new Promise<void>((resolve) => {
           const events = node === document.scrollingElement ? document : node
           const finish = () => { clearTimeout(timer); events.removeEventListener('scrollend', finish); resolve() }
-          // A detached or background surface may never emit scrollend.
           const timer = setTimeout(finish, smooth ? 1200 : 0)
           events.addEventListener('scrollend', finish, { once: true })
           node.scrollTo({ [horizontal ? 'left' : 'top']: next, behavior: smooth ? 'smooth' : 'instant' })

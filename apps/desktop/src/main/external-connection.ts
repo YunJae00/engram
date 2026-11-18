@@ -21,7 +21,6 @@ import type { VaultContext } from './vault.js'
 let server: Server | undefined
 let context: VaultContext | undefined
 let enabled = false
-// ponytail: one external operation at a time; use per-resource leases if parallel external work becomes necessary.
 let busy = false
 let switching: Promise<unknown> = Promise.resolve()
 const sockets = new Set<Socket>()

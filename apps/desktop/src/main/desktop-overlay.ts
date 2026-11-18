@@ -4,27 +4,13 @@ import type { DesktopControlStatusDto } from '../shared/desktop.js'
 import type { EngramEvent } from '../shared/types.js'
 import { allowNavigation } from './security.js'
 
-// While a comet holds the computer the person sees it everywhere: a glow along
-// the edges of every display, a pill on the display under the pointer that
-// says who is moving the mouse, and a companion riding beside the pointer.
-// Every window here is content-protected (absent from the comet's own
-// screenshots), non-focusable (never takes the foreground from the app being
-// controlled) and dies with the app. Input must not start without a visible
-// stop window; an unavailable overlay fails preparation closed.
-
 const PILL_WIDTH = 480
-// The pill is 60 tall; the rest is room for its floating shadow.
 const PILL_HEIGHT = 80
 const FADE_MS = 220
 const PILL_TOP_INSET = 56
 const POINTER_POLL_MS = 33
-// Windows' topmost band is last-set-wins: whichever window asked most recently
-// sits above, so the claim is renewed while shown.
 const TOPMOST_REASSERT_MS = 5000
-// A resolution or DPI change fires once per display; one rebuild covers them.
 const REBUILD_DEBOUNCE_MS = 200
-// The renderer paints a boot word before React runs; on a see-through window
-// it would float over the person's screen for a frame.
 const BOOT_WORD_CSS = '#boot{display:none!important}'
 
 interface GlowWindow { win: BrowserWindow; bounds: Rectangle }
@@ -70,8 +56,6 @@ function liveWindows(): BrowserWindow[] {
   return all.filter((win) => !win.isDestroyed())
 }
 
-// The same lockdown every app window gets: the bundle may reload itself but
-// never navigate elsewhere or open a child window.
 function harden(contents: WebContents): void {
   const deny = (event: { preventDefault: () => void }, url: string): void => {
     if (!allowNavigation(url, process.env['ELECTRON_RENDERER_URL'])) event.preventDefault()
@@ -117,9 +101,6 @@ function windowOptions(bounds: Rectangle): BrowserWindowConstructorOptions {
   }
 }
 
-// Windows trims a plain window to the work area when it is made; only once
-// it sits above the taskbar may it take the whole display, so the size is
-// asked for again after the level is set.
 function fit(win: BrowserWindow): void {
   const glow = glows.find((one) => one.win === win)
   if (glow) win.setBounds({ ...glow.bounds, height: Math.max(1, glow.bounds.height - 1) })
@@ -128,12 +109,9 @@ function fit(win: BrowserWindow): void {
 function reveal(win: BrowserWindow): void {
   if (win.isDestroyed()) return
   if (status.application?.nativeFrame && glows.some(one => one.win === win)) { win.hide(); return }
-  // showInactive, not show: even a focusable window would stay behind the
-  // controlled app's foreground claim this way.
   win.showInactive()
   win.setAlwaysOnTop(true, 'screen-saver')
   fit(win)
-  // The pill must sit above the glow that covers its display.
   if (pill && win !== pill && !pill.isDestroyed() && pill.isVisible()) pill.setAlwaysOnTop(true, 'screen-saver')
 }
 
@@ -151,7 +129,6 @@ function createWindow(bounds: Rectangle, hash: string): BrowserWindow {
   win.webContents.on('dom-ready', () => {
     void Promise.resolve(win.webContents.insertCSS(BOOT_WORD_CSS)).catch((error: unknown) => console.error('control overlay boot word', error))
   })
-  // A window still loading when the status was broadcast would miss it.
   win.webContents.on('did-finish-load', () => send(win, statusEvent()))
   win.once('ready-to-show', () => {
     ready.add(win)
@@ -182,8 +159,6 @@ function placePill(): void {
 function build(): void {
   if (!status.application?.nativeFrame && glows.length === 0) for (const display of screen.getAllDisplays()) {
     const bounds = display.bounds
-    // A see-through window the exact size of its display is taken for a
-    // fullscreen one and loses its transparency; one row short keeps it.
     const win = createWindow({ ...bounds, height: Math.max(1, bounds.height - 1) }, 'overlay')
     win.setIgnoreMouseEvents(true)
     glows.push({ win, bounds })
@@ -214,8 +189,6 @@ function sendPointer(point: Point, press?: boolean): void {
   send(target.win, press === undefined ? { type: 'desktop:pointer', ...local } : { type: 'desktop:pointer', ...local, press })
 }
 
-// The companion also follows a pointer the hands moved natively, which never
-// passes through overlayPointer.
 function pollPointer(): void {
   try {
     const point = screen.getCursorScreenPoint()
@@ -251,9 +224,6 @@ function destroyAll(): void {
   lastPoint = null
 }
 
-// Display geometry changed under the windows: rebuild them to the new bounds
-// (a resized transparent window does not repaint reliably) and, if the comet
-// still has the computer, put them straight back.
 function rebuild(): void {
   rebuildTimer = null
   try {
@@ -294,11 +264,9 @@ export function showControlOverlay(next: DesktopControlStatusDto): void {
   }
 }
 
-// Native input starts only after the single stop window is visible.
 export async function prepareControlOverlay(next: DesktopControlStatusDto): Promise<string> {
   const held = pill
   if (shown && held && !held.isDestroyed() && ready.has(held) && held.isVisible() && status.state === 'running' && status.lane === next.lane && !status.application === !next.application) {
-    // Already up for this session: keep the windows and the displayed input state as they are.
     const same: DesktopControlStatusDto = { ...next, state: 'running', ...(status.inputActive === undefined ? {} : { inputActive: status.inputActive }) }
     if (JSON.stringify(same) === JSON.stringify(status)) placePill()
     else updateControlOverlay(same)
@@ -306,8 +274,6 @@ export async function prepareControlOverlay(next: DesktopControlStatusDto): Prom
   }
   showControlOverlay({ ...next, state: 'running' })
   const expected = pill
-  // A cold renderer can take over five seconds under endpoint protection.
-  // No input is held while waiting, and the loaded windows are reused.
   const deadline = Date.now() + 30000
   while (shown && pill === expected && expected && !expected.isDestroyed()) {
     if (ready.has(expected) && expected.isVisible()) return expected.getNativeWindowHandle().readBigUInt64LE().toString()
@@ -327,8 +293,6 @@ export function updateControlOverlay(next: DesktopControlStatusDto): void {
   }
 }
 
-// Hidden, not destroyed: nothing composites while idle, and the next control
-// session shows the same windows without a fresh load.
 export function hideControlOverlay(): void {
   try {
     shown = false
@@ -337,7 +301,6 @@ export function hideControlOverlay(): void {
     stopTimers()
     broadcast(statusEvent())
     clearTimeout(hideTimer)
-    // Input has already stopped. Only the non-interactive visual tail remains.
     hideTimer = setTimeout(() => {
       if (!shown) for (const win of liveWindows()) win.hide()
     }, FADE_MS)
@@ -346,14 +309,10 @@ export function hideControlOverlay(): void {
   }
 }
 
-// What the overlay is showing right now: a window that mounts after the
-// broadcast asks for this instead of guessing from the control lease.
 export function overlayStatus(): DesktopControlStatusDto {
   return shown ? status : { state: 'idle' }
 }
 
-// webContents ids, so IPC handlers can tell the overlay's requests from a
-// stranger's.
 export function overlayWindowIds(): number[] {
   try {
     return liveWindows().map((win) => win.webContents.id)
@@ -363,8 +322,6 @@ export function overlayWindowIds(): number[] {
   }
 }
 
-// The comet moved or pressed the pointer: only the display under the point
-// hears about it, in that window's own coordinates.
 export function overlayPointer(point: Point, press?: boolean): void {
   try {
     if (!shown) return

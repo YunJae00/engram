@@ -18,13 +18,11 @@ export function finishProgress(channel: string, text: string): string {
 export function conversationProgress(paths: VaultPaths) {
   work.clear()
   const pending = new Map<string, string>()
-  // When the words now waiting were first shown: a line is saved with that time, not the time a tool call froze it (c4 T2, transcriptOrder.ts).
   const since = new Map<string, string>()
   const flush = (channel: string): Promise<void> => {
     const text = pending.get(channel), shownAt = since.get(channel)
     pending.delete(channel); since.delete(channel)
     if (!text?.trim()) return Promise.resolve()
-    // Words written mid-work that do not read Korean are not kept in a Korean thread (rule 12; the renderer drops them the same way).
     if (/[\uac00-\ud7a3]/.test(turnGoals.get(channel) ?? '') && !readsKorean(text)) return Promise.resolve()
     const lines = progressWork(channel)
     work.delete(channel)
@@ -50,7 +48,6 @@ export function conversationProgress(paths: VaultPaths) {
           else void flush(channel)
         } else { if (!pending.get(channel)) since.set(channel, new Date().toISOString()); pending.set(channel, (pending.get(channel) ?? '') + event.text) }
       } else if (event.type === 'comet:step') {
-        // The host's waiting line is not frozen into a bubble by a tool call: it stays live text until the first real words (first-line.ts).
         if (pending.get(channel)?.trim() && !firstLineWaiting(channel)) broadcast({ type: 'chat:token', channel, text: '', reset: true })
         if (!/^\s*<- /.test(event.line)) work.set(channel, [...(work.get(channel) ?? []).slice(-63), event.line])
       } else if (event.type === 'chat:done' || event.type === 'chat:error') {

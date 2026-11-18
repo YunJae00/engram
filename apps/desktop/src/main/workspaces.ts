@@ -4,9 +4,6 @@ import { randomBytes } from 'node:crypto'
 import { lstat, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 
-// There is one workspace. This registry (userData/vaults.json) still says where it is, and still lists the
-// others a person made when there could be several: nothing here creates, switches to or deletes one any
-// more. Their contents are copied into the one that opens (core workspace-merge.ts); the folders stay on disk.
 interface WorkspaceInfo {
   id: string
   name: string
@@ -17,7 +14,6 @@ interface WorkspaceInfo {
 
 interface Registry {
   pendingDelete?: string
-  // current = the id of the active workspace (null = none registered yet).
   current: string | null
   vaults: WorkspaceInfo[]
 }
@@ -26,12 +22,10 @@ function registryPath(): string {
   return join(app.getPath('userData'), 'vaults.json')
 }
 
-// Legacy single-vault marker from older versions ({ root: string }).
 function legacyMarkerPath(): string {
   return join(app.getPath('userData'), 'vault.json')
 }
 
-// Short random slug for a workspace id (crypto randomBytes hex 6).
 function newId(): string {
   return randomBytes(6).toString('hex')
 }
@@ -50,10 +44,7 @@ async function loadRegistry(): Promise<Registry> {
     }
     return registry
   } catch {
-    // vaults.json missing/unreadable — fall through to legacy migration.
   }
-  // Adopt an older vault.json root as the first Engram workspace
-  // and persist vaults.json as the new single source of truth.
   try {
     const legacy = JSON.parse(await readFile(legacyMarkerPath(), 'utf8')) as { root?: string }
     if (legacy.root) {
@@ -69,7 +60,6 @@ async function loadRegistry(): Promise<Registry> {
       return reg
     }
   } catch {
-    // no legacy file either — a fresh install.
   }
   return { current: null, vaults: [] }
 }
@@ -80,8 +70,6 @@ async function saveRegistry(reg: Registry): Promise<void> {
   await renameWithRetry(pending, registryPath())
 }
 
-// Only an app-owned vault container can be recycled, never a broad folder,
-// linked directory or parent of another registered workspace.
 async function deletionRoot(vault: WorkspaceInfo, reg: Registry): Promise<string | null> {
   if (!isAbsolute(vault.root)) throw new Error('The workspace path must be absolute.')
   const root = resolve(vault.root)
@@ -109,7 +97,6 @@ export async function validatedWorkspaceRoots(): Promise<string[]> {
   return roots.filter((root): root is string => root !== null)
 }
 
-// Run before bootVault: no watchers or model processes can recreate deleted data.
 export async function finishWorkspaceDeletion(): Promise<void> {
   const reg = await loadRegistry()
   if (!reg.pendingDelete) return
@@ -129,8 +116,6 @@ export async function finishWorkspaceDeletion(): Promise<void> {
   }
 }
 
-// Adds a workspace if its (resolved) root is not already registered, sets it
-// current, and returns the entry (existing or new).
 export async function registerWorkspace(input: {
   name: string
   root: string
@@ -163,8 +148,6 @@ export async function currentWorkspaceRoot(): Promise<string | null> {
   return reg.vaults.find((v) => v.id === reg.current)?.root ?? null
 }
 
-// Every other workspace on record, for the one-time merge into the one that opens.
-// shared: the open one is a team's repository, so a person's other notes stay out of what it tracks.
 export async function workspacesToMerge(): Promise<{ sources: { root: string; name: string }[]; shared: boolean }> {
   const reg = await loadRegistry()
   const current = reg.vaults.find(vault => vault.id === reg.current)

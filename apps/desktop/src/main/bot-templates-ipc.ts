@@ -65,7 +65,6 @@ export async function exportTemplateTo(paths: VaultPaths, id: unknown, file: str
 }
 
 async function readCapped(file: string): Promise<Uint8Array> {
-  // O_NONBLOCK keeps a picked FIFO from hanging the main process at open.
   const handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
     const info = await handle.stat()

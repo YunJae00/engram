@@ -1,11 +1,6 @@
 import type { CodexRpc, CodexRpcFactory } from './codex-native.js'
 import { flog } from './flog.js'
 
-// The ChatGPT runtime kept open for short answers while a comet works: one
-// app server and one thread with no tools, so a word said mid-work is
-// answered in seconds instead of after a process start. One question at a
-// time; each carries all it needs.
-
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
@@ -22,7 +17,6 @@ export class CodexVoice {
   private answer = ''
   private waiting: { resolve(text: string): void; reject(error: Error): void } | undefined
   private turns = 0
-  // A turn given up on keeps running in the runtime; nothing new starts until it ends.
   private running = false
   private idle: NodeJS.Timeout | undefined
   closed = false
@@ -31,7 +25,6 @@ export class CodexVoice {
   constructor(spec: CodexVoiceSpec) {
     this.key = JSON.stringify([spec.cwd, spec.model ?? '', spec.config])
     const rpc = spec.rpc({ cwd: spec.cwd, env: spec.env, config: spec.config }, (method, params) => this.notify(method, params),
-      // Nothing is run here: any request to run or change something is declined.
       async () => ({ decision: 'decline' }), (error) => { flog('voice', error.message); this.close() })
     this.rpc = rpc
     this.opened = (async () => {
@@ -48,7 +41,6 @@ export class CodexVoice {
   }
 
   get ready(): boolean { return !this.closed && !this.waiting && !this.running && this.turns < TURNS_MAX }
-  // Used up: replaced by a fresh one once nothing is running on it.
   get spent(): boolean { return this.turns >= TURNS_MAX && !this.waiting && !this.running }
 
   async ask(words: string, timeoutMs: number): Promise<string> {

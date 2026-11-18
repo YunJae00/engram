@@ -4,10 +4,6 @@ import { extname, basename, join } from 'node:path'
 import type { Download, Page } from 'playwright-core'
 import { flog } from './flog.js'
 
-// A file a page sends lands in the person's Downloads under its own name,
-// not in the browser's nameless scratch folder, and the next reading of that
-// lane's page says where - so the comet opens the file instead of hunting
-// for a downloads window.
 const saved = new Map<string, string[]>()
 const watched = new WeakSet<Page>()
 

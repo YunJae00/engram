@@ -5,10 +5,6 @@ import type { FirstSetupDto } from '../shared/types.js'
 import { broadcast } from './engine-health.js'
 import type { VaultContext } from './vault.js'
 
-// A vault made by setup is not opened until its first filing is done: the
-// window holds a setup screen meanwhile, so the first conversation and the
-// first look at Cosmos already know the person's work. A vault opened from
-// before - or one whose setup the person set aside after a failure - is not held.
 const PENDING = 'first-setup.json'
 const FILED = 'first-filing.json'
 
@@ -32,7 +28,6 @@ export async function markFirstSetup(ctx: VaultContext): Promise<void> {
   tell()
 }
 
-// Where the first filing is, said to the setup screen as it moves.
 export function reportFirstSetup(next: Partial<Omit<Progress, 'startedAt'>>): void {
   const base: Progress = { ...progress }
   if (next.phase && next.phase !== 'retrying') { delete base.reason; delete base.retryAt }
@@ -49,7 +44,6 @@ export async function firstSetupDone(ctx: VaultContext): Promise<void> {
 export function registerFirstSetupIpc(ctx: VaultContext): void {
   vault = ctx
   ipcMain.handle('firstSetup:status', () => current(vault))
-  // Set aside by the person after it could not finish: the filing goes on in the background.
   ipcMain.handle('firstSetup:skip', async () => {
     if (vault) await rm(join(vault.paths.cache, PENDING), { force: true })
     tell()

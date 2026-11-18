@@ -17,7 +17,6 @@ const NOT_FOUND: Words = ['입력창을 찾지 못했어', 'the text field was n
 const line = (value: unknown, cap: number) => String(value).replace(/\s+/g, ' ').trim().slice(0, cap)
 const holds = (value: string): Words => [`입력창에 "${line(value, 60)}"가 들어가 있어`, `the field holds "${line(value, 60)}"`]
 
-// A step that failed on its own, judged before any text check; undefined when the step itself went through.
 function stepFailure(step: Result): { reason: Words; stillMoving?: true } | undefined {
   const error = typeof step['error'] === 'string' ? step['error'] : undefined
   const permission = error && PERMISSIONS[error]
@@ -31,7 +30,6 @@ function stepFailure(step: Result): { reason: Words; stillMoving?: true } | unde
   return undefined
 }
 
-// The focused control counts only when it is a message field: a search or find box holding the text is not the composer.
 const FIELD = /Text(Area|Field)|ComboBox|TextEdit|Edit\b/i
 const SEARCH = /search|find|filter|검색|찾기/i
 function focusedField(view: unknown): { value?: string; composer: boolean } {
@@ -42,11 +40,8 @@ function focusedField(view: unknown): { value?: string; composer: boolean } {
   return { composer, ...(typeof field.value === 'string' && !field.valueTruncated ? { value: field.value } : {}) }
 }
 
-// The whole field must read exactly the requested text: a draft that was already there makes it differ.
 function textCheck(tool: string, result: Result, text: string): Words | undefined {
   const wanted = text.normalize('NFC')
-  // app_set: the settled read-back (valueNow) wins over the receipt; null means the field was not found again.
-  // A scan shows at most a prefix of a long field (600 characters on Windows): a matching prefix defers to the receipt.
   const receipt = typeof result['value'] === 'string' ? result['value'] : undefined
   const settled = typeof result['valueNow'] === 'string' && result['valueNow'].length >= 600 && result['valueNow'].length < wanted.length && wanted.startsWith(result['valueNow'].normalize('NFC')) ? receipt ?? null : result['valueNow']
   const setField = result['setField'] as { name?: string; type?: string } | undefined
@@ -65,7 +60,6 @@ function textCheck(tool: string, result: Result, text: string): Words | undefine
 
 interface OutcomeState { korean: boolean; app?: string; openFailed?: Words; opened?: boolean; text?: string; textFailure?: Words }
 
-// The verdict of the turn so far after the latest step; undefined until the turn opened an app or inserted text.
 function desktopOutcome(state: OutcomeState, last: Result, inserted: boolean): DesktopOutcome | undefined {
   const pick = ([ko, en]: Words) => state.korean ? ko : en
   if (state.opened === undefined && state.text === undefined) return undefined
@@ -89,8 +83,6 @@ function insertedText(tool: string, args: Result): string | undefined {
   return typeof typed === 'string' ? typed : undefined
 }
 
-// One chain per tool set (one turn): a typed text that failed its read-back stays failed until a new insert verifies,
-// so a later click or press can never turn the verdict into done.
 export function outcomeChain(): { add(tool: string, args: Result, raw: string, task: string | undefined, boundApp: string | undefined): string } {
   let task: string | undefined
   let state: OutcomeState = { korean: false }

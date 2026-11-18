@@ -4,9 +4,6 @@ import { peekToasts } from './notification-watch.js'
 import { officeAgentTools } from './office-agent.js'
 import { loadSettings } from './settings.js'
 
-// Listings a kept request may look at by itself before it runs. They only
-// read, so a look changes nothing and costs no model call. The notifications
-// any app showed are Engram's own record, read without the app.
 export const WATCHABLE = ['notifications', 'outlook_mail', 'outlook_calendar']
 const LOOK_MS = 60_000
 
@@ -19,7 +16,6 @@ function listed(value: unknown): unknown[] {
   return inner === undefined ? [] : listed(inner)
 }
 
-// One key per item: its id when the app gives one, else a digest of the item.
 export function watchKeys(raw: string): { key: string; id?: string }[] {
   return listed(JSON.parse(raw)).map(item => {
     const id = typeof item === 'object' && item !== null ? (item as Record<string, unknown>)['id'] : undefined
@@ -27,8 +23,6 @@ export function watchKeys(raw: string): { key: string; id?: string }[] {
   })
 }
 
-// Null while the listing cannot be read: app work is off, the app is turned
-// off in settings, or the app is not on this machine.
 export async function peekWatch(watch: TaskWatch): Promise<{ key: string; id?: string }[] | null> {
   if (!WATCHABLE.includes(watch.tool)) return null
   if (watch.tool === 'notifications') return peekToasts(watch.args)

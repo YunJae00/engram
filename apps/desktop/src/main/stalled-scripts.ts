@@ -1,11 +1,6 @@
 import type { BrowserContext, CDPSession, Page, Request } from 'playwright-core'
 import { flog } from './flog.js'
 
-// A script from another site that does not answer holds the page it is on:
-// the page stops parsing until it gives up, ten seconds and more on some
-// networks. A host whose script once went that long without a first byte is
-// blocked by its exact address within this browser context, retaining cache
-// without blocking other resources or the host's own pages.
 const STALL_MS = 4_000
 const STALLED_CAP = 128
 
@@ -39,7 +34,7 @@ export function watchStalledScripts(context: BrowserContext): void {
   context.on('request', (request) => {
     if (request.resourceType() !== 'script') return
     let pageUrl = ''
-    try { pageUrl = request.frame().url() } catch { /* A worker's request has no frame. */ }
+    try { pageUrl = request.frame().url() } catch { }
     const url = request.url()
     if (!/^https?:\/\//.test(url) || url.includes('*')) return
     started.set(request, { at: Date.now(), url, foreign: !!foreignHost(url, pageUrl) })

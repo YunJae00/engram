@@ -15,19 +15,13 @@ import { VoiceSession } from './engine-claude-voice.js'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 import { hasBrainConnection, clearBrainConnection, loadBrainConnections, probeConnection } from './brain-connections.js'
 
-// One engine, no knobs: stored and per-conversation model choices are ignored.
-// Work runs on the Opus 5.5 tier when the bundled runtime accepts it, otherwise
-// on the newest Opus that runtime knows, so a fresh install never asks for a
-// model its own runtime rejects.
 export function chosenModel(hint?: string, runtimeVersion = CLAUDE_RUNTIME_VERSION): string {
   const forced = process.env['ENGRAM_CLAUDE_MODEL']?.trim()
   if (forced) return forced
   return hint === 'fast' ? 'haiku' : hint === 'smart' ? 'sonnet' : workModelFor(runtimeVersion)
 }
 
-// Callers that share a call context name their own purpose for the tier log.
 export const tierPurpose = new AsyncLocalStorage<string>()
-// Background calls without a named purpose are the filing pipeline's.
 function runPurpose(): string {
   const purpose = tierPurpose.getStore() ?? currentModelCallContext()?.purpose
   return !purpose || purpose === 'memory-maintenance' ? 'librarian' : purpose === 'comet-title' ? 'title' : purpose
@@ -36,13 +30,7 @@ const tier = (purpose: string, model: string, hint = 'work'): string => { flog('
 
 const UNSANDBOXED = 'Commands are not sandboxed: use only the files and network access needed for this request.'
 const SANDBOXED = 'Commands run in a sandbox with no network and writes only inside the task folder. A command that needs more may ask to run outside the sandbox; the person approves each one.'
-// Core's session rules describe unsandboxed commands; a sandboxed Claude session is told what is true.
 export const forSandbox = (job: ToolSessionJob): ToolSessionJob => job.native && 'sandbox' in job.native ? { ...job, system: job.system.replace(UNSANDBOXED, SANDBOXED) } : job
-
-// Claude, through the vendor's separately installed agent runtime. The
-// runtime keeps the person's sign-in and does the billing; here every job is
-// one turn, no tools, none of the person's own runtime settings loaded, and
-// a schema when the caller needs the shape of the answer fixed.
 
 interface AgentSdk {
   query(params: { prompt: string; options?: Record<string, unknown> }): AsyncIterable<SdkMessage>
@@ -61,23 +49,15 @@ export function textOf(content: unknown): string {
     .join('')
 }
 
-// The runtime's own answer to "is anyone signed in": JSON, one field of which
-// is the verdict. Anything else is "could not tell", never "signed out".
 export function readAuthStatus(out: string): EngineDetection {
   try {
     const parsed = JSON.parse(out.slice(out.indexOf('{'))) as { loggedIn?: unknown }
     if (typeof parsed.loggedIn === 'boolean') return { installed: true, loggedIn: parsed.loggedIn, conclusive: true }
   } catch {
-    /* not the runtime's JSON */
   }
   return { installed: true, loggedIn: false, conclusive: false }
 }
 
-// The models the person's plan offers, in the runtime's own words - the
-// same list its own model menu shows, with the ids it takes. Asking means
-// opening a session and closing it again, which costs a cold start, so the
-// answer is kept for the life of the app and fetched once sign-in is known;
-// a picker shows the aliases until then.
 interface ClaudeModelChoice {
   value: string
   label: string
@@ -105,8 +85,6 @@ export function fetchClaudeModels(profile = activeAccountProfile('claude')): Pro
       timer = setTimeout(() => abort.abort(), MODELS_TIMEOUT_MS)
       const sdk = await sdkModule()
       abort.signal.throwIfAborted()
-      // A session with nothing to say: the prompt never yields, the query
-      // is only there to be asked what it could run.
       const silent = (async function* () {
         await new Promise<never>(() => {})
         yield undefined as never
@@ -141,7 +119,6 @@ export function forgetClaudeModels(): void {
 }
 
 export class ClaudeEngine implements CloudEngine {
-  // Read fresh each time: a key connection added later must reach the next process.
   private get env(): NodeJS.ProcessEnv { return accountEnvironment('claude', this.accountProfile) }
   constructor(readonly accountProfile = activeAccountProfile('claude')) {}
   readonly id = 'claude' as const
@@ -150,7 +127,6 @@ export class ClaudeEngine implements CloudEngine {
   private readonly status = new StatusCache()
   forgetStatus(): void { this.status.forget() }
 
-  // Short answers from a runtime kept open, for words said while a comet works.
   async warmQuick(workdir: string): Promise<void> { await this.voiceFor(workdir) }
   async quick(prompt: string, options: { workdir: string; timeoutMs: number }): Promise<string> {
     const metric = modelCall('claude', prompt.length, 'low')
@@ -158,14 +134,12 @@ export class ClaudeEngine implements CloudEngine {
     let lane: number | undefined
     try { return await askInTurn(one => { lane = one; return this.voiceFor(options.workdir, one) }, prompt, options.timeoutMs, quickLanes()) }
     catch (error) {
-      // An answer given up on may never come; a voice left waiting for it would turn every later line away.
       const voice = lane === undefined ? undefined : voices[lane]
       if (voice && !voice.closed && !voice.ready) { voice.close(); void this.voiceFor(options.workdir, lane).catch(() => undefined) }
       throw error
     }
     finally {
       metric.end()
-      // A used-up voice is renewed now, so the next first line finds it warm.
       if (lane !== undefined && voices[lane]?.spent) void this.voiceFor(options.workdir, lane).catch(() => undefined)
     }
   }
@@ -173,9 +147,7 @@ export class ClaudeEngine implements CloudEngine {
     await loadBrainConnections()
     const binary = claudeBinary()
     if (!binary) return undefined
-    // stack-17: a lane past the first is opened only when the others are busy, and closes after a short rest.
     const spec = { sdk: await sdkModule(), binary, env: this.env, workdir, model: chosenModel('fast'), ...(lane ? { idleMs: EXTRA_VOICE_IDLE_MS } : {}) }
-    // One account's voice never answers for another: the profile is part of what it is.
     const key = JSON.stringify([spec.binary, spec.model, spec.workdir, this.accountProfile])
     const voice = voices[lane]
     if (!voice || voice.closed || voice.spent || voiceKeys[lane] !== key) { voice?.close(); voices[lane] = new VoiceSession(spec); voiceKeys[lane] = key }
@@ -188,7 +160,6 @@ export class ClaudeEngine implements CloudEngine {
       const binary = claudeBinary()
       if (!binary) return { installed: false, loggedIn: false, conclusive: true }
       await loadBrainConnections()
-      // A key connection is checked with the address itself; the runtime's sign-in files are not consulted.
       if (hasBrainConnection('claude', this.accountProfile)) { const probe = await probeConnection('claude', undefined, this.accountProfile); return { installed: true, loggedIn: probe.ok, conclusive: probe.status !== 0 } }
       const { code, out } = await runText(binary, ['auth', 'status', '--json'], STATUS_TIMEOUT_MS, this.env as Record<string, string>)
       if (code === null) return { installed: true, loggedIn: false, conclusive: false }
@@ -201,13 +172,10 @@ export class ClaudeEngine implements CloudEngine {
     if (!binary) return { ok: false, message: 'Install the Claude runtime in Settings → AI before connecting.' }
     const { code } = await runText(binary, ['auth', 'login'], LOGIN_TIMEOUT_MS, this.env as Record<string, string>, options)
     options?.signal?.throwIfAborted()
-    // A clean exit is the runtime saying the sign-in finished; asking it again
-    // is another cold start before the person sees "Connected".
     if (code === 0) this.status.set({ installed: true, loggedIn: true, conclusive: true })
     else this.status.forget()
     const status = await this.detect()
     if (status.loggedIn) {
-      // Nothing else is starting up now: the model list need not wait its turn.
       claudeSessionStarted()
       return { ok: true }
     }
@@ -248,17 +216,12 @@ export class ClaudeEngine implements CloudEngine {
           pathToClaudeCodeExecutable: binary,
           spawnClaudeCodeProcess: spawnRuntime,
           abortController: abort,
-          // One answer, from the words alone: no files, no commands, and none
-          // of the person's own runtime configuration riding along.
           tools: [],
           strictMcpConfig: true,
-          // A fixed shape is delivered through one more exchange when the
-          // first answer came as prose; one turn leaves no room for it.
           maxTurns: job.jsonSchema ? 3 : 1,
           persistSession: false,
           settingSources: [],
           ...(job.jsonSchema ? { outputFormat: { type: 'json_schema', schema: job.jsonSchema } } : {}),
-          // Chores run on the small model.
           model: tier(runPurpose(), chosenModel(job.modelHint), job.modelHint),
           ...(job.effort ? { effort: job.effort } : {}),
         },
@@ -297,8 +260,6 @@ export class ClaudeEngine implements CloudEngine {
     }
   }
 
-  // The whole turn in one session, and the session kept warm for the next:
-  // the runtime is handed the comet's tools and loops over them itself.
   async runTools(job: ToolSessionJob): Promise<ToolSessionResult> {
     const binary = claudeBinary()
     if (!binary) return Promise.resolve({ answer: '', error: 'Install the Claude runtime in Settings → AI before connecting.' })
@@ -312,7 +273,6 @@ export class ClaudeEngine implements CloudEngine {
     return Promise.all([sdkModule(), tier('work', chosenModel(job.modelHint), job.modelHint), loadBrainConnections()]).then(([sdk, model]) => { logSessionTools('claude', job); return withLease(lease, () => sessions.run({ ...job, sessionKey: `${this.accountProfile}:${job.sessionKey ?? 'default'}` }, { sdk, binary, workdir: job.workdir, model, env: this.env })) }).finally(() => { lease.end(); trimWarm(); metric.end() })
   }
 
-  // A session opened ahead for the next comet, so its first turn starts at once.
   async warm(job: ToolSessionJob): Promise<void> {
     if (job.signal?.aborted) return
     const binary = claudeBinary()
@@ -327,7 +287,6 @@ export class ClaudeEngine implements CloudEngine {
 }
 
 const sessions = new SessionPool()
-// The voice is one more warm runtime under the cap.
 export function trimWarm(): void { sessions.trim(workerPool.target + 1 - voices.filter(voice => voice && !voice.closed).length) }
 setInterval(() => { sessions.sweep(); trimWarm() }, 60_000).unref()
 workerPool.onTarget(() => trimWarm())
@@ -340,8 +299,6 @@ export function closeClaudeSessions(): void {
   sessions.closeAll()
   for (const voice of voices) voice?.close()
 }
-// The quick voices (askInTurn lanes): one per lane, at most the pool's live target, so memory pressure narrows them as it does work.
-// shortcut: QUICK_LANES is the most teammates a split runs side by side today (3, +1 added mid-work shares a lane); raise it with them.
 const QUICK_LANES = 3, EXTRA_VOICE_IDLE_MS = 2 * 60_000
 const quickLanes = (): number => Math.max(1, Math.min(QUICK_LANES, workerPool.target))
 const voices: (VoiceSession | undefined)[] = []

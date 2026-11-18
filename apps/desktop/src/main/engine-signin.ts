@@ -55,8 +55,6 @@ export function connectEngine(id: CloudEngineId, profile = activeAccountProfile(
     if (!url || url === login.url) return
     login.url = url
     publish(login, 'browser')
-    // This runtime delegates browser presentation to its host. The other
-    // runtime opens its own browser; the same link remains available to retry.
     if (id === 'codex') void reopenEngineLogin(id, profile).catch(() => {
       if (!login.abort.signal.aborted && login.state.phase === 'browser') publish(login, 'browser', 'The browser did not open. Use Open browser to try again.')
     })

@@ -3,7 +3,6 @@ import { evidenceRegion } from 'core'
 import type { Page } from 'playwright-core'
 import { SECRET_FIELDS } from './page-mask.js'
 
-// Evidence fails closed if a document or frame changes during capture.
 export async function maskedFrame(page: Page, origin: string, masks: string[], signal?: AbortSignal, region?: unknown): Promise<Buffer> {
   signal?.throwIfAborted()
   const url = page.url()
@@ -14,7 +13,6 @@ export async function maskedFrame(page: Page, origin: string, masks: string[], s
   const take = async () => {
     const frames = page.frames()
     const addresses = frames.map(frame => frame.url())
-    // Failure to inspect any frame must not fall back to an unmasked image.
     for (const frame of frames) await frame.locator('html').count()
     for (const selector of masks) {
       const counts = await Promise.all(frames.map(frame => frame.locator(selector).count()))

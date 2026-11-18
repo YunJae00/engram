@@ -12,8 +12,6 @@ import { CLAUDE_RUNTIME_VERSION } from './claude-runtime-version.js'
 export const CLAUDE_INSTALL_HELP = 'https://code.claude.com/docs/en/setup'
 const LIMIT = 300 * 1024 * 1024
 
-// Side queries start their own runtime processes. Give the first session
-// startup priority, but release the wait even when no session is opened.
 let firstSessionReady: () => void = () => {}
 const firstSession = new Promise<void>(resolve => { firstSessionReady = resolve; setTimeout(resolve, 45_000).unref() })
 export function claudeSessionStarted(): void { firstSessionReady() }

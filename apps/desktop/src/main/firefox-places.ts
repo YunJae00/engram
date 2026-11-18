@@ -8,8 +8,6 @@ import { flog } from './flog.js'
 interface Db { exec(sql: string): { values: unknown[][] }[]; close(): void }
 interface PlacesBookmark { title: string; url: string; folder: string; folderPath: string[] }
 
-// Firefox holds places.sqlite open while it runs: each profile's file is read
-// from a copy, with sql.js. One unreadable profile does not hide the others.
 export async function readFirefox<T>(read: (db: Db) => T[]): Promise<T[]> {
   const files = firefoxPlaces()
   if (!files.length) return []
@@ -30,7 +28,6 @@ export async function readFirefox<T>(read: (db: Db) => T[]): Promise<T[]> {
   return found
 }
 
-// Visit times are microseconds since 1970; the visit it came from is the referring one.
 export function firefoxVisits(db: Db, sinceMs: number): TraceVisit[] {
   const rows = db.exec(`SELECT p.url, p.title, v.visit_date / 1000, fp.url FROM moz_historyvisits v JOIN moz_places p ON p.id = v.place_id LEFT JOIN moz_historyvisits fv ON fv.id = NULLIF(v.from_visit, 0) LEFT JOIN moz_places fp ON fp.id = fv.place_id WHERE v.visit_date > ${Math.floor(sinceMs * 1000)} AND p.hidden = 0`)
   return ((rows[0]?.values ?? []) as [string, string | null, number, string | null][]).map(([url, title, at, from]) => ({ url, title: title ?? '', at, ...(from ? { from } : {}) }))
@@ -39,7 +36,6 @@ export function firefoxVisits(db: Db, sinceMs: number): TraceVisit[] {
 const TAGS_ROOT = 'tags________'
 const MAX_DEPTH = 20
 
-// Bookmarks are rows of type 1 under folders; tags are kept as bookmarks too and are left out.
 export function firefoxBookmarks(db: Db): PlacesBookmark[] {
   const rows = (db.exec('SELECT b.id, b.parent, b.type, b.title, b.guid, p.url FROM moz_bookmarks b LEFT JOIN moz_places p ON p.id = b.fk')[0]?.values ?? []) as [number, number, number, string | null, string, string | null][]
   const byId = new Map(rows.map(row => [row[0], row]))

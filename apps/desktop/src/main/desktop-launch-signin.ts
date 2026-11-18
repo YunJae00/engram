@@ -14,7 +14,6 @@ export async function showForSignIn(lane: string, pid: number | undefined, host:
   return { shown }
 }
 
-// open_app for an app already sitting at a sign-in window: bring it to the person and say it waits for them.
 export async function alreadyOpenSignIn(lane: string, app: string, error: unknown): Promise<string | undefined> {
   const pid = (error as { protectedPid?: number } | undefined)?.protectedPid
   if (!pid) return undefined

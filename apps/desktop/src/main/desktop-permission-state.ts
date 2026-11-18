@@ -58,7 +58,6 @@ export function permissionGuidance(code: PermissionCode, ko: boolean): string {
     + (name === 'accessibility' ? ' 이미 켜져 있으면 −로 지운 뒤 +로 /Applications/Engram.app을 다시 추가하세요(macOS는 권한을 빌드마다 따로 기억합니다).' : '')
 }
 
-// Fallback when the helper does not answer: Electron's no-prompt reads plus the helper's last Input Monitoring answer.
 function permissionStateNow(): KnownState {
   const read = <T>(get: () => T): T | undefined => { try { return get() } catch { return undefined } }
   return {
@@ -133,15 +132,11 @@ export function registerPermissionCardIpc(): void {
   if (testing()) Object.assign(globalThis, { __engramPermissionWait: (lane: string, name: PermissionName, task: string) =>
     waitForPermission(lane, { ...desktopFailure(`Allow Engram in System Settings → ${LABEL.en[name]}`), permission: name }, { task }) })
 }
-// E2E seam, never in a packaged build: the permission state comes from main's globalThis instead of the helper.
 const testing = () => !app.isPackaged && process.env['ENGRAM_TEST_PERMISSIONS'] === '1'
 const WAIT_MS = 10 * 60_000, FIRST_MS = 2000, MAX_MS = 5000
 const waits = new Map<string, { name: PermissionName; done: Promise<boolean> }>()
-// Each tool call gets its own signal, so a give-up is remembered per lane and task text: the same turn does not wait twice.
-// The turn's end forgets it, so a later turn with the same words shows the card again.
 const gaveUp = new Map<string, string>()
 export function forgetPermissionGiveUp(lane: string): void { gaveUp.delete(lane) }
-// The tool budget pauses while the person is asked to turn a permission on.
 export const permissionWaiting = (lane: string): boolean => waits.has(lane)
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

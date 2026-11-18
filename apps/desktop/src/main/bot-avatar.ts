@@ -53,7 +53,6 @@ function locked<T>(paths: VaultPaths, id: unknown, work: () => Promise<T>): Prom
   return next
 }
 
-// Photo avatars are gone: every face is one of the 16 characters, so a new photo is refused before any write.
 export function setBotAvatarImage(): Promise<BotDto> {
   return Promise.reject(new Error('photo avatars are no longer supported; pick one of the 16 characters'))
 }

@@ -32,14 +32,12 @@ export function registerAppReset(window: () => BrowserWindow | null, restart: ()
       })
       if (choice.response !== 1) return false
       await writeFile(markerPath(), JSON.stringify({ roots }))
-      // Let the IPC reply leave before shutdown closes its receiving window.
       setImmediate(restart)
       return true
     } finally { resetting = false }
   })
 }
 
-// Delete only after the old process has closed its writers and browser sessions.
 export async function finishAppReset(): Promise<boolean> {
   const marker = await readFile(markerPath(), 'utf8').catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error })
   if (marker === null) return true

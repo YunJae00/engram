@@ -21,8 +21,6 @@ export async function desktopImage(binding: DesktopBinding, observe: () => Promi
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed before the screenshot was ready.')
   if (!captured || captured.basis !== 'client-physical' || JSON.stringify(captured.bounds) !== JSON.stringify(before.captureBounds)
     || typeof captured.data !== 'string' || captured.data.length > 470000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(captured.data)) throw new Error('This window did not provide verified screenshot geometry.')
-  // Capture and accessibility are separate operations. Revalidate the native
-  // window identity and geometry before using either as evidence for input.
   const observation = await observe()
   signal?.throwIfAborted()
   if (desktopBinding(lane) !== binding || !binding.readable || binding.revision !== revision) throw new Error('The app changed before the screenshot could be verified.')
@@ -50,7 +48,6 @@ export async function desktopImage(binding: DesktopBinding, observe: () => Promi
 export async function previewImage(binding: DesktopBinding, signal: AbortSignal, preview = false, stage: (stage: 'observe' | 'capture' | 'verify') => void = () => {}): Promise<ToolOutcome> {
   const revision = binding.revision
   stage('observe')
-  // macOS marks any depth-3 skeleton as incomplete (never capture-safe); only Windows clears partial scans with its password check.
   const observation = await binding.host.request<DesktopObservationDto>('observe', { window: binding.window, pid: binding.pid, mode: process.platform === 'win32' ? 'skeleton' : 'full' }, signal, preview ? { preview: true } : {})
   signal.throwIfAborted()
   if (observation.captureSafe === false) throw new Error("This window's accessibility scan was incomplete.")

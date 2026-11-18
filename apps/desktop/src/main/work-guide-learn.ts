@@ -19,8 +19,6 @@ import { broadcast } from './engine-health.js'
 import { flog } from './flog.js'
 import type { VaultContext } from './vault.js'
 
-// How the person works, learned from what they answer while comets work
-// rather than asked up front: a note they can edit or retire, read by every turn.
 const GUIDE_TIMEOUT_MS = 180_000
 const saves = new WeakMap<VaultContext, Promise<boolean>>()
 
@@ -35,12 +33,10 @@ async function readGuide(paths: VaultPaths): Promise<Note | null> {
   }
 }
 
-// What every comet turn carries of the guide, or nothing.
 export async function workGuide(paths: VaultPaths): Promise<string> {
   return guideForPrompt(await readGuide(paths).catch(() => null))
 }
 
-// One retry when the reply cannot be used: a model sometimes answers in prose.
 async function ask<T>(ctx: VaultContext, prompt: string, signal: AbortSignal, read: (raw: string) => T): Promise<T> {
   signal.throwIfAborted()
   const engine = ctx.engines[0]
@@ -59,7 +55,6 @@ function saveGuide(ctx: VaultContext, given: GuideAnswer[], signal: AbortSignal)
   const saving = (saves.get(ctx) ?? Promise.resolve(false)).catch(() => false).then(async () => {
     signal.throwIfAborted()
     const existing = await readGuide(ctx.paths)
-    // A guide the person retired stays retired.
     if (existing && existing.front.status !== 'current') return false
     const sections = await ask(ctx, guidePrompt(given, existing?.body ?? ''), signal, guideBody)
     signal.throwIfAborted()
@@ -75,9 +70,6 @@ function saveGuide(ctx: VaultContext, given: GuideAnswer[], signal: AbortSignal)
   return saving
 }
 
-// The person's message told the comet to ask them something before it works.
-// Then the comet's questions in that task are part of the request, not a habit to keep:
-// any paraphrase of the asked question is covered because the whole task is skipped.
 const ASK_LATER = /\b(?:after|once|later|next)\b|나중에|다음에|끝나면|끝난 ?(?:뒤|후)|한 ?(?:뒤|후)에?|하고 ?나서/i
 const ASK_ME = /\b(?:ask|quiz)\s+(?:me|which|what|whether|if|how|who|my|for|about)\b|\bcheck with me\b|\blet me (?:choose|pick|decide)\b|(?:물어|여쭤)\s?(?:봐|보고|보세요|봐요)|질문\s?(?:해|하고)/i
 
@@ -85,14 +77,12 @@ function requestedAsk(goal: string): boolean {
   return goal.split(/[.!?\n。]+/).some((sentence) => ASK_ME.test(sentence) && !ASK_LATER.test(sentence))
 }
 
-// An answer the person gave a comet's question, folded into their guide.
 export function learnFromAnswer(ctx: VaultContext, question: string, answer: string, goal = ''): void {
   if (requestedAsk(goal) || !question.trim() || !answer.trim() || question.length > 300 || answer.length > 1200) return
   void saveGuide(ctx, [{ question, answer }], AbortSignal.timeout(GUIDE_TIMEOUT_MS * 2))
     .catch(() => flog('work-guide', 'The work guide could not be updated. Existing guidance was kept.'))
 }
 
-// The guide's pending updates, settled.
 export async function guideSettled(ctx: VaultContext): Promise<void> {
   await (saves.get(ctx) ?? Promise.resolve(false)).catch(() => false)
 }

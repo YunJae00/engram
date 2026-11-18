@@ -10,7 +10,6 @@ import { stopApplicationWork } from './application-work.js'
 
 const requests = new Map<number, { lane: string; source: string; token: string; expires: number; capturing?: boolean }>()
 function allowed(sender: WebContents): boolean { return desktopOwner()?.webContents === sender }
-// The on-screen pill may stop or resume control; nothing else reaches it.
 const FROM_OVERLAY = new Set(['desktop:controlStop', 'desktop:controlResume', 'desktop:controlStatus', 'desktop:overlayStatus'])
 function allowedFrom(sender: WebContents, channel: string): boolean {
   return allowed(sender) || (FROM_OVERLAY.has(channel) && overlayWindowIds().includes(sender.id))
@@ -18,7 +17,6 @@ function allowedFrom(sender: WebContents, channel: string): boolean {
 export function allowDesktopCapture(sender: WebContents | null, permission: string, details: { isMainFrame?: boolean; mediaTypes?: unknown } = {}): boolean {
   const request = sender && requests.get(sender.id)
   if (!sender || !allowed(sender) || !desktopVisible() || details.isMainFrame !== true || !request || request.expires <= Date.now()) return false
-  // Older runtimes report display capture as media without physical devices.
   return permission === 'display-capture' || (permission === 'media' && Array.isArray(details.mediaTypes) && details.mediaTypes.length === 0)
 }
 export function registerDesktopIpc(): void {
@@ -79,7 +77,6 @@ export function registerDesktopIpc(): void {
       const current = requests.get(sender.id) === pending
       if (current) requests.delete(sender.id)
       if (!current || !source) flog('desktop-stream', JSON.stringify({ lane: pending.lane, source: pending.source, event: 'failed', reason }))
-      // Electron 33 accepts null for denial; an empty object throws after rejecting capture.
       callback(current && source ? { video: source } : null as unknown as Electron.Streams)
     }
     void captureSource(pending.lane).then((source) => {

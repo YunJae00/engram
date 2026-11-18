@@ -1,6 +1,5 @@
 import { isUntitledBotName } from 'core'
 
-// Persisted bots may lack purpose (or carry non-strings), so read both fields defensively.
 export function cometIdentity(bot: { name?: unknown; purpose?: unknown }, role: string, charterRule = ''): string {
   const name = typeof bot.name === 'string' ? bot.name.trim() : ''
   const who = name !== '' && !isUntitledBotName(name)

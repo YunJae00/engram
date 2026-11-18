@@ -87,7 +87,6 @@ export function closingMessage(input: ClosingInput, reason: ClosingReason, lang:
   const milestone = progress ? cut(progress.text, 100) : !names.length && approved.length ? approved.join(', ') : ''
   const goal = `“${cut(input.goal, 60)}”`
   const raw = input.detail ? cut(withoutSecrets(input.detail, input.goal), 160) : ''
-  // In a Korean conversation a raw error ("Provider unavailable", a status code) is not something to read: only words written for the person are shown.
   const detail = lang === 'ko' && !/[\uac00-\ud7a3]/.test(raw) ? '' : raw
   return [
     w.done(parts),
@@ -104,8 +103,6 @@ export async function restartQuestion(paths: VaultPaths, task: DelegatedTask): P
   return closingMessage({ goal: task.goal, work: task.work, result: task.result, transcript, since: task.createdAt, log: task.log, team: task.team }, 'restart', closingLang(transcript, task.goal))
 }
 
-// Every end the person did not ask for leaves one closing message in the thread; a raw error goes out only when this end is not the task's own.
-// The seat is reopened even for an empty turn: a provider error may already have settled the bubble, and carryOn keeps a still-open one as is.
 export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEvent) => void, end: { task?: DelegatedTask; reason: ClosingReason; channel?: string; trail?: readonly TurnStep[]; error?: unknown; goal?: string }): Promise<void> {
   const { task, reason, channel, trail, error, goal = '' } = end
   const raw = error === undefined ? undefined : error instanceof Error ? error.message : String(error)
@@ -113,7 +110,6 @@ export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEven
   const own = task?.state === 'failed' && (raw === undefined || task.log.at(-1)?.line.startsWith('Failed:'))
   if (!task) {
     if (raw === undefined) return
-    // The request that just failed is the newest thing the person said; an older turn may be in another language.
     const transcript = channel.startsWith('bot-') ? await readBotTranscript(paths, channel.slice(4)).catch(() => []) : []
     broadcast({ type: 'chat:error', channel, message: closingMessage({ goal, transcript, since: new Date().toISOString(), detail: raw }, reason, closingLang(goal.trim() ? [] : transcript, goal)) })
     return
@@ -126,13 +122,11 @@ export async function closeTask(paths: VaultPaths, broadcast: (event: EngramEven
   else { broadcast({ type: 'comet:continue', channel, botId: task.botId }); broadcast({ type: 'chat:done', channel, text }) }
 }
 
-// A Stop under words already written stores its mark after them, once the stopped run is released and its words are flushed.
 export async function keepStopMark(paths: VaultPaths, broadcast: (event: EngramEvent) => void, channel: unknown, text: unknown, running: () => boolean, waitMs = { run: 15_000, settle: 1_000 }): Promise<void> {
   if (typeof channel !== 'string' || !channel.startsWith('bot-') || typeof text !== 'string' || !text.trim() || text.length > 80) return
   const pause = () => new Promise(resolve => setTimeout(resolve, 50))
   try {
     for (const until = Date.now() + waitMs.run; running(); await pause()) if (Date.now() > until) return
-    // An aborted run can end without chat:done; this flushes its pending words as the stored progress turn.
     broadcast({ type: 'chat:token', channel, text: '', reset: true })
     const botId = channel.slice(4)
     for (const until = Date.now() + waitMs.settle; Date.now() <= until; await pause()) {

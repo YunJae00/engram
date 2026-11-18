@@ -30,18 +30,12 @@ import type { VaultContext } from './vault.js'
 import { historyCandidates } from './web-trail.js'
 import { refreshDeskNotes } from './desk-sources.js'
 
-// The work map, kept the way the librarian keeps the vault: in the background,
-// once a day, only when the person turned it on. It reads the browser's own
-// history and bookmarks on this computer, names the places with one short
-// model call, and writes a note per work place.
-
 const STALE_MS = 86_400_000
 const CHECK_MS = 60 * 60_000
 const FIRST_CHECK_MS = 90_000
 const LABEL_TIMEOUT_MS = 120_000
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 
-// Browsers hold History locked while running: read a copy, with sql.js.
 async function readVisits(sinceMs: number, signal: AbortSignal): Promise<TraceVisit[]> {
   const visits: TraceVisit[] = []
   const tempDir = join(app.getPath('userData'), 'tmp')
@@ -55,7 +49,6 @@ async function readVisits(sinceMs: number, signal: AbortSignal): Promise<TraceVi
       signal.throwIfAborted()
       const db = new SQL.Database(await readFile(temp))
       const since = Math.floor((sinceMs - WEBKIT_EPOCH_MS) * 1_000)
-      // The visit it came from: a link in the same tab, or the tab that opened it (newer browsers).
       const columns = new Set((db.exec('PRAGMA table_info(visits)')[0]?.values ?? []).map(column => String(column[1])))
       const origin = ['from_visit', 'opener_visit'].filter(name => columns.has(name)).map(name => `NULLIF(v.${name}, 0)`)
       const via = origin.length ? `LEFT JOIN visits fv ON fv.id = ${origin.length > 1 ? `COALESCE(${origin.join(', ')})` : origin[0]} LEFT JOIN urls fu ON fu.id = fv.url` : ''
@@ -92,13 +85,11 @@ export function refreshWorkMap(ctx: VaultContext): Promise<WorkMap | null> {
   const allowed = async () => !abort.signal.aborted && (await loadSettings()).workMap && !abort.signal.aborted
   running ??= (async () => {
     try {
-      // Isolated app fixtures must not inspect the real browser, even via IPC.
       if (!(await allowed()) || process.env['ENGRAM_USERDATA']) return null
       const now = new Date()
       const [visits, bookmarks, previous] = await Promise.all([readVisits(now.getTime() - WORK_MAP_DAYS * 86_400_000, abort.signal), allBookmarks().catch((error: unknown) => { flog('work-map', error); return [] }), readWorkMap(ctx.paths).catch(() => null)])
       if (!(await allowed())) return null
       let map = buildWorkMap(visits, bookmarks, now)
-      // A day the labelling call cannot run keeps yesterday's names.
       const known = new Map((previous?.places ?? []).map((place) => [place.host, place]))
       map = { ...map, places: map.places.map((place) => ({ ...place, ...(known.get(place.host)?.purpose ? { purpose: known.get(place.host)!.purpose } : {}), ...(known.get(place.host)?.work !== undefined ? { work: known.get(place.host)!.work } : {}) })) }
       const engine = ctx.engines[0]
@@ -136,7 +127,6 @@ async function refreshIfStale(): Promise<void> {
   await refreshWorkMap(current)
 }
 
-// What each comet turn carries: the short list of work places, or nothing.
 export async function workMapShortcuts(ctx: VaultContext): Promise<string> {
   if (!(await loadSettings()).workMap) return ''
   return workShortcuts(await readWorkMap(ctx.paths).catch(() => null), 40, await learnedPlaces(ctx.paths).catch(() => new Map<string, string>()))
@@ -147,7 +137,6 @@ export function startWorkMap(ctx: VaultContext, onFiled?: () => void): void {
   current = ctx
   filed = onFiled
   if (timer) return
-  // A probe or test profile never reads the person's real browser.
   if (process.env['ENGRAM_USERDATA']) return
   const check = () => {
     void refreshIfStale().catch((error) => flog('work-map', error))
@@ -158,7 +147,6 @@ export function startWorkMap(ctx: VaultContext, onFiled?: () => void): void {
   timer.unref()
 }
 
-// Turned on in Settings or at onboarding: map now rather than within the hour.
 export function workMapSettingChanged(on: boolean): void {
   if (!on) { controller?.abort(); return }
   if (on && current && !process.env['ENGRAM_USERDATA']) {
@@ -167,7 +155,6 @@ export function workMapSettingChanged(on: boolean): void {
   }
 }
 
-// A desk source just allowed: read it now rather than within the hour.
 export function deskSettingChanged(): void {
   if (current && !process.env['ENGRAM_USERDATA']) void refreshDeskNotes(current, true).catch((error) => flog('desk-map', error))
 }

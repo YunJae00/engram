@@ -1,8 +1,6 @@
 import type { AgentTool, VaultPaths } from 'core'
 import { loadBots, updateBot } from 'core/src/bots'
 
-// What the removed info pane edited, said in chat instead: a teammate's standing instructions and how much it notifies.
-// Both are the person's own in-app preferences, so neither asks first.
 export function teammateSettingsTool(paths: VaultPaths, selfId: string, changed: () => void): AgentTool {
   return {
     name: 'teammate_settings',
@@ -15,7 +13,6 @@ export function teammateSettingsTool(paths: VaultPaths, selfId: string, changed:
       const instructions = typeof args['instructions'] === 'string' ? args['instructions'].trim() : ''
       const notify = args['notify'] as 'all' | 'attention' | 'off' | undefined
       if (!instructions && notify === undefined) throw new Error('Give instructions, notify, or both.')
-      // updateBot refuses a notify outside the three levels.
       const saved = await updateBot(paths, bot.id, { ...(instructions ? { purpose: instructions } : {}), ...(notify !== undefined ? { notify } : {}) })
       changed()
       return JSON.stringify({ teammate: saved.name, ...(instructions ? { instructions: saved.purpose } : {}), ...(notify !== undefined ? { notify: saved.notify } : {}) })

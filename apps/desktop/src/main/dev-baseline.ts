@@ -74,7 +74,6 @@ async function capture(root: string, id: string, cwd: string, hooks: string): Pr
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   const listing = await paths(cwd, hooks), files: Baseline['files'] = Object.create(null)
   let bytes = 0, limited = listing.limited
-  // ponytail: bounded text checkpoints; larger/binary files remain explicit read-only exclusions.
   for (const path of listing.files) {
     const content = bytes < 20_000_000 ? await text(cwd, path) : null
     files[path] = content

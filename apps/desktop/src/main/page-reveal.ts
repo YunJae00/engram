@@ -3,16 +3,7 @@ import type { PageMove } from 'core'
 import { HAND_MARK } from './page-reader.js'
 import { FIND_TIMEOUT_MS, settle, signature, unmark } from './page-actions.js'
 
-// Pages fold things away: a summary, a section a button opens, a tab that
-// is not the open one. The words are there and the reading says so; this is
-// how the part holding them is opened.
-// Words a page is keeping folded away - behind a summary, a closed
-// section, a tab that is not the open one - and the thing that opens them.
-// Runs inside the page; it marks what to press and says what that is.
 function markOpener(input: { word: string; mark: string }): string | null {
-  // Out of sight: hidden outright, or inside a section the page has closed.
-  // A closed details keeps its content unrendered rather than display:none,
-  // and its summary stays in view.
   const folded = (el: Element): boolean =>
     (el as HTMLElement).hidden || getComputedStyle(el).display === 'none' || (el.closest('details:not([open])') !== null && el.closest('summary') === null)
   const shown = (el: Element): boolean => {
@@ -20,8 +11,6 @@ function markOpener(input: { word: string; mark: string }): string | null {
     return rect.width > 0 && rect.height > 0 && !folded(el)
   }
   const wanted = input.word.toLowerCase()
-  // The smallest folded element that holds the words: its opener is the
-  // nearest thing above it that a person could press.
   let held: Element | null = null
   for (const el of Array.from(document.querySelectorAll('*'))) {
     if (!(el.textContent ?? '').toLowerCase().includes(wanted)) continue
@@ -30,7 +19,6 @@ function markOpener(input: { word: string; mark: string }): string | null {
   }
   if (!held) return null
   for (let up: Element | null = held; up; up = up.parentElement) {
-    // A section that says it is closed, or one whose opener names it.
     const opener =
       (up.tagName === 'DETAILS' ? up.querySelector('summary') : null) ??
       (up.parentElement?.tagName === 'DETAILS' ? up.parentElement.querySelector('summary') : null) ??

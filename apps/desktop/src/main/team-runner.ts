@@ -9,42 +9,18 @@ import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
 import { assignTool, checkedSearch, ITEM_CHECK_MS, type Proof, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
-// Someone who writes from what was handed over (three lines of copy, a summary) has no tools and is stopped here with what they wrote.
-// grokbar C6 has 45 s for a lookup (15 s at most) and then this.
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
-// c13a (cause T; C3: three teammates on a fixed 15 s clock from their own start were cut at 12-15 s with 14.5 s of the 35 s bar unused,
-// and two parts were abandoned while the thread said they would follow). One clock per task, from the person's message: the answer is
-// due TEAM_ANSWER_MS after it (taskDue). Every lookup reads the time left to that point; nothing counts a fixed time from its own start.
-// - A helper is due earlier by ONE reserve, for what really follows it on its path (c17a, cause B: two stacked constants stood for one step).
-//   With a quick writer its answer is the team's one writer's (lead-check helperAnswer → writtenReport), due REPORT_WRITER_MS after the
-//   parts (the house report due, as reportDue and checkedLead): the helper is due that writer's draft and one check before it, i.e.
-//   ITEM_CHECK_MS before the task's answer due. Only with no writer does the lead model write after it: then LEAD_ANSWER_MS.
-// - Every part has at least MIN_PART_MS from its own start (one queued, or added by a steer, is not cut before it worked); the task's
-//   answer then waits for that part too (taskDue).
-// - The soft point (no new tool call) and the answer reserve are shares of the part's own window. The reserve is never less than one
-//   no-tool report round on the teammate's ~39-40k-character prompt (REPORT_ROUND_MS; a round with one tool call took 9.6-9.9 s in
-//   C3): at that point a teammate that read something writes its report with no tools, and the quick model writes a stand-in from the
-//   kept rows. A background part that can follow late is not cut at the deadline, so its report round may run past it.
-// - At the deadline a background part that can be reported late (core lateParts) is not stopped: it stays working, is shown as such,
-//   and its report follows in the same thread. LATE_CEILING_MS past the deadline it is stopped and recorded as not finished.
-// All on the scale of the real deadline (the test seam answerMs shortens it).
 const LEAD_ANSWER_MS = 6_000
 const MIN_PART_MS = TEAM_ANSWER_MS / 2
 const SOFT_SHARE = 0.5
 const RESERVE_SHARE = 0.25
 const REPORT_ROUND_MS = 6_000
-// How long past the stop the quick model's report is waited for.
 const ANSWER_GRACE_MS = 1_000
-// c12a B3: one more round to take a listing page apart into items, only with at least this much of the teammate's time left.
 const ITEMS_ROUND_MS = 6_000
-// c14a: what a second items round adds, after the page itself gave no day for its entries.
 const OWN_PAGE = 'These pages did not give each entry its own day. Search each entry by its own name for its own page and day, and give those instead.'
 const HAVE_NOTE = 'These entries are already in hand; give only the others:'
-// c14a (cause E, T1: the 대구 part searched a garbled "대긵", came back empty and stayed empty): a lookup part that ends with no data while
-// at least this much of its time is left runs once more, from the person's own words, on the same deadline.
 const EMPTY_RETRY_MS = 10_000
-// No data: no item and no latest older one; with no data block, an answer that found nothing or none at all (a teammate's own prose is no empty part).
 const noData = (m: TeamMember): boolean => m.data ? !m.data.facts.length && !m.data.nothing?.latest : m.state === 'failed' || !!m.empty || !m.result?.trim()
 export const emptyRetryNote = (words: readonly string[], others: readonly string[]): string => [
   'Your part came back with nothing. What the person said for this work, a line each:', ...words.map(line => `- ${line.slice(0, 400)}`),
@@ -52,22 +28,16 @@ export const emptyRetryNote = (words: readonly string[], others: readonly string
   'Your part is the piece of their words your brief is about. Search for it again in their words: the place, thing or name exactly as the person wrote it, not as your brief or your last search spelled it.',
 ].join('\n')
 
-// Runs the hidden team of a task: each member is its own engine turn on a lane of the lead's channel.
 type Deps = Parameters<typeof runComet>[0]
 type Native = NonNullable<Parameters<typeof runComet>[2]>['native']
-// stack-7: the host runs a first search in two places: for a lone lookup (ipc.ts, c7 fast-lane firstSearch) and for a teammate with
-// search words (below, c6). A lone lookup that then hires must never run both for the same words: what the lead's turn already found
-// is kept here by its thread, and a teammate hired in that turn with the same words starts from it, with no second search.
 export const laneSearches = new Map<string, { query: string; found: string }>()
 const sameWords = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase()
 export const memberLane = (channel: string, id: string): string => `${channel}~team-${id}`
 const laneMember = (lane: string): RegExpExecArray | null => /^(bot-[^~]+)~team-(m\d+)$/.exec(lane)
 export const leadOf = (lane: string): string => laneMember(lane)?.[1] ?? lane
 
-// What one lead or member turn hands over so its members can be run the same way.
 export interface TurnKit {
   engine: Deps['engine']; workdir: Deps['workdir']; guided: boolean; said(): string
-  // c13b: the host's link check, for the pages a member cites as its result is handed over (core TeamHost.alive).
   alive?(url: string, signal: AbortSignal): Promise<boolean>
   nativeFor(lane: string): Promise<Native>
   toolsFor(lane: string, native: Native): Promise<AgentTool[]>
@@ -84,19 +54,14 @@ export function teamRunner(deps: {
   endLane(lane: string): void
   step(channel: string, line: string): void
   changed(): void
-  // Resolves when the person says something in this lead's thread mid-turn (a lead waiting on its members hears it at once).
   steered?(channel: string, signal: AbortSignal): Promise<void>
-  /** A conversation has a turn of its own under way: an agent's finished job is written to their conversation after it. */
   busy?(channel: string): boolean
   run?: typeof runComet
-  // Test seam: how long after the person's message the team's answer is due (TEAM_ANSWER_MS); every other time scales with it.
   answerMs?: number
 }) {
   const { paths } = deps
   const answerMs = deps.answerMs ?? TEAM_ANSWER_MS, scale = answerMs / TEAM_ANSWER_MS
-  // When a task's answer is due: its message time plus the answer time, or later when a part started late still needs its least time.
   const taskDue = (task: DelegatedTask): number => Math.max(Date.parse(task.createdAt) + answerMs, ...(task.team?.members ?? []).filter(m => m.parentId === null && !!m.botId && m.background).map(m => Date.parse(m.hiredAt) + MIN_PART_MS * scale))
-  // What each part at work has opened so far: put on the member when the others are reported without it (rule 7's line links it).
   const reading = new Map<string, Set<string>>()
   setReportLog(line => flog('team-report', line))
   setJudgeLog(line => flog('item-judge', line))
@@ -106,20 +71,14 @@ export function teamRunner(deps: {
   const screen = new Map<string, string>()
   const notes = new Map<string, string>()
   const roles = new Map<string, string>()
-  // Lead channels being stopped: a member that ends because of the stop leaves no late result; the stop releases it.
   const halting = new Set<string>()
-  // The lead's running tool session per lead channel: member tokens count against the lead's turn budget, so lead plus team never pass it.
   const leads = new Map<string, { job: ToolSessionJob; spent: number }>()
-  // Told when the background members of a task have all ended: the lead reports in a turn of its own (task-runner report).
   let report: ((channel: string, taskId: string) => void) | undefined
-  // What a task's background members were started with: a part added while they work starts the same way (steer).
   const laterKits = new Map<string, TurnKit>()
-  // Tasks whose lead was told: two batches of one task that end together are one report (a part added mid-work is a batch of its own).
   const told = new Set<string>()
   const charge = (leadChannel: string, tokens: number) => { const lead = leads.get(leadChannel); if (!lead) return false; lead.spent += tokens; lead.job.onUsage?.(tokens); return true }
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const now = () => new Date().toISOString()
-  // c14a: what an empty part's first run searched, carried into its second run.
   const looked = new Map<string, { sources: string[]; kept: string[] }>()
   const find = async (taskId: string) => (await listTasks(paths)).find(t => t.id === taskId)
   const remember = (task: DelegatedTask) => { if (task.team && !TERMINAL.includes(task.state)) notes.set(channelOf(task), teamNote(task.team)); else notes.delete(channelOf(task)) }
@@ -136,11 +95,9 @@ export function teamRunner(deps: {
     if (!ids.length) return
     const keys = await change(taskId, task => (task.team?.members ?? []).filter(m => ids.includes(m.id) && m.state !== 'released').map(m => { m.state = 'released'; m.finishedAt ??= now(); return m.sessionKey }))
     for (const key of keys ?? []) deps.closeSession(key)
-    // c16a r3: a released member stops working too (a part the person replaced mid-work), not only its session; marked released first, it leaves nothing.
     for (const id of ids) live.get(`${taskId}/${id}`)?.control.abort()
   }
 
-  // At most one member of a task drives the screen; a second one is refused rather than queued, so a parent cannot block its own helper.
   function screenGuard(tool: AgentTool, taskId: string, member: TeamMember): AgentTool {
     if (!SCREEN_TOOL.test(tool.name)) return tool
     const take = () => {
@@ -157,49 +114,35 @@ export function teamRunner(deps: {
     if (signal?.aborted) control.abort(); else signal?.addEventListener('abort', stop, { once: true })
     live.set(key, { control, channel: leadChannel })
     let retry = false, used = 0, role = id, goal = '', due = Date.now() + answerMs, ended: TeamMember['state'] | undefined, done: { botId: string; brief: string; result: string; title?: string } | undefined
-    // Tokens a lead session already counts are saved with the lead's turn, not again here.
     let charged = leads.has(leadChannel)
     try {
       const member = await change(taskId, task => { const m = task.team?.members.find(one => one.id === id); goal = task.goal; due = taskDue(task); if (m?.state === 'hired' && (task.state === 'running' || (m.background && !TERMINAL.includes(task.state)))) { m.state = 'working'; return { me: structuredClone(m), helpers: redo ? structuredClone(unreviewed(task.team, id)) : [] } } return undefined })
       if (!member) return false
       const { me, helpers } = member
       role = me.role; roles.set(key, role)
-      // A background member outlives the lead's turn: its tokens are saved with the task, never against a lead session that may be gone.
       if (me.background) charged = false
-      // An agent on the team works as themselves: their role and what they remember ride with the member rules.
-      // c11a: a lookup or a writer on the team hands back data (core REPORT_RULE / WRITER_RULE); a writer's deliverable carries no temperament.
       const persona = memberPersona(me) + (me.botId ? await employeeNote(paths, me.botId, undefined, me.writer ? 'writer' : me.lookup ? 'lookup' : undefined) : '') + (me.writer ? ` ${WRITER_RULE}` : '')
       let outcome: MemberOutcome
-      // A lookup member is time-boxed by the task's one deadline (taskDue, c13a); a writer by its own time from when it starts.
-      // Its window counts from when its session starts: one still in line is not stopped before it began (perf146 r2).
       let timedOut = false, draft = '', read = false, hardStop: ReturnType<typeof setTimeout> | undefined, whole: MemberOutcome | undefined
       const sources = new Set<string>(), kept: string[] = []
       const before = redo && looked.get(key)
       if (before) { looked.delete(key); for (const url of before.sources) sources.add(url); kept.push(...before.kept) }
       reading.set(key, sources)
       let startedAt: number | undefined, stopAt = Infinity, reserveMs = 0
-      // A teammate's tool rounds run on their own signal: the answer reserve ends a round without ending the teammate.
       const toolRound = new AbortController()
       control.signal.addEventListener('abort', () => toolRound.abort(), { once: true })
       const quick = kit.engine.id === 'claude' && kit.engine.quick ? (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) : undefined
-      // c17a (cause B): decided where the due is set: a writer follows (its draft + one check, inside the report due) or the lead model does.
-      // The writer's due is the task's answer due plus REPORT_WRITER_MS, so its draft and one check end ITEM_CHECK_MS before the task's.
       if (!me.botId) due -= (quick ? ITEM_CHECK_MS : LEAD_ANSWER_MS) * scale
       let answering = false, reserve: ReturnType<typeof setTimeout> | undefined, written: Promise<string | undefined> | undefined
-      // stack-12 (T3): no wait after a teammate's own work (the stand-in report, the kind check) outlives a stop or a steer. The hard
-      // limit aborts the same signal, but it sets timedOut first and its stand-in keeps its grace.
       const stopped = new Promise<undefined>(resolve => control.signal.addEventListener('abort', () => { if (!timedOut) resolve(undefined) }, { once: true }))
       const readSome = (): boolean => kept.length > 0 || [...sources].some(url => !isSearchPage(url))
       const answerNow = () => {
         if (control.signal.aborted || !readSome()) return
         written = quick?.(keptReportPrompt(me.brief, kept), reserveMs + ANSWER_GRACE_MS * scale).catch(() => undefined)
-        // Already writing its report block: that answer is let finish.
         if (/```|^\s*\{/.test(draft)) return
         answering = true; toolRound.abort()
       }
       const cut = (): void => { timedOut = true; control.abort() }
-      // At the deadline a background part that can follow on its own (core lateParts / followsLate: the others are reported without it)
-      // keeps working until the ceiling; any other part, a hand-off's too, stops there with what it has.
       const atDue = async (): Promise<void> => {
         const task = await find(taskId).catch(() => undefined), m = task?.team?.members.find(one => one.id === id)
         if (!task || !m?.background || !me.botId || control.signal.aborted || !followsLate(m) || !(m.late || lateParts(task).includes(id))) return cut()
@@ -210,7 +153,6 @@ export function teamRunner(deps: {
         if (!(me.lookup || me.writer) || startedAt !== undefined) return
         startedAt = Date.now()
         if (me.writer) { stopAt = startedAt + WRITER_HARD_MS; hardStop = setTimeout(cut, WRITER_HARD_MS); return }
-        // c14a: a part run again because it came back empty counts toward the same deadline; it gets no window of its own.
         if (!redo) due = Math.max(due, startedAt + MIN_PART_MS * scale)
         stopAt = due
         const window = due - startedAt
@@ -218,13 +160,7 @@ export function teamRunner(deps: {
         hardStop = setTimeout(() => void atDue(), window)
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
-      // Time until the deadline on the real scale: a lookup's tools run only while a call and the answer after it still fit (timeBoxed).
       const left = (): number => (due - Date.now()) / scale
-      // c15a (cause L, R2: a helper cited a café post and a wiki where news pages said the same): an anonymous helper's searches pass the one
-      // item judge (core checkedSearch) on its own deadline less its answer reserve, so first-hand rows lead and a counted part looks further.
-      // A named teammate's facts are judged once they come in (kindChecked) instead.
-      // c17a (cause E): when no row it holds states a point, the judge's page is opened through the helper's own open_page (its sources and
-      // read text kept as for any page it opens), and what the lookup proved, and the points it did not, go on the member (helperParts).
       const proof = new Map<string, Proof>(), unproven = new Set<string>()
       let judged = false
       let opener: AgentTool | undefined
@@ -233,31 +169,20 @@ export function teamRunner(deps: {
         ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
         proved: (found, missing) => { judged = true; for (const one of found) proof.set(`${one.point}\n${one.url}`, one); for (const point of missing) unproven.add(point) },
       }) : tool
-      // The soft point: after this share of its window a lookup starts no new tool call and answers from what it has.
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
       const drafted = { onToken: (text: string) => { begun(); draft += text }, onReset: () => { draft = '' } }
       try {
-        // Reading tools only and no shell for a lookup member: a small menu the model sees whole.
         const native = me.lookup || me.writer ? undefined : await kit.nativeFor(lane)
         const menu = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name)))
         const open = menu.find(tool => tool.name === 'open_page')
         if (open) opener = keepRead(keepSources(skipWalls(open), sources), kept)
         tools = menu.map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
-        // c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member. The search the lead gave words for is run
-        // here, by the member's own search tool (so its sources, kept rows, news period and ranking apply), and its results open the task.
-        // The time counts against the member's limit. A search that did not run, or met a wall, leaves the task as it was.
-        // shortcut: the search runs before the session opens, not beside it (~1.2 s of start-up is not overlapped); warm the session first if that matters.
-        // stack-6: a teammate that runs the same search again after it keeps those rows once (settleMember below).
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
         if (search) {
           begun()
-          // The lead's own turn already ran these words: the same results, fed through the same keeping (sources, rows), not fetched again.
           const held = laneSearches.get(leadChannel), task = prompt
-          // c9 C3/C5 + c9a R2: a job about a product's updates, a list job, or a price-and-date ask opens with up to three searches (core
-          // firstSearches, the one helper). One after the other: a member's searches share its one tab, and a second load cuts the first
-          // off (stack-6, comet-navigation-tools). The maker's own rows come first; that one page is the one to read.
           const founds: (FirstSearch & { found: string; own?: boolean })[] = []
           for (const one of firstSearches(me, goal)) {
             const already = held && sameWords(held.query, one.query) ? held.found : undefined, args = { query: one.query, ...(one.news ? { kind: 'news' } : {}) }
@@ -279,63 +204,41 @@ export function teamRunner(deps: {
           })
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
-          // c7 R2: a price reported with no figure gets one host-run search for the previous model's launch price and one more round
-          // to write it in (team-hire-tools priorPriceQuery), once, and only while the search and that round still fit the member's time.
-          // The search is the member's own time-boxed one: with too little time left for it and the answer it is not run.
           whole = undefined
           const prior = !priced && search && !result.asked && !result.budgetExhausted && !control.signal.aborted ? priorPriceQuery(me, outcome.answer) : ''
           if (prior && search) {
             priced = true
             const found = await search.run({ query: prior }, { task: prompt, signal: control.signal }).catch(() => '')
-            // Stopped at the hard limit while writing it again, the member keeps the answer it had.
             if (/^results for "/.test(found)) { whole = outcome; draft = ''; prompt = `${PRIOR_PRICE_NOTE}\n${found}`; round--; continue }
           }
-          // A member reports up only after it reviewed its own helpers; it gets one reminder.
           const open = unreviewed((await find(taskId))?.team, id)
           if (!open.length || result.asked || result.budgetExhausted || toolRound.signal.aborted) break
           if (round) { outcome = { answer: '', error: `it reported without reviewing ${open.map(m => m.role).join(', ')}.` }; break }
           prompt = reviewFirst(open)
         }
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
-      // The reserve ended its round: one round with no tools, to write the report from what it read (the tool path's own ANSWER_NOW).
       const turn = (task: string, roundTools: AgentTool[]) => (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools: roundTools }, task, {
         signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), modelHint: 'smart' as const, ...drafted,
         onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
       })
       if (answering && !control.signal.aborted) {
         draft = ''
-        try { outcome = { answer: (await turn(`${ANSWER_NOW} Write it as the report block your rules describe. What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } /* Cut at the hard limit, what it wrote by then is in draft; else the quick model's report stands in. */ }
+        try { outcome = { answer: (await turn(`${ANSWER_NOW} Write it as the report block your rules describe. What you read:\n${kept.join('\n\n').slice(0, 6000)}`, [])).answer } } catch { outcome = { answer: '' } }
       }
       clearTimeout(reserve)
-      // What it had written at the hard stop is its result, whether or not it called a tool first (grokbar C6: three lines of copy written with
-      // no tool call were thrown away as "조사하지 못했어요"). Only a lookup's one short line before its first tool call is still an opening line,
-      // not findings (perf146 r3: "먼저 기상청부터 확인.").
       const opening = !!me.lookup && !read && !draft.trim().includes('\n') && draft.trim().length <= OPENING_LINE_CHARS
       if (timedOut && !signal?.aborted) outcome = whole ?? { answer: opening ? '' : draft, timedOut: true }
       else if (control.signal.aborted) outcome = { answer: '', error: 'it was stopped.' }
-      // c11a: a teammate's result is the report block it wrote; with none (or a broken one) it is null, and its prose is never parsed.
-      // Its list keeps only items of the kind asked, judged here once by the quick model (core kindChecked), before anything shows it.
       const structured = !!me.botId && (!!me.lookup || !!me.writer) && !outcome.error && !outcome.asked
       let data = structured ? reportData(outcome.answer, me, [...sources], isKorean(goal)) : undefined
-      // c12a A1: with no report by the limit, the quick model's report from the kept rows, waited for until the limit plus the grace.
       if (structured && !data && written) {
         let wait: ReturnType<typeof setTimeout> | undefined
         const by = Math.max(0, Math.min(stopAt, Date.now() + reserveMs) + ANSWER_GRACE_MS * scale - Date.now())
         data = reportData(await Promise.race([written, stopped, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), by) })]) ?? '', me, [...sources], isKorean(goal))
         clearTimeout(wait)
       }
-      // A part cut at its limit has no time for the kind check's model, as before; a stopped one has none at all.
       const judge = (prompt: string, ms?: number) => Promise.race([quick!(prompt, ms), stopped])
-      // c15a (cause K, C5: a judge slower than a fixed 3 s left the entries unjudged, so the ones with no day were shown): each call's time
-      // is the part's own deadline (judgeTime), as for the lone lookup.
       data = await kindChecked(inAskedPeriod(data, me.brief), me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due))
-      // c12a B3: a listing page among the facts (several things, or an entry without the day the job needs) is taken apart in more rounds
-      // while the teammate's time allows it (the hard stop still applies); only at its deadline is it shown, labeled as what it is.
-      // c14a (cause K, C5: "ACC 2026은 12월에 …" shown with no day after one round): one round was all it got. It loops on the same deadline;
-      // a round after the first also looks each entry up by its own name, since the page itself did not give its day.
-      // Each page gets at most those two rounds: a third one would ask the same again.
-      // c14a r2: a first round that gave some of a page's entries does not end it: the host cannot tell it gave them all (withItems), so
-      // the page still gets its by-name round, told which entries are in hand so it looks for the others.
       const opened = new Set<string>(), named = new Set<string>()
       for (;;) {
         const pages = me.lookup ? listingPages(data).filter(url => !named.has(url)) : []
@@ -344,8 +247,6 @@ export function teamRunner(deps: {
         const byName = pages.every(url => opened.has(url)), have = data.facts.filter(f => !f.listing).map(f => `- ${f.text}`)
         for (const url of pages) (byName ? named : opened).add(url)
         const more = await turn(byName ? `${itemsPrompt(pages)}\n${OWN_PAGE}${have.length ? `\n${HAVE_NOTE}\n${have.join('\n')}` : ''}` : itemsPrompt(pages), tools).then(out => reportData(out.answer, me, [...sources], isKorean(goal))).catch(() => undefined)
-        // stack-12 (c12a r3 #2): the round's items are judged like the first ones; a page summary given back again is no item.
-        // stack-14: kindChecked hands back the round itself when no verdict came (no judge, late, stopped); any other object was judged.
         const checked = await kindChecked(more, me.brief, timedOut || control.signal.aborted || !quick ? undefined : judge, judgeTime(due), data.facts.filter(f => !f.listing))
         data = withItems(data, checked, !!checked && checked !== more)
       }
@@ -355,32 +256,23 @@ export function teamRunner(deps: {
       await change(taskId, task => {
         if (!charged) task.tokensUsed = (task.tokensUsed ?? 0) + used
         const m = task.team?.members.find(one => one.id === id)
-        // c9a R2: a fact the teammate gave with no address is tied to the row it read it from (figurePages).
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
-          // c17a: the quotes its lookup verified, and the points no page it held stated (a point proven by a later search is not missing).
           const proven = [...proof.values()], lacking = [...unproven].filter(point => !proven.some(one => one.point === point))
-          // c17a r3: a judged lookup with nothing verified still says so (proof []), so its unverified prose is never shown as evidence.
           if (judged) m.proof = proven
           if (lacking.length) m.missing = lacking
-          // c13a: a teammate that hands back data and ended with none is not finished (status and record read this, never "found nothing").
           if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
-          // c14a (cause E): a lookup part that ended with no data, not stopped, with time left, goes back in line for one more run (chain),
-          // from the person's own words. The empty run is not recorded; only where it looked is carried.
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
             for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'proof', 'missing'] as const) delete m[field]
             m.state = 'hired'; retry = true
-            // Where it looked stays with it: a part that again finds nothing still links the pages it searched (c5b).
             looked.set(key, { sources: [...sources], kept: [...kept] })
           }
         }
         ended = m?.state
-        // Every part that ended goes on the record, one that found nothing too (grokbar C10: a hand-off that failed left no line). One the person stopped does not.
         if (m?.botId && (ended === 'done' || (ended === 'failed' && (timedOut || !control.signal.aborted)))) done = { botId: m.botId, brief: m.brief, result: ended === 'done' && !m.empty && partOutcome(m) !== 'unfinished' ? m.result ?? '' : '', ...(m.title ? { title: m.title } : {}), ...(ended === 'done' && m.data ? { data: m.data } : {}) }
       })
       if (done) {
-        // An agent mid-turn in their own conversation gets the job on their record when that turn ends; nobody here waits for it.
         const busy = () => deps.busy?.(`bot-${done!.botId}`) ?? false, wrote = employeeWriteBack(paths, done, undefined, busy).catch(error => flog('team', error))
         if (!busy()) await wrote
       }
@@ -389,7 +281,6 @@ export function teamRunner(deps: {
       live.delete(key)
       if (!charged) { const left = (inflight.get(taskId) ?? 0) - used; if (left > 0) inflight.set(taskId, left); else inflight.delete(taskId) }
       if (screen.get(taskId) === id) screen.delete(taskId)
-      // A member waiting on the person keeps its helpers for review when it resumes; any other end passes them up unreviewed, said so.
       if (ended !== 'waiting' && !halting.has(leadChannel)) await orphan(taskId, id, ended).catch(error => flog('team', error))
       deps.endLane(lane)
       if (!retry) deps.step(leadChannel, isKorean(goal) ? `${role} 끝` : `${role} finished`)
@@ -397,10 +288,7 @@ export function teamRunner(deps: {
     return retry
   }
 
-  // A member, then whoever its result is handed to (TeamMember.then): one hop, only after it ended done, and it counts as a hire.
   async function chain(taskId: string, leadChannel: string, id: string, signal: AbortSignal | undefined, kit: TurnKit, budget: number, redo?: MemberRedo): Promise<void> {
-    // c14a (cause E): an empty part's second run is briefed from what the person said (the ask and every line they added while it worked),
-    // not from the words of its first run (T1: a garbled "대긵" query); its part is read off their words by meaning, beside the others'.
     if (await runOne(taskId, leadChannel, id, signal, kit, budget, redo) && !signal?.aborted && !halting.has(leadChannel)) {
       const task = await find(taskId), others = (task?.team?.members ?? []).filter(m => m.id !== id && m.lookup).map(m => m.role)
       const words = [...new Set([turnGoals.get(leadChannel) || task?.goal || '', ...(asides.get(leadChannel) ?? []).filter(one => one.role === 'user').map(one => one.text)].map(line => line.trim()).filter(Boolean))]
@@ -410,26 +298,20 @@ export function teamRunner(deps: {
       const team = task.team, m = team?.members.find(one => one.id === id)
       if (!team || !m?.then || m.state !== 'done' || team.hires >= team.maxHires) return undefined
       const to = `m${team.members.length + 1}`
-      // The next one's own job decides how they run: writing from what was handed over needs no web (grokbar C6).
       team.members.push({ id: to, parentId: m.parentId, depth: m.depth, role: m.then.who, brief: handoffBrief(m.then.brief, m.role, m.result ?? '', m.brief), botId: m.then.botId, ...(m.then.voice ? { voice: m.then.voice } : {}), title: jobTitle(m.then.brief), ...(writesFromHandover(m.then.brief) ? { writer: true as const } : { lookup: true }), ...(m.background ? { background: true as const } : {}), ...(m.late ? { late: true as const } : {}), state: 'hired', sessionKey: `team-${task.id}-${to}`, hiredAt: now() })
       team.hires++
       logTask(task, `${m.role} handed over to ${m.then.who}`)
       return { to, background: !!m.background }
     })
-    // c9 H5: work nobody waits on shows the first teammate's own find the moment they hand it on: one bubble, then the next one's (company-tools handoffShown).
     if (next?.background && !halting.has(leadChannel)) report?.(leadChannel, taskId)
     if (next) await runOne(taskId, leadChannel, next.to, signal, kit, budget)
   }
 
-  // Members nobody waits for (assign with wait false). When the last of a task's has ended, its lead is told to report.
   async function later(taskId: string, leadChannel: string, ids: string[], kit: TurnKit): Promise<void> {
     laterKits.set(taskId, kit)
     told.delete(taskId)
     const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
     const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => m.lookup || m.writer).map(m => m.id))
-    // c5 (GROKBOT rule 7): the report waited for the slowest part however long it took. When the answer is due (taskDue, c13a) what has
-    // come back is reported, the parts still at work are labeled there with the pages they have opened so far, and the report below, when
-    // they end, is theirs alone. A part added since (a steer) moves the due time, so the timer reads it again when it fires.
     let cap: ReturnType<typeof setTimeout> | undefined
     const arm = async (): Promise<void> => {
       const task = await find(taskId)
@@ -468,8 +350,6 @@ export function teamRunner(deps: {
     waitingLanes.set(callerLane, (waitingLanes.get(callerLane) ?? 0) + 1)
     try {
       const share = Math.floor(Math.max(0, await tokensLeft(taskId)) / ids.length)
-      // The caller's pool slot is given back for the whole wait; each child takes a root slot from the background line.
-      // Lookup members are light and work side by side in the caller's slot: when all are, the caller keeps its slot for them.
       const light = new Set(((await find(taskId))?.team?.members ?? []).filter(m => (m.lookup || m.writer) && ids.includes(m.id)).map(m => m.id))
       const all = () => Promise.all(ids.map(id => (light.has(id) ? inCallerSlot : asBackground)(() => chain(taskId, leadChannel, id, signal, kit, share, redo))))
       await (light.size === ids.length ? all() : whileWaitingForPerson(all))
@@ -487,7 +367,6 @@ export function teamRunner(deps: {
   }
 
   return {
-    // The lead's engine for one turn: its tool session is known here, so members' tokens are charged to it.
     leadEngine(channel: string, engine: Engine): Engine {
       if (laneMember(channel) || !/^bot-[^~]+$/.test(channel) || !engine.runTools) return engine
       const runTools = async (job: ToolSessionJob) => {
@@ -497,7 +376,6 @@ export function teamRunner(deps: {
       }
       return new Proxy(engine, { get: (target, prop) => { if (prop === 'runTools') return runTools; const value = Reflect.get(target, prop, target) as unknown; return typeof value === 'function' ? value.bind(target) : value } })
     },
-    // staffChanged is given on the primary thread's own turn only: it alone may hand work to agents on the team (assign).
     tools(channel: string, kit: TurnKit, staffChanged?: () => void): AgentTool[] {
       const leadChannel = leadOf(channel), self = laneMember(channel)?.[2] ?? null
       if (!/^bot-[^~]+$/.test(leadChannel)) return []
@@ -518,7 +396,6 @@ export function teamRunner(deps: {
         ...host,
         later: async ids => { const task = await load(); if (task) await later(task.id, leadChannel, ids, kit) },
         ...(kit.engine.id === 'claude' && kit.engine.quick ? { write: (prompt: string, ms = REPORT_WRITER_MS) => kit.engine.quick!(prompt, { workdir: kit.workdir, timeoutMs: ms }) } : {}),
-        // The job that agent is on right now in this thread, whichever task of the thread it belongs to.
         attach: async (botId, then) => {
           for (const [key, one] of live) {
             if (one.channel !== leadChannel) continue
@@ -529,7 +406,6 @@ export function teamRunner(deps: {
         },
       }, staffChanged)]
     },
-    // A member's approval is raised on the lead's task, with the member's role in front.
     askFor(channel: string, confirm: Ask, waitMs?: number): Ask | undefined {
       const lane = laneMember(channel)
       if (!lane) return deps.askFor(channel, confirm, waitMs)
@@ -542,8 +418,6 @@ export function teamRunner(deps: {
       }) as Ask
     },
     reportTo(tell: (channel: string, taskId: string) => void): void { report = tell },
-    // c4b r2 (GROKBOT rule 3): words said while a task's background members work change that work. A part taken off is stopped and leaves
-    // nothing; a part added starts beside the others, and the one report waits for it (later). False: nothing was changed.
     async steer(taskId: string, leadChannel: string, work: (task: DelegatedTask) => { ids: string[]; stop: string[] } | undefined): Promise<boolean> {
       const kit = laterKits.get(taskId)
       if (!kit) return false
@@ -555,7 +429,6 @@ export function teamRunner(deps: {
     },
     waiting: (channel: string): boolean => waitingLanes.has(channel),
     note: (channel: string): string => notes.get(channel) ?? '',
-    // The lead's answer with a link for every member whose pages it left out.
     async cited(channel: string, answer: string): Promise<string> {
       const task = (await listTasks(paths)).find(t => t.state === 'running' && channelOf(t) === channel)
       return task?.team ? citeMembers(answer, task.team.members, isKorean(task.goal)) : answer
@@ -572,23 +445,18 @@ export function teamRunner(deps: {
       } finally { halting.delete(channel) }
     },
     settled: settle,
-    // Members left by a task that ended, or lost when their lead's turn ended, do not stay open.
     async turnEnded(channel: string): Promise<void> {
       for (const task of (await listTasks(paths)).filter(t => channelOf(t) === channel && t.team)) {
         if (TERMINAL.includes(task.state)) { if (task.team!.members.some(m => m.state !== 'released')) await settle(task); continue }
-        // A background member is not this turn's: it ends by itself, by a stop, or by a restart.
         const lost = task.team!.members.filter(m => ['hired', 'working'].includes(m.state) && !m.background && !live.has(`${task.id}/${m.id}`))
         if (lost.length) await change(task.id, t => { for (const m of t.team?.members ?? []) if (lost.some(l => l.id === m.id) && ['hired', 'working'].includes(m.state)) { m.state = 'failed'; m.result = 'Failed: its lead\'s turn ended.'; m.finishedAt = now() } })
       }
     },
     async resume(): Promise<void> {
       for (const task of (await listTasks(paths)).filter(t => t.team)) {
-        // stack-4 (c4b run, C3): this runs 15 s after launch, and a split handed out at 14.6 s had its three teammates closed 0.35 s into
-        // their work ("이번엔 못 찾았어요" three times). Members at work in this run are not leftovers of the last one.
         if (laterKits.has(task.id) || task.team!.members.some(m => live.has(`${task.id}/${m.id}`))) continue
         for (const m of task.team!.members) deps.closeSession(m.sessionKey)
         await change(task.id, t => { if (!t.team) return; if (TERMINAL.includes(t.state)) releaseAll(t.team, now()); else failOnRestart(t.team, now()) })
-        // A task that was waiting only for its background members has nobody left to wake it: its lead reports what there is, lost work included.
         if (task.state === 'waiting' && !task.question && task.team!.members.some(m => m.background)) report?.(channelOf(task), task.id)
       }
     },

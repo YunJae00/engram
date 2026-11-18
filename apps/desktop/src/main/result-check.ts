@@ -4,20 +4,15 @@ import { isAbsolute, relative, sep } from 'node:path'
 import type { AgentTool, TurnEvidence, TurnStep } from 'core'
 
 type Finding = { status: 'pass' | 'fail' | 'unknown'; basis: string; refs?: string[] }
-// A work-guide rule with nothing to apply to in this result is neither passed nor open: it does not hold the result back, and stays in the report as set aside (qa145 B14).
 const NOT_APPLICABLE = 'not_applicable'
-/** What a not_applicable check is held to: the person's work guide as the turn carried it, and what they asked for. */
 type Standing = { guide: string; request: string }
 const plain = (value: string): string => value.normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '')
-// The host cannot judge relevance, so it accepts only what it can prove: the requirement is a whole line of the work guide, and the request does not state it itself.
-// Anything the person asked for, and anything the host cannot place in the guide, has to be pass, fail or unknown (qa145 r2).
 function standingRule(requirement: string, standing?: Standing): boolean {
   const rule = plain(requirement)
   return !!standing && rule.length >= 4 && standing.guide.split('\n').some(line => plain(line) === rule) && !plain(standing.request).includes(rule)
 }
 type Check = Omit<Finding, 'status'> & { status: Finding['status'] | typeof NOT_APPLICABLE; requirement: string }
 type Report = { checks: Check[]; grounding: Finding; reportUnchanged?: boolean }
-// kept: a file of the report a re-check answers for, known by its path: nothing else under its name replaces it (checkedOutputs).
 type Output = { name: string; path: string; hash?: string; after?: number; sheets?: string[]; source?: string; kept?: true }
 type Receipt = Record<string, unknown>
 type Read = { step: TurnStep; position: number; value?: Receipt }
@@ -26,11 +21,7 @@ const TOOL = 'report_result_check'
 const READS = /^(app_read|app_text|read_open_page|read_pages|look|verify|read_desktop|look_desktop|read_live_document|file_read|file_read_package|file_read_workbook|excel_read|word_read|ppt_read)$/
 const CHANGES = /^(app_do|app_set|app_press|page_steps|press|press_key|press_point|type_text|choose|upload_file|run_procedure|desktop_action|desktop_sequence|compose_live_document|edit_live_document|excel_write|word_write|word_edit|ppt_build|ppt_edit|outlook_draft|file_create_copy|file_create_workbook|file_edit_package|file_move|render_file)$/
 const CREATES = /^(file_create_copy|file_create_workbook|file_edit_package|render_file)$/
-// These are capture/recording evidence, not text deliverables. Their own
-// provenance/approval checks remain responsible; this gate does not certify pixels.
-// No text readback exists for these; their own tool receipts stand.
 const CAPTURE_MEDIA = /\.(png|mp4|webm|pdf|jpe?g|gif|svg|html|zip)$/i
-// Scripts are text deliverables: their final bytes need the same evidence as any text file.
 const SCRIPT = /\.(py|js|ts|sh|ps1)$/i
 const HASH = /^[a-f0-9]{64}$/i
 const object = (value: unknown): value is Receipt => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -64,16 +55,10 @@ const properties = {
   refs: { type: 'array', maxItems: 40, items: { ...text, maxLength: 4096 } },
 }
 
-/** The requirement name of the entries the host adds to a report for its own defects. */
 const HOST_CHECK = 'Unresolved verification'
 
-// grokbar D4: the check tool was offered every turn, the model called it unasked, the check was not accepted and a delivered workbook ended
-// "작업이 멈췄어요". It is offered on an ordinary turn only when the person asked for the result to be checked ("확인까지 해줘", "double-check it").
-// "날씨 확인해줘" asks to look something up, not to check a result.
 const CHECK_ASK = /확인까지|검증|검수|(다시|한\s*번\s*더|제대로|꼼꼼히|맞는지|틀린\s*(데|곳)|오류).{0,12}(확인|검토|체크)|(확인|검토|체크)\s*(도|까지)\s*(해|부탁)|\b(verify|double[- ]check|proofread|check (it|them|the result|your work|that it)|make sure)\b/i
 export const asksForCheck = (message: string): boolean => CHECK_ASK.test(message)
-// The answer under a "Not verified as complete" wrapper (core agent-session.ts): the reason above it is written for the model and goes to the
-// log, never to the thread (grokbar H1: "Unverified collection items (2/6): …" was shown). A wrapper with no answer under it is left as it is.
 export const answerOnly = (text: string): string => /^Not verified as complete\.\n\n[^]*?\n\nUnverified response:\n([^]*)$/.exec(text)?.[1]?.trim() || text
 
 export function resultCheckTool(config?: { outputs: { name: string; path: string }[]; sources: string[]; requireSourceEvidence?: boolean; generatedDirectory?: string; standing?: Standing }): AgentTool {
@@ -102,23 +87,15 @@ function receipt(step: TurnStep): Receipt | undefined {
   catch { return undefined }
 }
 
-// A command step has no receipt of what it touched, so it counts as a change unless every part of it is a plain reader with no redirection,
-// substitution or expansion: `diff a b`, `cat x | wc -l`. Anything else may have written a file (`cat > report.md`, `python3 build.py`, `sed -i`).
-// shortcut: reads the command text against a short list, so an unlisted reader (awk, jq, find) costs one readback; upgrade when command steps report the files they changed.
 const SHELL = /^(Bash|PowerShell|Shell)$/
 const READERS = /^(cat|head|tail|wc|ls|diff|cmp|grep|egrep|fgrep|rg|stat|du|pwd|cd|echo|printf|test|true|cut|nl|basename|dirname|shasum|sha256sum|md5|md5sum)$/
-// A listed reader that is told to run another program is no reader: ripgrep's --pre and --hostname-bin run the executable they name, and
-// -z/--search-zip runs whatever decompressor the PATH holds (qa143 p2 r9). Quotes are dropped first, so a quoted flag is still seen.
 const RUNS_PROGRAM = /(^|\s)(--pre|--hostname-bin|--search-zip|-[A-Za-z]*z)/
 const plainReader = (part: string): boolean => READERS.test(part.split(/\s+/)[0]!) && !(/^rg(\s|$)/.test(part) && RUNS_PROGRAM.test(part.replace(/['"]/g, '')))
 export const commandOnlyReads = (command: unknown): boolean => typeof command === 'string' && !/[<>`$(){}\\]/.test(command)
   && command.split(/\|\||&&|[|;&\n]/).map(part => part.trim()).filter(Boolean).every(plainReader)
 export const commandChanged = (step: TurnStep): boolean => SHELL.test(step.tool) && !commandOnlyReads(step.args['command'])
-// A step that may have written a file with no receipt of its own: a native file write, or a command that is not plainly a reader.
-// The one rule for the post-check scan, readback freshness and what leaves something to read back (qa143 p2 r9 B14).
 export const wroteFile = (step: TurnStep): boolean => /^(Write|Edit|MultiEdit|NotebookEdit)$/.test(step.tool) || commandChanged(step)
 
-// The task file the host itself copied in after the turn (deliverOutputs); a model's own call never carries this.
 export function handedInFrom(step: TurnStep): string | undefined {
   const from = step.tool === 'file_create_copy' ? receipt(step)?.handedInFrom : undefined
   return typeof from === 'string' ? from : undefined
@@ -148,7 +125,6 @@ function textChunk(read: Read, part?: string): { offset: number; end: number; to
   return { offset: offset as number, end, total: total as number }
 }
 
-// Pages at one revision, read after `after`, that together cover the whole file.
 function textCoverage(reads: Read[], path: string, hash?: string, after = -1, part?: string): { hash: string } | undefined {
   const current = reads.filter(read => read.position > after && read.step.tool === (part ? 'file_read_package' : 'file_read') && !read.step.seeded && read.value?.path === path && (!part || read.value.part === part))
   const revision = hash ?? current.at(-1)?.value?.sha256
@@ -190,13 +166,10 @@ function fullOutputRead(step: TurnStep, output: Output): boolean {
   const value = receipt(step)
   if (!value || !readable(step) || value.path !== output.path || (output.hash && value.sha256 !== output.hash)) return false
   if (step.tool === 'file_read') return false
-  // Explicit full readback is accepted; a package manifest or selected range is not whole-file proof.
   return value.completeReadback === true && step.args.range === undefined
 }
 
 export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[]): Output[] {
-  // Two linked files of one name are two files, each known by its path: a read of the last one is not the readback of the first (qa143 S19a).
-  // Any other receipt under their name is an earlier revision of one of them (core and the host link the last copy of every input), not a third file.
   const twins = new Set(outputs.filter(output => !output.kept && outputs.some(other => !other.kept && other.name === output.name && other.path !== output.path)).map(output => output.name))
   const byPath = (output: { name: string; kept?: true }) => !!output.kept || twins.has(output.name)
   const latest = new Map<string, Output>(outputs.map(output => [byPath(output) ? output.path : output.name, output]))
@@ -207,7 +180,6 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
     const sheets = Array.isArray(value.sheets) ? value.sheets.flatMap(sheet => object(sheet) && typeof sheet.sheet === 'string' ? [sheet.sheet] : []) : undefined
     const source = handedInFrom(step)
     const made: Output = { name: step.args.name, path: value.path, hash: value.sha256, after: position, ...(sheets?.length ? { sheets } : {}), ...(source ? { source } : {}) }
-    // A kept file made again byte for byte is still that file, to be read after this write; any other file under its name is a second file beside it.
     const held = latest.get(value.path)
     if (held) latest.set(value.path, { ...made, ...(held.kept ? { kept: true as const } : {}) })
     else if (!twins.has(step.args.name)) latest.set(step.args.name, made)
@@ -215,12 +187,8 @@ export function latestResultOutputs(steps: TurnStep[], outputs: { name: string; 
   return [...latest.values()]
 }
 
-// The host decides from what it observed this turn; the model's report adds
-// only its own verdicts, and a fail or unknown there stays unresolved.
-// A readback-only follow-up is judged the same way: which requirements its report restates is not this function's concern (the task runner keeps the check turn's report).
 export function checkResult(steps: TurnStep[], outputs: { name: string; path: string; kept?: true }[], sources: string[], requireSourceEvidence = false, generatedDirectory?: string, standing?: Standing): { accepted: boolean; verified: boolean; issues: string[]; defects?: string[]; readbacks?: { name: string; path: string }[] } {
   const issues: string[] = []
-  // Host hand-ins whose final bytes no read of this turn covers: the one gap a readback-only follow-up can close.
   const readbacks: { name: string; path: string }[] = []
   const unresolved: string[] = []
   let groundingPass = true
@@ -237,12 +205,10 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
           if (!standingRule(item.requirement, standing)) issues.push(`"${item.requirement}" cannot be not_applicable: that is only for a line of the person's work guide given word for word as the requirement, and never for something the request asks for. Report it pass, fail or unknown from what you observed.`)
         } else if (item.status !== 'pass') unresolved.push(`${item.requirement}: ${item.status} — ${item.basis}`)
       }
-      // Setting every requirement aside checks nothing.
       if (checked.checks.every(item => item.status === NOT_APPLICABLE)) unresolved.push('No requirement was checked: every one was reported not_applicable.')
     } catch (error) {
       issues.push(`Result-check report is invalid: ${error instanceof Error ? error.message : String(error)}`)
     }
-    // The host's own hand-in of a task file is not the model changing the result; its bytes are checked below.
     if (steps.slice(index + 1).some(step => !step.seeded && (CHANGES.test(step.tool) && !handedInFrom(step) || wroteFile(step)))) issues.push('The result changed after report_result_check. Reread the affected result and submit a new report.')
   }
 
@@ -260,7 +226,6 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
   const observedSource = ({ step, value }: Read): boolean => {
     const path = value?.path
     if (typeof path === 'string' && generated(path)) return false
-    // A deck's outline that the host marked complete is every word of it (document-tools.ts deckWords), the same evidence as all its parts.
     if (step.tool === 'file_read_package') return typeof path === 'string' && (value?.completeReadback === true && readable(step) || packageCoverage(reads, path))
     if (step.tool !== 'file_read') return readable(step)
     return typeof path === 'string' && !invalidSources.has(path) && textCoverage(reads, path)?.hash === value?.sha256
@@ -280,13 +245,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
     }
     const workbook = /\.xlsx$/i.test(output.name)
     const sheetsCovered = !workbook || sheetNames.size > 0 && [...sheetNames].every(sheet => fullReads.some(read => read.value?.sheet === sheet))
-    // A workbook's extracted text, read through to the end, covers every sheet as well.
     const textCovered = !!textCoverage(reads, output.path, expected.hash, output.after) || (!workbook && packageCoverage(reads, output.path, expected.hash, output.after))
-      // A host hand-in is a byte copy made after the turn: the task file read in full at the same hash is that readback.
       || (!!output.source && !!output.hash && !!textCoverage(reads, output.source, output.hash))
-    // A script's final bytes are also known when they equal the whole content the model wrote to this very file with its own write tool this turn:
-    // a Write to the handed-in task file, or its own copy that made this output or the task file handed in. The same content written to another path proves nothing here.
-    // The hash is of that call's content argument; a command's echo or output never counts, and bytes changed afterwards no longer match.
     const wroteWhole = SCRIPT.test(output.name) && !!output.hash && reads.some(({ step, value }) => !step.seeded
       && (step.tool === 'Write' ? !!output.source && step.args.file_path === output.source
         : step.tool === 'file_create_copy' && !!value && (value.path === output.path || (!!output.source && value.taskPath === output.source)))
@@ -312,13 +272,8 @@ export function checkResult(steps: TurnStep[], outputs: { name: string; path: st
 
 }
 
-// Saved copies carry an id before their name; the person knows the name.
 const ownName = (path: string): string => (path.split(/[\\/]/).at(-1) ?? path).replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')
 
-// The last report the model made this turn, with what it read as sources
-// (the attachments, and originals read this turn; never its own outputs), in
-// the shape the answer carries to the person. Absent when no report was made.
-// reportUnchanged is the model's explicit word that a re-checked result needs no correction; absent means it may.
 export function checkReport(steps: TurnStep[], options: { generatedDirectory?: string; attachments?: string[] } = {}): (Omit<TurnEvidence, 'record'> & { reportUnchanged?: true }) | undefined {
   const last = steps.filter(step => step.tool === TOOL && !step.seeded).at(-1)
   const value = last && receipt(last)

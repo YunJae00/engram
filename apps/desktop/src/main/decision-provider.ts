@@ -1,11 +1,6 @@
 import { brainConnection, connectionFetch, loadBrainConnections } from './brain-connections.js'
 import { flog } from './flog.js'
 
-// A decision model answers typed questions about a state and never writes:
-// given the controls an app shows and a goal, it picks the one to act on, in
-// a fraction of a second and for a fraction of a cent. It is reached at the
-// endpoint the person connected under 'decision'; without one, nothing here
-// is offered.
 export interface ChoiceDecision { choice: string; confidence: number; probabilities: Record<string, number>; ms: number }
 const TIMEOUT_MS = 20_000
 const STATE_LIMIT = 60_000
@@ -26,7 +21,6 @@ function readChoice(body: unknown, name: string): Omit<ChoiceDecision, 'ms'> {
   return { choice: answer.choice, confidence, probabilities }
 }
 
-// One choice question: the options with a line each on what they mean.
 export async function decideChoice(state: string, instructions: string, criteria: Record<string, string>, fetchImpl: typeof fetch = connectionFetch, signal?: AbortSignal): Promise<ChoiceDecision> {
   signal?.throwIfAborted()
   await loadBrainConnections()
@@ -45,7 +39,6 @@ export async function decideChoice(state: string, instructions: string, criteria
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS),
   })
   let response = await send()
-  // A burst past the endpoint's rate is waited out briefly rather than failing a run midway.
   for (let retry = 0; response.status === 429 && retry < RATE_RETRIES; retry++) {
     const after = Number(response.headers.get('retry-after'))
     await new Promise(resolve => setTimeout(resolve, Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 10_000) : 1_500 * (retry + 1)))

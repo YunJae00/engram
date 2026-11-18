@@ -3,9 +3,6 @@ import { readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { flog } from './flog.js'
 
-// The window's script is sampled lightly all the time, a minute at a time.
-// A minute that held a stall of seconds is kept as a profile beside the log,
-// so a freeze on a person's machine names the code that held it.
 const WINDOW_MS = 60_000
 const SAMPLE_US = 10_000
 const WORTH_MS = 2_000
@@ -31,9 +28,6 @@ export function recordStalls(contents: WebContents): (ms: number) => void {
     const kept = (await readdir(dir)).filter(file => file.startsWith('renderer-stall-')).sort()
     for (const old of kept.slice(0, -KEPT)) await rm(join(dir, old), { force: true })
   }
-  // A stall is reported once it is over, so it often lands in the window after
-  // the one that sampled it: that window is kept with it. One turn at a time -
-  // a stop sent during a stall answers only when the stall ends.
   let previous: unknown
   let turning = false
   const turn = async (): Promise<void> => {

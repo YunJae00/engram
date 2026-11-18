@@ -1,7 +1,6 @@
 import { open, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 
-// Read text guidance without enabling executable project settings or hooks.
 export async function devClaudeInstructions(cwd: string): Promise<string> {
   const root = await realpath(cwd), guidance: string[] = []
   for (const path of ['CLAUDE.md', '.claude/CLAUDE.md']) {

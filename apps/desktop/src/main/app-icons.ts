@@ -2,10 +2,6 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { app, nativeImage, nativeTheme, type NativeImage } from 'electron'
 
-// Where each app's program lives, as the activity sampler first saw it, so its
-// own icon can be shown beside its name. An app never seen with a path (one
-// recorded before paths were, or a system process) shows no icon of its own.
-
 const file = (): string => join(app.getPath('userData'), 'app-paths.json')
 let paths: Promise<Record<string, string>> | null = null
 let saving: Promise<void> = Promise.resolve()
@@ -32,9 +28,6 @@ export async function rememberAppPath(name: string, path: string): Promise<void>
   await saving
 }
 
-// A store-installed program often carries no icon of its own; its package
-// names the logo in its manifest, kept in several sizes beside the named file,
-// one drawn for a dark ground and one for a light.
 async function packageLogo(program: string, dark: boolean): Promise<NativeImage | undefined> {
   const root = /^(.*?[\\/]WindowsApps[\\/][^\\/]+)[\\/]/i.exec(program)?.[1]
   if (!root) return undefined

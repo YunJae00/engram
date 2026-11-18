@@ -8,8 +8,6 @@ import { spawnRuntime } from './process-client.js'
 import { claudeTokenUsage } from './claude-token-usage.js'
 import { currentLease, idleBeyond, inTurnSlot, type Lease } from './worker-pool.js'
 
-// Reuse an idle runtime only while its account, model and tool scope match.
-
 export interface SdkUserMessage {
   type: 'user'
   message: { role: 'user'; content: string }
@@ -45,9 +43,6 @@ interface SessionSpec {
 }
 
 const IDLE_MS = 60 * 60_000
-// c17b (cause W b, D2: a step streamed nothing for 121 s, no host tool ran, then went on): a step with no stream event (token, thinking,
-// tool call) for this long while no tool is open is cut and asked again once, on a fresh request in the same session, which keeps the tool
-// results it already has. stack16 log: a turn's first-token p90 was 19.2 s (61 calls, its tools included; the tail above is the stall turns), rounded up.
 export const STEP_IDLE_MS = 25_000
 const RETRY_STEP = 'Your last request got no reply in time and was cut. Carry on from exactly where you were: the tool calls already made have their results above, so do not make them again.'
 export const PRELOADED_TOOLS_MAX = 16
@@ -70,7 +65,6 @@ interface Turn {
   firstTool: boolean
   resolve(result: ToolSessionResult): void
   answer: string
-  // Words written before a tool call (c11b r2): kept apart, never the answer.
   note?: string
   detachAbort(): void
   onToken?: (text: string) => void
@@ -78,14 +72,12 @@ interface Turn {
   onReset?: (dropDraft?: boolean, tool?: string) => void
   onContextReset?: () => void
   onUsage?: (tokens: number) => void
-  // c17b: tool calls opened and not yet answered (the idle clock stops while one is open), the clock, and whether the one retry was used.
   calls: Set<string>
   idle?: ReturnType<typeof setTimeout>
   stalled?: boolean
   retried?: boolean
 }
 
-// The pieces of a reply as the runtime writes it.
 interface PartialEvent {
   type?: string
   delta?: { type?: string; text?: string; thinking?: unknown; partial_json?: unknown }
@@ -99,7 +91,6 @@ class WarmSession {
   readonly signature: string
   private readonly runtime: string
   matches(spec: SessionSpec): boolean { return this.runtime === JSON.stringify([spec.binary, spec.model, spec.env]) }
-  // Which model this session was opened with - a change recycles it.
   get model(): string {
     return this.spec.model
   }
@@ -127,12 +118,9 @@ class WarmSession {
     this.runtime = JSON.stringify([spec.binary, spec.model, spec.env])
     const server = spec.sdk.createSdkMcpServer({
       name: TOOL_SERVER,
-      // A small menu is put in the prompt whole: finding it through ToolSearch cost a model round per look (perf146: 8 rounds, 3-8 s each).
       ...(job.tools.length <= PRELOADED_TOOLS_MAX ? { alwaysLoad: true } : {}),
       tools: job.tools.map((one) =>
         spec.sdk.tool(one.name, one.description, shapeOf(one.argsSchema), async (args) => {
-          // The tool of the turn under way: the same name may run against a
-          // different notebook or browser next time.
           const tool = this.tools.get(one.name)
           if (this.turn && !this.turn.firstTool) {
             this.turn.firstTool = true
@@ -173,7 +161,6 @@ class WarmSession {
         spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort,
         systemPrompt: job.system,
-        // The runtime's own tools stay off unless the host hands them over.
         ...(job.native ? { additionalDirectories: job.native.readRoots, ...native, ...('sandbox' in job.native ? { sandbox: job.native.sandbox } : {}) } : { tools: job.tools.length ? ['ToolSearch'] : [], permissionMode: 'dontAsk' }),
         mcpServers: { [TOOL_SERVER]: server },
         strictMcpConfig: true,
@@ -232,8 +219,6 @@ class WarmSession {
             if (typeof progress === 'string' && progress.length > 0) this.turn?.onProgress?.()
           }
           if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) this.turn?.onToken?.(event.delta.text)
-          // Words written before a tool call were thinking aloud; the reply
-          // starts over after the call.
           else if (event?.type === 'content_block_start' && event.content_block?.type === 'tool_use') { this.turn?.onReset?.(undefined, event.content_block.name); this.noteBeforeCall() }
           continue
         }
@@ -243,16 +228,12 @@ class WarmSession {
           if (Array.isArray(content) && content.some(block => (block as { type?: unknown })?.type === 'tool_use')) this.noteBeforeCall()
           continue
         }
-        // The runtime says which model it actually opened with; worth one
-        // line in the field log, because "which model answered" is otherwise
-        // unanswerable after the fact.
         if (message.type === 'system' && (message as { subtype?: string }).subtype === 'init') {
           claudeSessionStarted()
           flog('engine-claude', `session running on ${(message as { model?: string }).model ?? 'an unnamed model'}; startup_ms=${Math.round(performance.now() - this.startedAt)}`)
           continue
         }
         if (message.type !== 'result') continue
-        // c17b: the step cut for silence ended; it is asked again once, on a fresh request, and the turn goes on.
         if (this.turn?.stalled && (message as { subtype?: string }).subtype !== 'success') {
           this.turn.stalled = false
           this.turn.retried = true
@@ -269,7 +250,6 @@ class WarmSession {
           this.finish({ answer: spoken, error: said })
           continue
         }
-        // The runtime's result is its last text; when that is the note before a call, nothing was said after it.
         const last = result.result?.trim() ?? '', note = this.turn?.note
         this.finish({ answer: (last !== note ? last : '') || spoken, ...(note && !spoken && (!last || last === note) ? { note } : {}) })
       }
@@ -282,9 +262,6 @@ class WarmSession {
     }
   }
 
-  // c11b r2 (review #3): words before a tool call were the model working aloud ("Looking for the export figures first…"): they are moved
-  // out of the answer, so a turn that says nothing after its last call has no answer rather than its note as one.
-  // c17b: every message the runtime sends is a sign of life; a tool call is open from its first block to its result.
   private track(message: SdkMessage): void {
     const turn = this.turn!
     const event = message.type === 'stream_event' ? (message as { event?: PartialEvent }).event : undefined
@@ -324,13 +301,8 @@ class WarmSession {
     const lease = currentLease(), own = job.native; this.native = own ? { ...own, decide: (name, input, signal) => inTurnSlot(lease, () => own.decide(name, input, signal)) } : undefined
     this.turns++
     this.lastUsed = Date.now()
-    // The conversation so far is given once, when the session opens; after
-    // that the session remembers it.
     const content = this.turns === 1 && job.opening ? `${job.opening}\n\n${job.prompt}` : job.prompt
     return new Promise<ToolSessionResult>((resolve) => {
-      // A turn cut short leaves a tool call in flight whose result would land
-      // on the next turn; the session goes with it, and the next turn opens
-      // a fresh one.
       const cut = (error: string): void => {
         if (this.turn !== turn) return
         void this.query?.interrupt().catch(() => undefined)
@@ -359,16 +331,11 @@ class WarmSession {
   }
 }
 
-// One session per comet, keyed by the caller; a turn whose opening lines
-// changed, or whose session went stale, gets a fresh one.
 export class SessionPool {
   private readonly sessions = new Map<string, WarmSession>()
-  // A session started ahead for the next comet, with a work folder of its
-  // own: the comet that takes the folder takes the session, warm.
   private spare: { session: WarmSession; cwd: string; owner?: string } | null = null
   private readonly claimed = new Map<string, string>()
 
-  // The work folder a new comet should use: the spare session's, when one is warm.
   claimWorkFolder(channel: string, fallback: string): string {
     const key = `${dirname(fallback)}:${channel}`
     const held = this.claimed.get(key)
@@ -379,7 +346,6 @@ export class SessionPool {
     return this.spare.cwd
   }
 
-  // A session opened ahead, from a job shaped like the next comet's, in the folder that comet will take.
   warm(spec: SessionSpec, job: ToolSessionJob): void {
     if (this.spare && (this.spare.session.stale || !this.spare.session.matches(spec))) { this.spare.session.close(); this.spare = null }
     if (this.spare || !job.native) return
@@ -396,8 +362,6 @@ export class SessionPool {
     if (job.signal?.aborted) return Promise.resolve({ answer: '', error: 'canceled' })
     const key = job.sessionKey ?? 'default'
     let session = this.sessions.get(key)
-    // A changed model is a new session: the person switched in Settings, and
-    // their next turn answers with the model they chose, warm pool or not.
     if (session && !session.matches(spec)) {
       session.close()
       session = undefined
@@ -424,14 +388,11 @@ export class SessionPool {
     return session.run(job)
   }
 
-  // The person started the conversation over: whatever this session
-  // remembers of it is stale, so it goes, and the next turn opens fresh.
   closeOne(key: string): void {
     this.sessions.get(key)?.close()
     this.sessions.delete(key)
   }
 
-  // Idle warm sessions, the spare included, beyond the cap close oldest first; busy ones stay.
   trim(cap: number): void { for (const key of idleBeyond([...[...this.sessions].map(([key, s]) => ({ key, busy: s.busy, lastUsed: s.lastUsed })), ...(this.spare ? [{ key: '', busy: this.spare.session.busy, lastUsed: this.spare.session.lastUsed }] : [])], cap)) if (key) this.closeOne(key); else { this.spare?.session.close(); this.spare = null } }
   closeMatching(key: string): void {
     for (const stored of this.sessions.keys()) if (stored === key || stored.endsWith(`:${key}`)) this.closeOne(stored)
@@ -445,8 +406,6 @@ export class SessionPool {
     this.claimed.clear()
   }
 
-  // Idle sessions are let go so a comet that fell silent does not keep a
-  // process around for the rest of the day.
   sweep(): void {
     if (this.spare?.session.stale) { this.spare.session.close(); this.spare = null }
     for (const [key, session] of this.sessions) {

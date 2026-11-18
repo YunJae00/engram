@@ -19,28 +19,17 @@ import { flog } from './flog.js'
 import { connectionProbe } from './connection-probe.js'
 import { engineHealthOf, markEngineOk, revalidateEngines } from './engine-health.js'
 
-// Vault + engine context for the main process. Env knobs used by dev/e2e:
-//   ENGRAM_VAULT     vault root (skips onboarding)
-//   ENGRAM_USERDATA  userData override (e2e isolation)
-//   ENGRAM_NO_GIT=1  skip the hidden git layer (fast e2e on slow fs)
-//   ENGRAM_ENGINE    mock | none | auto (default auto)
-//   ENGRAM_MOCK_DIR  canned responses for the mock engine
 export interface VaultContext {
   paths: VaultPaths
   git: { autoCommit(message: string): Promise<string | null> } | null
   engines: Engine[]
   provider: BinaryProvider
-  // In-memory, watcher-driven view over notes/. The markdown files remain the
-  // source of truth; this store is a derived cache kept in sync by the notes
-  // watcher (see main/index.ts) and rebuildable from disk at any time.
   store: NoteStore
 }
 
 let context: VaultContext | null = null
 const detectionRevision = new WeakMap<VaultContext, number>()
 
-// Bundled binaries live under resources/bin in packaged builds and under
-// apps/desktop/bundle in dev (after `pnpm bundle:binaries`).
 export function binaryProvider(): BundledBinaryProvider {
   const dir = app.isPackaged
     ? join(process.resourcesPath, 'bin')
@@ -48,24 +37,17 @@ export function binaryProvider(): BundledBinaryProvider {
   return new BundledBinaryProvider(dir)
 }
 
-// Where is the vault? env → active workspace in the registry → null (null = run
-// onboarding). The registry handles legacy vault.json migration internally.
 export async function configuredVaultRoot(): Promise<string | null> {
   if (process.env['ENGRAM_VAULT']) return process.env['ENGRAM_VAULT']
   return currentWorkspaceRoot()
 }
 
-// Onboarding persists the first vault by registering it as the Engram
-// workspace (which also sets it current).
 export async function saveVaultRoot(root: string): Promise<void> {
   await registerWorkspace({ name: 'Engram', root, kind: 'personal' })
 }
 
-// In-app background work runs on Claude whatever was stored.
 const filing = (settings: Parameters<typeof aiSelection>[0]) => ({ ...aiSelection(settings, 'filing'), engine: 'claude' as const })
 
-// Background work uses only the filing selection. Conversations resolve
-// their own selection separately; an unavailable provider never falls back.
 export async function resolveEngines(keep: Iterable<EngineId> = []): Promise<Engine[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
   if (engineFlag === 'mock') {
@@ -92,11 +74,6 @@ function keepSet(keep: Iterable<EngineId>): Set<EngineId> {
   return keep instanceof Set ? keep : new Set(keep)
 }
 
-// The honest per-engine picture for setup UI: "installed but not logged in" is
-// a state the user can ACT on, and resolveEngines collapses it into absence.
-// Mock/none stay forced so e2e and --engine flags behave the same everywhere.
-// An empty list asks for a fresh check of every provider (onboarding after an
-// outside CLI login): cached and pending status probes are dropped first.
 const freshProbes = new WeakMap<Engine, number>()
 export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Promise<EngineStatusDto[]> {
   const engineFlag = process.env['ENGRAM_ENGINE'] ?? 'auto'
@@ -109,9 +86,7 @@ export async function engineStates(ids: readonly EngineId[] = ENGINE_ORDER): Pro
     if (fresh) { freshProbes.set(engine, turn); engine.forgetStatus?.() }
     const detection = await connectionProbe(() => engine.detect())
     const latest = fresh && freshProbes.get(engine) === turn
-    // Only the newest fresh check may drop a hung probe; an older one would void the newer generation.
     if (latest && detection.conclusive === false) engine.forgetStatus?.()
-    // A fresh signed-in status after an outside login replaces an earlier auth failure.
     if (latest && detection.installed && detection.loggedIn && detection.conclusive !== false && engineHealthOf(id)?.reason === 'auth') markEngineOk(id)
     const health = engineHealthOf(id)
     return { id, ...detection, ...(health ? { healthy: health.healthy, healthReason: health.reason } : {}) }
@@ -125,10 +100,6 @@ export async function synchronizeFilingProbe(ctx: VaultContext, states: EngineSt
   if (status && status.conclusive !== false && (status.loggedIn && status.installed) !== (current?.authConfirmed === true)) await revalidateEngines(ctx, false, false)
 }
 
-// Re-detects engines in place (e.g. right after the user logs a CLI in via
-// the embedded terminal) — the shared ctx reference updates for every IPC
-// handler, so no restart is needed. Safe to call from anywhere at any rate:
-// concurrent probes collapse inside the adapter (ClaudeAdapter.detect).
 export async function refreshEngines(ctx: VaultContext, selectionOnly = false): Promise<Engine[]> {
   const revision = (detectionRevision.get(ctx) ?? 0) + 1
   detectionRevision.set(ctx, revision)
@@ -147,7 +118,6 @@ export async function refreshEngines(ctx: VaultContext, selectionOnly = false): 
   return ctx.engines
 }
 
-// Never stops the app from opening: a source that fails is logged and tried again on the next launch.
 async function mergeOtherWorkspaces(paths: VaultPaths): Promise<void> {
   const { sources, shared } = await workspacesToMerge().catch(() => ({ sources: [], shared: false }))
   for (const source of sources) {
@@ -173,17 +143,8 @@ export async function openVaultContext(root: string): Promise<VaultContext> {
     botsReady = false
     console.error(`[vault] bot list reset failed, retrying on next open: ${error instanceof Error ? error.message : String(error)}`)
   }
-  // One workspace: what the others hold is copied in before the notes are read, so it is all there on this launch.
-  // A vault named by ENGRAM_VAULT (dev, tests) is not the registry's, and takes nothing from it.
   if (botsReady && !process.env['ENGRAM_VAULT']) await mergeOtherWorkspaces(paths)
   const store = await NoteStore.open(paths)
-  // Engines start EMPTY and are detected in the background (bootVault kicks it
-  // off). Detection spawns `claude --version` and `claude auth status` — two
-  // subprocesses measured at 3.6s together on an idle machine, against 88ms for
-  // reading and indexing a 135-note vault. Awaiting it here put those seconds
-  // in front of the first paint on every single launch, which is most of what
-  // "the app is slow" was. Nothing in the opening path needs an engine: the
-  // sweep, chat and pipeline all already check for one and wait.
   context = { paths, git, engines: [], provider, store }
   return context
 }

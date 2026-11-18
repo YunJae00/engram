@@ -24,7 +24,6 @@ const REVISION = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i
 export const taskRoot = (paths: VaultPaths) => join(paths.workspace, 'tasks')
 export const OUTPUT_BYTES = 50_000_000
 export const OUTPUT_EXTENSIONS: ReadonlySet<string> = new Set('.pdf .docx .xlsx .pptx .csv .tsv .md .txt .json .html .png .jpg .jpeg .svg .gif .py .js .ts .sh .ps1 .zip'.split(' '))
-// Core validates and reads these back itself, under its own stricter limits.
 const CORE_OUTPUTS = new Set(['.txt', '.md', '.json', '.csv', '.tsv', '.docx', '.pptx', '.xlsx'])
 const TEXT_OUTPUTS = new Set(['.html', '.svg', '.py', '.js', '.ts', '.sh', '.ps1'])
 const kindOf = (name: string) => extname(name).toLowerCase()
@@ -39,7 +38,6 @@ export async function ensureTaskFolder(paths: VaultPaths, folder: string): Promi
   await mkdir(taskRoot(paths), { recursive: true })
   const escape = new Error('A comet work folder cannot redirect outside this workspace.')
   if ((await lstat(taskRoot(paths))).isSymbolicLink() || !within(await realpath(paths.workspace), await realpath(taskRoot(paths)))) throw escape
-  // The vault is committed and synced; task files are not notes.
   await writeFile(join(taskRoot(paths), '.gitignore'), '*\n', { flag: 'wx' }).catch((error) => { if (!exists(error)) throw error })
   await mkdir(folder, { recursive: true })
   if ((await lstat(folder)).isSymbolicLink() || !within(await realpath(paths.workspace), await realpath(folder))) throw escape
@@ -58,21 +56,12 @@ export async function taskFile(paths: VaultPaths, folder: string, requested: unk
   return real
 }
 
-// The task files receipts themselves placed in a task folder (its real path), one `sha256\0path\0turn\0source\0artifact` per line (the last three only
-// when the caller named them), kept outside the folder the comet writes in.
 export const twinsFile = (paths: VaultPaths, folder: string) => join(paths.cache, 'hand-ins', `${createHash('sha256').update(folder).digest('hex').slice(0, 32)}.twins`)
 const sha = (data: Buffer | string) => createHash('sha256').update(data).digest('hex')
 
-// What a placed file was made from, and in which turn. source follows the rule deliverOutputs hands files over by (qa143 S19a): see madeFrom.
-// artifact: the saved output (its id) these bytes are linked by in the chat.
-// outputs: the saved-outputs folder, where the version a change to the file itself replaces is removed from.
 interface Placement { source: string; turn?: string; artifact?: string; outputs?: string }
-// Which saved output replaced which in a task folder, one `id\0earlier id` per line, written only where placeInTask replaces a file in place.
 const versionsFile = (handIns: string) => join(handIns, 'previous')
-// Which saved output a change to the file itself removed, and the one that file is now: `earlier id\0id` per line (see findArtifact).
 const replacedFile = (handIns: string) => join(handIns, 'replaced')
-// The earlier versions of a saved output that are still there, nearest first: the "(이전)" link's only source (qa146 2a: a repeated file
-// name in the chat is not a version; two tasks that each made plan.md were linked).
 export async function previousVersions(paths: VaultPaths, id: string): Promise<string[]> {
   const rows = (await readFile(versionsFile(join(paths.cache, 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
   const chain: string[] = []
@@ -84,32 +73,13 @@ export async function previousVersions(paths: VaultPaths, id: string): Promise<s
   const found = await Promise.all(chain.map(earlier => storedArtifact(artifactDirectory(paths), earlier).then(() => earlier, () => '')))
   return found.filter(Boolean)
 }
-// A copy's task file; content (one source per name); any other tool and the file it names, else its own input.
 const madeFrom = (tool: string, args: Record<string, unknown>, cwd: string): string => {
   if (tool === 'file_create_copy' && typeof args.fromPath === 'string') return `path\0${resolve(cwd, args.fromPath)}`
   if (tool === 'file_create_copy' && typeof args.content === 'string') return 'content'
   const input = [args.source, args.sourcePath, args.path].find(value => typeof value === 'string') as string | undefined
-  // grokbar D3: a workbook made fresh under one name is one file however often it is made (agent-session-result.ts freshName).
   return `${tool}\0${input ? resolve(cwd, input) : tool === 'file_create_workbook' && typeof args.name === 'string' ? `name\0${args.name.toLowerCase()}` : sha(JSON.stringify(args))}`
 }
 
-// Never overwrites a file it did not place: a different file of the same name gets a numbered twin.
-// c11c (grokbar D3/D5): an edit is saved to the file it read, never to whatever holds its name. file_edit_package's source is a task file or
-// a saved output; the task file that output's row names is the target, written in place, and the output it replaces is retired. That holds
-// for any file kind and any wording: a same-turn fix of a new deck (D3 forked it to "(2)") and a later edit of the delivered copy (D5 edited
-// a stale draft of the same name). Only a file still holding the bytes on record is written, and an edit saved under another name is a new file.
-// Otherwise, the same deliverable made again (QA 0.8.145 S03/S33: every remake left "a (2).xlsx" beside "a.xlsx") is replaced in place only
-// when both hold:
-// - the file still has the bytes of the LATEST placement on record at that path. An earlier version's bytes do not count: a person who put
-//   v1 back by hand has a file of their own (qa145 r2 #1). Nor does a file never on record, or one changed since.
-// - the new file is that deliverable again: made from the same source, or (anything but an edit) made in a later turn under the name. Two
-//   different inputs under one name in one turn are two files, and so are two different task files copied under one name in any turn
-//   (qa143 S19a, qa145 r2 #2). With no turn named, only the same source counts. The source comes first: while another copy of this name is on
-//   record as made from this source, that copy is the deliverable and the later-turn rule replaces no other (qa145 r3).
-// The earlier version stays in the saved outputs, where the "(이전)" link points, unless the file itself was changed (an edit, or this turn's
-// own draft made again): then there is one file.
-// record (a twinsFile) notes the file only when this call created or replaced it: one found already there with the same bytes came from
-// elsewhere, or is on record from the receipt that placed it (qa143 S19a r12).
 export async function placeInTask(folder: string, name: string, data: Buffer, record?: string, made?: Placement): Promise<string> {
   outputName(name)
   const tmp = join(folder, `.${randomUUID()}.tmp`), dot = name.lastIndexOf('.'), source = JSON.stringify(made?.source ?? null)
@@ -117,7 +87,6 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
   const spot = (count: number) => join(folder, count === 1 ? name : `${name.slice(0, dot)} (${count})${name.slice(dot)}`)
   const rows = record && made ? (await readFile(record, 'utf8').catch(() => '')).split('\n').map(line => line.split('\0')) : []
   const last = (at: string) => rows.filter(line => line[1] === at).at(-1)
-  // The saved output this file held is gone or kept as its "(이전)" version. whole: the file itself was changed, so it goes (unless another chat's folder holds it).
   const retire = async (was: string | undefined, whole: boolean) => {
     if (!record || !made?.artifact || !was || was === made.artifact) return
     const others = whole ? await readdir(dirname(record)).then(names => Promise.all(names.filter(file => file.endsWith('.twins') && file !== basename(record)).map(file => readFile(join(dirname(record), file), 'utf8'))), () => null) : null
@@ -125,7 +94,6 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
     else await appendFile(versionsFile(dirname(record)), `${made.artifact}\0${was}\n`).catch(error => flog('file-work', `version not recorded: ${error instanceof Error ? error.message : String(error)}`))
   }
   const edited = made?.source.startsWith('file_edit_package\0') ? await realpath(made.source.split('\0')[1]!).catch(() => made.source.split('\0')[1]!) : ''
-  // The task file the edit read: itself, or the one whose latest row is the saved output it read.
   const target = !edited ? undefined : last(edited) ? edited : rows.filter(row => row[4] === basename(edited)).map(row => row[1]!).filter(path => last(path)?.[4] === basename(edited)).at(-1)
   const plainName = (file: string) => basename(file).replace(/ \(\d+\)(?=\.[^.]+$)/, '').normalize('NFC').toLowerCase()
   await writeFile(tmp, data, { flag: 'wx' })
@@ -156,12 +124,10 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
         const [hash, , turn, from, was] = last(path) ?? []
         if (hash !== sha(held) || !from) continue
         const copies = (value: string) => value.startsWith('"path\\u0000')
-        // An edit takes no file by its name: one it read was handled above.
         if (from !== source && (edited || !(made.turn && turn && turn !== made.turn && !(copies(from) && copies(source))))) continue
         if (from !== source && Array.from({ length: 99 }, (_, at) => spot(at + 1)).some(other => other !== path && last(other)?.[3] === source)) continue
         await renameWithRetry(tmp, path)
         await note(path)
-        // grokbar D3: the same file made again in the turn that made it is that turn's own draft, never shown on its own: it goes.
         await retire(was, !!made.turn && turn === made.turn)
         return path
       }
@@ -172,7 +138,6 @@ export async function placeInTask(folder: string, name: string, data: Buffer, re
 
 const placeTwin = async (paths: VaultPaths, folder: string, name: string, data: Buffer, made: Placement) => { const real = await ensureTaskFolder(paths, folder); return placeInTask(real, name, data, twinsFile(paths, real), { ...made, outputs: artifactDirectory(paths) }) }
 
-// The first of base, base-2, base-3 ... that nothing holds yet (asked in lower case).
 export function freeName(base: string, held: (name: string) => boolean): string {
   for (let count = 1; ; count++) {
     const free = count === 1 ? base : `${basename(base, extname(base))}-${count}${extname(base)}`
@@ -208,10 +173,7 @@ export async function resolveOutput(directory: string, value: unknown): Promise<
   if (!path || relative(root, path) !== value || !(await stat(path)).isFile()) throw new Error('Artifact is outside this chat.')
   return path
 }
-// Evidence captures (mp4, webm) are core's own kinds.
 const storedArtifact = (directory: string, id: unknown) => resolveOutput(directory, id).catch(() => resolveArtifact(directory, id))
-// A saved output that a change to the file itself replaced is that file as it is now: the card in the earlier message still opens the
-// file, with its present contents (grokbar D5 r2: the earlier output was removed and its card found nothing).
 const findArtifact = (directory: string, id: unknown) => storedArtifact(directory, id).catch(async error => {
   const rows = (await readFile(replacedFile(join(dirname(directory), 'hand-ins')), 'utf8').catch(() => '')).split('\n').map(line => line.split('\0'))
   let now = id
@@ -220,8 +182,6 @@ const findArtifact = (directory: string, id: unknown) => storedArtifact(director
   return storedArtifact(directory, now)
 })
 
-// Core's priorOutputs, for the wider set of output kinds.
-// every: each distinct file the text links, also two under one name (the readback gate answers for both: qa143 S19a); else the last one per name.
 export async function linkedOutputs(directory: string, history: { role: string; text: string }[] | undefined, every = false): Promise<{ name: string; path: string }[]> {
   const latest = new Map<string, string>()
   for (const turn of history ?? []) {
@@ -236,29 +196,19 @@ export async function linkedOutputs(directory: string, history: { role: string; 
   }
   const found: { name: string; path: string }[] = []
   for (const id of [...latest.values()].slice(-40)) {
-    try { found.push({ name: id.replace(REVISION, ''), path: await findArtifact(directory, id) }) } catch { /* A removed or foreign file is not offered. */ }
+    try { found.push({ name: id.replace(REVISION, ''), path: await findArtifact(directory, id) }) } catch { }
   }
   return found
 }
-// The files a turn's result check answers for: those its answer links and, on any re-check, those of the report it was given, also one the
-// answer leaves out (a budget stop names none, and a check that then passed on some other read let the unread report stand: qa143 S19b).
-// A re-check's answer that links a name again replaces the report's one file of that name, as its answer replaces the report. Not so when the report itself will
-// stand (stands: the re-check stopped at the budget): its files are then kept, by path, whatever the turn made or linked under their names,
-// so a new report.md created and read in the re-check is a second file and never the readback of the report's own.
 export async function checkedOutputs(directory: string, answer: string, rechecked?: string, stands = false): Promise<{ name: string; path: string; kept?: true }[]> {
   const own = await linkedOutputs(directory, [{ role: 'assistant', text: answer }], true)
   if (rechecked === undefined) return own
   const linked = await linkedOutputs(directory, [{ role: 'assistant', text: rechecked }], true)
-  // Two files the report linked under one name are two files, not revisions: a link to one of them, or to a new file of that name, replaces
-  // neither of the others, so each still needs its own readback (qa143 p2 r9 S19a). Which one a new file corrects is not known; both are kept.
   const twin = (output: { name: string; path: string }) => linked.some(other => other.name === output.name && other.path !== output.path)
   const earlier = linked.filter(output => !own.some(now => stands || twin(output) ? now.path === output.path : now.name === output.name))
   return [...earlier.map(output => stands ? { ...output, kept: true as const } : output), ...own.filter(linked => !stands || !earlier.some(output => output.path === linked.path))]
 }
 
-// A check that revised a file but ran out of time still answers with the
-// draft's links: each one is pointed at the newest revision of its name saved
-// since the task began.
 export async function newestRevisions(directory: string, text: string, since: number, outputs: string[]): Promise<string> {
   const files = outputs.map(path => basename(path))
   let out = text
@@ -279,13 +229,8 @@ export async function newestRevisions(directory: string, text: string, since: nu
 
 const USER_FOLDERS = ['documents', 'desktop', 'downloads'] as const
 
-// Where composed files are handed in: the workspace's saved outputs (linked
-// in the chat), plus a twin in the task folder when there is one.
-// made: the turn's record of what was saved here, which the comet's file tools read back without asking (ReadConsent.made).
-// turn: this turn's id, which lets a later turn's remake replace the task-folder copy (placeInTask).
 export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | undefined>, made?: Set<string>, turn?: string) {
   return {
-    // c10c r1: the names the task folder already holds (lower case), so a build does not take over an earlier turn's file (office-agent.ts).
     async held(): Promise<Set<string>> { const task = await folder?.(); return new Set(task ? (await readdir(task).catch(() => [] as string[])).map(file => file.normalize('NFC').toLowerCase()) : []) },
     async save(name: string, data: Buffer): Promise<Record<string, unknown>> {
       const receipt = await saveOutput(artifactDirectory(paths), name, data)
@@ -298,11 +243,6 @@ export function taskOutputs(paths: VaultPaths, folder?: () => Promise<string | u
   }
 }
 
-// How a read outside the usual folders is put to the person: a card in the
-// chat (QA 0.8.142 B6: an app-modal dialog froze the whole app for minutes).
-// made: outputs this turn's other tools saved (a composed document or deck: taskOutputs), read back like the file tools' own
-// (QA 0.8.145 S02/S04: the comet was told to read its new docx back, and the read asked the person and stalled the turn).
-// turn: this turn's id (placeInTask).
 interface ReadConsent { ask?: Ask; korean?: () => boolean; made?: ReadonlySet<string>; turn?: string }
 
 export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: string[] = [], handInRoots: string[] = [], consent: ReadConsent = {}) {
@@ -315,7 +255,6 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     approved.add(receipt.path)
     return { ...receipt, taskPath: await placeTwin(paths, folder!, name, data, { ...made, artifact: receipt.artifact }) }
   }
-  // Kinds core does not hold (scripts, HTML, images, PDF, ZIP) are saved by the host.
   const createWide = async (args: Record<string, unknown>): Promise<string> => {
     const name = outputName(args.name)
     if (args.sourcePath !== undefined || args.expectedSha256 !== undefined) throw new Error('Revisions by source are for text and Office files.')
@@ -333,8 +272,6 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     active()
     return JSON.stringify(await save(name, data, placement('file_create_copy', args)))
   }
-  // This task's folders, each checked to be a real folder (not a link) inside
-  // the workspace's task folders; core hands in from these alone (codex p1 r3).
   const ownRoots = async (): Promise<string[]> => {
     const realTaskRoot = await realpath(taskRoot(paths)).catch(() => '')
     const own = await Promise.all(handInRoots.map(root => ensureTaskFolder(paths, root).then(real => realTaskRoot && within(realTaskRoot, real) ? real : '', () => '')))
@@ -354,19 +291,11 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
       await assertReadable(path)
       if ((approved.has(path) || consent.made?.has(path)) && await realpath(path) === path) return true
       const real = await realpath(path)
-      // This task's folder: files the comet built itself, which its own file
-      // tools also read without asking. Its handed-in outputs are in `approved`.
-      // A folder that is a link or leads out of the workspace's task folders is not trusted.
       if ((await ownRoots()).some(root => within(root, real))) return true
-      // The folders the comet's own file tools already read without asking.
       const roots = await Promise.all(USER_FOLDERS.map(name => realpath(app.getPath(name)).catch(() => '')))
       if (roots.some(root => root && within(root, real))) return true
-      // The person's own workspace: a file they name there ("fixtures/회의록.md 요약해줘") is theirs to have read, and the comet's commands
-      // already read it without a card (grokbar D1: the card cost 20 s and a question nobody needed). Engram's own store there and another chat's task folder still ask.
-      // Only in a chat of the person's own, which has a task folder: an outside connection has none and reads nothing it was not handed.
       const [workspace, cache] = await Promise.all([realpath(paths.workspace).catch(() => ''), realpath(paths.cache).catch(() => resolve(paths.cache))])
       if (folder && workspace && within(workspace, real) && !within(cache, real) && !within(join(workspace, 'tasks'), real)) return true
-      // Anything else is asked in the chat; with no chat to ask in, it is not read.
       if (!consent.ask) return false
       const words = consent.korean?.()
         ? `이 파일을 읽어도 될까요? 내용이 연결된 AI에 전달돼요. 원본 파일은 바뀌지 않아요.\n${path}`
@@ -389,10 +318,8 @@ export function cometFileTools(paths: VaultPaths, lane: string, attachedPaths: s
     if (!/^file_(create_copy|create_workbook|edit_package)$/.test(tool.name)) return result
     const output = JSON.parse(result)
     if (output.completeReadback !== true || typeof output.path !== 'string') return result
-    // The comet may read back any output it just handed in (QA 0.8.142 B6: re-reading its own copy asked and froze the app).
     approved.add(output.path)
     if (!folder) return result
-    // The linked copy is the verified output; the task-folder twin is for combining work.
     try { return JSON.stringify({ ...output, taskPath: await placeTwin(paths, folder, basename(output.path).replace(REVISION, ''), await readFile(output.path), { ...placement(tool.name, args), artifact: basename(output.path) }) }) }
     catch (error) { flog('file-work', `no task copy: ${error instanceof Error ? error.message : String(error)}`); return result }
   } }))
@@ -405,13 +332,11 @@ const OPENABLE = new Set(['.xlsx', '.docx', '.pptx', '.pdf', '.png', '.jpg', '.j
 
 export function registerArtifactIpc(paths: VaultPaths): void {
   ipcMain.removeHandler('artifact:read')
-  // What the thread shows of an output file: its text, when it is text the sheet can hold.
   ipcMain.handle('artifact:read', async (_event, id: unknown): Promise<ArtifactViewDto> => {
     const path = await findArtifact(artifactDirectory(paths), id)
     const name = basename(path).replace(/^[0-9a-f-]{36}-/, '')
     if (!VIEWABLE.has(kindOf(path)) || (await stat(path)).size > VIEW_BYTES) return { name, text: null }
     const wide = !CORE_OUTPUTS.has(kindOf(path))
-    // The file found, which for a replaced output is not the id asked for.
     const data = wide ? await readFile(path) : await readArtifact(artifactDirectory(paths), basename(path))
     if (wide && !basename(path).startsWith(createHash('sha256').update(name).update(data).digest('hex').slice(0, 8))) throw new Error('Artifact content changed after it was saved.')
     return { name, text: data.length > VIEW_BYTES ? null : data.toString('utf8') }
@@ -419,15 +344,11 @@ export function registerArtifactIpc(paths: VaultPaths): void {
   ipcMain.removeHandler('artifact:reveal')
   ipcMain.handle('artifact:reveal', async (_event, id: unknown) => {
     const path = await findArtifact(artifactDirectory(paths), id)
-    // Reveal only: a model's say-so never launches a program.
     shell.showItemInFolder(path)
   })
   ipcMain.removeHandler('artifact:open')
-  // Opened only on the person's click, and only kinds that carry no code of
-  // their own; anything else is shown in its folder.
   ipcMain.handle('artifact:open', async (_event, id: unknown) => {
     const path = await findArtifact(artifactDirectory(paths), id)
-    // Scripts and markup are shown as text in the thread, never handed to a program that could run them.
     if (VIEWABLE.has(kindOf(path)) && kindOf(path) !== '.html') throw new Error('Shown in the thread.')
     if (!OPENABLE.has(kindOf(path))) { shell.showItemInFolder(path); return }
     const failed = await shell.openPath(path)
@@ -439,9 +360,8 @@ export function registerArtifactIpc(paths: VaultPaths): void {
     const { size } = await stat(path), previous = await previousVersions(paths, basename(path))
     try {
       if (THUMBS.has(kindOf(path))) return { size, previous, thumb: { data: (await nativeImage.createThumbnailFromPath(path, { width: 480, height: 320 })).toPNG(), mime: 'image/png' } }
-      // Shown through an img element, where SVG script is inert.
       if (kindOf(path) === '.svg' && size <= 1_000_000) return { size, previous, thumb: { data: await readFile(path), mime: 'image/svg+xml' } }
-    } catch { /* A card without a picture still shows its size. */ }
+    } catch { }
     return { size, previous }
   })
 }

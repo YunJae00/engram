@@ -6,7 +6,6 @@ const within = (root: string, path: string) => {
   const tail = relative(root, path)
   return tail === '' || (!tail.startsWith('..') && !isAbsolute(tail))
 }
-// A path that does not exist yet is where its closest existing parent really is.
 async function actual(path: string): Promise<string> {
   try { return await realpath(path) }
   catch (error) {
@@ -15,10 +14,6 @@ async function actual(path: string): Promise<string> {
   }
 }
 
-// Moving the person's own files about inside their workspace, when they ask for it ("이 폴더 종류별로 정리해줘"), is neither a deletion nor
-// anything leaving the box, so it asks nothing (grokbar F1: the same move as a shell command asked to leave the sandbox, 78 s).
-// What keeps that safe is here, not in a card: every path stays inside the workspace and outside Engram's own folders, nothing is
-// overwritten, nothing is deleted, and a batch that cannot be made whole is put back.
 export function fileMoveTool(paths: VaultPaths, assertActive: () => void): AgentTool {
   return {
     name: 'file_move',
@@ -36,7 +31,6 @@ export function fileMoveTool(paths: VaultPaths, assertActive: () => void): Agent
       const place = async (value: unknown): Promise<string> => {
         if (typeof value !== 'string' || !value.trim() || value.includes('\0')) throw new Error('Each move needs a from and a to path.')
         const path = resolve(root, value)
-        // The folder a path sits in is followed to where it really is; the last part is the thing moved itself, never what a link points at.
         const real = resolve(await actual(dirname(path)), path.slice(dirname(path).length + 1))
         if (real === root || !within(root, real) || own.some(folder => within(folder, real) || within(real, folder)) || within(real, tasks)) throw new Error(`Only the person's own files inside ${paths.workspace} can be moved, not Engram's folders: ${value}`)
         return real
@@ -58,21 +52,17 @@ export function fileMoveTool(paths: VaultPaths, assertActive: () => void): Agent
           context.signal?.throwIfAborted()
           assertActive()
           await mkdir(dirname(move.to), { recursive: true })
-          // A hard link fails on a name that exists, where a rename would replace it.
           if (move.folder) { if (await lstat(move.to).catch(() => null)) throw new Error(`${relative(root, move.to)} already exists.`); await rename(move.from, move.to) }
           else {
             await link(move.from, move.to)
-            // A source that cannot be removed (a read-only folder) would leave the file in both places: the new name is taken back.
             try { await unlink(move.from) } catch (error) { await unlink(move.to).catch(() => undefined); throw error }
           }
           done.push(move)
         }
       } catch (error) {
-        // Put back what was moved, so a failed batch leaves the folder as it was.
         for (const move of done.reverse()) await rename(move.to, move.from).catch(() => undefined)
         throw new Error(`Nothing was moved: ${error instanceof Error ? error.message : String(error)}`)
       }
-      // The receipt is what is on disk now: every file at its new place and gone from the old one, so nothing else has to read the folder back.
       if ((await Promise.all(plan.map(async move => !!await lstat(move.to).catch(() => null) && !await lstat(move.from).catch(() => null)))).every(Boolean)) context.onObservedAfterAction?.()
       const folders = new Map<string, string[]>()
       for (const move of plan) {

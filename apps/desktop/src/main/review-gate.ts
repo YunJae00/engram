@@ -1,6 +1,5 @@
 import { evaluate, hostOf, type ReviewAction, type ReviewRule } from 'core'
 
-// Only web page submits are evaluated; every other url keeps the card path unchanged.
 export function reviewAction(url: string): ReviewAction | undefined {
   let protocol: string
   try { protocol = new URL(url).protocol } catch { return undefined }

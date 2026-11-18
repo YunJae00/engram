@@ -57,8 +57,6 @@ export class DevStore {
     if (this.queued) return this.queued
     const write = async () => {
       this.queued = undefined
-      // Snapshot mutable records before yielding; streamed writes keep encoding
-      // large histories from blocking the main thread in one stringify call.
       const snapshot: Saved = { ...structuredClone({ preferences: this.data.preferences, repos: this.data.repos, rules: this.data.rules }), sessions: this.data.sessions.map(session => {
         const copy = { ...session, pending: [] }
         copy.items = copy.items.map(item => ({ ...item }))

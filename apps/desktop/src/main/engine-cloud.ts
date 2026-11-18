@@ -9,25 +9,12 @@ import { CodexEngine } from './engine-codex.js'
 import { installedClaudeBinary } from './claude-runtime.js'
 import { activeAccountProfile } from './account-profiles.js'
 
-// The two cloud brains, each behind the vendor's own command-line runtime that
-// is either bundled or installed separately. The person uses the vendor's flow
-// and pays the vendor; this app never sees, stores or forwards a credential -
-// it only asks the runtime whether one exists and hands it the work.
-
 export type CloudEngineId = 'claude' | 'codex'
 
-// A file that lives inside the archive is only runnable from its unpacked
-// twin; the archive path is what module resolution hands back.
 export function unpackedPath(path: string): string {
   return path.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`)
 }
 
-// The platform package that holds a runtime is a dependency of the vendor's
-// SDK package, not of this app: it sits beside the SDK's own folder, wherever
-// the package manager put that. The SDK's entry file is what can be resolved
-// from here; the runtime is found relative to it.
-// Where the files really are, when that can be asked; the path itself when
-// it cannot (inside the app archive).
 function real(path: string): string {
   try {
     return realpathSync(path)
@@ -36,9 +23,6 @@ function real(path: string): string {
   }
 }
 
-// The SDK's folder, found the way a module loader would look for it - up from
-// this file through every node_modules - without going through the package's
-// own export map, which one of the SDKs closes to everything but its entry.
 function sdkRoot(name: string): string | null {
   let dir = dirname(fileURLToPath(import.meta.url))
   for (;;) {
@@ -50,8 +34,6 @@ function sdkRoot(name: string): string | null {
   }
 }
 
-// A package the SDK depends on lives beside the SDK's own folder, once links
-// are followed to where the files really are.
 function sibling(root: string, name: string): string | null {
   const candidate = join(dirname(root), name)
   return existsSync(candidate) ? real(candidate) : null
@@ -74,8 +56,6 @@ export function codexBinary(): string | null {
   const key = `${process.platform}-${process.arch}`
   const triple = CODEX_TRIPLE[key]
   if (!triple) return null
-  // SDK → the vendor's launcher package beside it → the platform package
-  // beside that, each a dependency of the one before.
   const sdk = sdkRoot('@openai/codex-sdk')
   const launcher = sdk && sibling(sdk, 'codex')
   const dir = launcher && sibling(launcher, `codex-${key}`)
@@ -86,15 +66,10 @@ export function codexBinary(): string | null {
 
 export interface RunText {
   code: number | null
-  /** stdout. A JSON command's document lives here and only here. */
   out: string
-  /** stderr. A warning here must not be parsed as part of stdout. */
   err: string
 }
 
-// The runtime's helpers (its own search tool among them) sit in a folder
-// beside its binary and are found through PATH. Handing the runtime a path of
-// our own means handing it that folder too.
 export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const helpers = join(dirname(dirname(binary)), 'codex-path')
   const out: Record<string, string> = {}
@@ -104,9 +79,6 @@ export function withHelpersOnPath(binary: string, env: NodeJS.ProcessEnv = proce
   return out
 }
 
-// One command of the runtime, its streams kept apart, ended after the budget.
-// stderr is a warning or a failure explanation. It is not part of a JSON
-// document the command wrote to stdout, so the two are never concatenated.
 export function runText(binary: string, args: string[], timeoutMs: number, env?: Record<string, string>, login?: CloudLoginOptions): Promise<RunText> {
   login?.signal?.throwIfAborted()
   return new Promise((resolve) => {
@@ -138,8 +110,6 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
       const next = (stream === 'out' ? out : err) + chunk.toString()
       if (stream === 'out') out = next.slice(-65536)
       else err = next.slice(-65536)
-      // A sign-in link may be printed on either stream. Scanning both does
-      // not feed stderr into a later JSON parse.
       if (login?.onUrl) for (const url of chunk.toString().match(/https:\/\/[\w./?=&%+~:#@!-]+/g) ?? []) login.onUrl(url)
     }
     child.stdout?.on('data', receive('out'))
@@ -152,13 +122,10 @@ export function runText(binary: string, args: string[], timeoutMs: number, env?:
   })
 }
 
-// Prose status ("logged in") is read from both streams. A JSON document is not.
 export function commandText(result: RunText): string {
   return `${result.out ?? ''}${result.err ?? ''}`
 }
 
-// What a failed call means: the vendor's runtime says it in words, and the
-// remedy differs - sign in again, wait for a limit, or report a crash.
 export function cloudErrorKind(message: string): EngineErrorKind {
   if (/not logged in|not authenticated|log ?in|sign ?in|invalid api key|unauthorized|\b40[13]\b/i.test(message)) return 'auth'
   if (/rate limit|too many requests|\b429\b|quota|usage limit|(?:insufficient|exhausted|not enough|out of) credits?/i.test(message)) return 'quota'
@@ -167,12 +134,8 @@ export function cloudErrorKind(message: string): EngineErrorKind {
 
 export const LOGIN_TIMEOUT_MS = 5 * 60_000
 export const STATUS_TIMEOUT_MS = 15_000
-// A sign-in that was there a minute ago is still there: detection is asked
-// on every focus and by every poll, and each ask is a process.
 export const STATUS_TTL_MS = 60_000
 
-// One probe at a time, and a positive answer kept for a minute. A negative
-// one is asked again next time - that is the state the person is fixing.
 export class StatusCache {
   private probing: Promise<EngineDetection> | null = null
   private known: { at: number; detection: EngineDetection } | null = null
@@ -199,7 +162,6 @@ export class StatusCache {
     this.generation++
   }
 
-  // A sign-in that just succeeded is known without asking the runtime again.
   set(detection: EngineDetection, now = Date.now()): void {
     this.forget()
     this.known = { at: now, detection }

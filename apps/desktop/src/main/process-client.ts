@@ -11,7 +11,6 @@ export async function stopRuntimeProcesses(): Promise<void> {
   await Promise.allSettled([...owned].map(child => { child.kill(); return child.waitForClose() }))
 }
 
-// Process creation itself can block on Windows. Keep it off the UI's main thread.
 export class ProcessClient extends EventEmitter {
   readonly stdin: Writable
   readonly stdout: Readable

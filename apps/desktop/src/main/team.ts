@@ -20,10 +20,6 @@ function syncOf(ctx: VaultContext): TeamSync {
   return teamSync
 }
 
-// Turn whatever the user pasted into a canonical https clone URL. The bundled
-// git's credential manager pops a browser login for https on Windows, so we
-// always normalize to https — accepting the three shapes people copy:
-//   https://github.com/user/repo(.git)   git@github.com:user/repo(.git)   user/repo
 function normalizeGithubUrl(raw: string): string {
   const s = raw.trim()
   const ssh = s.match(/^git@github\.com:(.+?)(?:\.git)?\/?$/i)
@@ -35,9 +31,6 @@ function normalizeGithubUrl(raw: string): string {
   throw new Error(`Not a GitHub repository URL: ${raw}`)
 }
 
-// A push can fail for many reasons (auth cancelled, empty repo, network); git
-// prints a multi-line wall. Surface just the first meaningful line, clipped, so
-// the dialog shows a clean reason instead of a paragraph of git internals.
 function cleanDetail(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err)
   const line = msg
@@ -47,10 +40,6 @@ function cleanDetail(err: unknown): string {
   return (line ?? 'Push failed').slice(0, 200)
 }
 
-// status() runs a `git fetch` — a NETWORK subprocess. The renderer polls the
-// sync badge (mount, 60s interval, vault:changed), so uncached status meant a
-// recurring fetch storm. Serve from a short-lived cache; sync:now (and the
-// 5-minute auto-sync) still hit the remote for real.
 let statusCache: { value: SyncStatusDto; at: number } | null = null
 const STATUS_TTL_MS = 45_000
 
@@ -66,7 +55,7 @@ async function statusDto(ctx: VaultContext): Promise<SyncStatusDto> {
 }
 
 export async function performSync(ctx: VaultContext): Promise<SyncStatusDto> {
-  statusCache = null // a real sync changes what status() should report
+  statusCache = null
   if (!ctx.git) return { state: 'no-remote', ahead: 0, behind: 0 }
   const sync = syncOf(ctx)
   if (!(await sync.hasRemote())) return { state: 'no-remote', ahead: 0, behind: 0 }
@@ -86,8 +75,6 @@ export function getSyncStatus(ctx: VaultContext): Promise<SyncStatusDto> {
   return statusDto(ctx)
 }
 
-// Point the vault repo at a GitHub repository and push. Idempotent and retry-safe: a prior push that failed
-// on auth left the remote in place, so it pushes again rather than trap the person behind "already connected".
 export async function connectGithub(ctx: VaultContext, url: string): Promise<GithubConnectResultDto> {
   const sync = syncOf(ctx)
 
@@ -98,8 +85,6 @@ export async function connectGithub(ctx: VaultContext, url: string): Promise<Git
     return { ok: false, detail: cleanDetail(err) }
   }
   const existing = await sync.remoteUrl()
-  // A remote to a *different* repo means this workspace is already backed up
-  // elsewhere — refuse rather than silently repoint it.
   if (existing && normalizeGithubUrl(existing) !== normalized) {
     throw new Error('already-connected')
   }
@@ -114,7 +99,6 @@ export async function connectGithub(ctx: VaultContext, url: string): Promise<Git
   return { ok: true }
 }
 
-// Stop backing up: the remote is forgotten here; what was pushed stays where it is.
 export async function disconnectGithub(ctx: VaultContext): Promise<void> {
   await syncOf(ctx).disconnect()
   statusCache = null
@@ -128,7 +112,6 @@ export function registerTeamIpc(ctx: VaultContext): void {
 
   ipcMain.handle('sync:now', () => performSync(ctx))
 
-  // ↓ click: the librarian narrates the incoming diff in human language.
   ipcMain.handle('sync:brief', async () => {
     if (!ctx.git) return 'No team connected yet.'
     const sync = syncOf(ctx)
@@ -152,7 +135,6 @@ export function registerTeamIpc(ctx: VaultContext): void {
       onProgress: (done, total) => broadcast({ type: 'import:progress', done, total }),
     })
     broadcast({ type: 'vault:changed' })
-    // Start absorbing the freshly-queued imports in the background.
     void drainAbsorbQueue(ctx)
     return { imported: report.imported }
   })
@@ -169,7 +151,6 @@ export function startAutoSync(ctx: VaultContext, auto: boolean): void {
   autoSyncArmed = true
   const tick = async () => {
     try {
-      // Turned off in chat ("자동 백업 꺼줘"): the timer stays, and does nothing until it is on again.
       if ((await loadSettings()).teamSync === 'auto' && await syncOf(ctx).hasRemote()) await performSync(ctx)
     } catch (err) {
       console.error('auto sync failed:', err)

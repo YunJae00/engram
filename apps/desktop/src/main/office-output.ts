@@ -5,8 +5,6 @@ import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 
 const reserved = /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i
 
-// The plain file name a composed document is handed in under: a requested
-// name keeps only its last part (never a folder), else the title names it.
 export function officeOutputName(title: string, extension: '.docx' | '.pptx', requested?: string, fallback = 'document'): string {
   const last = typeof requested === 'string' ? requested.split(/[\\/]/).pop() ?? '' : ''
   const clean = (value: string) => value.replace(new RegExp(`\\${extension}$`, 'i'), '').replace(/[^\p{L}\p{N}_ .()-]/gu, ' ').replace(/\s+/g, ' ').replace(/^[^\p{L}\p{N}_]+/u, '').trim().slice(0, 60).trim()
@@ -14,16 +12,13 @@ export function officeOutputName(title: string, extension: '.docx' | '.pptx', re
   return reserved.test(stem) ? `${fallback}${extension}` : `${stem}${extension}`
 }
 
-// Exclusive creation protects both user files and simultaneous generations.
 export async function saveOfficeOutput(name: string, extension: '.docx' | '.pptx', data: Buffer, requested?: string, signal?: AbortSignal, assertActive?: () => void): Promise<string> {
   const safe = name.replace(/[^\p{L}\p{N}_ .-]/gu, ' ').trim().slice(0, 60) || 'document'
-  // A bare file name is a name for the document, kept in the usual folder.
   const bare = requested !== undefined && !isAbsolute(requested) && basename(requested) === requested
   const stem = bare ? requested.replace(/\.(docx|pptx)$/i, '').replace(/[^\p{L}\p{N}_ .-]/gu, ' ').trim().slice(0, 60) : ''
   const folder = join(app.getPath('documents'), 'Engram')
   const explicit = requested !== undefined && !bare
   const base = stem || safe
-  // The suffix stays inside the file name so a name like '..' cannot leave the folder.
   const candidates = explicit ? [requested] : Array.from({ length: 99 }, (_, i) => join(folder, `${base}${i ? ` (${i + 1})` : ''}${extension}`)).filter((c) => !reserved.test(basename(c)))
   for (const path of candidates) if (!isAbsolute(path) || extname(path).toLowerCase() !== extension || reserved.test(basename(path)) || basename(path).includes(':')) throw new Error(`Use an absolute ${extension} file path.`)
   if (data.length > 8_000_000) throw new Error('Generated output exceeds 8 MB.')

@@ -2,8 +2,6 @@ import type { Frame, Locator, Page } from 'playwright-core'
 import type { PressTarget } from 'core'
 import { HAND_MARK, placeOf, readDocument } from './page-reader.js'
 
-// What a control is, read off the page before it is touched. Runs inside
-// the page; nothing from outside is in scope.
 export function inspectControl(node: Element): PressTarget & { field: boolean; editable: boolean; multiline: boolean; secret: boolean; posts: boolean; select: boolean } {
   const STATE_ROLES = ['tab', 'switch', 'radio', 'checkbox', 'option', 'menuitemradio', 'menuitemcheckbox', 'treeitem']
   const el = node.closest('a,button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"],[contenteditable="true"]') ?? node
@@ -22,8 +20,6 @@ export function inspectControl(node: Element): PressTarget & { field: boolean; e
     ['textbox', 'searchbox', 'combobox'].includes(el.getAttribute('role') ?? '') ||
     (tag === 'input' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'hidden', 'image', 'range', 'color'].includes(type))
   const role = el.getAttribute('role') ?? ''
-  // Passage: something that takes the person somewhere or opens something,
-  // rather than acting for them.
   const navigates =
     (tag === 'a' && el.hasAttribute('href')) ||
     ['link', 'menuitem', 'tab', 'treeitem'].includes(role) ||
@@ -55,8 +51,6 @@ export function inspectControl(node: Element): PressTarget & { field: boolean; e
   }
 }
 
-// Every way a page can name a control, in the order a person would look;
-// only what is on screen counts, and frames count as the page.
 function locators(root: Page | Frame, text: string): Locator[] {
   const exact = { name: text, exact: true }
   const attr = text.replace(/["\\]/g, (char) => `\\${char}`)
@@ -80,9 +74,6 @@ function locators(root: Page | Frame, text: string): Locator[] {
   ].map((one) => one.filter({ visible: true }))
 }
 
-// A hand on what the target names - by number from the last reading ("#12"),
-// or by the words on it, or the reason there is none: nothing of
-// that name, or several things of it.
 type Aim = { hand: Locator } | { none: true } | { many: true }
 
 export async function handOn(page: Page, target: string, signal?: AbortSignal, selectors: string[] = []): Promise<Aim> {
@@ -104,8 +95,6 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
   if (numbered) {
     const place = placeOf(page, Number(numbered[1]))
     if (!place) return { none: true }
-    // The control is tagged in the page so a locator can hold it; the tag
-    // comes off with the next reading, which re-numbers everything.
     const fresh = await frameAnswer(place.frame.evaluate(readDocument, place.local), null)
     if (!fresh || !Array.isArray(fresh.controls) || JSON.stringify(fresh.controls[place.local - 1]) !== place.control) {
       await unmark(page)
@@ -121,12 +110,8 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
       const found = await frameAnswer(hand.count(), 0)
       if (found === 1) return { hand: hand.first() }
       if (found > 1) {
-        // A cell and the words inside it are one thing, not two: matches
-        // that nest are the same control, read at different depths.
         const nested = await frameAnswer(hand.evaluateAll((els) => els.every((el) => el === els[0] || els[0]!.contains(el) || el.contains(els[0]!))), false)
         if (nested) return { hand: hand.first() }
-        // The same words in several places: the first one down the page is a
-        // guess, and a guess here presses the wrong thing.
         return { many: true }
       }
     }
@@ -134,8 +119,6 @@ export async function handOn(page: Page, target: string, signal?: AbortSignal, s
   return { none: true }
 }
 
-// A frame that never answers (a stalled ad, a frame mid-teardown) must not
-// hold the hand that touched another one.
 const FRAME_ANSWER_MS = 3_000
 function frameAnswer<T>(work: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([work.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), FRAME_ANSWER_MS).unref())])

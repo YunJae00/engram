@@ -36,7 +36,6 @@ export function accountEnvironment(provider: AccountProvider, id = activeAccount
   if (!['claude', 'codex'].includes(provider)) throw new Error('Unknown provider.')
   if (typeof id !== 'string' || !id) throw new Error('Unknown account profile.')
   const key = providerKey[provider], env = { ...systemEnvironment }
-  // An explicit CLAUDE_CONFIG_DIR makes Claude Code read a different Keychain entry, so the system profile only sets it when the user did.
   const dir = !systemPaths ? process.env[key] : id !== 'system' ? profilePath(provider, id) : systemEnvironment[key] !== undefined ? systemPaths[provider] : undefined
   if (dir === undefined) delete env[key]; else env[key] = dir
   if (id !== 'system') for (const key of credentials[provider]) delete env[key]

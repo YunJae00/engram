@@ -5,8 +5,6 @@ import type { ModelChoiceDto } from '../shared/types.js'
 import { REASONING_EFFORTS, type ReasoningEffort } from 'core'
 import { accountEnvironment, activeAccountProfile } from './account-profiles.js'
 
-// Account and catalog requests only. No threads, turns, tools or credentials
-// are exposed to the renderer; the bundled runtime owns authentication.
 export class CodexAccount {
   private child: ProcessClient
   private serial = 0

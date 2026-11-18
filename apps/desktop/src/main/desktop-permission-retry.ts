@@ -1,7 +1,6 @@
 import { permissionFailure } from './desktop-permission.js'
 import { korean, stillOffHint, waitForPermission } from './desktop-permission-state.js'
 
-// A denied permission shows a card, waits for it to turn on, then runs the call once more.
 export async function retryOnPermission<T>(lane: string, error: unknown, context: { task?: string; signal?: AbortSignal }, again: () => Promise<T>, wrap: (json: string) => T): Promise<T> {
   context.signal?.throwIfAborted()
   const failure = await permissionFailure(error, lane, { ask: context.task })

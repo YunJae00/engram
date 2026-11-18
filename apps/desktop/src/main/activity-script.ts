@@ -1,16 +1,3 @@
-// One PowerShell child for the whole life of the watcher, waking each second.
-// Every SAMPLE_MS it prints the foreground process and title, one
-// pipe-separated line, and the first time a process is seen, at start for any
-// with a window and later in front, its program's path on a ":path|" line
-// (":" cannot begin a process name). Titles are read
-// wide: the narrow call turns whatever the system code page cannot hold into "?".
-//
-// Each second it also looks at the system's notification store. That store
-// sends no change event to an unpackaged app and a file watcher never fires on
-// it, but its write-ahead log changes on every notification, so the list is
-// read only when that log changed, and each notification not yet printed goes
-// out at once as ":toast|<json>" - before the person can clear it. A list that
-// cannot be read is said once on a ":toasts|" line.
 export function activityScript(ownerPid: number, sampleMs: number): string {
   return `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8

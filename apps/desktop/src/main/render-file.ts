@@ -20,7 +20,6 @@ const within = (root: string, path: string) => {
   return tail === '' || (!tail.startsWith('..') && !isAbsolute(tail))
 }
 
-// Only real files inside the task folder load; every other request is cancelled.
 export function requestAllowed(folder: string, url: string): boolean {
   try {
     const parsed = new URL(url)
@@ -39,7 +38,6 @@ async function renderNow(folder: string, file: string, kind: 'pdf' | 'png', size
   }
   const ses = session.fromPartition(`render-${randomUUID()}`)
   ses.webRequest.onBeforeRequest((details, done) => done({ cancel: !requestAllowed(folder, details.url) }))
-  // A second barrier for anything the request filter does not see.
   await ses.setProxy({ proxyRules: 'http://127.0.0.1:9' })
   ses.setPermissionRequestHandler((_contents, _permission, done) => done(false))
   ses.on('will-download', event => event.preventDefault())
@@ -80,7 +78,6 @@ async function renderNow(folder: string, file: string, kind: 'pdf' | 'png', size
   }
 }
 
-// One hidden window at a time: an 8 GB machine does not render pages side by side.
 function renderToBuffer(folder: string, file: string, kind: 'pdf' | 'png', size: { width: number; height: number }, signal?: AbortSignal): Promise<Buffer> {
   const turn = queue.then(() => renderNow(folder, file, kind, size, signal))
   queue = turn.catch(() => undefined)
@@ -121,7 +118,6 @@ export function renderTool(options: {
       } else {
         const body = args[given[0]!] as string
         if (Buffer.byteLength(body) > INLINE_BYTES) throw new Error('Inline text is limited to 2 MB; write a file and pass source.')
-        // An existing file of that name is kept; the source gets a numbered twin.
         file = ''
         for (let count = 1; !file && count < 100; count += 1) {
           const working = join(folder, `${name.slice(0, -4)}${count === 1 ? '' : ` (${count})`}${given[0] === 'html' ? '.html' : '.md'}`)

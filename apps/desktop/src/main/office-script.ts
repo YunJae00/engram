@@ -1,12 +1,5 @@
 import { OFFICE_DOCUMENT_SCRIPT } from './office-document-script.js'
 
-// The office host: one PowerShell process that keeps the Office application
-// objects alive and answers fixed operations over JSON lines. The model never
-// writes code that runs here; it sends data to these operations, and every
-// string it sends stays data - nothing is spliced into the script.
-//
-// Read on stdin, one JSON object per line: { id, op, args }.
-// Written on stdout, one per line: { id, ok, result } or { id, ok: false, error }.
 export const OFFICE_HOST_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.Encoding]::UTF8

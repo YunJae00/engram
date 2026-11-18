@@ -70,7 +70,6 @@ export function checkQuietConfirmation(approval: QuietConfirmation, current: Qui
 export async function pressQuietConfirmed(lane: string, app: string, approval: QuietConfirmation, signal?: AbortSignal, options?: QuietPressOptions): Promise<QuietPressResultDto> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const current = await quietScan(lane, app, approval.before.find ?? (approval.target.name || undefined), signal)
-    // One scan at a time: the helper keeps per-window snapshot state that concurrent reads would race.
     const editors: QuietObservationDto[] = []
     for (const editor of approval.editors) editors.push(await quietScan(lane, app, editor.identity.name || undefined, signal))
     let failed: Field | undefined

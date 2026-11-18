@@ -2,17 +2,10 @@ import type { RoutineDriver, RoutineReading, RoutineStepResult, RoutineTarget } 
 import { handOn, pressKey } from './page-actions.js'
 import { agentAbortable, agentPage, readAgentPage, DEFAULT_LANE, lanePage } from './agent-browser.js'
 
-// The routine's hands: the same agent Chrome the errand courier drives, so a
-// login the user performed for either survives for both. Every operation
-// ends with a wall probe — a portal that bounced to its SSO page mid-routine
-// must surface as "needs a person", never as a mysterious missing button.
-
 type Page = import('playwright-core').Page
 type Locator = import('playwright-core').Locator
 
 const NAV_TIMEOUT_MS = 25_000
-// Per candidate selector: long enough for a slow render, short enough that a
-// step with several fallbacks still fails inside a person's patience.
 const FIND_TIMEOUT_MS = 3_000
 const SETTLE_MS = 300
 
@@ -56,16 +49,11 @@ async function act(
       return { ok: false, error: `could not ${purpose} "${describeTarget(target)}": ${err instanceof Error ? err.message : String(err)}` }
     }
   } while (Date.now() < deadline)
-  // The step failed, but WHY matters to the person: a login page swallowing
-  // the whole portal is the usual reason a saved button is suddenly gone.
   const wall = await wallOf(page, signal)
   if (wall) return { ok: false, wall }
   return { ok: false, recoverable: true, error: `could not find "${describeTarget(target)}" on the page` }
 }
 
-// One driver per lane: a replay run for a comet drives that comet's own
-// tab, so two comets can each be mid-procedure without taking each other's
-// page. Scheduled runs use the shared default.
 export function routineDriver(lane: string = DEFAULT_LANE): RoutineDriver {
   return {
     location: () => lanePage(lane)?.url() ?? null,
@@ -79,7 +67,6 @@ export function routineDriver(lane: string = DEFAULT_LANE): RoutineDriver {
         try {
           host = new URL(url).hostname
         } catch {
-          /* keep the raw url */
         }
         return { ok: false, error: `${host} did not answer in time` }
       }

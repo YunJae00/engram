@@ -1,7 +1,5 @@
 import type { AgentTool, ApprovalRule } from 'core'
 
-// "Always allow on this site" answers the person gave on a post or press card.
-// Taking one back only tightens a gate, so it needs no confirmation; nothing here can add one.
 export function standingApprovalsTool(store: { list(): Promise<ApprovalRule[]>; forget(fingerprint: string): Promise<void> }): AgentTool {
   return {
     name: 'standing_approvals',

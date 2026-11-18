@@ -18,7 +18,6 @@ export function controlAnnouncer(read: () => DesktopControlStatusDto, starting: 
     clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
-      // A start that fails without a stop must still end with the idle notice.
       if (starting()) announceIdle()
       else if (read().inputActive !== true) announce()
     }, IDLE_ANNOUNCE_MS)

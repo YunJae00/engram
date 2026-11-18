@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 
 const run = promisify(execFile)
-// PowerShell can take tens of seconds to start on a busy or closely watched computer.
 const POLICY_READ_MS = 30_000
 export async function managedBookmarkSources(browser: string): Promise<{ id: string; name: string; text: string }[]> {
   if (browser !== 'chrome' && browser !== 'edge') return []

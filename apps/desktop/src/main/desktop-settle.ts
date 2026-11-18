@@ -1,6 +1,5 @@
 import type { DesktopNodeDto, DesktopObservationDto, QuietObservationDto } from '../shared/desktop.js'
 
-// The settle core lives in desktop-guarded-sequence.ts: plain-node fixtures load that file without a bundler, so it cannot import this one.
 import { settle, observationKey, STILL_CHANGING, type Settled } from './desktop-guarded-sequence.js'
 export { observationKey, settle, STILL_CHANGING } from './desktop-guarded-sequence.js'
 
@@ -16,7 +15,6 @@ function locate(view: DesktopObservationDto, node: DesktopNodeDto): DesktopNodeD
   return matches.length === 1 ? matches[0] : undefined
 }
 
-// A click's effect is any visible change except controls only changing position (a missed click on a shifting target).
 function effectKey(view: DesktopObservationDto): string {
   return JSON.stringify([view.bounds, view.focusedControl ?? null, view.nodes.map(node => [node.name, node.controlType, node.value ?? null, node.enabled ?? null, node.offscreen ?? null])])
 }
@@ -51,7 +49,6 @@ export async function clickSettled(deps: ClickDeps): Promise<ClickResult> {
       const after = await settle(deps.read, observationKey, options)
       if (!after.settled) return { view: after.view, clicks, settled: false, effect: false, retried, message: STILL_CHANGING }
       if (!node) return { view: after.view, clicks, settled: true, effect: observationKey(after.view) !== observationKey(view), retried }
-      // Clicking the editor that already has focus changes nothing visible, and that is not a miss.
       if (view.focusedEditable === true && node.runtimeId && view.focusedControl === node.runtimeId) return { view: after.view, clicks, settled: true, effect: false, retried }
       if (effectKey(after.view) !== effectKey(view)) return { view: after.view, clicks, settled: true, effect: true, retried }
       const again = await settle(deps.read, observationKey, options)
@@ -81,7 +78,6 @@ interface ScrollDeps {
 }
 interface ScrollResult { view?: DesktopObservationDto; steps: number; settled: boolean; reachedEnd: boolean; message?: string; error?: unknown }
 
-// Each step is one visible page natively, then a settle; a request of N pages never becomes one jump.
 export async function scrollPages(deps: ScrollDeps): Promise<ScrollResult> {
   const sign = deps.delta < 0 ? -1 : 1
   let view = deps.since
@@ -100,7 +96,6 @@ export async function scrollPages(deps: ScrollDeps): Promise<ScrollResult> {
     }
     if (!after.settled) return { view: after.view, steps: step + 1, settled: false, reachedEnd: false, message: STILL_CHANGING }
     if (view && observationKey(after.view) === observationKey(view)) {
-      // A page that starts redrawing after the first pass is not the end; one more pass confirms it.
       try { after = await settle(deps.read, observationKey, deps.signal ? { signal: deps.signal } : {}) }
       catch (error) {
         deps.signal?.throwIfAborted()

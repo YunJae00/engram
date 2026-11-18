@@ -13,9 +13,6 @@ import { connectGithub, disconnectGithub, hasBackup, performSync, startAutoSync 
 import type { VaultContext } from './vault.js'
 import { deskSettingChanged, refreshWorkMap, workMapSettingChanged } from './work-map-job.js'
 
-// What the Settings page no longer shows is asked for in chat (core preferences-tools.ts decides what is
-// said and what needs a yes). This is only the hands: each function is what the removed row's switch did.
-
 const save = async (change: Partial<AppSettings>): Promise<AppSettings> => {
   const settings = await updateSettings(held => ({ ...held, ...change }))
   broadcast({ type: 'settings:changed', settings })
@@ -50,7 +47,6 @@ export function preferenceHost(ctx: VaultContext, approvals: Pick<ApprovalsStore
       await (on ? approvals.addReviewRule(rule) : approvals.removeReviewRule(rule))
     },
     audit: day => readAudit(ctx.paths, day),
-    // No folder picker: the person's Downloads, or beside the app's own data when that has been moved (tests, dev).
     exportLogs: async () => basename(await writeLogs(ctx, process.env['ENGRAM_USERDATA'] ? join(app.getPath('userData'), 'exports') : app.getPath('downloads'))),
     backup: {
       available: () => ctx.git !== null,
@@ -67,8 +63,5 @@ export function preferenceHost(ctx: VaultContext, approvals: Pick<ApprovalsStore
 
 export const preferencesChat = (ctx: VaultContext, approvals: Parameters<typeof preferenceHost>[1]): Preferences => preferences(preferenceHost(ctx, approvals))
 
-// Whether a turn is the person's own typed message, the only thing read as a preference sentence.
-// The task runner hands over every message with a turn of its own (its hold and its budget), so a turn being
-// there says nothing: only its continuation, team report and re-check turns are the runner's own words.
 export const isPersonSentence = (request: { scheduled?: boolean; attachments?: readonly unknown[] }, turn?: { quiet?: boolean; report?: true; verification?: unknown }, recovery?: string, routine?: unknown): boolean =>
   !recovery && !routine && !turn?.quiet && !turn?.report && !turn?.verification && !request.scheduled && !request.attachments?.length

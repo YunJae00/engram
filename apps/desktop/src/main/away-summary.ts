@@ -3,9 +3,6 @@ import { changeNotices, listTasks, loadBots, readBotTranscript, readNotices, typ
 import { flog } from './flog.js'
 import { closingLang, type ClosingLang } from './task-closing.js'
 
-// Coming back after a while away gets one bell item saying, per bot, what
-// finished, what waits for the person and what is still going. Names and counts only.
-
 export const AWAY_MS = 10 * 60_000
 type Said = readonly { role: string; text: string }[]
 interface AwayRow { botId: string; name: string; finished: number; waiting: number; running: number; stopped?: number }
@@ -28,13 +25,9 @@ export function mainFocus(focused: boolean, now = Date.now()): void {
 
 const movedAt = (task: DelegatedTask): number => Date.parse(task.state === 'done' || task.state === 'failed' ? task.finishedAt ?? task.updatedAt : task.updatedAt)
 
-// A scheduled run already has its own bell item. Its task is the first one its bot started inside that run's
-// time, or, when the run picked up a waiting task instead, the one that kept moving through it (the conversation
-// is busy for the whole run). Other work on the same bot, started before or alongside it, still belongs in the summary.
 function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks: readonly DelegatedTask[] = [task]): boolean {
   return notices.some(n => {
     if (n.kind !== 'scheduled' || n.botId !== task.botId) return false
-    // A finished run without `began` never started a task (ipc.ts runPrompt), so it hides nothing.
     if (n.running !== true && !n.began) return false
     const began = Date.parse(n.began ?? n.at), ended = n.running === true ? Infinity : Date.parse(n.at)
     const within = (at: number): boolean => at >= began && at <= ended
@@ -47,13 +40,11 @@ function scheduledRun(task: DelegatedTask, notices: readonly NoticeItem[], tasks
   })
 }
 
-// Only what moved between leaving and coming back counts; a change after the return was seen live.
 export function awayChanges(tasks: readonly DelegatedTask[], bots: readonly { id: string; name: string }[], from: number, to = Infinity): { rows: AwayRow[]; botId: string; newest: DelegatedTask } | undefined {
   const rows = new Map<string, AwayRow>(bots.map(bot => [bot.id, { botId: bot.id, name: bot.name, finished: 0, waiting: 0, running: 0, stopped: 0 }]))
   let newest: DelegatedTask | undefined
   for (const task of tasks) {
     const row = rows.get(task.botId)
-    // Work started after the return was seen live.
     if (!row || Date.parse(task.createdAt) > to) continue
     const moved = movedAt(task) >= from && movedAt(task) <= to
     if (task.state === 'running' || task.state === 'queued') row.running++
@@ -86,7 +77,6 @@ export function awayText(rows: readonly AwayRow[], lang: ClosingLang): { title: 
 export const vaultIo = (paths: VaultPaths): AwayIo => ({
   tasks: () => listTasks(paths), bots: () => loadBots(paths), notices: () => readNotices(paths),
   said: botId => readBotTranscript(paths, botId, 40),
-  // An unread summary is replaced, not stacked.
   post: item => changeNotices(paths, items => [item, ...items.filter(one => one.key !== 'away' || one.read)]),
 })
 

@@ -6,11 +6,6 @@ import { appPaths } from './app-icons.js'
 import { flog } from './flog.js'
 import type { VaultContext } from './vault.js'
 
-// Every app's notifications, kept in the vault the moment they show (the
-// activity sampler reads them), so clearing them from the system's list takes
-// nothing from Engram. An app turned off in Settings is not kept, and one
-// that carries a code or a password keeps only who sent it and when.
-
 const PRIVATE_RE = /password|passcode|비밀번호|인증\s*번호|verification code|security code|one-time|\botp\b|일회용/i
 const RETAIN_DAYS = 60
 const DAY_MS = 86_400_000
@@ -58,8 +53,6 @@ async function off(toast: Toast): Promise<boolean> {
   return key === 'engram' || appKey(toast.app) === 'engram' || appsOff.has(key) || appsOff.has(appKey(toast.app))
 }
 
-// One ":toast|" line from the sampler. The system's list is read whole each
-// time, so what was kept already (also before a restart) is skipped by its id.
 export function onToastLine(json: string): void {
   const ctx = vault
   if (!ctx) return
@@ -98,10 +91,8 @@ async function fromApp(ctx: VaultContext, named: string, days: number): Promise<
     .sort((a, b) => b.at.localeCompare(a.at))
 }
 
-// What a watched request looks at before it runs: the kept notifications of one app.
 export async function peekToasts(args: Record<string, unknown>): Promise<{ key: string; id: string }[] | null> {
   if (!vault) return null
-  // Match the scheduler's remembered-item limit so older items cannot trigger it again.
   return (await fromApp(vault, typeof args['app'] === 'string' ? args['app'] : '', 2)).slice(0, 200).map(toast => ({ key: toast.id, id: toast.id }))
 }
 

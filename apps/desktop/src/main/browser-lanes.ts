@@ -52,7 +52,6 @@ export class BrowserLanes {
   }
 
   clear(): void {
-    // Keep only navigation context in memory, never replay clicks or form data.
     for (const [lane, page] of this.current) this.lastUrls.set(lane, page.url())
     this.current.clear()
     this.members.clear()

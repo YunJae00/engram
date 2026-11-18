@@ -1,4 +1,3 @@
-// One deadline for the whole shutdown, including repeated quit requests.
 export function quitGuard(retry: () => void, exit: () => void): () => void {
   let started = false
   return () => {

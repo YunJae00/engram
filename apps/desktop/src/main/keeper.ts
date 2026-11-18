@@ -34,8 +34,6 @@ const TICK_MS = 6 * 60 * 60_000
 interface KeeperState {
   gardenedAt?: number
   distilledAt?: number
-  // High-water mark (epoch ms) of the browser+file work journal: the next
-  // hourly pass logs only what happened after it.
   worklogThrough?: number
 }
 
@@ -88,14 +86,10 @@ async function distillOnce(ctx: VaultContext, candidate: SkillCandidate): Promis
   flog('skill-distill', `${candidate.slug}: ${result.installed ? 'installed' : (result.reason ?? 'skipped')}`)
 }
 
-// The browser + file half of the hourly work journal. Cursor-based (worklogThrough)
-// so each pass logs only the freshly elapsed window; the desk-app half is
-// captureDeskActivity. Returns whether anything was written.
 async function captureWebAndFiles(ctx: VaultContext, now = Date.now()): Promise<boolean> {
   if (!isActivityWatchEnabled()) return false
   const state = await readState()
   const until = now - 5 * 60_000
-  // First run (or a long gap) backfills at most a day, never the whole history.
   const since = Math.max(state.worklogThrough ?? 0, until - 86_400_000)
   if (until <= since) return false
   const trail = foldWebTrail(await readWebTrail(since, until).catch(() => []))
@@ -111,8 +105,6 @@ async function captureWebAndFiles(ctx: VaultContext, now = Date.now()): Promise<
       (err) => { flog('worklog-write-failed', err); return false },
     )
   }
-  // Advance only when the write landed (or there was nothing to write); a failed
-  // write keeps the cursor so the window is retried next hour rather than lost.
   if (wrote || !log) await writeState({ worklogThrough: until })
   return wrote
 }
@@ -125,8 +117,6 @@ async function tick(ctx: VaultContext): Promise<void> {
     if (events.length > 0) flog('gardener', `${events.length} note(s) shelved`)
     await writeState({ gardenedAt: now })
   }
-  // Engine work is opportunistic: absent or quota-gated → try next tick, the
-  // refresh stamp only advances when a pass actually ran.
   if (now - (state.distilledAt ?? 0) >= TICK_MS && ctx.engines.length > 0 && engineBackoff.blockedMs() === 0) {
     const ledger = await readSkillsLedger(ctx.paths)
     const candidates = skillCandidates(ctx.store.getAll(), ledger)
@@ -144,8 +134,6 @@ async function fileActivity(ctx: VaultContext): Promise<void> {
   if (capturing) return
   capturing = true
   try {
-    // Both halves of the hourly work journal: desk-app spans and the browser +
-    // file trail. Either producing a capture wakes the librarian once.
     const desk = await captureDeskActivity(ctx)
     void scanHabits(ctx).catch(error => flog('habits-failed', error))
     const web = await captureWebAndFiles(ctx)
@@ -157,7 +145,6 @@ async function fileActivity(ctx: VaultContext): Promise<void> {
 export function startKeeper(ctx: VaultContext): void {
   if (process.env['ENGRAM_HIDDEN'] === '1') return
   stopKeeper()
-  // Preserve legacy sources while importing this vault's recorded skills.
   void migrateSkillsHome(homedir(), ctx.paths)
     .then((moved) => { if (moved > 0) flog('skill-distill', `migrated ${moved} skill(s) into the vault`) })
     .catch(() => flog('skill-distill', 'Skill import failed; legacy files were preserved.'))

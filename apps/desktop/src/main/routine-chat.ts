@@ -54,7 +54,6 @@ export function startRoutineChat(
     deps.active(channel, true)
     deps.broadcast({ type: 'bots:changed' })
     deps.broadcast({ type: 'routine:chat', botId: bot.id, routineId: id, name: saved.name, message })
-    // A guarded re-run is asked for in chat (run_procedure with "again"), never offered as a button.
     const finish = async (text: string) => {
       await appendBotTurn(paths, bot.id, { role: 'assistant', text, at: new Date().toISOString() })
       deps.active(channel, false)

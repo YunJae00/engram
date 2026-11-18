@@ -6,8 +6,6 @@ interface Entry<F> {
   closing?: Promise<void>
 }
 
-// CDP screencast ownership is per target, even across separate sessions.
-// A brief handoff keeps a disappearing view from stopping its replacement.
 export function createPreviewPool<K extends object, F>(
   open: (key: K, receive: (frame: F) => void) => Promise<() => Promise<void>>,
   handoffMs = 180,
@@ -55,7 +53,6 @@ export function createPreviewPool<K extends object, F>(
         held.closing = held.ready.then((stop) => stop()).finally(() => {
           if (entries.get(key) === held) entries.delete(key)
         })
-        // The stream owns its teardown errors; consumers have already left.
         void held.closing.catch(() => undefined)
       }, handoffMs)
       held.release.unref()

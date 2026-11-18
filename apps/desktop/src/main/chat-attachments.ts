@@ -52,7 +52,6 @@ export async function previewChatAttachment(paths: VaultPaths, id: unknown): Pro
 export function chatAttachmentIds(current: unknown, history: ChatTurnDto[]): string[] {
   if (current !== undefined && (!Array.isArray(current) || current.length > ATTACHMENT_MAX_COUNT || current.some(id => typeof id !== 'string') || new Set(current).size !== current.length)) throw new Error(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`)
   const ids = new Set<string>((current ?? []) as string[])
-  // ponytail: carry the latest eight files; add explicit older-file selection if needed.
   for (const turn of history.slice().reverse()) {
     if (ids.size >= ATTACHMENT_MAX_COUNT) break
     if (turn.role !== 'user' || !Array.isArray(turn.attachments)) continue
@@ -116,7 +115,6 @@ export async function readChatAttachments(paths: VaultPaths, ids: unknown, signa
     const content = text?.slice(0, cap)
     remaining -= content?.length ?? 0
     if (text && text.length > cap) limits.push(`Text is limited to ${cap.toLocaleString('en-US')} characters here; attached text is capped at 120,000 characters per turn.`)
-    // Complete text and valid table structure are required for direct evidence.
     if (content && limits.length === 0 && tableValidation?.valid !== false) evidencePaths.push(path)
     const tableNote = tableValidation ? `\n[Table validation: ${JSON.stringify(tableValidation)}. Rows include the header.${tableValidation.valid ? '' : ' This malformed table is not verified source evidence; correct its structure before relying on its cells.'}]` : ''
     parts.push(`Attachment ${JSON.stringify(name)} (saved copy: ${JSON.stringify(path)}):\n${content || (text ? 'Text omitted because this turn reached its attachment limit.' : 'No readable text was extracted. Say this if the task requires its contents; do not invent them.')}${tableNote}${limits.length ? `\n[Partial extraction: ${limits.join(' ')} Do not claim to have read the whole file.]` : ''}`)

@@ -160,7 +160,6 @@ function deferForMemory(): void {
   state.timer = setTimeout(() => void bringUp(), 60_000).unref()
 }
 
-// Incrementally embed changed notes; `busy` serializes index passes.
 async function reindex(): Promise<void> {
   const ctx = state.ctx
   if (closed || !ctx || state.busy) return
@@ -200,7 +199,7 @@ async function reindex(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 150))
       }
     } else if (index.ids.some((id) => !liveIds.has(id))) {
-      index = applyEmbeddings(index, [], liveIds) // drop dead rows
+      index = applyEmbeddings(index, [], liveIds)
     }
     await saveVectorIndex(ctx.paths, index)
     state.index = index
@@ -224,7 +223,6 @@ async function reindex(): Promise<void> {
   }
 }
 
-// Only associate a fresh note with its closest sufficiently similar neighbour.
 const ASSOCIATE_FLOOR = 0.66
 
 async function autoAssociate(ctx: VaultContext, index: VectorIndex, freshIds: string[]): Promise<void> {
@@ -245,7 +243,6 @@ async function autoAssociate(ctx: VaultContext, index: VectorIndex, freshIds: st
       if (!neighbour || neighbour.front.type === 'hub') continue
       await linkNotes(ctx.paths, id, best.id, 'felt similar (semantic association)')
     } catch {
-      /* one bad note must not stop the pass */
     }
   }
 }
@@ -271,9 +268,7 @@ async function bringUp(): Promise<void> {
     const wasError = state.status === 'error'
     state.status = 'error'
     state.detail = String((err as Error).message ?? err).slice(0, 160)
-    // Notify once per transition; retain details in Settings.
     if (!wasError) broadcast({ type: 'semantic:error', detail: state.detail })
-    // Retry a transient startup failure without requiring an app restart.
     setTimeout(() => {
       if (state.status === 'error') {
         state.status = 'loading'
@@ -306,7 +301,6 @@ const BOOT_IDLE_SECONDS = 60
 const BOOT_CEILING_MS = 30 * 60_000
 
 function scheduleBootIndex(): void {
-  // Isolated smoke tests explicitly bypass the idle delay.
   if (process.env['ENGRAM_INDEX_NOW'] === '1') {
     void bringUp()
     return
@@ -315,13 +309,12 @@ function scheduleBootIndex(): void {
   state.detail = 'waiting for a quiet moment to index'
   const tick = (): void => {
     if (closed) return
-    if (state.extractor || state.busy) return // something else already brought it up
+    if (state.extractor || state.busy) return
     const ceiling = (powerMonitor.isOnBatteryPower?.() ? 2 : 1) * BOOT_CEILING_MS
     let idleSeconds = Number.POSITIVE_INFINITY
     try {
       idleSeconds = powerMonitor.getSystemIdleTime()
     } catch {
-      /* API unavailable → treat as idle and just run */
     }
     if (idleSeconds >= BOOT_IDLE_SECONDS || Date.now() - bootAt >= ceiling) {
       void bringUp()
@@ -332,7 +325,6 @@ function scheduleBootIndex(): void {
   setTimeout(tick, BOOT_DEFER_FIRST_MS)
 }
 
-// Join any warm-up; defer bundled models to idle, download missing ones now.
 export function startSemantic(ctx: VaultContext): void {
   state.ctx = ctx
   if (!configure()) return
@@ -345,13 +337,11 @@ export function startSemantic(ctx: VaultContext): void {
   else void bringUp()
 }
 
-// Debounce disk changes past librarian write bursts, even with the model unloaded.
 export function semanticNotesChanged(): void {
   if (closed || state.status === 'off' || state.status === 'error') return
   if (state.timer) clearTimeout(state.timer)
   state.timer = setTimeout(function fire() {
     if (closed) return
-    // Wait for librarian write bursts to finish.
     if (isLibrarianBusy() || roomNow() < (state.extractor ? EMBEDDER_MIN_FREE : ROOM_FOR_EMBEDDER)) {
       state.timer = setTimeout(fire, 60_000)
       return
@@ -360,7 +350,6 @@ export function semanticNotesChanged(): void {
   }, REINDEX_DEBOUNCE_MS)
 }
 
-// Bound the wait for a resting model; lexical search remains the fallback.
 const RESTING_MODEL_WAIT_MS = 6_000
 
 export async function semanticQuery(query: string, k: number): Promise<SemanticHit[]> {
@@ -380,13 +369,11 @@ export async function semanticQuery(query: string, k: number): Promise<SemanticH
   }
 }
 
-// Web errands never load the model: preserve memory for active browser work.
 export async function semanticQueryIfLive(query: string, k: number): Promise<SemanticHit[]> {
   if (state.status !== 'ready' || !state.index || !state.extractor) return []
   try { return cosineTopK(state.index, (await embedBatch([query]))[0]!, k) } catch { return [] }
 }
 
-// Vectors for texts while the model is already up, or null; this never loads it.
 export const embedLive = (texts: string[]): Promise<Float32Array[] | null> => state.status === 'ready' && state.extractor ? embedBatch(texts).catch(() => null) : Promise.resolve(null)
 
 

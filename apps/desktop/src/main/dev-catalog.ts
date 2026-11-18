@@ -33,7 +33,6 @@ export async function devExternal(cwd: string, provider: DevProvider, allFolders
   const project = sessionPath(cwd)
   await withCodex(cwd, profile, async rpc => {
   do {
-    // Native cwd filters are exact: desktop sessions can start in a parent folder.
     const result = await rpc.send('thread/list', { limit: 100, archived: false, sortKey: 'updated_at', modelProviders: [], sourceKinds: allFolders ? ['cli', 'vscode', 'appServer', 'unknown'] : ['cli', 'vscode', 'exec', 'appServer', 'unknown'], ...(cursor ? { cursor } : {}) }, 30_000)
     if (!Array.isArray(result['data'])) throw new Error('The runtime did not return a session list.')
     for (const row of result['data']) {
@@ -74,7 +73,6 @@ export async function devExternalRead(cwd: string, provider: DevProvider, id: st
     await withCodex(cwd, profile, async rpc => {
       const cursors = new Set<string>()
       let cursor: string | undefined, characters = 0
-      // ponytail: preview recent text only; the runtime resumes the full original history.
       do {
         const result = await rpc.send('thread/turns/list', { threadId: id, limit: 5, sortDirection: 'desc', itemsView: 'summary', ...(cursor ? { cursor } : {}) }, 30_000)
         if (!Array.isArray(result['data'])) throw new Error('The runtime did not return session messages.')

@@ -108,9 +108,6 @@ export function readDocument(mark?: number): FrameReading {
     hiddenLength += Math.min(words.length, 2_000)
     if (hiddenLength > HIDDEN_CAP) break
   }
-  // grokbar c3 R2/R3: the first 25 anchors of a results page were its tabs, filters and ads, so a search handed over no article address.
-  // Every shown anchor is kept up to LINKS_MAX, one per address and label (a result is several anchors: outlet, date, title, snippet),
-  // and the page's own links come before those of its menus, header and footer. Keep in step with plain-page.ts.
   const LINKS_MAX = 200
   const CHROME = 'nav, header, footer, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"]'
   const seen = new Set<string>()

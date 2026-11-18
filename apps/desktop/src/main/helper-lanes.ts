@@ -1,9 +1,6 @@
 import { runComet, type AgentTool } from 'core'
 import { resetLane } from './agent-browser.js'
 
-// A helper looks into one question on a tab of its own and only reads: the
-// web, the person's notes and earlier conversations. Its tab is closed when
-// it is done; what it found goes back to the comet that asked.
 const HELPER_READS = new Set(['search_web', 'open_page', 'read_open_page', 'read_pages', 'look', 'scroll', 'reveal', 'search_memory', 'read_note', 'search_chats', 'find_skills', 'open_skill'])
 const HELPER_CALLS = 30
 const HELPER_PERSONA = 'You are a helper looking into one question for a colleague who does the rest of the work. Only read. Bring back what you found, briefly, with the addresses it came from, and say plainly what you could not find.'

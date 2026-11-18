@@ -38,7 +38,6 @@ const flat = (text: string) => text.replace(/\s+/g, ' ').trim()
 const fold = (text: string) => flat(text).toLocaleLowerCase()
 const SENTENCE_END = /(?<=[.!?。])\s+|\s(?:-{3,}|[-*]|```)\s/
 
-/** Conversations whose messages contain the query, each with the words around the first hit so the row can show why it is listed. */
 export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): Promise<BotSearchHit[]> {
   const needle = fold(query)
   if (!needle) return []
@@ -52,7 +51,6 @@ export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): 
         const stamp = `${info.mtimeMs}:${info.size}`
         let held = texts.get(path)
         if (!held || held.stamp !== stamp) {
-          // A finite limit reads the whole transcript; the default keeps only the last 400 turns.
           const value = readBotTranscript(paths, bot.id, Number.MAX_SAFE_INTEGER).then(turns => turns.filter(turn => !turn.progress).map(turn => ({ plain: flat(turn.text), folded: fold(turn.text) })))
           held = { stamp, value }
           if (texts.size >= 256) texts.delete(texts.keys().next().value!)
@@ -64,13 +62,10 @@ export async function botSearch(paths: VaultPaths, bots: Bot[], query: string): 
           const at = turn.folded.indexOf(needle)
           if (at < 0) continue
           const end = at + needle.length
-          // The row shows why it is listed: the matched sentence alone, without a clause that only
-          // names a value the person has since replaced.
           const before = turn.plain.slice(0, at).split(SENTENCE_END).pop() ?? ''
           const after = turn.plain.slice(end, end + 120).split(SENTENCE_END)[0] ?? ''
           const sentence = withoutResidue(before + turn.plain.slice(at, end) + after).text
           const hit = sentence.toLocaleLowerCase().indexOf(needle)
-          // A short lead keeps the matched words inside the narrow sidebar row.
           if (hit < 0) { bare ??= (at > 8 ? '…' : '') + turn.plain.slice(Math.max(0, at - 8), end); continue }
           const from = Math.max(0, hit - 8)
           excerpt = (from ? '…' : '') + sentence.slice(from, hit + needle.length + 120)
@@ -124,7 +119,7 @@ function countTurns(raw: string): number {
     try {
       const row = JSON.parse(line) as { role?: unknown; text?: unknown; progress?: unknown } | null
       if (typeof row === 'object' && row !== null && (row.role === 'user' || row.role === 'assistant') && typeof row.text === 'string' && row.progress !== true) turns++
-    } catch { /* a corrupt line is not a turn */ }
+    } catch { }
   }
   return turns
 }

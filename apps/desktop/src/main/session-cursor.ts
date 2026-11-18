@@ -29,7 +29,6 @@ export async function readSessionCursors(file: string): Promise<Map<string, Sess
 }
 
 export async function writeSessionCursors(file: string, cursors: Map<string, SessionCursor>): Promise<void> {
-  // One scan owns this snapshot. A failed replacement leaves the previous checkpoint intact.
   const temporary = `${file}.tmp`
   await writeFile(temporary, JSON.stringify(Object.fromEntries(cursors)))
   await renameWithRetry(temporary, file)

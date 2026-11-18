@@ -41,24 +41,16 @@ import { changedResult, freshResultReadback, nothingToReadBack, RESULT_CHANGES }
 import { allowedByRule, readRules, reviewAction } from './review-gate.js'
 import { closeTask, ENDED_LOG, isRestartQuestion, restartQuestion, type ClosingReason } from './task-closing.js'
 
-
-// The files an answer hands over, by the name the person knows (a saved copy carries an id before it).
 const handedOver = (text: string): string => [...new Set([...text.matchAll(/\]\(engram-artifact:([^\s)]+)\)/g)].map(match => match[1]!.replace(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-/i, '')))].sort().join('\n')
 
 const plain = (text: string) => text.replace(/\r\n?/g, '\n').trim()
-/** True only when a re-check answer is the delivered report again, character for character: only the line-ending style (CRLF/CR) and
- *  whitespace around the whole text are set aside. Nothing inside is folded, so anything else is posted, once: 10⁶ is not 106, two
- *  commands on two lines are not one command, a changed comma can reverse a report, ~~strikethrough~~ withdraws a claim, and a saved
- *  copy's id tells two versions of report.md apart.
- *  The host's own reading beside the model's reportUnchanged; unsure means post. */
 export function recheckAddsNothing(answer: string, report: string): boolean {
   return plain(answer) === plain(report)
 }
 
-export interface TurnOutcome { /** The turn's own answer is in the thread and the turn was not cut short at a call or time limit. */ delivered?: boolean; tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; /** Handed-in files this turn never read back in full. */ readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; /** The re-check's own word that the delivered report needs no correction. */ reportUnchanged?: boolean }; held?: boolean; /** The turn ended on a provider error the thread already shows. */ errored?: string }
-export interface TaskTurn { /** The task's ask, which this turn's answer answers (c14b r2: kept on the transcript turn, askedBefore). */ asked?: string; /** The lead passing on what its background employees reported: a short turn of words, no team check. */ report?: true; tokenBudget?: number; context?: string; /** The context is only a route learned from an earlier run of the same ask, not resumed or answered work. */ learned?: boolean; quiet?: boolean; verification?: { result: string; /** The task as the person asked it, without the check instructions around it. */ goal?: string; /** A readback-only follow-up: every file linked in result is held to its readback, whatever the answer links. */ readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; /** Saves an answer held by holdIf; the host awaits it before it drops that answer's visible draft. */ saveHeld?: (answer: string) => Promise<void> }
+export interface TurnOutcome { delivered?: boolean; tokensUsed?: number; budgetExhausted?: boolean; answer: string; asked: boolean; unfinished: boolean; unfinishedReason?: string; steps: number; trail?: TurnStep[]; check?: { accepted: boolean; verified?: boolean; issues: string[]; readbacks?: { name: string; path: string }[]; report?: Omit<TurnEvidence, 'record'>; reportUnchanged?: boolean }; held?: boolean; errored?: string }
+export interface TaskTurn { asked?: string; report?: true; tokenBudget?: number; context?: string; learned?: boolean; quiet?: boolean; verification?: { result: string; goal?: string; readback?: boolean}; holdIf?: (answer: string, steps: TurnStep[], check?: { accepted: boolean; verified?: boolean; issues?: string[] }) => boolean; saveHeld?: (answer: string) => Promise<void> }
 type Reason = Parameters<typeof continuationPrompt>[1]
-// The one follow-up a check turn gets when all it lacks is the readback of files the host handed in after its report.
 const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string }[]): string => [
   'Your result check passed except for one thing: these files were handed in with the result, but were not read back in full after their last write.',
   ...files.map(file => `- ${file.name}: ${file.path}`),
@@ -67,21 +59,12 @@ const readbackPrompt = (task: DelegatedTask, files: { name: string; path: string
   'Do no other work: do not edit, create, rerun or re-derive anything. If a readback shows the result is wrong, report that check as failed and say exactly what differs instead of fixing it.',
   '', 'The result:', task.result ?? '', '', 'The delegated task, verbatim:', task.goal].join('\n')
 const AUTO_CONTINUE_MAX = 3
-// What only the person can clear: the task waits for them, whatever the turn said.
 const BARRIER = /_denied|requires manual control|Blocked by a permission or security screen|권한 또는 보안 화면|sign[ -]in|로그인/i
 const savedFile = (text = '') => /\]\(engram-artifact:/.test(text)
-// The team check is one more full lead turn. It is skipped only for a words-only report whose members the lead all reviewed and that
-// names its sources (perf146: a weather lookup paid 20-60 s for it). Little budget left is no reason to skip: the check starts, and
-// one that then runs out leaves the delivered report as the result (teamKept below).
-// grokbar B6 r2: a team of lookup members only read and reported; they made nothing a check could reopen. When none of them reached a
-// page the report had no address, and the check ran 90 s after the answer and posted nothing (R1, R2, T1). Such a team is never checked.
 export const teamCheckDue = (task: DelegatedTask, answer: string): boolean =>
   !(!savedFile(answer) && (task.team?.members.every(m => m.lookup) || !teamReviewIssue(task) && /https?:\/\/[^\s)]+|(?:^|\n)[\s>*#-]*(?:출처|Sources?)\**\s*[:：]/i.test(answer)))
 const WORTH_KEEPING_STEPS = 3
 const exactKey = (url: string, words: string) => `${url}\n${words}`
-// Command approvals (file:) share one kind per host and sandbox side; every other url keeps its exact key.
-// A file read card (#read, file-work.ts) is for that one file: approving it for the task covers only that file, whoever in the task asks
-// (a team member's card carries its role before the words, the orchestrator's does not: qa146 S19).
 const kindOf = (url: string, words: string): string => {
   if (!url.startsWith('file:')) return exactKey(url, words)
   try { const u = new URL(url); return u.hash === READ_CARD ? url : `file://${u.host}${u.hash ? '#' : ''}` } catch { return exactKey(url, words) }
@@ -94,7 +77,7 @@ export function taskRunner(deps: {
   abort(channel: string): void
   broadcast(event: EngramEvent): void
   remember(text: string): Promise<void>
-  deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence, /** The task's ask the text answers. */ asked?: string): Promise<void>
+  deliver(channel: string, text: string, since: number, trail: TurnStep[], evidence?: TurnEvidence, asked?: string): Promise<void>
   checkBudgetMs?: number
   learn?(question: string, answer: string, goal: string): void
   notify(task: DelegatedTask): void
@@ -106,8 +89,6 @@ export function taskRunner(deps: {
   const { paths } = deps
   const running = new Set<string>()
   const channels = new Set<string>()
-  // Tasks this run of the app has worked on. c5 (stack-4 risk 6): resume() runs 15 s after launch and reads the tasks once; one that a turn
-  // of this run started or ended while it worked through the list was closed as a leftover of the last run ("The app restarted…").
   const thisRun = new Set<string>()
   const acquire = (channel: string) => {
     if (channels.has(channel)) return
@@ -117,13 +98,10 @@ export function taskRunner(deps: {
   const release = (channel: string) => {
     if (!channels.delete(channel)) return
     deps.broadcast({ type: 'comet:working', channel, working: false })
-    // A report that came in while the thread was busy starts now, never in the middle of the person's turn.
     const next = [...reports].find(([, one]) => one === channel)
     if (next) void report(next[0], channel).catch(error => flog('tasks', error))
   }
-  // Tasks whose background employees have all ended and whose lead has not reported yet, by lead channel.
   const reports = new Map<string, string>()
-  // Waiting for its employees, not for the person: a new message leaves it alone and it is not announced as paused.
   const parked = (task: DelegatedTask) => task.state === 'waiting' && !task.question && (backgroundOpen(task) || reports.has(task.id))
   const stopped = new Set<string>()
   const waiting = new Map<string, number>()
@@ -132,33 +110,20 @@ export function taskRunner(deps: {
   const approvalScopes = new Map<string, Map<string, string>>()
   const alwaysFor = new Map<string, Set<string>>()
   const declined = new Map<string, Set<string>>()
-  // Tasks whose person declined a card during the turn now running; that turn is not continued automatically.
   const refusedThisTurn = new Set<string>()
-  // Tasks created by a scheduled routine in this app session; their unanswered cards expire.
   const routine = new Set<string>()
   const trails = new Map<string, TurnStep[]>()
   const handedBack = new Set<string>()
   const continuations = new Map<string, { count: number; reason: string }>()
   const verifyAttempts = new Set<string>()
   const verifyNext = new Set<string>()
-  // Tasks with an answer already in the thread: a limit reached after it ends the task done, with no closing message.
   const answered = new Set<string>()
-  // Tasks whose next verify turn is the team check of a report with no known issue: cut short by its time or token budget, that report stands.
   const teamChecks = new Set<string>()
-  // A check turn that lacked only handed-in files' readbacks gets one readback-only turn; these are its files, and the tasks that already had theirs.
   const readbackNext = new Map<string, { name: string; path: string }[]>()
   const readbackAttempts = new Set<string>()
-  // The model's own verdicts in the last turn's result check, to tell a confirming re-check from a correcting one.
   const verdicts = new Map<string, NonNullable<TurnOutcome['check']>['report']>()
-  // A held answer the runner has not posted because its own re-check follows at once: posted when that re-check adds nothing, replaced when the
-  // re-check ends the task done on its own answer, and posted before any other re-check answer or ending (flush), so it is never lost.
-  // The transcript does not have it yet, so it is also saved on the task (task.unshown): a quit or crash during the re-check leaves it for resume to post.
-  // It is saved (saveHeld) before the host drops the answer's visible draft, so no moment has the report neither on screen nor on disk (qa143 p2 r5 S19d).
   const unshown = new Map<string, string>()
-  // The steps up to the end of the last turn that was no re-check: a waiting report is posted with these alone. Its links are its own files;
-  // the re-check's steps would point them (newestRevisions) at a file of the same name made in the re-check (qa143 p2 r7 S19b).
   const reportTrails = new Map<string, TurnStep[]>()
-  // task id -> unanswered card id -> deferred same-kind requests that become a card once that card is answered
   const held = new Map<string, Map<string, { url: string; words: string }[]>>()
   const newCard = (t: DelegatedTask, url: string, words: string) => { const id = `a-${Date.now().toString(36)}-${t.approvals.length}`; t.approvals.push({ id, words, host: hostOf(url) ?? '', url, at: new Date().toISOString() }); return id }
   const keep = (id: string, a: { url: string; words: string; answer?: string }) => {
@@ -172,7 +137,6 @@ export function taskRunner(deps: {
   const changed = () => deps.broadcast({ type: 'tasks:changed' })
   const channelOf = (task: DelegatedTask) => `bot-${task.botId}`
   const edit = async (id: string, change: (task: DelegatedTask) => void) => { const task = await updateTask(paths, id, change); changed(); return task }
-  // Every end the person did not ask for leaves a closing message in the thread (task-closing.ts).
   const close = (task: DelegatedTask | undefined, reason: ClosingReason, channel = task && channelOf(task), error?: unknown, goal = task?.goal) => closeTask(paths, deps.broadcast, { task, reason, channel, trail: task ? trails.get(task.id) : undefined, error, goal })
 
   const flush = async (task: DelegatedTask | undefined): Promise<void> => {
@@ -182,7 +146,6 @@ export function taskRunner(deps: {
     answered.add(task.id)
     await shown(task.id)
   }
-  // Cleared only once something stands in the thread for it: a crash in between posts it twice rather than never.
   const shown = async (id: string): Promise<void> => { unshown.delete(id); await edit(id, t => { delete t.unshown }) }
 
   async function turn(id: string, request: ChatRequestDto, extra?: TaskTurn): Promise<DelegatedTask | undefined> {
@@ -201,16 +164,11 @@ export function taskRunner(deps: {
     if (extra?.quiet) deps.broadcast({ type: 'comet:continue', channel: channelOf(started), botId: started.botId })
     const earlier = trails.get(id) ?? []
     refusedThisTurn.delete(id)
-    // The answers this runner re-checks before calling the task done (see the branches below): a team's report, and a result whose own check is not clean, once.
     const holdIf: TaskTurn['holdIf'] = (answer, steps, check) => !extra?.verification && !extra?.report && (check ? !verifyAttempts.has(id) && !(check.accepted && check.verified !== false && !check.issues?.length && (freshResultReadback(steps) || nothingToReadBack(answer, [...earlier, ...steps]))) : !!started.team?.members.length || successfulTurnSteps(steps).some(step => step.tool === 'hire_members' || step.tool === 'assign'))
-    // A re-check's own answer has no visible draft and is not saved: the report it re-checks is. An earlier report still waiting is posted, never overwritten.
     const saveHeld: TaskTurn['saveHeld'] = extra?.verification ? undefined : async (answer) => {
       if (unshown.get(id) !== answer) await flush(started)
       unshown.set(id, answer); await edit(id, t => { t.unshown = answer })
     }
-    // The team check gets a bounded share of time (qa146 S19: the thread stayed "생각하는 중" 5-10 min after the report); past it the report is the answer.
-    // A report that hands over a file still needs its readback, and one with a member nobody reviewed still needs its verdict, so only a
-    // report of words alone whose members were all reviewed stands this way; any other check runs and ends as it did before.
     const teamCheck = teamChecks.delete(id) && !!extra?.verification?.result.trim() && !extra.verification.readback && !savedFile(extra.verification.result) && !teamReviewIssue(started)
     let overran = false
     const deadline = teamCheck && deps.checkBudgetMs ? setTimeout(() => { overran = true; deps.abort(channelOf(started)) }, deps.checkBudgetMs) : undefined
@@ -220,18 +178,12 @@ export function taskRunner(deps: {
     const refused = refusedThisTurn.delete(id)
     approved.set(id, (approved.get(id) ?? []).filter(grant => !grant.url.startsWith('engram://app/')))
     const outcome = deps.outcome(request.channel ?? '')
-    // A team check that ran out of time or tokens leaves the report it was checking as the result (perf146: a full answer ended "처리 한도에 닿아 끝나지 않았어요").
     const teamKept = teamCheck && (overran || (!!outcome?.budgetExhausted && !outcome.errored)) ? extra!.verification!.result : ''
     const trail = [...earlier, ...(outcome?.trail ?? [])]
     trails.set(id, trail)
     if (!extra?.verification) reportTrails.set(id, trail)
     const reported = verdicts.get(id)
-    // Set when a verification turn ran out of budget after the host had accepted its check of the report it re-checks: only then can that report stand.
     let recheckOf = ''
-    // grokbar D3, D4, H1 (cycle 3 cause C): an answer the ordinary turn put in the thread is the end of the task. The host's own doubts about it
-    // (an unread write, an open collection item, the call limit) continued a finished deck for 309 s on the work model, or left it "작업이 멈췄어요".
-    // What is truly missing is said by the answer itself. A check the person asked for, a re-check and a team report keep their own ways below;
-    // so do work cut short at a call or time limit (it continues) and a sign-in or permission barrier only the person can clear (it waits).
     const spoke = !!outcome && !outcome.held && !outcome.asked && !outcome.errored && !outcome.budgetExhausted && !!outcome.answer.trim() && !outcome.answer.startsWith('Not verified as complete.')
     const delivered = spoke && outcome.delivered === true && !extra?.verification && !extra?.report && !asksForCheck(started.goal) && !BARRIER.test(outcome.unfinishedReason || outcome.answer)
     if (spoke) answered.add(id)
@@ -244,16 +196,13 @@ export function taskRunner(deps: {
       const before = t.result
       if (outcome) t.result = outcome.answer
       if (outcome?.check) {
-        // The host's own verdict on this turn's check. The budget text of a re-check that ran out is not the result: the report it re-checked is.
         const accepted = outcome.check.accepted && outcome.check.verified !== false && outcome.check.issues.length === 0 && !teamReviewIssue(t)
         const checked = accepted && !outcome.unfinished
-        // A budget stop is always unfinished (the core marks it incomplete), so the re-check at the budget is judged on the host's verdict alone.
         const rechecked = outcome.budgetExhausted && !outcome.errored ? extra?.verification?.result ?? '' : ''
         if (rechecked.trim() && accepted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(rechecked, trail))) recheckOf = rechecked
         t.verified = !!recheckOf || checked && !outcome.budgetExhausted && (freshResultReadback(outcome.trail ?? []) || nothingToReadBack(outcome.answer, trail))
         if (!t.verified) t.verificationIssue = [...outcome.check.issues, teamReviewIssue(t)].filter(Boolean).join('; ') || `The result has no fresh readback.${(outcome.trail ?? []).some(commandChanged) ? ' A command ran after the last read and may have changed a file: read the final result again after the last command.' : ''}`
         else delete t.verificationIssue
-        // The readback-only follow-up may only read: one that changed a result is not accepted, whatever it then read. No second follow-up is given, so the task ends waiting.
         if (extra?.verification?.readback && changedResult(outcome.trail ?? [])) { recheckOf = ''; t.verified = false; t.verificationIssue = 'The readback-only turn changed the result instead of only reading it back, so its check was not accepted.' }
       }
       delete t.verificationPending
@@ -261,11 +210,7 @@ export function taskRunner(deps: {
       const pending = t.approvals.filter((a) => !a.answer)
       if (!outcome) { t.state = 'failed'; logTask(t, ENDED_LOG) }
       else if (outcome.errored) { t.state = 'failed'; logTask(t, `Failed: ${outcome.errored}`) }
-      // A re-check that ran out of budget after the host accepted its check, readback included, leaves the report it was re-checking as the result: the task
-      // is finished with it rather than failed at the limit (qa143 S19: a 9-page report ended "처리 한도에 닿아 끝나지 않았어요"). The model's own pass
-      // labels are not enough: a report whose readback or requirement is still open stops failed at the limit.
       else if (outcome.budgetExhausted && recheckOf) { t.result = recheckOf; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the re-check stopped at the task token budget.') }
-      // The thread already has this task's answer: the limit ends it quietly, and that answer stays the result.
       else if (outcome.budgetExhausted && answered.has(id) && before?.trim()) { t.result = before; t.state = 'done'; continuations.delete(id); logTask(t, 'Done; the task token budget was reached after the answer.') }
       else if (outcome.budgetExhausted) { t.state = 'failed'; logTask(t, 'Stopped at the task token budget.') }
       else if (outcome.asked) { t.state = 'waiting'; t.question = outcome.answer; logTask(t, 'Waiting for your answer') }
@@ -279,7 +224,6 @@ export function taskRunner(deps: {
           verifyAttempts.add(id); verifyNext.add(id)
           logTask(t, 'Retrying unresolved result checks once')
         } else if (unread.length && unread.length === outcome.check.issues.length && !teamReviewIssue(t) && !readbackAttempts.has(id)) {
-          // Every check passed and the only issues are final bytes nobody read: one bounded turn to read them, never a pass without it.
           readbackAttempts.add(id); readbackNext.set(id, unread)
           logTask(t, 'Reading back the handed-in files once')
         } else { t.state = 'waiting'; logTask(t, 'The report is recorded, but unresolved checks remain. Waiting for your next instruction.') }
@@ -300,35 +244,21 @@ export function taskRunner(deps: {
           logTask(t, `Continuing unfinished work (${count}/${AUTO_CONTINUE_MAX})`)
         }
       } else if (!outcome.answer.trim()) { t.state = 'failed'; logTask(t, ENDED_LOG) }
-      // The lead reported what its team had while a member still needs the person: the report stands and the task waits for their answer.
       else if (t.team?.members.some(m => m.state === 'waiting')) { t.state = 'waiting'; logTask(t, 'Waiting for your answer') }
-      // Employees are still on work handed off in the background (or their report is in line): the turn's words stand and the task waits for the report.
-      // c5b r3: so does a part labeled "끝나면 이어서 올릴게요" whose own report is not up yet. It may have ended during this very turn, before
-      // team-runner asked for its report: closing here as done dropped that report (a done task is not restarted). Its report is put in line here.
       else if (backgroundOpen(t) || (reports.has(id) && !t.team?.lateDone) || lateOwed(t)) {
         t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG)
         if (lateOwed(t) && !backgroundOpen(t)) reports.set(id, channelOf(t))
       }
       else if (teamUnverified(t) && !extra?.report && teamCheckDue(t, outcome.answer)) { verifyNext.add(id); teamChecks.add(id); logTask(t, 'Checking the team deliverable before reporting done') } else { t.state = 'done'; continuations.delete(id); verifyAttempts.delete(id); logTask(t, 'Done') }
     })
-    // One finished task, one report: a re-check stays silent only when it says itself (reportUnchanged) that the report already in the thread
-    // needs no correction; without that word it is posted, since a readback can correct a statement without touching a file.
-    // It is also posted when it changed something, hands over other files, or passes a requirement the delivered report's own check had left failed or unknown.
-    // That word alone is not trusted: the host also reads the answer, and posts it unless it is that report again (recheckAddsNothing).
-    // A readback-only follow-up does not re-judge requirements: the check turn's own report is carried over unchanged, whatever checks the follow-up reports.
     if (!extra?.verification?.readback) verdicts.set(id, outcome?.check?.report)
     const repeats = !!extra?.verification?.result.trim() && after?.state === 'done' && outcome?.check?.reportUnchanged === true && !successfulTurnSteps(outcome?.trail ?? []).some(step => RESULT_CHANGES.test(step.tool))
       && !(reported && [...reported.checks, reported.grounding].some(one => one.status !== 'pass' && one.status !== 'not_applicable')) && handedOver(after.result ?? '') === handedOver(extra.verification.result) && recheckAddsNothing(after.result ?? '', extra.verification.result)
     const kept = (!!teamKept || !!outcome?.budgetExhausted && !!recheckOf) && after?.state === 'done'
     if (after && outcome?.held && after.result) {
-      // A re-check that only confirmed (or ran out of budget on) a report still unposted posts that report; one already in the thread is not posted again.
       if (repeats || kept) await flush(after)
-      // Held for the re-check that starts now: that turn's answer is the one posted. The report stays saved (saveHeld) until then.
-      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id) && unshown.get(id) === after.result) { /* waits */ }
+      else if (!extra?.verification && after.state === 'running' && verifyNext.has(id) && unshown.get(id) === after.result) { }
       else {
-        // The re-check's answer stands in for the waiting report only when it is that report checked again: the task ended done on it, or lacks only its
-        // readback turn. Any other re-check answer ("I could not verify it") is a note on the report, posted after it; an exact restatement is posted once.
-        // A turn that is no re-check saved its own answer as the draft: posting that answer is posting the draft.
         const draft = unshown.get(id), replaced = draft !== undefined && (extra?.verification ? after.state === 'done' || readbackNext.has(id) || recheckAddsNothing(after.result, draft) : draft === after.result)
         if (!replaced) await flush(after)
         await deps.deliver(channelOf(after), after.result, Date.parse(after.createdAt), trail, undefined, after.goal)
@@ -336,7 +266,6 @@ export function taskRunner(deps: {
         if (replaced) await shown(id)
       }
     } else if (after && after.state !== 'running') await flush(after)
-    // An error the thread already shows gets no "say continue" closing: continuing cannot fix it.
     if (after?.state === 'failed' && !outcome?.errored && (!outcome || outcome.budgetExhausted || !outcome.answer.trim())) await close(after, outcome?.budgetExhausted ? 'budget' : 'empty')
     return after
   }
@@ -401,7 +330,6 @@ export function taskRunner(deps: {
     } finally { running.delete(id); if (channel && !heldChannel) release(channel); approved.delete(id) }
   }
 
-  // The background employees of a task have all ended (team-runner): its lead reports in the person's thread, in a turn of its own.
   async function report(id: string, channel: string): Promise<void> {
     reports.set(id, channel)
     if (channels.has(channel)) return
@@ -409,7 +337,6 @@ export function taskRunner(deps: {
     try {
       reports.delete(id)
       if (stopped.has(channel)) return
-      // A second request for a late part's report that is already in the thread (team-runner and the line above both ask) starts nothing.
       const task = await edit(id, t => { if (t.state === 'waiting' && !t.question && !t.team?.lateDone) t.state = 'queued' })
       if (task?.state !== 'queued') return
       owners.set(channel, id)
@@ -478,15 +405,10 @@ export function taskRunner(deps: {
     async resume(): Promise<void> {
       const tasks = await listTasks(paths)
       for (const task of tasks) if (['queued', 'running', 'waiting'].includes(task.state)) owners.set(channelOf(task), task.id)
-      // A report whose re-check an earlier run of the app never finished: this runner holds no draft of it, so it is posted from the task before the restart question.
       for (const task of tasks) if (task.unshown !== undefined && !unshown.has(task.id)) { await deps.deliver(channelOf(task), task.unshown, Date.parse(task.createdAt), [], undefined, task.goal); await shown(task.id) }
       for (const task of tasksToResume(tasks)) {
-        // Checked for each task as its turn comes, and again on the stored task: the list is as old as the awaits above it.
         const mine = (): boolean => thisRun.has(task.id) || channels.has(channelOf(task))
         if (mine()) continue
-        // c6: a report's turn was cut by the quit while a late part's own line was still owed ("끝나면 이어서 올릴게요"). That is no work to
-        // ask the person about: the task waits as it did before the turn, and team-runner's resume has its lead report what came, or
-        // that the part never did.
         if (lateOwed(task)) { await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.awaitingEmployees = true; logTask(t, EMPLOYEES_REPORT_LOG) }); continue }
         const question = await restartQuestion(paths, task)
         await edit(task.id, t => { if (mine() || !['running', 'queued'].includes(t.state)) return; t.state = 'waiting'; t.question = question; logTask(t, 'The app restarted during this task.') })
@@ -526,7 +448,6 @@ export function taskRunner(deps: {
               const index = granted.findIndex((g) => g.url === url && g.words === cardWords)
               if (index >= 0) { if (!url.startsWith('engram://app/')) granted.splice(index, 1); return confirm({ words, url }) }
               if (!own && reviewAction(url)) {
-                // The read awaits outside code, so a card or decision made meanwhile is seen before the rules apply.
                 if (!rules) { rules = await readRules(deps.reviewRules); const next = await refresh(); if (!next) return 'cancel'; live = next; continue }
                 if (allowedByRule(rules, url)) return confirm({ words, url })
               }

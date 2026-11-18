@@ -5,9 +5,6 @@ import { awayReady, vaultIo } from './away-summary.js'
 import { flog } from './flog.js'
 import { closingLang } from './task-closing.js'
 
-// A task that stops for the person says so outside the window, but only when
-// they are not already looking at Engram. Clicking it opens that conversation.
-
 let surface = (): void => undefined
 export function setTaskSurface(show: () => void): void { surface = show }
 export function surfaceComet(): void { surface() }
@@ -32,7 +29,6 @@ export function taskQueued(botId: string, pending: boolean): void {
   else { queued.delete(botId); flushNotice(botId) }
 }
 const HOLD_MS = 15 * 60_000
-// Notifications can appear on the lock screen; the words never carry task contents.
 const WORDS = {
   en: { paused: ['Progress so far', 'The unfinished result is ready. Click to continue with an instruction.'], done: ['Done', 'The answer is ready. Click to see it.'], failed: ['Stopped', 'Click to see what got done and what is left.'], question: ['Needs your answer', 'There is a question for you. Click to answer.'], approval: ['Needs your OK', 'A step is waiting for your OK. Click to review it.'] },
   ko: { paused: ['여기까지 했어요', '중간 결과가 있어요. 눌러서 어떻게 이어갈지 알려 주세요.'], done: ['다 했어요', '답이 준비됐어요. 눌러서 확인해 보세요.'], failed: ['멈췄어요', '눌러서 한 일과 남은 일을 확인해 보세요.'], question: ['답이 필요해요', '여쭤볼 게 있어요. 눌러서 답해 주세요.'], approval: ['확인이 필요해요', '진행 전에 확인할 단계가 있어요. 눌러서 살펴봐 주세요.'] },
@@ -56,7 +52,6 @@ export function noticeText(task: Pick<DelegatedTask, 'state' | 'goal' | 'questio
 }
 
 export function notifyTask(task: DelegatedTask, broadcast: (event: EngramEvent) => void, level?: string, transcript: Said = [], name?: string): void {
-  // A hidden run has nobody watching to tell.
   if (process.env['ENGRAM_HIDDEN'] === '1') return
   if (task.state === 'done' && (queued.has(task.botId) || clientQueues.has(task.botId))) {
     clearTimeout(held.get(task.botId)?.timer)
@@ -74,7 +69,6 @@ function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, leve
   }
   const paused = task.state === 'waiting' && !task.question && !task.approvals.some(approval => !approval.answer)
   const [title, body] = noticeText(task, transcript, name)
-  // A person looking at Engram sees the task in its conversation already.
   if (BrowserWindow.getFocusedWindow()) return
   if (level === 'off' || (level === 'attention' && task.state !== 'failed' && (task.state !== 'waiting' || paused))) return
   if (!Notification.isSupported()) return
@@ -84,13 +78,11 @@ function tell(task: DelegatedTask, broadcast: (event: EngramEvent) => void, leve
 }
 
 const MILESTONE_MS = 10 * 60_000
-// Lead-hired members already counted per task, and when each task last showed a milestone.
 const reported = new Map<string, Set<string>>()
 const milestoneAt = new Map<string, number>()
 const hasReported = (m: TeamMember): boolean => m.state === 'done' || m.state === 'released' && !m.result?.startsWith('Failed:')
 interface BotVoice { name: string | undefined; level: string | undefined; transcript: Said }
 
-// A member handing its part to the lead is progress worth a word on a long job, at most once per ten minutes per task.
 export async function teamReported(tasks: readonly DelegatedTask[], voice: (botId: string) => Promise<BotVoice>, broadcast: (event: EngramEvent) => void, now = Date.now()): Promise<void> {
   for (const task of tasks) {
     if (task.state === 'done' || task.state === 'failed' || task.state === 'stopped') { reported.delete(task.id); milestoneAt.delete(task.id); continue }
@@ -98,7 +90,6 @@ export async function teamReported(tasks: readonly DelegatedTask[], voice: (botI
     const lead = task.team.members.filter(m => m.parentId === null), done = lead.filter(hasReported)
     const known = reported.get(task.id)
     reported.set(task.id, new Set([...(known ?? []), ...done.map(m => m.id)]))
-    // First sight after a start only primes the count, so a restart announces nothing old.
     if (!known) continue
     const fresh = done.filter(m => !known.has(m.id))
     if (!fresh.length || task.state !== 'running' || process.env['ENGRAM_HIDDEN'] === '1' || BrowserWindow.getFocusedWindow()) continue
@@ -106,7 +97,6 @@ export async function teamReported(tasks: readonly DelegatedTask[], voice: (botI
     milestoneAt.set(task.id, now)
     const v = await voice(task.botId).catch((error: unknown) => { milestoneAt.delete(task.id); throw error })
     if (v.level === 'off' || v.level === 'attention' || BrowserWindow.getFocusedWindow()) continue
-    // A member's role can carry the assignment itself, so the lock screen gets only the count.
     const ko = closingLang(v.transcript, task.goal) === 'ko'
     const note = new Notification({ title: `${label(v.name)}: ${WORDS[ko ? 'ko' : 'en'].paused[0]}`, body: `${ko ? '팀원 끝' : 'Team member finished'} (${done.length}/${lead.length})` })
     note.on('click', () => { surface(); broadcast({ type: 'comet:open', botId: task.botId }) })

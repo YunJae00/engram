@@ -8,7 +8,6 @@ import { desktopFailure } from './desktop-failure.js'
 import { prepareQuietConfirmation, pressQuietConfirmed, confirmationFailure } from './desktop-quiet-confirm.js'
 import { flog } from './flog.js'
 
-// Bounded provider actions; uncertain or consequential outcomes stop the loop.
 interface QuietDoRequest { lane: string; app: string; goal: string; text?: string; send?: boolean; maxSteps: number; signal?: AbortSignal; approveSend?: (snapshot: string, scope?: string) => Promise<boolean> }
 interface QuietDoStep { action: string; control?: string; name?: string; confidence: number; ms: number; outcome: string }
 interface QuietDoResult { status: 'done' | 'blocked' | 'needs-person' | 'steps-exhausted' | 'unsure' | 'needs-screen'; steps: QuietDoStep[]; screen: string; pressed: boolean; foregroundChanged: boolean; foregroundTaken?: boolean; committed?: boolean; reply?: string; settled?: boolean; stillAnswering?: string; replyPartial?: boolean }
@@ -18,7 +17,6 @@ const OPTION_CAP = 250
 const SETTLE_MS = 700
 const MIN_CONFIDENCE = 0.35
 const TEXT_TAIL = 15
-// Asked to send, the loop may press a send control once, after its text is confirmed, and then waits for the reply.
 const SEND = /\bsend\b|보내기|전송/i
 const REPLY_SETTLE_MS = 3_000
 const REPLY_TAIL = 4_000
@@ -38,15 +36,12 @@ const pause = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((
 
 export const irreversibleName = (name: string): boolean => IRREVERSIBLE.test(name)
 
-// The reply is what the app shows after the message that was sent; the rest
-// of the window (a sidebar of other chats) is not part of it.
 export function replyAfter(text: string, sent: string): string {
   const mark = sent.trim().split('\n', 1)[0]!.slice(0, 80)
   const at = mark ? text.lastIndexOf(mark) : -1
   return at >= 0 ? text.slice(at + mark.length).trim().slice(0, REPLY_TAIL) : text.slice(-REPLY_TAIL)
 }
 
-// The options the decision model may pick, each described by the control it names.
 export function buildOptions(observation: QuietObservationDto, hasText: boolean): { criteria: Record<string, string>; controls: Map<string, QuietControlDto> } {
   const usable = observation.controls.filter(control => control.enabled && !control.offscreen && !control.secret)
   const settable = hasText ? usable.filter(control => control.can.set) : []
@@ -102,7 +97,6 @@ const instructions = (send: boolean): string => `${RULES} ${send ? 'Send only as
 const quietFingerprint = (observation: QuietObservationDto): string => JSON.stringify([observation.controls.map(control => [control.id, control.name, control.value, control.state]), observation.texts.slice(-TEXT_TAIL).map(text => text.text)])
 
 export async function quietDo(request: QuietDoRequest, decide: typeof decideChoice = decideChoice): Promise<QuietDoResult> {
-  // The tool budget pauses for explicit approval; a second wall clock would expire it.
   request.signal?.throwIfAborted()
   const steps: QuietDoStep[] = []
   let pressed = false
@@ -134,21 +128,17 @@ export async function quietDo(request: QuietDoRequest, decide: typeof decideChoi
     const control = controls.get(decision.choice)
     if (!control) return finish('unsure')
     const [kind, id] = decision.choice.split(' ') as [string, string]
-    // A screen that did not change after the same action was already delivered is a loop, not progress; a
-    // display that updates while the buttons stay the same (a calculator) is not.
     const current = quietFingerprint(observation)
     const unchanged = current === lastFingerprint && decision.choice === lastChoice
     lastFingerprint = current
     lastChoice = decision.choice
     if (unchanged) { steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: JSON.stringify(desktopFailure('No observed effect', { delivered: true, container: /treeitem|row|group|cell/i.test(control.type) })) }); return finish('blocked') }
     const sends = kind === 'press' && request.send && textSet && SEND.test(control.name)
-    // With text in any field, any button may send it (an icon labelled ↑ is still Send): that press is left for the person.
     const draftButton = kind !== 'set' && !kind.startsWith('scroll_') && /button/i.test(control.type) && observation.controls.some(item => item.can.set && !!item.value)
     if (kind !== 'set' && !kind.startsWith('scroll_') && (irreversibleName(control.name) || draftButton) && !sends) {
       steps.push({ action: decision.choice, control: id, name: control.name, confidence: decision.confidence, ms: decision.ms, outcome: 'looks irreversible; left for the person to approve' })
       return finish('needs-person')
     }
-    // A send cannot be taken back: it needs a surer pick, and a second question on whether everything before it is done.
     if (sends) {
       let ready: ChoiceDecision | null = null
       try { ready = await decide(describeState(request, observation, steps), READY_INSTRUCTIONS, READY_CRITERIA, undefined, request.signal) }

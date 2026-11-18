@@ -6,7 +6,6 @@ import type { VaultContext } from './vault.js'
 
 const DAY = 86_400_000
 
-// Persisted journal segments, not screen contents, are filed in bounded batches.
 export async function captureDeskActivity(ctx: VaultContext, now = Date.now()): Promise<boolean> {
   const directory = join(ctx.paths.workspace, '.engram')
   const cursorFile = join(directory, 'activity-capture.json')

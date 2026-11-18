@@ -23,8 +23,6 @@ export function withPreviewInput<T>(page: Page, input: () => Promise<T>): Promis
   })
 }
 
-// A screenshot temporarily resizes the compositor; its restore must finish
-// before a real viewport update, or it can put the old dimensions back.
 export function resizePreview(page: Page, size: { width: number; height: number }): Promise<boolean> {
   return withPreviewInput(page, async () => {
     const current = page.viewportSize()
@@ -36,8 +34,6 @@ export function resizePreview(page: Page, size: { width: number; height: number 
 
 async function capture(page: Page): Promise<PreviewFrame> {
   const size = page.viewportSize() ?? { width: 1280, height: 860 }
-  // Use the page's owning session: another CDP session restores its own empty
-  // emulation settings after capture, overwriting the page's device scale.
   const shot = await page.screenshot({ type: 'png', scale: 'device', caret: 'initial', timeout: 5000 })
   const current = page.viewportSize()
   if (current && (current.width !== size.width || current.height !== size.height)) {
@@ -57,8 +53,6 @@ export function captureSharpFrame(page: Page): Promise<PreviewFrame> {
   return pending
 }
 
-// The stream carries motion. A lossless, device-resolution still replaces
-// it after painting settles, so small text does not stay JPEG-compressed.
 async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => void): Promise<() => Promise<void>> {
   const cdp: CDPSession = await page.context().newCDPSession(page)
   let alive = true
@@ -105,23 +99,15 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
       settled = false
     } finally {
       capturing = false
-      // A screenshot temporarily changes the compositor surface. Coalesce
-      // its restore frames before comparing them with the last live frame.
       recover()
     }
   }
-  // Bound motion bandwidth; the settled frame retains lossless text detail.
   const CAST = { format: 'jpeg', quality: 80, maxWidth: 1920, maxHeight: 2400, everyNthFrame: 1 } as const
   const startCast = async () => {
     const size = page.viewportSize()
-    // Headless Chrome on macOS can retain a surface smaller than its viewport.
     if (process.platform === 'darwin' && size) await cdp.send('Emulation.setVisibleSize', size)
     await cdp.send('Page.startScreencast', CAST)
   }
-  // A screencast survives the page being laid out to a new shape but goes on
-  // delivering surfaces of the OLD shape (measured, whether the layout came
-  // before or after the cast began), so the cast is begun again whenever a
-  // frame contradicts the viewport, and a fresh still follows.
   let recastAt = 0
   const recast = () => {
     const now = Date.now()
@@ -136,9 +122,6 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
   }
   const deliver = (frame: CastFrame) => {
     const size = page.viewportSize()
-    // A frame of the wrong shape is the stale surface: it must not reach the
-    // screen, and it must not count as the page changing, or it starves the
-    // still that would carry the true picture.
     if (size && Math.abs(frame.metadata.deviceWidth * size.height - frame.metadata.deviceHeight * size.width) > 0.02 * frame.metadata.deviceHeight * size.width) {
       recast()
       return
@@ -147,9 +130,6 @@ async function openPagePreview(page: Page, receive: (frame: PreviewFrame) => voi
     lastStream = frame.data
     changed = Date.now()
     settled = false
-    // Input against the mirror is dispatched in CSS pixels scaled by these
-    // numbers, so every frame reports the page's CSS size regardless of how
-    // many device pixels the bitmap itself carries.
     motionFrame = { data: frame.data, ...(size ?? { width: frame.metadata.deviceWidth, height: frame.metadata.deviceHeight }) }
     const delay = 33 - (changed - sent)
     if (delay > 0) {

@@ -35,7 +35,7 @@ export function registerBrowserTabs(busy: (lane: string) => boolean): void {
           const value = (await page.title()).trim().slice(0, 160)
           if (page.isClosed() || page.url() !== url) return
           titles.set(page, { url, title: value }); changed(lane)
-        } catch { /* Navigation can replace the document before its title arrives. */ }
+        } catch { }
       }
       page.on('domcontentloaded', () => { void title() })
       void title()

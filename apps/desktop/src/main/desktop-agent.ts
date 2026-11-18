@@ -23,9 +23,6 @@ import { brainConnection } from './brain-connections.js'
 import { outcomeChain } from './desktop-outcome.js'
 import { sendsKey, typeArgs, typedReport, typedUnverified, withTypeReceipt, type TypeReceipt } from './desktop-text-insert.js'
 
-// What a send card may show as going out: the text given to type, else the draft in a field. Nothing when the
-// window has any secret field (populated, unreadable or empty: its value cannot be trusted here, and the text cannot
-// be tied to one field), or when the window could not be read at all.
 export function shownDraft(fields: { value?: string | null | undefined; secret: boolean }[] | undefined, typed?: string): string | undefined {
   if (!fields || fields.some(field => field.secret)) return undefined
   return typed?.trim() || fields.find(field => !!field.value)?.value || undefined
@@ -50,7 +47,6 @@ async function listWindows(signal?: AbortSignal): Promise<string> {
   return windows.map((one) => `- ${one.id} ${one.name}${one.foreground ? ' (in front)' : ''}`).join('\n')
 }
 
-// After a press or a set, the app as it now is once it has settled: the brain acts on this instead of spending a call on app_read.
 async function readAgain(lane: string, app: string, receipt: string, observed?: () => void, signal?: AbortSignal, before?: QuietObservationDto, field?: { runtimeId?: string; name: string; type: string }): Promise<string> {
   const result = JSON.parse(receipt) as Record<string, unknown>
   try {
@@ -61,7 +57,6 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
       const matches = reading.controls.filter(control => button.runtimeId ? control.runtimeId === button.runtimeId : control.name === button.name)
       return { ...button, snapshot: matches.length === 1 ? reading.snapshot : result.snapshot, id: matches.length === 1 ? matches[0]!.id : button.id }
     }) : undefined
-    // The field just set, read again once the app settled: what the turn's outcome checks, not the earlier receipt.
     const now = field && reading.controls.filter(control => field.runtimeId ? control.runtimeId === field.runtimeId : control.name === field.name && control.type === field.type)
     const valueNow = now?.length === 1 ? now[0]!.value ?? '' : undefined
     observed?.()
@@ -72,9 +67,6 @@ async function readAgain(lane: string, app: string, receipt: string, observed?: 
   }
 }
 
-// The installed apps change rarely and listing them walks the whole Start
-// catalog (tens of seconds on a busy machine), so one listing serves every
-// chat for a while; a failed listing is not kept.
 const CATALOG_MS = 10 * 60_000
 let catalog: { at: number; list: Promise<string> } | null = null
 function appCatalog(): Promise<string> {
@@ -86,9 +78,6 @@ function appCatalog(): Promise<string> {
   return catalog.list
 }
 
-// Background observation must not acquire the foreground input lease.
-// Lanes holding typed text that has not been sent with approval. Marked before the text is dispatched (a failed
-// read-back must not hide it) and kept across turns: a draft left in the app stays unsent until an approved send.
 const typedUnsent = new Set<string>()
 export function forgetTypedUnsent(lane: string): void { typedUnsent.delete(lane) }
 export function desktopAgentTools(lane: string): AgentTool[] {
@@ -101,7 +90,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, undefined, target && { ...(target.runtimeId ? { runtimeId: target.runtimeId } : {}), name: target.name, type: target.type })
     },
     press: async (app, snapshot, control, context, options) => {
-      // Only a control named like send, submit, save or delete commits; opening a chat or a menu is navigation.
       const name = quietControlName(snapshot, control)
       if (name === undefined) return JSON.stringify(desktopFailure('This snapshot is stale. Read the app again before acting.'))
       const previous = quietSnapshot(snapshot)
@@ -109,8 +97,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const field = previous?.controls.find(item => item.id === control)
       const activationKey = ['Enter', 'Control+Enter'].includes(options?.key ?? '')
       const sendsKey = activationKey && field?.can.set && !!field.value
-      // Text already in a field (typed by the person, by Engram, or before a restart) can go out through any button,
-      // whatever its name (an icon labelled ↑ is still Send), so a plain button press then asks too.
       const draftButton = !options?.action && (!options?.key || activationKey) && /button/i.test(field?.type ?? '')
         && !!previous?.controls.some(item => item.can.set && !!item.value)
       const consequential = sendsKey || draftButton || (!options?.action && (!options?.key || activationKey) && (!name || irreversibleName(name)))
@@ -132,7 +118,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       return readAgain(lane, app, result, context.onObservedAfterAction, context.signal, container ? previous : undefined)
     },
     text: async (app, snapshot, control, settleSeconds, signal) => formatText(await quietText(lane, app, snapshot, control, settleSeconds * 1000, signal)),
-    // With a decision model connected, a short goal runs as one call.
     ...(brainConnection('decision') ? { do: async (app, goal, text, send, maxSteps, context) => formatDo(await quietDo({ lane, app, goal, ...(text ? { text } : {}), ...(send ? { send } : {}), maxSteps, approveSend: (snapshot, scope) => (context as DesktopActionContext).approveAppAction?.(app, 'Send', snapshot, scope, { app: desktopBinding(lane)?.name, sending: shownDraft(quietSnapshot(snapshot)?.controls.map(item => ({ value: item.can.set ? item.value : undefined, secret: !!item.secret })), text) }) ?? Promise.resolve(false), ...(context.signal ? { signal: context.signal } : {}) })) } : {}),
   })
   let handover: Promise<void> | undefined
@@ -181,11 +166,9 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => {
     const name = desktopBinding(lane)?.name
     let fields: Parameters<typeof shownDraft>[0]
-    try { fields = desktopObservation(lane, snapshot).nodes.map(node => ({ value: FIELD.test(node.controlType) ? node.value : undefined, secret: !!(node.password || node.isPassword) })) } catch { /* An unknown snapshot shows no text; the card still asks. */ }
+    try { fields = desktopObservation(lane, snapshot).nodes.map(node => ({ value: FIELD.test(node.controlType) ? node.value : undefined, secret: !!(node.password || node.isPassword) })) } catch { }
     return !!await context.approveAppAction?.(name ?? 'this app', 'Send', snapshot, undefined, { app: name, sending: shownDraft(fields) })
   }
-  // Enter, Space on a focused button, or a click on a control named like Send/Submit/Delete can send or commit; once
-  // text has been typed and not yet sent, any click that is not on a text field (an icon-only Send has no name) asks too.
   const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; controlType?: string; element?: string } }, afterTyping = typedUnsent.has(lane)): boolean => {
     if (sendsKey(action)) return true
     if (action.kind === 'key' && action.key !== 'Space') return false
@@ -200,19 +183,15 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const element = action.element ?? action.target?.element
       let hit = element ? view.nodes.filter(node => node.id === element) : []
       if (!element && !action.target) {
-        // A click by position: what it lands on in the observation it was planned on, rounded as desktopInputArgs dispatches it.
         const frame = view.captureBounds
         if (!frame || action.x === undefined || action.y === undefined) return afterTyping
         const px = Math.round(frame.x + action.x * (frame.width - 1)), py = Math.round(frame.y + action.y * (frame.height - 1))
         hit = view.nodes.filter(node => node.bounds && px >= node.bounds.x - 1 && px <= node.bounds.x + node.bounds.width + 1 && py >= node.bounds.y - 1 && py <= node.bounds.y + node.bounds.height + 1)
       }
       if (hit.some(node => irreversibleName(node.name ?? ''))) return true
-      // A draft already in any field, typed by the person or before a restart, can go out through any button whatever
-      // its name (an icon labelled ↑ is still Send); a target without a known type counts as a button.
       const draft = view.nodes.some(node => FIELD.test(node.controlType) && !!node.value)
       const buttonish = action.target && !hit.length ? !action.target.controlType || /Button/i.test(action.target.controlType) : hit.some(node => /Button/i.test(node.controlType))
       if (!afterTyping) return draft && buttonish
-      // Every control under the point counts: an icon button drawn over the field must not hide behind it.
       const types = action.target?.controlType ? [action.target.controlType] : hit.map(node => node.controlType)
       return !types.length || types.some(type => !FIELD.test(type))
     } catch { return afterTyping }
@@ -246,7 +225,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
     apps: async (signal) => { signal?.throwIfAborted(); return appCatalog() },
     attach: (app, signal) => withDesktopActivity(lane, () => openDesktopApp(lane, app, signal, true)),
     open: async (app, signal, task) => {
-      // The application check is the Mac one (office-mac); the Windows host is not covered.
       const entry = process.platform === 'darwin' ? (JSON.parse(await appCatalog()) as { id: string; name: string; aliases?: string[] }[]).find(one => one.id === app || one.name === app) : undefined
       return (entry && await officeStartRefused([entry.name, ...(entry.aliases ?? [])], task)) || withDesktopActivity(lane, () => openDesktopApp(lane, app, signal))
     },
@@ -261,19 +239,16 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       const known = seen.at(-1)?.snapshot === action.snapshot ? seen : []
       if (action.kind === 'scroll' || (action.kind === 'click' && 'element' in action && known.length)) {
         const settled = await settledAction(action, known, context)
-        // As below, an approved send clears the draft mark only once it plainly dispatched.
         if (approvedSend && !('error' in (JSON.parse(settled) as object))) typedUnsent.delete(lane)
         return settled
       }
       let receipt: TypeReceipt | undefined
       try { [, receipt] = await withTypeReceipt(action.kind === 'type' ? desktopBinding(lane)?.host : undefined, action.kind === 'type' ? typeArgs(action.text).text : '', () => actOnDesktop(lane, action, context.signal)) }
       catch (error) { context.signal?.throwIfAborted(); if (permissionDenied(error)) throw error; return JSON.stringify(await permissionFailure(error, lane, { ask: context.task, ...(typedUnverified(error) ? { delivered: true } : {}) })) }
-      // The draft counts as sent only once the approved send actually dispatched.
       if (approvedSend) typedUnsent.delete(lane)
       if (action.kind === 'key' && action.key === 'Escape') return 'Computer control ended. Do not continue this turn.'
       try {
         const read = async () => remember(await readControlledDesktop(lane, context.signal, true))
-        // No known target means no retry, but a click or typed text still waits for the app to stop before the next step.
         const after = action.kind === 'click' || action.kind === 'type' ? await settle(read, observationKey, context.signal ? { signal: context.signal } : {}) : { view: await read(), settled: true }
         return JSON.stringify({ dispatched: true, observation: after.view, requiresVerification: true, ...(after.settled ? {} : { stillChanging: STILL_CHANGING }), ...(action.kind === 'type' ? { typed: typedReport(action.text, receipt, after.view) } : {}) })
       } catch (error) {
@@ -285,7 +260,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       await quietFirst(context)
       const typedBefore = (index: number) => actions.slice(0, index).some(one => one.kind === 'type')
       const send = actions.findIndex((action, index) => sends(action, typedUnsent.has(lane) || typedBefore(index)))
-      // Any send after any typing in the same batch would send unread text, wherever the first send sits.
       if (actions.some((action, index) => typedBefore(index) && sends(action, true)))
         return JSON.stringify({ error: 'policy_denied', delivery: 'not_delivered', retry: 'safe', hint: 'Typing and Enter cannot share a sequence. Type with desktop_action, check its read-back, then press Enter with desktop_action; it asks the person first. Nothing was sent.' })
       if (send >= 0 && !await askSend(context, actions[0]!.snapshot)) return notSent
@@ -294,7 +268,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
         if (typed.length) typedUnsent.add(lane)
         const [raw, receipt] = await withTypeReceipt(typed.length ? desktopBinding(lane)?.host : undefined, typed.at(-1) ?? '', () => desktopSequence(lane, actions, context.signal, mayRetryClick))
         const result = JSON.parse(raw) as Record<string, unknown>
-        // The last text typed is the one the final observation can read back; its strategy comes from the native receipt.
         if (typed.length && !result['error'] && result['observation']) result['typed'] = typedReport(typed.at(-1)!, receipt, result['observation'] as DesktopObservationDto)
         if (send >= 0 && !typed.length && !result['error']) typedUnsent.delete(lane)
         if (result['error'] && !(Number(result['dispatched']) > 0) && permissionDenied(result['error'])) throw new Error(String(result['error']))
@@ -312,7 +285,6 @@ export function desktopAgentTools(lane: string): AgentTool[] {
       catch (error) { return blocked(error, context, () => tool.run(args, context), json => json) }
     } } satisfies AgentTool
   })
-  // The turn's verdict goes first: the loop cuts long observations from the end.
   return tools.map(tool => ['open_app', 'app_set', 'app_press', 'desktop_action', 'desktop_sequence'].includes(tool.name)
     ? { ...tool, async run(args, context) { return chain.add(tool.name, args, await tool.run(args, context), context.task, desktopBinding(lane)?.name) } } satisfies AgentTool
     : tool)

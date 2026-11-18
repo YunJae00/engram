@@ -3,16 +3,9 @@ import { DevRpc } from './dev-rpc.js'
 import { flog } from './flog.js'
 import { dirname } from 'node:path'
 
-// ChatGPT with its own shell and patch tools, through the runtime's app
-// server. The process and its thread stay up between a comet's turns, as a
-// person keeps a window open; a turn whose rules, folder or model changed
-// opens a new one. Native commands stay sandboxed; Engram tools use the
-// loopback tool server.
-
 type Data = Record<string, unknown>
 const object = (value: unknown): Data => value && typeof value === 'object' && !Array.isArray(value) ? value as Data : {}
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
-// The runtime wraps each command in its shell; the person reads the command itself.
 const commandOf = (data: Data): string => (Array.isArray(data['commandActions']) ? data['commandActions'] : []).map(action => text(object(action)['command'])).filter(Boolean).join('; ') || text(data['command'])
 const IDLE_MS = 60 * 60_000
 
@@ -45,14 +38,9 @@ type NativeResult = ToolSessionResult & { commandsDenied?: true }
 interface Turn {
   job: Job
   answer: string
-  // Words written before a tool call (c11b r2): kept apart, never the answer.
   note?: string
   turnId: string
   settled: boolean
-  // Until command use is approved, the runtime asks before each command and
-  // the first one asked for is put to the person. An approved command there
-  // may be retried outside the sandbox without a second ask, so it is
-  // declined, and the turn restarts where approval is never asked or widened.
   ready: boolean
   restart: boolean
   refused: boolean
@@ -89,7 +77,6 @@ class CodexSession {
     if (!this.threadId) throw new Error('The ChatGPT runtime did not open a session.')
   }
 
-  // One turn; the conversation so far travels only with the first on this thread.
   run(job: Job, fresh: boolean): Promise<ToolSessionResult> {
     if (this.closed || job.signal?.aborted) return Promise.resolve({ answer: '', error: job.signal?.aborted ? 'canceled' : 'the session was closed' })
     return new Promise<ToolSessionResult>((resolve) => {
@@ -146,7 +133,6 @@ class CodexSession {
     if (turn.turnId && !turn.settled) turn.job.onSteerable?.((said) => this.steer(turn, said))
   }
 
-  // Words the person sent mid-turn join it as their own message.
   private async steer(turn: Turn, said: string[]): Promise<boolean> {
     if (turn.settled || this.turn !== turn || !turn.turnId) return false
     await this.rpc.send('turn/steer', { threadId: this.threadId, expectedTurnId: turn.turnId, input: said.map((words) => ({ type: 'text', text: words, text_elements: [] })) }, 5_000)
@@ -154,7 +140,6 @@ class CodexSession {
     return true
   }
 
-  // Only the person or turn cancellation ends a permission wait.
   private async decide(turn: Turn, name: string, input: Data): Promise<NativeDecision> {
     const call = new AbortController()
     let stop!: () => void
@@ -196,7 +181,6 @@ class CodexSession {
     const paths = (): string => (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])).join(', ')
     if (method === 'item/started') {
       if (type === 'agentMessage' && turn.answer) job.onReset?.()
-      // Words before an action were thinking aloud, not the reply.
       if (type && type !== 'agentMessage' && type !== 'userMessage' && type !== 'reasoning') { job.onReset?.(undefined, text(item['tool']) || undefined); if (turn.answer) { turn.note = turn.answer; turn.answer = '' } }
       if (type === 'fileChange') turn.changes.set(id, (Array.isArray(item['changes']) ? item['changes'] : []).map(change => text(object(change)['path'])))
       if (type === 'commandExecution' || type === 'fileChange') {
@@ -243,17 +227,14 @@ class CodexSession {
     if (!turn || turn.settled || params['threadId'] !== this.threadId) throw new Error('This request does not belong to the active turn.')
     const requestedTurn = text(params['turnId'])
     if (requestedTurn && (this.completedTurns.has(requestedTurn) || turn.turnId && requestedTurn !== turn.turnId)) throw new Error('This request belongs to a previous turn.')
-    // Requests to widen the sandbox are never granted.
     if (method === 'item/commandExecution/requestApproval') {
       const command = commandOf(params)
       if (turn.ready || turn.restart || turn.refused || params['kind'] !== 'command' || params['reason'] || params['networkApprovalContext'] || !command) return { decision: 'decline' }
-      // One question per turn: a refusal or no answer holds for the rest of it.
       if ((await this.decide(turn, 'Bash', { command })).behavior !== 'allow' || turn.settled) { turn.refused = true; return { decision: 'decline' } }
       turn.ready = turn.restart = true
       void this.rpc.send('turn/interrupt', { threadId: this.threadId, turnId: turn.turnId }, 5_000).catch(() => undefined)
       return { decision: 'decline' }
     }
-    // A patch inside the task folder is never denied by the sandbox, so accepting it widens nothing.
     if (method === 'item/fileChange/requestApproval') {
       const paths = turn.changes.get(text(params['itemId']))
       if (params['grantRoot'] || !paths?.length) return { decision: 'decline' }
@@ -265,9 +246,7 @@ class CodexSession {
   }
 }
 
-// One session per comet, kept between turns; a job without a session key gets its own, closed after the turn.
 const sessions = new Map<string, CodexSession>()
-// A session opened ahead in a folder of its own: the comet that takes the folder takes the session.
 const spares = new Map<string, { session: CodexSession; cwd: string; opening: Promise<boolean>; owner?: string }>()
 const claimed = new Map<string, string>()
 const sweep = (): void => {

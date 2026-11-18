@@ -6,7 +6,6 @@ import type { VaultPaths, SyncStatus } from 'core'
 interface Results { init: VaultPaths; commit: string | null; status: SyncStatus & { remote?: string } }
 let queue: Promise<unknown> = Promise.resolve()
 
-// Saving a note can start several git processes; none may block window input.
 export function vaultGit<T extends keyof Results>(task: T, root: string, message?: string): Promise<Results[T]> {
   const pending = queue.then(() => new Promise<Results[T]>((resolve, reject) => {
     const bin = app.isPackaged ? join(process.resourcesPath, 'bin') : join(app.getAppPath(), 'bundle')

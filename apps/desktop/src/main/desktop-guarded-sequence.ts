@@ -11,8 +11,6 @@ export interface Settled<T> { view: T; settled: boolean }
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-// Settled means two consecutive reads AFTER the action match; the view the action was planned on never counts,
-// because a delayed change may not have begun at the first poll.
 export async function settle<T>(read: () => Promise<T>, key: (view: T) => string, options: { signal?: AbortSignal } = {}): Promise<Settled<T>> {
   const started = Date.now()
   let last: string | undefined
@@ -47,7 +45,6 @@ export function replacementTarget(view: DesktopObservationDto, element: string, 
 const geometry = (view: DesktopObservationDto) => JSON.stringify([view.bounds, view.captureBounds])
 const lines = (value?: string | null) => value?.replace(/\r\n?/g, '\n')
 
-// ponytail: partial trees need explicit starting anchors; unseen controls require a complete view.
 export async function guardedSequence(
   original: DesktopObservationDto, actions: DesktopGuardedAction[],
   read: (focusedOnly?: boolean) => Promise<DesktopObservationDto>, act: (action: DesktopAction) => Promise<unknown>, signal?: AbortSignal,
@@ -66,8 +63,6 @@ export async function guardedSequence(
   const check = () => {
     signal?.throwIfAborted()
     if (performance.now() - started > 20000) throw new Error('Sequence time limit reached. Inspect the current state before continuing.')
-    // Focus reads do not authorize images. Native input still revalidates the
-    // whole window before each packet; only this anchored path can use them.
     if (observation.protectedBounds?.length || (!(focusedOnly && observation.scope === 'focus')
       && (observation.captureSafe === false || (observation.truncated !== false && observation.captureSafe !== true)))) throw new Error('The observation could not be cleared for input.')
     if (geometry(observation) !== geometry(original)) throw new Error('The app geometry changed. Inspect the current state before continuing.')
@@ -94,7 +89,6 @@ export async function guardedSequence(
     observationMayBeStale = false
     check()
   }
-  // Before more input the app must have settled; a click can start a delayed move, so it needs two fresh matching reads.
   const settleAfter = async () => {
     observationMayBeStale = true
     const after = await settle(() => read(focusedOnly), observationKey, signal ? { signal } : {})

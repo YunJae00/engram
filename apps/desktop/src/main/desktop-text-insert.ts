@@ -21,7 +21,6 @@ export function typeArgs(text: string): { text: string; chunks: string[] } {
 export interface TypeReceipt { strategy?: string; expected?: string }
 interface TypedReport { strategy: 'selected-text' | 'keys' | 'unknown'; insert: 'one-piece' | 'chunked'; verified: boolean; landed?: string; hint?: string }
 
-// The native receipt says which strategy ran and what the whole field must now read; the observation is a second, independent read.
 export function typedReport(text: string, receipt: TypeReceipt | undefined, view: DesktopObservationDto): TypedReport {
   const value = text.normalize('NFC')
   const strategy = receipt?.strategy === 'selected-text' || receipt?.strategy === 'keys' ? receipt.strategy : 'unknown'
@@ -42,7 +41,6 @@ export function sendsKey(action: { kind: string; key?: string }): boolean {
   return action.kind === 'key' && action.key === 'Enter'
 }
 
-// actOnDesktop drops the native receipt, so the type call is observed on the bound host while it runs.
 export async function withTypeReceipt<T>(host: Pick<DesktopHost, 'request'> | undefined, text: string, run: () => Promise<T>): Promise<[T, TypeReceipt | undefined]> {
   if (!host) return [await run(), undefined]
   const original = host.request

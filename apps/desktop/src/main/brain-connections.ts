@@ -57,8 +57,6 @@ async function save(store: Store): Promise<void> {
   cache = store
 }
 
-// The connection as the runtime needs it, with the key in the clear; only the
-// main process reads this, and only to hand it to the runtime's environment.
 const profileOf = (provider: BrainConnectionProvider, profile?: string): string => provider === 'decision' ? 'system' : profile ?? activeAccountProfile(provider)
 function storedFor(provider: BrainConnectionProvider, profile?: string): StoredConnection | undefined {
   const stored = cache?.[provider]
@@ -81,7 +79,6 @@ export function decisionConnectionState(): { available: boolean; reason: string;
   return { available: true, reason: 'ready', model: stored.model }
 }
 
-// What the settings screen may know: everything but the key itself.
 export function brainConnectionDto(provider: BrainConnectionProvider): BrainConnectionDto | null {
   const stored = storedFor(provider)
   if (!stored) return null
@@ -137,9 +134,6 @@ export async function clearBrainConnection(provider: BrainConnectionProvider, pr
   return work
 }
 
-// Environment for a runtime reached by key. Claude Code validates an
-// ANTHROPIC_API_KEY against Anthropic itself, so a gateway takes the token
-// variable; Codex names its key variable in the provider it is given.
 export function connectionEnvironment(provider: 'claude' | 'codex', profile?: string): Record<string, string> {
   const connection = brainConnection(provider, profile)
   if (!connection && hasBrainConnection(provider, profile)) throw new Error('The saved API key is unavailable. Reconnect or remove it in AI settings.')
@@ -148,8 +142,6 @@ export function connectionEnvironment(provider: 'claude' | 'codex', profile?: st
   return { [CODEX_KEY_ENV]: connection.key }
 }
 
-// Codex takes its provider as config overrides; the base URL stops where the
-// runtime appends /responses itself.
 export function codexProviderOverrides(profile?: string): string[] {
   const connection = brainConnection('codex', profile)
   if (!connection) return []
@@ -163,7 +155,6 @@ export function codexProviderOverrides(profile?: string): string[] {
   ]
 }
 
-// A completed inference verifies access; a model catalogue cannot do that.
 export async function probeConnection(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch, profile?: string): Promise<{ ok: boolean; status: number; message?: string }> {
   const connection = brainConnection(provider, profile)
   if (!connection) return { ok: false, status: 0, message: 'No key connection.' }
@@ -187,7 +178,6 @@ async function checkConnection(provider: BrainConnectionProvider, connection: { 
   } catch { return { ok: false, status: 0, message: 'Could not test the model. Check the address and try again.' } }
 }
 
-// The models the address offers, in the shape the picker takes.
 export async function connectionModels(provider: 'claude' | 'codex', fetchImpl: typeof fetch = connectionFetch, profile?: string): Promise<{ value: string; label: string; detail: string }[]> {
   const connection = brainConnection(provider, profile)
   if (!connection) return []

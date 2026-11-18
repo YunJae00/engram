@@ -4,7 +4,6 @@ import { ProcessClient } from './process-client.js'
 type Payload = Record<string, unknown>
 interface Pending { resolve(value: Payload): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 
-// Dedicated development transport; account probes and ordinary chats stay independent.
 export class DevRpc {
   private readonly child: ProcessClient
   private readonly pending = new Map<number, Pending>()
@@ -57,7 +56,6 @@ export class DevRpc {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         const error = new Error(`${method} did not respond in time.`)
-        // Optional reads must not terminate a task; uncertain mutations still close the transport.
         if (['skills/list', 'account/rateLimits/read', 'thread/list', 'thread/read', 'thread/turns/list'].includes(method)) {
           this.pending.delete(id); reject(error)
         } else this.close(error)

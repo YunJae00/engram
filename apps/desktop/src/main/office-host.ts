@@ -7,10 +7,6 @@ import type { OfficeOp } from 'core'
 import { macOfficeRequest, closeMacOffice } from './office-mac.js'
 import { OFFICE_HOST_SCRIPT } from './office-script.js'
 
-// One PowerShell process holds the Office applications for as long as a
-// turn keeps asking; it leaves after a quiet spell so no Excel lingers in
-// memory over a hidden bridge. Every request is a fixed operation with data
-// arguments - the model's words never become code here.
 const READY_MS = 20_000
 const REQUEST_MS = 90_000
 const IDLE_MS = 5 * 60_000
@@ -30,8 +26,6 @@ const pending = new Map<number, Pending>()
 
 export function officeSupported(): boolean { return process.platform === 'win32' || process.platform === 'darwin' }
 
-// Which applications this machine registers. Asked once per app run; the
-// answer is what decides whether the office tools appear on the menu.
 export function officeApps(): Probe | null { return probed ?? null }
 
 export async function primeOffice(): Promise<Probe | null> {
@@ -46,8 +40,6 @@ async function scriptPath(): Promise<string> {
   const dir = join(app.getPath('userData'), 'office')
   await mkdir(dir, { recursive: true })
   const file = join(dir, 'office-host.ps1')
-  // A byte-order mark: without it PowerShell 5 reads the file in the
-  // system code page, and any character past ASCII breaks the parse.
   await writeFile(file, '﻿' + OFFICE_HOST_SCRIPT, 'utf8')
   return file
 }
@@ -63,9 +55,7 @@ function fail(error: Error): void {
     stopping = new Promise<void>((resolve) => {
       if (current.exitCode !== null || current.signalCode !== null) { resolve(); return }
       current.once('exit', () => resolve())
-      // Never kill Office itself: a dispatched COM call may already have applied.
-      // Keep subsequent requests blocked until this worker has exited.
-      try { current.kill() } catch { /* Keep the queue blocked until exit if termination fails. */ }
+      try { current.kill() } catch { }
     })
   }
 }
@@ -115,7 +105,6 @@ async function start(): Promise<void> {
   return ready
 }
 
-// Office objects are single-threaded and one person's; requests take turns.
 export function officeRequest(op: OfficeOp, args: Record<string, unknown>, signal?: AbortSignal, assertActive?: () => void, activity?: (window: string, name: string) => Promise<void>): Promise<unknown> {
   const run = async (): Promise<unknown> => {
     signal?.throwIfAborted()

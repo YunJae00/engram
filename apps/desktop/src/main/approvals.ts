@@ -2,10 +2,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { addReviewRule, hostOf, parseReviewRules, parseRule, type ApprovalRule, type ReviewRule } from 'core'
 
-// The approvals the person asked to stand, kept beside the app's own state:
-// a rule is about this machine's browser and this person's hand on it, not
-// about the vault, so it does not travel with the notes.
-
 const FILE = 'approvals.json'
 
 export interface ApprovalsStore {
@@ -18,7 +14,6 @@ export interface ApprovalsStore {
   removeReviewRule(rule: ReviewRule): Promise<ReviewRule[]>
 }
 
-// The renderer names only a kind and a bare host; main decides the operation.
 export function reviewRuleInput(value: unknown): ReviewRule {
   if (typeof value !== 'object' || value === null) throw new Error('review rule must be an object')
   const proto: unknown = Object.getPrototypeOf(value)
@@ -61,7 +56,6 @@ export function approvalsStore(dir: string): ApprovalsStore {
       return []
     }
   }
-  // Review-rule writes fail closed: a file that cannot be read is never overwritten.
   const strict = async (): Promise<{ file: Record<string, unknown>; current: ReviewRule[] }> => {
     let text: string
     try {

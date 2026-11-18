@@ -55,7 +55,6 @@ export function nativeOptions(current: () => NativeTools | undefined) {
     permissionMode: 'default',
     canUseTool: (name: string, input: unknown, options: { signal: AbortSignal; toolUseID?: string }) => decide(name, object(input), options.toolUseID ?? '', options.signal),
     hooks: {
-      // Hooks have an SDK deadline; human decisions belong in canUseTool.
       PreToolUse: [{ hooks: [async (raw: Data, _id: string | undefined, options: { signal: AbortSignal }) => ({
         hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: !current() || options.signal.aborted ? 'deny'
           : text(raw['tool_name']).startsWith(`mcp__${TOOL_SERVER}__`) ? 'allow' : 'ask' },

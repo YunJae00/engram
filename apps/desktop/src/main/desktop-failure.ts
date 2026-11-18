@@ -1,5 +1,3 @@
-// The three exact System Settings panes. Kept here, import-free, because plain-node
-// fixtures (scripts/test-desktop-*.mjs) load this file without a bundler; security.ts re-exports it.
 export const PRIVACY_PANE = {
   accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
   screenRecording: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',

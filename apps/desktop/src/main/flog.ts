@@ -17,7 +17,7 @@ function logFile(): string | null {
       ready = mkdir(dir, { recursive: true })
       void ready.catch(() => undefined)
     } catch {
-      return null // userData unavailable (very early boot) — drop the line
+      return null
     }
   }
   return join(dir, 'engram-main.log')
@@ -34,7 +34,6 @@ export function flog(tag: string, detail: unknown): void {
     try {
       if ((await stat(file)).size > MAX_BYTES) await rename(file, `${file}.1`)
     } catch {
-      /* first write */
     }
     const skipped = dropped
     dropped = 0

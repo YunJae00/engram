@@ -2,7 +2,6 @@ import { Worker } from 'node:worker_threads'
 
 interface Reply { id: number; error?: string; data?: Float32Array; dim?: number }
 
-// One request at a time; the semantic queue owns scheduling and backpressure.
 export class EmbeddingClient {
   private worker: Worker
   private serial = 0

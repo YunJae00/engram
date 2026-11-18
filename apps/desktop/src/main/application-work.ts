@@ -52,7 +52,6 @@ async function track(held: Activity, revision: number): Promise<void> {
     if (active !== held || held.revision !== revision || held.controller.signal.aborted) return
     const status = applicationStatus(held, target, true)
     const visible = status.application?.visible === true
-    // While the window holds the foreground the native frame keeps itself up; it is re-shown only to come back, or to outlast the native 150 ms hide poll through a short foreground loss.
     const shown = held.status?.application?.visible === true
     if (visible ? !target.minimized && (!shown || !target.foreground) : shown) await held.host.request(visible ? 'applicationFrame' : 'applicationFrameHide', { window: target.window, pid: target.pid })
     if (JSON.stringify(status) !== JSON.stringify(held.status)) { held.status = status; updateControlOverlay(status) }
@@ -90,7 +89,6 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       held.status = applicationStatus(held, target, !entering)
       await prepareControlOverlay(held.status)
       combined.throwIfAborted()
-      // A frame already up for this window is kept by the poll; sending it again would re-order it on every call.
       if (held.status.application?.visible) { if (entering || !hadFrame || !target.foreground) await held.host.request('applicationFrame', { window: target.window, pid: target.pid }) }
       else if (hadFrame) await held.host.request('applicationFrameHide', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
@@ -98,7 +96,6 @@ export function applicationWork(lane: string, signal?: AbortSignal): { signal: A
       if (input.escaped) { stopApplicationWork(); combined.throwIfAborted() }
       await held.host.request<WindowInfo>('inspectWindow', { window: target.window, pid: target.pid })
       combined.throwIfAborted()
-      // Document commands are bound to this verified window, not foreground input.
       held.timer = setTimeout(() => void track(held, revision), 100)
     },
   }

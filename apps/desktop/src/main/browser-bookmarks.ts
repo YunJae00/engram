@@ -43,14 +43,11 @@ export function parseBookmarks(text: string): Bookmark[] {
   return [...found.values()]
 }
 
-// A profile signed in to a browser account keeps that account's bookmarks in
-// a file of their own, beside the local ones; one profile reads both.
 const PROFILE_BOOKMARK_FILES = ['Bookmarks', 'AccountBookmarks']
 
 async function profiles() {
   const found: { id: string; name: string; files?: string[]; text?: string }[] = []
   for (const root of chromiumRoots()) {
-    // A policy that cannot be read in time leaves the profiles' own bookmarks to read.
     const managed = await Promise.resolve().then(() => managedBookmarkSources(root.id)).catch((error: unknown) => { flog('bookmarks', `${root.name} managed bookmarks: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`); return [] })
     for (const source of managed) found.push({ ...source, name: `${root.name} · ${source.name}` })
     const state = await readLimited(join(root.userData, 'Local State')).then(text => record(record(JSON.parse(text)).profile).info_cache).catch(() => undefined)
@@ -68,8 +65,6 @@ async function profiles() {
   return found
 }
 
-// Every profile's bookmarks, read in place and saved nowhere; one unreadable
-// profile does not hide the others.
 export async function allBookmarks(): Promise<(Bookmark & { managed: boolean })[]> {
   const found: (Bookmark & { managed: boolean })[] = []
   for (const source of await profiles()) {
@@ -101,7 +96,6 @@ export async function savedBookmarks(): Promise<Bookmark[]> {
   const rows: unknown = JSON.parse(text)
   if (!Array.isArray(rows)) throw new Error('Saved bookmarks are invalid')
   if (rows.length > MAX_ITEMS) throw new Error('Too many saved bookmarks')
-  // Validate old flat imports and newer source-aware records with the same URL rules.
   return rows.flatMap(value => {
     const row = record(value)
     const path = Array.isArray(row.folderPath) ? row.folderPath.filter((part): part is string => typeof part === 'string').slice(0, 20).map(part => part.slice(0, 300)) : typeof row.folder === 'string' && row.folder ? [row.folder.slice(0, 2000)] : []

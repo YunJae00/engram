@@ -4,8 +4,6 @@ import os from 'node:os'
 import { promisify } from 'node:util'
 import { flog } from './flog.js'
 
-// How many Claude turns run at once, from the machine and its live load.
-
 const MB = 1024 * 1024
 const WORKER_BYTES = 600 * MB
 const MAX_BASE = 8
@@ -64,7 +62,6 @@ interface SamplerDeps {
   platform?: NodeJS.Platform
   os?: Pick<typeof os, 'freemem' | 'totalmem' | 'loadavg' | 'cpus'>
   sysctl?: () => Promise<string>
-  // A macOS reading younger than this is reused, so back-to-back acquires spawn no new sysctl.
   cacheMs?: number
   now?: () => number
 }
@@ -103,20 +100,12 @@ export function sampler(deps: SamplerDeps = {}): () => Promise<Sample> {
 interface TurnScope { interactive: boolean; korean?: boolean; say?: (line: string) => void; inside?: boolean; lease?: Lease }
 const scope = new AsyncLocalStorage<TurnScope>()
 export function withTurnPriority<T>(value: Omit<TurnScope, 'inside' | 'lease'>, run: () => T): T { return scope.run(value, run) }
-// Work started from a person's turn that runs on its own (titles, memory) waits in the background line.
 export function asBackground<T>(run: () => T): T { return scope.run({ interactive: false }, run) }
-// A tool of a turn that holds a slot. Nested turns take a free slot or borrow the parent's (one at a time),
-// so they never wait on their own parent and never run past the target.
 export function insideSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true, lease: scope.getStore()?.lease }, run) }
-// A light turn that works inside its caller's slot next to its siblings (a team's lookup members): it takes no slot of its own,
-// so a target lowered by load cannot line them up one after another (perf146 r2: three lookups ran in sequence at target 1).
 export function inCallerSlot<T>(run: () => T): T { return scope.run({ interactive: false, inside: true }, run) }
 export const currentLease = (): Lease | undefined => scope.getStore()?.lease
-// A long-lived session's callbacks run in the context it was opened in, so each turn names its own lease.
 export function inTurnSlot<T>(lease: Lease | undefined, run: () => T): T { return lease ? withLease(lease, run) : insideSlot(run) }
 export function withLease<T>(lease: Lease, run: () => T): T { return scope.run({ interactive: false, inside: true, lease }, run) }
-// While a turn waits for the person (an approval card, a question), its slot goes to the next turn in line
-// and is taken back, in the turn's own priority, once the person has answered.
 export async function whileWaitingForPerson<T>(run: () => Promise<T>): Promise<T> {
   const lease = scope.getStore()?.lease
   if (!lease) return run()
@@ -124,12 +113,8 @@ export async function whileWaitingForPerson<T>(run: () => Promise<T>): Promise<T
   try { return await run() } finally { await lease.resume() }
 }
 
-// The same, around an asking function (approval cards): the slot goes to the next turn while the person decides.
 export const lendingSlot = <A extends unknown[], R>(ask: (...args: A) => Promise<R>) => (...args: A): Promise<R> => whileWaitingForPerson(() => ask(...args))
 
-// One turn's hold on the pool. A root lease owns a real slot; a nested turn may borrow its parent's
-// (children run one at a time while the parent waits on them). The slot is held while anyone in the
-// tree is working and lent out while all of them wait for the person; it is never freed under a running child.
 const NO_SLOT = (): void => undefined
 export class Lease {
   private free: (() => void) | null
@@ -143,10 +128,8 @@ export class Lease {
     parent?.children.add(this)
   }
   private get root(): Lease { return this.parent ? this.parent.root : this }
-  // Working: live, not waiting for the person, and not blocked on a nested turn of its own.
   private working(): boolean { return !this.ended && this.pauses === 0 && this.children.size === 0 }
   private needed(): boolean { return this.working() || [...this.children].some(child => child.needed()) }
-  // A nested turn may borrow this lease while it is live and its tree holds the slot.
   get held(): boolean { return !this.ended && this.root.free !== null }
   pause(): void { this.pauses++; this.root.settle() }
   async resume(): Promise<void> {
@@ -154,7 +137,6 @@ export class Lease {
     this.root.settle()
     if (this.pauses === 0 && !this.ended) await this.root.regain
   }
-  // Nested turns of this lease's holder run one at a time in its slot while the holder waits on them.
   borrow(): Promise<() => void> {
     let unlock!: () => void
     const next = new Promise<void>(resolve => { unlock = resolve })
@@ -169,7 +151,6 @@ export class Lease {
     this.detach()
     root.settle()
   }
-  // An ended lease stays in its parent's tree (and keeps its siblings waiting) until its own nested turns end.
   private detach(): void {
     if (!this.ended || this.children.size > 0 || !this.parent?.children.has(this)) return
     this.parent.children.delete(this)
@@ -196,7 +177,6 @@ export class WorkerPool {
   readonly base: number
   target: number
   running = 0
-  // Slots held by a person's own turns.
   private people = 0
   private healthy = 0
   private readonly waiters: Waiter[] = []
@@ -217,7 +197,6 @@ export class WorkerPool {
 
   get queued(): number { return this.waiters.length }
 
-  // Called after every target change, so the idle warm-session cap follows the target at once.
   onTarget(listener: (target: number) => void): void { this.targetListeners.push(listener) }
 
   acquire(signal?: AbortSignal): Promise<(() => void) | null> {
@@ -242,7 +221,6 @@ export class WorkerPool {
       if (waiter.interactive && say) waiter.timer = setTimeout(() => say(waitLine(store.korean === true)), 2000)
       this.waiters.push(waiter)
       signal?.addEventListener('abort', onAbort, { once: true })
-      // Granted only after the target is re-read for this acquire.
       void this.sampleNow().finally(() => { waiter.ready = true; this.pump() })
     })
   }
@@ -279,9 +257,6 @@ export class WorkerPool {
       const ready = this.waiters.filter(w => w.ready)
       const next = ready.find(w => w.interactive) ?? ready[0]
       if (!next) return
-      // One slot past the target is the person's: work nobody is watching (a memory note, a title, employees in the background)
-      // never holds up their turn (as-e1cf9bfd C2/C10: 21 s and 24 s behind the last turn's memory note at target 1; grokbar F1: first word after 28.8 s).
-      // A second turn of theirs waits as before.
       if (this.running >= this.target && !(next.interactive && this.people === 0)) return
       this.waiters.splice(this.waiters.indexOf(next), 1)
       clearTimeout(next.timer)
@@ -302,13 +277,11 @@ export class WorkerPool {
     }
   }
 
-  // A turn's hold, so it can lend its slot while waiting for the person or to its nested turns.
   async lease(signal?: AbortSignal): Promise<Lease | null> {
     if (signal?.aborted) return null
     const store = scope.getStore()
     const interactive = store?.interactive === true || store?.lease?.interactive === true
     const parent = store?.inside ? store.lease : undefined
-    // A tool outside any leased turn (no pool context) takes nothing, as before.
     if (store?.inside && !parent) return new Lease(this, NO_SLOT, interactive, signal)
     if (parent) {
       if (this.running < this.target && this.waiters.length === 0) return new Lease(this, this.take(interactive), interactive, signal)

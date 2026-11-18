@@ -4,18 +4,6 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { flog } from './flog.js'
 
-// The person is already signed in — in their own browser, to their own
-// accounts. The agent window starts empty, so it asks them to sign in again
-// to things they never signed out of. Chrome closed that door from the other
-// side: since it began ignoring remote debugging on the live profile, the
-// only honest way to inherit those sessions is to copy them across while the
-// browser is not holding them open. Work accounts usually need none of this —
-// a Windows sign-in follows into a fresh profile on its own — so this exists
-// for the rest: the portals and personal accounts with cookies of their own.
-
-// What carries a session and nothing else: the key store, the cookie jar, and
-// the small files that make the window feel like theirs. Caches, history and
-// passwords are deliberately not on this list.
 const SESSION_FILES = [
   'Local State',
   join('Default', 'Network', 'Cookies'),
@@ -49,9 +37,6 @@ function browserProfileRoots(): Omit<BrowserSource, 'running'>[] {
   )
 }
 
-// A browser holding its own profile open cannot be copied from: the cookie
-// jar is locked, and a half-copied jar is worse than none. Rather than guess
-// from process names, the check is the copy itself — see importBrowserSession.
 export async function listBrowserSources(): Promise<BrowserSource[]> {
   const found: BrowserSource[] = []
   for (const source of browserProfileRoots()) {
@@ -79,8 +64,6 @@ interface ImportResult {
   error?: string
 }
 
-// Copies the session across. Refuses rather than half-copies: a cookie jar
-// that arrives without its key store is a profile that silently knows nobody.
 export async function importBrowserSession(id: string): Promise<ImportResult> {
   const source = browserProfileRoots().find((one) => one.id === id)
   if (!source) return { ok: false, error: 'that browser is not installed here' }
@@ -97,8 +80,6 @@ export async function importBrowserSession(id: string): Promise<ImportResult> {
       await copyFile(from, join(target, rel))
       copied++
     }
-    // The cookie jar's write-ahead log holds the newest sessions; without it a
-    // login from the last few minutes is simply missing.
     for (const suffix of ['-journal', '-wal', '-shm']) {
       const from = `${cookies}${suffix}`
       if (existsSync(from)) await copyFile(from, join(target, 'Default', 'Network', `Cookies${suffix}`))
@@ -111,24 +92,13 @@ export async function importBrowserSession(id: string): Promise<ImportResult> {
   return { ok: true, copied }
 }
 
-// Handing the sign-ins over is not a chore the person should have to know
-// about: whenever their browser happens to be closed, the freshest sessions
-// are simply carried across. The lock IS the consent check on timing - a
-// browser in use is never touched - and what gets copied is the same short
-// list as ever, passwords never on it. Throttled so a day sees one copy.
 const AUTO_IMPORT_EVERY_MS = 24 * 60 * 60 * 1000
 
 export async function autoImportSession(preferredName: string | null): Promise<void> {
-  // A probe or an e2e run lives in a throwaway profile. The person's real
-  // sessions have no business being copied into something built to be
-  // deleted - isolation is the point of ENGRAM_USERDATA, so it opts out.
   if (process.env['ENGRAM_USERDATA']) return
   const last = await importedAt()
   if (last && Date.now() - new Date(last).getTime() < AUTO_IMPORT_EVERY_MS) return
   const all = browserProfileRoots()
-  // The browser the person picked to work in is the one whose sign-ins they
-  // mean; with no pick and several sources, freshest-cookie-jar wins is a
-  // guess this code refuses to make, so it takes the single obvious one only.
   const wanted = preferredName ? all.filter((one) => preferredName.toLowerCase().includes(one.id)) : all
   const source = wanted.length === 1 ? wanted[0] : preferredName ? wanted[0] : all.length === 1 ? all[0] : null
   if (!source) return
@@ -136,8 +106,6 @@ export async function autoImportSession(preferredName: string | null): Promise<v
   if (result.ok) flog('browser-import', `auto: carried ${source.name} sign-ins across`)
 }
 
-// What the person gets back if they change their mind: the imported profile
-// is ours, so forgetting it is just deleting it.
 export async function forgetImportedSession(): Promise<void> {
   const target = join(app.getPath('userData'), 'agent-browser-profile')
   const entries = await readdir(target).catch(() => [] as string[])

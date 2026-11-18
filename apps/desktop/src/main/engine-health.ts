@@ -18,26 +18,15 @@ function selectedAccount(engine: Engine | undefined): boolean {
   return profile === undefined || profile === activeAccountProfile(engine.id)
 }
 
-// Assigning core's EngineErrorKind into the DTO union is the tripwire: a new
-// kind in core stops compiling here instead of shipping a health state that
-// renders as nothing at all.
 function toReason(kind: EngineErrorKind): EngineHealthReason {
   return kind
 }
 
-// Everything the app knows about whether the engine is actually usable, in one
-// place — because the old answer was scattered across a file check, a boot-only
-// ping and a length test on an array, and all three could disagree while the
-// top bar showed a green dot.
-
-// Main-process listeners see the same events the windows do.
 const taps = new Set<(event: EngramEvent) => void>()
 export function tapBroadcast(tap: (event: EngramEvent) => void): () => void { taps.add(tap); return () => { taps.delete(tap) } }
 
 export function broadcast(event: EngramEvent): void {
   for (const tap of taps) tap(event)
-  // Control overlays receive their status directly; do not clone browser frames
-  // and chat streams into every transparent display window, including hidden ones.
   const overlays = overlayWindowIds()
   for (const win of BrowserWindow.getAllWindows()) {
     if (!overlays.includes(win.webContents.id)) win.webContents.send('engram:event', event)
@@ -49,24 +38,16 @@ function healthKey(id: string, profile?: string): string {
   return id === 'claude' || id === 'codex' ? `${id}:${profile ?? activeAccountProfile(id)}` : id
 }
 
-// Read by the diagnostics handler, which lives in another module and must
-// answer with the SAME verdict the banner is showing — two screens disagreeing
-// about the engine is the state that leaves a user with nothing to do.
 export function engineHealthOf(id: string, profile?: string): EngineHealthDto | undefined {
   return engineHealth.get(healthKey(id, profile))
 }
 
-// Consecutive unconfirmed failures per engine. A single blip must not raise a
-// banner: banners that cry wolf are how people learn to ignore the real one.
 const failStreak = new Map<string, number>()
 const CONFIRM_AFTER = 2
 
-// Broadcast ONLY on a real change, so a 10-minute re-verification that finds
-// everything fine is silent and the renderer's state never churns.
 function setHealth(id: string, next: EngineHealthDto, profile?: string): void {
   const key = healthKey(id, profile)
   if (!next.healthy && next.reason === 'auth' && (id === 'claude' || id === 'codex')) cloudEngine(id, profile).forgetStatus?.()
-  // Local login metadata cannot overrule an authentication failure from a request.
   const prev = engineHealth.get(key)
   if (prev && prev.healthy === next.healthy && prev.reason === next.reason) return
   engineHealth.set(key, next)
@@ -96,28 +77,18 @@ function scheduleQuotaResume(ctx: VaultContext, delayMs: number): void {
   }, wait)
 }
 
-// A run finished: say what it implies about the engine. One function so all
-// four librarian entry points (capture pipeline, auto-tidy, manual sweep, tray
-// sweep) agree instead of each drawing its own conclusion.
 export function noteRunOutcome(ctx: VaultContext, report: RunReport, engine = ctx.engines[0]): void {
   if (!selectedAccount(engine)) return
   const id = engine?.id
   if (!id) return
   if (report.haltReason) {
     setHealth(id, { healthy: false, reason: report.haltReason })
-    // An auth halt is the app's freshest evidence that the login is gone.
-    // Re-detect so ctx.engines stops carrying an engine nothing can use — the
-    // shell then falls back to the honest "installed, just log in" banner.
     if (report.haltReason === 'auth') void revalidateEngines(ctx)
     if (report.haltReason === 'outage') {
       engineBackoff.noteOutage()
       scheduleQuotaResume(ctx, engineBackoff.blockedMs())
     }
     if (report.haltReason === 'quota') {
-      // The DESKTOP owns the shared gate (a core-level gate blocked the
-      // substitute engine and leaked across runs — reverted). Arm it with the
-      // CLI's own retry-after when the run carried one, then schedule the
-      // wake-up that decides when waiting is over.
       engineBackoff.noteQuota(report.quotaRetryAfterMs)
       scheduleQuotaResume(ctx, engineBackoff.blockedMs() || QUOTA_RESUME_DEFAULT_MS)
     }
@@ -127,27 +98,14 @@ export function noteRunOutcome(ctx: VaultContext, report: RunReport, engine = ct
   }
 }
 
-// Ask the CLI itself. `verifyAuth` returns null when it could not be asked
-// (older CLI, spawn failure) — that is NOT a logout, so the last known state
-// stands rather than a failure being invented.
-
-// A call failed. Decide whether that deserves a banner.
-//   quota → yes, immediately: the message is specific and the remedy is "wait".
-//   auth  → yes, but only once the CLI confirms the login is really gone.
-//   other → the CLI's auth verdict gets first say; failing that, a SECOND
-//           consecutive failure is needed before we accuse anything.
 export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, ctx?: VaultContext): Promise<void> {
   if (!selectedAccount(engine)) return
   if (kind === 'quota') {
     setHealth(engine.id, { healthy: false, reason: 'quota' })
-    // A chat/ping 429 is evidence too: arm the gate so the next sweep waits,
-    // and schedule the wake-up when the caller brought a ctx.
     engineBackoff.noteQuota()
     if (ctx) scheduleQuotaResume(ctx, engineBackoff.blockedMs() || QUOTA_RESUME_DEFAULT_MS)
     return
   }
-  // The provider failing on its side is said at once and waited out: the
-  // background work rests until it answers again.
   if (kind === 'outage') {
     setHealth(engine.id, { healthy: false, reason: 'outage' })
     engineBackoff.noteOutage()
@@ -155,8 +113,6 @@ export async function noteEngineFailure(engine: Engine, kind: EngineErrorKind, c
     return
   }
   if (kind === 'auth') {
-    // The CLI says the login is fine (or could not be asked) but the call came
-    // back with an auth error — believe the call, it is the more recent fact.
     setHealth(engine.id, { healthy: false, reason: 'auth' })
     if (ctx) void revalidateEngines(ctx)
     return
@@ -174,15 +130,10 @@ let watchTimer: NodeJS.Timeout | null = null
 export function startEngineWatch(ctx: VaultContext): void {
   if (watchTimer) clearInterval(watchTimer)
   watchTimer = setInterval(() => {
-    // Nothing to log into anymore — the periodic pass just re-detects, which
-    // catches a model file deleted or restored outside the app.
     void revalidateEngines(ctx)
   }, AUTH_RECHECK_MS)
 }
 
-
-// Detection always notifies windows. A model-only save with unchanged connection
-// status already has a settings event; another event would re-probe every picker.
 export async function revalidateEngines(ctx: VaultContext, selectionOnly = false, notifyUnchanged = true): Promise<void> {
   try {
     const previous = selectionOnly || !notifyUnchanged ? JSON.stringify(ctx.engines.map(engineDto)) : null
@@ -194,14 +145,9 @@ export async function revalidateEngines(ctx: VaultContext, selectionOnly = false
     if (previous === JSON.stringify(next)) return
     broadcast({ type: 'engines:changed', engines: next })
   } catch {
-    /* detection is best-effort — never let it throw into a caller's error path */
   }
 }
 
-// Membership in ctx.engines now means "probed installed AND the CLI itself says
-// logged in" (detectAvailableEngines gates on both), so these two are measured,
-// not asserted. `healthy` carries the live ping/auth verdict so a renderer that
-// just reloaded does not start out painting a green dot over a dead engine.
 export function engineDto(engine: Engine): EngineStatusDto {
   const health = engineHealthOf(engine.id)
   return {

@@ -3,12 +3,6 @@ import type { OfficeTheme } from 'core'
 import { officeOutputName, saveOfficeOutput } from './office-output.js'
 import { AlignmentType, BorderStyle, Document, Footer, HeadingLevel, LevelFormat, Packer, PageNumber, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from 'docx'
 
-// A document is composed as a file with a real page: a cover, headings that
-// carry a style, tables with a shaded header, a footer with a page number.
-// The blocks the model sends are laid out here, but every colour and font
-// comes from the theme the caller supplies - this file holds none of its own,
-// so the result is designed rather than dumped and never locked to one look.
-
 interface DocTable { rows: (string | number)[][] }
 interface DocBlock {
   kind: 'title' | 'subtitle' | 'heading' | 'subheading' | 'paragraph' | 'bullets' | 'numbers' | 'table' | 'pagebreak'
@@ -63,8 +57,6 @@ function block(spec: DocBlock, t: OfficeTheme): Paragraph | Table | (Paragraph |
   }
 }
 
-// The document as bytes and the plain name it is handed in under; nothing is
-// written and no application is opened (QA 0.8.142 B5).
 export async function buildDoc(spec: DocSpec): Promise<{ name: string; data: Buffer; blocks: number }> {
   return { name: officeOutputName(spec.title ?? '', '.docx', spec.saveAs, 'document'), data: await Packer.toBuffer(composeDoc(spec)), blocks: spec.blocks.length }
 }
@@ -79,7 +71,6 @@ function composeDoc(spec: DocSpec): Document {
   const t = spec.theme
   const children: (Paragraph | Table)[] = []
   for (const one of spec.blocks) { const made = block(one, t); if (Array.isArray(made)) children.push(...made); else children.push(made) }
-  // The footer carries a centred page number in the document's quiet grey.
   const footer = new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ children: [PageNumber.CURRENT], color: t.colors.mute, size: 18, font: t.fonts.body })] })] })
   const doc = new Document({
     creator: 'Engram',

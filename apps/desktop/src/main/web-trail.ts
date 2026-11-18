@@ -5,16 +5,6 @@ import { join } from 'node:path'
 import { chromiumRoots, profileDirs } from './browser-roots.js'
 import { flog } from './flog.js'
 
-// The web trail — browser history as a capture source. In the webmail/groupware era much of an office day never touches a
-// file; the page TITLES in the browser's own local history are the only
-// on-device record of what it was about. Titles and hosts only — full URLs
-// carry tokens and query noise, so they stay behind.
-//
-// Mechanics: Chrome/Edge keep History as SQLite and hold it LOCKED while
-// running, so the file is copied to a temp path first and parsed there with
-// sql.js (wasm — no native ABI to fight electron over). Timestamps are WebKit
-// epoch (1601-01-01, microseconds).
-
 interface WebVisit {
   title: string
   host: string
@@ -23,7 +13,6 @@ interface WebVisit {
 
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 
-// Every profile of every Chromium-family browser on this computer.
 export function historyCandidates(): string[] {
   return chromiumRoots().flatMap(root => profileDirs(root.userData).map(dir => join(root.userData, dir, 'History')))
 }
@@ -31,12 +20,6 @@ export function historyCandidates(): string[] {
 const DENY_TITLE = /password|비밀번호|로그인|login|sign in|인증|otp|working\.\.\./i
 const DENY_HOST = /^login\.|^auth\.|accounts\.google|okta|onelogin|signin|microsoftonline/i
 
-// mtime of each History DB at its last successful read. Copying and parsing a
-// 30MB+ SQLite through sql.js (wasm, synchronous) is a ~1-2s main-thread stall;
-// an hour with no browsing leaves the file untouched, so an unchanged mtime
-// means no new visits and the whole load is skipped.
-// ponytail: the parse still blocks on an hour the file did grow; move it to a
-// worker_thread if that stall is ever felt.
 const lastReadMtime = new Map<string, number>()
 
 async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]> {
@@ -76,8 +59,6 @@ async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]
       if (DENY_HOST.test(host)) continue
       visits.push({ title: title.slice(0, 120), host, at: WEBKIT_EPOCH_MS + lastVisit / 1_000 })
     }
-    // Only after a clean read: a failed parse must retry next hour, not be
-    // skipped as "already seen".
     lastReadMtime.set(historyPath, mtimeMs)
     return visits
   } catch (err) {
@@ -88,7 +69,6 @@ async function readOne(historyPath: string, sinceMs: number): Promise<WebVisit[]
   }
 }
 
-// Visits since `sinceMs`, both browsers merged, deduped by title.
 export async function readWebTrail(sinceMs: number, untilMs = Infinity): Promise<WebVisit[]> {
   const all: WebVisit[] = []
   for (const candidate of historyCandidates()) all.push(...(await readOne(candidate, sinceMs)))
@@ -104,7 +84,6 @@ export async function readWebTrail(sinceMs: number, untilMs = Infinity): Promise
     })
 }
 
-// The trail folded for a work log: top page titles grouped by host.
 export function foldWebTrail(visits: WebVisit[], max = 8): string[] {
   const byHost = new Map<string, { count: number; titles: string[] }>()
   for (const v of visits) {
@@ -119,8 +98,6 @@ export function foldWebTrail(visits: WebVisit[], max = 8): string[] {
     .map(([host, e]) => `- ${host} (${e.count}) — ${e.titles.join(' · ')}`)
 }
 
-// Recent files (jump-list lite): the Recent folder's shortcut names carry the
-// document names without parsing a single .lnk byte.
 export async function recentFileNames(sinceMs: number, untilMs = Infinity): Promise<string[]> {
   const dirs =
     process.platform === 'win32'

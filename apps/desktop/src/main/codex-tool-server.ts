@@ -2,18 +2,11 @@ import { createServer } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import type { ToolSessionCall } from 'core'
 
-// The comet's tools, served to the ChatGPT runtime as a Model Context Protocol
-// server for one turn: loopback only, a fresh bearer token per turn, JSON-RPC
-// over plain HTTP responses. The runtime's own tools stay off, so every action
-// goes through these tools and their approvals.
-
 export interface ToolServer { url: string; token: string; setTools(tools: ToolSessionCall[]): void; close(): Promise<void> }
 
 const MAX_BODY = 4 * 1024 * 1024
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> }
 
-// The runtime's strict tool schemas refuse combinators at the top of a tool's
-// input, so they are left off there; each tool checks its own arguments again.
 const TOP_LEVEL_ONLY_KEYS = ['oneOf', 'anyOf', 'allOf', 'enum', 'not']
 export function inputSchemaOf(schema: object): Record<string, unknown> {
   const shaped: Record<string, unknown> = { type: 'object', ...schema }

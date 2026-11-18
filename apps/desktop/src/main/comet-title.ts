@@ -1,11 +1,6 @@
 import { withModelCallContext } from './model-call-metrics.js'
 import type { Engine, EngineCwd } from 'core'
 
-// A comet made with one press is first named by the person's opening words,
-// which is a sentence, not a name. Once the answer is out, the brain is
-// asked for a short one about the subject — and only that: it never becomes
-// the name while the person's opening words hold anything secret.
-
 const TITLE_CHARS = 40
 const TITLE_BUDGET_MS = 60_000
 

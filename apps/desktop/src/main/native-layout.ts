@@ -66,7 +66,6 @@ export function attachNativeLayout(win: BrowserWindow): void {
   registerNativeLayout()
   window = win
   setNativeBrowserOwner(win)
-  // e2e seam: hidden runs cannot reach the native helper
   if (process.defaultApp && process.env['ENGRAM_HIDDEN'] === '1') Object.assign(globalThis, { __engramNativePlacer: (next?: typeof placeNativePages) => { place = next ?? placeNativePages } })
   const hide = () => { visible = false; ++revision; void place([]).catch(() => undefined) }
   win.on('hide', hide)
@@ -95,8 +94,6 @@ function registerNativeLayout(): void {
   })
   ipcMain.on('native:focus-shell', event => {
     if (!window || window.isDestroyed() || !window.isVisible() || !window.isFocused() || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return
-    // A child WebView belongs to another process; DOM focus alone cannot
-    // transfer its native keyboard focus back to the conversation renderer.
     window.webContents.focus()
     const win = window
     void focusNativeOwner().then(() => { if (!win.isDestroyed() && win.isFocused()) win.webContents.focus() }).catch(() => undefined)

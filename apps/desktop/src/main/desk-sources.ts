@@ -12,16 +12,10 @@ import type { VaultContext } from './vault.js'
 import { readMacAppUse } from './mac-app-usage.js'
 import { historyCandidates } from './web-trail.js'
 
-// The desk half of the work map: the files, apps and downloads this computer
-// already records, each read only while the person allows that source.
-// Names and counts only; no file is opened.
-
 const STALE_MS = 86_400_000
 const WEBKIT_EPOCH_MS = Date.UTC(1601, 0, 1)
 const run = promisify(execFile)
 
-// Windows keeps a shortcut per recently opened file; its target is the file.
-// Engram's own workspace is its record, not the person's work.
 async function readRecentFiles(sinceMs: number, workspace: string): Promise<RecentFile[]> {
   const own = (path: string) => !relative(workspace, path).startsWith('..') && !isAbsolute(relative(workspace, path))
   if (process.platform === 'darwin') {
@@ -45,7 +39,6 @@ async function readRecentFiles(sinceMs: number, workspace: string): Promise<Rece
     if (!info || info.mtimeMs < sinceMs) continue
     try {
       const target = shell.readShortcutLink(join(recent, name)).target
-      // Folders and links without a file type say where, not what.
       if (target && extname(target) && !own(target)) found.push({ path: target, at: info.mtimeMs })
     } catch { continue }
   }
@@ -59,7 +52,6 @@ async function readUsedApps(): Promise<AppUse[]> {
   return parseUserAssist(stdout)
 }
 
-// Browsers hold History locked while running: read a copy, with sql.js.
 async function readDownloads(sinceMs: number): Promise<Download[]> {
   const found: Download[] = []
   const tempDir = join(app.getPath('userData'), 'tmp')
@@ -88,8 +80,6 @@ async function readDownloads(sinceMs: number): Promise<Download[]> {
 
 type Source = { id: string; setting: 'workFiles' | 'workApps' | 'workMap'; build(now: Date, existing: Note | null): Promise<Note | null> }
 
-// Writes each allowed source's note when it is missing or a day old; `force`
-// rewrites it at once, as when the person has just allowed it.
 export async function refreshDeskNotes(ctx: VaultContext, force = false): Promise<void> {
   if (process.env['ENGRAM_USERDATA']) return
   const settings = await loadSettings()
@@ -106,7 +96,6 @@ export async function refreshDeskNotes(ctx: VaultContext, force = false): Promis
       const existing = await readNote(ctx.paths, source.id).catch(() => null)
       if (!force && existing && now.getTime() - Date.parse(existing.front.updated) < STALE_MS) continue
       const note = await source.build(now, existing)
-      // The person may have turned the source off while it was being read.
       if (!note || !(await loadSettings())[source.setting]) continue
       await writeNote(ctx.paths, note)
       await ctx.store.applyFile('add', join(ctx.paths.notes, `${note.front.id}.md`))
@@ -116,7 +105,6 @@ export async function refreshDeskNotes(ctx: VaultContext, force = false): Promis
   if (wrote) broadcast({ type: 'vault:changed' })
 }
 
-// The notes a source the person has not allowed must not feed into filing.
 export async function withheldDeskNotes(): Promise<string[]> {
   const settings = await loadSettings()
   return [...(settings.workFiles ? [] : [DESK_NOTES.files]), ...(settings.workApps ? [] : [DESK_NOTES.apps]), ...(settings.workMap ? [] : [DESK_NOTES.downloads])]

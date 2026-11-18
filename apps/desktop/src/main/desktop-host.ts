@@ -14,7 +14,6 @@ export type DesktopMethod = 'unhideApp' | 'listApps' | 'openApp' | 'inputState' 
   | 'quietState' | 'quietScan' | 'quietRead' | 'quietSet' | 'quietPress' | 'applicationFrameHide' | 'permissionState'
 const METHODS = new Set<DesktopMethod>(['unhideApp', 'listApps', 'openApp', 'inputState', 'listWindows', 'inspectWindow', 'activateWindow', 'applicationFrame', 'observe', 'capture', 'prepare', 'bind', 'work', 'idle', 'click', 'type', 'replace', 'scroll', 'key', 'stop', 'documentRead', 'documentEdit', 'documentCompose',
   'quietState', 'quietScan', 'quietRead', 'quietSet', 'quietPress', 'applicationFrameHide', 'permissionState'])
-// Everything else names one window; these two speak about the session.
 const UNSCOPED = new Set<DesktopMethod>(['unhideApp', 'listApps', 'openApp', 'inputState', 'listWindows', 'stop', 'permissionState'])
 
 interface PendingRequest {
@@ -236,7 +235,6 @@ export class DesktopHost {
           if (this.pending.get(id) !== pending) return
           this.pending.delete(id)
           this.cancelNative(id, pending.preview ? undefined : method)
-          // A late bind must not leave an unclaimed input grant in the helper.
           if (method === 'bind') {
             try { this.child?.stdin.write(JSON.stringify({ id: ++this.serial, method: 'stop' }) + '\n', error => { if (error) this.close(error) }) }
             catch (error) { this.close(error instanceof Error ? error : new Error('The desktop connection failed.')) }
@@ -276,8 +274,8 @@ export class DesktopHost {
     const child = this.child
     this.child = undefined
     if (child) {
-      try { child.stdin.end() } catch { /* The pipe may already have closed. */ }
-      try { child.kill() } catch { /* A process that exited cannot retain control. */ }
+      try { child.stdin.end() } catch { }
+      try { child.kill() } catch { }
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()

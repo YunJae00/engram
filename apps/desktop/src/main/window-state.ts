@@ -2,15 +2,12 @@ import { app, screen, type BrowserWindow, type Rectangle } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-// Start compact, then remember the size and position the person chooses.
-
 interface WindowState {
   bounds?: Rectangle
   maximized?: boolean
 }
 
 const SAVE_AFTER_MS = 500
-// The share of the work area a first window takes, centred on it.
 const FIRST_WIDTH = 1000
 
 function file(): string {
@@ -26,8 +23,6 @@ export async function loadWindowState(): Promise<WindowState> {
   }
 }
 
-// A remembered place is only honoured while some screen still shows it; a
-// window left on a monitor that is gone would otherwise open out of reach.
 function visible(bounds: Rectangle): boolean {
   return screen.getAllDisplays().some((display) => {
     const area = display.workArea

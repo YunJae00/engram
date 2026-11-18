@@ -1,21 +1,12 @@
 import type { Frame, Page } from 'playwright-core'
 
-// What a picture of the page must not carry to a brain: the fields the page
-// itself declares secret. The declaration is the page's own - the type a
-// browser masks with dots, the autocomplete names it fills cards and codes
-// into - so nothing here guesses at what a field holds. Each such field is
-// covered with a black box for as long as the picture takes, in the page
-// and in every frame of it, and uncovered again after.
-
 export const SECRET_FIELDS = [
   'input[type="password"]',
-  // Autocomplete is a case-insensitive token list, often prefixed by a section.
   ...['cc-name', 'cc-given-name', 'cc-additional-name', 'cc-family-name', 'cc-number', 'cc-exp', 'cc-exp-month', 'cc-exp-year', 'cc-csc', 'cc-type', 'one-time-code', 'current-password', 'new-password'].map(token => `[autocomplete~="${token}" i]`),
 ].join(', ')
 
 const MARK = 'data-engram-mask'
 
-// Runs inside a document. Self-contained: nothing from outside is in scope.
 function coverSecrets({ selector, mark }: { selector: string; mark: string }): number {
   const seen = new Set<Element>()
   const walk = (root: Document | ShadowRoot): void => {
@@ -47,15 +38,11 @@ async function eachFrame<T>(page: Page, work: (frame: Frame) => Promise<T>): Pro
     try {
       out.push(await work(frame))
     } catch {
-      // A frame that will not answer (cross-origin lock, mid-navigation)
-      // is left as it is; the picture of it is the page's own risk to name.
     }
   }
   return out
 }
 
-// Covers every secret field the page shows; returns how many, and the hand
-// that uncovers them again.
 export async function maskSecrets(page: Page): Promise<{ covered: number; uncover(): Promise<void> }> {
   const counts = await eachFrame(page, (frame) => frame.evaluate(coverSecrets, { selector: SECRET_FIELDS, mark: MARK }) as Promise<number>)
   return {

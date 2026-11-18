@@ -2,9 +2,7 @@ import type { ChatRequestDto } from '../shared/types.js'
 import { flog } from './flog.js'
 
 type Chat = (request: ChatRequestDto) => Promise<void>
-// Words said while a turn worked, each answered as its own turn once that turn ends.
 const waiting = new Map<string, string[]>()
-// The follow-up whose turn is running in each channel; also marks a drain in progress.
 const answeringNow = new Map<string, string>()
 const stops = new Map<string, number>()
 let allStops = 0
@@ -27,15 +25,12 @@ export function followUpFor(channel: string): (text: string) => void {
   }
 }
 
-// The running turn takes the words said to it so far (handed over with its next tool result, or when its answer is written if no tool result is left): it answers them itself, so they get no turn of their own.
-// grokbar T1/T2: "아 대구도 추가해" belongs in the answer under way, not in a second one after it. Words nobody took are still answered as their own turn.
 export function takeFollowUps(channel: string): string[] {
   const said = waiting.get(channel) ?? []
   waiting.delete(channel)
   return said
 }
 
-// Resolves once words are waiting for this channel's running turn; never after the signal aborts.
 const listeners = new Map<string, Set<() => void>>()
 export function followUpSaid(channel: string, signal: AbortSignal): Promise<void> {
   return new Promise(resolve => {

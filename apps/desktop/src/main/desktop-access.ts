@@ -68,7 +68,6 @@ let releaseControl: (lane: string, reason: string) => void = () => undefined
 const LANE = /^bot-[a-zA-Z0-9_-]{1,140}$/
 export function setDesktopReleaseHook(hook: typeof releaseControl): void { releaseControl = hook }
 let laneWorking: (lane: string) => boolean = () => true
-// Apps the person keeps out of reach, by the name their windows end with.
 let labelsOff: string[] = []
 export function setDesktopAppsOff(labels: string[]): void {
   labelsOff = labels.map(label => label.toLowerCase())
@@ -120,9 +119,6 @@ function bound(lane: string): Binding {
   if (!binding) throw new Error('No app is connected to this chat yet.')
   return binding
 }
-// The host's revocations reach control through the release hook; whether a
-// pause is one the comet may resume is control's call, so readability is left
-// alone here. A closed host is terminal either way.
 function hostFor(lane: string): DesktopHost {
   const host: DesktopHost = new DesktopHost((reason) => {
     const binding = bindings.get(lane)
@@ -143,8 +139,6 @@ async function desktopSources(): Promise<DesktopCapturerSource[]> {
     return id && !own.has(id)
   })
 }
-// The helper that answers catalog questions (open windows, launchable apps) stays up for a
-// while after each answer: starting one costs 1-6s on a loaded machine, answering costs 0.1s.
 const CATALOG_IDLE_MS = 90_000
 let catalog: { host: DesktopHost; timer: ReturnType<typeof setTimeout> } | null = null
 export function catalogHost(): DesktopHost {
@@ -178,8 +172,6 @@ async function nativeWindows(host: DesktopHost): Promise<NativeWindow[]> {
   const result = await host.request<{ windows?: NativeWindow[] }>('listWindows', {})
   return (result?.windows ?? []).filter((one) => typeof one?.window === 'string' && !own.has(one.window) && !excluded.has(one.pid) && !(one.bounds && one.bounds.x <= -3000) && typeof one.title === 'string')
 }
-// The comet's own choice of window: the one named by a word from its title,
-// else the one in front. No picker, no dialog - reading it is the grant.
 export async function bindDesktopForLane(lane: string, pick: { app?: string } = {}): Promise<Binding> {
   const epoch = generation
   if (typeof lane !== 'string' || !LANE.test(lane)) throw new Error('Choose a valid chat first.')
@@ -198,7 +190,6 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     const visible = candidates.filter(one => !one.minimized)
     if (wanted && !exactId && visible.length > 1) throw new Error(`Several windows match "${pick.app}". Choose an exact window ID: ${visible.map(one => `window:${one.window}:0 ${one.title}`).join(', ')}`)
     const target = candidates.find((one) => !one.minimized && one.foreground) ?? candidates.find((one) => !one.minimized) ?? candidates[0]
-    // The open windows travel with the miss, so the next call can name one without a separate listing.
     const open = similarApps(windows.map(one => ({ ...one, name: one.title })), wanted ?? '').map(one => one.title).map((title) => `"${title}"`).join(', ')
     if (!target) throw new Error(wanted ? `No open window matches "${pick.app}". Open windows: ${open || 'none'}. Use a word from one of these titles, or open the app with open_app.` : `No app window is in front to work in. Open windows: ${open || 'none'}. Name one with app, or open it first.`)
     if (target.protected) throw Object.assign(new Error(`${target.barrier ?? 'This application surface requires manual control'}. Ask the person to complete sign-in or security steps in the app, then read it again.`), { protectedPid: target.pid })
@@ -214,7 +205,6 @@ export async function bindDesktopForLane(lane: string, pick: { app?: string } = 
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     if (keptOut(target.title)) throw new Error(`The person keeps "${target.title}" out of Engram's reach in Settings. Do not work in it; say so, and that they can allow it in Settings.`)
     const taken = [...bindings.values()].find((binding) => !binding.host.closed && binding.window === target.window && binding.lane !== lane)
-    // A window stays with a chat only while that chat is working in it.
     if (taken && laneWorking(taken.lane)) throw new Error(`"${target.title}" belongs to another chat right now.`)
     if (taken) releaseDesktop(taken.lane)
     const hiddenApp = hiddenApps.get(lane)
@@ -248,7 +238,6 @@ export async function chooseDesktop(lane: string, sourceId: string): Promise<Des
     if (host.closed) throw new Error('This app connection ended. Reconnect the app window to continue.')
     if (generation !== epoch || choices.get(lane) !== choice) throw new Error('This window selection was cancelled.')
     if (keptOut(identity.title)) throw new Error('This app is turned off in Settings.')
-    // Recheck after enumeration so concurrent selections cannot share a window.
     if ([...bindings.values()].some((binding) => !binding.host.closed && binding.source === sourceId && binding.lane !== lane)) throw new Error('This window was connected to another chat.')
     if (!bindings.has(lane) && bindings.size >= 4) throw new Error('Up to four app windows can be connected at once.')
     restoreHiddenApp(lane)

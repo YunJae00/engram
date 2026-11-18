@@ -21,7 +21,6 @@ export function registerAccountIpc(changed: () => Promise<void>): void {
       { id: 'system', provider: 'codex' as const, name: 'System account' }, ...profiles.profiles,
     ]
     const result: AccountProfileState[] = []
-    // Each check is a runtime process; a few at a time keeps memory bounded.
     for (let at = 0; at < rows.length; at += STATUS_BATCH) result.push(...await Promise.all(rows.slice(at, at + STATUS_BATCH).map(async row => {
       const detection = await connectionProbe(() => cloudEngine(row.provider, row.id).detect())
       const health = engineHealthOf(row.provider, row.id)

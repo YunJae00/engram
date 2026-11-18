@@ -19,36 +19,15 @@ import { nativePagesVisible } from './native-layout.js'
 import { resizePreview } from './page-preview.js'
 import { takeDownloads, watchDownloads } from './page-downloads.js'
 
-// Native and external browser pages share the same CDP automation and lane
-// ownership. Each backend keeps its own persistent profile under userData.
-// Automation targets page contents without injecting OS mouse or key input.
-
-// Long enough for a slow portal, short enough that a page that will not
-// come does not take the turn with it (measured: two waits at 25s were the
-// whole of a three-minute answer).
 export const NAV_TIMEOUT_MS = 15_000
 const PAGE_TEXT_CAP = 64_000
-// The browser is heavyweight company for an 8GB machine, so it leaves when
-// nobody is using it. Long enough, though, that a person reading an answer
-// and typing a follow-up still finds the page they were just shown: a window
-// that closed under them is the difference between carrying on and starting
-// the job again. Memory pressure still takes it away at any time.
 const IDLE_CLOSE_MS = 15 * 60_000
-// Below this the browser is the memory somebody else needs — it leaves. A
-// page costs a few hundred MB; a busy work PC routinely sits at 2-3GB free,
-// so a higher floor turns the browser away during ordinary work.
 const PRESSURE_CLOSE_FLOOR = 0.8e9
 const LAUNCH_MIN_FREE = 1.2e9
 
-// A page is watched as well as read: an icon, a logo, a photograph is how a
-// person recognises where the work is, and a layout built around pictures
-// that never arrive reads as a broken site. Only video and audio are turned
-// away - megabytes that no reading and no watching needs.
 const BLOCKED_RESOURCES = new Set(['media'])
 
-// Initial page width, before its visible pane requests a viewport.
 const VIEW_WIDTH = 1280
-// Each lane keeps the viewport requested by its own conversation pane.
 const VIEW_HEIGHT_MIN = 240
 const VIEW_HEIGHT_MAX = 2200
 const viewHeight = 860
@@ -103,13 +82,7 @@ interface InstalledBrowser {
   path: string
 }
 
-// Which browsers are actually on this machine. Named from the executable so
-// nothing here decides that a person "uses Chrome" - what they have is what
-// they are offered, and which of them drives the work is theirs to say.
 export function installedBrowsers(): InstalledBrowser[] {
-  // One entry per browser, not per path: a Linux install answers to several
-  // names for the same binary (google-chrome, google-chrome-stable) and a
-  // person offered "Google Chrome" twice has been handed a bug, not a choice.
   const seen = new Set<string>()
   const found: InstalledBrowser[] = []
   for (const path of chromeCandidates()) {
@@ -131,18 +104,12 @@ function browserName(path: string): string {
   return file
 }
 
-// The one the person picked, remembered in settings. Until they pick, a single
-// installed browser is not a choice and is simply used; several of them are a
-// choice, and a choice is theirs.
 let chosenPath: string | null = null
 
 export function setAgentBrowser(path: string | null): void {
   chosenPath = path && existsSync(path) ? path : null
 }
 
-// The browser the system opens links with, by the name Windows records for
-// it. Elsewhere, and where the record cannot be read, the first one found.
-// Read once: it is a process, and availability is asked on every focus.
 let usualBrowser: Promise<string | null> | undefined
 const execFileAsync = promisify(execFile)
 
@@ -165,13 +132,10 @@ async function readDefaultBrowserName(): Promise<string | null> {
     if (/edge/i.test(progId)) return 'Microsoft Edge'
     if (/brave/i.test(progId)) return 'Brave'
   } catch {
-    /* no record to read */
   }
   return null
 }
 
-// The browser the comet works in: the one the person picked, else the one
-// their system opens links with, else the first installed. Nobody is asked.
 export async function findChrome(): Promise<string | null> {
   if (chosenPath && existsSync(chosenPath)) return chosenPath
   const installed = installedBrowsers()
@@ -179,7 +143,6 @@ export async function findChrome(): Promise<string | null> {
   return installed.find((one) => one.name === usual)?.path ?? installed[0]?.path ?? null
 }
 
-// Whether a choice is still open: only when nothing at all is installed.
 export function browserChoicePending(): boolean {
   if (nativeBrowserEnabled()) return false
   return installedBrowsers().length === 0
@@ -188,8 +151,6 @@ export function browserChoicePending(): boolean {
 export { classifyWall }
 
 let context: Ctx | null = null
-// Playwright persistent contexts do not expose process(); CDP supplies the browser
-// pid and its renderer/utility children for both external Chrome and WebView2.
 export async function agentBrowserPids(): Promise<number[]> {
   const nativePid = context && isNativeContext(context) ? nativeBrowserPid() : undefined
   const pids = nativePid ? [nativePid] : []
@@ -204,13 +165,8 @@ export async function agentBrowserPids(): Promise<number[]> {
   finally { await session.detach().catch(() => undefined) }
 }
 let opening: Promise<Ctx> | null = null
-// A close under way: a launch waits for it, or it would trip on the profile
-// the closing process still holds.
 let closing: Promise<void> | null = null
 
-// A window that closed a moment ago can hold its profile while the process
-// winds down; a launch that trips on that is tried again shortly rather
-// than reported as a page that would not open.
 const LAUNCH_TRIES = 4
 const LAUNCH_RETRY_MS = 2_500
 async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
@@ -225,20 +181,12 @@ async function launchPatiently<T>(launch: () => Promise<T>): Promise<T> {
     }
   }
 }
-// One tab per lane. A lane is whoever is working - a comet's channel, or
-// the default for the errand and routine runs - and each keeps its own tab,
-// so two comets at once never take each other's page, and a new comet never
-// starts on a page an old one left open. The tabs share one browser and
-// one profile: a sign-in made in any of them holds in all of them.
 export const DEFAULT_LANE = 'default'
 const lanes = new BrowserLanes((page, lane) => {
   for (const watcher of pageWatchers) watcher(page, lane)
 })
 let allocatingPages = 0
-// The lane the person is looking at: the one the mirror follows, and the
-// one a tab opened by a link is handed to when its opener is not known.
 let activeLane = DEFAULT_LANE
-// Another tab is only worth opening when the machine can afford it.
 const LANE_MIN_FREE = LAUNCH_MIN_FREE
 
 export function laneOf(page: Page): string | null {
@@ -268,17 +216,12 @@ export function activeLaneName(): string {
   return activeLane
 }
 
-// The tab a lane holds is closed and forgotten: the next ask from that lane
-// starts on a blank page. What a person presses when the page has got into
-// a state neither they nor the comet can get out of.
 export async function resetLane(lane: string): Promise<void> {
   const pages = lanes.pages(lane)
   lanes.delete(lane)
   await Promise.all(pages.filter((page) => !page.isClosed()).map((page) => page.close().catch(() => undefined)))
 }
 
-// Whoever mirrors the window is told of every page as it opens, and which
-// lane it belongs to.
 const pageWatchers = new Set<(page: Page, lane: string | null) => void>([watchDownloads(laneOf)])
 
 export function watchAgentPages(watcher: (page: Page, lane: string | null) => void): () => void {
@@ -303,10 +246,6 @@ function armPressureWatch(): void {
   }, 15_000).unref()
 }
 
-// A run parked at a login wall does nothing for minutes while the person
-// types their password INTO THIS WINDOW. The idle timer cannot be allowed to
-// close Chrome under them, so a hold suspends it until the wall is answered.
-// Memory pressure still closes the browser: that rule outranks convenience.
 let idleHolds = 0
 
 export function holdAgentBrowser(): () => void {
@@ -330,9 +269,6 @@ export function armIdleClose(): void {
   idleTimer = setTimeout(() => void closeAgentBrowser(), IDLE_CLOSE_MS)
 }
 
-// What a browser weighs by the time its window is up. Spoken for while it is
-// on its way, so a model planned in that gap plans around it; once the window
-// is open its real use is visible to every plan and the word is given back.
 const LAUNCH_FOOTPRINT = 1e9
 
 async function ensureContext(): Promise<Ctx> {
@@ -362,9 +298,6 @@ async function ensureContext(): Promise<Ctx> {
     const executablePath = await findChrome()
     if (!executablePath) throw new Error('no Chrome-family browser found — install Google Chrome to run web errands')
     const { chromium } = await import('playwright-core')
-    // One more chance for the person's sign-ins to follow them in, right
-    // before the window they would need them in. Costs nothing when their
-    // browser is open or the last copy is fresh.
     await autoImportSession(executablePath).catch(() => undefined)
     const profileDir = join(app.getPath('userData'), 'agent-browser-profile')
     await markAgentProfile(profileDir).catch(() => undefined)
@@ -372,48 +305,23 @@ async function ensureContext(): Promise<Ctx> {
     const ctx = await launchPatiently(() =>
       chromium.launchPersistentContext(profileDir, {
       executablePath,
-      // Keep startup, popups and script focus inside Engram on macOS.
       headless: process.platform === 'darwin',
-      // The driver's default drops the sandbox, and the browser says so in a
-      // banner on every page; a person's window keeps its sandbox.
       chromiumSandbox: true,
-      // The WIDTH never changes: a layout that does not depend on the
-      // person's screen reads the same on every machine, a taught procedure
-      // replays against the page it was shown, and no site drops to its
-      // phone layout because a pane got narrow. A laptop's width, which is
-      // what sites are built for. The HEIGHT follows the pane the person is
-      // watching it in - see setViewHeight - so the picture fills what they
-      // gave it instead of sitting in the top half of an empty box.
       viewport: { width: VIEW_WIDTH, height: viewHeight },
-      // The page is laid out at 1280 CSS pixels and drawn at twice that, so
-      // a still taken of it (what the person looks at when they open the
-      // view) carries real detail instead of an enlarged blur. The live run
-      // of frames is unaffected: a screencast is captured per CSS pixel
-      // whatever this says - measured.
       deviceScaleFactor: 2,
       args: [
         `--window-size=${VIEW_WIDTH},${viewHeight}`,
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-background-networking',
-        // The driver's own banner. Left on, a search engine answers its robot
-        // check instead of the page — measured: the same query returns nothing
-        // with the flag and a full page of results without it.
         '--disable-blink-features=AutomationControlled',
-        // The browser tells the person about that flag in a banner on every
-        // page; a test-typed process is spared the banner and changes nothing
-        // else they can see. Measured: the banner names that flag alone.
         '--test-type',
-        // Windows keeps an off-screen window; macOS renders inside Engram.
         '--window-position=-4000,-4000',
-        // Test harness hook: exposes a CDP endpoint so an e2e run can stand in
-        // for the person's hands in the agent window. Never set in production.
         ...(process.env['ENGRAM_AGENT_CDP'] ? [`--remote-debugging-port=${process.env['ENGRAM_AGENT_CDP']}`] : []),
       ],
       ignoreDefaultArgs: ['--enable-automation'],
       }),
     )
-    // The flag has a twin in the DOM; both have to go or neither matters.
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false })
     })
@@ -422,8 +330,6 @@ async function ensureContext(): Promise<Ctx> {
       return route.continue()
     })
     watchStalledScripts(ctx)
-    // The user closing the agent window by hand must read as "gone", not
-    // leave a dead handle every later errand trips over.
     ctx.on('close', () => {
       if (context === ctx) {
         context = null
@@ -433,16 +339,10 @@ async function ensureContext(): Promise<Ctx> {
     })
     ctx.on('page', (page) => {
       const requestedLane = allocatingPages === 0 ? activeLane : null
-      // A link that opened a new tab is followed there, by the lane whose
-      // page opened it: the newest page is the one that lane now means.
       void page
         .opener()
         .catch(() => null)
         .then((opener) => {
-          // A page a lane already claimed for itself (ensureAgentPage sets
-          // the map before this async lookup lands) keeps its owner: falling
-          // back to the active lane here handed one comet's fresh tab to
-          // whichever comet the person happened to be looking at.
           const claimed = laneOf(page)
           const lane = claimed ?? (opener && laneOf(opener)) ?? requestedLane
           if (lane && !claimed) lanes.set(lane, page)
@@ -484,8 +384,6 @@ async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
     const ctx = await ensureContext()
     const held = lanePage(lane)
     if (held && !fresh) return held
-    // The tab the browser opened with belongs to whoever asks first; after
-    // that every lane gets a tab of its own, if the machine has room for one.
     const spare = lanes.size === 0 ? ctx.pages().find((page) => !page.isClosed() && laneOf(page) === null) : undefined
     if (!spare && lanes.size > 0 && availableMemory() < LANE_MIN_FREE)
       throw new Error(`not enough free memory for another browser tab right now (${(availableMemory() / 1e9).toFixed(1)}GB free). Do not wait, sleep or poll for memory: open_page, read_pages and search_web read pages without a tab, so use those, another source, or report what you have.`)
@@ -503,15 +401,12 @@ async function assignAgentPage(lane: string, fresh = false): Promise<Page> {
   try { return await Promise.race([next, waiting]) } finally { clearTimeout(timer) }
 }
 
-// What the page shows, through every frame and open shadow root, with its
-// controls numbered so a press can name one that has no words.
 export async function readPage(page: Page, signal?: AbortSignal): Promise<WebPage> {
   const url = page.url()
   const title = await page.title().catch(() => '')
   const reading = await readFrames(page, signal).catch(() => null)
   signal?.throwIfAborted()
   const text = reading?.text ?? ''
-  // A refusal often arrives as a dialog over a page that otherwise reads fine.
   const wall = classifyWall(url, title, `${reading?.dialog ?? ''}\n${text}`, reading?.hasPasswordField ?? false)
   return {
     url,
@@ -549,8 +444,6 @@ async function withAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> 
   }
 }
 
-// The recorder drives the same window: it needs the context itself, and the
-// tabs open in it, which nothing else outside this module does.
 export async function agentContext(): Promise<Ctx> {
   return ensureContext()
 }
@@ -562,8 +455,6 @@ export function agentBrowserAvailable(): boolean {
   return (chosenPath !== null && existsSync(chosenPath)) || installedBrowsers().length > 0
 }
 
-// Low-level access for the routine driver: same browser, same reused tab,
-// same idle and pressure lifecycle the courier lives under.
 export async function agentPage(signal?: AbortSignal, lane = DEFAULT_LANE): Promise<Page> {
   const page = await withAbort(ensureAgentPage(lane), signal)
   armIdleClose()
@@ -577,17 +468,9 @@ export function readAgentPage(page: Page, signal?: AbortSignal): Promise<WebPage
 
 export { withAbort as agentAbortable }
 
-// Close is idempotent and never throws: it runs from errand teardown, the
-// idle timer and app quit, in any order — including, thanks to those
-// fire-and-forget calls, moments AFTER a teach session has opened the window
-// the person is being recorded in. A recording session owns the browser, so
-// an unforced close steps aside; memory pressure and quit pass force.
 export async function closeAgentBrowser(options: { force?: boolean } = {}): Promise<void> {
   if (closing) return closing
   if (nativePagesVisible() && !options.force) return
-  // Somebody is standing at the window - a recording, or a person typing their
-  // password into a login wall. An unforced close waits for them; memory
-  // pressure and app quit pass force and take it anyway.
   if (idleHolds > 0 && !options.force) return
   if (idleTimer) {
     clearTimeout(idleTimer)
@@ -598,9 +481,6 @@ export async function closeAgentBrowser(options: { force?: boolean } = {}): Prom
     pressureTimer = null
   }
   const held = context ?? (await opening?.catch(() => null)) ?? null
-  // Only forget the window this call is actually closing. A teardown that
-  // started before a newer session opened its own window would otherwise
-  // erase the live one's handle and leave the session driving a ghost.
   if (held === context) {
     context = null
     lanes.clear()

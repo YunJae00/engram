@@ -3,22 +3,16 @@ import { textOf } from './engine-claude.js'
 import { flog } from './flog.js'
 import { spawnRuntime } from './process-client.js'
 
-// A runtime kept open for short answers while a comet works, so saying
-// something mid-work is answered in seconds instead of after a process
-// start. One question at a time; each carries everything it needs, so the
-// session's own memory is only a convenience and it is renewed often.
-
 const TURNS_MAX = 24
 const IDLE_MS = 60 * 60_000
 
-interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; /** How long it stays open unused (IDLE_MS). */ idleMs?: number }
+interface VoiceSpec { sdk: SessionSdk; binary: string; env?: NodeJS.ProcessEnv; workdir: string; model: string; idleMs?: number }
 
 export class VoiceSession {
   private inbox: SdkUserMessage[] = []
   private wake: (() => void) | undefined
   private waiting: { resolve(text: string): void; reject(error: Error): void } | undefined
   private turns = 0
-  // Questions given up on whose answers are still to come; those answers are dropped.
   private late = 0
   private idle: NodeJS.Timeout | undefined
   private readonly abort = new AbortController()
@@ -34,8 +28,6 @@ export class VoiceSession {
       options: {
         cwd: spec.workdir, env: spec.env, pathToClaudeCodeExecutable: spec.binary, spawnClaudeCodeProcess: spawnRuntime,
         abortController: this.abort, tools: [], strictMcpConfig: true, persistSession: false, settingSources: [], model: spec.model, effort: 'low',
-        // One sentence needs no thinking. grokbar: with it on, every first line took 4.6 s or more against a 1.5 s budget and none was ever shown;
-        // off, the same asks answer in 0.6-1.1 s (tmp/grokbar/b1-probe/voice-probe.mjs).
         thinking: { type: 'disabled' },
       },
     })
@@ -63,7 +55,6 @@ export class VoiceSession {
   }
 
   get ready(): boolean { return !this.closed && !this.waiting && this.late === 0 && this.turns < TURNS_MAX }
-  // Used up: replaced by a fresh one once nothing is waiting on it.
   get spent(): boolean { return this.turns >= TURNS_MAX && !this.waiting && this.late === 0 }
 
   ask(text: string, timeoutMs: number): Promise<string> {

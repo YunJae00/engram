@@ -4,7 +4,6 @@ import { systemVolumeTool } from './desktop-volume.js'
 type AgentToolContext = Parameters<AgentTool['run']>[1]
 export interface DesktopActionContext extends AgentToolContext {
   approveComputerControl?(lane: string): Promise<boolean>
-  // shown: the app's own name and the text about to go out, for the card only; the approval is still keyed by app and control.
   approveAppAction?(app: string, control: string, snapshot: string, scope?: string, shown?: { app?: string; sending?: string }): Promise<boolean>
 }
 
@@ -16,7 +15,6 @@ interface Consent {
 
 export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] {
   let refused = false
-  // The person said no to an action in this turn: it is not tried again through foreground control.
   let declined = false
   const allow = async (signal?: AbortSignal) => {
     signal?.throwIfAborted()
@@ -57,7 +55,6 @@ export function desktopOptIn(tools: AgentTool[], consent: Consent): AgentTool[] 
     name: 'permission_state',
     description: PERMISSION_STATE_DESCRIPTION,
     argsSchema: { type: 'object', properties: {}, additionalProperties: false },
-    // Loaded lazily so this module stays free of electron and the helper until the read is asked for.
     run: async (args, context) => {
       const [{ permissionStateTool }, { catalogHost }] = await Promise.all([import('./desktop-permission-state.js'), import('./desktop-access.js')])
       return permissionStateTool(catalogHost).run(args, context)

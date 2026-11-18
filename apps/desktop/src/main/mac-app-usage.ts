@@ -6,7 +6,6 @@ import type { AppUse } from 'core'
 const run = promisify(execFile)
 
 export function parseMacAppUse(raw: string): AppUse | undefined {
-  // mdls emits requested attributes in alphabetical order, separated by NUL.
   const [name, date, count] = raw.split('\0')
   const runs = Number(count), lastRun = Date.parse(date ?? '')
   if (!name || name === '(null)' || !Number.isSafeInteger(runs) || runs <= 0) return undefined

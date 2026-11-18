@@ -27,9 +27,6 @@ interface Sample {
   title: string
 }
 
-// The folding rule, pure for its test: same app+title extends the open span;
-// anything else closes it (returned for flushing when long enough) and opens
-// a new one.
 export interface OpenSpan extends Sample {
   startedAt: number
   lastSeenAt: number
@@ -61,7 +58,6 @@ interface ActivityState {
 let child: ProcessClient | null = null
 let ctx: VaultContext | null = null
 let open: OpenSpan | null = null
-// Apps the person keeps out: their windows are recorded as no activity at all.
 let appsOff = new Set<string>()
 export function setActivityAppsOff(apps: string[]): void { appsOff = new Set(apps.map(app => app.toLowerCase())) }
 
@@ -115,16 +111,6 @@ export async function setActivityWatchEnabled(enabled: boolean): Promise<void> {
   else stopActivityWatch()
 }
 
-// macOS twin of the PS sampler: an osascript (JXA) probe in a shell loop —
-// same 15s cadence, same "app|title" line protocol. Window TITLES need the
-// Accessibility permission; without it the probe still reports the app name
-// and the title arrives empty, which the fold handles like any other sample.
-// The loop condition is the app's own liveness, not `true`. This shell does
-// not write to the pipe it was given — only its osascript grandchild does —
-// so a dead parent never reaches it as EPIPE, and `while true` would keep
-// waking System Events every 15 seconds forever, one surviving loop per
-// unclean exit, across app restarts and unreachable by any reaper. Asking
-// after the pid that started us is what ends it.
 const MAC_SCRIPT = `while kill -0 ${process.pid} 2>/dev/null; do osascript -l JavaScript -e '
 const se = Application("System Events");
 const p = se.processes.whose({ frontmost: true })[0];
@@ -145,14 +131,11 @@ function startSampler(): void {
     child = samplerSpawn()
     child.stdin.end()
     child.stderr.resume()
-    // The sampler yields like every other background child (same rule as
-    // core/spawn.ts track): BELOW_NORMAL, best-effort.
     const sampler = child
     child.once('spawn', () => { if (sampler.pid !== undefined) {
       try {
         os.setPriority(sampler.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
       } catch {
-        /* already gone */
       }
     } })
   } catch (err) {
@@ -172,7 +155,6 @@ function startSampler(): void {
       if (at <= 0) return
       const appName = line.slice(0, at).trim()
       const title = line.slice(at + 1).trim()
-      // Engram watching itself is noise, and an empty title is a desktop.
       if (!appName || appName.toLowerCase() === 'engram' || isScreen(appName) || appsOff.has(appName.toLowerCase())) { onSample(null); return }
       onSample({ app: appName, title })
     })
@@ -200,7 +182,6 @@ export async function startActivityWatch(vault: VaultContext): Promise<void> {
   startToastLog(vault)
   void pruneOldDays(vault)
   const state = await readState()
-  // Default ON — the journal is the feature; the tray checkbox is the switch.
   if (state.enabled !== false) startSampler()
 }
 
@@ -236,7 +217,6 @@ export function stopActivityWatch(): void {
   }
 }
 
-// Per-app aggregation shared by the chat summary and the daily work log.
 function aggregate(spans: ActivitySpan[]): { app: string; ms: number; topTitles: string[] }[] {
   const byApp = new Map<string, { ms: number; titles: Map<string, number> }>()
   for (const span of spans) {
@@ -289,7 +269,6 @@ export function activityWindow(spans: ActivitySpan[], since: number, until: numb
 export async function readActivityRange(vault: VaultContext, since: number, until: number): Promise<ActivitySpan[]> {
   const dayMs = 86_400_000
   const spans: ActivitySpan[] = []
-  // Include spans opened just before the window, including a UTC date boundary.
   for (let day = Math.floor(since / dayMs) * dayMs - dayMs; day <= until; day += dayMs) spans.push(...await readDaySpans(vault, day))
   return activityWindow(spans, since, until)
 }
@@ -311,8 +290,6 @@ export function composeWorklog(day: string, spans: ActivitySpan[], minimumMs = 3
   ].join('\n')
 }
 
-// What the chat reads when a temporal question lands: today's (and
-// yesterday's) spans, folded per app with the longest-held titles.
 export async function activitySummary(vault: VaultContext, days: number): Promise<string | null> {
   const start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - Math.max(0, Math.min(days, 7) - 1))
   const spans = await readActivityRange(vault, start.getTime(), Date.now())

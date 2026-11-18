@@ -186,7 +186,7 @@ export class CodexEngine implements CloudEngine {
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
       }, abort.signal)
       if (job.jsonSchema) {
-        try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch { /* Keep malformed output for the existing parser to diagnose. */ }
+        try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch { }
       }
       yield { type: 'result', text }
     } catch (err) {
@@ -316,9 +316,6 @@ async function mcpCatalog(binary: string, cwd: string, env: Record<string, strin
 }
 export function forgetCodexCatalog(): void { catalogs.clear() }
 
-// `mcp list --json` writes the document on stdout. A stderr warning, including
-// Codex refusing to plant helper binaries under a temporary CODEX_HOME, is not
-// part of that document and must not make JSON.parse fail.
 export function mcpListJson(result: RunText): string {
   if (result.code !== 0) {
     const detail = commandText(result).trim()

@@ -3,19 +3,12 @@ import { auditDeck, deckBodyLayout, describeDeckFindings, faceFor, withoutMissin
 import { officeOutputName, saveOfficeOutput } from './office-output.js'
 import PptxGenJS from 'pptxgenjs'
 
-// A deck is written as a file, not clicked into PowerPoint one shape at a
-// time: the placement is decided here, but every colour and font comes from
-// the theme the caller supplies - this file holds none of its own. The file
-// then opens in whatever the person reads .pptx with.
-
 interface DeckSeries { name: string; values: number[] }
 interface DeckChart { type?: 'column' | 'line' | 'bar' | 'pie'; categories: string[]; series: DeckSeries[] }
 interface DeckTable { rows: (string | number)[][] }
 interface DeckSlide { title: string; subtitle?: string; bullets?: string[]; table?: DeckTable; chart?: DeckChart; notes?: string }
 interface DeckSpec { slides: DeckSlide[]; saveAs?: string; title?: string; theme: OfficeTheme }
 
-// Page mechanics only - the frame a wide slide is drawn on. Not brand, not
-// taste: the same numbers any 16:9 deck uses.
 const W = 13.33
 const H = 7.5
 const MARGIN = 0.7
@@ -92,10 +85,6 @@ function addChart(pptx: PptxGenJS, slide: PptxGenJS.Slide, chart: DeckChart, top
   })
 }
 
-// Renders the deck and returns the path it was written to; opens it for the
-// person unless asked not to.
-// The deck as bytes and the plain name it is handed in under; nothing is
-// written and no application is opened (QA 0.8.142 B11).
 export async function buildDeck(spec: DeckSpec): Promise<{ name: string; data: Buffer; slides: number }> {
   return { name: officeOutputName(spec.slides[0]?.title ?? spec.title ?? '', '.pptx', spec.saveAs, 'deck'), data: await composeDeck(spec), slides: spec.slides.length }
 }
@@ -114,7 +103,6 @@ async function composeDeck(spec: DeckSpec): Promise<Buffer> {
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'WIDE', width: W, height: H })
   pptx.layout = 'WIDE'
-  // c11c: each slide's title is a real title placeholder (<p:ph type="title"/>), so a title edit or check finds the title, not the first text.
   pptx.defineSlideMaster({ title: COVER, objects: [{ placeholder: { options: { name: 'title', type: 'title', x: MARGIN, y: 1.4, w: W - MARGIN * 2, h: 1.9 }, text: '' } }] })
   pptx.defineSlideMaster({ title: PAGE, objects: [{ placeholder: { options: { name: 'title', type: 'title', x: MARGIN, y: 0.35, w: W - MARGIN * 2, h: 1.0 }, text: '' } }] })
   spec.slides.forEach((slide, index) => {

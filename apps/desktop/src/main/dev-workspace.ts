@@ -99,7 +99,6 @@ export async function devCommit(cwd: string, paths: string[], message: string, h
     const file = state.files.find(file => file.path === path)
     if (file?.status.includes('R') && file.previousPath) commitPaths.add(file.previousPath)
   }
-  // Only selected paths are committed; unrelated staged work is left in the index.
   await runDevGit(cwd, ['add', '--', ...paths], hooks)
   await runDevGit(cwd, ['commit', '--only', '-m', message.trim(), '--', ...commitPaths], hooks)
 }
