@@ -28,6 +28,13 @@ const LAUNCH_MIN_FREE = 1.2e9
 const BLOCKED_RESOURCES = new Set(['media'])
 
 const VIEW_WIDTH = 1280
+
+export function webTwin(env: NodeJS.ProcessEnv = process.env): { file: string; update: boolean } | undefined {
+  const file = env['ENGRAM_WEB_TWIN'], mode = env['ENGRAM_WEB_TWIN_MODE']
+  if (!file || (mode !== 'record' && mode !== 'replay')) return undefined
+  if (mode === 'replay' && !existsSync(file)) return undefined
+  return { file, update: mode === 'record' }
+}
 const VIEW_HEIGHT_MIN = 240
 const VIEW_HEIGHT_MAX = 2200
 const viewHeight = 860
@@ -329,6 +336,15 @@ async function ensureContext(): Promise<Ctx> {
       if (BLOCKED_RESOURCES.has(route.request().resourceType())) return route.abort()
       return route.continue()
     })
+    const twin = webTwin()
+    if (twin) {
+      await ctx.route('**/*', (route) => {
+        flog('web-twin', 'miss')
+        return route.fallback()
+      })
+      await ctx.routeFromHAR(twin.file, { update: twin.update, notFound: 'fallback', updateContent: 'embed' })
+      ctx.on('request', () => flog('web-twin', 'request'))
+    }
     watchStalledScripts(ctx)
     ctx.on('close', () => {
       if (context === ctx) {

@@ -5,7 +5,28 @@ import {
   findChrome,
   installedBrowsers,
   setAgentBrowser,
+  webTwin,
 } from '../src/main/agent-browser.js'
+import { fileURLToPath } from 'node:url'
+
+describe('webTwin', () => {
+  const here = fileURLToPath(import.meta.url)
+
+  it('stays off when nothing is set or the mode is unknown', () => {
+    expect(webTwin({})).toBeUndefined()
+    expect(webTwin({ ENGRAM_WEB_TWIN: here })).toBeUndefined()
+    expect(webTwin({ ENGRAM_WEB_TWIN: here, ENGRAM_WEB_TWIN_MODE: 'mirror' })).toBeUndefined()
+  })
+
+  it('replays only a file that exists', () => {
+    expect(webTwin({ ENGRAM_WEB_TWIN: `${here}.absent.har`, ENGRAM_WEB_TWIN_MODE: 'replay' })).toBeUndefined()
+    expect(webTwin({ ENGRAM_WEB_TWIN: here, ENGRAM_WEB_TWIN_MODE: 'replay' })).toEqual({ file: here, update: false })
+  })
+
+  it('records into a new file', () => {
+    expect(webTwin({ ENGRAM_WEB_TWIN: `${here}.fresh.har`, ENGRAM_WEB_TWIN_MODE: 'record' })).toEqual({ file: `${here}.fresh.har`, update: true })
+  })
+})
 
 describe('classifyWall', () => {
   it('reads a human check from title or text', () => {
