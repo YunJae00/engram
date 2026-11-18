@@ -63,7 +63,7 @@ const within = async <T>(work: Promise<T>, ms: number, signal?: AbortSignal): Pr
 }
 
 async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number, signal?: AbortSignal): Promise<WrittenProblem[] | undefined> {
-  return readProblems(await within(check(checkPrompt(input, draft), ms), ms, signal), input.rewrite || input.askConstraints)
+  return readProblems(await within(check(checkPrompt(input, proseOf(draft)), ms), ms, signal), input.rewrite || input.askConstraints)
 }
 
 export type CheckOutcome = 'unchecked' | 'clean' | 'repaired' | 'kept' | 'refused'
@@ -73,9 +73,30 @@ const SOFT: ReadonlySet<string> = new Set(['register', 'shape'])
 const ROW = /^\s*(?:[-*•·#>|]|\d+[.)]\s)/
 const words = (text: string): string => text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s*(?:[-*•·#>|]+|\d+[.)])\s*/, '').replace(/[\s*_`"'“”‘’|:：·—–-]/g, '')
 const LEADING_LINKS = /^(?:\[[^\]\n]*\]\([^)\s]*\)[\s·,]*)+/u
+const FENCE = /^[ \t]*(`{3,}|~{3,})/
+/** The fenced blocks of a text (```replies, code, any fence), by line: an unclosed fence runs to the end. */
+function fencedBlocks(text: string): { from: number; to: number; closed: boolean; empty: boolean }[] {
+  const lines = text.split('\n'), out: { from: number; to: number; closed: boolean; empty: boolean }[] = []
+  for (let at = 0; at < lines.length; at++) {
+    const mark = FENCE.exec(lines[at]!)?.[1]
+    if (!mark) continue
+    const close = lines.findIndex((line, j) => j > at && line.trim().startsWith(mark[0]!.repeat(mark.length)) && !line.trim().replace(/^[`~]+/, '').trim())
+    const to = close < 0 ? lines.length - 1 : close
+    out.push({ from: at, to, closed: close >= 0, empty: lines.slice(at + 1, close < 0 ? lines.length : close).every(line => !line.trim()) })
+    at = to
+  }
+  return out
+}
+/** Lines that belong to a fenced block, fence lines included: machine blocks, never prose. */
+export const fencedLines = (text: string): Set<number> => new Set(fencedBlocks(text).flatMap(b => Array.from({ length: b.to - b.from + 1 }, (_, k) => b.from + k)))
+/** Every fence is closed and holds something. */
+export const wellFormed = (text: string): boolean => fencedBlocks(text).every(b => b.closed && !b.empty)
+/** The text without its fenced blocks: what a check reads. */
+export const proseOf = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((_, at) => !fenced.has(at)).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
 export function messageUnits(text: string): { line: number; text: string }[] {
+  const fenced = fencedLines(text)
   return text.split('\n').flatMap((line, at) => {
-    if (!line.trim()) return []
+    if (!line.trim() || fenced.has(at)) return []
     if (ROW.test(line)) return [{ line: at, text: line }]
     const sentences: string[] = []
     for (const one of line.trim().split(/(?<=[.!?。！？])\s+(?=\S)/u)) {
@@ -148,8 +169,8 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     if (texts.length) shown.push(own.some(({ i }) => replace.has(i)) ? lead + texts.join(' ') : line)
     for (const { i } of own) shown.push(...(inserts.get(i) ?? []))
   })
-  const text = noEmptyFences(shown.join('\n')).replace(/\n{3,}/g, '\n\n').trim()
-  return text && text !== draft.trim() ? text : undefined
+  const text = shown.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return text && text !== draft.trim() && (!wellFormed(draft) || wellFormed(text)) ? text : undefined
 }
 async function scopedRepair(quick: QuickText, input: CheckInput, draft: string, problems: readonly Problem[], ms: number, signal?: AbortSignal): Promise<string | undefined> {
   const units = messageUnits(draft), allowed = new Set(problems.flatMap(p => p.kind === 'missing' ? [] : quotedUnits(units, p.quote)))
@@ -164,10 +185,21 @@ export function withoutSentences(text: string, problems: readonly Problem[]): st
     const left = own.filter(({ i }) => !gone.has(i))
     return !left.length ? [] : left.length === own.length ? [line] : [/^\s*/.exec(line)![0] + left.map(({ u }) => u.text).join(' ')]
   }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
-  return noEmptyFences(out)
+  return out
 }
-const noEmptyFences = (text: string): string => text.replace(/^[ \t]*```[^\n`]*\n(?:[ \t]*\n)*[ \t]*```[ \t]*$\n?/gm, '').replace(/\n{3,}/g, '\n\n').trim()
 
+const SYLLABLE = /[\uac00-\ud7a3]/
+const final = (syllable: string): number => (syllable.charCodeAt(0) - 0xac00) % 28
+const withFinal = (syllable: string, jong: number): string => String.fromCharCode(syllable.charCodeAt(0) - final(syllable) + jong)
+const NIEUN = 4, MIEUM = 16
+/** A plain-form statement (…다) as its noun phrase (…ㅁ/음): 정한다 → 정함, 먹는다 → 먹음, 끝났다 → 끝났음. Anything else: undefined. */
+export function nounPhrase(sentence: string): string | undefined {
+  const stem = sentence.endsWith('다') ? sentence.slice(0, -1) : '', last = stem.at(-1) ?? '', before = stem.at(-2) ?? ''
+  if (!SYLLABLE.test(last)) return undefined
+  if (last === '는' && SYLLABLE.test(before) && final(before)) return `${stem.slice(0, -1)}음`
+  if (final(last) === NIEUN) return stem.slice(0, -1) + withFinal(last, MIEUM)
+  return final(last) ? `${stem}음` : stem.slice(0, -1) + withFinal(last, MIEUM)
+}
 function inOneRegister(text: string, problems: readonly Problem[], data: unknown): string {
   const units = messageUnits(text), flagged = new Set(problems.filter(p => p.kind === 'register').flatMap(p => quotedUnits(units, p.quote)))
   if (!flagged.size) return text
@@ -180,7 +212,13 @@ function inOneRegister(text: string, problems: readonly Problem[], data: unknown
     if (words(core).length >= 2 && held.includes(words(core))) framed.set(i, `${marker}"${core}"라고 적혀 있어요.${links ? ` ${links.trim()}` : ''}`)
     else cut.add(i)
   }
-  if (cut.size && cut.size === units.length) cut.clear()
+  // The only sentence is never dropped: it is said as a noun phrase of its own words (the note form a heading or label takes).
+  if (cut.size && cut.size === units.length) for (const i of [...cut]) {
+    const unit = units[i]!.text, marker = /^\s*(?:[-*•·>]|\d+[.)])\s*/.exec(unit)?.[0] ?? '', links = /(?:\s*\[[^\]]*\]\([^)\s]*\))+\s*$/.exec(unit)?.[0] ?? ''
+    const said = nounPhrase(unit.slice(marker.length, unit.length - links.length).trim().replace(/[.。!]+$/u, ''))
+    cut.delete(i)
+    if (said) framed.set(i, `${marker}${said}${links ? ` ${links.trim()}` : ''}`)
+  }
   return text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.some(({ i }) => cut.has(i) || framed.has(i))) return [line]
@@ -219,10 +257,17 @@ export async function repairedWrite(input: CheckInput & {
     if (ok !== undefined) { text = ok; repaired = true }
   }
   let still: readonly WrittenProblem[] = problems
-  if (repaired) still = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? (await writtenProblems(input.check, input, text, time(), signal))?.filter(p => !SOFT.has(p.kind)) ?? [] : []
+  if (repaired) {
+    const again = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? await writtenProblems(input.check, input, text, time(), signal) : []
+    // A repair never loses a property its draft had: one that writes a sentence in another register the draft did not have is refused.
+    const drafted = words(proseOf(input.draft))
+    if (again?.some(p => p.kind === 'register' && words(p.quote).length >= 2 && !drafted.includes(words(p.quote)))) { text = input.draft; repaired = false }
+    else still = again?.filter(p => !SOFT.has(p.kind)) ?? []
+  }
   const gone = still.filter(p => REMOVABLE.has(p.kind)), left = still.filter(p => !REMOVABLE.has(p.kind) && !SOFT.has(p.kind))
   if (gone.length) text = (input.cut ?? withoutSentences)(text, gone)
   text = inOneRegister(text, problems, input.data)
+  if (wellFormed(input.draft) && !wellFormed(text)) text = input.draft
   return done(text, !text.trim() || left.length ? 'refused' : repaired ? 'repaired' : 'kept', all, left)
 }
 export async function checkedWrite(input: Parameters<typeof repairedWrite>[0] & {

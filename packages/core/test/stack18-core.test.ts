@@ -52,12 +52,14 @@ test('H5: a writer that ended with nothing did not "find" nothing: its line says
   expect(mergedReport([part('m3', '하람', '귤 가격 알아봐', { state: 'done', unfinished: true })])).toBe('하람은 이번엔 못 찾았어요.')
 })
 
-test('c18b D1 cause: a repair or a removal that empties a fenced block leaves no empty code box behind', () => {
+test('c18b D1 cause: a repair or a removal never empties a fenced block (c19b: a fenced block is not prose, so it is never touched)', () => {
   const draft = ['분기 워크숍 정리예요.', '', '정한 것', '- 장소는 강릉으로 해요.', '', '```', '원하시면 표로도 만들어 드릴까요?', '```'].join('\n')
-  const units = messageUnits(draft), offer = units.findIndex(u => u.text.startsWith('원하시면'))
-  const repaired = spliced(draft, JSON.stringify({ replace: { [String(offer + 1)]: '' } }), new Set([offer]))!
-  expect(repaired).toBe('분기 워크숍 정리예요.\n\n정한 것\n- 장소는 강릉으로 해요.')
-  expect(withoutSentences(draft, [{ kind: 'asks', quote: '원하시면 표로도 만들어 드릴까요?', why: '' }])).toBe('분기 워크숍 정리예요.\n\n정한 것\n- 장소는 강릉으로 해요.')
+  // c19b: the fenced line is no unit, so a repair cannot name it and a removal cannot reach it; the block comes back byte-equal.
+  expect(messageUnits(draft).some(u => u.text.startsWith('원하시면'))).toBe(false)
+  expect(messageUnits(draft)).toHaveLength(3)
+  expect(spliced(draft, JSON.stringify({ replace: { '4': '' } }), new Set([3]))).toBeUndefined()
+  expect(withoutSentences(draft, [{ kind: 'asks', quote: '원하시면 표로도 만들어 드릴까요?', why: '' }])).toBe(draft)
+  // A block that still holds something stays.
   const code = '이렇게 쓰면 돼요.\n```\nSELECT 1\n```\n표로도 드릴까요?'
   expect(withoutSentences(code, [{ kind: 'asks', quote: '표로도 드릴까요?', why: '' }])).toBe('이렇게 쓰면 돼요.\n```\nSELECT 1\n```')
 })

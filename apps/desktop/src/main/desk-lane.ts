@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, isOutsideAsk, repairedWrite, type WrittenProblem } from 'core'
+import { checkedWrite, fencedLines, isOutsideAsk, repairedWrite, type WrittenProblem } from 'core'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아니라)\s*\S+(이야|야|이에요|예요|입니다)|\bremember (that|this|my|i)\b/i
@@ -402,12 +402,18 @@ export const RESHAPE_DUE_MS = 2 * RESHAPE_MS
 export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string, ms?: number) => Promise<string>) | undefined, ask?: string, now: () => number = Date.now): Promise<string | undefined> {
   if (!quick || !reshapeCandidate(message, lastReply)) return undefined
   const due = now() + RESHAPE_DUE_MS, prompt = reshapePrompt(message, lastReply!, ask)
-  const draft = reshaped(await quick(prompt, RESHAPE_MS).catch(() => ''), lastReply!)
+  const raw = await quick(prompt, RESHAPE_MS).catch(() => ''), draft = reshaped(raw, lastReply!)
   if (!draft) return undefined
+  // A shorter draft that passed the host's form test goes out as written: a meaning rewrite of it can only bring back the longer form.
+  if (formOf(raw) === 'shorter') return draft
   return checkedWrite({
     data: { earlierAsk: ask?.trim() ?? '', earlierReply: lastReply! }, ask: message, rewrite: true, draft, check: quick, due, now,
+    accept: text => reshaped(withReply(raw, text), lastReply!),
   })
 }
+const said = (raw: string): Record<string, unknown> => { try { const one: unknown = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); return one && typeof one === 'object' ? one as Record<string, unknown> : {} } catch { return {} } }
+const formOf = (raw: string): unknown => said(raw)['form']
+const withReply = (raw: string, reply: string): string => JSON.stringify({ ...said(raw), reply })
 function reshaped(raw: string, lastReply: string): string | undefined {
   let said: { form?: unknown; was?: unknown; reply?: unknown }
   try { said = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) } catch { return undefined }
@@ -434,6 +440,8 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   if (!input.quick || !input.draft.trim() || !(input.fromSource || structured(input.draft))) return input.draft
   const out = await repairedWrite({
     data: { source: input.source.slice(0, SOURCE_CHARS) }, ask: input.ask, parts: true, draft: input.draft, check: input.quick, cut: withoutQuoted,
+    // A repair never loses a property its draft had: each source line under one part (a missing part is moved by withPart, never copied).
+    accept: text => !onceEach(input.draft, input.source) || onceEach(text, input.source) ? text : undefined,
     due: input.since + DESK_CHECK_DUE_MS, ...(input.signal ? { signal: input.signal } : {}), ...(input.now ? { now: input.now } : {}),
     log: (outcome, problems) => input.log?.(outcome, problems.map(problem => problem.kind)),
   })
@@ -448,10 +456,27 @@ export function withPart(text: string, problem: Pick<WrittenProblem, 'quote' | '
   if (!lines.length || !name) return text
   const wanted = lines.map(flat)
   const same = (line: string): boolean => { const f = flat(line); return f.length >= 2 && wanted.some(w => w === f || (row(line) && f.length >= 4 && (f.includes(w) || w.includes(f)))) }
-  const at = text.split('\n'), gone = new Set(at.flatMap((line, i) => same(line) ? [i] : []))
-  const rest = withoutLines(at, gone)
-  return `${rest ? `${rest}\n\n` : ''}${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`
+  const all = text.split('\n'), fenced = fencedLines(text)
+  let end = all.length
+  while (end > 0 && (fenced.has(end - 1) || !all[end - 1]!.trim())) end--
+  const at = all.slice(0, end), tail = all.slice(end).join('\n').trim(), gone = new Set(at.flatMap((line, i) => !fenced.has(i) && same(line) ? [i] : []))
+  return [withoutLines(at, gone), `${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`, tail].filter(Boolean).join('\n\n')
 }
+/** No source line stands on two rows of the answer, however reworded: each row counts for the source line it is closest to. */
+export function onceEach(text: string, source: string): boolean {
+  const from = source.split('\n').map(line => bare(line).replace(/[.,]/g, '')).filter(line => line.length >= 4).map(line => pairs(line))
+  if (!from.length) return true
+  const fenced = fencedLines(text), taken = new Set<number>()
+  return text.split('\n').every((line, i) => {
+    if (fenced.has(i) || !ITEM.test(line)) return true
+    const own = pairs(bare(line).replace(/[.,]/g, '')), score = from.map(one => shared(own, one)), best = score.indexOf(Math.max(...score))
+    if (score[best]! < ONE_LINE) return true
+    if (taken.has(best)) return false
+    taken.add(best)
+    return true
+  })
+}
+const ONE_LINE = 0.5
 const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
 const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\-–—]/g, '').replace(/\s+/g, '')
 const row = (line: string): boolean => ITEM.test(line) || /\S\s*[:：—–]\s*\S/.test(line)
@@ -464,20 +489,21 @@ const runOf = (lines: readonly string[], at: number): number[] => {
   return Array.from({ length: b - a + 1 }, (_, k) => a + k)
 }
 export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
-  const lines = text.split('\n'), gone = new Set<number>()
+  const lines = text.split('\n'), gone = new Set<number>(), fenced = fencedLines(text)
   for (const { quote, kind } of problems) {
     const q = kind === 'missing' ? '' : bare(quote)
     if (!q) continue
-    const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
+    const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && !fenced.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
     const whole = at.filter(({ b }) => b.includes(q)), cands = whole.length ? whole : at
     const named = cands.filter(({ i, b }) => { const ctx = bare(heading(lines, i)) + b; return ctx.length > b.length && (ctx.includes(q) || q.includes(ctx)) })
-    for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) gone.add(j)
+    for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) if (!fenced.has(j)) gone.add(j)
   }
   return withoutLines(lines, gone)
 }
 function withoutLines(lines: readonly string[], gone: Set<number>): string {
+  const fenced = fencedLines(lines.join('\n'))
   lines.forEach((line, i) => {
-    if (!line.trim() || row(line) || gone.has(i)) return
+    if (!line.trim() || row(line) || gone.has(i) || fenced.has(i)) return
     const under: number[] = []
     for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || row(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
     if (under.length && under.every(j => gone.has(j))) gone.add(i)

@@ -254,7 +254,8 @@ test('r3: an unrepaired register line is a quotation when the notes hold it, gon
   expect(own.text).not.toContain('낮춘다')
   expect(own.text).toContain('비품 구매는 팀장이 승인해요.')
   const alone = '출장비 한도는 30만 원으로 낮춘다.'
-  expect((await repairedWrite({ data: {}, ask: '요약해줘', draft: alone, check: late().quick, due: Date.now() + 15_000 })).text).toBe(alone)
+  // c19b (c18b r3 #1): the only sentence is said as a noun phrase of its own words, never kept in the plain form.
+  expect((await repairedWrite({ data: {}, ask: '요약해줘', draft: alone, check: late().quick, due: Date.now() + 15_000 })).text).toBe('출장비 한도는 30만 원으로 낮춤')
 })
 
 test('r3: items that come after a sentence about who made them are moved first; a draft already items-first is untouched', () => {
