@@ -33,7 +33,6 @@ async function launch(theme: 'light' | 'dark', prepare?: Prepare): Promise<{ pag
   return { page, cache }
 }
 
-// Rows and sections carry no menu of any kind: renaming, moving, hiding and deleting are asked for in chat.
 const menus = (page: Page) => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
 const row = (page: Page, id: string) => page.locator('.app-sidebar').getByTestId(`bot-${id}`)
 const bot = (page: Page, id: string) => page.evaluate(async one => (await window.engram.botsList()).find(item => item.id === one), id)
@@ -61,7 +60,6 @@ test.describe('sidebar bots without a menu', () => {
       await expect(item).toBeFocused()
     }
     await expect(row(page, 'vis-budget')).toHaveText(/Budget review/)
-    // The one thing a row does: open its chat. No title pill or info pane comes with it.
     await row(page, 'vis-budget').click()
     await expect(row(page, 'vis-budget')).toHaveClass(/active/)
     await expect(page.getByTestId('bots-thread')).toContainText('January spending is within the plan')
@@ -107,7 +105,6 @@ test.describe('sidebar bots without a menu', () => {
     await group.getByTestId('bot-vis-budget').click()
     await expect(group.getByTestId('bot-vis-budget')).toHaveClass(/active/)
     await expect(page.getByTestId('bots-thread')).toContainText('January spending is within the plan')
-    // Core clears hidden only on an own undefined; hidden: false is rejected.
     await page.evaluate(() => window.engram.botUpdate('vis-budget', { hidden: undefined }))
     await expect.poll(async () => { const one = await bot(page, 'vis-budget'); return one && Object.hasOwn(one, 'hidden') }).toBe(false)
     await expect(group.getByTestId('bot-vis-budget')).toHaveCount(0)

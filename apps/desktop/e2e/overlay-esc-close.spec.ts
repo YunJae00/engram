@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   project = await mkdtemp(join(tmp, 'e2e-overlay-esc-project-'))
   await writeFile(join(project, 'example.ts'), 'export const answer = 42\n')
   const paths = await initVault(vault, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   for (const name of ['Overlay chat', 'Second chat', 'Third chat', 'Fourth chat']) seats.push((await createBot(paths, { name })).id)
   botId = seats[0]!
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-overlay-esc-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1' } })
@@ -58,7 +58,6 @@ test('keyboard open, Esc closes and typing lands in the composer', async () => {
   await page.keyboard.press('ControlOrMeta+B')
   await expectOpen()
   await screenshot('overlay-esc-before.png')
-  // The sidebar has no search field to take an Esc first.
   await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'Search conversations' })).toHaveCount(0)
   await page.keyboard.press('Escape')
@@ -102,7 +101,6 @@ test('right-clicking a sidebar row opens no menu, and Esc closes the sidebar', a
   await trigger.click({ button: 'right' })
   await expect(page.locator('.sidebar-menu')).toHaveCount(0)
   await expectOpen()
-  // The row is still a plain way into its chat.
   await expect(trigger).toBeVisible()
   await page.keyboard.press('Escape')
   await expectClosed()
@@ -123,7 +121,6 @@ test('right-clicking empty sidebar space opens no create menu, and Esc closes th
 
 test('IME composition Esc is ignored', async () => {
   await openByPointer()
-  // The search field is gone; the composing Esc is sent from the sidebar's "+" button instead.
   await page.getByTestId('sidebar-create').evaluate(input => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true }))
     const legacy = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })

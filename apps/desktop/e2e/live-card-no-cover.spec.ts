@@ -68,7 +68,6 @@ test('a live card covers no chat bubble', async () => {
         const box = rect(node)
         if (box.top < view.top || box.bottom > view.bottom || box.right - box.left < 1) return []
         const style = getComputedStyle(node)
-        // Inner corners: the content box inset 4px, clear of the rounded border.
         const left = box.left + parseFloat(style.paddingLeft) + 4, right = box.right - parseFloat(style.paddingRight) - 4
         const top = box.top + parseFloat(style.paddingTop) + 4, bottom = box.bottom - parseFloat(style.paddingBottom) - 4
         const points = [[left, top], [right, top], [left, bottom], [right, bottom], [(box.left + box.right) / 2, (box.top + box.bottom) / 2]]

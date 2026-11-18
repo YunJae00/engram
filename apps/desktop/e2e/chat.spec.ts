@@ -151,7 +151,6 @@ test('the conversation survives leaving and re-entering the tab', async () => {
 })
 test('the composer + only attaches files, and the chat has no title pill, info pane, memory panel or model picker', async () => {
   await expect(page.locator('.bots-head button')).toHaveCount(0)
-  // The composer's + only attaches files.
   await expect(page.getByTestId('bots-memory-toggle')).toHaveCount(0)
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
   await expect(page.getByTestId('composer-web')).toHaveCount(0)
@@ -161,7 +160,6 @@ test('the composer + only attaches files, and the chat has no title pill, info p
   await page.getByTestId('bots-input-add').click()
   await chooser
   await expect(page.locator(':popover-open')).toHaveCount(0)
-  // No title pill, info pane or memory panel: what the bot remembers is its own data, read and forgotten through the app.
   for (const id of ['bots-title-pill', 'bot-info-pane', 'bots-memory']) await expect(page.getByTestId(id)).toHaveCount(0)
   await expect(page.locator('.bots-memory')).toHaveCount(0)
   const botId = (await page.locator('.bots-row.active').getAttribute('data-testid'))!.slice('bot-'.length)
@@ -196,8 +194,6 @@ test('a question just sent and a draft not yet sent both survive a tab switch', 
   await composer.fill('Where do we deploy from?')
   await composer.press('Enter')
   await openActivity(page, 'list')
-  // The view stays mounted and hidden now - coming back is instant and the
-  // thread is exactly where it was.
   await expect(page.getByTestId('bots-view')).toBeHidden()
   await openActivity(page, 'bots')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user').last()).toContainText('Where do we deploy from?')
@@ -261,7 +257,6 @@ test('conversation keeps narration between compact activity groups and shows vis
   await expect(page.locator('.bubble-msg.assistant').last().locator('.bubble-msg-body a')).toHaveCount(0)
   await expect(page.locator('.bubble-msg.assistant').last().locator('.answer-sites a')).toHaveAttribute('href', 'https://example.com/research')
   expect(await page.locator('.bubble-msg-body h2').evaluate(node => parseFloat(getComputedStyle(node).fontSize) / parseFloat(getComputedStyle(node.parentElement!).fontSize))).toBeCloseTo(1.12)
-  // No page was really opened, so there is no browser card to put away (grokbar c3a: no card when no page is open).
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expect(page.getByTestId('preview-card-collapsed')).toHaveCount(0)
   await expect(page.locator('.web-pane')).toBeHidden()
@@ -287,8 +282,6 @@ test('request errors keep readable padding and show one plain line with no detai
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(900, 720))
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
-  // A resized, hidden native window needs a compositor frame before Playwright
-  // can observe two stable frames for a click. Keep normal click hit-testing.
   await app.evaluate(async ({ BrowserWindow }) => { await BrowserWindow.getAllWindows()[0]!.webContents.capturePage() })
   if (await page.getByTestId('app-sidebar-open').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await page.getByTestId(`bot-${bot.id}`).click()

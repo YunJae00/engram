@@ -4,7 +4,6 @@ import { join } from 'node:path'
 
 export async function checkMissionLiveView(app: ElectronApplication, page: Page, siteUrl: string, browserPort: number, output: string): Promise<void> {
   const bots = await page.evaluate(async () => {
-    // The watched conversation, not the primary Engram bot that a v2 list always starts with.
     const first = (await window.engram.botsList()).find((bot) => bot.name === 'Watching')!
     const second = await window.engram.botCreate({ name: 'Parallel watch', purpose: '' })
     const third = await window.engram.botCreate({ name: 'Third watch', purpose: '' })
@@ -23,10 +22,8 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
     return ready.every((preview) => Boolean(preview.data))
   }, { timeout: 30000 }).toBe(true)
   expect(await page.evaluate(() => window.engram.agentState())).toEqual(before)
-  // One chat view: there is no split view to watch them side by side.
   await expect(page.locator('[data-testid^="mission-"]')).toHaveCount(0)
   await expect(page.locator('.mini-chat')).toHaveCount(0)
-  // Each bot's sidebar row opens its chat with its own page beside it, never another bot's.
   const open = async (index: number, url: string) => {
     const row = page.getByTestId(`bot-${bots[index]!.id}`)
     await row.click()
@@ -48,7 +45,6 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
       if (index >= 0) counts[index]!++
     })
     try {
-      // No view watches several lanes any more, so the test holds the lease itself.
       await window.engram.missionWatch(lanes)
       await Promise.all(lanes.map((lane) => window.engram.agentGo(`${url}motion`, lane)))
       await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -63,7 +59,6 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
   }, { url: siteUrl, ids: bots.map((bot) => bot.id) })
   console.log('simultaneous motion frames in 3s:', simultaneous)
   expect(simultaneous.every((count) => count > 15)).toBe(true)
-  // Two captures wake the hidden compositor before reading its current frame.
   const shot = await app.evaluate(async ({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find((one) => !one.isDestroyed() && one.webContents.getURL().includes('index.html'))
     if (!win) throw new Error('no app window to photograph')
@@ -73,7 +68,6 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
   })
   await writeFile(join(output, 'single-live.png'), Buffer.from(shot, 'base64'))
   await open(1, `${siteUrl}typed?q=1`)
-  // Selection is not restored on load; the chosen chat still opens from its row with its own page.
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60000 })
   await open(3, `${siteUrl}typed?q=3`)
@@ -90,7 +84,6 @@ export async function checkMissionLiveView(app: ElectronApplication, page: Page,
     }
   }, `bot-${bots[3]!.id}`)
   const sharpWidth = await page.locator('.web-pane-stage').evaluate((node) => Math.max(360, Math.min(1920, Math.round(node.getBoundingClientRect().width / 8) * 8)) * 2)
-  // Navigation commits before the new document can receive wheel input.
   try {
     await expect.poll(() => page.getByTestId('web-pane').locator('canvas').evaluate((node) => {
       const canvas = node as HTMLCanvasElement

@@ -74,8 +74,6 @@ test.describe('avatar picker', () => {
     await expect(page.getByTestId('bots-thread')).toBeVisible()
     for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-info-avatar', 'avatar-picker']) await expect(page.getByTestId(id)).toHaveCount(0)
     const picker = await openPicker(page)
-    // Each orb's glow is drawn on a transparent box half again as large as the orb, so the last column's box passes the picker's own edge by design.
-    // What must hold is what a person sees: every cell sits inside the picker and the picker sits inside the dialog.
     expect(await picker.evaluate(node => {
       const box = node.getBoundingClientRect(), outer = node.closest('dialog')!.getBoundingClientRect()
       const cells = [...node.querySelectorAll('.avatar-picker-cell')].map(cell => cell.getBoundingClientRect())
@@ -97,7 +95,6 @@ test.describe('avatar picker', () => {
     const made = await page.evaluate(async known => (await window.engram.botsList()).find(bot => !known.includes(bot.id))!.id, [...ids])
     await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', 'orb-lilac')
     await expect(page.locator(`[data-testid="bot-${made}"] .bot-avatar`)).toHaveAttribute('data-character', 'orb-lilac')
-    // An existing bot's face is changed through the app, not through a pane.
     await page.evaluate(id => window.engram.botUpdate(id, { avatar: { character: 'orb-teal' } }), CHAT_ID)
     await expect.poll(() => avatarOf(page, CHAT_ID)).toEqual({ character: 'orb-teal' })
     await expect(page.locator(`[data-testid="bot-${CHAT_ID}"] .bot-avatar`)).toHaveAttribute('data-character', 'orb-teal')
@@ -162,7 +159,6 @@ test.describe('avatar picker', () => {
     await check(page.getByTestId('create-bot-dialog'), picker, 'new-bot-dialog')
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
-    // No details pane to open a second picker in: an empty thread shows the bot's one large face.
     const earlier = page.getByTestId('sidebar-earlier')
     if (!await page.getByTestId('bot-vis-new').isVisible() && await earlier.isVisible()) await earlier.click()
     await page.getByTestId('bot-vis-new').click()

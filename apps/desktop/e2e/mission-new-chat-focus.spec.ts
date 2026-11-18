@@ -57,7 +57,6 @@ test('a new chat made with + takes the keyboard, another chat keeps its draft, a
   await expect(input).toBeFocused()
   await expect(input).toHaveValue('hello')
 
-  // Each chat keeps its own draft across switches.
   await other.click()
   await expect(other).toHaveClass(/active/)
   await expect(input).toHaveValue('Keep this draft')

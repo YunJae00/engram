@@ -18,7 +18,7 @@ test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const root = await mkdtemp(join(TMP, 'e2e-conversation-search-'))
   const paths = await initVault(root, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   target = await createBot(paths, { name: 'Weekly sync notes' })
   for (const [role, text] of [['user', '회의코드 QX-7731 준비해 주세요'], ['assistant', 'QX-7731 agenda is drafted.'], ['user', 'Add the budget line.'], ['assistant', 'Updated the 견적서 summary.']] as const) await appendBotTurn(paths, target.id, { role, text, at: OLD })
   other = await createBot(paths, { name: 'Quarterly budget review' })
@@ -53,13 +53,11 @@ test('an old, unopened conversation in a collapsed folder opens from its folder 
   const otherRow = page.getByTestId(`bot-${other.id}`)
   await expect(otherRow).toBeVisible()
   const looseX = (await otherRow.boundingBox())!.x
-  // With no 24h filter (bot sidebar redesign) the old conversation is listed, but its collapsed folder keeps it out of sight.
   await expect(targetRow).toBeHidden()
   const head = page.getByTestId(`sidebar-folder-${before.chat.folders.find(one => one.name === 'Archive')!.id}`).locator('.sidebar-folder-head .sidebar-item-main')
   await expect(head).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
   await expect(page.getByTestId('app-sidebar').locator('.sidebar-search, input, textarea')).toHaveCount(0)
-  // The words of earlier messages are found where the chat looks them up, whatever their case.
   for (const query of ['QX-7731', 'qx-7731', '견적서']) {
     const hits = await page.evaluate(q => window.engram.botsSearch(q), query)
     expect(hits.map(hit => hit.id)).toEqual([target.id])
@@ -69,7 +67,6 @@ test('an old, unopened conversation in a collapsed folder opens from its folder 
   await head.click()
   await expect(head).toHaveAttribute('aria-expanded', 'true')
   await expect(targetRow).toBeVisible()
-  // S16: a row inside a folder sits to the right of a loose row, so membership shows.
   expect((await targetRow.boundingBox())!.x).toBeGreaterThanOrEqual(looseX + 10)
   await targetRow.click()
   await expect(targetRow).toHaveClass(/active/)

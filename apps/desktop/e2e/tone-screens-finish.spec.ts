@@ -119,7 +119,6 @@ test('cream+ink screen finish and empty state', async () => {
     const error = page.locator('.bots-thread .bubble-msg.assistant.error')
     await expect(error).toBeVisible()
     const errorStyle = await error.evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor, line: getComputedStyle(node.querySelector('.answer-error p')!).color, extras: node.querySelectorAll('.answer-error-heading, button, details').length }))
-    // An error is one human line now: no heading, retry button or details (hux, REMOVE.md row 79).
     expect(errorStyle).toEqual({ color: DANGER, background: USER_BUBBLE, line: DANGER, extras: 0 })
     await shot('error-card.png')
 
@@ -144,7 +143,6 @@ test('cream+ink screen finish and empty state', async () => {
     await emptyState(research.id, '자료 조사')
     await shot('empty-research.png')
 
-    // The title pill and its info pane are gone: the empty thread itself shows who is on the other side.
     await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
     await expect(page.locator('[data-testid="bots-view"] [role="tab"]')).toHaveCount(0)
@@ -155,7 +153,6 @@ test('cream+ink screen finish and empty state', async () => {
     const settings = page.locator('[data-testid="settings-view"]')
     await expect(settings).toBeVisible()
     await shot('settings.png')
-    // Reading a probe never flips a real switch such as autostart, which changes OS login items.
     const toggleOn = await settings.evaluate(view => {
       const real = [...view.querySelectorAll<HTMLInputElement>('input.switch:checked')].find(one => one.getBoundingClientRect().width > 0)
       if (real) return getComputedStyle(real).backgroundColor
@@ -207,7 +204,6 @@ test('cream+ink screen finish and empty state', async () => {
     const rowAvatar = async () => { await expect(rowFace).toBeVisible(); return rowFace.getAttribute('data-character') }
     const character = await rowAvatar()
     expect(character).toBeTruthy()
-    // One chat view: no split buttons, and a draft waits in its own chat while another one is open.
     for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
     await expect(page.getByTestId('mission-control')).toHaveCount(0)
     await open(plain.id)

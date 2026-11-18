@@ -9,8 +9,6 @@ const ORD = ['첫 번째', '두 번째', '세 번째', '네 번째', '다섯 번
   '스물한 번째', '스물두 번째', '스물세 번째', '스물네 번째', '스물다섯 번째', '스물여섯 번째', '스물일곱 번째', '스물여덟 번째', '스물아홉 번째', '서른 번째']
 const ITEMS = ORD.map((word, i) => `${i + 1} – ${word} 줄`).join('\n')
 
-// Settled thread turns use `content-visibility: auto`, so a turn mounted this frame is skipped (empty innerText, no client
-// rects) until the next rendering update marks it on-screen. Wait for that before measuring rendered lines.
 async function rendered(locator: Locator) {
   await expect.poll(() => locator.evaluate(el => el.checkVisibility({ contentVisibilityAuto: true })), { message: 'turn rendered' }).toBe(true)
 }

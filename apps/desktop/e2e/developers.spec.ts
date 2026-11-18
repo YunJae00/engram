@@ -46,7 +46,6 @@ test('developer workspace is opt-in, keeps normal chats separate and groups deve
   await page.getByRole('button', { name: 'Add folder', exact: true }).click()
   await expect(page.locator('.dev-folder-button')).toHaveCount(1)
   await expect(page.getByTestId('app-sidebar')).toBeVisible()
-  // Quiet at rest: the footer holds only the settings button until work runs.
   await expect(page.locator('.sidebar-status-block')).toHaveCount(0)
   await expect(page.locator('.sidebar-footer [data-testid="activity-settings"]')).toBeVisible()
   await expect(page.locator('.recent-web')).toHaveCount(0)
@@ -276,7 +275,6 @@ test('preloads both connected accounts without selecting a provider or starting 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Account profiles' })).toHaveCount(0)
   await page.getByTestId('activity-settings').click()
-  // The Settings page lists no limits; each provider's account dialog carries them.
   const settings = page.getByTestId('settings-view'), accounts = page.getByRole('dialog', { name: 'Account profiles' })
   await expect(settings.locator('.account-usage')).toHaveCount(0)
   await settings.getByRole('button', { name: 'Manage Claude accounts', exact: true }).click()

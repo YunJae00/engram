@@ -74,7 +74,6 @@ type Capture = { png: Buffer; bitmap: Buffer; width: number; height: number }
 async function capture(): Promise<Capture> {
   const shot = await app.evaluate(async ({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
-    // Wake a hidden window's compositor before capturing the current frame.
     await win.webContents.capturePage(undefined, { stayHidden: true })
     await new Promise((resolve) => setTimeout(resolve, 400))
     const image = await win.webContents.capturePage(undefined, { stayHidden: true })
@@ -97,8 +96,6 @@ function probe(): Promise<Probe> {
     tile.append(sample)
     const bubbleBg = getComputedStyle(sample).backgroundColor.match(/\d+/g)!.slice(0, 3).map(Number)
     sample.remove()
-    // Light answers have no bubble of their own since Wave A (--assistant-bg: transparent), so each bubble is judged against
-    // the colour actually painted under it: its own background, or the first opaque ancestor's.
     const painted = (node: Element | null): number[] => {
       for (let at = node; at; at = at.parentElement) {
         const rgba = getComputedStyle(at).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 0]
@@ -162,7 +159,6 @@ test('each chat in the single view shows its messages, not black voids, and no s
         await row.click()
         await expect(row).toHaveClass(/active/)
         await expect(page.getByTestId('bots-thread').locator('.bubble-msg').first()).toBeVisible()
-        // Preview frames are kept per open chat, so the frame is sent once the first bot's chat is on screen.
         if (card && index === 0) {
           await emit([
             { type: 'comet:working', channel: lane, working: true },

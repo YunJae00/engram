@@ -57,7 +57,6 @@ test('created file links open generated artifacts in the thread and reject escap
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'File output verification' }).click()
   const sheet = page.getByTestId('artifact-sheet')
-  // A file the thread cannot show opens in its own program.
   await page.getByTestId('answer-file').filter({ hasText: 'draft.xlsx' }).click()
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { openedArtifact: string }).openedArtifact)).toBe(workbook.path)
   await expect(sheet).toHaveCount(0)

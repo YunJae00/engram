@@ -1,7 +1,6 @@
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 
 export async function openActivity(page: Page, activity: string): Promise<void> {
-  // Split view and the routines library were removed: there is one chat view, and routines are asked for in chat.
   if (activity === 'mission' || activity === 'routines') throw new Error(`openActivity('${activity}') no longer exists: one chat view`)
   const sidebar = page.getByTestId('app-sidebar')
   if (await sidebar.getAttribute('aria-hidden') === 'true') await page.getByTestId('app-sidebar-open').click()
@@ -11,12 +10,10 @@ export async function openActivity(page: Page, activity: string): Promise<void> 
   await target.click()
 }
 
-// A broken shutdown should fail promptly instead of spending the whole test timeout in teardown.
 export async function closeTestApp(app: ElectronApplication | undefined): Promise<void> {
   if (!app) return
   let timer: ReturnType<typeof setTimeout> | undefined
   const child = app.process()
-  // Crash handlers can inherit pipes after the owned Electron process has exited.
   const closePipes = () => { child.stdin?.destroy(); child.stdout?.destroy(); child.stderr?.destroy() }
   if (child.exitCode !== null || child.signalCode !== null) closePipes()
   else child.once('exit', closePipes)
@@ -40,7 +37,6 @@ export async function openCreateBotDialog(page: Page): Promise<void> {
   await page.evaluate(() => { window.dispatchEvent(new Event('engram:open-create-bot')) })
 }
 
-// Selection is not restored on load, so a reload is the way back to the welcome composer.
 export async function openWelcome(page: Page): Promise<void> {
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
@@ -49,7 +45,6 @@ export async function openWelcome(page: Page): Promise<void> {
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
 }
 
-// The sidebar "+" asks for a name (and icon) before it makes the bot, then opens it with the composer focused.
 export async function createBotFromPlus(page: Page, name: string): Promise<void> {
   await page.getByTestId('sidebar-create').click()
   await page.getByTestId('create-bot-name').fill(name)

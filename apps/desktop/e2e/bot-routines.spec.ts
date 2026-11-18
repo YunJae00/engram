@@ -29,7 +29,6 @@ async function launch(): Promise<Page> {
   return page
 }
 
-// A bot's routines have no tab: opening the bot shows its chat and nothing to manage them with.
 async function openBot(page: Page, botId: string): Promise<void> {
   await page.getByTestId(`bot-${botId}`).click()
   await expect(page.getByTestId('bots-view')).toBeVisible()

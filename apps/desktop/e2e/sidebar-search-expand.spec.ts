@@ -56,7 +56,6 @@ test.describe.serial('sidebar without search', () => {
     await expectNoSearch()
     await expect(page.getByTestId('sidebar-create')).toBeVisible()
     expect(await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-budget')?.label)).toBe('Zqledger')
-    // Earlier words are still findable where the chat looks them up.
     expect((await page.evaluate(q => window.engram.botsSearch(q), 'spring planting')).map(hit => hit.id)).toEqual(['vis-chat'])
     const listed = await rows().count()
     for (const id of ['vis-budget', 'vis-chat']) {
@@ -65,7 +64,6 @@ test.describe.serial('sidebar without search', () => {
       await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
       await expect(rows()).toHaveCount(listed)
     }
-    // The toolbar's one control still works from the keyboard.
     await page.getByTestId('sidebar-create').focus()
     await page.keyboard.press('Enter')
     await expect(page.getByTestId('create-bot-dialog')).toBeVisible()

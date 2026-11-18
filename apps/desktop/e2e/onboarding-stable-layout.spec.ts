@@ -4,10 +4,6 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Onboarding keeps its title, Back and primary button still across steps.
-// Baselines in fixtures/onboarding-stable-layout were captured from the code before this change
-// with ONBOARD_SHOTS=before; a normal run copies them next to the after shots it writes.
-
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const BASELINE = fileURLToPath(new URL('./fixtures/onboarding-stable-layout/', import.meta.url))
@@ -58,7 +54,6 @@ const checks = () => app.evaluate(() => (globalThis as { checks?: number }).chec
 test.beforeEach(async () => {
   await mkdir(SHOTS, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
-  // The system locale picks the language; these assertions read English.
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   app = await electron.launch({
     timeout: 90000,

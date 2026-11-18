@@ -31,7 +31,6 @@ test.beforeAll(async () => {
     }
   })
   await page.locator('.bots-row', { hasText: 'Research scout' }).click()
-  // A preview card is drawn only for a page that is open (grokbar c3a), so the chat under test has one.
   server = createServer((_request, response) => { response.setHeader('content-type', 'text/html'); response.end('<html><title>Layout fixture</title><h1>Layout fixture</h1></html>') })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
@@ -47,7 +46,6 @@ test.afterAll(async () => {
 async function screenshot(name: string) {
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
-    // Wake a hidden window's compositor before capturing the resized frame.
     await window.webContents.capturePage()
     await new Promise((resolve) => setTimeout(resolve, 400))
     return (await window.webContents.capturePage()).toPNG().toString('base64')
@@ -67,7 +65,6 @@ async function navigate(view: string) {
   })).toBe(true)
 }
 
-// Page work in the open chat brings its preview card; a card hidden earlier is shown again.
 async function pageWork() {
   const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
   await app.evaluate(({ BrowserWindow }, channel) => {
@@ -79,7 +76,6 @@ async function pageWork() {
   await expect(page.getByTestId('preview-card')).toBeVisible()
 }
 
-// Wide windows open the page beside the chat; compact ones open it full and return to the card.
 async function openAndPutAwayPage(width: number) {
   const pane = page.getByTestId('web-pane')
   await page.getByTestId('preview-card').getByRole('button', { name: width > 1180 ? 'Open browser beside chat' : 'Open full browser', exact: true }).click()
@@ -115,7 +111,6 @@ test('shared headers and composers keep their rhythm at wide and compact sizes',
       const content = thread.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
       return node.querySelector('.bots-write')!.getBoundingClientRect().width - content
     })).toBeGreaterThanOrEqual(30)
-    // The composer has no page-panel button: the panel arrives with page work as a card, which opens beside the chat on wide windows.
     await expect(page.getByTestId('composer-web')).toHaveCount(0)
     const lane = (await page.locator('.bots-row.active').getAttribute('data-testid'))!
     await app.evaluate(({ BrowserWindow }, channel) => {
@@ -205,7 +200,6 @@ test('settings rows share an inset without nested modal padding or a footer', as
   for (const width of [1280, 620]) {
     await page.setViewportSize({ width, height: 720 })
     await navigate('settings')
-    // One page with no model rows: the only AI default left is the Test row.
     await expect(page.getByTestId('ai-check-filing')).toBeVisible()
     await expect(page.getByRole('region', { name: 'Filing model', exact: true })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'New conversation model', exact: true })).toHaveCount(0)
@@ -259,7 +253,6 @@ test('the draft survives opening and putting away the page and switching chats',
     await openAndPutAwayPage(width)
     await expect(input).toBeVisible()
     await expect(input).toHaveValue('Keep this draft 한글')
-    // There is no chat picker: another chat is opened from its sidebar row, and each chat keeps its own draft.
     await expect(page.getByTestId('mission-add-menu')).toHaveCount(0)
     if (await page.getByTestId('app-sidebar').isVisible()) {
       await page.locator('.bots-row', { hasText: 'Release planning' }).click()
@@ -327,7 +320,6 @@ test('tool activity follows smoothly, readers keep their place, and sending retu
   const thread = page.locator('.bots-thread'), input = page.getByTestId('bots-input')
   await input.fill('Continue with a new task')
   await input.press('Enter')
-  // The open conversation's lane, not botsList()[0] (the primary bot, which is not always the one open here).
   const open = page.locator('.bots-row.active, .sidebar-primary-button.active')
   await expect(open).toHaveCount(1)
   const id = (await open.getAttribute('data-testid'))!.replace(/^bot-/, '')
@@ -371,7 +363,6 @@ test('a long bot list scrolls inside the sidebar and leaves the last bot reachab
   const last = page.getByTestId(id!)
   await last.click()
   await expect(last).toHaveClass(/active/)
-  // Its chat opens: the empty state names it, unless an earlier test here already talked to it and left a thread.
   const empty = page.getByTestId('bot-empty')
   await expect(empty.or(page.locator('.bots-thread .bubble-msg').first())).toBeVisible()
   if (await empty.isVisible()) await expect(empty).toContainText(name!)

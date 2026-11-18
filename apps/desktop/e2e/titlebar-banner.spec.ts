@@ -57,7 +57,6 @@ test('the title row shows no bot name and carries the AI connect banner', async 
     })
     await expect(page.locator('.toast')).toBeVisible()
     expect(await inside(banner, topbar)).toBe(true)
-    // There is one chat view: no split-view buttons share the title row with the banner.
     await expect(page.locator('[data-testid^="mission-layout-"]')).toHaveCount(0)
     await expect(page.locator('.bots-head-name, .conversation-title')).toHaveCount(0)
     await expect.poll(() => inside(banner, topbar)).toBe(true)

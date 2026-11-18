@@ -51,7 +51,6 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
-  // The application owns these pages; stop it before detaching the test client.
   await app?.close()
   if (browser?.isConnected()) await browser.close()
   server?.closeAllConnections()
@@ -61,7 +60,6 @@ test.afterAll(async () => {
 })
 
 const pane = () => shell.getByTestId('web-pane')
-// One chat view: a bot's page is reached by opening that bot from the sidebar.
 const openBot = async (index: number) => {
   await shell.getByTestId(`bot-${ids[index]}`).click()
   await expect(shell.getByTestId('live-address')).toHaveValue(`${url}/?pane=${index}`)
@@ -77,7 +75,6 @@ test('four native pages share the agent connection and keep independent input', 
   await expect.poll(() => context.pages().filter((page) => page.url().startsWith(url)).length).toBe(4)
   await openActivity(shell, 'bots')
   for (const count of [1, 2, 4]) await expect(shell.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
-  // Each bot shows only its own page beside its chat.
   for (let i = 0; i < 4; i++) {
     await openBot(i)
     await expect(pane().getByTestId('native-browser-surface')).toHaveCount(1)
@@ -117,7 +114,6 @@ test('resizing and switching bots retain the live pages and scroll', async () =>
     await expect(page.getByRole('textbox', { name: 'Entry' })).toHaveValue(`Pane ${i} 한글`)
   }
   await expect.poll(() => first.evaluate(() => scrollY)).toBeGreaterThan(100)
-  // A small window keeps the page as the preview card over the chat.
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(960, 820))
   await expect(shell.locator('.preview-card, [data-testid=preview-card-collapsed]')).toBeVisible()
   await expect(pane()).toHaveCount(0)
@@ -236,7 +232,6 @@ test('making the page bigger and bringing the chat back keep the draft and the n
   await shell.getByTestId('web-pane-expand').click()
   await expect(draft).toHaveValue('Keep the conversation draft')
   await expect.poll(() => first.evaluate(() => innerWidth)).toBeLessThanOrEqual(before + 2)
-  // No chat picker stands over the page any more.
   await expect(shell.getByTestId('mission-add-menu')).toHaveCount(0)
   await first.getByRole('textbox', { name: 'Entry' }).fill('Still interactive 한글')
   await expect(first.getByRole('textbox', { name: 'Entry' })).toHaveValue('Still interactive 한글')
@@ -316,7 +311,6 @@ test('a small window shows the page as a preview card, opens it full without a d
   const first = browser.contexts()[0]!.pages().find(page => page.url().startsWith(`${url}/?pane=0`))!
   await first.getByRole('textbox', { name: 'Entry' }).fill('Full page keeps this 한글')
   await shell.screenshot({ path: join(tmp, 'split-browser-modal.png') })
-  // "Show the chat beside the page": in a small window the page goes back to its preview card.
   await shell.getByTestId('web-pane-expand').click()
   await expect(pane()).toHaveCount(0)
   await expect(preview).toBeVisible()

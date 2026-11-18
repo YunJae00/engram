@@ -78,7 +78,6 @@ test.describe('create bot dialog', () => {
     expect(created.avatar).toEqual({ character: defaultCharacter(created.id, characterIndex(resolveCharacter(prev.id, prev.avatar))) })
     expect(created.templateId).toBeFalsy()
     expect(created.label).toBeFalsy()
-    // No title pill: the new bot shows in its empty thread and its sidebar row.
     await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     await expect(page.locator('[data-testid="bot-empty"] h2')).toHaveText('Plain Bot')
     await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', (created.avatar as { character: string }).character)

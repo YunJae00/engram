@@ -45,7 +45,6 @@ async function measure(theme: typeof THEMES[number], lang: 'en' | 'ko'): Promise
 
     await expect(view.getByTestId('model-picker')).toHaveCount(0)
 
-    // No title pill or details pane: the chat itself (thread, composer, sidebar rows) is what is measured.
     await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     const pane = page.getByTestId('bot-info-pane')
     await expect(pane).toHaveCount(0)

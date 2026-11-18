@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const root = await mkdtemp(join(TMP, 'e2e-sidebar-search-open-chat-'))
   const paths = await initVault(root, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   alpha = await createBot(paths, { name: 'Alpha garden plan' })
   for (const [role, text] of [['user', 'Order the tulip bulbs.'], ['assistant', 'Tulip order placed.']] as const) await appendBotTurn(paths, alpha.id, { role, text, at: STAMP })
   beta = await createBot(paths, { name: 'Beta budget review' })
@@ -79,7 +79,6 @@ test('an old pin on the open chat changes neither its place nor its row', async 
   await row(beta).click({ button: 'right' })
   await expect(page.locator('.sidebar-organize-menu, [role="dialog"][aria-label^="Options for"]')).toHaveCount(0)
   const pinned = (await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), beta.id)).chat
-  // The pin is kept as data and drawn nowhere.
   expect((await page.evaluate(() => window.engram.sidebarLayout())).chat).toEqual(pinned)
   await app.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'bots:changed' }) })
   await expect(rows()).toHaveCount(2)
@@ -93,7 +92,6 @@ test('a chat started from the welcome is listed and active at once', async () =>
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
   await expectNoSearch()
-  // The v2 bot list seeded by the fixture also holds the primary 'Engram' bot (resetBotsToV2), so one new bot is counted against what existed before.
   const existing = await page.evaluate(() => window.engram.botsList().then(list => list.map(bot => bot.id)))
   expect(existing).toEqual(expect.arrayContaining([alpha.id, beta.id]))
   const input = page.getByTestId('welcome-input')

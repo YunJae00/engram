@@ -20,7 +20,7 @@ let bots: Bot[]
 test.beforeEach(async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'e2e-mission-chip-vault-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const at = new Date().toISOString()
   bots = []
   for (const [index, name] of NAMES.entries()) {
@@ -76,7 +76,6 @@ test.afterEach(async () => {
 const sent = () => app.evaluate(() => (globalThis as Fixture).sent)
 const thread = () => page.getByTestId('bots-thread')
 
-// One chat view: no pane grid, and a suggested reply is never a button.
 async function expectSingleView(): Promise<void> {
   for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
   await expect(page.locator('.mission-tile')).toHaveCount(0)
@@ -84,7 +83,6 @@ async function expectSingleView(): Promise<void> {
   await expect(page.getByTestId('reply-chip-0')).toHaveCount(0)
 }
 
-// Opens the bot with its sidebar row and gives it a live web preview, as the reported chats had.
 async function openChat(index: number): Promise<void> {
   const row = page.getByTestId(`bot-${bots[index]!.id}`)
   await row.click()
@@ -96,7 +94,6 @@ async function openChat(index: number): Promise<void> {
   await expect(page.getByTestId('preview-card')).toBeVisible({ timeout: 20_000 })
 }
 
-// The reply the answer suggested is typed by the person: it sends once, for the open bot only.
 async function typeReply(index: number): Promise<void> {
   await expectSingleView()
   const before = (await sent()).length
@@ -132,7 +129,6 @@ test('a typed reply in another bot\'s chat sends only for that bot', async () =>
 test('a typed reply beside the open page pane still sends for that bot', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(2600, 1600))
   await openChat(0)
-  // The first card action opens the page beside the chat; its label follows the thread's language.
   await page.getByTestId('preview-card').locator('.preview-card-actions button').first().click()
   await expect(page.getByTestId('web-pane')).toBeVisible()
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl)

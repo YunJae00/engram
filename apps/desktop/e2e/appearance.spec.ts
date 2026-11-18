@@ -133,7 +133,6 @@ test('native window activation fades only the sidebar tint, without recoloring c
     await expect(page.locator('html')).toHaveAttribute('data-window-focused', String(active))
     await expect.poll(tintOpacity).toBe(active ? '1' : '0')
     const accent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())
-    // The accent is the theme's call-to-action colour (light ink #1C1C1E since the apple-white theme) and never follows focus.
     expect(['#1C1C1E', '#eeeeee']).toContain(accent)
     accents.push(accent)
   }
@@ -214,7 +213,6 @@ test('compact settings are one page of five groups with advanced tools in their 
     await share.scrollIntoViewIfNeeded()
     await screenshot(`minimal-settings-sharing-${theme}-600.png`)
     await share.uncheck()
-    // One page: nothing remounts between themes, so fold the disclosure back.
     await settings.locator('summary').filter({ hasText: /^Provider integrations$/ }).click()
     const about = settings.getByTestId('settings-about')
     await expect(about).toContainText('Version')
@@ -252,7 +250,6 @@ test('apps used lately carry their own icon and clean name, apps that only sent 
   await mkdir(kept, { recursive: true })
   for (const toast of toasts) await writeFile(join(kept, `${toast.at.slice(0, 10)}.jsonl`), `${JSON.stringify(toast)}\n`, { flag: 'a' })
   await start()
-  // Keep this synthetic ledger fixture independent of the hosted OS icon service.
   await app.evaluate(({ app, nativeImage }, program) => {
     const getFileIcon = app.getFileIcon.bind(app)
     app.getFileIcon = (path, options) => path === program

@@ -5,12 +5,6 @@ import { revealText } from '../src/main/page-reveal.js'
 import { observationOf, readFrames } from '../src/main/page-reader.js'
 import { browserReadBatch, pageDelta, pageReport, type WebPage } from 'core'
 
-// The reader and the hands against the ways real pages are built: a control
-// drawn inside a shadow root, one inside a frame, a tab whose panel is
-// folded, an icon with no words, a select, an endless list, a search form
-// that gets and a form that posts, a link that opens a new tab. Real Chrome,
-// a local page, no app around it.
-
 let server: Server
 let siteUrl: string
 let browser: Browser
@@ -274,8 +268,6 @@ test('a very large page is read in a moment, not a minute', async () => {
 })
 
 test('a day cell that only the pointer marks as pressable is numbered, and pressing it lands there', async () => {
-  // The shape a framework leaves behind: one listener on the table, cells
-  // that declare nothing, and the same short words higher up the page.
   await page.setContent(`<html><head><style>#cal td.day{cursor:pointer}</style></head><body><main>
     <table id="week"><tr><td>Wed 8.26</td><td>3 Units / 13 hr</td><td>13</td></tr></table>
     <table id="cal"><tbody><tr>${[11, 12, 13, 14].map((n) => `<td class="day"> <span>${n}</span> </td>`).join('')}</tr></tbody></table>
@@ -300,7 +292,6 @@ test('the same words in two places are refused with the numbers to choose from, 
     <p id="picked">picked: none</p>
     <button id="inert">Inert</button></main>
     <script>document.getElementById('cal').addEventListener('click', (e) => { document.getElementById('picked').textContent = 'picked: ' + e.target.closest('td').textContent.trim() })</script></body></html>`)
-  // Text that only shows "13" beside the one control called "13" names that control.
   expect(await pressOn(page, '13')).toMatchObject({ ok: true })
   expect(await page.textContent('#picked')).toBe('picked: 13')
   const refused = await pressOn(page, '14')
@@ -308,8 +299,6 @@ test('the same words in two places are refused with the numbers to choose from, 
   expect(refused.error).toContain('more than one place')
   expect(refused.error).toMatch(/#\d+/)
 
-  // A button that does nothing is pressed all the same — and reported as
-  // having changed nothing, so a wrong guess is visible.
   const inert = await pressOn(page, 'Inert')
   expect(inert.ok).toBe(true)
   expect(inert.changed).toBe(false)
@@ -326,7 +315,6 @@ test('a point on the picture is pressed where a name cannot reach, and a commit 
         document.getElementById('picked').textContent = 'canvas at ' + Math.round(e.clientX - r.left) + ',' + Math.round(e.clientY - r.top)
       })
     </script></body></html>`)
-  // Nothing on a canvas has a name or a number; the point is all there is.
   const board = (await page.locator('#board').boundingBox())!
   const size = page.viewportSize()!
   const drawn = await pressPoint(page, (board.x + board.width * 0.5) / size.width, (board.y + board.height * 0.5) / size.height)
@@ -351,8 +339,6 @@ test('a folded section is opened by the words inside it, and a view toggle is no
     <p id="mode">yearly</p>
     <script>document.querySelector('[role=switch]').addEventListener('click', () => { document.getElementById('mode').textContent = 'monthly' })</script>
   </main></body></html>`)
-  // What a page keeps out of sight is named in the reading, and opened by
-  // asking for the words themselves.
   expect((await readFrames(page)).hidden).toContain('4410')
   const opened = await revealText(page, '4410')
   expect(opened).toMatchObject({ ok: true, changed: true })
@@ -362,8 +348,6 @@ test('a folded section is opened by the words inside it, and a view toggle is no
   expect(await revealText(page, 'Chrome 37')).toMatchObject({ ok: true })
   await expect.poll(async () => (await readFrames(page)).text).toContain('Chrome 37')
 
-  // A switch says what it does: it changes the view, so its words do not
-  // make it a payment.
   expect(await pressOn(page, '월간 결제')).toMatchObject({ ok: true })
   expect(await page.textContent('#mode')).toBe('monthly')
 })
@@ -372,18 +356,15 @@ test('a commit is put to the person: they can let it go, or keep it for themselv
   await page.setContent(`<html><body><main>
     <form action="/post" method="post"><button type="submit" style="width:200px;height:50px">Send</button></form>
     <p id="state">unsent</p></main></body></html>`)
-  // No asker: the old refusal stands, and nothing is pressed.
   const alone = await pressOn(page, 'Send')
   expect(alone).toMatchObject({ ok: false, refused: 'Send' })
   expect(alone.theirs).toBeUndefined()
   expect(posted).toBe(0)
 
-  // They take it themselves: refused, and said to be theirs.
   const mine = await pressOn(page, 'Send', undefined, async () => 'cancel')
   expect(mine).toMatchObject({ ok: false, refused: 'Send', theirs: true })
   expect(posted).toBe(0)
 
-  // They say it goes: it goes, once.
   const asked: string[] = []
   const go = await pressOn(page, 'Send', undefined, async (what) => {
     asked.push(what.words)

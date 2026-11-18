@@ -7,11 +7,6 @@ import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// The agent window's mirror inside the app: a lesson opens the large view
-// on its own, an address typed there takes the window to the page, and the
-// person's keys and clicks on the mirror land on that page — the frames
-// coming back show it. The window itself sits off the screen throughout.
-
 test.describe.configure({ mode: 'serial' })
 
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -29,13 +24,10 @@ test.beforeAll(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   const root = await mkdtemp(join(REPO_TMP, 'e2e-live-'))
   userData = await mkdtemp(join(REPO_TMP, 'e2e-live-userdata-'))
-  // The mirror lives in a comet thread, so there has to be one to open.
   const paths = await initVault(root, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   await createBot(paths, { name: 'Watching', purpose: '' })
 
-  // A form that carries what was typed into its address, and a page whose
-  // one link fills the top of the window so a click on the mirror finds it.
   server = createServer((req, res) => {
     requests.set(req.url ?? '/', (requests.get(req.url ?? '/') ?? 0) + 1)
     res.setHeader('content-type', 'text/html')
@@ -158,27 +150,18 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
     const installed = (await window.engram.browsersInstalled()) as { path: string }[]
     if (installed[0]) await window.engram.browserChoose(installed[0].path)
   })
-  // The app watches the agent browser and sends it to the page - the same
-  // two calls the thread's live card makes when a comet opens something.
   await openActivity(page, 'bots')
   await page.locator('.bots-row', { hasText: 'Watching' }).click()
   await page.evaluate(() => window.engram.agentWatch(true))
   await page.evaluate((url) => window.engram.agentGo(url), siteUrl)
-  // The page stands beside the conversation as its own pane, live at once.
   await expect(page.getByTestId('web-pane')).toBeVisible({ timeout: 60_000 })
-  // The first window opens on a blank page; the address is asked for again
-  // from the pane itself, which is what a person would do.
   await page.getByTestId('live-address').fill(siteUrl)
   await page.getByTestId('live-address').press('Enter')
   await expect(page.getByTestId('live-address')).not.toHaveValue('')
   await expect(page.getByTestId('live-address')).toHaveValue(siteUrl, { timeout: 20_000 })
   const stage = page.getByTestId('web-pane').locator('.mirror-surface')
-  // A person clicks what they can see: a canvas nothing has landed on yet
-  // drops the click, so the picture has to be there first.
   await expect(stage.locator('canvas[data-painted]')).toBeVisible({ timeout: 15_000 })
 
-  // Clicks are measured against the picture itself, so the test clicks the
-  // canvas the way a person does.
   const screen = stage.locator('canvas')
   const box = (await screen.boundingBox())!
   await screen.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
@@ -186,7 +169,6 @@ test('the mirror is watchable and acted in: the address, the keys and the clicks
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}typed?q=hello`, { timeout: 15_000 })
 
-  // A click on the mirror is a click on the page.
   await screen.click({ position: { x: box.width / 2, y: box.height * 0.2 } })
   await expect(page.getByTestId('live-address')).toHaveValue(`${siteUrl}clicked`, { timeout: 15_000 })
 })
@@ -241,7 +223,6 @@ test('window and chat handoffs preserve independent input, composition and monit
         window.engram.agentGo(`${url}?lane=second`, `bot-${second}`),
       ])
     }, { url: siteUrl, first: first.id, second: second.id })
-    // Navigation on the app's connection can finish before this observer receives it.
     await expect.poll(() => context.pages().map((one) => one.url())).toEqual(expect.arrayContaining([`${siteUrl}?lane=first`, `${siteUrl}?lane=second`]))
     const firstPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=first`)!
     const secondPage = context.pages().find((one) => one.url() === `${siteUrl}?lane=second`)!
@@ -348,7 +329,6 @@ test('web phases auto-open only their own conversation and folds never leak acro
   await expect(pane).toHaveCount(0)
   await step(first, 'scroll')
   await expect(pane).toHaveCount(0)
-  // A folded panel comes back with the next page work, as a card that opens beside the chat.
   await step(first, 'excel_write')
   await step(first, 'open_page')
   await page.getByTestId('preview-card').getByRole('button', { name: 'Open browser beside chat', exact: true }).click()
@@ -361,7 +341,6 @@ test('web phases auto-open only their own conversation and folds never leak acro
   try {
     const web = browser.contexts()[0]!.pages().find(one => one.url() === `${siteUrl}?lane=first`)!
     await web.goto('about:blank')
-    // A blank page shows the start surface in the same pane, and the picture returns with the page.
     await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
     await expect(pane.locator('.browser-start')).toBeVisible()
     await expect(pane.locator('canvas')).toHaveCount(0)

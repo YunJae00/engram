@@ -22,7 +22,6 @@ const resolvedColor = (page: Page, value: string) => page.evaluate((value) => {
   return color
 }, value)
 const accentBlue = (page: Page) => resolvedColor(page, 'var(--accent-blue)')
-// The send button wears the theme's call-to-action colour (ink in light since Wave A), falling back to the accent blue.
 const sendColor = (page: Page) => resolvedColor(page, 'var(--cta, var(--accent-blue))')
 const css = (page: Page, selector: string, prop: string) => page.locator(selector).first().evaluate((node, p) => getComputedStyle(node).getPropertyValue(p), prop)
 const box = (page: Page, selector: string) => page.locator(selector).first().evaluate(node => node.getBoundingClientRect().toJSON() as DOMRect)
@@ -59,11 +58,9 @@ for (const theme of ['light', 'dark'] as const) {
 
       await input.fill('')
       await expect(send).toBeDisabled()
-      // Light dims the ink button while it cannot send; dark swaps to a soft grey at full opacity.
       expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'opacity')).toBe(theme === 'light' ? '0.4' : '1')
       const grey = rgb(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'background-color'))
       expect(Math.max(...grey) - Math.min(...grey)).toBeLessThanOrEqual(16)
-      // Dark greys the idle button out; light keeps the ink colour (which is also its accent) and dims it instead (opacity above).
       if (theme === 'dark') expect(await css(page, `${VIEW} .bots-write .chat-send-btn`, 'background-color')).not.toBe(blue)
 
       await input.fill('hi')
@@ -98,7 +95,6 @@ for (const theme of ['light', 'dark'] as const) {
       expect(Math.abs(add.height - 28)).toBeLessThanOrEqual(1)
       expect(await page.locator(`${VIEW} .bots-column`).evaluateAll(nodes => nodes.map(node => node.classList.contains('bots-write')))).toEqual([true])
 
-      // No title pill over the thread: the bot's name is on its sidebar row.
       await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
       await expect(page.locator('.bots-title-pill-name')).toHaveCount(0)
       await expect(row.locator('.sidebar-conversation-name')).toHaveText(BOT_NAME)
@@ -108,7 +104,6 @@ for (const theme of ['light', 'dark'] as const) {
       const first = await box(page, `${VIEW} [data-testid="bots-thread"] .bubble-msg`)
       expect(first.top).toBeGreaterThanOrEqual((await box(page, `${VIEW} [data-testid="bots-thread"]`)).top)
 
-      // Mid-scroll in a long thread nothing floats over the messages, and the thread no longer fades under a pill at its top.
       const overlap = await page.getByTestId('bots-thread').evaluate((thread) => {
         for (let i = 0; i < 12; i++) {
           const tall = document.createElement('div')

@@ -120,7 +120,6 @@ test('sidebar tree: one tab stop, arrows, a 2px focus ring at 3:1, and F2, Shift
       expect(head.offset).toBeLessThanOrEqual(-2)
       expect(head.ratio ?? 0, `${theme}: section ring contrast`).toBeGreaterThanOrEqual(3)
 
-      // No menu and no rename field: the keys and the right button leave the tree as it was.
       const menus = page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
       const field = page.locator('.app-sidebar [role="tree"] input')
       for (const key of ['Shift+F10', 'ContextMenu', 'F2']) {

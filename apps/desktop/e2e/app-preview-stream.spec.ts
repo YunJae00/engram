@@ -9,7 +9,7 @@ const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 async function launchStreamFixture() {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'app-stream-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const bot = await createBot(paths, { name: 'Stream fixture' })
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Ready.', at: new Date().toISOString() })
   const lane = `bot-${bot.id}`
@@ -29,7 +29,6 @@ async function launchStreamFixture() {
         canvas.width = 320; canvas.height = 200
         const context = canvas.getContext('2d')!
         const stream = canvas.captureStream(24)
-        // Canvas capture produces new frames only when the source is painted.
         let frame = 0
         const timer = setInterval(() => { context.fillStyle = `rgb(${frame++ % 255}, 80, 120)`; context.fillRect(0, 0, 320, 200) }, 40)
         stream.getVideoTracks()[0]!.addEventListener('ended', () => clearInterval(timer))
@@ -48,7 +47,6 @@ async function launchStreamFixture() {
       for (const [channel, handler] of Object.entries(handlers)) { ipcMain.removeHandler(channel); ipcMain.handle(channel, handler) }
     }, lane)
     await page.reload()
-    // Live previews require a visible window; hidden Windows capture can stall.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.showInactive())
     await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible')
     await openActivity(page, 'bots')
@@ -70,7 +68,6 @@ test('paints an owned app stream within two seconds of binding and keeps it afte
     await expect(painted).toBeVisible({ timeout: 2000 })
     await expect(page.getByTestId('preview-card')).toContainText('Live')
     await expect(page.getByTestId('bots-input')).toBeFocused()
-    // A newer web card covers the app in the same lane; capture must stay open.
     await app.evaluate(({ BrowserWindow }, lane) => {
       const contents = BrowserWindow.getAllWindows()[0]!.webContents
       contents.send('engram:event', { type: 'comet:step', channel: lane, line: 'read_open_page: Preview' })

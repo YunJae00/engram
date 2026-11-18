@@ -24,7 +24,6 @@ async function load(): Promise<Render> {
   return mod.render
 }
 
-// A page set from a string cannot follow @import, so the orb sheet is joined in.
 async function avatarCss(): Promise<string> {
   const [orb, avatar] = await Promise.all(['bot-orb.css', 'bot-avatar.css'].map(name => readFile(new URL(name, CSS_DIR), 'utf8')))
   return `${orb}\n${avatar!.replace(/^@import[^;]+;\s*/m, '')}`
@@ -60,7 +59,6 @@ export async function galleryHtml(theme: Theme): Promise<string> {
   return `<!doctype html><html data-theme="${theme}" data-window-focused="true"><head><meta charset="utf-8"><style>${css}\n${page}</style></head><body>${cells.join('')}</body></html>`
 }
 
-// The 8 orbs at every displayed size, one row per size, then the sidebar strip at 24px.
 export async function artGalleryHtml(theme: Theme): Promise<string> {
   renderer ??= load()
   const render = await renderer

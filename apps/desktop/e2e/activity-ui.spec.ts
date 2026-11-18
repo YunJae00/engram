@@ -65,7 +65,6 @@ test('low memory rejects a new embedded browser without blocking the app', async
 test('Engram keeps navigation in its menu with aligned icons and leaves status in the sidebar footer', async () => {
   const sidebar = page.getByTestId('app-sidebar')
   await expect(sidebar.locator('.sidebar-nav-row')).toHaveCount(0)
-  // The sidebar has no search: one "+" above the bot list.
   await expect(sidebar.getByTestId('sidebar-search-toggle')).toHaveCount(0)
   await expect(sidebar.getByRole('textbox', { name: 'Search conversations' })).toHaveCount(0)
   await expect(sidebar.getByTestId('sidebar-create')).toBeVisible()
@@ -95,7 +94,6 @@ test('Engram keeps navigation in its menu with aligned icons and leaves status i
   const work = footer.getByTestId('sweep-status')
   const engine = footer.getByTestId('filing-retry')
   const settings = footer.getByTestId('activity-settings')
-  // The footer is quiet at rest: only settings. The status row is there while work runs, the retry only when filing stopped short.
   const beside = async (left: typeof work) => {
     await expect(left).toBeVisible()
     await expect.poll(async () => {
@@ -185,11 +183,9 @@ test('sidebar folders animate height, remain interruptible and remove collapsed 
   const heights = await page.evaluate(async id => {
     const panel = document.getElementById(`folder-${id}`)!
     const button = document.querySelector<HTMLButtonElement>(`[aria-controls="folder-${id}"]`)!
-    // The settled flag uses a timer; hidden Electron windows can still have an opening transition pending.
     const beforeOpeningFinished = panel.getBoundingClientRect().height
     for (const animation of panel.getAnimations()) animation.finish()
     const start = panel.getBoundingClientRect().height
-    // Folder folds persist through IPC before React applies the new expanded state.
     await new Promise<void>(resolve => {
       const observer = new MutationObserver(() => {
         if (button.getAttribute('aria-expanded') === 'false') { observer.disconnect(); resolve() }

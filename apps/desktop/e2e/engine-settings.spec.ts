@@ -111,7 +111,6 @@ test('the main banner and filing status recover alongside the connected settings
       window.webContents.send('engram:event', { type: 'engines:changed', engines: [] })
     }
   })
-  // At rest the sidebar footer says nothing about filing; the banner carries the news.
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('filing-retry')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) => {
@@ -124,7 +123,6 @@ test('the main banner and filing status recover alongside the connected settings
     }
   })
   await expect(page.getByTestId('connect-banner')).toBeVisible()
-  // A filing run that failed leaves only the retry.
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('filing-retry')).toBeVisible()
   await app.evaluate(({ BrowserWindow }) => {
@@ -213,13 +211,11 @@ test('welcome and conversation footer controls align inside narrow composers wit
       const composer = page.locator('.chat-write').filter({ has: input })
       await expect(composer.getByTestId('model-picker')).toHaveCount(0)
       if (surface === 'conversation') {
-        // Memory is not a control anywhere in the chat; the + is the file picker itself.
         await expect(composer.getByTestId('bots-memory-toggle')).toHaveCount(0)
         const add = composer.getByRole('button', { name: 'Attach files', exact: true })
         await expect(add).toHaveAttribute('title', /\S/)
         await expect(add).not.toHaveAttribute('popovertarget')
         if (width === 1280) {
-          // No title pill, info pane or memory list: the remembered line is the bot's own data, and forgetting it empties the list.
           for (const id of ['bots-title-pill', 'bot-info-pane', 'bots-memory']) await expect(page.getByTestId(id)).toHaveCount(0)
           const facts = await page.evaluate(id => window.engram.botMemory(id), botId)
           expect(facts.map(fact => fact.text)).toEqual(['Likes the composer footer aligned'])
@@ -249,7 +245,6 @@ test('welcome and conversation footer controls align inside narrow composers wit
       const diagnostic = JSON.stringify({ surface, width, ...geometry })
       expect(geometry.height, diagnostic).toBeLessThanOrEqual(54)
       expect(Math.abs(geometry.inputCenter - geometry.footerCenter), diagnostic).toBeLessThanOrEqual(1)
-      // The conversation pill composer's send button is 30px (composer-title); the other composers keep 32px.
       expect(geometry.buttons, diagnostic).toEqual(geometry.buttons.map(() => surface === 'conversation' ? 30 : 32))
       expect(geometry.iconButtons, diagnostic).toEqual(geometry.iconButtons.map(() => 32))
       expect(geometry.icons, diagnostic).toEqual(geometry.icons.map(() => [16, 16]))
@@ -305,7 +300,6 @@ test('stored conversation and filing selections read back on Claude without effo
 test('the composer shows no model menu after reload while the catalog request is stalled', async () => {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('models:list')
-    // Keep the reply alive: Electron rejects an unreachable pending reply during GC.
     const replies = (globalThis as Global).engineFixture.modelReplies = [] as Array<() => void>
     ipcMain.handle('models:list', () => new Promise<void>(resolve => { replies.push(resolve) }))
   })

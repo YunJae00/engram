@@ -8,14 +8,12 @@ const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication | undefined
 test.afterEach(async () => { await app?.close(); app = undefined })
 
-// qa142 B2 follow-up: a provider error that is not an outage left nothing in the saved thread.
 test('a failed answer is still one plain error line after a reload, in the thread language, with no raw error, buttons or continue chip', async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-error-reload-'))
   const paths = await initVault(root, { git: false })
   await resetBotsToV2(paths)
   const botId = (await createBot(paths, { name: 'Error fixture' })).id
-  // A mock engine with no canned answer fails every call with a plain provider error.
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: root, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-error-reload-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'mock', ENGRAM_MOCK_DIR: await mkdtemp(join(tmp, 'e2e-error-reload-mock-')), ENGRAM_HIDDEN: '1' } })
   const page = await app.firstWindow()
   await expect(page.getByTestId('shell')).toBeVisible()

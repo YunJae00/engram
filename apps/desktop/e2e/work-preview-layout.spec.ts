@@ -9,7 +9,7 @@ const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 test('app previews stack, promote back cards and stay inside the chat of each bot, minimized and expanded', async () => {
   await mkdir(join(TMP, 'preview-captures-109'), { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-layout-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const bots = await Promise.all(['Preview one', 'Preview two'].map(name => createBot(paths, { name })))
   for (const bot of bots) {
     await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'The local app read is ready for review.', at: new Date().toISOString() })
@@ -58,8 +58,6 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
         const input = element.querySelector('textarea')!.getBoundingClientRect()
         if (input.top < parent.top || input.bottom > parent.bottom) return false
         const controls = [...element.querySelectorAll('textarea, .decision-card button, .bubble-msg')]
-        // Measure what is actually painted: a narrow docked lane can clip a long one-line link inside its card (the
-        // ellipsized .decision-card-sub), and the clipped-away part cannot be covered.
         const visible = (control: Element) => {
           let { left, top, right, bottom } = control.getBoundingClientRect()
           for (let node = control.parentElement; node && node !== element; node = node.parentElement) {
@@ -137,7 +135,6 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
         const style = getComputedStyle(element), stage = element.querySelector('.preview-card-stage')!
         return { width: element.getBoundingClientRect().width, headers: element.querySelectorAll('.preview-card-bar').length,
           radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor,
-          // The stage height follows width / ratio (and animates) since the organic live card, so its shape is read from its box.
           aspect: `${Math.round(stage.getBoundingClientRect().width * 100) / 100} / ${Math.round(stage.getBoundingClientRect().height * 100) / 100}` }
       })
       const settled = () => expect.poll(async () => { const a = JSON.stringify(await metrics()); await page.waitForTimeout(300); return a === JSON.stringify(await metrics()) }).toBe(true)
@@ -197,8 +194,7 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
       await expect(preview).toContainText('Last snapshot')
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
-      // One chat view: the other bot's chat shows only its own app, and the first bot's comes back with it.
-      await openActivity(page, 'bots') // the narrow widths above closed the sidebar; the rows are in it
+      await openActivity(page, 'bots')
       await page.getByTestId(`bot-${bots[1]!.id}`).click()
       await expect(full.locator('[data-testid=preview-card], [data-testid=preview-card-collapsed]')).toBeVisible()
       await expect(full.getByTestId('task-approvals')).toBeVisible()
@@ -222,10 +218,8 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1400, 900))
       await openActivity(page, 'bots')
       await emit([{ type: 'chat:done', channel: lane, text: 'Preview complete.' }])
-      // A folded web lane makes the next theme start with app frames only; the fold is in the browser the web card opens.
       const webCard = page.locator('[data-testid="preview-card"][data-source="web"]')
       if (theme === 'light') {
-        // Coming back to this chat put its app card in front; the web card is promoted from behind it first.
         if (!await webCard.isVisible()) await full.getByTestId('preview-deck').getByRole('button', { name: 'example.test', exact: true }).press('Enter')
         await webCard.getByRole('button', { name: /^Open (browser beside chat|full browser)$/ }).click()
         await page.getByTestId('web-pane-fold').click()
@@ -238,7 +232,7 @@ test('app previews stack, promote back cards and stay inside the chat of each bo
 test('a finished web card in the chat view keeps its label and snapshot age apart', async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'preview-caption-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const bot = await createBot(paths, { name: 'Caption bot' })
   await appendBotTurn(paths, bot.id, { role: 'assistant', text: 'Ready.', at: new Date().toISOString() })
   const app = await electron.launch({
@@ -263,7 +257,6 @@ test('a finished web card in the chat view keeps its label and snapshot age apar
     await app.evaluate(({ BrowserWindow }, events) => {
       const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
       for (const event of events) window.webContents.send('engram:event', event)
-    // Page work keeps the page as the small card over the chat; the frame is the page's own picture.
     }, [{ type: 'comet:working', channel: lane, working: true }, { type: 'comet:step', channel: lane, line: 'read_open_page: Page' },
       { type: 'agent:frame', lane, url, data: data.split(',')[1], ...size }])
     const card = mini.getByTestId('preview-card')

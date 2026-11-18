@@ -61,7 +61,6 @@ test.describe.serial('bot avatar ui', () => {
     await square(avatar, 80)
     await expect(avatar.locator('.bot-avatar-primary')).toHaveCount(1)
     await expect(avatar.locator('.bot-orb')).toHaveCount(1)
-    // 80px is large enough for the travelling ripple; it is still drawn with svg, never a canvas or an image.
     await expect(avatar.locator('.bot-orb')).toHaveAttribute('data-master', 'full')
     await expect(avatar.locator('.bot-orb')).toHaveAttribute('data-ripple', 'true')
     await expect(avatar.locator('canvas')).toHaveCount(0)
@@ -74,7 +73,6 @@ test.describe.serial('bot avatar ui', () => {
     const avatar = row('vis-chat').locator('.sidebar-conversation-avatar > .bot-avatar[data-size="36"][data-state="idle"]')
     await expect(avatar).toBeVisible()
     await square(avatar, 32)
-    // 32px is the small master: still while idle, with no ripple.
     await expect(avatar.locator('.bot-orb')).toHaveAttribute('data-motion', 'static')
     await expect(avatar.locator('.bot-orb')).toHaveAttribute('data-master', 'small')
     await expect(avatar.locator('.bot-orb')).not.toHaveAttribute('data-ripple')

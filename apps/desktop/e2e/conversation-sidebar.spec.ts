@@ -8,7 +8,6 @@ import { createBotFromPlus, openActivity, openWelcome } from './navigation.js'
 test.describe.configure({ mode: 'serial' })
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const FIRST_TITLE = 'Cobalt deployment decisions for the next three release cycles'
-// Recent, so every seeded conversation is in the list rather than under Show earlier.
 const STAMP = new Date(Date.now() - 60 * 60_000).toISOString()
 let app: ElectronApplication
 let page: Page
@@ -26,7 +25,7 @@ async function launch(): Promise<void> {
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   root = await mkdtemp(join(TMP, 'e2e-conversation-sidebar-'))
-  paths = await initVault(root, { git: false }); await resetBotsToV2(paths) // v2 list with its own primary, so launch keeps the seeded bots and bots[0] is a row
+  paths = await initVault(root, { git: false }); await resetBotsToV2(paths)
   screenshots = await mkdtemp(join(TMP, 'conversation-sidebar-shots-'))
   for (let index = 0; index < 28; index++) {
     const bot = await createBot(paths, { name: index === 0 ? FIRST_TITLE : `Project ${String(index).padStart(2, '0')} planning and delivery conversation` })
@@ -61,7 +60,6 @@ async function capture(name: string): Promise<void> {
   await writeFile(join(screenshots, name), Buffer.from(png, 'base64'))
 }
 
-// The sidebar lists and opens; it has no search field, no menus and no drag. Organizing is asked for in chat.
 const menus = () => page.locator('.sidebar-organize-menu, .sidebar-menu, [role="dialog"][aria-label^="Options for"]')
 const chatLayout = async () => (await page.evaluate(() => window.engram.sidebarLayout())).chat
 const found = (query: string) => page.evaluate(q => window.engram.botsSearch(q).then(hits => hits.map(hit => hit.id)), query)
@@ -128,7 +126,6 @@ test('conversation rows show persisted previews, timestamps and avatars after re
   await expect(first.locator('.sidebar-conversation-preview')).toHaveText('Tomorrow’s checkpoint is ready.')
   await expect(first.locator('.sidebar-conversation-content')).toHaveAttribute('title', new Date(STAMP).toLocaleString('en-US'))
   await expect(first.locator('time')).toHaveCount(0)
-  // The orb avatar is a glass ball: one svg holds the wave of light, a second its working overlay.
   await expect(first.locator('.bot-avatar .bot-orb')).toBeVisible()
   await expect(first.locator('.bot-avatar .bot-orb svg')).toHaveCount(2)
   await expect(first.locator('.bot-avatar svg.bot-orb-wave')).toBeVisible()
@@ -211,7 +208,6 @@ test('Create stays visible while long conversations scroll', async () => {
   expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1)
   await openWelcome(page)
   await expect(page.getByTestId('comet-welcome')).toBeVisible()
-  // With a primary bot (v2 list) the welcome mark is that bot's own avatar (BotAvatar app-wide); the comet face is only the no-primary fallback.
   await expect(page.locator('.comet-welcome-mark .bot-avatar .bot-orb')).toBeVisible()
   await capture('restored-conversation-icons.png')
   expect(await page.evaluate(() => window.engram.botsList().then(list => list.length))).toBe(bots.length + 1)
@@ -234,7 +230,6 @@ test('a long-titled conversation in a collapsed folder is reached by opening the
   const first = page.getByTestId(`bot-${bots[0]!.id}`)
   await expect(first).not.toBeVisible()
   await expectNoSearch()
-  // Message words are still findable where the chat looks them up.
   expect(await found('handoff checklist')).toEqual([bots[1]!.id])
   expect(await found('no matching conversation')).toEqual([])
   await head.click()
@@ -316,7 +311,6 @@ test('rows have no menu and draw no date; an old pin keeps its row in place and 
   await row.click({ button: 'right' })
   await expect(menus()).toHaveCount(0)
   const rowBox = await row.boundingBox()
-  // The time shows only as a tooltip since the bot sidebar (rd-sidebar-bots, b8646f58), so no date is drawn in the row.
   await expect(row.locator('time')).toHaveCount(0)
   const preview = await row.locator('.sidebar-conversation-preview').boundingBox()
   expect(rowBox!.x + rowBox!.width - preview!.x - preview!.width).toBeLessThan(16)
@@ -325,7 +319,6 @@ test('rows have no menu and draw no date; an old pin keeps its row in place and 
   const before = await chatLayout()
   await refresh()
   await page.waitForTimeout(300)
-  // The pin stays in the data; the row stays where latest activity puts it, with no pin mark.
   expect(await listed()).toEqual(order)
   await expect(page.getByTestId('sidebar-chats').getByTestId(`bot-${id}`)).toHaveCount(1)
   await expect(row.locator('..').getByLabel('Pinned conversation')).toHaveCount(0)
@@ -393,7 +386,6 @@ test('conversations follow the latest activity whatever their old pins, live and
   const [pinned, a, b] = [await createBot(paths, { name: 'Pinned older conversation' }, at(50)), await createBot(paths, { name: 'Pasta conversation' }, at(30)), await createBot(paths, { name: 'Airpods conversation' }, at(18))]
   await appendBotTurn(paths, a.id, { role: 'user', text: 'Pasta?', at: at(20).toISOString() }); await appendBotTurn(paths, b.id, { role: 'assistant', text: 'Airpods.', at: at(16).toISOString() })
   await page.evaluate(id => window.engram.sidebarChange({ kind: 'chat', change: { action: 'pin-item', id, pinned: true } }), pinned.id)
-  // The pin is ignored: the pinned bot was last touched longest ago, so it sorts after the other two.
   const order = () => page.getByTestId('sidebar-chat-collection').locator('.bots-row').evaluateAll((nodes, ids) => nodes.map(node => node.getAttribute('data-testid')!.slice(4)).filter(id => ids.includes(id)), [pinned.id, a.id, b.id])
   await openActivity(page, 'bots'); await showSidebar(); await refresh(); await expect.poll(order).toEqual([b.id, a.id, pinned.id])
   await expect(page.locator('.app-sidebar [data-pinned]')).toHaveCount(0)

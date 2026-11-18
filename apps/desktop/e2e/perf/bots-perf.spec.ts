@@ -17,7 +17,6 @@ const REPS = 5
 const OPT_IN = process.env['ENGRAM_PERF'] === '1'
 type Samples = Record<string, (number | null)[]>
 
-// ---- results: one run file per playwright invocation, keyed on the runner pid so worker restarts reuse it
 type Invocation = { runFile: string; baselinePath: string | null; writeBaseline: boolean; previousRun: string | null }
 
 function outDir(): string {
@@ -61,7 +60,6 @@ function invocation(dir: string): Invocation {
 
 const readJson = (path: string): Record<string, MetricResult> => JSON.parse(readFileSync(path, 'utf8')) as Record<string, MetricResult>
 
-// shortcut: no cross-process lock; the config runs one worker, so merges never overlap.
 function merge(path: string, id: MetricId, result: MetricResult): void {
   const current = existsSync(path) ? readJson(path) : {}
   const tmpPath = `${path}.${process.pid}.tmp`
@@ -82,7 +80,6 @@ function record(id: MetricId, samples: Samples, invariants: string[] = []): void
   expect([...invariants, ...verdict.hard, ...(verdict.referenceOnly ? [] : verdict.soft)]).toEqual([])
 }
 
-// ---- app setup: one seeded master vault per worker, copied per launch
 let master: string | null = null
 const dirs: string[] = []
 function vaultCopy(): string {
@@ -131,7 +128,6 @@ async function withApp(fn: (l: Launched) => Promise<void>, env?: Record<string, 
 
 test.afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }) })
 
-// Clicks a sidebar row in the renderer and times until the new thread shows its loaded bubbles plus one frame.
 const openBot = (page: Page, id: string) => page.evaluate(async (botId) => {
   const row = document.querySelector<HTMLElement>(`[data-testid="bot-${botId}"]`)
   if (!row) throw new Error(`no sidebar row for ${botId}`)
@@ -213,7 +209,6 @@ test('P2 bot switch latency', async () => {
     const sizes = await page.evaluate((ids) => Promise.all(ids.map(id => window.engram.botTranscript(id).then(t => t.length))), SEEDED.firstOpen)
     expect(sizes, 'first open renders the 400-turn transcript cap').toEqual(SEEDED.firstOpen.map(() => 400))
     for (const id of SEEDED.cached) await openBot(page, id)
-    // There is no info pane to keep open while switching: the chat is the whole view.
     await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
     await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)
     const cachedMs: number[] = [], firstOpenMs: number[] = []

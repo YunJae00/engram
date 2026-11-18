@@ -13,7 +13,7 @@ test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-sidebar-search-esc-vault-'))
   paths = await initVault(vault, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   for (const name of ['Alpha chat', 'Beta chat']) await createBot(paths, { name })
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-sidebar-search-esc-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1' } })
   page = await app.firstWindow()

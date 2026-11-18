@@ -6,7 +6,6 @@ export type MetricId = 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8'
 export const FRAME_MS = 1000 / 60
 export const DROPPED_FACTOR = 1.5
 
-// Part order matters: the first part is the metric's primary value.
 export const TARGETS: Record<MetricId, Record<string, number>> = {
   P1: { interactiveMs: 2500 },
   P2: { cachedMs: 120, firstOpenMs: 250 },
@@ -26,7 +25,6 @@ export function stats(values: readonly number[]): Stat {
   return { median, p95: sorted[Math.ceil(0.95 * n) - 1]! }
 }
 
-// Event Timing durations are rounded to 8ms, so an unchanged build lands one step either side of its baseline.
 export const QUANTUM_MS: Record<string, number> = { eventMs: 8, maxEventMs: 8 }
 
 export function passes(value: number | null, target: number, baseline: number | undefined, quantum = 0): boolean {
@@ -46,7 +44,6 @@ export function droppedPct(intervals: readonly number[]): number {
   return (100 * intervals.filter(ms => ms > DROPPED_FACTOR * FRAME_MS).length) / intervals.length
 }
 
-// Per-part samples (null only where a part cannot be measured yet) → result shape.
 export function summarize(id: MetricId, samples: Record<string, (number | null)[]>): MetricResult {
   const parts: Record<string, PartResult> = {}
   for (const name of Object.keys(TARGETS[id])) {
@@ -63,7 +60,6 @@ export function summarize(id: MetricId, samples: Record<string, (number | null)[
 
 export type Verdict = { hard: string[]; soft: string[]; referenceOnly: boolean }
 
-// hard failures (null parts) always fail; soft ones (target or baseline misses) are waived when referenceOnly.
 export function judge(id: MetricId, result: MetricResult, baseline: MetricResult | undefined, previous: MetricResult | undefined): Verdict {
   const hard: string[] = [], soft: string[] = []
   for (const [name, target] of Object.entries(TARGETS[id])) {

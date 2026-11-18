@@ -8,7 +8,6 @@ const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 let app: ElectronApplication | undefined
 test.afterEach(async () => { await app?.close(); app = undefined })
 
-// qa142: a team bot's sidebar row expands to its leads (name and status), by mouse or keyboard.
 test('a team bot row in the sidebar expands to its lead rows', async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-sidebar-team-'))
@@ -18,7 +17,6 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   const task = await createTask(paths, 'Plan the offsite', botId)
   const lead = (id: string, role: string, state: 'working' | 'done', parentId: string | null = null) => ({ id, parentId, depth: parentId ? 2 : 1, role, brief: role, state, sessionKey: `s-${id}`, hiredAt: new Date().toISOString() })
   await updateTask(paths, task.id, t => { t.state = 'waiting'; t.question = 'Which city?'; t.team = { members: [lead('m1', 'Venue lead', 'working'), lead('m2', 'Venue helper', 'working', 'm1'), lead('m3', 'Budget lead', 'done')], hires: 3, maxHires: 8, maxDepth: 3, big: false } })
-  // The primary bot's own button gets the same disclosure.
   const heroId = (await loadBots(paths)).find(bot => bot.primary)!.id
   expect(heroId).not.toBe(botId)
   const heroTask = await createTask(paths, 'Plan the launch', heroId)
@@ -47,8 +45,6 @@ test('a team bot row in the sidebar expands to its lead rows', async () => {
   await expect(page.locator('.sidebar-primary').getByTestId('sidebar-team-lead'), 'SIDEBAR-TEAM primary leads').toHaveText([/Launch lead.+/])
 })
 
-// qa143 S19 (c) kept an ended team on view in the sidebar and the chat. grokbar c4 took the strip out of the chat and c5 the line under the
-// sidebar row ("팀 2명 · 모두 끝" stayed after every answer, GROKBOT rule 8): a team is on view only while someone is working (the test above).
 test('a team that has ended leaves no line under the sidebar row and no strip in the chat', async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-sidebar-team-ended-'))

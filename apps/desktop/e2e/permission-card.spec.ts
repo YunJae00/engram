@@ -33,7 +33,6 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   await openActivity(page, 'bots')
   await page.getByTestId(`bot-${bot.id}`).click()
   await expect(page.locator('.bots-thread')).toContainText(TURNS.at(-1)![1])
-  // The real helper is never used: main reads this fake state, and System Settings never opens.
   await app.evaluate(({ shell }) => {
     const opened: string[] = []
     Object.assign(globalThis, { __opened: opened, __engramPermissionState: { accessibility: true, screenRecording: false, inputMonitoring: true } })
@@ -44,7 +43,6 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   return { app, page, lane: `bot-${bot.id}`, cleanup }
 }
 
-// Starts main's real wait for Screen Recording, as a denied look_desktop step does.
 async function startStep(app: ElectronApplication, lane: string): Promise<void> {
   await app.evaluate(({ BrowserWindow }, lane) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
@@ -108,7 +106,6 @@ test('the card leaves when the permission turns on', async () => {
     await app.evaluate(() => { (globalThis as Window).__engramPermissionState = { accessibility: true, screenRecording: true, inputMonitoring: true } })
     await expect(page.getByTestId('permission-card')).toHaveCount(0, { timeout: 15_000 })
     await expect.poll(() => app.evaluate(() => (globalThis as Window).__waited)).toBe('on')
-    // The turn is still working; the waiting line is one fixed word and never a step name (hux r2).
     await expect(page.getByTestId('bots-thinking')).toHaveAttribute('aria-label', 'Thinking')
     await expect(page.locator('.bots-thread')).toContainText(TURNS.at(-1)![1])
     expect(await app.evaluate(() => (globalThis as Window).__opened)).toEqual([])

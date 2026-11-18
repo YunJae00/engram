@@ -141,14 +141,12 @@ async function control(next: DesktopControlStatusDto) {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'desktop:control', control: status })
   }, next)
 }
-// Settings has no computer section and nothing in it opens the session-control dialog.
 async function openSettingsWithoutComputerControls() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'settings')
   await expect(page.getByTestId('settings-start-fresh')).toBeVisible()
   for (const id of ['computer-settings', 'computer-use-state', 'computer-controls-open', 'computer-dialog', 'computer-control-start']) await expect(page.getByTestId(id)).toHaveCount(0)
 }
-// One chat view: the first bot's conversation, opened from its sidebar row.
 async function openChat() {
   if (!await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-open').click()
   await openActivity(page, 'bots')
@@ -261,11 +259,9 @@ test('session app previews stay inside the conversation and preserve drafts', as
   await page.getByTestId('preview-card-reopen').click()
   await expect(preview).toBeVisible()
   await expect(page.getByTestId('bots-input')).toHaveValue('Keep my draft')
-  // Computer controls left the composer: its + only attaches files, and Settings opens no dialog either.
   await expect(page.getByTestId('bots-input-add')).toHaveAttribute('aria-label', 'Attach files')
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
   await openSettingsWithoutComputerControls()
-  // Esc closes Settings itself: no dialog sits on top of it.
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('settings-view')).toHaveCount(0)
   await openSettingsWithoutComputerControls()
@@ -279,7 +275,6 @@ test('foreground access requires the explicit session control button', async () 
   await app.evaluate(({ ipcMain, BrowserWindow }, lane) => {
     ipcMain.removeHandler('desktop:bindings')
     ipcMain.handle('desktop:bindings', () => [{ lane, source: 'window:fixture:0', name: 'Draft fixture', readable: true }])
-    // The permission request lives in the thread: a card for this conversation only.
     const asks: unknown[] = []
     ;(globalThis as unknown as { permissionAsks: unknown[] }).permissionAsks = asks
     ipcMain.removeHandler('desktop:permissionCard')
@@ -301,7 +296,6 @@ test('foreground access requires the explicit session control button', async () 
   expect((await state()).resumes).toBe(0)
   await expect(page.getByTestId('bots-input')).toBeVisible()
   await expect(page.getByTestId('computer-controls-open')).toHaveCount(0)
-  // No session-control dialog exists any more; the explicit button is the in-thread permission card.
   const card = page.getByTestId('bots-thread').getByTestId('permission-card')
   await expect(card).toContainText('Allow Engram to use this app')
   expect((await state()).resumes).toBe(0)
@@ -309,12 +303,10 @@ test('foreground access requires the explicit session control button', async () 
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as { permissionAsks: unknown[] }).permissionAsks)).toEqual(['accessibility'])
   await openSettingsWithoutComputerControls()
   await page.getByTestId('settings-view').getByRole('button', { name: 'Close settings', exact: true }).click()
-  // Neither opening the conversation, the card nor Settings started control.
   expect(await state()).toMatchObject({ resumes: 0, control: { state: 'idle' } })
 })
 
 test('a delayed first-run tour does not cover a conversation already in use', async () => {
-  // The first-run tour is gone: even a profile that never finished it gets no overlay.
   await page.evaluate(() => localStorage.removeItem('engram.tour.done'))
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()

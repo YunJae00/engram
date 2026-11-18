@@ -8,7 +8,7 @@ test('the chat shows localized approval and choice cards without overflow', asyn
   const root = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(root, { recursive: true })
   const paths = await initVault(await mkdtemp(join(root, 'decision-cards-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const bot = await createBot(paths, { name: 'Approval fixture' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '내용 확인해줘', at: new Date().toISOString() })
   const task = await createTask(paths, 'Review content', bot.id)
@@ -38,13 +38,11 @@ test('the chat shows localized approval and choice cards without overflow', asyn
       value.approvals[0]!.words = command
       value.approvals[0]!.url = 'file:///work#command-one'
     })
-    // A running fixture has no live worker; isolate it from startup recovery.
     await app.evaluate(({ ipcMain, BrowserWindow }, tasks) => {
       ipcMain.removeHandler('tasks:list')
       ipcMain.handle('tasks:list', () => tasks)
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'tasks:changed' })
     }, await listTasks(paths))
-    // The card asks once in the conversation's language and shows the whole command below it.
     await expect(approval.locator('.approval-command')).toHaveText(shown)
     await expect(approval.locator('.decision-card-title')).toHaveText('제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?')
     await expect(approval.getByText('진행하기 전에')).toHaveCount(1)
@@ -53,7 +51,6 @@ test('the chat shows localized approval and choice cards without overflow', asyn
     await app.evaluate(({ BrowserWindow }, id) => {
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send('engram:event', { type: 'chat:offer', channel: `bot-${id}`, offer: { kind: 'asked', question: 'Which one?', options: ['먼저 확인해줘', '나중에 할게'] } })
     }, bot.id)
-    // A question's options are never buttons: the person answers by typing.
     await expect(tile.getByTestId('bots-choices')).toHaveCount(0)
     await expect(tile.getByRole('button', { name: /먼저 확인해줘|나중에 할게/ })).toHaveCount(0)
     for (const width of [950, 620]) {

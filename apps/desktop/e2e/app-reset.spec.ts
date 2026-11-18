@@ -20,7 +20,6 @@ test('reset confirmation erases local app data and returns to first setup withou
   const launch = async (selfRestart = false) => {
     const running = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1' } })
     if (selfRestart) await running.evaluate(({ app }) => {
-      // A self-initiated restart must not wait for the test debugger to disconnect.
       const inspector = process.getBuiltinModule('inspector') as typeof import('node:inspector')
       app.prependOnceListener('will-quit', () => inspector.close())
     })

@@ -43,8 +43,6 @@ async function openChat(page: Page, chatId: string): Promise<void> {
 }
 
 async function openSettings(page: Page): Promise<void> {
-  // The sheet reloads after a language switch; its overlay is there before its rows are.
-  // The check and the click retry as one unit: the overlay can come back between them and swallow the click.
   await expect(async () => {
     if (!await page.locator('.settings-overlay').isVisible()) await page.getByTestId('activity-settings').click({ timeout: 1000 })
     await expect(page.getByTestId('settings-view')).toBeVisible({ timeout: 1000 })
@@ -58,7 +56,6 @@ async function savedLanguage(profile: string): Promise<unknown> {
 async function layout(page: Page): Promise<Layout> {
   await openSettings(page)
   const widths: number[] = [], overflow: Overflow[] = []
-  // Settings is one page now, so one pass measures every group.
   await page.evaluate(() => document.fonts.ready.then(() => undefined))
   widths.push(await page.getByTestId('settings-view').evaluate(node => node.getBoundingClientRect().width))
   overflow.push(...await page.getByTestId('settings-view').evaluate(root => [...root.querySelectorAll<HTMLElement>('*')]
@@ -85,7 +82,6 @@ test('a language change switches the UI live, keeps the draft and the Korean lay
 
     await pick(page, 'ko')
     await expect(page.getByTestId('activity-settings')).toHaveAttribute('aria-label', '설정')
-    // qa146 S25: picking a language keeps Settings open, now in that language.
     await expect(page.getByTestId('settings-view'), 'settings stay open').toBeVisible()
     await expect(page.locator('[data-testid^="setting-ui-language-"]')).toHaveCount(0)
     await expect(page.getByTestId('settings-view').getByRole('button', { name: '설정 닫기', exact: true })).toBeVisible()

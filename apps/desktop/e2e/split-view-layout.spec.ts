@@ -47,7 +47,6 @@ async function emit(events: unknown[]): Promise<void> {
 async function shot(name: string): Promise<void> {
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows().find((one) => one.webContents.getURL().includes('index.html'))!
-    // Wake a hidden window's compositor before capturing the current frame.
     await win.webContents.capturePage()
     await new Promise((resolve) => setTimeout(resolve, 400))
     return (await win.webContents.capturePage()).toPNG().toString('base64')
@@ -96,7 +95,6 @@ function geometry(): Promise<Geometry> {
       dark,
       card: deck ? {
         inside: deck.left >= body.left - 0.5 && deck.right <= body.right + 0.5 && deck.top >= body.top - 0.5 && deck.bottom <= body.bottom + 0.5,
-        // The card docks over the thread's top corner since live-card-fit, so it must clear every bubble and the composer.
         overlaps: [...chat.querySelectorAll('[data-testid=bots-thread] .bubble-msg')].map((node) => node.getBoundingClientRect())
           .filter((box) => box.bottom > thread.top && box.top < thread.bottom).some((box) => hits(deck, box)) || hits(deck, write),
       } : null,
@@ -104,8 +102,6 @@ function geometry(): Promise<Geometry> {
   })
 }
 
-// One chat view: each bot is opened with its sidebar row and must fill the chat column on its own.
-// Preview frames are kept per open chat, so a bot's frame is sent again once its chat is the one on screen.
 async function expectFullChat(index: number, card?: () => unknown): Promise<void> {
   const withCard = !!card
   const row = page.getByTestId(`bot-${bots[index]!.id}`)
@@ -148,13 +144,11 @@ test('two running chats each fill the single chat view with conversation, not bl
     await shot(`single-view-${theme}`)
   }
 
-  // A frame for the first bot while the other bot's conversation is open stays out of that conversation.
   await expectFullChat(1)
   await emit([appFrame()])
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expectFullChat(0, appFrame)
 
-  // The old split-view page dialog has nothing to open; a very wide window still gives each bot a full chat column.
   await expect(page.getByTestId('mission-browser-dialog')).toHaveCount(0)
   await page.setViewportSize({ width: 2600, height: 1400 })
   await expectFullChat(0, appFrame)

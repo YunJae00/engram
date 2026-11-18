@@ -69,13 +69,11 @@ test.afterEach(async () => {
 test('8-orb assignment, and the picker in the new-bot dialog', async () => {
   const page = await launch()
 
-  // Old drawn and photo avatars show one of the 8 orbs, hashed from the real id, with no photo and no restore entry.
   for (const id of [CHAT_ID, 'vis-budget', PHOTO_ID]) {
     await expect(rowAvatar(page, id)).toHaveAttribute('data-character', defaultCharacter(id))
     await expect(rowAvatar(page, id).locator('img')).toHaveCount(0)
   }
 
-  // Five new chats in a row: each face is the core rule applied to the real id, never repeating the one before.
   const before = (await list(page)).length
   for (let i = 0; i < 5; i++) await page.evaluate(n => window.engram.botCreate({ name: `Chat ${n}` }), i)
   const bots = await list(page)
@@ -89,17 +87,14 @@ test('8-orb assignment, and the picker in the new-bot dialog', async () => {
     await expect(rowAvatar(page, made[i]!.id)).toHaveAttribute('data-character', expected)
   }
 
-  // The same id keeps its face after a reload.
   await page.reload()
   await expect(page.getByTestId('shell')).toBeVisible()
   for (const bot of made) await expect(rowAvatar(page, bot.id)).toHaveAttribute('data-character', (bot.avatar as { character: string }).character)
   expect((await list(page)).slice(-5).map(b => b.avatar)).toEqual(made.map(b => b.avatar))
 
-  // The sidebar row draws a 32px orb, unclipped: the small master, which sits still while its bot is idle.
   const target = made[2]!
   expect(await sharp(rowAvatar(page, target.id), 32)).toBe('static')
 
-  // There is no chat header face or info pane. The 4x2 picker is in the new-bot dialog: a pick wears an ink ring and is the new bot's stored face.
   await page.getByTestId(`bot-${target.id}`).click()
   await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', (target.avatar as { character: string }).character)
   expect(await sharp(page.locator('[data-testid="bot-empty"] .bot-avatar'), 80)).not.toBe('static')
@@ -122,12 +117,10 @@ test('8-orb assignment, and the picker in the new-bot dialog', async () => {
   const picked = (await list(page)).find(b => b.name === 'Picked')!
   await expect(rowAvatar(page, picked.id)).toHaveAttribute('data-character', choice)
   await expect(page.locator('[data-testid="bot-empty"] .bot-avatar')).toHaveAttribute('data-character', choice)
-  // An existing bot's face changes through the app and its row follows immediately.
   await page.evaluate(([id, character]) => window.engram.botUpdate(id!, { avatar: { character: character as never } }), [target.id, choice])
   await expect(rowAvatar(page, target.id)).toHaveAttribute('data-character', choice)
   await expect.poll(async () => (await list(page)).find(b => b.id === target.id)?.avatar).toEqual({ character: choice })
 
-  // An old photo bot has no photo, no upload and no restore entry anywhere in its chat.
   await page.getByTestId(`bot-${PHOTO_ID}`).click()
   const view = page.getByTestId('bots-view')
   await expect(page.getByTestId('bot-info-pane')).toHaveCount(0)

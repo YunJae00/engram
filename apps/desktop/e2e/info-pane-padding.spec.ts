@@ -39,7 +39,6 @@ test('no details pane: the chat fills the window to its right edge and its conte
     await expect(pane).toHaveCount(0)
     await page.evaluate(() => Promise.all(document.getAnimations().map(one => one.finished.catch(() => undefined))))
 
-    // With no pane beside it, the chat reaches the window's right edge and its thread and composer keep their inner gutter.
     const m = await page.locator('[data-testid="bots-view"] .bots-main').evaluate(node => {
       const items = [...node.querySelectorAll('.bubble-msg, .chat-write')]
         .filter(el => el.checkVisibility())

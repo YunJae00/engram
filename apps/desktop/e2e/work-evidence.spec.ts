@@ -35,9 +35,7 @@ test('external browser tools capture masked screenshots and upload only approved
     const shell = await app.firstWindow()
     await expect(shell.getByTestId('shell')).toBeVisible()
     await expect.poll(() => shell.evaluate(() => window.engram.botsList().then(() => true).catch(() => false)), { timeout: 60000 }).toBe(true)
-    // Only this owned test process and localhost destination are approved.
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = (async (first: { buttons?: string[] }, second?: { buttons: string[] }) => ({ response: (second ?? first).buttons!.includes('Preview file') ? 2 : 1, checkboxChecked: false })) as unknown as typeof dialog.showMessageBox })
-    // The hidden window stands in for the one a person would see the question on.
     await app.evaluate(({ BrowserWindow }) => { (globalThis as unknown as { __engramDialogSurface: (next: () => unknown) => void }).__engramDialogSurface(() => BrowserWindow.getAllWindows()[0]) })
     await shell.evaluate(() => window.engram.mcpEnable(true))
     const endpoint = JSON.parse(await readFile(join(data, 'external-connection.json'), 'utf8'))
@@ -75,7 +73,6 @@ test('external browser tools capture masked screenshots and upload only approved
       })
     }, png.toString('base64'))
     expect(pixels.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [32, 32, 32]))
-    // Color-managed decoding may shift RGB; the public patch must remain green, not masked.
     expect(pixels[4]![1]).toBeGreaterThan(200)
     expect(pixels[4]![0]).toBeLessThan(128)
     expect(pixels[4]![2]).toBeLessThan(128)

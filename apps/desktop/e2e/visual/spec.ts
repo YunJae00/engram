@@ -106,7 +106,6 @@ export function hasEllipsis(node: EllipsisStyle, descendants: EllipsisDescendant
   return ellipsized(node) || descendants.some(d => d.visible && d.holdsPreviewText && ellipsized(d))
 }
 const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
-// The holder carries the whole preview text in its own text nodes; a label holding part of it never qualifies.
 export function previewHolder(ownText: string, wholeText: string): boolean {
   const whole = squash(wholeText)
   return whole !== '' && squash(ownText) === whole
@@ -292,7 +291,6 @@ async function measureRow(page: Page, row: number): Promise<Check[]> {
       return [near('composer height', COMPOSER, h(c), 44, 2), atLeast('composer radius', COMPOSER, radius(c), 22, '≥22'),
         ...size('send button', `${MAIN} .bots-write .chat-send-btn`, send, 30, 1), near('composer left offset', COMPOSER, c && col ? c.left - col.left : null, 0, 2, 'column left ±2')]
     }
-    // The title pill was removed with the info pane it opened.
     case 13: return [near('title pill count', PILL, await page.locator(PILL).count(), 0, 0)]
     case 14: {
       const T = '.toast', ICON = '.toast .toast-icon', TITLE = '.toast .toast-title', CLOSE = '.toast .toast-close'
@@ -351,8 +349,6 @@ async function measureGallery(page: Page): Promise<Check[]> {
       size: Number(cell.dataset['size']), state: cell.dataset['state'], primary: cell.dataset['primary'] === 'true',
       avatar: box(cell.querySelector(':scope > .bot-avatar')), alert: box(cell.querySelector('.bot-avatar-alert')), badge: box(cell.querySelector('.bot-avatar-primary')),
       ribbon: (core => core ? getComputedStyle(core).fill : null)(cell.querySelector('.bot-orb-core')),
-      // The glass is painted with gradients, so the ball has no background-color. The wave is measured against --mist, the opaque base of the glass and its
-      // lightest part (the gradients above it only darken it, except the faint floor glow far below the wave), resolved through a probe inside the orb.
       sphere: (orb => {
         if (!orb) return null
         const probe = orb.appendChild(document.createElement('span'))

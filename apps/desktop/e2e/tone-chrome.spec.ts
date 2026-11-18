@@ -43,7 +43,6 @@ async function expectInkRing(page: Page, field: Locator): Promise<void> {
   expect(ring.visible).toBe(true)
   expect(ring.width).toBe('2px')
   expect(ring.color).toBe(INK)
-  // box-shadow transitions over 120ms on inputs, so wait for it to settle.
   await expect.poll(() => field.evaluate(node => getComputedStyle(node).boxShadow)).toContain('rgba(28, 28, 30, 0.2)')
 }
 
@@ -139,7 +138,6 @@ test('cream+ink tokens and chrome on key screens', async () => {
     await page.locator('.bots-thread').screenshot({ path: join(SHOTS, 'chat-light.png') })
     await write.screenshot({ path: join(SHOTS, 'input-light.png') })
 
-    // One chat view: no split buttons, and every bot's chat stays canvas where it is empty.
     for (const layout of ['mission-layout-2', 'mission-layout-4']) await expect(page.getByTestId(layout)).toHaveCount(0)
     for (const bot of bots) {
       await page.getByTestId(`bot-${bot.id}`).click()
@@ -157,7 +155,6 @@ test('cream+ink tokens and chrome on key screens', async () => {
       })
       expect(empty, `${bot.name} has an empty chat area`).not.toBeNull()
       const seen = (await pixel(app, page, empty![0]!, empty![1]!)).match(/\d+/g)!.map(Number)
-      // capturePage goes through the display colour profile, so allow a 2-level rounding drift.
       expect(seen.map((value, index) => Math.abs(value - [255, 255, 255][index]!)).every(delta => delta <= 2), `${bot.name} empty pixel ${seen}`).toBe(true)
     }
     await openActivity(page, 'bots')

@@ -3,7 +3,6 @@ import { closeTestApp } from './navigation.js'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-// First run ends on the primary bot: AI → preferences → first bot → its empty screen.
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 let app: ElectronApplication
@@ -13,7 +12,6 @@ let mockDir: string
 
 async function launch() {
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-first-bot-home-'))
-  // The system locale picks the language; these assertions read English.
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   mockDir = join(userData, 'mock')
   await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
@@ -58,7 +56,6 @@ test.afterEach(async () => { await closeTestApp(app) })
 test('finishing with the bot step renames the primary bot and keeps one bot', async () => {
   await toStep4()
   await expect(page.locator('[data-testid="onboard-step-4"] .bot-avatar')).toBeVisible()
-  // The default name is only a placeholder: typing without clearing gives just the typed name.
   await expect(page.getByTestId('onboard-bot-name')).toHaveValue('')
   await expect(page.getByTestId('onboard-bot-name')).toHaveAttribute('placeholder', 'Engram')
   await page.getByTestId('onboard-bot-name').click()
@@ -78,7 +75,6 @@ test('re-running onboarding on the same vault keeps exactly one primary bot', as
   await toStep4()
   await page.getByTestId('onboard-finish').click()
   await expect(landed()).toBeVisible({ timeout: 60000 })
-  // An empty name field keeps the default name.
   await expect(landed()).toContainText('Engram')
   await closeTestApp(app)
   await launch()

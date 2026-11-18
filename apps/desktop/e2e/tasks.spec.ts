@@ -5,9 +5,6 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Every conversation is a task that runs to the end, and the list shows only
-// what is current: a conversation quiet for a day steps out of sight, not off disk.
-
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const MOCK_DIR = fileURLToPath(new URL('../../../fixtures/mock-responses', import.meta.url))
@@ -35,7 +32,6 @@ test.beforeAll(async () => {
   })
   page = await app.firstWindow()
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
-  // The preload bridge exists once the shell has rendered; under load that can lag the first window.
   await page.getByTestId('shell').waitFor({ timeout: 60_000 })
   await expect.poll(() => page.evaluate(() => window.engram?.vaultReady() ?? false), { timeout: 60_000 }).toBe(true)
 })
@@ -45,7 +41,6 @@ test.afterAll(async () => {
 })
 
 test.beforeEach(async () => {
-  // Fixtures edit the task file; let the preceding app-owned writer finish first.
   await expect.poll(() => page.evaluate(() => window.engram.chatActive()), { timeout: 30_000 }).toEqual([])
 })
 
@@ -157,7 +152,6 @@ test('a question draws no choice buttons, is answered by typing, and completion 
     await expect(question).toBeVisible()
     await expect(page.locator('.bots-chat')).toHaveCSS('animation-name', 'none')
     expect(await question.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
-    // Hidden windows can pause color transitions between compositor frames.
     await page.evaluate(() => { for (const animation of document.getAnimations()) if (animation.effect?.getTiming().iterations !== Infinity) animation.finish() })
     const png = await app.evaluate(async ({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!
@@ -257,7 +251,6 @@ test('a budget stop stays stopped with preserved progress and no completion clai
   await page.reload()
   await page.getByTestId(`bot-${bot.id}`).click()
   await expect(page.locator('.bots-view')).toContainText('This task reached its processing limit and stopped.')
-  // The thread already says the task stopped, so no second 'Task stopped' card repeats it.
   await expect(page.locator('.bots-view').getByText('This task reached its processing limit and stopped.')).toHaveCount(1)
   await expect(page.locator('.bots-view .decision-card')).toHaveCount(0)
   await expect(page.locator('.bots-view')).toContainText('Movie B: Not verified')

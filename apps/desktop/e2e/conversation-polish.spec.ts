@@ -12,7 +12,7 @@ test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-polish-vault-'))
   const paths = await initVault(vault, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const bot = await createBot(paths, { name: '한국어 대화' })
   await appendBotTurn(paths, bot.id, { role: 'user', text: '한국어 입력은 유지', at: '2020-09-11T12:00:00Z' })
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: { ...process.env, ENGRAM_VAULT: vault, ENGRAM_USERDATA: await mkdtemp(join(tmp, 'e2e-polish-data-')), ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_DEVELOPER_FIXTURE: '1' } })
@@ -32,8 +32,6 @@ async function screenshot(file: string) {
 }
 
 test('Cosmos reads as a conversation with compact citations and no premature copy action', async () => {
-  // The sidebar has no 24h filter or Show earlier since the bot sidebar redesign: a 2020 conversation is listed
-  // with the rest, and its row carries the full date as a hover title instead of a visible timestamp.
   await expect(page.getByTestId('sidebar-earlier')).toHaveCount(0)
   const row = page.locator('.bots-row', { hasText: '한국어 대화' })
   await expect(row).toBeVisible()

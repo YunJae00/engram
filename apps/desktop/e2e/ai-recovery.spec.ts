@@ -41,7 +41,6 @@ test('remaining weekly usage does not hide a limited request and the chosen mode
     await page.getByTestId('unhealthy-banner').getByRole('button', { name: 'Check', exact: true }).click()
     await expect(page.getByTestId('settings-view')).toBeVisible()
     await expect(page.getByTestId('brain-codex-status')).toHaveText('Request limited · Retry check')
-    // The account still has weekly usage left (34% used); Settings itself no longer lists limits.
     expect(await page.evaluate(() => window.engram.devUsage('codex', 'system'))).toMatchObject({ windows: [{ name: 'codex · 7d', used: 34 }] })
     await expect(page.getByTestId('settings-view').locator('.account-usage')).toHaveCount(0)
     const check = page.getByTestId('ai-check-filing')

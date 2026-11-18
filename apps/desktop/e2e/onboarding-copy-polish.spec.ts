@@ -60,7 +60,6 @@ async function expectFits() {
   await expect(page.getByTestId('onboard-next')).toBeInViewport()
 }
 
-// The system locale picks the language, so each launch names the one its assertions read.
 async function launch(uiLanguage: 'en' | 'ko' = 'en') {
   await mkdir(SHOTS, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
@@ -176,7 +175,6 @@ test('first screen fits without clipping at normal and narrow sizes', async () =
 test('a Korean UI shows Korean onboarding chrome on every step', async () => {
   await closeTestApp(app)
   await launch('ko')
-  // Product names stay; any other run of Latin letters is an English leftover.
   const leftovers = () => page.getByTestId('onboarding').evaluate(root => [...root.querySelectorAll('*')].flatMap(el => {
     const own = [...el.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent ?? '').join(' ')
     return [own, el.getAttribute('aria-label') ?? '', el.getAttribute('title') ?? '', el.getAttribute('placeholder') ?? '']

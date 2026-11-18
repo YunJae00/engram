@@ -8,7 +8,6 @@ import { closeTestApp, openActivity } from './navigation.js'
 const TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const LONG = 'The agent opened the report, compared the quarterly numbers with last year, and wrote down where the totals drift. It then checked each source link, noted which pages were behind a login, and listed what still needs a person to confirm before anything is sent. '
 type Box = { left: number; top: number; right: number; bottom: number }
-// One chat view: the cases that used two and four panes now look at a second bot and come back to the first.
 type View = 'single' | 'second' | 'return'
 type Frame = { id: string; lane: string; title: string; at: number; captureState: 'ready'; current: false; data: string }
 
@@ -63,7 +62,6 @@ async function push(app: ElectronApplication, frames: Frame[]) {
 async function show(page: Page, bot: Bot) {
   await openActivity(page, 'bots')
   for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
-  // A narrow window folds the sidebar away, so the row is clicked without a pointer.
   await page.getByTestId(`bot-${bot.id}`).dispatchEvent('click')
   await expect(page.locator('.bots-thread')).toBeVisible()
   await expect(page.locator('.bots-chat')).toHaveCount(1)
@@ -165,7 +163,6 @@ test('each live card has its window aspect with no letterbox', async () => {
           await expect.poll(problems, { message: marker, timeout: 5_000 }).toEqual([])
         }
       }
-      // Each bot's card keeps its own window's shape when the person goes from one bot to the other.
       const shape = async (lane: string) => { const box = await measure(lane); return box ? box.stage.width / box.stage.height : 0 }
       await front(b, `${b}:window:w800x600`)
       await expect.poll(() => shape(b), { timeout: 5_000 }).toBeCloseTo(800 / 600, 1)

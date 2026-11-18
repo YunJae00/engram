@@ -20,7 +20,6 @@ test.beforeAll(async () => {
   for (const [role, text] of [['user', 'Summarise the history of printing presses.'], ['assistant', 'Here is the summary.'], ['user', 'Thanks.'], ['assistant', 'You are welcome.']] as const) await appendBotTurn(paths, hero.id, { role, text, at: AT })
   plain = await createBot(paths, { name: 'Garden planner' })
   await appendBotTurn(paths, plain.id, { role: 'user', text: 'Plan the tomato beds.', at: AT })
-  // createBot writes no version; without version 2 the app's launch reset (core bots-reset.ts) backs the seed up and starts empty.
   const file = join(paths.cache, 'bots.json')
   await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), version: 2 }, null, 2))
   app = await electron.launch({ args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'], env: {
@@ -45,7 +44,6 @@ test('with no search the primary bot and the plain row stay listed, the primary 
   await expect(plainRow).toBeVisible()
   await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
   await expect(page.getByTestId('app-sidebar').locator('.sidebar-search, input, textarea')).toHaveCount(0)
-  // The chat's own search reads the same store the sidebar field used to.
   expect((await page.evaluate(q => window.engram.botsSearch(q), 'printing')).map(hit => hit.id)).toEqual([hero.id])
   expect(await page.evaluate(q => window.engram.botsSearch(q), 'qqqzzz no such token')).toEqual([])
   await heroTile.click()

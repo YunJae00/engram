@@ -70,7 +70,6 @@ test('apple white chrome and larger faces', async () => {
     expect(await page.evaluate(() => getComputedStyle(document.body).color), `${M} body color`).toBe('rgb(28, 28, 30)')
 
     await face('sidebar row', page.locator(`[data-testid="bot-${chat.id}"] .sidebar-conversation-avatar > .bot-avatar`), 32)
-    // No title pill and no info pane: the faces are the sidebar row, the empty thread and the new-bot dialog.
     await expect(page.getByTestId('bots-title-pill'), `${M} no title pill`).toHaveCount(0)
     await expect(page.getByTestId('bot-info-pane'), `${M} no info pane`).toHaveCount(0)
 

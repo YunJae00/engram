@@ -26,7 +26,6 @@ test('a message typed after a failed send replaces the put-back draft instead of
   const bot = await createBot(paths, { name: 'Failed draft check' })
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('chat:send')
-    // As in the app: the error arrives while the send is still open.
     ipcMain.handle('chat:send', (event, request: { channel: string }) => { event.sender.send('engram:event', { type: 'chat:error', channel: request.channel, message: 'Connection failed' }); return { ok: true } })
   })
   await page.reload()
@@ -38,27 +37,22 @@ test('a message typed after a failed send replaces the put-back draft instead of
   await input.fill('이대로 진행')
   await input.press('Enter')
   await expect(input).toHaveValue('이대로 진행')
-  // The failure is one plain line in the thread's language: no raw error, no retry, details or copy to press.
   const failed = page.locator('.bubble-msg.error')
   await expect(failed).toHaveText(['문제가 생겨서 이번 건 끝내지 못했어요. 한 번 더 말씀해 주시면 다시 해볼게요.'])
   await expect(failed).not.toContainText('Connection failed')
   await expect(failed.locator('button, details, summary, pre')).toHaveCount(0)
-  // The put-back draft arrives selected: the next message typed replaces it.
   await expect(input).toBeFocused()
   await page.keyboard.type('이어서 해줘')
   await expect(input).toHaveValue('이어서 해줘')
   await page.keyboard.press('Enter')
   await expect(page.locator('.bubble-msg.user').last()).toHaveText('이어서 해줘')
   await expect(input).toHaveValue('이어서 해줘')
-  // A click places the caret as usual: a small correction keeps the draft.
-  // The click lands past the short text, so the caret is at its end.
   await input.click()
   await page.keyboard.type('!')
   await expect(input).toHaveValue('이어서 해줘!')
   await page.keyboard.press('Enter')
   await expect(page.locator('.bubble-msg.error')).toHaveCount(3)
   await expect(input).toHaveValue('이어서 해줘!')
-  // Sent again unchanged and failed again: it is not put back a second time.
   await input.press('Enter')
   await expect(page.locator('.bubble-msg.error')).toHaveCount(4)
   await expect(input).toHaveValue('')

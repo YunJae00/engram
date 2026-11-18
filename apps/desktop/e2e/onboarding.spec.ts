@@ -3,7 +3,6 @@ import { closeTestApp, openActivity, openWelcome } from './navigation.js'
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-// Fresh setup reaches the shell only after a verified AI response.
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
 const PREVIEW = join(REPO_TMP, 'onboarding-preview')
@@ -23,12 +22,10 @@ test.beforeEach(async () => {
   await mkdir(REPO_TMP, { recursive: true })
   await mkdir(PREVIEW, { recursive: true })
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-home-'))
-  // The system locale picks the language; these assertions read English.
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ uiLanguage: 'en' }))
   mockDir = join(userData, 'mock')
   await mkdir(mockDir); await writeFile(join(mockDir, 'default.txt'), 'OK')
   vaultRoot = join(await mkdtemp(join(REPO_TMP, 'e2e-onboard-')), 'Engram')
-  // NO ENGRAM_VAULT → onboarding must appear
   const env = { ...process.env, ENGRAM_VAULT: '', ENGRAM_USERDATA: userData, ENGRAM_ONBOARD_ROOT: vaultRoot, ENGRAM_NO_GIT: '1', ENGRAM_NO_AUTOTIDY: '1', ENGRAM_ENGINE: 'none', ENGRAM_HIDDEN: '1', ENGRAM_BROWSER_EXTERNAL: '0' }
   app = await electron.launch({ timeout: 90000, args: [MAIN_ENTRY, '--no-sandbox'], env })
   page = await app.firstWindow({ timeout: 90000 })
@@ -181,12 +178,9 @@ test('setup continues as soon as Claude is signed in, with no model step', async
 test('first-run login states, filing retry, and a welcome with no direct browser entry', async () => {
   test.setTimeout(240000)
   await expect(page.getByTestId('onboarding')).toBeVisible()
-  // ① vault location (pre-filled from ENGRAM_ONBOARD_ROOT)
   await expect(page.getByTestId('onboard-step-1')).toBeVisible()
   await expect(page.getByTestId('vault-root-input')).toHaveValue(vaultRoot)
   await screenshot('01-workspace.png')
-  // Replace only the authentication boundary in this isolated process.
-  // No real account credentials, external browser login or model quota is used.
   await app.evaluate(({ ipcMain, BrowserWindow }, dir) => {
     process.env['ENGRAM_ENGINE'] = 'mock'; process.env['ENGRAM_MOCK_DIR'] = dir
     const states = [{ id: 'claude', installed: true, loggedIn: false }, { id: 'codex', installed: true, loggedIn: false }]
@@ -206,7 +200,6 @@ test('first-run login states, filing retry, and a welcome with no direct browser
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'engines:detected' })
   }, mockDir)
   await page.getByTestId('onboard-next').click()
-  // Sign-in must finish before the live connection check.
   await expect(page.getByTestId('onboard-step-2')).toBeVisible()
   await expect(page.getByTestId('onboard-connect-codex')).toHaveCount(0)
   await screenshot('02-connect-ai.png')
@@ -224,7 +217,6 @@ test('first-run login states, filing retry, and a welcome with no direct browser
   await screenshot('04-connected.png')
   await page.getByTestId('onboard-ai-next').click()
   await page.getByTestId('onboard-prefs-next').click(); await page.getByTestId('onboard-finish').click()
-  // lands in the shell on the new vault
   await expect(page.getByTestId('shell')).toBeVisible({ timeout: 60_000 })
   expect(await page.evaluate(() => window.engram.settingsGet().then(settings => [settings.defaultEngine, settings.aiSelections?.filing?.engine]))).toEqual(['claude', 'claude'])
   await access(join(vaultRoot, 'workspace', 'AGENTS.md'))
@@ -252,7 +244,6 @@ test('first-run login states, filing retry, and a welcome with no direct browser
     })
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send('engram:event', { type: 'sweep:done', report: { executed: 0, skipped: 0, failed: 0, deferred: 13, haltReason: 'quota', briefWritten: false } })
   })
-  // Filing stopped short: the footer shows the retry beside settings, and no status row at rest.
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('filing-retry')).toBeEnabled()
   const retryBox = await page.getByTestId('filing-retry').boundingBox(), settingsBox = await page.getByTestId('activity-settings').boundingBox()
@@ -271,14 +262,12 @@ test('first-run login states, filing retry, and a welcome with no direct browser
   await expect(page.getByTestId('filing-retry')).toBeDisabled()
   await page.getByTestId('filing-retry').evaluate(button => (button as HTMLButtonElement).click())
   await expect(page.locator('.sidebar-work-status.working .sidebar-status-icon svg')).toBeVisible()
-  // The run finished clean, so the footer goes quiet again.
   await expect(page.getByTestId('sweep-status')).toHaveCount(0)
   await expect(page.getByTestId('filing-retry')).toHaveCount(0)
   expect(await app.evaluate(() => (globalThis as typeof globalThis & { filingCalls: number }).filingCalls)).toBe(1)
   const conversationsBefore = await page.evaluate(() => window.engram.botsList().then(bots => bots.length))
   await page.setViewportSize({ width: 1100, height: 825 })
   await openWelcome(page)
-  // No direct browser entry: the welcome's + only attaches files, and a page opens when the bot works on one.
   await expect(page.getByTestId('welcome-input-add')).toHaveAttribute('aria-label', 'Attach files')
   for (const id of ['welcome-web', 'chat-add-menu', 'web-pane', 'preview-card', 'live-address']) await expect(page.getByTestId(id)).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Website shortcuts' })).toHaveCount(0)
@@ -286,7 +275,6 @@ test('first-run login states, filing retry, and a welcome with no direct browser
   await expect(page.getByTestId('bots-view').getByRole('tab')).toHaveCount(0)
   await expect(page.getByTestId('connect-banner')).toBeHidden()
   await screenshot('06-browser-start.png')
-  // The first words typed on the welcome start the conversation.
   await page.getByTestId('welcome-input').fill('Open example.com for me')
   await page.getByTestId('welcome-input').press('Enter')
   await expect(page.locator('[data-testid="bots-view"] .bubble-msg.user')).toHaveText(['Open example.com for me'])

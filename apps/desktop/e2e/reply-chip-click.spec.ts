@@ -13,7 +13,7 @@ test.beforeEach(async () => {
   await mkdir(tmp, { recursive: true })
   const root = await mkdtemp(join(tmp, 'e2e-chip-click-'))
   const paths = await initVault(root, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   botId = (await createBot(paths, { name: 'Chip click fixture' })).id
   const at = new Date().toISOString()
   await appendBotTurn(paths, botId, { role: 'user', text: '다음 회의 리마인더 하나 만들어줘.', at })
@@ -26,7 +26,6 @@ test.beforeEach(async () => {
     const fixture = globalThis as Fixture
     fixture.pending = []; fixture.requests = []
     for (const channel of ['chat:send', 'chat:active', 'chat:say']) ipcMain.removeHandler(channel)
-    // Main's view once its handler ended: nothing active, while the renderer's promise is still open.
     ipcMain.handle('chat:active', () => [])
     ipcMain.handle('chat:send', (_event, request) => new Promise<void>(resolve => { fixture.requests.push(request.message); fixture.pending.push({ request, resolve }) }))
     ipcMain.handle('chat:say', () => ({ ok: false }))
@@ -45,11 +44,8 @@ async function broadcast(event: Record<string, unknown>) {
 async function resolveFirst() { await app.evaluate(() => (globalThis as Fixture).pending.shift()!.resolve()) }
 async function done(text: string) { await broadcast({ type: 'chat:done', channel: `bot-${botId}`, text }) }
 const userBubbles = () => page.locator('.bubble-msg.user')
-// No reply chips are drawn under any answer: the person types the reply.
 const chips = () => page.locator('[data-testid="reply-chips"], [data-testid^="reply-chip-"]')
 async function say(text: string) { const input = page.getByTestId('bots-input'); await input.fill(text); await input.press('Enter') }
-// Settled turns use `content-visibility: auto`: until a rendering update marks them on-screen they lay out at their 80px
-// placeholder. Go on only once every turn's contents rendered (the turn itself always reports visible; only what is inside it is skipped).
 async function turnsRendered() {
   await expect.poll(() => page.evaluate(() => {
     const inner = [...document.querySelectorAll<HTMLElement>('.bots-thread .bubble-turn > *')]
@@ -103,7 +99,6 @@ test('two typed messages queued behind an unresolved send each show once, in ord
 })
 
 test('a draft typed before a background busy blip is kept, no chips come back after it, and it is sent once', async () => {
-  // Broadcasts land in the renderer asynchronously: wait for each half of the blip.
   const input = page.getByTestId('bots-input')
   await input.fill(DEFER)
   await broadcast({ type: 'comet:working', channel: `bot-${botId}`, working: true })

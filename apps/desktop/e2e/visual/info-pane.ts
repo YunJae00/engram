@@ -6,7 +6,6 @@ export interface InfoPaneTools { probe(selector: string): Promise<Box>; shellOve
 
 const PANE = '[data-testid="bot-info-pane"]'
 
-// The info pane and its title pill were removed: row 15 now holds that neither exists and the chat column keeps its full width.
 export async function measureInfoPane(page: Page, { probe, shellOverflow, main, column, pill }: InfoPaneTools): Promise<Check[]> {
   const view = await probe(main), col = await probe(column)
   if (!col) return [deferred('row 15 info pane', '-', 'deferred: no chat is open')]

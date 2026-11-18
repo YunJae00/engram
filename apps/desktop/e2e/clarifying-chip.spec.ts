@@ -15,7 +15,7 @@ test.beforeEach(async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const paths = await initVault(await mkdtemp(join(tmp, 'e2e-clarifying-chip-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   botId = (await createBot(paths, { name: 'Meeting notes' })).id
   const at = new Date().toISOString()
   await appendBotTurn(paths, botId, { role: 'user', text: '회의록 정리해줘', at })
@@ -55,7 +55,6 @@ async function openFull(): Promise<Locator> {
   await page.getByTestId(`bot-${botId}`).click()
   return page.getByTestId('bots-thread')
 }
-// The split-view tile is gone: the same conversation in a window as narrow as a tile was.
 async function openNarrow(): Promise<Locator> {
   await expect.poll(() => page.evaluate(() => window.engram.vaultReady()), { timeout: 60_000 }).toBe(true)
   const scope = await openFull()
@@ -65,7 +64,6 @@ async function openNarrow(): Promise<Locator> {
   return scope
 }
 
-// Suggested replies are never buttons: the person types the words instead.
 async function say(scope: Locator, text: string) {
   await expect(scope.getByTestId('reply-chips')).toHaveCount(0)
   await expect(scope.getByTestId('reply-chip-0')).toHaveCount(0)

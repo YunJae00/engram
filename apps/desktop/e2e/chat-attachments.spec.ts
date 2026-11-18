@@ -34,7 +34,6 @@ test('one-line composer keeps one keyboard-accessible attach button and no menu 
     await page.evaluate(async theme => window.engram.settingsSet({ ...await window.engram.settingsGet(), theme }), theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     if (await page.getByTestId('app-sidebar').isVisible()) await page.getByTestId('app-sidebar-close').click()
-    // The + has no menu (hux): it opens the file picker itself, also from the keyboard.
     const add = page.getByTestId('welcome-input-add'), menu = page.getByLabel('Conversation actions', { exact: true })
     await expect(menu).toHaveCount(0)
     await expect(add).toHaveAttribute('aria-label', 'Attach files')
@@ -74,19 +73,16 @@ test('native picker attaches a file to a new chat without importing it into Cosm
   await expect(page.locator('.bots-view .bubble-msg.user').last().locator('.chat-user-text')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
   await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
-  // The primary Engram bot always leads the list; the welcome send starts its own conversation after it.
   const first = (await page.evaluate(() => window.engram.botsList())).find(bot => !bot.primary)!
   const turns = await page.evaluate(id => window.engram.botTranscript(id), first.id)
   expect(turns.filter(turn => turn.role === 'user').map(turn => turn.text)).toEqual(['Attached: request.txt'])
   expect(await readdir(paths.inbox)).toEqual([])
   expect(await readdir(paths.sources)).toEqual([])
-  // Only the profile the comets share may appear; attachments are never imported.
   await expect.poll(async () => (await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
   expect(await readdir(join(paths.cache, 'chat-attachments'))).toHaveLength(1)
 })
 
 test('keeps pending attachments in their chat, removes them, and accepts drop and paste', async () => {
-  // The primary Engram bot always leads the list; the welcome send starts its own conversation after it.
   const first = (await page.evaluate(() => window.engram.botsList())).find(bot => !bot.primary)!
   const second = await page.evaluate(() => window.engram.botCreate({ name: 'Separate attachment chat', purpose: '' }))
   await page.getByTestId('bots-input-files').setInputFiles(input)
@@ -117,7 +113,6 @@ test('keeps pending attachments in their chat, removes them, and accepts drop an
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
   await expect(page.locator('.bots-view .bubble-stop')).toHaveCount(0)
   expect(await readdir(paths.inbox)).toEqual([])
-  // Only the profile the comets share may appear; attachments are never imported.
   expect((await readdir(paths.notes)).filter((name) => name !== 'n-person-profile.md')).toEqual([])
 })
 
@@ -139,7 +134,6 @@ test('leaving a conversation and coming back preserves and sends its multiline d
   const draft = 'Review the attached image.\nKeep this second line separate.'
   await page.getByTestId('bots-input').fill(draft)
   await expect(page.getByTestId('mission-layout-2')).toHaveCount(0)
-  // There is no split view: the draft and its files wait in the same chat while another one is open.
   const other = await page.evaluate(async id => { const bots = await window.engram.botsList(); return (bots.find(bot => bot.id !== id) ?? await window.engram.botCreate({ name: 'Other chat' })).id }, id)
   await page.getByTestId(`bot-${other}`).click()
   await expect(page.getByTestId(`bot-${other}`)).toHaveClass(/active/)
@@ -151,7 +145,6 @@ test('leaving a conversation and coming back preserves and sends its multiline d
   await expect(page.getByLabel('Attached files')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg.user').last()).toContainText('Keep this second line separate.')
   await expect(page.locator('.bots-view .bubble-msg.assistant').last()).toContainText('Record this if you want it kept')
-  // The empty seat of a reply in progress draws no bubble, so wait for the turn itself to be saved.
   await expect.poll(async () => (await page.evaluate(id => window.engram.botTranscript(id!), id)).filter(turn => turn.role === 'user').at(-1)?.text, { timeout: 30_000 }).toBe(`${draft}\n\nAttached: pixel.png`)
   const turns = await page.evaluate(id => window.engram.botTranscript(id!), id)
   const sent = turns.filter(turn => turn.role === 'user').at(-1)!
@@ -173,7 +166,6 @@ test('long pasted text previews stay bounded while copy preserves the entire sav
   await expect(files).toContainText('Pasted text.txt')
   await files.locator('summary').click()
   await expect(files.locator('pre')).toHaveText(text.slice(0, 60_000))
-  // Capture only in this isolated app; never read or overwrite the user's clipboard.
   await app.evaluate(({ clipboard }) => {
     clipboard.writeText = text => { (globalThis as typeof globalThis & { copiedText?: string }).copiedText = text }
   })

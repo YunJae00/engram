@@ -15,7 +15,6 @@ test('a live card leaves earlier messages readable', async () => {
   try {
     const paths = await initVault(vault, { git: false })
     let bot: Awaited<ReturnType<typeof createBot>> | undefined
-    // Card state lives in the renderer, so each theme gets a fresh launch that starts with no card.
     for (const theme of ['light', 'dark']) {
       app = await electron.launch({
         args: [fileURLToPath(new URL('../out/main/index.js', import.meta.url)), '--no-sandbox'],
@@ -23,7 +22,6 @@ test('a live card leaves earlier messages readable', async () => {
       })
       const page = await app.firstWindow()
       await expect(page.getByTestId('shell')).toBeVisible()
-      // First launch settles its own starter bots, so the seeded chat is written after it.
       if (!bot) {
         bot = await createBot(paths, { name: 'Live card' })
         for (let index = 1; index <= TURNS; index++) {

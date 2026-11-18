@@ -4,7 +4,6 @@ export type ProbeData = { intervals: number[]; longtasks: number[]; events: { na
 type ProbeOptions = { mutationSelector?: string }
 type ProbeWindow = Window & { __perfProbe?: { stop: () => ProbeData } }
 
-// Runs in the renderer; must stay self-contained because Playwright serializes it.
 function installProbe(opts: ProbeOptions): void {
   const w = window as ProbeWindow
   w.__perfProbe?.stop()
@@ -53,7 +52,6 @@ export async function startProbe(page: Page, opts: ProbeOptions = {}): Promise<v
 }
 
 export async function stopProbe(page: Page): Promise<ProbeData> {
-  // Long task and event entries are delivered asynchronously; give them one task to land.
   await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)))
   return page.evaluate(() => {
     const probe = (window as ProbeWindow).__perfProbe
@@ -68,7 +66,6 @@ export function frameP95(intervals: number[]): number {
   return sorted[Math.ceil(0.95 * sorted.length) - 1]!
 }
 
-// Event Timing only reports entries ≥16 ms, so unreported keydowns are counted at that 16 ms upper bound.
 export function keyEventDurations(data: ProbeData): number[] {
   if (data.keydowns === 0) throw new Error('probe: no keydown reached the renderer')
   const measured = data.events.filter(e => e.name === 'keydown').map(e => e.duration)
@@ -84,7 +81,6 @@ export const unpausedAnimations = (page: Page) => page.evaluate(() => document.g
 
 export type StreamWatch = { tokens: { at: number; text: string }[]; doneAt: number | null; doneText: string | null; settledAt: number | null }
 
-// Attaches before the send; records each matching event's renderer time in the event callback itself.
 export async function watchStream(page: Page, channel: string): Promise<void> {
   await page.evaluate((ch) => {
     const w = window as Window & { __perfStream?: StreamWatch & { off: () => void } }
@@ -99,7 +95,6 @@ export async function watchStream(page: Page, channel: string): Promise<void> {
   }, channel)
 }
 
-// Resolves when the last assistant bubble holds the full reply, is out of streaming state, and one more frame has painted.
 export async function awaitSettled(page: Page, sentinel: string, timeoutMs: number): Promise<StreamWatch> {
   return page.evaluate(({ sentinel, timeoutMs }) => new Promise<StreamWatch>((resolve, reject) => {
     const w = window as Window & { __perfStream?: StreamWatch & { off: () => void } }
@@ -121,7 +116,6 @@ export async function awaitSettled(page: Page, sentinel: string, timeoutMs: numb
   }), { sentinel, timeoutMs })
 }
 
-// Scrolls the bot thread to its top and returns how far the top bubble moved when the earlier page landed.
 export async function measureAnchor(page: Page): Promise<number> {
   return page.evaluate(() => new Promise<number>((resolve, reject) => {
     const thread = document.querySelector('[data-testid="bots-thread"]')
@@ -129,7 +123,6 @@ export async function measureAnchor(page: Page): Promise<number> {
     const frame = () => new Promise(done => requestAnimationFrame(() => done(undefined)))
     const count = () => thread.querySelectorAll('.bubble-msg').length
     void (async () => {
-      // Leave the top first so reaching it is a fresh top reach even after the wheel probe ended there.
       thread.scrollTop = 40
       await frame(); await frame()
       thread.scrollTop = 0

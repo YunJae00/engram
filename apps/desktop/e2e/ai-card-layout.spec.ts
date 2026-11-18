@@ -50,7 +50,6 @@ test('AI cards separate account details from actions and show a calm connected b
   await expect(claude.getByRole('button', { name: 'Install Claude runtime', exact: true })).toBeVisible()
   const connected = page.getByTestId('brain-codex-status')
   await expect(connected).toHaveText('Connected')
-  // Limits left the card for the account dialog; the card keeps the account row and its actions.
   await expect(codex.locator('.account-usage')).toHaveCount(0)
   await expect(codex.getByRole('button', { name: 'Manage ChatGPT accounts', exact: true })).toBeVisible()
   for (const theme of ['light', 'dark'] as const) {

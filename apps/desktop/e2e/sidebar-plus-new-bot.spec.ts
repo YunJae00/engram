@@ -53,7 +53,6 @@ test('+ asks for a name and icon, then creates and opens the bot', async () => {
   await expect(dialog()).toBeVisible()
   await expect(page.getByTestId('create-bot-name')).toBeFocused()
   await expect(page.locator('.sidebar-create-menu')).toHaveCount(0)
-  // Nothing is made until the person names it.
   expect((await botList()).length).toBe(before.length)
   await page.keyboard.press('Escape')
   await expect(dialog()).toHaveCount(0)

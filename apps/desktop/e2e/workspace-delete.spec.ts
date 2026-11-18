@@ -4,8 +4,6 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// There is one workspace. A person who had two opens the app and finds both in it: nothing to switch,
-// nothing deleted, and the second folder exactly as it was.
 test('two workspaces open as one: the other one\'s bots, conversations and notes are here and its folder is untouched', async () => {
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
@@ -34,31 +32,26 @@ test('two workspaces open as one: the other one\'s bots, conversations and notes
   try {
     let page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()
-    // The menu only leads to places; nothing in it makes, switches to or deletes a workspace.
     await page.getByTestId('engram-menu-button').click()
     const menu = page.getByTestId('engram-menu')
     await expect(menu.getByRole('button')).toHaveCount(3)
     await expect(menu).not.toContainText(/workspace/i)
     await expect(page.locator('.workspace-management')).toHaveCount(0)
     await page.keyboard.press('Escape')
-    // Everyone from both is in the sidebar; the second chief of staff says where it came from.
     const sidebar = page.getByTestId('app-sidebar')
     for (const name of ['Chief', 'Kim', 'Chief (Work)', 'Park']) await expect(sidebar.getByText(name, { exact: true }).first()).toBeVisible()
     const bots = await page.evaluate(() => window.engram.botsList())
     expect(bots.map(one => one.name).sort()).toEqual(['Chief', 'Chief (Work)', 'Kim', 'Park'])
     expect(bots.filter(one => one.primary).map(one => one.id)).toEqual(['bot-a-1'])
-    // Its conversation came with it.
     await sidebar.getByText('Park', { exact: true }).first().click()
     await expect(page.getByTestId('bots-view')).toContainText('Park reporting from the other workspace.')
     const merged = await initVault(root, { git: false })
     expect((await readdir(merged.notes)).sort()).toEqual(['n-here-1.md', 'n-there-1.md'])
-    // The other folder and the registry are as they were.
     expect(JSON.stringify([await readdir(work.notes), await readFile(join(work.cache, 'bots.json'), 'utf8'), await readdir(join(work.cache, 'bot-chats'))])).toBe(before)
     expect(JSON.parse(await readFile(join(userData, 'vaults.json'), 'utf8'))).toEqual(registry)
     await app.close()
     app = undefined
 
-    // A second launch adds no one twice.
     app = await launch()
     page = await app.firstWindow()
     await expect(page.getByTestId('shell')).toBeVisible()

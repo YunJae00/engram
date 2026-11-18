@@ -23,7 +23,6 @@ export function referencePath(repoRoot: string): string | null {
 
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
 
-// Throws unless the bytes are a complete, decodable WIDTH×HEIGHT PNG.
 export function checkPng(buf: Buffer): void {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
   if (buf.length < 8 || !buf.subarray(0, 8).equals(sig)) throw new Error('not a png')

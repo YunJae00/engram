@@ -55,7 +55,6 @@ test.describe.serial('minimal sidebar', () => {
       await expect(head.locator('small')).toHaveText(/^\d+$/)
     }
     await expect(heads.locator('span')).toHaveText(['Home', 'Money'])
-    // No header button and no menu on empty space: sections are asked for in chat.
     await expect(page.getByTestId('sidebar-new-folder')).toHaveCount(0)
     const scroll = page.locator('.sidebar-scroll')
     await scroll.click({ button: 'right', position: { x: 20, y: (await scroll.boundingBox())!.height - 6 } })

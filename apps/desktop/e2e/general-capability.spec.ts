@@ -12,7 +12,6 @@ let paths: VaultPaths
 
 test.afterEach(async () => { await closeTestApp(app); app = undefined })
 
-// The mock brain makes one real tool call, then answers; the host adds the file card.
 async function ask(message: string, step: { tool: string; args: Record<string, unknown> }): Promise<Buffer> {
   await mkdir(TMP, { recursive: true })
   const root = await mkdtemp(join(TMP, 'e2e-general-'))
@@ -33,14 +32,12 @@ async function ask(message: string, step: { tool: string; args: Record<string, u
     shell.openPath = async (path: string) => { seen.opened.push(path); return '' }
     shell.showItemInFolder = (path: string) => { seen.revealed.push(path) }
   })
-  // The sidebar lists bots that have a conversation, so the ask goes to a bot made with the sidebar plus.
   await openActivity(page, 'bots')
   await createBotFromPlus(page, 'File maker')
   const composer = page.getByTestId('bots-view').getByTestId('bots-input')
   await composer.fill(message)
   await composer.press('Enter')
   const name = String(step.args['name'])
-  // The canned brain repeats its one step, so the runner may hand the same answer in twice; the first card is the one checked.
   const card = page.getByTestId('answer-file').filter({ hasText: name }).first()
   await expect(card).toBeVisible({ timeout: 60_000 })
   await expect(card.getByTestId('answer-file-size')).toContainText(/\d+(\.\d)? (KB|MB)/)

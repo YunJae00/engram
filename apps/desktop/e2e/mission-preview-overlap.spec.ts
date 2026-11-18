@@ -25,7 +25,7 @@ const ANSWER = [
 test.beforeAll(async () => {
   await mkdir(TMP, { recursive: true })
   const paths = await initVault(await mkdtemp(join(TMP, 'e2e-mission-overlap-vault-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const at = new Date().toISOString()
   bots = []
   for (const name of ['Halley', 'Second pane', 'Third pane', 'Fourth pane']) bots.push(await createBot(paths, { name, purpose: '' }))
@@ -83,7 +83,6 @@ async function expectAnswerClear(pane: Locator): Promise<void> {
     expect(item.bottom <= card.top || item.top >= card.bottom || item.right <= card.left || item.left >= card.right, JSON.stringify({ item, card })).toBe(true)
     expect(item.top >= thread.top - 0.5 && item.bottom <= thread.bottom + 0.5, JSON.stringify({ item, thread })).toBe(true)
   }
-  // Suggested replies are never buttons, and never text in the answer.
   await expect(pane.getByTestId('reply-chips')).toHaveCount(0)
   await expect(pane.getByTestId('reply-chip-0')).toHaveCount(0)
 }
@@ -99,18 +98,13 @@ test('a finished web preview card in the single chat view leaves the answer read
   await expect(pane.getByTestId('reply-chip-0')).toHaveCount(0)
   await expect(pane.getByTestId('preview-card')).toHaveCount(0)
   const thread = pane.getByTestId('bots-thread')
-  // Since 025bc0e9 the card docks over the thread's top corner and bubbles in its band flow beside it, so the transcript may
-  // re-wrap and scroll; "not moving the chat" means the thread box keeps its place and stays pinned to the latest answer.
   const threadBox = () => thread.evaluate((node) => { const { top, bottom, left, right } = node.getBoundingClientRect(); return { top, bottom, left, right } })
   const pinned = () => thread.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop <= 1)
-  // Stick-to-bottom settles after the transcript paints, so measure from the pinned position.
   await expect.poll(pinned).toBe(true)
-  // The chat just opened from its row and rises 4px into place; measure once it has settled.
   await pane.evaluate(async (node) => { await Promise.all(node.getAnimations().map((animation) => animation.finished)) })
   const before = await threadBox()
   const lane = `bot-${bots[0]!.id}`
 
-  // Page work shows as the small card over the chat, not the page pane beside it.
   await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'read_open_page: Halley' }), lane)
   await page.evaluate(({ url, lane }) => window.engram.agentGo(url, lane), { url: siteUrl, lane })
   const card = pane.getByTestId('preview-card')

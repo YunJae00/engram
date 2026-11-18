@@ -22,8 +22,6 @@ export function routinePortal(state: { gateUnlocked(): boolean; searchResult(): 
     else if (req.url === '/search')
       res.end('<html><head><title>Inventory</title></head><body><main><form method="get" action="/search"><input aria-label="Search inventory" name="q" /></form></main></body></html>')
     else if (req.url?.startsWith('/post')) {
-      // POST, not GET: a browser may prefetch a GET form's target on its own,
-      // which would look exactly like a post nobody approved.
       let body = ''
       req.on('data', (chunk) => {
         body += String(chunk)
@@ -45,7 +43,6 @@ export function routinePortal(state: { gateUnlocked(): boolean; searchResult(): 
 export async function captureRoutine(app: ElectronApplication, name: string): Promise<void> {
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows().find(one => one.webContents.getURL().includes('index.html'))!
-    // Wake the hidden window's compositor before capturing the current frame.
     await window.webContents.capturePage()
     await new Promise(resolve => setTimeout(resolve, 400))
     return (await window.webContents.capturePage()).toPNG().toString('base64')
@@ -53,7 +50,6 @@ export async function captureRoutine(app: ElectronApplication, name: string): Pr
   await writeFile(test.info().outputPath(name), Buffer.from(png, 'base64'))
 }
 
-// Routines are data now: no screen, no sidebar library, no menu entry lists them.
 export async function expectNoRoutineLibrary(page: Page): Promise<void> {
   for (const id of ['routines-view', 'routines-overview', 'sidebar-routines', 'sidebar-routine-collection', 'activity-routines']) await expect(page.getByTestId(id)).toHaveCount(0)
   await expect(page.locator('[data-testid^="sidebar-routine-"], [data-testid^="routine-detail-"], [data-testid^="routine-run-"]')).toHaveCount(0)
@@ -83,7 +79,6 @@ export async function resizeForRoutine(page: Page, width: number): Promise<void>
   const actual = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   console.info(`[routine layout] requested ${width}x720; actual ${actual.width}x${actual.height}`)
   expect(actual.width).toBeLessThanOrEqual(1180)
-  // A closing sidebar stays visible during its animation; do not click it again.
   if (actual.width <= 900 && await page.getByTestId('app-sidebar').getAttribute('aria-hidden') !== 'true' && await page.getByTestId('app-sidebar').isVisible()) {
     await page.getByTestId('app-sidebar-close').click()
     await expect(page.getByTestId('app-sidebar')).toHaveAttribute('aria-hidden', 'true')

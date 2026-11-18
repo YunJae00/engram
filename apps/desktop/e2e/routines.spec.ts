@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 import { closeTestApp, expandPreview, openActivity } from './navigation.js'
 import { captureRoutine, expectNoRoutineLibrary, expectRoutineControlReachable as expectRoutineReachable, resizeForRoutine as resizeRoutine, routinePortal } from './routine-fixture.js'
 import { recordedSteps } from '../../../packages/core/src/routine-record.js'
-// Saved routines open fresh conversations and preserve the replay's gates.
 test.describe.configure({ mode: 'serial' })
 const REPO_TMP = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const MAIN_ENTRY = fileURLToPath(new URL('../out/main/index.js', import.meta.url))
@@ -17,10 +16,7 @@ let page: Page
 let paths: VaultPaths
 let server: Server
 let siteUrl: string
-// The /gate page shows a login form until the "person" (the test) signs in.
 let gateUnlocked = false
-// What the site has actually been told — the only honest way to assert that
-// nothing was posted without approval.
 let posted: string[] = []
 let searchResult = 'Inventory available: 4 units'
 test.beforeAll(async () => {
@@ -28,7 +24,6 @@ test.beforeAll(async () => {
   const root = await mkdtemp(join(REPO_TMP, 'e2e-routine-'))
   const userData = await mkdtemp(join(REPO_TMP, 'e2e-routine-userdata-'))
   paths = await initVault(root, { git: false })
-  // A local portal stand-in: home → Notices, plus a gated page for the wall.
   server = routinePortal({ gateUnlocked: () => gateUnlocked, searchResult: () => searchResult, record: entry => posted.push(entry) })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -47,7 +42,6 @@ test.beforeAll(async () => {
       ENGRAM_AGENT_CDP: String(CDP_PORT),
     },
   })
-  // Replay uses tiny local pages; memory admission has its own unit and UI tests.
   await app.evaluate(() => {
     const os = process.getBuiltinModule('node:os') as typeof import('node:os')
     os.freemem = () => 3e9
@@ -65,7 +59,6 @@ test.beforeAll(async () => {
   page.on('pageerror', (err) => console.error('[renderer pageerror]', err))
 })
 
-// Each scenario owns its pages; retaining old runs exhausts an 8GB test Mac.
 test.afterEach(async () => {
   if (!page || page.isClosed()) return
   await page.evaluate(async () => {
@@ -87,7 +80,6 @@ test.afterAll(async () => {
 })
 
 const capture = (name: string) => captureRoutine(app, name)
-// What the library's Run button did: the app starts the routine in a chat of its own and shows it.
 const runRoutine = (id: string) => page.evaluate(routineId => window.engram.routineRun(routineId), id)
 const savedRoutine = (id: string) => page.evaluate(async routineId => (await window.engram.routinesList()).find(one => one.id === routineId), id)
 const expectRoutineControlReachable = (id: string) => expectRoutineReachable(page, id)
@@ -110,12 +102,10 @@ test('there is no routines library; a saved routine keeps its recorded steps as 
   )
   const before = await page.evaluate(() => window.engram.botsList())
   expect((await savedRoutine(routine.id))?.steps).toEqual([{ kind: 'open', url: siteUrl }, { kind: 'click', target: { text: 'Notices' } }, { kind: 'read' }])
-  // Neither the old shortcut nor the old event opens a library, and the sidebar keeps listing bots.
   await page.keyboard.press('ControlOrMeta+Shift+P')
   await page.evaluate(() => { window.dispatchEvent(new Event('engram:open-routines')) })
   await expect(page.locator('[cmdk-root]')).toHaveCount(0)
   await expectNoRoutineLibrary(page)
-  // A fresh vault has no bots yet, so the list is there with no rows (and no height).
   await expect(page.getByTestId('sidebar-chat-collection')).toBeAttached()
   await expect(page.getByTestId('bots-new')).toHaveCount(0)
   await expect(page.getByTestId('sidebar-search-toggle')).toHaveCount(0)
@@ -173,7 +163,6 @@ test('a login wall pauses the replay, and the run resumes from that step once th
   await expect(page.getByTestId('preview-card')).toBeVisible()
   await expectRoutineControlReachable('routine-wall-done-live')
 
-  // The person signs in (the gate opens), then tells the run to continue.
   gateUnlocked = true
   await page.getByTestId('routine-wall-done-live').click()
 
@@ -199,7 +188,6 @@ test('stopping a routine from its chat releases a waiting login gate', async () 
   await expect(page.getByTestId('bots-thread')).toContainText('The quarterly numbers landed safely')
 })
 
-// The one place a wrong click costs something the person cannot take back.
 test('a procedure that posts asks first — refusing posts nothing, approving posts once', async () => {
   posted = []
   const writer = await addRoutine(paths, {
@@ -214,7 +202,6 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   expect((await savedRoutine(writer.id))?.steps[1]).toMatchObject({ kind: 'type', text: 'shipped the replayer' })
   await runRoutine(writer.id)
 
-  // The gate shows the actual words that would be posted.
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await expect(page.getByTestId('routine-submit')).toContainText('shipped the replayer')
   for (const width of [1180, 948, 620, 360]) {
@@ -224,13 +211,11 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   }
   await capture('routine-approval-compact.png')
 
-  // "Not yet" stops the run with the site untouched.
   await page.getByTestId('routine-submit-cancel').click()
   await expect(page.getByTestId('routine-live')).toHaveCount(0, { timeout: 60_000 })
   expect(posted).toEqual([])
   await page.setViewportSize({ width: 1280, height: 840 })
 
-  // Asked again (the refused run left no success stamp), approving posts once.
   await runRoutine(writer.id)
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await page.getByTestId('routine-submit-approve').click()
@@ -240,12 +225,10 @@ test('a procedure that posts asks first — refusing posts nothing, approving po
   await runRoutine(writer.id)
   await expect(page.getByTestId('routines-view')).toHaveCount(0)
   await expect(page.getByTestId('bots-thread')).toContainText('already ran today')
-  // The guarded retry is said in the thread and asked for in chat: no run button, and no button anywhere in the reply.
   await expect(page.getByTestId('bots-offer-run')).toHaveCount(0)
   await expect(page.getByTestId('bots-offer')).toHaveCount(0)
   await expect(page.locator('[data-testid="bots-thread"] .decision-card button')).toHaveCount(0)
   expect(posted).toEqual(['shipped the replayer'])
-  // A run the person asked for again still stops at the submit gate before anything is posted.
   await page.evaluate(id => window.engram.routineRun(id, true), writer.id)
   await expect(page.getByTestId('routine-submit')).toBeVisible({ timeout: 90_000 })
   await page.getByTestId('routine-submit-cancel').click()
@@ -261,7 +244,6 @@ test('scheduled gates never appear in an unrelated chat, and no routine workspac
     window.webContents.send('engram:event', { type: 'routine:wall', routineId: 'scheduled-fixture', wall: 'login' })
     window.webContents.send('engram:event', { type: 'routine:submit', routineId: 'scheduled-fixture', name: 'Scheduled fixture', filled: [{ label: 'Entry', text: 'Fixture content' }], host: 'example.com', canRemember: false })
   })
-  // A gate belongs to the chat of its own run; one with no chat is drawn in none.
   await expect(page.getByTestId('routine-live')).toHaveCount(0)
   await expect(page.getByTestId('routine-wall-done-live')).toHaveCount(0)
   await expect(page.getByTestId('routine-submit')).toHaveCount(0)
@@ -337,7 +319,6 @@ test('keeping a task saves its source as a routine, survives reload and runs onl
   await app.evaluate(({ BrowserWindow }, botId) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
     type: 'chat:offer', channel: `bot-${botId}`, offer: { kind: 'keep', name: 'Collect entry notes', goal: 'Read every entry and verify the summary', does: 'Collect and check every note' },
   }), bot.id)
-  // A "keep this" offer draws no card and no form: nothing in the thread has a text box or a save button for it.
   await expect(page.getByTestId('bots-thread')).toContainText('Read all notes')
   await expect(page.getByTestId('bots-offer-keep-card')).toHaveCount(0)
   await expect(page.getByTestId('bots-offer-keep')).toHaveCount(0)

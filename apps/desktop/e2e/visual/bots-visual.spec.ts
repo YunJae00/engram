@@ -182,7 +182,6 @@ test.describe('visual', () => {
   test('settings-review', async () => {
     const contrast: { theme: Theme; text: number | null; headings: (number | null)[]; ring: number | null }[] = []
     await capture('settings-review', async (page, theme, app) => {
-      // Settings no longer lists review rules (they are changed in chat); the stored rules are still read.
       const openAi = async () => {
         await page.getByTestId('activity-settings').click()
         await expect(page.getByTestId('settings-about')).toBeVisible()
@@ -270,7 +269,6 @@ test.describe('visual', () => {
         await page.getByTestId('onboard-prefs-next').click()
         await expect(page.getByTestId('onboard-step-4')).toBeVisible()
         await page.evaluate(() => document.fonts.ready.then(() => undefined))
-        // Row 17 probes the shell; onboarding has none, so its root stands in only while measured.
         await page.getByTestId('onboarding').evaluate(el => el.setAttribute('data-testid', 'shell'))
         const rows = await measureState(page, 'onboarding-bot')
         await page.getByTestId('shell').evaluate(el => el.setAttribute('data-testid', 'onboarding'))

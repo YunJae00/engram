@@ -110,13 +110,11 @@ test('a relaunch reopens the chat that was open at quit, and falls back to the w
   await app?.close()
   app = await electron.launch({ args: [MAIN, '--no-sandbox'], env: baseEnv(root, data, env) })
   page = await app.firstWindow()
-  // No sidebar click: the last-open chat comes back by itself.
   await expect(page.getByTestId(`bot-${botId}`), 'LAST-OPEN row').toHaveClass(/\bactive\b/, { timeout: 8000 })
   await expect(page.getByTestId('bots-title-pill')).toHaveCount(0)
   await expect(page.locator('.bots-view .bubble-msg').filter({ hasText: 'Line remembered.' }), 'LAST-OPEN history').toBeVisible()
   await expect(page.getByTestId(`bot-${other}`)).toBeVisible()
 
-  // The remembered chat no longer exists: the welcome shows, never a blank main.
   await page.evaluate(() => localStorage.setItem('engram.comets.selected', 'bot-that-was-deleted'))
   await app.close()
   app = await electron.launch({ args: [MAIN, '--no-sandbox'], env: baseEnv(root, data, env) })

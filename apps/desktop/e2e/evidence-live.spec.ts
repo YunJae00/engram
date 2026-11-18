@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createBot, initVault } from 'core'
 
-// Opt-in: uses the person's connected provider against an owned local fixture.
 for (const engine of ['codex', 'claude'] as const) test(`live ${engine} chat completes browser evidence tools`, async () => {
   test.skip(process.env.ENGRAM_LIVE_EVIDENCE !== engine, 'Requires an explicitly selected connected provider')
   test.setTimeout(900000)

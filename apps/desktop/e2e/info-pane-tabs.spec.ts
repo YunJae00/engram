@@ -44,7 +44,6 @@ test('there is no info pane, title pill or tabs: the bot shows in its sidebar ro
     await expect(view.getByRole('radiogroup')).toHaveCount(0)
     await expect(input).toBeVisible()
 
-    // What the pane edited is changed by saying so in chat: the canned brain makes the one tool call a real one would, and nothing but the composer is touched.
     await input.fill('From now on write the Friday report by noon, and turn your notifications off.')
     await input.press('Enter')
     await expect.poll(async () => (await page.evaluate(async () => (await window.engram.botsList()).find(bot => bot.id === 'vis-routine')))?.notify, { timeout: 60_000 }).toBe('off')

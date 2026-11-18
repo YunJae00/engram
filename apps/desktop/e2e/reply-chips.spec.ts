@@ -8,7 +8,7 @@ test('completed replies show no suggestion chips, hide their markup, and the fol
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const paths = await initVault(await mkdtemp(join(tmp, 'reply-vault-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const at = new Date().toISOString()
   const supplied = await createBot(paths, { name: 'Suggested follow-ups' })
   const fallback = await createBot(paths, { name: 'Missing suggestions' })
@@ -35,7 +35,6 @@ test('completed replies show no suggestion chips, hide their markup, and the fol
     await expect(chips).toHaveCount(0)
     await expect(page.getByTestId('bots-thread')).not.toContainText('Show more options')
     await expect(page.locator('.answer-card')).toHaveCount(1)
-    // One stored answer stays one bubble: the --- between the intro and the table is not a split.
     await expect(page.locator('.bubble-msg.assistant')).toHaveCount(1)
     await expect(page.locator('.bubble-msg.assistant')).toContainText('Here are the results.')
     await expect(page.locator('.bubble-msg.assistant')).toContainText('Example')
@@ -69,7 +68,7 @@ test('an unanswered later turn or a partial progress tail shows no reply chips f
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(tmp, { recursive: true })
   const paths = await initVault(await mkdtemp(join(tmp, 'reply-vault-')), { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   const at = new Date().toISOString()
   const answered = '```replies\n이 중 2개만 골라줘\n다른 요일/시간대로 다시 뽑아줘\n```'
   const interrupted = await createBot(paths, { name: 'Interrupted turn' })

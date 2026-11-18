@@ -57,7 +57,6 @@ test('a thread started from the welcome is listed and active at once, with no se
   await input.fill('Plan the garden layout')
   await input.press('Enter')
   await expect(page.getByTestId('comet-welcome')).toHaveCount(0)
-  // The primary Engram bot always leads the list; the welcome send starts the newest other conversation.
   const created = await page.evaluate(() => window.engram.botsList().then(list => list.filter(bot => !bot.primary).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]!.id))
   await expect(page.getByTestId(`bot-${created}`)).toBeVisible()
   await expect(page.getByTestId(`bot-${created}`)).toHaveClass(/active/)

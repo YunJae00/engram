@@ -14,7 +14,7 @@ test.beforeAll(async () => {
   await mkdir(tmp, { recursive: true })
   const vault = await mkdtemp(join(tmp, 'e2e-preview-vault-'))
   paths = await initVault(vault, { git: false })
-  await resetBotsToV2(paths) // a v2 list keeps the seeded bots through launch
+  await resetBotsToV2(paths)
   lane = `bot-${(await createBot(paths, { name: 'Browser preview' })).id}`
   shots = await mkdtemp(join(tmp, 'browser-preview-shots-'))
   server = createServer((_req, response) => {
@@ -44,17 +44,13 @@ test.afterAll(async () => {
 
 test('page work with no website open shows no browser card beside the chat', async () => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(970, 730))
-  // Neither composer opens the page panel by hand any more; it arrives as a card with a bot's page work, even before any site is open.
   await openWelcome(page)
   await expect(page.getByTestId('welcome-input-add')).toBeVisible()
   await expect(page.getByTestId('welcome-web')).toHaveCount(0)
-  // A bot of its own, so the work phase started here does not leak into the tests that follow.
   const empty = await page.evaluate(async () => (await window.engram.botCreate({ name: 'Empty browser', purpose: '' })).id)
   await page.getByTestId(`bot-${empty}`).click()
   await expect(page.getByTestId('composer-web')).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }, channel) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', { type: 'comet:step', channel, line: 'open_page: page' }), `bot-${empty}`)
-  // grokbar c3 (GROKBOT rule 9): with no page open there is nothing to show, so no card, no collapsed chip and no second pane appear.
-  // Long enough for a card to have been drawn, had there been one.
   await page.waitForTimeout(1000)
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await expect(page.getByTestId('preview-card-collapsed')).toHaveCount(0)
@@ -112,7 +108,6 @@ test('automatic work keeps chat wide and switches between preview, split and ful
   await page.getByTestId('preview-card-collapsed').click()
   await expect(preview.locator('canvas[data-painted]')).toBeVisible()
   await expect(preview.getByText('Open browser', { exact: true })).toHaveCount(0)
-  // The card's own controls put the preview away and bring the browser back.
   await preview.getByRole('button', { name: 'Hide preview', exact: true }).click()
   await expect(preview).toHaveCount(0)
   await page.getByTestId('preview-card-reopen').click()
@@ -162,7 +157,6 @@ test('preview stays within a narrow window, stays above the thread and supports 
   await page.evaluate(lane => window.engram.browserTab(lane, 'add'), lane)
   const picture = page.locator('.preview-card canvas')
   await expect(picture).toHaveCount(0)
-  // A blank tab is no page: its card is not drawn (grokbar c3), and comes back with the tab that holds one.
   await expect(page.getByTestId('preview-card')).toHaveCount(0)
   await page.evaluate(async ({ lane, id }) => window.engram.browserTab(lane, 'select', id), { lane, id: tabs.find(tab => tab.active)!.id })
   await expect(picture).toHaveAttribute('data-painted', '')
@@ -179,8 +173,6 @@ test('preview stays within a narrow window, stays above the thread and supports 
   const thread = (await page.getByTestId('bots-thread').boundingBox())!
   expect(bounds.x).toBeGreaterThanOrEqual(main.x)
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(main.x + main.width + 1)
-  // The card docks over the thread's top corner with no reserved band (live-card-keeps-chat), so "above the thread" means
-  // it stays in the thread's top band and covers no message bubble (live-card-no-cover).
   expect(bounds.y).toBeGreaterThanOrEqual(main.y)
   expect(bounds.y).toBeLessThanOrEqual(thread.y + thread.height / 2)
   const covered = await page.evaluate(() => {
@@ -228,8 +220,6 @@ test('status notices leave the conversation composer unobscured', async () => {
     await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0]!.setSize(width, 850), width)
     if (await page.locator('.sidebar-scrim').isVisible()) await page.locator('.sidebar-scrim').click()
     console.info('NOTICE_VIEWPORT', { requestedWidth: width, ...await page.evaluate(() => ({ actualWidth: innerWidth, actualHeight: innerHeight })) })
-    // A toast under a still pointer pauses until the pointer moves (AppNotices hover pause); an earlier click can leave the
-    // pointer where the previous toast sits, so move it to a neutral corner before waiting for the toast to leave.
     await page.mouse.move(1, await page.evaluate(() => innerHeight - 2))
     await expect(page.locator('.toast')).toHaveCount(0)
     await app.evaluate(({ BrowserWindow }, context) => BrowserWindow.getAllWindows()[0]!.webContents.send('engram:event', {
@@ -243,8 +233,6 @@ test('status notices leave the conversation composer unobscured', async () => {
       const input = (await composer.boundingBox())!
       return notice.y + notice.height <= input.y || notice.x + notice.width <= input.x || notice.x >= input.x + input.width
     }).toBe(true)
-    // Since the toast redesign the notice is a transient floating card pinned 16px from the top-right corner (above the
-    // banner row, pointer-transparent), not anchored below the banner; it must stay fully inside the window.
     for (const banner of await page.locator('.connect-banner').all()) await expect(banner).toBeVisible()
     const toast = (await page.locator('.toast').boundingBox())!
     expect(Math.round(toast.y)).toBe(16)

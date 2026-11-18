@@ -2,9 +2,6 @@ import { expect, test, chromium, type Browser, type Page } from '@playwright/tes
 import { readFrames } from '../src/main/page-reader.js'
 import { pressOn, signature } from '../src/main/page-actions.js'
 
-// Pages keep closed popups in the document. Only the one a click would land
-// on is read as standing over the page. Real Chrome, a local page.
-
 let browser: Browser
 let page: Page
 
@@ -23,7 +20,6 @@ test('closed popups left in the page are not read as open', async () => {
   expect((await readFrames(page)).dialog).toBe('')
 })
 
-// A panel that names no dialog: entries drawn on top of the page, or a notice.
 const lifted = (inner: string) => `<div id="lifted" style="position:absolute;top:120px;left:300px;width:520px;height:360px;z-index:20;background:#fff">${inner}</div>`
 const entries = Array.from({ length: 4 }, (_, at) => `<div>${at + 1} hr <button>X</button> Bug fixes <button>New</button></div>`).join('')
 

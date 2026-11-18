@@ -29,7 +29,6 @@ async function launch(vault: string, profile: string): Promise<Page> {
 const rowAvatar = (page: Page, id: string) => page.locator(`[data-testid="bot-${id}"] .sidebar-conversation-avatar > .bot-avatar`)
 const avatarOf = (page: Page, id: string) => page.evaluate(async id => (await window.engram.botsList()).find(bot => bot.id === id)?.avatar ?? null, id)
 
-// The only picker is the one in the new-bot dialog.
 async function openPicker(page: Page) {
   await openCreateBotDialog(page)
   const dialog = page.locator('[role="dialog"][data-testid="create-bot-dialog"]')
@@ -40,7 +39,6 @@ async function openPicker(page: Page) {
   return picker
 }
 
-// Animations whose target sits inside the given avatar, described without leaving the page.
 const animationsIn = (page: Page, selector: string) => page.evaluate(selector => {
   const root = document.querySelector(selector)
   return document.getAnimations().filter(a => root?.contains((a.effect as KeyframeEffect | null)?.target ?? null)).map(a => ({
@@ -66,7 +64,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   const one = await createBot(paths, { name: 'Research' }, new Date(now - 3000))
   const two = await createBot(paths, { name: 'Writing' }, new Date(now - 2000))
   const old = await createBot(paths, { name: 'Legacy face' }, new Date(now - 1000))
-  // A conversation is listed once it has a turn.
   for (const [i, bot] of [one, two, old].entries()) await appendBotTurn(paths, bot.id, { role: 'user', text: 'Hello', at: new Date(now - 900 + i * 100).toISOString() })
   const file = join(paths.cache, 'bots.json')
   const stored = JSON.parse(await readFile(file, 'utf8')) as { bots: { id: string; avatar?: unknown }[] }
@@ -77,7 +74,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   let page = await launch(vault, profile)
   const ids = [one.id, two.id, old.id]
 
-  // Sidebar: every row is the orb component, never the old character image.
   for (const id of ids) {
     const avatar = rowAvatar(page, id)
     await expect(avatar).toHaveAttribute('data-character', /^orb-/)
@@ -89,12 +85,10 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await expect(rowAvatar(page, old.id)).toHaveAttribute('data-character', 'orb-violet')
   await page.getByTestId('app-sidebar').screenshot({ path: join(SHOTS, 'sidebar.png') })
 
-  // The chat has no header face and no info pane.
   await page.getByTestId(`bot-${one.id}`).click()
   await expect(page.getByTestId('bots-thread')).toBeVisible()
   for (const id of ['bots-title-pill', 'bot-info-pane', 'bot-info-avatar']) await expect(page.getByTestId(id)).toHaveCount(0)
 
-  // Picker: exactly the 8 orbs in a 4x2 grid.
   let picker = await openPicker(page)
   const radios = picker.getByRole('radio')
   await expect(radios).toHaveCount(8)
@@ -106,19 +100,16 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   expect(new Set(grid.map(cell => cell[1])).size).toBe(2)
   await page.getByTestId('create-bot-dialog').screenshot({ path: join(SHOTS, 'picker.png') })
 
-  // A pick is written and shown at once.
   const current = await rowAvatar(page, one.id).getAttribute('data-character')
   const choice = ORBS.find(orb => orb !== current)!
   await picker.getByRole('radio', { name: choice, exact: true }).click()
   await expect(page.getByTestId('create-bot-preview')).toHaveAttribute('data-avatar', choice)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('create-bot-dialog')).toHaveCount(0)
-  // An existing bot's face is changed through the app; the row shows it at once.
   await page.evaluate(([id, character]) => window.engram.botUpdate(id!, { avatar: { character: character as never } }), [one.id, choice])
   await expect.poll(() => avatarOf(page, one.id)).toEqual({ character: choice })
   await expect(rowAvatar(page, one.id)).toHaveAttribute('data-character', choice)
 
-  // Relaunch: the pick is still there, and the legacy id was displayed without being rewritten.
   await closeTestApp(app)
   page = await launch(vault, profile)
   await expect(rowAvatar(page, one.id)).toHaveAttribute('data-character', choice)
@@ -131,7 +122,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await expect(rowAvatar(page, old.id)).toHaveAttribute('data-character', 'orb-violet')
   await page.keyboard.press('Escape')
 
-  // Motion under 64px: CSS animations of transform/opacity only. A 32px row sits still while idle and pulses while working; a 52px picker face breathes.
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
   await app!.evaluate(({ BrowserWindow }, event) => {
@@ -148,7 +138,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await expect(page.locator(`${working} .bot-orb-work`)).toHaveCSS('opacity', /^(0\.[7-9]\d*|1)$/)
   await expect(page.locator(`${idle} .bot-orb-work`)).toHaveCSS('opacity', '0')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
-  // Working: the overlay's pulse. Idle at 32px: nothing. A picker face in the new-bot dialog: the breathe of the light layer.
   await expect.poll(async () => (await animationsIn(page, working)).length).toBe(1)
   await openPicker(page)
   const cell = '[data-testid="avatar-picker"] .avatar-picker-cell .bot-avatar'
@@ -166,7 +155,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
     expect(animation.duration).toBeLessThanOrEqual(12000)
   }
 
-  // Under 64px the animation never touches the DOM, so React has nothing to re-render. The only writes are the ticker's path data on the 64px primary orb.
   await expect(page.locator('[data-testid="app-sidebar"] .bot-orb[data-ripple]')).toHaveCount(1)
   const mutations = await page.evaluate(() => new Promise<number>(done => {
     let count = 0
@@ -182,8 +170,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   }
   expect(Math.min(...cpu), `renderer cpu samples ${cpu.join(', ')}`).toBeLessThan(20)
 
-  // From 64px one shared ticker redraws the wave so the ripple travels: the empty thread's large orb moves, the 32px row's path never changes.
-  // The large orb is first read with motion reduced, which is its still wave.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   const blank = await page.evaluate(async () => (await window.engram.botCreate({ name: 'Blank' })).id)
   await page.getByTestId(`bot-${blank}`).click()
@@ -196,20 +182,16 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await expect.poll(() => core(big)).not.toBe(stillCore)
   expect(await core(`${idle} .bot-orb`)).toBe(rowStart)
-  // The window loses focus: the ripple holds.
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'false' })
   await page.waitForTimeout(150)
   const held = await core(big)
   await page.waitForTimeout(300)
   expect(await core(big)).toBe(held)
-  // The css motion holds too: the working row's pulse is paused, not just the ripple.
   expect(await page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-orb')).map(a => a.playState))).not.toContain('running')
   await page.evaluate(() => { document.documentElement.dataset['windowFocused'] = 'true' })
 
-  // A rippling orb that shrinks is left as the still master of its new size: the full still wave at 48px, the small one at 32px.
   const resize = async (px: number) => {
     await page.evaluate(px => { const avatar = document.querySelector<HTMLElement>('[data-testid="bot-empty"] .bot-avatar')!; avatar.style.width = avatar.style.height = `${px}px` }, px)
-    // Any re-render measures the drawn size again; this one is the bot list arriving after a change to the bot.
     await page.evaluate(([id, purpose]) => window.engram.botUpdate(id!, { purpose: purpose! }), [blank, `drawn at ${px}`])
   }
   const smallStill = await wave(`${idle} .bot-orb`)
@@ -228,7 +210,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await expect(page.locator(big)).toHaveAttribute('data-ripple', 'true')
   await expect.poll(() => wave(big)).not.toBe(fullStill)
 
-  // Reduced motion: a static frame, even for the working row, and the large orb returns to the still wave and stays there.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect.poll(() => core(big)).toBe(stillCore)
   await page.waitForTimeout(300)
@@ -236,7 +217,6 @@ test('orb avatars: sidebar, no chat header or info pane, the new-bot picker, per
   await expect(page.locator(`${working} .bot-orb-work`)).toHaveCSS('opacity', '1')
   await expect(page.locator(`${working}[data-state="working"]`)).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => (a.effect as KeyframeEffect | null)?.target?.closest('.bot-avatar')).length)).toBe(0)
-  // The ticker asks for no frame while motion is reduced, so the ripple has to start again from the media query's change alone.
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await expect.poll(() => core(big)).not.toBe(stillCore)
 })

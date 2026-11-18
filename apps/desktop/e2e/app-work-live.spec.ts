@@ -71,7 +71,6 @@ test('a connected conversation preserves observed progress and steering while re
     for (const turn of transcript.filter(turn => turn.progress)) await expect(page.locator('.bubble-msg.assistant').filter({ hasText: turn.text })).toHaveCount(1)
     await page.screenshot({ path: join(data, 'reloaded.png') })
     const full = await page.locator('.bubble-msg').allTextContents()
-    // One chat view: no split panes; the same thread and a ready composer come back after looking at the other bot.
     for (const count of [1, 2, 4]) await expect(page.getByTestId(`mission-layout-${count}`)).toHaveCount(0)
     await page.getByTestId(`bot-${other.id}`).click()
     await page.getByTestId(`bot-${bot.id}`).click()
