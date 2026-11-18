@@ -4,7 +4,7 @@
 // reads the lead's answer before delivery, with the helper results and the person's ask as data, and allows one rewrite in the time left.
 import type { AgentTool } from './agent-loop.js'
 import type { TeamMember } from './delegated-tasks.js'
-import { CUT_SHORT, writtenReport } from './company-tools.js'
+import { CUT_SHORT, notFoundLine, pointName, writtenReport } from './company-tools.js'
 import { isSearchPage, mergeReady, NO_LIVE_SOURCE, siteOf, TAKEN_OFF } from './team-hire-tools.js'
 import { checkedWrite, type QuickText } from './written-check.js'
 
@@ -111,6 +111,11 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
       const url = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0]
       if (url && tail) facts.push({ text: tail, url })
     }
+    // c17a (cause E): a cell comes from evidenced points. With none of its own words left, the words its lookup's judge verified on each page
+    // (m.proof) are its facts; a point no page stated is said as not found on its row, unless its own words already name that point.
+    if (!facts.length) for (const one of m.proof ?? []) if (one.url) facts.push({ text: one.quote, url: one.url })
+    const gaps = (m.missing ?? []).filter(point => !facts.some(f => f.text.includes(pointName(point))))
+    if (gaps.length && facts.length) facts[facts.length - 1]!.text += ` ${gaps.map(notFoundLine).join(' ')}`
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })
 }

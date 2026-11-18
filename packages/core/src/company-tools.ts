@@ -993,6 +993,9 @@ const NOTHING = '이번엔 못 찾았어요.'
 // GROKBOT rule 7: a part still at work when the others are reported is labeled, never hidden; it follows by itself (lateParts).
 const STILL = '아직 찾는 중이에요. 끝나면 이어서 올릴게요.'
 const atWork = (m: TeamMember): boolean => m.state === 'hired' || m.state === 'working'
+/** c17a: a point the ask wanted that no page stated, said plainly on its part's row ("출시일은 못 찾았어요."); the point's name only, never its measure. */
+export const pointName = (point: string): string => point.split(':')[0]!.trim()
+export const notFoundLine = (point: string): string => `${josa(pointName(point), '은', '는')} 못 찾았어요.`
 /** c13a: a part's one outcome, from its state and data alone: what the thread, the live status, the record and the summary all say of it. */
 export type PartOutcome = 'found' | 'nothing-in-period' | 'working' | 'unfinished'
 // A teammate that hands back data and has none is shown as not finished (missing, partLines), whatever prose it left: so is its outcome.
@@ -1220,11 +1223,22 @@ function partLines(m: TeamMember, topics: ReadonlyMap<string, string>, members: 
  * hired: what the call said before the results ("도윤은 새로 넣었어요."). */
 export function mergedReport(members: readonly TeamMember[], topics: ReadonlyMap<string, string> = new Map(), hired: readonly string[] = [], helpers = false): string {
   const parts = shownParts(members), quiet = parts.filter(m => !atWork(m) && !!m.data?.nothing)
-  if (helpers) return [...(hired.length ? [hired.join(' ')] : []), helperTable(parts, topics)].join('\n\n')
+  if (helpers) return [...(hired.length ? [hired.join(' ')] : []), helperLead(parts, topics), helperTable(parts, topics)].filter(Boolean).join('\n\n')
   return [...(hired.length ? [hired.join(' ')] : []), ...parts.flatMap(m => !quiet.includes(m) ? [partLines(m, topics, members, parts.length > 1)] : m === quiet[0] ? [quietLines(quiet, topics, parts.length)] : [])].join('\n\n')
 }
 // c16a (cause M, R1): the helpers' parts with no writer: the one table a split ask is answered with, a row per part under its own name (the
 // item, never a helper's role), what it found and its link. A part that brought nothing keeps its row, said plainly (rule 7).
+// c17a (stack16 "For cycle 17": a late writer left a bare table, read as a data dump): the host's table opens with one answer-first line,
+// what was found and what was not, by each part's own name.
+function helperLead(parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
+  const name = (m: TeamMember): string => partName(m, topics) || m.role, found = parts.filter(m => !atWork(m) && !!m.data?.facts.length)
+  const late = parts.filter(atWork), list = (ms: readonly TeamMember[]): string => ms.map(name).join('·')
+  // A part that found some points and not others (m.missing) is named with the points it did not find ("픽셀 11 출시일").
+  const whole = found.filter(m => !m.missing?.length), misses = [...parts.filter(m => !atWork(m) && !m.data?.facts.length).map(name), ...found.filter(m => m.missing?.length).map(m => `${name(m)} ${m.missing!.map(pointName).join('·')}`)]
+  if (!late.length && !misses.length) return parts.length > 1 ? `${list(found)} 다 찾았어요.` : ''
+  const rest = [...(misses.length ? [`${josa(misses.join('·'), '은', '는')} 못 찾았어요`] : []), ...(late.length ? [`${josa(list(late), '은', '는')} 아직 찾는 중이에요`] : [])].join('. ')
+  return whole.length ? `${josa(list(whole), '은', '는')} 찾았고, ${rest}.` : `${rest}.`
+}
 function helperTable(parts: readonly TeamMember[], topics: ReadonlyMap<string, string>): string {
   const cell = (text: string): string => clip(text.replace(/\|/g, '/'), 300)
   return ['| 항목 | 찾은 내용 | 출처 |', '|---|---|---|', ...parts.map(m => {

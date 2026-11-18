@@ -25,7 +25,7 @@ describe('c16b (a): a fit stays a fit', () => {
     ])
     const prompts: string[] = []
     // Round 2's items: 1-4 held, 5-7 the new rows. It leaves held row 1 out of "keep", calls it a listing, and groups new 7 (row 8) with held 2.
-    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"asked":6,"search":"핀테크 M&A 계약","holds":[1,2,3,4]}', '{"keep":[2,3,5,6,7],"listing":[1],"same":[[2,7]],"asked":6,"search":"","holds":[5,6,7]}'], prompts)
+    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"asked":6,"search":"핀테크 M&A 계약","kind":"핀테크 기업이 인수하거나 합병했다는 보도","holds":{"1":{"kind":"송금앱 머니톡 인수"},"2":{"kind":"결제 대행사 합병"},"3":{"kind":"보안 스타트업 인수"},"4":{"kind":"간편결제 지분 인수"}}}', '{"keep":[2,3,5,6,7],"listing":[1],"same":[[2,7]],"asked":6,"search":"","holds":{"5":{"kind":"렌딩원 피인수"},"6":{"kind":"웰스온 인수 완료"},"7":{"kind":"합병 승인"}}}'], prompts)
     expect(s.queries).toEqual(['q', '핀테크 M&A 계약'])
     expect(prompts[1]).toContain('Items 1 to 4 were already judged to fit in an earlier round')
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/2', 'https://news.example/3', 'https://news.example/4', 'https://news.example/6', 'https://news.example/7'])
@@ -74,18 +74,19 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
   const ASK = '비트코인 지금 시세 알려줘'
   const news = [row(1, '비트코인 ETF 자금 유입 이어져'), row(2, '가상자산 거래소 규제 논의', 'quote.example'), row(3, '비트코인 채굴 업계 동향'), row(4, '코인 시장 투자심리 회복')]
   it('four rows about it, none holds the price: the loop looks again, and the quote row leads, named as the one that states it', async () => {
-    const s = search([page('q', news), page('비트코인 실시간 시세', [row(5, '비트코인 현재가 1억 3,520만 원', 'coinquote.example')])])
+    const s = search([page('q', news), page('비트코인 실시간 시세', ['- 비트코인 현재가 — https://coinquote.example/5 — 현재가 1억 3,520만 원 — 11월 5일'])])
     const prompts: string[] = []
-    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"holds":[],"asked":1,"search":"비트코인 실시간 시세","open":2}', '{"keep":[5],"holds":[5],"asked":1,"search":""}'], prompts)
-    expect(prompts[0]).toContain('List in "holds" the items that themselves state what the ask wants to know')
+    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"holds":{},"points":["시세"],"asked":1,"search":"비트코인 실시간 시세","open":2}', '{"keep":[5],"holds":{"5":{"시세":"현재가 1억 3,520만 원"}},"asked":1,"search":""}'], prompts)
+    expect(prompts[0]).toContain('In "holds", for each item whose own text states a point')
     expect(s.queries).toEqual(['q', '비트코인 실시간 시세'])
     expect(urls(out)[0]).toBe('https://coinquote.example/5')
-    expect(out).toContain('The first row states what was asked itself')
+    expect(out).toContain('What was asked, each with the words that state it')
+    expect(out).toContain('· 시세: "현재가 1억 3,520만 원" (https://coinquote.example/5)')
   })
 
   it('with no round left: the model is told none of them states it and which page to open, never "the results do not say"', async () => {
     const s = search([page('q', news)])
-    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"holds":[],"asked":null,"search":"비트코인 실시간 시세","open":2}'], [], 20_000)
+    const out = await run(s, ASK, ['{"keep":[1,2,3,4],"holds":{},"asked":null,"search":"비트코인 실시간 시세","open":2}'], [], 20_000)
     expect(s.queries).toEqual(['q'])
     expect(out).toContain('none of them states what was asked itself')
     expect(out).toContain('open https://quote.example/2 (read_pages)')
@@ -94,9 +95,9 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
 
   it('a no-number ask whose answer is in a row: that row leads and no extra round runs', async () => {
     const ask = '광화문 교보문고 오늘 몇 시까지 해?'
-    const s = search([page('q', [row(1, '교보문고 광화문점 리뉴얼 소식'), row(2, '교보문고 북콘서트 일정'), row(3, '교보문고 광화문점 영업시간 09:30~22:00', 'kyobo.example')])])
+    const s = search([page('q', [row(1, '교보문고 광화문점 리뉴얼 소식'), row(2, '교보문고 북콘서트 일정'), '- 교보문고 광화문점 — https://kyobo.example/3 — 영업시간 09:30~22:00 — 11월 3일'])])
     const prompts: string[] = []
-    const out = await run(s, ask, ['{"keep":[1,2,3],"holds":[3],"asked":null,"search":""}'], prompts)
+    const out = await run(s, ask, ['{"keep":[1,2,3],"holds":{"3":{"영업 종료 시각":"영업시간 09:30~22:00"}},"points":["영업 종료 시각"],"asked":null,"search":""}'], prompts)
     expect(prompts).toHaveLength(1)
     expect(urls(out)[0]).toBe('https://kyobo.example/3')
   })
@@ -105,17 +106,19 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
     const ask = '오늘 대전 기온 몇 도야?'
     const s = search([page('q', [row(1, '대전 첫 한파주의보'), row(2, '충청권 아침 영하권')], '대전 유성구 현재 3° 맑음 최저 -2° 최고 9°')])
     const prompts: string[] = []
-    const out = await run(s, ask, ['{"keep":[1,2],"holds":[3],"asked":1,"search":""}'], prompts)
+    const out = await run(s, ask, ['{"keep":[1,2],"holds":{"3":{"기온":"현재 3° 맑음"}},"points":["기온"],"asked":1,"search":""}'], prompts)
     expect(prompts[0]).toContain("(the results page's own words) 대전 유성구 현재 3°")
     expect(prompts).toHaveLength(1)
-    expect(out).toContain("the results page's own words below do")
+    expect(out).toContain('· 기온: "현재 3° 맑음" (https://search.example/?q=q)')
     expect(out).toContain('대전 유성구 현재 3° 맑음')
   })
 
   it('judgedItems reads holds and open; with no holds field the old behaviour stands (no loop for it)', async () => {
-    const items = [{ text: 'a' }, { text: 'b' }]
-    const v = await judgedItems('x', items, async () => '{"keep":[1,2],"holds":[2,9],"open":1}', 1000, { tried: [] })
+    const items = [{ text: 'a 1원' }, { text: 'b 22원' }]
+    // c17a: holds is quoted evidence; a number naming no item and a quote that is not in its item (forged) both hold nothing.
+    const v = await judgedItems('x', items, async () => '{"keep":[1,2],"holds":{"1":{"p":"99원"},"2":{"p":"22원"},"9":{"p":"x"}},"points":["p"],"open":1}', 1000, { tried: [] })
     expect(v?.holds).toEqual([2])
+    expect(v?.evidence).toEqual({ 2: { p: '22원' } })
     expect(v?.open).toBe(1)
     expect(await judgedItems('x', items, async () => '{"keep":[1],"open":7}', 1000, { tried: [] })).not.toHaveProperty('holds')
     const s = search([page('q', [row(1, '스터디카페 요금')])])
@@ -126,7 +129,7 @@ describe('c16b (b): a single-value ask is answered from a row that states it', (
 
   it('team path: a fact that states the value goes before one only about it', async () => {
     const facts = [{ text: '제주 감귤 축제 준비 한창', url: 'https://a.example/1', site: 'a' }, { text: '제주 감귤 축제 12월 6일 개막', url: 'https://b.example/2', site: 'b' }]
-    const out = await kindChecked({ facts }, '제주 감귤 축제 언제 열려?', async () => '{"keep":[1,2],"holds":[2]}', 1000)
+    const out = await kindChecked({ facts }, '제주 감귤 축제 언제 열려?', async () => '{"keep":[1,2],"holds":{"2":{"개막일":"12월 6일 개막"}},"points":["개막일"]}', 1000)
     expect(out!.facts.map(f => f.url)).toEqual(['https://b.example/2', 'https://a.example/1'])
   })
 })
@@ -144,24 +147,24 @@ describe('c16b r2: a later search whose page states the value in its own words, 
   it('new wording: the later page is judged to hold it, looking ends there and the model is told to answer from it', async () => {
     const s = search([page('q', [row(1, '엔화 약세 지속 전망'), row(2, '여행 수요 일본 쏠림')]), page('엔 원 환율 실시간', [], '100엔 = 912.40원 전일 대비 +3.1'), page('z', [row(9, 'x')])])
     const prompts: string[] = []
-    const out = await run(s, '지금 엔화 환율 얼마예요', ['{"keep":[1,2],"asked":1,"holds":[],"search":"엔 원 환율 실시간"}', '{"keep":[],"holds":[3],"asked":1,"search":""}'], prompts)
+    const out = await run(s, '지금 엔화 환율 얼마예요', ['{"keep":[1,2],"asked":1,"holds":[],"search":"엔 원 환율 실시간"}', '{"keep":[],"holds":{"3":{"환율":"100엔 = 912.40원"}},"asked":1,"search":""}'], prompts)
     expect(prompts[1]).toContain("(the results page's own words) 100엔 = 912.40원")
     expect(s.queries).toEqual(['q', '엔 원 환율 실시간'])
-    expect(out).toContain("the results page's own words below do")
+    expect(out).toContain('"100엔 = 912.40원" (https://search.example/?q=')
     expect(out).toContain('100엔 = 912.40원')
   })
 
   it('a first page with no rows: its own words are judged and carried', async () => {
     const s = search([page('q', [], '속초 내일 오전 비 강수확률 70%')])
     const prompts: string[] = []
-    const out = await run(s, '속초 내일 비 와?', ['{"keep":[],"holds":[1],"asked":null,"search":""}'], prompts)
+    const out = await run(s, '속초 내일 비 와?', ['{"keep":[],"holds":{"1":{"비":"오전 비 강수확률 70%"}},"points":["비 여부"],"asked":null,"search":""}'], prompts)
     expect(prompts[0]).toContain("(the results page's own words) 속초 내일 오전 비")
     expect(out.match(/속초 내일 오전 비/g)).toHaveLength(1)
   })
 
   it('a counted list still drops page words (they hold the titles of rows left out)', async () => {
     const s = search([page('q', [row(1, '가 행사'), row(2, '나 행사')], '다 행사 라 행사')])
-    const out = await run(s, '이번 주 행사 2개', ['{"keep":[1,2],"asked":2,"holds":[1,2],"search":""}'])
+    const out = await run(s, '이번 주 행사 2개', ['{"keep":[1,2],"asked":2,"kind":"이번 주 행사","holds":{"1":{"kind":"가 행사"},"2":{"kind":"나 행사"}},"search":""}'])
     expect(out).not.toContain('다 행사')
   })
 })
@@ -171,7 +174,7 @@ describe('c16b r2: a later search whose page states the value in its own words, 
 describe('c16b r3: page words never join a counted list', () => {
   it('page words judged to hold an item: only the checked row is listed, the shortfall is data, the page prose is not passed on', async () => {
     const s = search([page('q', [row(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
-    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"holds":[1,2],"asked":2,"search":""}'], [], 30_000)
+    const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"대전 북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
     expect(urls(out)).toEqual(['https://books.example/3'])
     expect(out).toContain('1 of the 2 asked for were found')
     expect(out).not.toContain('대전 북토크 둘')

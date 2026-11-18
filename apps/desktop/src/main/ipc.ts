@@ -2954,11 +2954,13 @@ export function registerIpc(ctx: VaultContext): void {
         let helpersWrote: string | undefined
         const helpersAnswer = async (within: AbortSignal | undefined): Promise<string | undefined> => {
           const task = (await listTasks(paths)).find(one => one.state === 'running' && one.botId === bot.id)
-          const text = await helperAnswer({ ask: [lookup.ask(), ...steered].join('\n'), members: task?.team?.members, since: nativeSince, write: writer, due: nativeSince + TEAM_ANSWER_MS, signal: within ?? signal })
+          const text = await helperAnswer({ ask: [lookup.ask(), ...steered].join('\n'), members: task?.team?.members, since: nativeSince, write: writer, due: nativeSince + TEAM_ANSWER_MS + REPORT_WRITER_MS, signal: within ?? signal })
           if (text) helpersWrote = text
           return text
         }
-        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined
+        // c17a (cause E): the lone lookup opens the judge's first-hand page itself, through the same open_page and keeping, when no row states it.
+        const opener = everyTool.find(tool => tool.name === 'open_page'), readPage = opener && keepRead(keepSources(skipWalls(opener), read), laneRead)
+        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), ...(readPage ? { read: (url: string, within?: AbortSignal) => readPage.run({ url }, { task: lookup.ask(), ...(within ? { signal: within } : {}) }) } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
         // the old ask), and the turn starts again on the new ask (fast-lane swappedAsk): the host's search for it, then one fresh round.
