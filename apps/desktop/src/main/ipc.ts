@@ -1435,12 +1435,12 @@ export function registerIpc(ctx: VaultContext): void {
     await agentViewGo(String(url ?? '').trim().slice(0, 2048), lane)
     const opened = lane ? laneState(lane).url : agentViewState().url
     if (opened && lane === 'browser') {
-      try { browserOrigins.add(new URL(opened).origin) } catch { }
+      try { browserOrigins.add(new URL(opened).origin) } catch {}
       if (browserOrigins.size > 100) browserOrigins.delete(browserOrigins.values().next().value!)
     }
     if (opened && lane?.startsWith('bot-')) {
       await recordBotSites(paths, lane.slice(4), [opened]).catch(error => flog('site-history', error))
-      try { visitedOrigins.add(new URL(opened).origin) } catch { }
+      try { visitedOrigins.add(new URL(opened).origin) } catch {}
       broadcast({ type: 'bots:changed' })
     }
   })
@@ -2549,7 +2549,7 @@ export function registerIpc(ctx: VaultContext): void {
         const visited = successfulTurnSteps(result.steps).filter(step => step.tool === 'open_page' && typeof step.args['url'] === 'string').map(step => String(step.args['url']))
         if (visited.length) {
           await recordBotSites(paths, bot.id, visited).catch(error => flog('site-history', error))
-          for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch { } }
+          for (const value of visited) { try { visitedOrigins.add(new URL(value).origin) } catch {} }
           broadcast({ type: 'bots:changed' })
         }
         signal.throwIfAborted()

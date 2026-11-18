@@ -19,7 +19,7 @@ export async function priorOutputs(directory: string, history: { role: string; t
   }
   const found: PriorOutput[] = []
   for (const [name, id] of [...latest].slice(-MAX_OUTPUTS)) {
-    try { found.push({ name, path: await resolveArtifact(directory, id) }) } catch { }
+    try { found.push({ name, path: await resolveArtifact(directory, id) }) } catch {}
   }
   return found
 }

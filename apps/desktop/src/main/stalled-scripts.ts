@@ -34,7 +34,7 @@ export function watchStalledScripts(context: BrowserContext): void {
   context.on('request', (request) => {
     if (request.resourceType() !== 'script') return
     let pageUrl = ''
-    try { pageUrl = request.frame().url() } catch { }
+    try { pageUrl = request.frame().url() } catch {}
     const url = request.url()
     if (!/^https?:\/\//.test(url) || url.includes('*')) return
     started.set(request, { at: Date.now(), url, foreign: !!foreignHost(url, pageUrl) })

@@ -15,7 +15,7 @@ function receipt(step: AgentLoopStep): Record<string, unknown> | undefined {
   try {
     const value = JSON.parse(step.observation)
     if (value && typeof value === 'object' && !Array.isArray(value) && !value.error && value.truncated !== true && value.reobserveRequired !== true && value.observationMayBeStale !== true) return value
-  } catch { }
+  } catch {}
   return undefined
 }
 

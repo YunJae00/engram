@@ -69,7 +69,7 @@ function withLook(result: string, house: boolean): string {
   return house ? withNote(result, 'look', THEME_NEEDED) : result
 }
 function withNote(result: string, key: string, note: string): string {
-  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, [key]: note }) } catch { }
+  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, [key]: note }) } catch {}
   return `${result}\n${note}`
 }
 export const deckChecked = (slides: readonly DeckSlide[]): string => `Checked before it was built and passed: ${slides.length} slides (${slides.map((slide, at) => `${at + 1}. ${slide.title}`).join(' / ')}), no unfilled slot, no text past a slide's edge, no repeated title, no line about the deck itself. Nothing is left to check: do not read it back or change it; answer now.`

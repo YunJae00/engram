@@ -93,7 +93,7 @@ export function usePreviewFrames(lane: string, tile?: PreviewTile): PreviewFrame
     && (pane.wanted || (mirror.lane === lane && (mirror.on || mirror.frame)))
   if (showing) {
     let title = ''
-    try { if (url && url !== 'about:blank') title = new URL(url).hostname } catch { }
+    try { if (url && url !== 'about:blank') title = new URL(url).hostname } catch {}
     frames.push({ id: `${lane}:web:${url ?? ''}`, source: 'web', title, at: painted.current.key === paintKey ? painted.current.at : 0, onPaint,
       phase: !url || url === 'about:blank' ? 'empty' : unavailable ? 'unavailable' : paintedKey === paintKey ? 'ready' : 'waiting',
       stream: native || !url || url === 'about:blank' ? source : tile?.frames })

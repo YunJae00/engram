@@ -594,7 +594,7 @@ const markQuit = (step: string): void => {
     const dir = join(app.getPath('userData'), 'logs')
     mkdirSync(dir, { recursive: true })
     appendFileSync(join(dir, 'quit.log'), `${new Date().toISOString()} ${step}\n`)
-  } catch { }
+  } catch {}
 }
 const guardQuit = quitGuard(() => { markQuit('retrying shutdown'); app.quit() }, () => { markQuit('forcing shutdown'); app.exit(0) })
 app.on('before-quit', (event) => {

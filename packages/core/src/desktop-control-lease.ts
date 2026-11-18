@@ -45,7 +45,7 @@ export class DesktopControlLease {
 
   private changed(): void {
     try { this.onChange?.() }
-    catch { }
+    catch {}
   }
 
   private pause(reason: string): void {

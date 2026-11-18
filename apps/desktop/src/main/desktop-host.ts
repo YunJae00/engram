@@ -274,8 +274,8 @@ export class DesktopHost {
     const child = this.child
     this.child = undefined
     if (child) {
-      try { child.stdin.end() } catch { }
-      try { child.kill() } catch { }
+      try { child.stdin.end() } catch {}
+      try { child.kill() } catch {}
     }
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error) }
     this.pending.clear()

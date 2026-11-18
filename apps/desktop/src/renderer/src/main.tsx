@@ -25,7 +25,7 @@ try {
     const now = Date.now()
     if (worst >= 200 && now - armed > 5_000) { armed = now; api.reportLongTask(worst); worst = 0 }
   }).observe({ entryTypes: ['longtask'] })
-} catch { }
+} catch {}
 
 api.onEvent((event) => {
   if (event.type === 'window:focus') document.documentElement.dataset['windowFocused'] = String(event.value)

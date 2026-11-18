@@ -114,7 +114,7 @@ export function keepSources(tool: AgentTool, seen: Set<string>): AgentTool {
       if (tool.name === 'search_web') { const at = /^results for "[^\n]*" at (https?:\/\/\S+) \(DATA/.exec(out)?.[1]; if (at) { seen.add(at); for (const [, title, url] of out.matchAll(/^- (.+?) — (https?:\/\/\S+)/gm)) keepTitle(url!, title!, /^results for "([^\n]*)" at /.exec(out)?.[1] ?? '') } }
       else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string' && /^https?:\/\//i.test(args['url'])) seen.add(args['url']) }
       else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string') seen.add(page.url)
-    } catch { }
+    } catch {}
   }
   if (!['search_web', 'open_page', 'read_pages'].includes(tool.name)) return tool
   return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }
@@ -233,7 +233,7 @@ export function sourceName(url: string, korean = false): string {
 export function siteOf(url: string, given: unknown, korean = true): string {
   const known = sourceName(url, korean)
   let host = ''
-  try { host = new URL(url).hostname.replace(/^www\./, '') } catch { }
+  try { host = new URL(url).hostname.replace(/^www\./, '') } catch {}
   return known === host && typeof given === 'string' && givenName(given, url) && !/^(?:출처|source|링크|link)$/i.test(given.trim()) ? given.trim() : known
 }
 const DECLARED = new Map<string, string>()
@@ -269,7 +269,7 @@ export function siteName(url: string, korean = false): string {
   if (!known) return host
   if (!SEARCH_PAGE.test(url)) return known[korean ? 1 : 2]
   let asked = ''
-  try { asked = known[2] === 'Naver' ? new URL(url).searchParams.get('query') ?? '' : '' } catch { }
+  try { asked = known[2] === 'Naver' ? new URL(url).searchParams.get('query') ?? '' : '' } catch {}
   const box = BOXES.find(([words]) => words.test(asked))
   return `${known[korean ? 1 : 2]} ${box ? box[korean ? 1 : 2] : korean ? '검색' : 'search'}`
 }
@@ -365,7 +365,7 @@ export function keepRead(tool: AgentTool, into: string[]): AgentTool {
         into.push(lines.map(line => { const [title, url, ...rest] = line.startsWith('- ') ? line.slice(2).split(' — ') : []; return title && url && /^https?:\/\//.test(url) ? `${title}${rest.length ? `: ${rest.join(', ')}` : ''} ${url}` : line }).join('\n').trim())
       } else if (tool.name === 'open_page') { if (out.startsWith('page "') && typeof args['url'] === 'string') into.push(`${out}\n${args['url']}`) }
       else if (tool.name === 'read_pages') for (const page of (JSON.parse(out.replace(/^that did not work: /, '')) as { pages?: { url?: unknown; ready?: unknown; observation?: unknown }[] }).pages ?? []) if (page.ready === true && typeof page.url === 'string' && typeof page.observation === 'string') into.push(`${page.observation}\n${page.url}`)
-    } catch { }
+    } catch {}
   }
   if (!['search_web', 'open_page', 'read_pages'].includes(tool.name)) return tool
   return { ...tool, run: async (args, context) => { const out = await tool.run(args, context); note(args, out); return out }, ...(tool.runRich ? { runRich: async (args, context) => { const out = await tool.runRich!(args, context); note(args, out.text); return out } } : {}) }

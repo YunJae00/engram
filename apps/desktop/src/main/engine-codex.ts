@@ -186,7 +186,7 @@ export class CodexEngine implements CloudEngine {
         ...(job.jsonSchema ? { outputSchema: strictSchema(job.jsonSchema) } : {}),
       }, abort.signal)
       if (job.jsonSchema) {
-        try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch { }
+        try { text = JSON.stringify(restoreOptionalFields(JSON.parse(text), job.jsonSchema)) } catch {}
       }
       yield { type: 'result', text }
     } catch (err) {

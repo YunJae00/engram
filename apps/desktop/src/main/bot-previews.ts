@@ -119,7 +119,7 @@ function countTurns(raw: string): number {
     try {
       const row = JSON.parse(line) as { role?: unknown; text?: unknown; progress?: unknown } | null
       if (typeof row === 'object' && row !== null && (row.role === 'user' || row.role === 'assistant') && typeof row.text === 'string' && row.progress !== true) turns++
-    } catch { }
+    } catch {}
   }
   return turns
 }

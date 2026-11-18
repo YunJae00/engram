@@ -77,7 +77,7 @@ export function workEvidenceTools(paths: VaultPaths, lane: string) {
       signal?.throwIfAborted(); expected(page, url)
       await aim.hand.setInputFiles({ name: basename(path).slice(37), mimeType: extension === '.mp4' ? 'video/mp4' : extension === '.webm' ? 'video/webm' : extension === '.png' ? 'image/png' : 'application/octet-stream', buffer: data }, { timeout: 10000 })
       let confirmed = false
-      try { await page.getByText(confirmation, { exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 15000 }); confirmed = page.url() === url && !signal?.aborted } catch { }
+      try { await page.getByText(confirmation, { exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 15000 }); confirmed = page.url() === url && !signal?.aborted } catch {}
       return { upload: { status: confirmed ? 'confirmed' : 'unconfirmed', artifact: args.artifact, url, confirmation, bytes: data.length }, message: confirmed ? 'The specified confirmation appeared. Verify that it identifies the saved attachment, not a pending preview.' : 'File selection was dispatched, but completion is unconfirmed. Inspect before any retry.' }
     },
   })

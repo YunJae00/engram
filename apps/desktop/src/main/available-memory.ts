@@ -18,7 +18,7 @@ export function availableMemory(): number {
   try {
     const measured = macAvailableMemory(execFileSync('/usr/bin/vm_stat', [], { encoding: 'utf8', timeout: 250, maxBuffer: 16384 }))
     if (measured !== undefined) bytes = Math.min(os.totalmem(), measured)
-  } catch { }
+  } catch {}
   cached = { at: now, bytes }
   return bytes
 }

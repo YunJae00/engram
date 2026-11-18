@@ -67,7 +67,7 @@ export function officeArithmeticFault(steps: AgentLoopStep[]): string | undefine
       for (const fault of current) {
         faults.set(`${identity}:${fault.cell}`, `${value.workbook} / ${value.sheet} / ${fault.cell} shows ${fault.got}; its observed SUM formula evaluates to ${fault.expected}`)
       }
-    } catch { }
+    } catch {}
   }
   return faults.size ? `A read-back SUM result does not add up: ${[...faults.values()].slice(0, 5).join('; ')}. Verify the calculation and read the affected cells again before reporting completion.` : undefined
 }

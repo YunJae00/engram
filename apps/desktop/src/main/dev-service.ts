@@ -212,7 +212,7 @@ export class DevService {
             this.flush(id)
             void this.store.save().then(() => { if (!error) this.outbox.schedule(session) }).catch(cause => { pauseOutbox(session); this.reportSaveError(session, cause) })
             if (runtime!.idle) clearTimeout(runtime!.idle)
-            runtime!.idle = setTimeout(() => { void this.stop(id).catch(() => { }) }, 5 * 60_000)
+            runtime!.idle = setTimeout(() => { void this.stop(id).catch(() => {}) }, 5 * 60_000)
           },
         }
         const driver = session.provider === 'codex' ? new DevCodex(session, approvals, updates) : new DevClaude(session, approvals, updates)
@@ -232,7 +232,7 @@ export class DevService {
       user.status = 'done'; runtime.changed.set(user.id, user); this.flush(id); await this.store.save()
     } catch (error) {
       if (this.starting.get(id) !== attempt || (runtime && this.running.get(id) !== runtime)) return
-      try { await this.stop(id) } catch { }
+      try { await this.stop(id) } catch {}
       if (session.handoff) session.runtimeId = undefined
       session.state = 'failed'
       const item: DevItem = { id: randomUUID(), kind: 'error', text: error instanceof Error ? error.message : 'The task could not start.' }

@@ -23,7 +23,7 @@ const WENT_NOWHERE = [
 ]
 
 function worked(observation: string): boolean {
-  try { const value = JSON.parse(observation); if (value?.error || value?.reobserveRequired || value?.observationMayBeStale || value?.completeReadback === false) return false } catch { }
+  try { const value = JSON.parse(observation); if (value?.error || value?.reobserveRequired || value?.observationMayBeStale || value?.completeReadback === false) return false } catch {}
   const head = observation.slice(0, 200).toLowerCase()
   return !WENT_NOWHERE.some((sign) => head.includes(sign))
 }

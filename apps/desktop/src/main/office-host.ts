@@ -55,7 +55,7 @@ function fail(error: Error): void {
     stopping = new Promise<void>((resolve) => {
       if (current.exitCode !== null || current.signalCode !== null) { resolve(); return }
       current.once('exit', () => resolve())
-      try { current.kill() } catch { }
+      try { current.kill() } catch {}
     })
   }
 }

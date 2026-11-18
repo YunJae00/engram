@@ -53,7 +53,7 @@ export async function flushQueuedCometMessages(api: ChatApi, store: CometThreads
     if (!message) return
     const still = !!message.shown && bubbleCount(store, botId, chatMessage(message.draft, message.attachments)) >= (shownCounts.get(message) ?? Infinity)
     await sendNow(api, store, botId, message.draft, message.attachments, true, still)
-  } catch { }
+  } catch {}
   finally { seats(draining, store).delete(botId); queueWatches.get(store)?.(); if (!store.thread(botId).busy && store.thread(botId).queued.length) setTimeout(() => void flushQueuedCometMessages(api, store, botId), retry ? 500 : 0) }
 }
 

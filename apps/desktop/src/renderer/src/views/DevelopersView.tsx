@@ -12,7 +12,7 @@ import { SidebarDisclosure } from '../components/SidebarDisclosure.js'
 interface Slot { id?: string; repoId?: string }
 const emptySlots = (): Slot[] => Array.from({ length: 4 }, () => ({}))
 function savedSlots(): Slot[] {
-  try { const value = JSON.parse(sessionStorage.getItem('engram.dev.panes') ?? 'null'); if (Array.isArray(value) && value.length === 4 && value.every(slot => slot && typeof slot === 'object')) return value.map(slot => ({ id: typeof slot.id === 'string' ? slot.id : undefined, repoId: typeof slot.repoId === 'string' ? slot.repoId : undefined })) } catch { }
+  try { const value = JSON.parse(sessionStorage.getItem('engram.dev.panes') ?? 'null'); if (Array.isArray(value) && value.length === 4 && value.every(slot => slot && typeof slot === 'object')) return value.map(slot => ({ id: typeof slot.id === 'string' ? slot.id : undefined, repoId: typeof slot.repoId === 'string' ? slot.repoId : undefined })) } catch {}
   return emptySlots()
 }
 export function DevelopersView({ layout, onLayout, onActivate }: { layout: 1 | 2 | 4; onLayout(count: 1 | 2 | 4): void; onActivate(): void }) {
@@ -36,7 +36,7 @@ export function DevelopersView({ layout, onLayout, onActivate }: { layout: 1 | 2
     })
     return () => { alive = false; off() }
   }, [])
-  useEffect(() => { try { sessionStorage.setItem('engram.dev.panes', JSON.stringify(slots)) } catch { } }, [slots])
+  useEffect(() => { try { sessionStorage.setItem('engram.dev.panes', JSON.stringify(slots)) } catch {} }, [slots])
   const focused = Math.min(active, layout - 1)
   const action = async (work: () => Promise<unknown>) => { if (busy) return; setBusy(true); setError(''); try { await work() } catch (error) { setError((error as Error).message) } finally { setBusy(false) } }
   const open = (id: string, index = focused) => {

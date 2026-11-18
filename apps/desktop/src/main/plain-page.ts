@@ -27,12 +27,12 @@ export function plainPage(html: string, url: string): WebPage {
     try {
       const to = new URL(decode(match[1] ?? match[2] ?? match[3] ?? ''), url), key = `${to.href}\n${text}`
       if (/^https?:$/.test(to.protocol) && !seen.has(key)) { seen.add(key); links.push({ text: text.slice(0, 160), url: to.href }) }
-    } catch { }
+    } catch {}
   }
   const text = decode(body.replace(/<(br|\/p|\/div|\/li|\/tr|\/h[1-6]|\/section|\/article|\/table)\b[^>]*>/gi, '\n').replace(/<[^>]+>/g, ' '))
     .replace(/[ \t\r\f\v]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{2,}/g, '\n').trim()
   let wall: ReturnType<typeof classifyWall> = null
-  try { wall = classifyWall(url, title, text, /<input\b[^>]*\btype\s*=\s*["']?password/i.test(html)) } catch { }
+  try { wall = classifyWall(url, title, text, /<input\b[^>]*\btype\s*=\s*["']?password/i.test(html)) } catch {}
   return { url, requestedUrl: url, title, ...(wall ? { wall } : {}), text: text.length > TEXT_CAP ? `${text.slice(0, TEXT_CAP)}\n[Page extract truncated; absence from this extract does not establish absence from the page.]` : text, links }
 }
 

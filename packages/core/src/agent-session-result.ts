@@ -23,7 +23,7 @@ export function outputLinks(steps: AgentLoopStep[], answer: string, cwd = ''): s
       const result = JSON.parse(step.observation) as { markdownLink?: unknown; taskPath?: unknown }
       const match = typeof result.markdownLink === 'string' && result.markdownLink.match(/^\[[^\]\r\n]+\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)$/)
       if (match) outputs.push({ link: result.markdownLink as string, id: match[1]!, name: fileName(match[1]!), source: sourceOf(step, result.markdownLink as string), composed: COMPOSED.includes(step.tool), fresh: fresh(step), edits: edits(step), taskPath: typeof result.taskPath === 'string' ? result.taskPath : undefined })
-    } catch { }
+    } catch {}
   }
   const last = new Map(outputs.filter(output => output.fresh).map(output => [output.name.toLowerCase(), output]))
   const replaced = new Map(outputs.filter(output => output.fresh && last.get(output.name.toLowerCase())!.id !== output.id).map(output => [output.id, last.get(output.name.toLowerCase())!]))
@@ -67,7 +67,7 @@ export function finalDesktopFailure(steps: AgentLoopStep[]): string | undefined 
         try { return JSON.parse(one.observation)?.opened === true } catch { return false }
       })) return undefined
     if (error) return incomplete
-  } catch { }
+  } catch {}
   if (step.tool === 'app_set' || step.tool === 'app_text' || step.tool === 'app_do') {
     try {
       const result = JSON.parse(step.observation) as { landed?: boolean; exact?: boolean; settled?: boolean; status?: string }

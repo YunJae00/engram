@@ -11,7 +11,7 @@ interface OfficeOutputs { save(name: string, data: Buffer): Promise<Record<strin
 
 const COMMON_HANGUL = ((): Set<string> => {
   const found = new Set<string>()
-  try { const decode = new TextDecoder('euc-kr'); for (let lead = 0xb0; lead <= 0xc8; lead++) for (let trail = 0xa1; trail <= 0xfe; trail++) found.add(decode.decode(Uint8Array.of(lead, trail))) } catch { }
+  try { const decode = new TextDecoder('euc-kr'); for (let lead = 0xb0; lead <= 0xc8; lead++) for (let trail = 0xa1; trail <= 0xfe; trail++) found.add(decode.decode(Uint8Array.of(lead, trail))) } catch {}
   return found
 })()
 export function mistypedWords(texts: readonly { where: string; text: string }[], personal = ''): string[] {
@@ -108,7 +108,7 @@ export async function showOfficePreview(lane: string, op: OfficeOp, window?: str
   const wholeApp = op.startsWith('outlook.') || op === 'excel.workbooks'
   if (!wholeApp && window === undefined) return
   try { showWorkPreview(await bindDesktopForLane(lane, { app: window ? `window:${window}:0` : app })) }
-  catch { }
+  catch {}
 }
 let workQueue: Promise<unknown> = Promise.resolve()
 export function officeAgentTools(lane: string, outputs?: OfficeOutputs, proofread?: Proofread, personal = ''): AgentTool[] {

@@ -62,7 +62,7 @@ export function DeveloperTaskPane({ id, slot, repo, state, active, split, onFocu
   }, [id, draftKey])
   useEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight }, [task?.items, task?.pending])
   useEffect(() => { if (input.current) { input.current.style.height = 'auto'; input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px` } }, [prompt])
-  const write = (value: string) => { setPrompt(value); setDismissedSkills(null); try { if (value) sessionStorage.setItem(draftKey, value); else sessionStorage.removeItem(draftKey) } catch { } }
+  const write = (value: string) => { setPrompt(value); setDismissedSkills(null); try { if (value) sessionStorage.setItem(draftKey, value); else sessionStorage.removeItem(draftKey) } catch {} }
   const action = async (work: () => Promise<unknown>) => { if (gate.current) return; gate.current = true; setBusy(true); setError(''); try { await work() } catch (error) { setError((error as Error).message) } finally { gate.current = false; setBusy(false) } }
   const running = !!task && ['starting', 'running', 'waiting', 'stopping'].includes(task.state)
   const stop = async () => {

@@ -121,7 +121,7 @@ export function answerFiles(text: string): { text: string; files: AnswerFile[] }
       const id = decodeURIComponent(match[1]!.slice('engram-artifact:'.length))
       links.add(match[0])
       if (!files.some(file => file.id === id)) files.push({ id, name: id.replace(/^[0-9a-f-]{36}-/i, '') })
-    } catch { }
+    } catch {}
   }
   return { text: text.split('\n').filter(line => !links.has(FILE_LINE.exec(line)?.[1] ?? '')).join('\n'), files }
 }

@@ -85,7 +85,7 @@ export function scanHabits(ctx: VaultContext, force = false): Promise<number> {
       if (raw === null) continue
       const draft = parseSkillDraft(raw)
       let declined = false
-      try { declined = (extractJson(raw) as { skip?: unknown } | null)?.skip === true } catch { }
+      try { declined = (extractJson(raw) as { skip?: unknown } | null)?.skip === true } catch {}
       if (!draft && !declined) { flog('habits', `unreadable answer, ${raw.length} chars`); continue }
       await changeHabits(ctx.paths, async current => {
         if (!habitsToDraft([chain], current).length) return

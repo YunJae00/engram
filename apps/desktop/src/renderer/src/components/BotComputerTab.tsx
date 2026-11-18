@@ -33,7 +33,7 @@ function tabLabel(tab: BrowserTabDto): string {
   try {
     const url = new URL(tab.url)
     if (url.protocol === 'http:' || url.protocol === 'https:') return url.hostname
-  } catch { }
+  } catch {}
   return t('botInfo.newTab')
 }
 

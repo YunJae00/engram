@@ -17,7 +17,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
       const fragment = new URLSearchParams(url.hash.slice(1).split('?').at(-1))
       const credential = [...url.searchParams.keys(), ...fragment.keys()].some(key => /^(access_token|refresh_token|id_token|token|jwt|code|session|sessionid|password|secret|signature|sig|samlrequest|samlresponse|relaystate|ticket|nonce|state|api[-_]?key|x-amz-.+|x-goog-.+)$/i.test(key))
       if (!credential && !url.username && !url.password && withoutSecrets(url.href, source) === url.href && url.href.length <= 2048 && urls.size < 12) urls.add(url.href)
-    } catch { }
+    } catch {}
   }
   let controls = new Map<string, string>()
   const method: string[] = []
@@ -32,7 +32,7 @@ export function routineTask(goal: string, steps: TurnStep[], context: string[] =
   }
   const checks = [...new Set(successful.flatMap(step => {
     if (['verify', 'wait_for'].includes(step.tool)) {
-      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [JSON.stringify(withoutSecretsIn({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }, source, ['id', 'url', 'ready', 'present', 'absent'])).slice(0, 500)] } catch { }
+      try { if (JSON.parse(step.observation).verification?.status === 'passed') return [JSON.stringify(withoutSecretsIn({ id: step.args.id, url: step.args.url, ready: step.args.ready, present: step.args.present, absent: step.args.absent }, source, ['id', 'url', 'ready', 'present', 'absent'])).slice(0, 500)] } catch {}
     }
     return step.tool === 'task_plan' && Array.isArray(step.args['phases']) ? step.args['phases'].filter((value): value is string => typeof value === 'string').map(value => withoutSecrets(value, source).slice(0, 500)) : []
   }))].slice(0, 8)

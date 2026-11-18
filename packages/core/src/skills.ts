@@ -338,7 +338,7 @@ export async function listSkills(paths: VaultPaths): Promise<SkillCard[]> {
     try {
       const { description } = frontMatter(content)
       if (description) cards.push({ name: entry.name, description: description.replace(/\s+/g, ' ').trim().slice(0, DESC_CAP) })
-    } catch { }
+    } catch {}
   }
   return cards.sort((a, b) => (a.name < b.name ? -1 : 1))
 }

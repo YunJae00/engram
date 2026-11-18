@@ -166,7 +166,7 @@ export function desktopAgentTools(lane: string): AgentTool[] {
   const askSend = async (context: DesktopActionContext, snapshot: string): Promise<boolean> => {
     const name = desktopBinding(lane)?.name
     let fields: Parameters<typeof shownDraft>[0]
-    try { fields = desktopObservation(lane, snapshot).nodes.map(node => ({ value: FIELD.test(node.controlType) ? node.value : undefined, secret: !!(node.password || node.isPassword) })) } catch { }
+    try { fields = desktopObservation(lane, snapshot).nodes.map(node => ({ value: FIELD.test(node.controlType) ? node.value : undefined, secret: !!(node.password || node.isPassword) })) } catch {}
     return !!await context.approveAppAction?.(name ?? 'this app', 'Send', snapshot, undefined, { app: name, sending: shownDraft(fields) })
   }
   const sends = (action: { kind: string; key?: string; element?: string; x?: number; y?: number; snapshot: string; target?: { name: string; controlType?: string; element?: string } }, afterTyping = typedUnsent.has(lane)): boolean => {

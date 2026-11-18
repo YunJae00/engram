@@ -43,7 +43,7 @@ export function parseAsk(observation: string): Ask | null {
     try {
       const parsed = JSON.parse(body) as Partial<Ask>
       if (typeof parsed.question === 'string') return parsed.question.trim() ? { question: normalizeProse(parsed.question.trim()), options: cleanOptions(parsed.options) } : null
-    } catch { }
+    } catch {}
   }
   const split = body.lastIndexOf(`\n${OPTIONS_HEAD}`)
   const question = normalizeProse((split < 0 ? body : body.slice(0, split)).trim())

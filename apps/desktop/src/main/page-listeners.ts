@@ -19,7 +19,7 @@ export async function readClickListeners(page: Page): Promise<void> {
         })
       }))
     })(), new Promise<void>(resolve => { timer = setTimeout(resolve, 1500) }) ])
-  } catch { }
+  } catch {}
   finally {
     clearTimeout(timer)
     await session.send('Runtime.releaseObjectGroup', { objectGroup: 'engram-listeners' }).catch(() => undefined)

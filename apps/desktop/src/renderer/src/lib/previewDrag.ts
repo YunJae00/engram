@@ -67,7 +67,7 @@ export function usePreviewDrag(ref: RefObject<HTMLDivElement>, enabled: boolean,
       drag = undefined
       flag('data-dragging', false)
       if (commit && active.moved && active.provisional) positions.set(lane, active.provisional)
-      try { if (deck.hasPointerCapture(active.id)) deck.releasePointerCapture(active.id) } catch { }
+      try { if (deck.hasPointerCapture(active.id)) deck.releasePointerCapture(active.id) } catch {}
       if (settle) layout()
     }
     const fit = (space: Bounds) => {

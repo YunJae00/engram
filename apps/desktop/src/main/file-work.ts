@@ -196,7 +196,7 @@ export async function linkedOutputs(directory: string, history: { role: string; 
   }
   const found: { name: string; path: string }[] = []
   for (const id of [...latest.values()].slice(-40)) {
-    try { found.push({ name: id.replace(REVISION, ''), path: await findArtifact(directory, id) }) } catch { }
+    try { found.push({ name: id.replace(REVISION, ''), path: await findArtifact(directory, id) }) } catch {}
   }
   return found
 }
@@ -361,7 +361,7 @@ export function registerArtifactIpc(paths: VaultPaths): void {
     try {
       if (THUMBS.has(kindOf(path))) return { size, previous, thumb: { data: (await nativeImage.createThumbnailFromPath(path, { width: 480, height: 320 })).toPNG(), mime: 'image/png' } }
       if (kindOf(path) === '.svg' && size <= 1_000_000) return { size, previous, thumb: { data: await readFile(path), mime: 'image/svg+xml' } }
-    } catch { }
+    } catch {}
     return { size, previous }
   })
 }
