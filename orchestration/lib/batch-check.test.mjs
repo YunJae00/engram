@@ -10,7 +10,6 @@ let root
 let ctx
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim()
 
-// A branch off `next` that adds one file; returns its tip.
 function branch(name, file, body) {
   git('checkout', '-q', '-b', name, 'next')
   writeFileSync(join(root, file), body)
@@ -27,7 +26,6 @@ beforeEach(() => {
   git('init', '-q', '-b', 'next')
   git('config', 'user.name', 'orch test')
   git('config', 'user.email', 'orch@test.invalid')
-  // The check passes only on a tree holding both members' files.
   const check = 'node -e "process.exit([\'a.txt\',\'b.txt\'].every((f)=>require(\'fs\').existsSync(f))?0:1)"'
   writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: { 'check:quick': check } }))
   git('add', '.')

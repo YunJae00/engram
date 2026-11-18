@@ -5,8 +5,6 @@ import { runCommands } from './evidence.mjs'
 import { overlaps } from './overlap.mjs'
 import { dropWorktree, freshDetached, git, isCloud, loadJobs, saveJobs } from './runtime.mjs'
 
-// Opt-in grouping (`run --batch [N]` or ORCH_BATCH=N): easy items of one area share one implementer
-// session and one repo-wide check:quick; everything else (verdicts, merge, ledger) stays per item.
 export const MAX_BATCH = 4
 const DEFAULT_BATCH = 3
 export const BATCH_PREFIX = 'batch-'
@@ -18,11 +16,9 @@ export function batchSize(args, env = process.env) {
   return Number.isInteger(n) && n >= 2 ? Math.min(n, MAX_BATCH) : 0
 }
 
-// Only first attempts of easy, local, single-step items join a batch; a bounced or hard item stays single.
 const batchable = (q) =>
   !q.hard && q.item.bounces === 0 && q.item.attempts.length === 0 && q.plan.length === 1 && !isCloud(q.plan[0].implementer)
 
-/** Splits the start queue into groups of 2..size (same area and rung, disjoint allowedFiles) and singles. */
 export function pickBatches(queue, size) {
   if (size < 2) return { groups: [], singles: queue }
   const open = []
@@ -48,21 +44,18 @@ export const batchOf = (attempt) => {
   return name.startsWith(BATCH_PREFIX) ? name : null
 }
 
-/** Live, implemented attempts of other items that ran in the same batched session as `attempt`. */
 export function batchSiblings(ledger, attempt) {
   const label = batchOf(attempt)
   if (!label) return []
   return ledger.items.flatMap((i) => i.attempts).filter((a) => batchOf(a) === label && !a.outcome && a.headSha)
 }
 
-/** Marks one member done; true when it was the last one, so the shared session may be killed. */
 export function closeMember(job, branch) {
   if (!job?.open) return true
   job.open = job.open.filter((b) => b !== branch)
   return job.open.length === 0
 }
 
-// Called from finish(): the shared implementer process is killed only once every member has an outcome.
 export function releaseMember(ctx, attempt) {
   const label = batchOf(attempt)
   if (!label) return true
@@ -88,10 +81,6 @@ export function batchPrompt({ persona, minutes, sections }) {
 
 const CHECK = 'npm run check:quick'
 
-// shortcut: the shared check runs on base + every implemented sibling at once, so an item that only passes
-// together with a sibling also passes here; per-item criteria still run on the item's own tree and
-// integration reruns the whole suite. Upgrade to per-item typecheck if that ever lets a broken merge through.
-/** check:quick once for every implemented member of `attempt`'s batch; null means run the item's own check. */
 export async function sharedCheck(ctx, ledger, attempt) {
   const siblings = batchSiblings(ledger, attempt)
   if (siblings.length < 2) return null
@@ -111,7 +100,6 @@ async function runSharedCheck(ctx, key, shas) {
   const worktree = join(ctx.worktrees, key)
   await freshDetached(ctx, worktree, ctx.base)
   try {
-    // Disjoint allowedFiles make this octopus merge clean; a conflict just means each item checks alone.
     await git(worktree, 'merge', '--no-edit', '-m', `batch check ${key}`, ...shas)
   } catch (error) {
     await dropWorktree(ctx, worktree)
@@ -125,7 +113,6 @@ async function runSharedCheck(ctx, key, shas) {
   return { shas, exit: result.exit, logPath, tail: result.tail }
 }
 
-/** The tests-lane entry for a passed shared check, with its log copied into this verifier's worktree. */
 export function sharedResult(shared, worktree, name) {
   const logPath = `orchestration/logs/${name}-check_quick.log`
   mkdirSync(join(worktree, 'orchestration/logs'), { recursive: true })

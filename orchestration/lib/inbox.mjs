@@ -15,7 +15,6 @@ export function itemFromBrief(brief) {
   }
 }
 
-// A pid file left by a crashed runner does not count as active.
 export function runnerPid(ctx) {
   const pid = Number(readJsonOrNull(pidPath(ctx))?.pid)
   return pid && pid !== process.pid && alive(pid) ? pid : null
@@ -24,7 +23,6 @@ export function runnerPid(ctx) {
 export function enqueue(ctx, id) {
   const dir = inboxDir(ctx)
   mkdirSync(dir, { recursive: true })
-  // The monotonic clock orders adds that land in the same millisecond.
   const stamp = `${String(Date.now()).padStart(15, '0')}-${String(process.hrtime.bigint()).padStart(20, '0')}`
   const file = join(dir, `${stamp}-${id}.json`)
   const temp = `${file}.${process.pid}.tmp`
@@ -33,7 +31,6 @@ export function enqueue(ctx, id) {
   return file
 }
 
-// Appends queued briefs in file-name order and removes their inbox files; the caller saves the ledger.
 export function drain(ctx, ledger) {
   let names
   try {
@@ -54,14 +51,12 @@ export function drain(ctx, ledger) {
   return added
 }
 
-// Expects a validated brief; source is the absolute path it was read from.
 export function addBrief(ctx, brief, source) {
   const target = briefPath(ctx, brief.id)
   const copy = () => {
     mkdirSync(join(ctx.orch, 'briefs'), { recursive: true })
     if (source !== target) writeFileSync(target, `${JSON.stringify(brief, null, 2)}\n`)
   }
-  // A running runner owns ledger.json; hand it the id through the inbox instead.
   if (runnerPid(ctx)) {
     if (readJsonOrNull(join(ctx.orch, 'ledger.json'))?.items.some((i) => i.id === brief.id)) throw new Error(`${brief.id} is already in the ledger`)
     copy()

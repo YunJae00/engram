@@ -20,7 +20,6 @@ export function overlaps(globsA, globsB) {
   return globsA.some((a) => globsB.some((b) => pairOverlaps(a, b)))
 }
 
-// The shared-file lock is implied: two items that both include a shared file always overlap.
 export function runnable(items) {
   const busy = items.filter((item) => IN_FLIGHT.has(item.state))
   const ids = []

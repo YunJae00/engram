@@ -5,7 +5,6 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import process from 'node:process'
 
-// The shell's default Node can be older than package.json engines, so prefer the newest nvm install.
 function nodeBin() {
   const versions = join(process.env.NVM_DIR ?? join(homedir(), '.nvm'), 'versions', 'node')
   try {
@@ -19,7 +18,6 @@ function nodeBin() {
 
 export const NODE_BIN = nodeBin()
 
-// nvm's layout is versions/node/<version>/bin. When that directory is absent, NODE_BIN is the running Node's directory.
 export function withNodeOnPath(env = process.env) {
   const out = { ...env }
   const key = Object.keys(out).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH'
@@ -65,7 +63,6 @@ const CODEX_SCHEMA_DROP = new Set([
   'pattern', 'minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'format',
 ])
 
-// Codex structured output rejects draft-07 `$ref` / `pattern` that Claude's `--json-schema` accepts.
 export function codexOutputSchema(schema) {
   const defs = { ...(schema.definitions ?? {}), ...(schema.$defs ?? {}) }
   const walk = (node, stack) => {
@@ -85,7 +82,6 @@ export function codexOutputSchema(schema) {
       if (CODEX_SCHEMA_DROP.has(key)) continue
       out[key] = walk(value, stack)
     }
-    // Strict structured output needs every property listed in `required`; optional fields come back empty.
     if (out.properties && Array.isArray(out.required)) out.required = Object.keys(out.properties)
     return out
   }
@@ -99,7 +95,6 @@ export function materializeCodexSchema(schemaPath, destPath) {
 }
 
 export function codexArgs({ cwd, prompt, sandbox, schemaPath, addDirs = [], model, outPath } = {}) {
-  // A login shell sources nvm and puts the default Node (v22) ahead of NODE_BIN.
   const args = ['exec', '-C', cwd, '-s', sandbox, '-c', 'allow_login_shell=false', '--skip-git-repo-check', '--ephemeral']
   if (model) args.push('-m', model)
   for (const dir of addDirs) args.push('--add-dir', dir)

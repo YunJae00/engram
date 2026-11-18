@@ -18,7 +18,6 @@ const roles = loadRoles(fileURLToPath(new URL('../..', import.meta.url)))
 const sha = (c) => c.repeat(40)
 const item = (over = {}) => ({ id: 'x', area: 'ts', bounces: 0, ...over })
 
-// The loop exports ENGRAM_MAX_BOUNCES; these tests pick their own cap.
 beforeEach(() => vi.stubEnv('ENGRAM_MAX_BOUNCES', undefined))
 afterEach(() => vi.unstubAllEnvs())
 

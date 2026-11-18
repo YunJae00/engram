@@ -22,7 +22,6 @@ async function isAncestor(cwd, ancestor, descendant) {
   return (await gitOrNull(cwd, ['merge-base', '--is-ancestor', ancestor, descendant])) !== null
 }
 
-// null means base already contains `from`. Otherwise 'created' | 'fast-forward' | 'merged'.
 export async function ensureBranch({ root, remote }, base, from) {
   const listed = await gitOrNull(root, ['ls-remote', '--exit-code', '--heads', remote, base])
   const fromSha = await git(root, ['rev-parse', from])
@@ -84,7 +83,6 @@ export async function changedFiles({ root }, base, ref) {
   return out ? out.split('\n') : []
 }
 
-// null when the ref does not exist (e.g. an attempt branch deleted by hand).
 export async function tipSha({ root }, ref) {
   return gitOrNull(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
 }

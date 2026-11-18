@@ -2,7 +2,6 @@ import { existsSync, readdirSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
 import process from 'node:process'
 
-// Same triples as apps/desktop/src/main/engine-cloud.ts. The binary name differs on Windows.
 const CODEX_TRIPLE = {
   'win32-x64': 'x86_64-pc-windows-msvc',
   'win32-arm64': 'aarch64-pc-windows-msvc',
@@ -41,7 +40,6 @@ export function codexCandidates(root, { platform, arch, override, listDir = list
       push(join(store, name, 'node_modules', pkg, bin))
     }
   }
-  // A global install (no repo package) is the host `codex` on PATH. Another OS's PATH is not searched.
   const pathList = pathEnv !== undefined
     ? pathEnv
     : (platform === process.platform && arch === process.arch ? process.env.PATH ?? '' : '')

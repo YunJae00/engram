@@ -150,7 +150,6 @@ describe('batched implement flow', () => {
     expect(loadJobs(ctx)['batch-a-x3'].open).toEqual(['orch/a-1', 'orch/b-1', 'orch/c-1'])
     expect(readFileSync(join(root, 'orchestration/ledger.json'), 'utf8')).toContain('batch-a-x3')
 
-    // The shared session lives until the last member has an outcome.
     const [a, b, c] = ledger.items.map((i) => i.attempts[0])
     await finish(ctx, a, 'pass')
     await finish(ctx, b, 'fail')

@@ -40,8 +40,7 @@ describe('local agent slots', () => {
       expect(pid).toBeGreaterThan(0)
       expect(sem.acquire).not.toHaveBeenCalled()
     } finally {
-      // The detached child holds dir as its cwd and the log open; Windows refuses to remove the dir until it exits.
-      try { if (pid) process.kill(pid) } catch { /* already exited */ }
+      try { if (pid) process.kill(pid) } catch { }
       for (let i = 0; pid && alive(pid) && i < 100; i++) await sleep(50)
       rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
     }

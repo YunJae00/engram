@@ -55,7 +55,7 @@ function makeCtx() {
   for (const dir of ['schemas', 'personas']) cpSync(join(repo, 'orchestration', dir), join(orch, dir), { recursive: true })
   mkdirSync(join(orch, 'briefs'), { recursive: true })
   writeFileSync(join(orch, 'briefs/x.json'), JSON.stringify(brief))
-  const roles = { ...loadRoles(repo), branchPrefix: 'orch/' } // pinned: the test must not follow live roles.md
+  const roles = { ...loadRoles(repo), branchPrefix: 'orch/' }
   return {
     root, roles, orch, dryRun: false, log: () => {}, opts: { root, remote: 'origin' }, base: 'origin/next',
     logs: join(orch, 'logs'), worktrees: join(root, 'tmp/w'), sem: { free: () => 4, release: () => {}, acquire: () => {} },
@@ -95,7 +95,6 @@ describe('verifier timebox in the loop', () => {
     await verifyAttempt(ctx, ledger, item, item.attempts[0])
     expect(remote.launches.map((l) => [l.label, l.minutes])).toEqual([['x-1-tests', 20], ['x-1-spec', 20], ['x-1-break', 20]])
 
-    // spec and tests answer; a verdict for another commit on the break branch is not break's verdict.
     push('orch/verdicts/x-1-tests', 'tests', verdict('tests'))
     push('orch/verdicts/x-1-spec', 'spec', verdict('spec'))
     push('orch/verdicts/x-1-break', 'break', verdict('break', { headSha: 'b'.repeat(40) }))
@@ -111,7 +110,6 @@ describe('verifier timebox in the loop', () => {
     expect(remote.launches.at(-1).prompt).toContain('orch/verdicts/x-1-break-r2')
     expect(decisions()).toMatch(/break timeout\tattempt 1 try 1 passed its deadline; fresh session as try 2/)
 
-    // The first session finally pushes a pass: it is superseded and never read.
     push('orch/verdicts/x-1-break', 'break', verdict('break'))
     vi.setSystemTime(minutes(30))
     await verifyAttempt(ctx, ledger, item, item.attempts[0])
@@ -205,14 +203,14 @@ describe('batched implementer still running', () => {
     }
     const item = { ...ledgerItem(attempt), state: 'implementing' }
     const ledger = { batch: 'b', items: [item] }
-    remote.files.set(`orch/x-1:${reportPath('x')}`, '{}') // landed, and invalid: unguarded it would end the attempt at once
+    remote.files.set(`orch/x-1:${reportPath('x')}`, '{}')
 
     vi.setSystemTime(minutes(10))
     await checkImplementation(ctx, ledger, item, attempt)
     expect(attempt.outcome).toBeUndefined()
     expect(attempt.headSha).toBeUndefined()
 
-    attempt.pid = 2 ** 22 + 12_345 // above macOS/Linux pid_max defaults: never a live process
+    attempt.pid = 2 ** 22 + 12_345
     await checkImplementation(ctx, ledger, item, attempt)
     expect(attempt.outcome).toBe('invalid')
   })

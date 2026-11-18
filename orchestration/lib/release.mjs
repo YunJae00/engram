@@ -44,7 +44,6 @@ export async function release(ctx, ledger, kind) {
 
 const SMOKE_JOB = /^smoke\b/
 
-/** State of the Release workflow's desktop smoke from `gh run view --json jobs` output. */
 export function smokeState(jobs) {
   const smoke = (jobs ?? []).filter((job) => SMOKE_JOB.test(job.name ?? ''))
   if (smoke.length === 0) return { state: 'missing', jobs: [] }
@@ -63,7 +62,6 @@ async function ghJson(ctx, args) {
   }
 }
 
-/** Waits for the desktop smoke job of the Release run for `tag` and returns its state. */
 export async function awaitSmoke(ctx, tag, { timeoutMs = 90 * 60_000, pollMs = 30_000 } = {}) {
   const deadline = Date.now() + timeoutMs
   let last = { state: 'missing', jobs: [] }

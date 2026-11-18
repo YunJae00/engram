@@ -191,7 +191,6 @@ describe('tests lane gate for spec and break', () => {
     expect(testsGate(kinds, { results: [{ exit: 0 }, { exit: 1 }] })).toBe('fail')
     expect(testsGate(kinds, { sessionId: 's' })).toBe('go')
     expect(testsGate(kinds, { verdictBranch: 'verdict/x' })).toBe('go')
-    // A local lane whose runner commands are still running has no results yet.
     expect(testsGate(kinds, { pid: 1, worktree: '/w', headSha: sha })).toBe('wait')
     expect(testsGate(['spec', 'break'], undefined)).toBe('go')
   })

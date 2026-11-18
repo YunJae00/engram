@@ -52,23 +52,17 @@ function collect(ctx, ledger, item, attempt, kind, job, cloudVerdict = null, tim
   save(ctx, ledger)
 }
 
-// Verifier flow for local `tests`: the sandboxed reviewer cannot launch Electron or open sockets
-// (EPERM on macOS workspace-write), so this trusted runner code executes the check and criterion
-// commands itself in the worktree, saves each log, and the reviewer only judges the captured results.
 export async function runChecks(ctx, worktree, brief, name, run = sh, shared = null) {
   const commands = [
     ...(shared ? [] : [{ id: 'check:quick', cmd: 'npm run check:quick', env: { ENGRAM_CHECK_BASE: ctx.base } }]),
     ...scopedCriteria(brief).map((c) => ({ id: c.id, cmd: c.cmd, expect: c.expect })),
   ]
-  // Criteria judge the tree that would merge: squashMerge drops orchestration/reports, so hide it here too
-  // (an "untouched" criterion diffing `-- .` otherwise always sees the required report commit), then restore it.
   await sh(worktree, 'git', ['rm', '-r', '-q', '--ignore-unmatch', '--', 'orchestration/reports'])
   const results = await runCommands(worktree, name, commands, 30 * 60_000, run)
   await sh(worktree, 'git', ['checkout', 'HEAD', '--', 'orchestration/reports'])
   return shared ? [sharedResult(shared, worktree, name), ...results] : results
 }
 
-// A failed runner-run tests lane fails the attempt at once with its captured results; spec and break never launch.
 async function failOnTests(ctx, ledger, item, attempt, jobs, testsJob) {
   const failed = testsJob.results.filter((r) => r.exit !== 0)
   for (const r of failed) {
@@ -85,14 +79,12 @@ async function failOnTests(ctx, ledger, item, attempt, jobs, testsJob) {
   save(ctx, ledger)
 }
 
-// `testsJob` feeds spec/break the runner-run results; `round` reruns a reviewer in its own worktree with requested outputs.
 async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null, round = null, shared = null } = {}) {
   const name = label(item, attempt, kind)
   const cloud = isCloud(attempt.verifier)
   const worktree = cloud ? null : round?.worktree ?? join(ctx.worktrees, name)
   if (worktree && !round) {
     await freshDetached(ctx, worktree, attempt.headSha)
-    // verify-cli reuses an existing build, so a cached one spares each verifier its own desktop build.
     await restoreBuild(worktree)
   }
   const verdictPath = verdictRel(item, attempt, kind)
@@ -120,7 +112,6 @@ async function launchVerifier(ctx, item, attempt, kind, tries, { testsJob = null
   }
 }
 
-// One extra round per reviewer: the runner runs what it asked for (or nothing, when it only blamed the sandbox) and reruns it.
 async function evidenceRelaunch(ctx, item, attempt, kind, job, requests) {
   kill(job.pid)
   releaseSlot(ctx, job.pid)
@@ -132,7 +123,6 @@ async function evidenceRelaunch(ctx, item, attempt, kind, job, requests) {
   return launched ?? { ...job, retry: true, evidenceRound: true }
 }
 
-// Reads only this launch's branch; a verdict for another item, attempt, kind or commit is not this job's.
 async function cloudVerdict(ctx, job, path, expected) {
   if (!job.verdictBranch || !job.sessionId) return null
   try {
@@ -158,7 +148,6 @@ async function resetJobs(ctx, item, attempt, jobs) {
 export async function verifyAttempt(ctx, ledger, item, attempt) {
   const ref = attemptRef(ctx, attempt)
   if (isCloud(attempt.implementer)) await fetchBranch(ctx.opts, attempt.branch).catch(() => {})
-  // Cleanup may delete the branch while the attempt is in flight; the recorded commit still stands for it.
   const tip = (await tipSha(ctx.opts, ref)) ?? (attempt.headSha && (await tipSha(ctx.opts, attempt.headSha)))
   const jobs = loadJobs(ctx)
   if (!tip) {
@@ -257,7 +246,6 @@ export async function verifyAttempt(ctx, ledger, item, attempt) {
   save(ctx, ledger)
 }
 
-// The timed-out session keeps running in the cloud; its branch is simply never read again.
 async function relaunchVerifier(ctx, item, attempt, kind, job, testsJob) {
   kill(job.pid)
   releaseSlot(ctx, job.pid)

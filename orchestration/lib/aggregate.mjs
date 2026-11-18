@@ -23,12 +23,10 @@ export function checkVerdict(verdict, schema) {
 function effective(verdict) {
   const { kept, total } = splitFindings(verdict)
   if (verdict.verdict === 'pass' && verdict.evidence.length === 0) return 'cannot_verify'
-  // A fail whose every finding lacks a repro is not blocking; those findings become followups.
   if (verdict.verdict === 'fail' && total > 0 && kept.length === 0) return 'pass'
   return verdict.verdict
 }
 
-// What the next implementer or designer must be told: reproducible findings, or the evidence of a fail that has none.
 export function blockingFindings(verdicts) {
   const seen = new Set()
   return verdicts

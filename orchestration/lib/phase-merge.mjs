@@ -19,7 +19,6 @@ export async function mergeVerified(ctx, ledger) {
     if (isCloud(winner.implementer)) await fetchBranch(ctx.opts, winner.branch)
     let worktree
     try {
-      // A push can be rejected transiently (remote hiccup or a concurrent merge): retry on a fresh next.
       for (let tryNo = 1; ; tryNo++) {
         worktree = await prepareNext(ctx)
         try {
@@ -47,7 +46,6 @@ export async function mergeVerified(ctx, ledger) {
     await dropBranch(ctx, winner)
     transition(item, 'merged')
     note(ctx, item.id, 'merge', 'merged', `squash of attempt ${winner.n} into ${ctx.roles.baseBranch}`, item.mergeSha)
-    // A merge after this batch's integration finished leaves it stale; rerun it once the batch is idle.
     if (integrationFinished(ledger)) {
       resetIntegration(ledger)
       note(ctx, 'batch', 'integrate', 'pending', `${item.id} merged after integration finished`)
@@ -88,7 +86,6 @@ function readJsonText(text) {
   }
 }
 
-// Item verification is cloud-only; these are the final local desktop smoke checks.
 const releaseScenarios = (merged, tier) => tierScenarios(tier, integrationScenarios(merged), merged.length)
 
 async function runCi(ctx, logPath, timeoutMs) {

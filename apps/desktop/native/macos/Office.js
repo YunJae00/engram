@@ -1,13 +1,9 @@
-/* global ObjC, Application, Path, $ */
-/* eslint no-control-regex: "off" -- Reject control characters and preserve Office paragraph boundaries. */
-// Fixed Apple Events operations. Request values remain data, never script source.
 ObjC.import('Foundation');
 ObjC.import('AppKit');
 function fail(message) { throw new Error(message); }
 function path(value) {
     if (typeof value !== 'string') return '';
     if (value[0] === '/') return value;
-    // Office still returns HFS paths on some releases.
     let parts = value.split(':');
     if (parts.length < 2) return value;
     let root = ObjC.unwrap($.NSFileManager.defaultManager.displayNameAtPath('/'));
@@ -111,7 +107,6 @@ function documentOperation(op,a) {
     if(op.endsWith('.read'))return {file:a.file,content:state};
     if(doc.readOnly())fail('Read-only documents require manual control');
     if(JSON.stringify(state)!==JSON.stringify(a.expected))fail('Document changed. Read again before editing');
-    // Plans are validated before the first write; the caller consumes the revision first.
     (a.plan||[]).forEach(function(step){
         let current=documentState(doc,kind).filter(function(s){return s.key===step.key;})[0];
         if(!current || current.text!==step.before)fail('Document changed during editing');
@@ -172,7 +167,6 @@ function outlook(op,a) {
     if(op==='outlook.mail') {
         let folder=a.folder==='sent'?app.sentItems:a.folder==='drafts'?app.drafts:!a.folder||a.folder==='inbox'?app.inbox:unique(app.mailFolders(),function(f){return f.name()===a.folder;});
         let items=folder.messages()||[],out=[],search=String(a.search||'').toLowerCase(),limit=Math.min(50,Math.max(1,a.limit||20));
-        // Limit provider traffic on large mailboxes; newest local IDs are visited first.
         items.sort(function(l,r){return r.id()-l.id();});
         for(let i=0;i<items.length && out.length<limit;i++) {
             let m=items[i],entry=summary(m),hay=JSON.stringify(entry).toLowerCase();

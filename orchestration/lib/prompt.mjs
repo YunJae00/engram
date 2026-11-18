@@ -21,8 +21,6 @@ export const verifierLinuxDesktop = (cloud, platform = process.platform) => !clo
 const timeBudget = (minutes, late) => (minutes ? [`You have ${minutes} minutes from launch. ${late} Anything pushed after that is ignored and a fresh session takes over.`] : [])
 const verifyCliCriterion = (brief) => (brief.criteria ?? []).some((c) => /(?:^|\s)scripts\/verify-cli\.mjs\s+[a-z0-9-]+/.test(c.cmd ?? ''))
 
-// Whole-suite commands (unit suite, Electron e2e, release gates) run once at integration,
-// not per item: per-item checks stay on the changed code and the item's own scenarios.
 const FULL_SUITE = /^\s*(?:xvfb-run\s+-a\s+)?(?:pnpm|npm)\s+(?:run\s+)?(?:test|verify|verify:release|check|test:e2e(?::fast)?|e2e:affected)\s*$/
 export const isFullSuite = (cmd) => FULL_SUITE.test(cmd ?? '')
 export const scopedCriteria = (brief) => (brief.criteria ?? []).filter((c) => !isFullSuite(c.cmd))
@@ -36,7 +34,6 @@ const deferredNote = (brief) => {
 
 const checkLine = (r) => `   - ${r.id}: \`${r.cmd}\` exit ${r.exit}${r.why ? ` (asked: ${r.why})` : ''} log: ${r.logPath}${r.screenshots?.length ? ` screenshots: ${r.screenshots.join(', ')}` : ''}${r.tail ? `\n     output tail:\n${r.tail.split('\n').map((l) => `     > ${l}`).join('\n')}` : ''}`
 
-// Spec/break reviewers judge what the unsandboxed runner captured; they never start the app themselves.
 function runnerEvidence(evidence, requested) {
   const checks = evidence.checks.length
     ? `The runner ran the tests lane outside your sandbox (logs under \`orchestration/logs/\`):\n${evidence.checks.map(checkLine).join('\n')}`

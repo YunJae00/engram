@@ -17,7 +17,6 @@ const tempRoot = () => {
   return root
 }
 
-// The loop exports ENGRAM_MAX_BOUNCES; these tests pick their own cap.
 beforeEach(() => vi.stubEnv('ENGRAM_MAX_BOUNCES', undefined))
 
 afterEach(() => {

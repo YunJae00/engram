@@ -1,4 +1,3 @@
-/* global document, window, innerWidth, innerHeight, PointerEvent */
 
 export function settle(page) {
   return page.evaluate(async () => { await Promise.all(document.getAnimations().filter(animation => animation.effect.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))) })

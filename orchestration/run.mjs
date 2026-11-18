@@ -135,7 +135,6 @@ async function integrateOnce(ctx) {
   }
 }
 
-// The desktop smoke runs in the Release workflow (smoke.yml); this reads its result.
 async function smoke(ctx, tag) {
   if (!tag) {
     await fetchBranch(ctx.opts, ctx.roles.mainBranch)

@@ -100,7 +100,6 @@ export const previousFindings = (ctx, item) =>
 export const reportPath = (id) => `orchestration/reports/${id}.json`
 export const isCloud = (agent) => agent === 'claude-cloud'
 
-/** Pick the CLI model id from roles.models for this agent + phase. */
 export function resolveAgentModel(roles, { agent, role }) {
   const models = roles?.models
   if (!models) return undefined
@@ -156,9 +155,6 @@ export async function dropWorktree(ctx, path) {
 
 export const NODE_MODULES = ['node_modules', 'apps/desktop/node_modules', 'packages/core/node_modules']
 
-// Each worktree gets real node_modules dirs whose entries point at the shared install (8 GB
-// machine: no second install), except workspace links (core -> packages/core), which are re-pointed
-// into the worktree so it resolves workspace packages from its own checkout, not the root's.
 export function linkNodeModules(root, worktree) {
   for (const rel of NODE_MODULES) linkEntries(root, worktree, rel)
 }
@@ -207,7 +203,6 @@ export async function prepareNext(ctx) {
   return ctx.nextWorktree
 }
 
-// Keep the integration branch current with main before item branches or integration checks use it.
 export async function syncBaseBranch(ctx, phase = 'run') {
   await fetchBranch(ctx.opts, ctx.roles.mainBranch)
   const action = await ensureBranch(ctx.opts, ctx.roles.baseBranch, `${ctx.opts.remote}/${ctx.roles.mainBranch}`)
@@ -234,21 +229,14 @@ export function slotFree(ctx, agent) {
   return isCloud(agent) || ctx.sem.free() > 0
 }
 
-// Codex needs full access to commit through a linked worktree's gitdir and to push.
-// The desktop verifier launches Electron under Xvfb, which workspace-write blocks
-// ("Check failed: . shutdown: Operation not permitted"); other verifier kinds stay sandboxed.
 const SANDBOX = { implement: 'danger-full-access', verify: 'workspace-write', design: 'workspace-write' }
 const VERIFY_SANDBOX = { desktop: 'danger-full-access' }
 
-// On a Linux orchestration host the workspace-write sandbox also blocks child processes
-// and local socket listeners (EPERM) that the full test suite needs, so every verifier
-// kind runs with full access there.
 export function codexSandbox(role, kind, platform = process.platform) {
   if (role === 'verify' && platform === 'linux') return 'danger-full-access'
   return (role === 'verify' && VERIFY_SANDBOX[kind]) || SANDBOX[role]
 }
 
-// `counted: false` (read-only spec/break judges) neither waits for nor takes a maxLocalAgents slot.
 export async function launchAgent(ctx, { agent, label, cwd, prompt, role, kind, minutes, schemaPath, addDirs: extraDirs = [], counted = true }) {
   mkdirSync(ctx.logs, { recursive: true })
   const logPath = join(ctx.logs, `${label}.log`)

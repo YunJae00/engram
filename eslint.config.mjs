@@ -30,4 +30,13 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    files: ['scripts/verify-scenarios/**/*.mjs'],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
+    files: ['apps/desktop/native/macos/Office.js'],
+    languageOptions: { globals: { ObjC: 'readonly', Application: 'readonly', Path: 'readonly', $: 'readonly' } },
+    rules: { 'no-control-regex': 'off' },
+  },
 )

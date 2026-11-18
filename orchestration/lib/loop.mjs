@@ -37,7 +37,6 @@ export function machineCheck({ itemId, report, reportErrors, changed, allowedFil
   return { ok: true, reason: null }
 }
 
-// An unexpected error in one item is logged with its id; the other items in the tick still run.
 export async function forEachItem(items, step, log) {
   for (const item of items) {
     try {
@@ -50,7 +49,6 @@ export async function forEachItem(items, step, log) {
 
 export const lineage = (agent) => (agent.startsWith('claude') ? 'claude' : 'codex')
 
-// A small miss (at most 2 blocking findings, or only the tests lane failed) does not need two reimplementations.
 export function smallFailure(item, readVerdict) {
   const last = item.attempts?.findLast((a) => a.outcome === 'fail')
   if (!last) return false
@@ -68,7 +66,6 @@ export function plannedAttempts(item, roles, hard, small = false) {
   return [base, { implementer: claude, verifier: base.verifier }]
 }
 
-// One implementer per item first, in ledger order; a second parallel attempt only takes a slot no first attempt is waiting for.
 export function scheduleAttempts(plans, free, cloud) {
   const picks = plans.map(() => [])
   let waiting = false
@@ -117,7 +114,6 @@ export function nextRevert(failedScenarios, merged, revertsDone, cap) {
 export const designPath = (id, line) => `orchestration/designs/${id}-${line}.md`
 export const rejectedDesignPath = (id) => designPath(id, 'rejected')
 
-// One FAIL can be a slip in the implementation; a second FAIL under the same design counts against the design.
 export const needsRedesign = (bounces, hasDesign) => hasDesign && bounces >= 2
 
 export function designLocations(root, worktree, id, line) {
@@ -144,10 +140,8 @@ export function suggestBump(items) {
   return items.some((item) => /^(add|introduce|support)\b/.test(item.title)) ? 'minor' : 'patch'
 }
 
-// Only a `node` invocation counts: a bare path (a `git diff -- scripts/verify-cli.mjs scripts/...` argument) or a flag (`--list`) is not a scenario.
 const VERIFY_SCENARIO = /(?:^|[\s;&|(])node\s+(?:\.\/)?scripts\/verify-cli\.mjs\s+([a-z0-9][a-z0-9-]*)/
 
-// Names in `scenarios`, plus any criterion whose command is `node scripts/verify-cli.mjs <scenario>`.
 export function briefScenarios(brief) {
   const named = brief?.scenarios ?? []
   const fromCommands = (brief?.criteria ?? []).flatMap((criterion) => {

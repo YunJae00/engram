@@ -1,4 +1,3 @@
-/* global document, window, getComputedStyle */
 import { createBot, appendBotTurn } from '../../packages/core/src/index.ts'
 import { armPointer, constrainFloor, deckAt, deckDriver, describeBlocks, flowGeometry, expectPacked, measureChat, packedBlocks, pollPacked, resizeWindow, settle } from './lib/chat-layout.mjs'
 import { pngFrame, sendAppFrames, sendUnavailableFrame, showWebFrame, solidFrame } from './lib/frame-fixture.mjs'

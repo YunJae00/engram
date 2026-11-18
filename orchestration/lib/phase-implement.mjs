@@ -48,7 +48,6 @@ export async function startBriefed(ctx, ledger) {
   }
   let free = ctx.dryRun ? ctx.roles.maxLocalAgents : ctx.sem.free()
   const { groups, singles } = pickBatches(queue, ctx.batch ?? 0)
-  // A batch is one process, so it takes one slot; a group without a slot waits like a single would.
   for (const group of groups) {
     if (free > 0 && (await startBatch(ctx, ledger, group))) free--
     else singles.push(...group)
@@ -73,8 +72,6 @@ async function addAttemptWorktree(ctx, attempt, label) {
   attempt.worktree = worktree
 }
 
-// One implementer session for 2..N easy items; each item keeps its own attempt, branch, worktree,
-// report and verdicts, so a failure bounces only that item, and its next attempt runs single.
 async function startBatch(ctx, ledger, group) {
   const ids = group.map((q) => q.item.id)
   const label = batchLabel(ids)
@@ -105,7 +102,6 @@ async function startBatch(ctx, ledger, group) {
     jobs[label] = { pid: job.pid, logPath: job.logPath, open: attempts.map((a) => a.branch) }
     saveJobs(ctx, jobs)
   } catch (error) {
-    // Split: undo the batch so every member starts single in this same tick.
     for (const [i, { item }] of group.entries()) {
       item.attempts.splice(item.attempts.indexOf(attempts[i]), 1)
       await dropWorktree(ctx, attempts[i].worktree)
@@ -198,7 +194,6 @@ export async function designTick(ctx, ledger, item) {
     note(ctx, item.id, 'design', 'needs_human', item.reason)
     return save(ctx, ledger)
   }
-  // Batch mode does not idle out the design deadline once both designers delivered (measured: ~12 of 19 min).
   const early = Boolean(ctx.batch) && designs.length === Object.keys(DESIGNERS).length
   const pick = pickDesign(designs, early || mine.every(([, job]) => now.getTime() > Date.parse(job.deadlineAt)))
   if (pick) await setDesign(ctx, ledger, item, pick, `${early ? 'both designs in (batch mode)' : 'deadline passed'}; earliest design wins`)
@@ -226,7 +221,6 @@ export async function setDesign(ctx, ledger, item, line, why) {
   save(ctx, ledger)
 }
 
-// Returns true when the chosen design was set aside so the item is designed again.
 export function rejectDesign(ctx, item) {
   const brief = loadBrief(ctx, item.id)
   if (!needsRedesign(item.bounces, Boolean(brief.design))) return false
@@ -302,7 +296,6 @@ export async function finish(ctx, attempt, outcome) {
 }
 
 export async function checkImplementation(ctx, ledger, item, attempt) {
-  // A batch session still edits its members' worktrees and branches; verifying one now would bounce and delete them under it.
   if (batchOf(attempt) && alive(attempt.pid) && !timedOut(attempt.deadlineAt)) return
   const cloud = isCloud(attempt.implementer)
   const ref = attemptRef(ctx, attempt)
@@ -344,7 +337,6 @@ export async function checkImplementation(ctx, ledger, item, attempt) {
   save(ctx, ledger)
 }
 
-// The timed-out session may still push later; its branch is deleted and never read again.
 export async function timeoutImplementation(ctx, ledger, item, attempt) {
   const next = implementTimeout(attempt, ctx.roles)
   await finish(ctx, attempt, 'timeout')
