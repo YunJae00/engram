@@ -96,7 +96,8 @@ test('c9 fix 2/3: C5 and C6 open with the thing, in two different ways, with no 
   const c6 = mergedReport([park])
   // c12a B1: never the job title "홍보 문구 3개 뽑기(서연, …):". c13a (cause H): no host sentence on who made what from whose find;
   // BAR C6: three list lines, each the item exactly, then whose they are with the find's page.
-  expect(c6.split('\n')).toEqual([...C6_ITEMS.map((item, i) => `${i + 1}. ${item}`), '(서연, 지민이 찾은 서울 IT 행사 일정) [코엑스](https://www.coex.co.kr/exhibitions/sw2026/) · [example.com](https://example.com/aisummit)'])
+  // c17c (cause S, C6): whose they are and whose find leads, closed by the find's pages, then the items; never a "(서연, …)" tag.
+  expect(c6.split('\n')).toEqual(['서연이 지민이 찾은 서울 IT 행사 일정으로 홍보 문구를 만들었어요. [코엑스](https://www.coex.co.kr/exhibitions/sw2026/) · [example.com](https://example.com/aisummit)', ...C6_ITEMS.map((item, i) => `${i + 1}. ${item}`)])
   expect(c6).toMatch(/행사/)
   expect(c6).not.toMatch(/에서 나온 거예요|찾아보니|찾은 걸 따랐어요|으로 뽑았어요\./u)
   // Two teammates never open the same way.
@@ -117,7 +118,9 @@ test('c9 fix 2: a writer\'s own closing line on where the facts came from is not
   park.data = reportData(answer, park)!
   const h5 = mergedReport([park])
   // c13a (cause H): the line itself, then whose it is with the page of the find it was made from.
-  expect(h5.split('\n')).toEqual(['맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!', '(서연, 지민이 찾은 서울 날씨) [기상청](https://www.weather.go.kr/w/a)'])
+  // c17c (cause S): the attribution sentence with the find's page leads, then the line.
+  expect(h5.split('\n')[1]).toBe('맑은 주말, 낮 2~6도면 짧은 한강 산책이 딱이에요!')
+  expect(h5.split('\n')[0]).toMatch(/^서연이 지민이 찾은 서울 날씨로 .*만들었어요\. \[기상청\]\(https:\/\/www\.weather\.go\.kr\/w\/a\)$/)
   expect(h5).not.toMatch(/나온 거예요|지민이가 찾아준/u)
 })
 
@@ -147,10 +150,10 @@ test('c9b r2 finding 2: C5 and C6 openers are said in each teammate\'s own store
   const park = (voice?: string) => member({ id: 'm2', role: '서연', ...(voice ? { voice } : {}), lookup: undefined, writer: true, background: true, brief: handoffBrief('홍보 문구 3개 뽑기', '지민', C5_RESULT, '다음 달 서울 IT 행사 일정 정리'), title: '홍보 문구 3개 뽑기', result: C6_RESULT, data: { facts: [], items: C6_ITEMS } })
   const c6 = mergedReport([park('밝고 시원시원하게')])
   expect(c6).toBe(mergedReport([park()]))
-  expect(c6.split('\n').at(-1)).toMatch(/^\(서연, 지민이 찾은 서울 IT 행사 일정\) \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
+  expect(c6.split('\n')[0]).toMatch(/^서연이 지민이 찾은 서울 IT 행사 일정으로 홍보 문구를 만들었어요\. \[코엑스\]\(https:\/\/www\.coex\.co\.kr\//u)
   expect(c6.match(/^\d\. /gm)).toHaveLength(3)
   // The deliverable's items are copied exactly: a voice never rewrites them.
-  expect(c6.split('\n').slice(0, -1)).toEqual(C6_ITEMS.map((item, i) => `${i + 1}. ${item}`))
+  expect(c6.split('\n').slice(1)).toEqual(C6_ITEMS.map((item, i) => `${i + 1}. ${item}`))
 })
 
 test('c9b r3: the writer\'s own C5 opener is said in the teammate\'s stored voice, not passed through plain (c11a: structure)', async () => {

@@ -53,11 +53,14 @@ describe('C10 replay', () => {
     await staffTool(paths, () => undefined).run({ remove: ['서연'] }, { task: '' })
     const tasks = JSON.parse(await readFile(join(root, 'workspace/.engram/tasks.json'), 'utf8')).tasks
     const now = new Date('2026-11-18T05:00:00+09:00'), message = '이번 주 팀이 한 일 요약해'
-    const people = (prompt: string): string[] => [...new Set((JSON.parse(prompt.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string }[]).map(job => job.who))]
+    const record = (prompt: string): { who: string; did: string }[] => JSON.parse(prompt.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
+    const people = (prompt: string): string[] => [...new Set(record(prompt).map(job => job.who))]
+    // c17c: the repaired draft names what each job was about (a summary that says only "맡은 일" is refused as missing).
     const writeAs = (all: (prompt: string) => boolean) => async (prompt: string): Promise<string> => {
       if (prompt.includes(CHECK)) return none
       const who = people(prompt), named = all(prompt) ? who : who.slice(0, -1)
-      return `이번 주엔 ${named.map(one => `${one}${(one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'} 맡은 일을 끝냈어요.`).join(' ')}${all(prompt) ? ' 서연은 이제 팀에 없어요.' : ''}`
+      const what = (one: string): string => all(prompt) ? [...new Set(record(prompt).filter(job => job.who === one).map(job => job.did))].join('·') : '맡은 일'
+      return `이번 주엔 ${named.map(one => `${one}${(one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'} ${what(one)}을 끝냈어요.`).join(' ')}${all(prompt) ? ' 서연은 이제 팀에 없어요.' : ''}`
     }
     const repaired = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(prompt => prompt.includes(REDO)) })
     console.log(`[replay C10] repaired (${logs.at(-1)}): ${repaired}`)

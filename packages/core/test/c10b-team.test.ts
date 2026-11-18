@@ -49,7 +49,8 @@ test('c10b fix 1: the list job keeps only IT events: the jazz concert goes, 소�
   const lone = mergedReport([{ ...alone, role: '지민' }])
   expect(lone).not.toMatch(/재즈|공연|확실한 건/)
   // c12a B1: no job-title head. c13a (cause H): no host sentence about the teammate; the line, then whose it is.
-  expect(lone).toBe('이번엔 못 찾았어요 (지민).')
+  // c17c: alone, whose part it is is the subject, never a "(지민)" tag.
+  expect(lone).toBe('지민은 이번엔 못 찾았어요.')
   const searched = member({ brief: '다음 달 서울 IT 행사 일정 정리' })
   settleMember(searched, { answer: '12월 9일 데브 밋업 https://search.naver.com/search.naver?query=x' }, 'now', true)
   expect(searched.result).toContain('데브 밋업')
