@@ -93,7 +93,7 @@ function withNote(result: string, key: string, note: string): string {
 // a built file's result says what the host checked before it was built, as a closed verdict, so nothing is left for the model to verify.
 // Every office build (deck, document) states its own checks; a refusal is never this line.
 export const deckChecked = (slides: readonly DeckSlide[]): string => `Checked before it was built and passed: ${slides.length} slides (${slides.map((slide, at) => `${at + 1}. ${slide.title}`).join(' / ')}), no unfilled slot, no text past a slide's edge, no repeated title, no line about the deck itself. Nothing is left to check: do not read it back or change it; answer now.`
-export const docChecked = (blocks: readonly unknown[]): string => `Built as given: ${blocks.length} blocks, each checked for its kind and length before it was built. Nothing is left to check: do not read it back or change it; answer now.`
+const docChecked = (blocks: readonly unknown[]): string => `Built as given: ${blocks.length} blocks, each checked for its kind and length before it was built. Nothing is left to check: do not read it back or change it; answer now.`
 
 function excelArgs(args: unknown, tool: string): Record<string, unknown> {
   if (!plain(args)) throw new Error(`${tool} takes an object.`)

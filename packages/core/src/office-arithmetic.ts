@@ -1,6 +1,6 @@
 import type { AgentLoopStep } from './agent-loop.js'
 
-export interface Discrepancy { cell: string; expected: number; got: number }
+interface Discrepancy { cell: string; expected: number; got: number }
 
 function area(range: unknown) {
   if (typeof range !== 'string' || !/^\$?[A-Z]{1,3}\$?[1-9]\d{0,6}(:\$?[A-Z]{1,3}\$?[1-9]\d{0,6})?$/i.test(range)) return

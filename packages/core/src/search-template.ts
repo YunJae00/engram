@@ -97,7 +97,7 @@ function unwrapBingLink(url: URL): string | null {
 // grokbar c3 R2/R3: the first anchors of a Naver or Bing results page are tabs, filters and ads (measured on saved pages: the first
 // article is anchor 60 of 344), and one result is several anchors (outlet, date, title, snippet). So the page's anchors are grouped by
 // where they lead, the furniture is dropped, and the rest is ordered by how much of the question each echoes.
-export interface SearchResult { title: string; url: string; snippet: string; date: string }
+interface SearchResult { title: string; url: string; snippet: string; date: string }
 const NEW_WINDOW = /\s*(새\s?창\s?열림|opens? in (a )?new (window|tab))\s*/gi
 const AD_HOST = /(^|\.)(ad|ads|ader|adcr|adclick|saedu|doubleclick|googleadservices|googlesyndication)\./i
 const SHOWN_DATE = /\d+\s*(?:분|시간|일|주|개월|달|년)\s*전|어제|그저께|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?|\d{4}년\s*\d{1,2}월\s*\d{1,2}일|\d{4}-\d{2}-\d{2}|\d+\s*(?:minutes?|mins?|hours?|days?|weeks?|months?|years?)\s+ago|\byesterday\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2},? \d{4}/gi
@@ -198,14 +198,14 @@ export function newsTemplate(template: string, period?: NewsPeriod): string {
 // A news ask that says when is searched for that period: a day for 오늘, a week for 이번 주, a month for 요즘 / 최근 / 이번 달.
 // year: never asked for by a word; it bounds the wider page that fills a counted list (c6 R3), so a 2024 article is not "요즘" news.
 // quarter: never asked for by a word either; the second pass of a counted list that is still short searches it (c10a R3).
-export type NewsPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year'
+type NewsPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year'
 const PERIODS: [RegExp, NewsPeriod][] = [[/오늘|\btoday\b/i, 'day'], [/이번\s?주|금주|\bthis week\b/i, 'week'], [/요즘|요새|최근|이번\s?달|\b(recent|recently|lately|these days|this month)\b/i, 'month']]
 const PERIOD_DAYS: Record<NewsPeriod, number> = { day: 1, week: 7, month: 31, quarter: 92, year: 366 }
 export const newsPeriod = (ask: string): NewsPeriod | undefined => PERIODS.find(([words]) => words.test(ask))?.[1]
 // c13a (C3: a teammate's "이번 주" news was searched over one day): a period the ask names that has begun picks the period button by date
 // arithmetic, the smallest one that reaches back to its start. News about a time is written up to a day before it (a Friday forecast
 // for the weekend), so the search reaches PERIOD_LEAD_MS earlier. Only the search: a fact's own day is checked with no lead (inAskedPeriod).
-export const PERIOD_LEAD_MS = 86_400_000
+const PERIOD_LEAD_MS = 86_400_000
 export function periodSince(from: Date, now = new Date()): NewsPeriod {
   const days = (now.getTime() - from.getTime() + PERIOD_LEAD_MS) / 86_400_000
   return (['day', 'week', 'month', 'quarter', 'year'] as const).find(period => PERIOD_DAYS[period] >= days) ?? 'year'

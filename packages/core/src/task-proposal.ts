@@ -35,8 +35,8 @@ export interface TaskProposal {
 
 export const PROPOSAL_TOKENS = 450
 export const NAME_CHARS = 32
-export const GOAL_CHARS = 1500
-export const DOES_CHARS = 160
+const GOAL_CHARS = 1500
+const DOES_CHARS = 160
 
 export function proposalPrompt(exchange: { user: string; answer: string; steps: readonly string[]; history?: readonly { role: string; text: string }[] }): string {
   return [

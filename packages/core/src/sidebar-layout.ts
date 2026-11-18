@@ -12,7 +12,7 @@ const group = z.object({ folders: z.array(folder).max(100), items: z.array(z.obj
 const layout = z.object({ chat: group, routine: group })
 export type SidebarLayout = z.infer<typeof layout>
 export type SidebarKind = keyof SidebarLayout
-export type SidebarIds = Partial<Record<SidebarKind, string[]>>
+type SidebarIds = Partial<Record<SidebarKind, string[]>>
 const action = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create-folder'), name }).strict(),
   z.object({ action: z.literal('rename-folder'), id, name }).strict(),

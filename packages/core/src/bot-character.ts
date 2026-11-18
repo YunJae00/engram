@@ -48,7 +48,7 @@ export function characterIndex(character: CharacterId): number {
 }
 
 // Each property is read once, so a hostile getter cannot change a value after it was checked.
-export function storedCharacter(avatar: unknown): CharacterId | null | undefined {
+function storedCharacter(avatar: unknown): CharacterId | null | undefined {
   try {
     if (typeof avatar !== 'object' || avatar === null || Array.isArray(avatar)) return undefined
     if (!Object.hasOwn(avatar, 'character')) return undefined

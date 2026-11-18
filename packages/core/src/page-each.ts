@@ -15,7 +15,7 @@ export function makeMove(courier: WebCourier, step: Record<string, unknown>, sig
   return { ok: false, error: 'the move is incomplete: type needs target and text, choose needs target and option, press needs target, key needs key, scroll needs to' }
 }
 
-export const PAGE_EACH_VALUES_MAX = 60
+const PAGE_EACH_VALUES_MAX = 60
 const PAGE_EACH_STEPS_MAX = 8
 // Each value's page is cut to this, and the whole report to the second.
 const READING_CAP = 2_500

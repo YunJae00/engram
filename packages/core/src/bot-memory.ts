@@ -31,8 +31,8 @@ export interface BotMemoryFile {
 const MEMORY_DIR = 'bot-memory'
 // A fact said a month ago weighs half of one said today; one never said
 // again fades out of the prompt in a few months and stays on disk.
-export const HALF_LIFE_DAYS = 30
-export const FACT_CHARS = 160
+const HALF_LIFE_DAYS = 30
+const FACT_CHARS = 160
 // Each layer is capped by rendered characters and lines, the shared one first so the prompt head stays cache-stable.
 export const MEMORY_BUDGET = { shared: { chars: 1200, lines: 14 }, own: { chars: 600, lines: 8 } } as const
 export const DISK_CAP = 200
@@ -271,7 +271,7 @@ export function factScore(fact: BotFact, now: Date): number {
   return 0.5 ** (age / HALF_LIFE_DAYS)
 }
 
-export interface MemoryChange {
+interface MemoryChange {
   added: number
   touched: number
 }
@@ -333,7 +333,7 @@ export async function forgetFactText(paths: VaultPaths, botId: string, text: str
 export const PERSON_MEMORY = '_person'
 
 // The fallback for a line the extractor did not mark: naming one of these makes it about the person and shared.
-export const IDENTITY_PHRASES = ['my name', 'their name', "person's name", 'preferred name', 'time zone', 'timezone', 'pronouns', '이름', '호칭', '시간대', '타임존'] as const
+const IDENTITY_PHRASES = ['my name', 'their name', "person's name", 'preferred name', 'time zone', 'timezone', 'pronouns', '이름', '호칭', '시간대', '타임존'] as const
 
 export function isIdentityFact(text: string): boolean {
   const lower = text.toLowerCase()

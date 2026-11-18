@@ -1,4 +1,4 @@
-export interface AppNames { name: string; aliases?: string[] }
+interface AppNames { name: string; aliases?: string[] }
 const normalize = (value: string): string => value.trim().normalize('NFKC').toLowerCase()
 const names = (app: AppNames): string[] => [app.name, ...(app.aliases ?? []).filter(value => typeof value === 'string')].map(normalize).filter(Boolean)
 export function appNameMatch(app: AppNames, query: string, exact = false): boolean {

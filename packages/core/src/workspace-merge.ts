@@ -19,7 +19,7 @@ import { vaultPaths, type VaultPaths } from './vault.js'
 // written, so a run cut short picks up where it stopped and a finished one is never repeated.
 
 export interface MergeSource { root: string; name: string }
-export interface MergeOptions {
+interface MergeOptions {
   // false: the target is shared with other people through git. Notes, inbox and sources still arrive, but each
   // file is first named in the repository's own .git/info/exclude (never committed, never pushed), and alias
   // lines go to a file git ignores. A person's other workspaces must not reach a team's repository unasked.

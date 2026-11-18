@@ -31,7 +31,7 @@ function slideParts(parts: Map<string, Buffer>): string[] {
   const targets = new Map([...rels.matchAll(/<Relationship\b[^>]*>/g)].map(one => [/\bId="([^"]*)"/.exec(one[0])?.[1] ?? '', /\bTarget="([^"]*)"/.exec(one[0])?.[1] ?? '']))
   return [...deck.matchAll(/<p:sldId\b[^>]*\br:id="([^"]*)"/g)].map(one => targets.get(one[1]!) ?? '').map(target => target.startsWith('/') ? target.slice(1) : `ppt/${target}`).filter(name => parts.has(name))
 }
-export function deckOutline(parts: Map<string, Buffer>): { slide: number; title: string; texts: string[] }[] {
+function deckOutline(parts: Map<string, Buffer>): { slide: number; title: string; texts: string[] }[] {
   return slideParts(parts).map((name, at) => {
     const xml = parts.get(name)!.toString('utf8'), head = titleShape(xml)
     return { slide: at + 1, title: head ? wordsIn(head) : '', texts: ((head ? xml.replace(head, '') : xml).match(PARAGRAPH) ?? []).map(wordsIn).filter(Boolean) }
@@ -54,7 +54,7 @@ export function deckWords(parts: Map<string, Buffer>, textParts: readonly string
   return { otherTexts: otherTexts.filter(other => other.texts.length), complete: textParts.every(name => all(name) === bare(shown.get(name)!.join(''))) }
 }
 // {slide, with} replaces that slide's title, {slide, text, with} the one text that reads exactly so. Anything unclear is refused before a byte is written.
-export function slideEdits(parts: Map<string, Buffer>, edits: readonly Record<string, unknown>[], hash: (bytes: Buffer) => string): XmlEdit[] {
+function slideEdits(parts: Map<string, Buffer>, edits: readonly Record<string, unknown>[], hash: (bytes: Buffer) => string): XmlEdit[] {
   const slides = slideParts(parts), now = new Map<string, string>()
   return edits.map((edit) => {
     const slide = edit['slide'], text = edit['text'], words = edit['with']

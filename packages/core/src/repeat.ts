@@ -18,9 +18,9 @@ export interface RepeatVerdict {
   schedule: Schedule
 }
 
-export const REPEAT_MIN_PRIOR = 2
-export const REPEAT_WINDOW = 60
-export const REPEAT_OVERLAP = 0.6
+const REPEAT_MIN_PRIOR = 2
+const REPEAT_WINDOW = 60
+const REPEAT_OVERLAP = 0.6
 const ASKING_TAIL = /(해\s*주세요|해\s*줄래|해\s*줘|해\s*봐|해\s*라|하자|해요|해|좀|요|please|now|again)$/u
 
 // The verbs of asking carry no subject: "check the deploy notice" and

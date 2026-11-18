@@ -10,9 +10,9 @@ export interface Ask {
   options: string[]
 }
 
-export const OPTIONS_MIN = 2
-export const OPTIONS_MAX = 4
-export const OPTION_CHARS = 40
+const OPTIONS_MIN = 2
+const OPTIONS_MAX = 4
+const OPTION_CHARS = 40
 
 // A choice that hands the work back is not a way forward. Offered "cancel"
 // beside "the deploy note", a person who delegated the job so as not to think

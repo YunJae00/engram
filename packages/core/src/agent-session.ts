@@ -56,12 +56,12 @@ const CLOSE_TAIL_MS = 15_000
 const LATE_STEER_ROUNDS = 3
 // c11b: one more round for a gap the host found in the answer's shape: two calls (a search, or a read of a few pages), then the answer.
 const RECHECK_CALLS = 2
-export const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
+const recheckNote = (draft: string, gap: string): string => `You had just written this answer; the person has not been given it:\n${draft.trim()}\n\n${gap} Fix only that: search once more in other words or open the articles (read_pages), then write ONE answer that replaces this one and keeps what holds. If it still falls short, list what you found and do not write how many: a line with that count is put under your answer.`
 // c11b r2: the model ended its turn with nothing after its last call; what it wrote before the call was a note to itself.
-export const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
+const UNSAID_NOTE = 'You did your last step but wrote no answer after it; the words before it were notes and the person has not seen them. Call no more tools. Write your answer to the person now from what you already have, in their language.'
 // Written in the language the person wrote in: in a Korean ask, Hangul and no Latin word they did not write themselves.
 const theirLanguage = (text: string, task: string): boolean => !/[가-힣]/.test(task) || /[가-힣]/.test(text) && !(text.match(/[A-Za-z]+/g) ?? []).some(word => !task.toLowerCase().includes(word.toLowerCase()))
-export function lateSteer(draft: string, said: string[], replied = false): string {
+function lateSteer(draft: string, said: string[], replied = false): string {
   return withSteer(`You had just written this answer; the person has not been given it as final:\n${draft.trim()}\n\nWrite ONE answer that replaces it: keep what still holds without redoing that work, do only the extra work their words need, and leave out what they replaced.`, said, replied)
 }
 

@@ -9,7 +9,7 @@ const RESOLVE_AT_MOST = 12
 const RESOLVE_MS = 10_000
 
 type Link = { text: string; url: string }
-export type FollowRedirect = (url: string, signal?: AbortSignal) => Promise<string | null>
+type FollowRedirect = (url: string, signal?: AbortSignal) => Promise<string | null>
 
 const webAddress = (value: string | null | undefined): string | null => {
   if (!value) return null

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-export interface DesktopControlLeaseState {
+interface DesktopControlLeaseState {
   state: 'idle' | 'needs-person' | 'running' | 'paused'
   lane?: string
   name?: string
@@ -8,7 +8,7 @@ export interface DesktopControlLeaseState {
   expiresAt?: number
 }
 
-export interface DesktopControlLeaseOptions {
+interface DesktopControlLeaseOptions {
   now?: () => number
   token?: () => string
   ttlMs?: number

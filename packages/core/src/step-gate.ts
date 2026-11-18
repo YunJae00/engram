@@ -12,7 +12,7 @@ export type GateMode = 'off' | 'on' | 'always'
 export interface GateDecision { choice: string; confidence: number; probabilities?: Record<string, number> }
 
 // Two picks closer than this are worth a second look.
-export const CONTRAST_MARGIN = 0.3
+const CONTRAST_MARGIN = 0.3
 // A way left untried is worth this much belief before a stop gives it up.
 const INSIST = 0.15
 // How often a run goes back from a dead end.
