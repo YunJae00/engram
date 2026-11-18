@@ -61,6 +61,8 @@ export const DESK_NOTE = [
   'An extraction of one part ("할 일만 뽑아줘") gives that part only, its lines with no heading over them: no 미결, no next meeting, nothing they did not ask for. '
     + 'An extraction ("할 일만 뽑아줘") ends with exactly one short offer line, a plain sentence of its own that offers the next step of the work ("원하시면 담당자별로 보낼 알림 문구도 써 드릴게요."), never the same content in another shape (a table, a file), unless an earlier reply of yours in this conversation already ended with an offer.',
   'When they ask for a note to be made easy to share or read without saying the form ("공유하기 좋게", "보기 좋게", "깔끔하게"), you choose the form and the first sentence says what you chose, in the past tense, and is the only lead ("할 일이랑 미결 위주로 짧게 정리했어요."), never a promise ("…정리할게요."). Then at most about eight short lines: who does what by when, then what is still open, then the next meeting. No 일시, 참석 or 논의 blocks and no 결정사항 block beside the 할 일 unless they ask; something not settled yet goes under 미결, never under 결정사항.',
+  // c16c (cause D2, D1: asked for 결정사항 and 할 일, the answer followed the notes' headings and had no 할 일 part). Any parts, by meaning.
+  'When they name the parts of the answer (sections, columns, categories, a number of items), the answer has each of those parts as its own part, under the name they used, and fills each with what belongs there by meaning, even when the source labels it otherwise or puts it under another heading.',
   // c13c D1: the notes' own 결정사항 heading listed owner+due tasks and was copied as decisions and again as 할 일. One principle, by meaning.
   'In a summary of meeting notes, a decision (결정사항) is what the meeting settled - a choice, a direction or a commitment - and an action item (할 일) is who does what by when. Each thing goes under one of them, never both: an item with an owner and a due date is an action item. What the notes only lean toward (an opinion most people shared, a preference, a proposal) is said as a leaning, never as 확정 or as a decision. The content decides, not the notes\' own headings: action items listed under a heading called 결정사항 are action items, and when nothing else was settled, 결정사항 says so in one line or is left out. Every owner and due date of the file is still in the answer, a heading with nothing of its own is left out, and no section says it is the same as another ("위와 동일").',
 ].join(' ')
@@ -507,7 +509,9 @@ export const reshapePrompt = (message: string, lastReply: string, ask?: string):
   'Your last reply in a chat was:', '"""', lastReply.slice(0, 1500), '"""', `The person now says: "${message.trim()}"`,
   'If they only want that same reply again in another form (shorter, longer, simpler, another language, another tone, a table, fewer lines, only its key point), with no new facts and no new subject, write it again as asked and answer with one line of JSON: {"form": one of "shorter" (any ask for less: shorter, fewer lines, only the key point), "longer", "simpler", "language", "tone", "table", "other"; "was": the thing they asked for in your last reply, copied exactly, without its lead-in or any line about it; "reply": the new reply}.',
   'The new reply is the asked thing in the asked form and nothing else: in the language and the polite register of your last reply (in Korean the -요 form), no lead-in about what you changed, and no line on what it means or why.',
-  ...(ask?.trim() ? ['It still keeps every constraint of what the person had asked that the new form does not change (register such as polite or formal, audience, format, language, what it is for): "shorter" makes it shorter, not more casual.'] : []),
+  ...(ask?.trim() ? ['It still keeps every constraint of what the person had asked that the new form does not change (register such as polite or formal, audience, format, language, what it is for): "shorter" makes it shorter, not more casual.',
+    // c16c (cause D2, Q4: "…회의 늦어서 죄송합니다…" → "더 짧게" lost "to the meeting"): constraints were kept, the ask's own facts were not.
+    'Every fact the person had put in their ask (who, what, for what, when) is still in the new reply, in every form: "shorter" or "simpler" removes words, never one of those facts.'] : []),
   'Otherwise (they ask about anything new, want something looked up, checked, saved, sent, made into a file or handed to someone, correct what they asked for, or you cannot tell) reply with exactly NO.',
 ].join('\n')
 const squash = (text: string): string => text.replace(/\s+/g, ' ').trim()
@@ -564,16 +568,19 @@ function rewritten(reply: string, last: string): number {
 // written once and nothing read it against its ask and the source it came from. An answer with structure - more than one line, read by shape,
 // never by words (c15c r2: two short sections "장점: …" / "단점: …" are parts too) - goes through the same meaning check as every writer path
 // (core checkedWrite, with kind "overlap" for parts that say the same thing or hold another part's content), and is rewritten once by the
-// quick model inside the turn's own time. A one-line answer is never held: the short asks' bar has no room for a check.
+// quick model inside the turn's own time. A one-line short-ask answer is not held (c16c r2: see checkedDesk's fromSource).
 export const structured = (text: string): boolean => text.split('\n').filter(line => line.trim()).length >= 2
 // shortcut: one budget for every desk kind from the turn's start (the summary row has 20 s); a desk turn already past it keeps its draft.
 export const DESK_CHECK_DUE_MS = 18_000
 export const SOURCE_CHARS = 6000
-export async function checkedDesk(input: { ask: string; draft: string; source: string; quick: ((prompt: string, ms?: number) => Promise<string | undefined>) | undefined; since: number; now?: () => number; signal?: AbortSignal; log?: (outcome: string, kinds: readonly string[]) => void }): Promise<string> {
-  if (!input.quick || !structured(input.draft)) return input.draft
+// c16c r2 (Codex r1: a one-line summary of a meeting note asked as 결정사항 and 할 일 skipped the check): the line count stood in for "this turn's
+// bar has room for a check", but a one-line draft is exactly how a named part goes missing. What has room is the kind of turn: an answer drawn
+// from a named note or file (fromSource: desk kinds note and file, bars 20 s and up) is checked at any length; a short ask (8 s) only when structured.
+export async function checkedDesk(input: { ask: string; draft: string; source: string; fromSource?: boolean; quick: ((prompt: string, ms?: number) => Promise<string | undefined>) | undefined; since: number; now?: () => number; signal?: AbortSignal; log?: (outcome: string, kinds: readonly string[]) => void }): Promise<string> {
+  if (!input.quick || !input.draft.trim() || !(input.fromSource || structured(input.draft))) return input.draft
   const data = { source: input.source.slice(0, SOURCE_CHARS) }, quick = input.quick
-  const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length, and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
-    'Each thing goes under the one part it belongs to, by what the source says it is; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
+  const base = ['You wrote the answer below in a chat, from the source given, for what the person asked. Rewrite it so every problem listed is fixed, keeping its language, register, form and length (save the room a missing part needs), and everything in it that is right.', `The person asked: ${JSON.stringify(input.ask.trim().slice(0, 400))}`, `Source: ${JSON.stringify(data.source)}`,
+    'Every part the person named is its own part of the answer, under the name they used. Each thing goes under the one part it belongs to, by what the source says it is, not by the source\'s own headings; a part with nothing of its own says so in a few words. Answer with the rewritten answer only.'].join('\n')
   // c15c r2: what the check found wrong, in the last text it read (the rewrite when its own check named problems, else the draft).
   const found: { text: string; problems: readonly WrittenProblem[] }[] = []
   let rewrite: string | undefined, checks = 0
@@ -622,7 +629,8 @@ const runOf = (lines: readonly string[], at: number): number[] => {
 export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
   const lines = text.split('\n'), gone = new Set<number>()
   for (const { quote, kind } of problems) {
-    const q = bare(quote)
+    // c16c: "missing" quotes the asked part's name, not a line of the text: nothing to take out, the text stands (never withheld, GROKBOT 6).
+    const q = kind === 'missing' ? '' : bare(quote)
     if (!q) continue
     const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
     const whole = at.filter(({ b }) => b.includes(q)), cands = whole.length ? whole : at
