@@ -6,7 +6,7 @@ import { askedBefore, reshapeAsk, reshapePrompt, RESHAPE_DUE_MS } from '../src/m
 const ASK = '광합성이 뭔지 초등학생 아이에게 설명하듯 써줘'
 const LAST = '식물은 햇빛을 밥처럼 먹어요. 잎에서 햇빛이랑 물, 공기를 섞어서 자기가 먹을 달콤한 양분을 만들어요. 그래서 식물한테는 햇빛이 아주 중요해요.'
 const was = LAST
-const voiceSaid = (reply: string, form = 'simpler'): string => JSON.stringify({ form, was, reply })
+const voiceSaid = (reply: string): string => JSON.stringify({ form: 'shorter', was, reply })
 const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 
@@ -33,10 +33,9 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
     expect(askedBefore([])).toBeUndefined()
   })
 
-  // c19b: a shorter draft that passed the host's form test goes out as written (c19b-desk); every other form keeps the meaning check.
-  it('a simpler reply in adult jargon is "dropped", rewritten once, and the rewrite is shown', async () => {
+  it('a shorter reply in adult jargon is "dropped", rewritten once, and the rewrite is shown', async () => {
     const { quick, calls } = voice(voiceSaid(jargon), JSON.stringify({ replace: { 1: childlike } }), [JSON.stringify({ problems: [{ kind: 'dropped', quote: jargon, why: '아이에게 설명하듯이 아니에요' }] }), none])
-    expect(await reshapeAsk('더 쉽게', LAST, quick, ASK)).toBe(childlike)
+    expect(await reshapeAsk('더 짧게', LAST, quick, ASK)).toBe(childlike)
     expect(calls).toHaveLength(4)
     expect(calls[1]).toContain(CHECK)
     expect(calls[1]).toContain('"earlierAsk":"광합성이 뭔지 초등학생 아이에게 설명하듯 써줘"')
@@ -47,19 +46,19 @@ describe('c14b: a reshape keeps the constraints of the ask the last reply answer
   it('a rewrite that still drops it is no reshape: the turn keeps its usual route', async () => {
     const dropped = JSON.stringify({ problems: [{ kind: 'dropped', quote: jargon, why: '어른 말투' }] })
     const { quick, calls } = voice(voiceSaid(jargon), voiceSaid(jargon), [dropped, dropped])
-    expect(await reshapeAsk('더 쉽게', LAST, quick, ASK)).toBeUndefined()
+    expect(await reshapeAsk('더 짧게', LAST, quick, ASK)).toBeUndefined()
     expect(calls).toHaveLength(3)
-    expect(await reshapeAsk('더 쉽게', LAST, voice(voiceSaid(jargon), '', [none]).quick, ASK)).toBe(jargon)
+    expect(await reshapeAsk('더 짧게', LAST, voice(voiceSaid(jargon), '', [none]).quick, ASK)).toBe(jargon)
   })
 
   it('a clean verdict or a late checker keeps the reply, and the whole reshape stays inside its time', async () => {
     const clean = voice(voiceSaid(childlike), '', [none])
-    expect(await reshapeAsk('더 쉽게', LAST, clean.quick, ASK)).toBe(childlike)
+    expect(await reshapeAsk('더 짧게', LAST, clean.quick, ASK)).toBe(childlike)
     expect(clean.calls).toHaveLength(2)
     let clock = 0
     const quick = (prompt: string): Promise<string> => { if (prompt.includes(CHECK)) return new Promise(() => undefined); clock = RESHAPE_DUE_MS - 1100; return Promise.resolve(voiceSaid(childlike)) }
     const began = Date.now()
-    expect(await reshapeAsk('더 쉽게', LAST, quick, ASK, () => clock)).toBe(childlike)
+    expect(await reshapeAsk('더 짧게', LAST, quick, ASK, () => clock)).toBe(childlike)
     expect(Date.now() - began).toBeLessThan(1600)
   })
 

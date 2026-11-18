@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { messageUnits, nounPhrase, repairedWrite, spliced, wellFormed, withoutSentences } from '../src/written-check.js'
+import { messageUnits, nounPhrase, repairedWrite, spliced, tidied, wellFormed, withoutSentences } from '../src/written-check.js'
 
 const CHECK = 'Judge meaning only', REPAIR = 'You fix a message before a person reads it'
 const none = JSON.stringify({ problems: [] })
@@ -73,4 +73,31 @@ test('item 2 (register): a repair that writes a new plain-form sentence the draf
   expect(out.outcome).not.toBe('repaired')
   // The contradicted sentence still goes, as before: only the repair was refused.
   expect(out.text).toBe('- 회비는 2만 원이에요.\n- 엠티는 11월 말에 가요.')
+})
+
+// Round 2 (r1 #2): a register-only repair gets no re-check, so the register invariant is the host's own: a repair that ends its
+// sentence the way the flagged one ended has not changed the register and is refused.
+test('a register-only repair that keeps the plain ending is refused without a re-check, and a real one is kept', async () => {
+  for (const [draft, still, source] of [['회비는 만 원이다.', '회비는 이번에도 만 원이다.', '회비 1만원'], ['집합 시간은 아침 7시였다.', '집합 시간은 원래 아침 7시였다.', '집합 7시']] as const) {
+    const { quick, calls } = model({ check: [problems({ kind: 'register', quote: draft, why: '한다체' })], repair: [JSON.stringify({ replace: { '1': still } })] })
+    const out = await repairedWrite({ data: { source }, ask: '동아리 공지 한 줄 써줘', draft, check: quick, due: Date.now() + 20_000 })
+    expect(out.text, draft).not.toBe(still)
+    expect(out.text.endsWith('다') || out.text.endsWith('다.'), out.text).toBe(false)
+    expect(calls.filter(p => p.includes(CHECK))).toHaveLength(1)
+  }
+  const { quick } = model({ check: [problems({ kind: 'register', quote: '회비는 만 원이다.', why: '한다체' })], repair: [JSON.stringify({ replace: { '1': '회비는 만 원이에요.' } })] })
+  expect((await repairedWrite({ data: { source: '회비 1만원' }, ask: '동아리 공지 한 줄 써줘', draft: '회비는 만 원이다.', check: quick, due: Date.now() + 20_000 })).text).toBe('회비는 만 원이에요.')
+})
+
+// Round 2 (r1 #3): blank lines inside a fenced block are the block's own bytes; only prose blank runs are tidied.
+test('a repair, a removal and a register change leave a code block\'s blank lines as they were', async () => {
+  const CODE = ['```python', 'import csv', '', '', '', 'print(total)', '```'].join('\n')
+  const draft = ['합계를 내는 코드예요.', '', '', '', CODE, '', '돌리면 합계가 나와요. 결과는 바로 보인다.'].join('\n')
+  const fixed = spliced(draft, JSON.stringify({ replace: { '1': '합계 코드예요.' } }), new Set([0]))!
+  expect(fixed).toContain(CODE)
+  expect(fixed.startsWith('합계 코드예요.\n\n```python')).toBe(true)
+  expect(withoutSentences(draft, [{ kind: 'asks', quote: '결과는 바로 보인다.', why: '' }])).toContain(CODE)
+  const { quick } = model({ check: [problems({ kind: 'register', quote: '결과는 바로 보인다.', why: '한다체' })], repair: [undefined] })
+  expect((await repairedWrite({ data: { source: 'x' }, ask: '합계 코드 줘', draft, check: quick, due: Date.now() + 20_000 })).text).toContain(CODE)
+  expect(tidied(`a\n\n\n\nb\n${CODE}`)).toBe(`a\n\nb\n${CODE}`)
 })

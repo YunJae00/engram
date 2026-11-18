@@ -93,6 +93,8 @@ export const fencedLines = (text: string): Set<number> => new Set(fencedBlocks(t
 export const wellFormed = (text: string): boolean => fencedBlocks(text).every(b => b.closed && !b.empty)
 /** The text without its fenced blocks: what a check reads. */
 export const proseOf = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((_, at) => !fenced.has(at)).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
+/** Blank-line runs outside fenced blocks shrink to one; a block's own lines (its blank lines too) stay byte-identical. */
+export const tidied = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((line, at, all) => line !== '' || at === 0 || all[at - 1] !== '' || fenced.has(at) || fenced.has(at - 1)).join('\n').trim() }
 export function messageUnits(text: string): { line: number; text: string }[] {
   const fenced = fencedLines(text)
   return text.split('\n').flatMap((line, at) => {
@@ -133,7 +135,9 @@ const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 const HANGUL = /[\uac00-\ud7a3]/
 export const foreignRun = (draft: string, text: string, known: string): string | undefined => !HANGUL.test(draft) ? undefined
   : [...text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/`[^`]*`/g, ' ').matchAll(ENGLISH_RUN)].map(run => run[0].trim()).find(run => !known.toLowerCase().includes(run.toLowerCase()))
-export function spliced(draft: string, raw: string | undefined, allowed: ReadonlySet<number>, insert = true, known = ''): string | undefined {
+/** The last Korean syllable of a sentence: where its register is said (정한다 / 정해요 / 정함). */
+const lastSyllable = (text: string): string => /([\uac00-\ud7a3])[^\uac00-\ud7a3]*$/u.exec(text.replace(/\[([^\]]*)\]\([^)]*\)/g, ''))?.[1] ?? ''
+export function spliced(draft: string, raw: string | undefined, allowed: ReadonlySet<number>, insert = true, known = '', register: ReadonlySet<number> = new Set()): string | undefined {
   let said: unknown
   try { said = JSON.parse((raw ?? '').slice((raw ?? '').indexOf('{'), (raw ?? '').lastIndexOf('}') + 1)) } catch { return undefined }
   const out = said && typeof said === 'object' ? said as Record<string, unknown> : {}
@@ -143,6 +147,8 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     const at = Number(key) - 1
     if (!Number.isInteger(at) || typeof value !== 'string' || !allowed.has(at) || at >= units.length) return undefined
     if (value.trim() !== units[at]!.text.trim()) replace.set(at, value.replace(/\s*\n+\s*/g, ' ').trim())
+    // A register repair that ends its sentence the way the flagged one ended has not changed the register: refused, whatever the re-check would say.
+    if (register.has(at) && value.trim() && lastSyllable(value) && lastSyllable(value) === lastSyllable(units[at]!.text)) return undefined
   }
   const kept = new Set(units.filter((_, i) => !replace.has(i)).map(u => words(u.text)))
   for (const [key, value] of Object.entries(record(out['insert_after']))) {
@@ -169,22 +175,23 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     if (texts.length) shown.push(own.some(({ i }) => replace.has(i)) ? lead + texts.join(' ') : line)
     for (const { i } of own) shown.push(...(inserts.get(i) ?? []))
   })
-  const text = shown.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  const text = tidied(shown.join('\n'))
   return text && text !== draft.trim() && (!wellFormed(draft) || wellFormed(text)) ? text : undefined
 }
 async function scopedRepair(quick: QuickText, input: CheckInput, draft: string, problems: readonly Problem[], ms: number, signal?: AbortSignal): Promise<string | undefined> {
   const units = messageUnits(draft), allowed = new Set(problems.flatMap(p => p.kind === 'missing' ? [] : quotedUnits(units, p.quote)))
-  return spliced(draft, await within(quick(repairPrompt(input, units, problems, allowed), ms), ms, signal), allowed, problems.some(p => ADDS.has(p.kind)), JSON.stringify(input.data))
+  const register = new Set(problems.flatMap(p => p.kind === 'register' ? quotedUnits(units, p.quote) : []))
+  return spliced(draft, await within(quick(repairPrompt(input, units, problems, allowed), ms), ms, signal), allowed, problems.some(p => ADDS.has(p.kind)), JSON.stringify(input.data), register)
 }
 export function withoutSentences(text: string, problems: readonly Problem[]): string {
   const units = messageUnits(text), gone = new Set(problems.flatMap(p => quotedUnits(units, p.quote)))
   if (!gone.size) return text
-  const out = text.split('\n').flatMap((line, at) => {
+  const out = tidied(text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.length) return [line]
     const left = own.filter(({ i }) => !gone.has(i))
     return !left.length ? [] : left.length === own.length ? [line] : [/^\s*/.exec(line)![0] + left.map(({ u }) => u.text).join(' ')]
-  }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  }).join('\n'))
   return out
 }
 
@@ -219,12 +226,12 @@ function inOneRegister(text: string, problems: readonly Problem[], data: unknown
     cut.delete(i)
     if (said) framed.set(i, `${marker}${said}${links ? ` ${links.trim()}` : ''}`)
   }
-  return text.split('\n').flatMap((line, at) => {
+  return tidied(text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.some(({ i }) => cut.has(i) || framed.has(i))) return [line]
     const left = own.filter(({ i }) => !cut.has(i)).map(({ u, i }) => framed.get(i) ?? u.text)
     return left.length ? [/^\s*/.exec(line)![0] + left.join(' ')] : []
-  }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  }).join('\n'))
 }
 
 interface Written {

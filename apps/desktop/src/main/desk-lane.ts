@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, closingTool, fencedLines, foreignRun, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
+import { checkedWrite, closingTool, fencedLines, tidied, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아니라)\s*\S+(이야|야|이에요|예요|입니다)|\bremember (that|this|my|i)\b/i
@@ -190,7 +190,7 @@ export function withoutSameDecisions(ask: string, answer: string): string {
   const tasks = todo.items.map(line => line.replace(/\s/g, ''))
   const again = (line: string): boolean => { const words = wordsOf(line); return words.length >= 2 && tasks.some(task => words.filter(word => task.includes(word)).length >= Math.ceil(words.length * 0.8)) }
   if (!decided.items.every(again)) return answer
-  return [...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied([...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n'))
 }
 
 const OPEN_FORM = /(공유|보기|읽기|전달)\s*(하기)?\s*(좋게|쉽게|편하게)|깔끔하게|\b(easy to (share|read)|share-?ready)\b/i
@@ -215,7 +215,7 @@ export function shareReady(ask: string, answer: string): string {
   if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!) && next !== undefined && !head(next) && /[했았었]어요[.!~]?\s*$/.test(next)) lines.splice(first, 1)
   else if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!)) lines[first] = lead
   else if (head(lines[first]!)) lines.splice(first, 0, lead, '')
-  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
+  return `${tidied(lines.join('\n'))}${replies < 0 ? '' : answer.slice(replies)}`
 }
 
 const ONLY_TODO = /할\s*일만|액션\s*아이템만|\b(?:only|just) the (?:to-?dos?|action items?)\b/i
@@ -228,7 +228,7 @@ export function onlyAsked(ask: string, answer: string): string {
   lines.splice(open.at, open.end - open.at)
   const todo = lines.findIndex(line => TASKS.test(line))
   if (todo >= 0) lines.splice(todo, 1)
-  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
+  return `${tidied(lines.join('\n'))}${replies < 0 ? '' : answer.slice(replies)}`
 }
 
 const WANTS_NAMES = /이름|파일명|목록|리스트|어떤\s*파일|뭐가|무엇이|\b(names?|list|which files?)\b/i
@@ -255,7 +255,7 @@ export function tidyCounts(ask: string, answer: string): string {
   }
   if (run.length) close()
   const listed = out.flatMap(line => { const said = COUNT_SENTENCE.exec(line); return said ? [...(said[1]?.trim() ? [said[1].trim(), ''] : []), ...said[2]!.split(/,\s*/).map(one => `- ${one.trim()}`)] : [line] })
-  return listed.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied(listed.join('\n'))
 }
 
 const REMEMBER = '(?:기억\\s*해(?:\\s*(?:둬\\s*줘|둬|줘|놔|두세요|주세요))?|잊지\\s*마(?:세요)?|외워\\s*(?:둬|줘))요?'
@@ -404,15 +404,12 @@ export async function reshapeAsk(message: string, lastReply: string | undefined,
   const due = now() + RESHAPE_DUE_MS, prompt = reshapePrompt(message, lastReply!, ask)
   const raw = await quick(prompt, RESHAPE_MS).catch(() => ''), draft = reshaped(raw, lastReply!)
   if (!draft) return undefined
-  // A shorter draft that passed the host's form test goes out as written: a meaning rewrite of it can only bring back the longer form.
-  if (formOf(raw) === 'shorter') return draft
   return checkedWrite({
     data: { earlierAsk: ask?.trim() ?? '', earlierReply: lastReply! }, ask: message, rewrite: true, draft, check: quick, due, now,
     accept: text => reshaped(withReply(raw, text), lastReply!),
   })
 }
 const said = (raw: string): Record<string, unknown> => { try { const one: unknown = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); return one && typeof one === 'object' ? one as Record<string, unknown> : {} } catch { return {} } }
-const formOf = (raw: string): unknown => said(raw)['form']
 const withReply = (raw: string, reply: string): string => JSON.stringify({ ...said(raw), reply })
 function reshaped(raw: string, lastReply: string): string | undefined {
   let said: { form?: unknown; was?: unknown; reply?: unknown }
@@ -508,11 +505,11 @@ function withoutLines(lines: readonly string[], gone: Set<number>): string {
     for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || row(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
     if (under.length && under.every(j => gone.has(j))) gone.add(i)
   })
-  return lines.filter((_, i) => !gone.has(i)).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied(lines.filter((_, i) => !gone.has(i)).join('\n'))
 }
 
 const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
-const REPLY_NOTE = 'One short line for the chat once the file is made, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."): what you made, in a few words. A build that passes ends the turn with this line and the file, so nothing is read back after it; when the person asked for several files, call every build in the same step.'
+const REPLY_NOTE = 'Only on the build that finishes what the person asked: one short line for the chat, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."), what you made in a few words. A build that passes with this line ends the turn with it and every file made so far, so nothing is read back after it. Leave it out while another file is still to be made.'
 const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
 const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply'))
 const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
@@ -531,10 +528,11 @@ export function builtLine(tool: string, args: Record<string, unknown>, korean: b
   return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
 }
 /** The model's own reply when it reads right in this thread (its language, at most two sentences, no technical words); else none. */
-export function buildReply(reply: unknown, korean: boolean): string | undefined {
+export function buildReply(reply: unknown, korean: boolean, known = ''): string | undefined {
   const text = textOf(reply).replace(/\s+/g, ' ')
   if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
-  return korean && foreignRun(text, text, '') ? undefined : text
+  // In a Korean thread a Latin word is only the build's own (a title, a name, a file name): any other is English the person did not ask for.
+  return korean && (text.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).some(word => !known.toLowerCase().includes(word.toLowerCase())) ? undefined : text
 }
 /** The desk lane's build tools: a build that passed the host's audit (a receipt with its file) is final and ends the turn on one short line,
  * so the model never reads its own file back. An audit refusal or an error goes back to the model as before. */
@@ -548,8 +546,10 @@ export function closingBuilds(tools: readonly AgentTool[], korean: boolean): Age
       run: (args, context) => tool.run(withoutReply(args), context),
     }
     return closingTool(given, async (out, args) => {
-      if (!receiptOf(out)) return undefined
-      return { said: out, answer: buildReply(args['reply'], korean) ?? builtLine(tool.name, withoutReply(args), korean) }
+      // The model's reply is its word that the ask is finished: a build without one (another file is still to come) goes back to it.
+      if (!receiptOf(out) || !textOf(args['reply'])) return undefined
+      const built = withoutReply(args)
+      return { said: out, answer: buildReply(args['reply'], korean, JSON.stringify(built)) ?? builtLine(tool.name, built, korean) }
     })
   })
 }
