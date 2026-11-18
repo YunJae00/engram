@@ -64,7 +64,7 @@ it('C5 class r2: a page whose first round gave one of its two entries still gets
   const rounds = prompts.filter(p => p.startsWith('Some of what you brought back'))
   expect(rounds).toHaveLength(2)
   expect(rounds[1]).toContain('- 부산 도자 공예전은 12월 5일에 열려요.')
-  expect(m.data?.facts.map(f => [f.url, f.rest ?? false])).toEqual([[A, false], [B, false], [PAGE, true]])
+  expect(m.data?.facts.map(f => [f.url, f.rest ?? false])).toEqual([[A, false], [B, false], [A, false], [PAGE, true]])
   expect(answer).toContain('12월 5일')
   expect(answer).toContain('12월 20일')
 })
