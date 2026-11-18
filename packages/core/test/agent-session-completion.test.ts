@@ -408,6 +408,32 @@ it('holds the model\'s words after a closing tool succeeds: dropped when the tur
   expect(shown).toEqual(['바로 답'])
 })
 
+// c16a r3 (Codex r2 #1): a lookup before hire_members kept the turn open on the team's one written answer, so the lead wrote a second one.
+it('a reply its tool confirms as the whole answer closes the turn even after earlier calls; an unconfirmed one does not', async () => {
+  const written = '| 항목 | 내용 |\n|---|---|\n| 제주 렌터카 | 하루 4만 원 |'
+  const team: AgentTool = { name: 'team', description: 'team', argsSchema: {}, closes: true, closesOn: out => out === written, run: async args => args['ready'] === true ? written : '{"members":[]}' }
+  const shown: string[] = []
+  const brain = (ready: boolean) => sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'search_memory')!.run({ query: '제주' })
+    await job.tools.find(tool => tool.name === 'team')!.run({ ready })
+    await pause(400)
+    job.onToken?.('두 번째 답')
+    return { answer: '두 번째 답' }
+  })
+  const closed = await runToolSession({ engine: brain(true), workdir: WORKDIR, tools: [...tools, team] }, '제주 렌터카 알아봐', { onToken: text => shown.push(text) })
+  expect(closed.answer).toBe(written)
+  expect(shown).toEqual([])
+  expect((await runToolSession({ engine: brain(false), workdir: WORKDIR, tools: [...tools, team] }, '제주 렌터카 알아봐')).answer).toBe('두 번째 답')
+  // A call after the whole answer, inside the grace, still keeps the turn going.
+  const after = sessionBrain(async (job) => {
+    await job.tools.find(tool => tool.name === 'team')!.run({ ready: true })
+    await job.tools.find(tool => tool.name === 'search_memory')!.run({ query: 'x' })
+    await pause(300)
+    return { answer: '이어서 쓴 답' }
+  })
+  expect((await runToolSession({ engine: after, workdir: WORKDIR, tools: [...tools, team] }, 'x')).answer).toBe('이어서 쓴 답')
+})
+
 it('a tool that closes by its arguments ends the turn only for the calls it says', async () => {
   const assign: AgentTool = { name: 'assign', description: 'assign', argsSchema: {}, closes: args => args['wait'] === false, run: async args => args['wait'] === false ? '김대리한테 맡겼어요.' : '{"reports":[]}' }
   const handed = await runToolSession({ engine: sessionBrain(async (job) => { await job.tools.find(tool => tool.name === 'assign')!.run({ wait: false }); await pause(400); return { answer: 'again' } }), workdir: WORKDIR, tools: [...tools, assign] }, '김대리한테 맡겨')

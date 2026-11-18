@@ -26,7 +26,7 @@ const ACCEPTED_NOTE = 'Members with accepted true are lookups, already accepted 
 export const MERGED_SHAPE = 'The merged answer reads like a colleague\'s message: one friendly lead sentence that already gives the gist and says only what the cells below show, then one table (item | what was found | source; when the person compares named points such as price and release date, one column per point instead, every cell a short value with its figure), and nothing after the table. A row\'s first cell is the name the person used ("아이폰 18"), never a variant\'s ("아이폰 18 프로"). Every concrete value a member reported stays in its row, labeled as the member labeled it (출시가, 예상, 전작, or the model it belongs to: "상위 모델 출시가 199만 원부터"), never dropped or turned into "미발표"; a thing already out has its 출시가 and date. No sentence about how the work was split, who took which part or how many took part: the first line is the answer. Never who is still working ("작업 중"), a member id or a role label ("대구날씨"). No other sentence about bots, members or collecting results, no closing question or offer, and no word about time, limits, attempts or what failed. A value marked "(no live source)" lost the page it was read on: its cell keeps the value labeled unconfirmed ("199만 원(미확인)"), and its source cell links another page that member read, or, with none, says 미확인; never an empty cell. A member that found nothing keeps its row, with a plain "못 찾았어요" in the person\'s language; a value not out yet keeps the labeled figure its member reported ("예상 130만 원대").'
 // grokbar B6: sources came back as site names ("네이버 날씨 검색") and the merged answer had 0 links in R1, R2, R3 and T1.
 const SOURCES_NOTE = 'sources lists the pages each member actually read. In the merged table the last cell of every row is that member\'s source as a markdown link, [site name](address), with the address copied exactly from sources and the link text the site\'s or publication\'s own name (네이버 날씨, Apple, 삼성전자 뉴스룸, 연합뉴스), a post on a platform is named by the platform (네이버 블로그, 네이버 카페, 유튜브, 티스토리), never by the writer\'s id, a site you cannot name by its host as written in the address (store.google.com), never a piece of a title, never a member\'s role or name; never a site name alone. A row names a member only when the person named the members themselves ("지민, 서연한테 나눠서"): then its first cell is the item with that name in parentheses.'
-const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; with nothing to add, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
+const STEER_NOTE = 'The person wrote to you while the team worked; their words follow this result. Members with state working keep going. If their words add or change a part, call hire_members now for that part only; when they drop or replace a part, give that member id in stop (the new part, if any, in members): it ends and is no part of the answer. With nothing to add or drop, call hire_members with members [] to wait. Either call also returns the members still working. Then give one answer that covers everything.'
 const REVIEW_NOTE = 'Review each member with review_member before you report, all in one step. A member that stopped at its time limit handed back what it had: accept it and say what is missing; a lookup member is never re-run. A failed member delivered nothing: say that part is missing, or redo it once if the person asked for it. A member that needs the person is asked in your thread for you; when they answer, pass the answer with review_member({id, ok:false, note:<answer>}).'
 
 // A lookup member (research, fact check, reading): a faster model, reading tools only, and a time box. perf146: three opus members with 65 tools
@@ -799,8 +799,23 @@ const askUp = (members: readonly TeamMember[]): string | undefined => { const as
 // c6 R2: every settled lookup member is accepted by the host, cut short or not (a lookup is never re-run, so a review round only cost time);
 // one that made a file, failed or asked is not.
 const accepted = (m: TeamMember): boolean => m.state === 'done' && (!!m.lookup && !m.files?.length || m.review?.ok === true && m.review.note === AUTO_REVIEW)
+/** c16a (cause M): the hand-back the lead would otherwise turn into a second full answer of its own: every member of the call is a lookup,
+ * already accepted. The team's one writer writes that answer instead (lead-check helperAnswer), and the call closes the turn with it. */
+export function mergeReady(observation: string): boolean {
+  try {
+    const o = JSON.parse(observation) as { note?: unknown; members?: unknown }
+    return typeof o.note === 'string' && o.note.startsWith(ACCEPTED_NOTE) && Array.isArray(o.members) && o.members.length > 0 && o.members.every(m => (m as { accepted?: unknown } | null)?.accepted === true)
+  } catch { return false }
+}
+// c16a (cause M, R2: one helper priced 프로 256GB, another the base model): when the parts compare the same points, each brief carries the
+// one definition every point is measured by, and the writer reads it too. Meaning, never a product list.
+const measured = (brief: string, measure: string): string => measure ? `${brief}\n\nMeasure each compared point exactly this way, the same for every part: ${measure}. A value you can only find on another basis (another model or tier, unit or day) is given labeled with what it is.` : brief
 const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(m.sources?.length ? { sources: m.sources } : {}), ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''
+
+// c16a r2 (review #3: after "그건 빼고 …" the old part stayed a row of the one answer): what the host writes on a member the lead took off
+// at the person's change. It ends at once and no answer is made from it (lead-check turnHelpers), the way a named part taken off leaves no row.
+export const TAKEN_OFF = 'Taken off: the person changed the ask while it worked.'
 
 export function teamHireTools(host: TeamHost): AgentTool[] {
   // Members this caller hired in this turn and has not been handed back finished: an early return leaves some working.
@@ -843,23 +858,29 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
   }
   const hire: AgentTool = {
     name: 'hire_members',
-    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about ten seconds, and its result comes back already accepted, with the pages it read in sources; leave it out for a part that makes or changes something. A lookup member also takes query: the search words you would type for its part, in the person's language ("아이폰 18 가격 출시일"); that search is run for it as it starts. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
+    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about ten seconds, and its result comes back already accepted, with the pages it read in sources; leave it out for a part that makes or changes something. A lookup member also takes query: the search words you would type for its part, in the person's language ("아이폰 18 가격 출시일"); that search is run for it as it starts, and topic: the thing its part is about in the person's own words ("서울", "아이폰 18"), the name of its row in the answer. When the parts compare the same points (a price, a date, a rate, a score), measure is the one definition of each point that every part uses: the same tier or model, unit and basis ("가격: 기본 모델의 국내 출고가, 원 단위; 출시일: 국내 출시일"), so the values can be compared; every part gets it. notes carries only what you already know that they need. When every member is a lookup, the call returns the one answer to the person, already written from their results: it ends your turn. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
-        members: { type: 'array', maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' }, query: { type: 'string' } } } },
-        notes: { type: 'string' }, big: { type: 'boolean' },
+        members: { type: 'array', maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' }, query: { type: 'string' }, topic: { type: 'string' } } } },
+        notes: { type: 'string' }, big: { type: 'boolean' }, measure: { type: 'string' }, stop: { type: 'array', items: { type: 'string' } },
       },
     },
     async run(args, context) {
       const asked = (Array.isArray(args['members']) ? args['members'] : []) as Record<string, unknown>[]
+      const stop = (Array.isArray(args['stop']) ? args['stop'] : []).filter((id): id is string => typeof id === 'string' && took.includes(id))
+      if (stop.length) {
+        await host.release(stop)
+        await host.change(task => { for (const m of task.team?.members ?? []) if (stop.includes(m.id)) { m.review = { ok: false, note: TAKEN_OFF }; delete m.result; delete m.data } })
+        for (const id of stop) { open.delete(id); took.splice(took.indexOf(id), 1) }
+      }
       // Nobody new: wait for the members an earlier call left working.
       if (!asked.length && (open.size || took.length)) return collect()
       const said = host.personSaid()
-      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: withoutExtras(text(m?.['brief'], 1500), said), deliverable: withoutExtras(text(m?.['deliverable'], 300), said), lookup: m?.['lookup'] === true, query: text(m?.['query'], 120).slice(0, 120) }))
+      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: withoutExtras(text(m?.['brief'], 1500), said), deliverable: withoutExtras(text(m?.['deliverable'], 300), said), lookup: m?.['lookup'] === true, query: text(m?.['query'], 120).slice(0, 120), topic: text(m?.['topic'], 40).replace(/[|()[\]]/g, ' ').trim().slice(0, 40) }))
       if (!wanted.length || wanted.length > HIRE_MAX_PER_CALL) throw new Error(`members needs 1 to ${HIRE_MAX_PER_CALL} entries, each with role, brief and deliverable.`)
       if (wanted.some(m => !m.role || m.role.length > 40 || !m.brief || m.brief.length > 1500 || m.deliverable.length > 300)) throw new Error('Each member needs role (1 to 40 characters), brief (1 to 1500) and deliverable (at most 300).')
-      const notes = text(args['notes'], 1500).slice(0, 1500)
+      const notes = text(args['notes'], 1500).slice(0, 1500), measure = text(args['measure'], 300).slice(0, 300)
       if ((await host.tokensLeft()) < TEAM_TOKEN_RESERVE) return TOKEN_REFUSAL
       const n = wanted.length
       const out = await host.change((task): { refuse: string } | { ids: string[] } => {
@@ -881,7 +902,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
         const at = new Date().toISOString()
         const ids = wanted.map(m => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, ...(m.deliverable ? { deliverable: m.deliverable } : {}), ...(m.lookup ? { lookup: true } : {}), ...(m.lookup && m.query ? { query: datedQuery(m.query, `${m.brief} ${said}`) } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: measured(notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, measure), ...(m.deliverable ? { deliverable: m.deliverable } : {}), ...(m.lookup ? { lookup: true } : {}), ...(m.topic ? { topic: m.topic } : {}), ...(measure ? { measure } : {}), ...(m.lookup && m.query ? { query: datedQuery(m.query, `${m.brief} ${said}`) } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += n

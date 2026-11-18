@@ -1423,7 +1423,8 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   // c9 fix 5: the host's own summary speaks in the span asked, says the span once, and puts the found-nothing jobs in one sentence of their own.
   // c13a: the job's own words, with no verb table (JOB_VERBS is gone with the host's lead sentences).
   // c14b: 서연 was taken off the team, and the host's own summary says so too.
-  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요. 서연은 이제 팀에 없어요.'
+  // c16a: updated (pinned "지우가 찾은 걸로 …" with no subject, read as 지우's job): a person's second job keeps its subject.
+  const plain = '이번 주엔 서연은 슬랙 신기능 조사를 했어요. 서연은 지우가 찾은 걸로 홍보 문구 3개 뽑기를 했어요. 지우가 본 노션 신기능은 새로 나온 게 없었어요. 서연은 이제 팀에 없어요.'
   // c7 C10: the clause chain the run showed ("…했는데 …없었고, …도 …없었어요") and five sentences are refused too.
   for (const bad of ['월요일에 지우가 노션 신기능을 조사했는데 이번 주 새 소식은 없었고, 서연이 살펴본 것도 새로운 발표는 없었어요.', '월요일에 지우가 노션을 봤어요. 새 발표는 없었어요. 서연은 슬랙을 봤어요. 스워밍 기능을 찾았어요. 문구도 썼어요.', '- 지우: 노션 조사\n- 서연: 슬랙 조사', '지우와 서연이 2026-11-16에 조사했어요.', '지우와 서연이 조사했어요. https://example.com', '지우가 노션을 조사했어요.', '', undefined]) expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => bad })).toBe(plain)
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })).toBe(plain)
@@ -1434,6 +1435,20 @@ test('c5 C10: what the team did is written from the record by the quick model, c
   expect(later.map(job => job.day)).toEqual(['11월 16일', '11월 16일', '11월 16일'])
   // With no quick model the lead answers from the record in its prompt.
   expect(await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now })).toBeUndefined()
+})
+
+test('c16a: in the host\'s week summary a teammate\'s second job keeps its subject (a wording not in the harness)', async () => {
+  const c = await company()
+  await c.run({ add: [{ name: '하람', role: '리서치 담당' }, { name: '이든', role: '글 담당' }] })
+  const day = new Date('2026-11-16T03:00:00.000Z'), now = new Date(2026, 10, 18, 10)
+  await recordFacts(c.paths, TEAM_MEMORY, [
+    '강릉 카페 찾기 → 카페 두 곳을 찾았어요 (이든, 2026-11-16)',
+    '나들이 문구 쓰기 (하람한테 받아서) → 1. 바다 보러 가요 (이든, 2026-11-16)',
+  ], day)
+  const bots = await loadBots(c.paths)
+  const plain = await teamSummary(c.paths, { bots, message: '이번 주 팀이 한 일 요약해', now, write: async () => { throw new Error('no') } })
+  expect(plain).toContain('이든은 하람이 찾은 걸로 나들이 문구 쓰기를 했어요.')
+  expect(plain).not.toMatch(/\. 하람이 찾은 걸로/)
 })
 
 test('c5 rule 7: a part still at work when the others are reported is labeled there and reported alone afterwards (c11a: structure)', async () => {
@@ -1594,17 +1609,22 @@ test('stack-5: a row whose member named a blog post by its address alone cites t
 
 // --- grokbar cycle 6 (c6b): the stored results of the stack-5 run, measured 2026-11-17 on 4e940bf4 ---
 import stack5 from './fixtures/grokbar-stack5-team.json' with { type: 'json' }
-import { askedPeriod, lastTeamResult, writerMs, REPORT_CAP_MS, REPORT_WRITER_MS, REPORT_WRITER_MAX_MS } from '../src/company-tools.js'
+import { askedPeriod, lastTeamResult, writerMs, REPORT_CAP_MS, REPORT_WRITER_MS } from '../src/company-tools.js'
 const s5 = { c3: stack5.c3.members as TeamMember[], c5: stack5.c5.members as TeamMember[], c6: stack5.c6.members as TeamMember[] }
 const NOV17 = new Date(2026, 10, 17, 9)
 const linksIn = (text: string): string[] => [...text.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map(hit => hit[1]!)
 
-test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s, and before the cap never more than is left', async () => {
+// c16a: updated (pinned the old 8 s ceiling): the writer gets all that is left to the due, no ceiling (cause F2).
+test('c6 item 1: the writer gets what is left of the report\'s cap, and before the cap never more than is left', async () => {
   const at = Date.parse('2026-11-17T00:00:00Z'), hired = (agoMs: number): TeamMember[] => [reported(part('m1', '지민', '노션 신기능 조사', { hiredAt: new Date(at - agoMs).toISOString() }), { facts: [{ text: '노션이 AI 회의록을 냈어요.', url: 'https://notion.so/releases' }, { text: '노션 메일도 나왔어요.', url: 'https://notion.so/mail' }] })]
-  // 20 s of the cap left: 8 s. 6 s left: those 6 s. c13a: less than 4 s left, at the cap or long past it: the 4 s it always had (the cap
+  // 20 s of the cap left: those 20 s (c16a: no 8 s ceiling). 6 s left: those 6 s. c13a: less than 4 s left, at the cap or long past it: the 4 s it always had (the cap
   // is now the deadline, which leaves the merge its margin inside the bar, and the writer's time never shrinks as the report nears it).
-  expect(writerMs(hired(REPORT_CAP_MS - 20_000), at)).toBe(REPORT_WRITER_MAX_MS)
-  expect(REPORT_WRITER_MAX_MS).toBe(8000)
+  expect(writerMs(hired(REPORT_CAP_MS - 20_000), at)).toBe(20_000)
+  // c16a: with the answer's due known, what is left to it.
+  expect(writerMs(hired(90_000), at, at + 17_000)).toBe(17_000)
+  // c16a r2: updated (pinned the 4 s floor over a known due): a due is never passed; 3 s left is 3 s, a passed due is 0 (the host's table).
+  expect(writerMs(hired(5000), at, at + 3000)).toBe(3000)
+  expect(writerMs(hired(5000), at, at - 1000)).toBe(0)
   expect(writerMs(hired(REPORT_CAP_MS - 6000), at)).toBe(6000)
   expect(writerMs(hired(REPORT_CAP_MS - 3000), at)).toBe(REPORT_WRITER_MS)
   expect(writerMs(hired(REPORT_CAP_MS - 500), at)).toBe(REPORT_WRITER_MS)
@@ -1618,10 +1638,10 @@ test('c6 item 1: the writer gets what is left of the report\'s cap, at most 8 s,
   const shown = await writtenReport({ ask: '노션 신기능 조사해줘', members, now: new Date(at), write: async (_prompt, ms) => { given.push(ms); return good } })
   expect(shown).toBe(checkedReport(good, members))
   expectParts(shown, [['지민', 'https://notion.so/releases', 'https://notion.so/mail']])
-  // c14b: the meaning check gets what is left of the same 8 s, never more.
-  expect(given[0]).toBe(8000)
+  // c14b: the meaning check gets what is left of the same time, never more (c16a: all that is left to the cap).
+  expect(given[0]).toBe(REPORT_CAP_MS - 5000)
   expect(given).toHaveLength(2)
-  expect(given[1]!).toBeLessThanOrEqual(8000)
+  expect(given[1]!).toBeLessThanOrEqual(REPORT_CAP_MS - 5000)
   // A writer that does not make it: the host's own list stands in, as before.
   const slow = hired(REPORT_CAP_MS - 3000)
   expect(await writtenReport({ ask: '노션 신기능 조사해줘', members: slow, timeoutMs: 20, write: () => new Promise(resolve => setTimeout(() => resolve(good), 200)) })).toBe(mergedReport(slow))
@@ -1656,7 +1676,8 @@ test('c6 item 2 (C3): the host\'s own table reads like a person wrote it: no sen
   // A label that is the finding's own title stays ("노션 3.0 출시: …" is no repeat of "노션").
   expect(mergedReport([reported(part('m1', '지민', '노션 조사', { topic: '노션' }), { facts: [{ text: '노션 3.0 출시: AI 회의록이 추가됐어요.', url: 'https://notion.so/a' }] })]))
     // c12a B1: one part alone has no "part(name):" label. c13a (cause H): and no host lead; the finding, whose, and its link.
-    .toMatch(/^노션 3\.0 출시: AI 회의록이 추가됐어요\. \(지민\) \[[^\]]+\]\(https:\/\/notion\.so\/a\)$/)
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    .toMatch(/^지민이 찾아보니 노션 3\.0 출시: AI 회의록이 추가됐어요\. \[[^\]]+\]\(https:\/\/notion\.so\/a\)$/)
 })
 
 test('c6 item 2 (C5): a line that is only a link joins the line before it, whoever wrote the result; under a list or a table it stays', () => {
@@ -1786,11 +1807,13 @@ test('c6 item 6 (C4, C7, C8, H5): a result\'s lead follows the job\'s own verb, 
   const two = { facts: [{ text: '소프트웨이브가 열려요.', url: 'https://a.example/sw', date: '12월 2일' }, { text: 'AI 서밋이 열려요.', url: 'https://a.example/ai', date: '12월 9일' }] }
   // c12a B1: never the job's title. c13a (cause H; H5/C5 judges on "…2개를 찾아 왔어요"): never who brought how many either; the first
   // line is the first item itself, whose it is, and its link, whatever the job's wording or part name.
-  for (const [brief, more] of [['서울 IT 행사 조사', {}], ['다음 달 서울 IT 행사 일정 정리', {}], ['다음 달 서울 IT 행사 일정 정리', { topic: 'IT 행사' }]] as const) expect(first(brief, two, more)).toBe('- 소프트웨이브가 열려요 (12월 2일). (지민) [a.example](https://a.example/sw)')
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  for (const [brief, more] of [['서울 IT 행사 조사', {}], ['다음 달 서울 IT 행사 일정 정리', {}], ['다음 달 서울 IT 행사 일정 정리', { topic: 'IT 행사' }]] as const) expect(first(brief, two, more)).toBe('- 지민이 찾아보니 소프트웨이브가 열려요 (12월 2일). [a.example](https://a.example/sw)')
   expect(first('홍보 문구 3개 써줘', { items: ['가', '나', '다'] }, { lookup: false, writer: true })).toBe('1. 가')
   // One finding: the teammate's own sentence on the first line, with its link.
   const one = { facts: [{ text: '원달러 환율은 지금 1달러에 1,385원이에요.', url: 'https://finance.example/usd' }] }
-  expect(first('원달러 환율 알아봐', one)).toMatch(/^원달러 환율은 지금 1달러에 1,385원이에요\. \(지민\) \[[^\]]+\]\(https:\/\/finance\.example\/usd\)$/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(first('원달러 환율 알아봐', one)).toMatch(/^지민이 찾아보니 원달러 환율은 지금 1달러에 1,385원이에요\. \[[^\]]+\]\(https:\/\/finance\.example\/usd\)$/)
   // The table's lead too: no "둘 다 찾아봤어요" line; each part opens on its name.
   const pair = [reported(part('m1', '지민', '노션 신기능 조사', { topic: '노션' }), { facts: [{ text: '노션이 AI 회의록을 냈어요.', url: 'https://notion.so/a' }] }), reported(part('m2', '서연', '슬랙 신기능 조사', { topic: '슬랙' }), { facts: [{ text: '슬랙이 허들 요약을 냈어요.', url: 'https://slack.com/b' }] })]
   expect(mergedReport(pair).split('\n\n').map(row => row.split(': ')[0])).toEqual(['노션(지민)', '슬랙(서연)'])
@@ -2019,14 +2042,16 @@ test('c7 C5, C6, H5: the teammate speaks, the title is not said back, each item 
   ] })
   const c5 = mergedReport([kim])
   // c11a: no "정리해 왔어요" sentence, no line of links alone. c13a (cause H): no count head either; the first item leads, with whose it is.
-  expect(c5.split('\n')[0]).toMatch(/^- 소프트웨이브 2026.* \(지민\) \[코엑스\]/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(c5.split('\n')[0]).toMatch(/^- 지민이 찾아보니 소프트웨이브 2026.* \[코엑스\]/)
   expect(c5).not.toMatch(/정리해 왔어요/)
   expect(c5.split('\n').some(onlyLinks)).toBe(false)
   const items = c5.split('\n').filter(line => line.startsWith('- '))
   expect(items).toHaveLength(2)
   for (const item of items) { expect(linksIn(item), item).toHaveLength(1); expect(item).toMatch(/\]\(https?:\/\/[^)\s]+\)$/) }
   // c12a B2: the text says 코엑스 and the event but no day, so its day follows it once (C10: "12월 2일~4일 … 12월 2일부터 4일까지").
-  expect(items[0]).toMatch(/^- 소프트웨이브 2026\(제11회 대한민국 소프트웨어 대전\)이 코엑스에서 열려요\. 무료예요 \(12월 2일~4일\)\. \(지민\) \[/)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(items[0]).toMatch(/^- 지민이 찾아보니 소프트웨이브 2026\(제11회 대한민국 소프트웨어 대전\)이 코엑스에서 열려요\. 무료예요 \(12월 2일~4일\)\. \[/)
   expect(linksIn(items[0]!)[0]).toContain('coex.co.kr')
   expect(linksIn(items[1]!)[0]).toBe('https://www.ncloud.com/support/edu')
   // BAR C5: 지민 named and a date in the last bubble. c13a: the host's rendering adds no words of its own, so "행사" is the writer's lead

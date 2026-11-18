@@ -102,7 +102,8 @@ test('c10b r1 (Codex): a lone teammate\'s list keeps its links and loses an Engl
   expect(said.replace(/\[[^\]]*\]\([^)]*\)/g, '')).not.toMatch(ENGLISH_RUN)
   // c12a B2: a text with no day of its own carries it once, after it.
   // c13a: whose the list is, once, on its first line.
-  expect(said).toMatch(/^- 소프트웨이브.* \(12월 2일\) \(지민\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(said).toMatch(/^- 지민이 찾아보니 소프트웨이브.* \(12월 2일\) \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/a\)$/m)
   expect(said).toMatch(/^- 데브 밋업 \(12월 9일\) \[[^\]]+\]\(https:\/\/www\.meetup\.com\/b\)$/m)
   expect(said).not.toMatch(/:\s*·|""|\[출처\]/)
   // A writer's message with an English run is refused; the host's rendering stands.

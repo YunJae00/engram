@@ -261,7 +261,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     await recordFacts(w.paths, w.kim.id, ['지난주에 슬랙 가격을 조사했다'])
     // grokbar B7: a waited lookup comes back as the answer itself, under the agent's name, with no merge round.
     // c12a B1: never the job title as a label. c13a (cause H): no host lead on who brought what; the find itself, whose, and its link.
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('노션이 AI 회의록을 냈어요. (지민) [Notion](https://notion.so/releases)')
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toBe('지민이 찾아보니 노션이 AI 회의록을 냈어요. [Notion](https://notion.so/releases)')
     expect((await readBotTranscript(w.paths, w.kim.id)).map(turn => [turn.role, turn.text])).toEqual([['user', '노션 신기능 조사'], ['assistant', '노션이 AI 회의록을 냈어요. — https://notion.so/releases']])
     // c12a B4: the record holds the job and one short clause on what came of it, never the fact sentence.
     expect((await loadBotMemory(w.paths, w.kim.id)).facts.at(-1)!.text).toMatch(/^노션 신기능 조사 → 찾았어요 \(지민, \d{4}-\d\d-\d\d\)$/)
@@ -325,7 +326,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
       // 지민 handed on: the lead is told at once, and that report is 지민's own find, alone, with its link.
       await vi.waitFor(() => expect(w.reported).toHaveLength(1))
       const first = employeesReport(await w.task())!
-      expect(first).toBe('이번 주말 서울은 토요일 아침 영하 6도, 낮 2~6도에 대체로 맑대요. (지민) [KMA](https://www.weather.go.kr/w/a)')
+      // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+      expect(first).toBe('지민이 찾아보니 이번 주말 서울은 토요일 아침 영하 6도, 낮 2~6도에 대체로 맑대요. [KMA](https://www.weather.go.kr/w/a)')
       await updateTask(w.paths, w.id, handoffShown)
       if (stopped) {
         await w.team.stop('bot-b1')
@@ -381,7 +383,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     const texts = async () => (await readBotTranscript(w.paths, w.kim.id)).map(turn => turn.text)
     w.busy.add(`bot-${w.kim.id}`)
     await appendBotTurn(w.paths, w.kim.id, { role: 'user', text: '내 질문', at: new Date().toISOString() })
-    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('노션 결과예요. (지민) [Notion](https://notion.so/releases)')
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    expect(await w.assign({ wait: true, to: [{ who: '지민', brief: '노션 신기능 조사' }] })).toContain('지민이 찾아보니 노션 결과예요. [Notion](https://notion.so/releases)')
     expect(await texts()).toEqual(['내 질문'])
     await appendBotTurn(w.paths, w.kim.id, { role: 'assistant', text: '내 답', at: new Date().toISOString() })
     w.busy.delete(`bot-${w.kim.id}`)
@@ -462,7 +465,8 @@ describe('agents on the team handed work from the person\'s thread (assign)', ()
     await vi.waitFor(() => expect(w.reported).toEqual([`bot-b1 ${w.id}`, `bot-b1 ${w.id}`]))
     const second = employeesReport(await w.task())!
     // c13a (cause H): alone in its own report, the find itself, whose, and its link; no host lead.
-    expect(second).toBe('슬랙이 캔버스 공유를 냈어요. (서연) [example.com](https://example.com/b)')
+    // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+    expect(second).toBe('서연이 찾아보니 슬랙이 캔버스 공유를 냈어요. [example.com](https://example.com/b)')
     await new Promise(resolve => setTimeout(resolve, 90))
     expect(w.reported).toHaveLength(2)
   })

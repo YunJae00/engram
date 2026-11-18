@@ -44,7 +44,7 @@ import {
   loadAliasGroups,
   addBotTask,
   scheduleTool, teamTool,
-  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, handoffShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, checkedLead, turnHelpers, TEAM_ANSWER_MS, loadArchivedBots,
+  staffTool, companyStatusTool, companyStatus, companyNote, employees, isStatusAsk, takesCompanyLane, plainHandoff, plainHire, plainSplit, plainChange, plainSchedule, answersItself, isDutyListAsk, dutyList, dutyToCancel, plainSteer, steerShaped, steerSplit, aboutEmployee, employeesAnswer, lastTeamResult, teamAnswer, teamSummary, lateShown, lateOwed, handoffShown, isTeamWorkAsk, isDutyAsk, updateTask, SUMMARY_WRITER_MS, REPORT_WRITER_MS, COMPANY_LANE_TOOLS, checkedLead, helperAnswer, mergingHire, turnHelpers, TEAM_ANSWER_MS, loadArchivedBots,
   loadBots,
   recordBotSites,
   markBotTaskRun,
@@ -2948,7 +2948,17 @@ export function registerIpc(ctx: VaultContext): void {
         // checkedSearch): a row whose page does not open is gone, and for a counted list the quick model keeps only the rows that are the kind
         // asked, single and distinct, with the count said to the model as data. The model never writes from a row that does not fit, so no
         // verdict, cut, gap round or host line follows its answer.
-        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : tool), read), laneRead)) : undefined
+        // c16a (cause M, R1/R2): when hire_members hands back lookups the host accepted, the team's one writer writes the answer from them
+        // (core helperAnswer: writtenReport by the answer's due) and that call ends the turn: the lead model writes no second answer turn.
+        // After a steer the last call's write covers every helper of the turn, the added part a row of the same table (GROKBOT rule 3).
+        let helpersWrote: string | undefined
+        const helpersAnswer = async (within: AbortSignal | undefined): Promise<string | undefined> => {
+          const task = (await listTasks(paths)).find(one => one.state === 'running' && one.botId === bot.id)
+          const text = await helperAnswer({ ask: [lookup.ask(), ...steered].join('\n'), members: task?.team?.members, since: nativeSince, write: writer, due: nativeSince + TEAM_ANSWER_MS, signal: within ?? signal })
+          if (text) helpersWrote = text
+          return text
+        }
+        const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined
         // A correction ("그거 말고 …") is routed by the ask before it, whose words are not this turn's: the model searches for it.
         // c9a T2: a change of ask said before the lookup answers ("그냥 애플로 바꿔") stops the round under way at once (its words are about
         // the old ask), and the turn starts again on the new ask (fast-lane swappedAsk): the host's search for it, then one fresh round.
@@ -2983,7 +2993,8 @@ export function registerIpc(ctx: VaultContext): void {
           if (solo && lookup.ask() !== request.message) answer = namesSubject(answer, lookup.ask())
           // c15b (cause L, R2): the lead's own answer over the helpers it hired on this turn is checked against their results and the ask
           // (what it said about how the work is done included), with one rewrite, inside the team's answer time plus the writer's.
-          const helpers = !solo && writer ? turnHelpers((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members, nativeSince) : []
+          // c16a: only an answer the lead wrote itself (a helper asked, failed or made a file); the one writer's answer was checked as written.
+          const helpers = !solo && writer && raw.trim() !== helpersWrote?.trim() ? turnHelpers((await listTasks(paths)).find(task => task.state === 'running' && task.botId === bot.id)?.team?.members, nativeSince) : []
           if (helpers.length) answer = await checkedLead({ ask: asks.join('\n'), helpers, draft: answer, quick: writer, due: nativeSince + TEAM_ANSWER_MS + REPORT_WRITER_MS, signal, log: line => flog('team-report', line) })
           // c4 L3: every address the finished answer shows that the turn did not load itself is asked once (team-hire-tools.ts liveCited):
           // the answer's own and the ones the citations add. Anything that is not a plain success or redirect (every 4xx and 5xx) is dead.

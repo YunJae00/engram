@@ -75,7 +75,8 @@ it('a slow part (40 s) is labeled working at the deadline with the page it opene
   await updateTask(w.paths, w.id, lateShown)
   await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })
   expect(w.reported[1]! - started).toBeGreaterThanOrEqual(39 * S)
-  expect(employeesReport(await w.task())).toBe(`소율의 업데이트 소식이에요. (소율) [news.example](https://news.example/${encodeURIComponent('소율')})`)
+  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
+  expect(employeesReport(await w.task())).toBe(`소율이 찾아보니 소율의 업데이트 소식이에요. [news.example](https://news.example/${encodeURIComponent('소율')})`)
   await wait(60)
   expect(w.reported).toHaveLength(2)
 })

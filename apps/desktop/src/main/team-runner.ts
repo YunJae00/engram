@@ -133,6 +133,8 @@ export function teamRunner(deps: {
     if (!ids.length) return
     const keys = await change(taskId, task => (task.team?.members ?? []).filter(m => ids.includes(m.id) && m.state !== 'released').map(m => { m.state = 'released'; m.finishedAt ??= now(); return m.sessionKey }))
     for (const key of keys ?? []) deps.closeSession(key)
+    // c16a r3: a released member stops working too (a part the person replaced mid-work), not only its session; marked released first, it leaves nothing.
+    for (const id of ids) live.get(`${taskId}/${id}`)?.control.abort()
   }
 
   // At most one member of a task drives the screen; a second one is refused rather than queued, so a parent cannot block its own helper.

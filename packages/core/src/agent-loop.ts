@@ -61,6 +61,9 @@ export interface AgentTool {
   // shortcut: the step loop (brains without a tool session) ignores this and writes its own answer; honor it there if such a brain becomes the primary's.
   // A function decides per call from its arguments (assign closes only when it does not wait).
   closes?: true | ((args: Record<string, unknown>) => boolean)
+  // c16a: a call that may close is decided again on its reply: the turn ends on it only when this says so (hire_members closes on the
+  // team's one written answer, never on results the lead still has to act on).
+  closesOn?: (observation: string) => boolean
 }
 
 export interface AgentLoopDeps {
