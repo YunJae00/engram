@@ -14,7 +14,7 @@ export interface PageDoStep { step: number; url: string; title: string; options:
 // gateExplore turns on following the other side of close calls, which measured
 // worse than not (it compares end pages without what the fork page said);
 // gateReplay false turns off putting a page back as it was. Both for measuring.
-export interface PageDoOptions { trace?(step: PageDoStep): void; gate?: GateMode; gateMargin?: number; gateExplore?: boolean; gateReplay?: boolean }
+interface PageDoOptions { trace?(step: PageDoStep): void; gate?: GateMode; gateMargin?: number; gateExplore?: boolean; gateReplay?: boolean }
 export type DecidePage = (state: string, instructions: string, criteria: Record<string, string>, signal?: AbortSignal) => Promise<PageChoice>
 
 const OPTION_CAP = 200

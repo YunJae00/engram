@@ -14,7 +14,7 @@ export interface DeckSlide {
   chart?: unknown
 }
 
-export interface DeckFinding {
+interface DeckFinding {
   slide: number
   kind: 'placeholder' | 'process' | 'overflow' | 'empty' | 'duplicate'
   text: string

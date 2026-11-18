@@ -13,14 +13,14 @@ import { JobRunner, type JobSpec, type RunReport, type RunnerOptions } from './r
 import { INITIAL_FILING_SCHEMAS } from './initial-filing-schema.js'
 
 export type InitialFilingStage = 'capture' | 'organize'
-export interface InitialFilingOptions extends RunnerOptions {
+interface InitialFilingOptions extends RunnerOptions {
   includeWorkMap?: boolean
   // Notes from sources the person has not allowed; left out with what came of them.
   withheld?: string[]
   ingest?: IngestOptions
   onProgress?(completed: number, total: number, stage: InitialFilingStage): void
 }
-export interface InitialFilingReport extends RunReport {
+interface InitialFilingReport extends RunReport {
   noteIds: string[]
 }
 

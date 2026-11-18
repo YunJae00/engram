@@ -53,7 +53,7 @@ const SOURCE_WORDS = { app_activity: '앱 활동', learn_places: '자주 가는 
 const THEME_WORDS = { system: '시스템 설정을 따르는 화면', light: '밝은 화면', dark: '어두운 화면' } as const
 
 // The site a person named, as the host a rule is kept under.
-export function siteOf(typed: string): string | undefined {
+function siteOf(typed: string): string | undefined {
   const value = typed.trim()
   try {
     const url = new URL(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value) ? value : `https://${value}`)

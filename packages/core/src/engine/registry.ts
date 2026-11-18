@@ -28,7 +28,7 @@ function absentEngine(id: CloudEngineId): Engine {
   }
 }
 
-export type EngineBinaries = Partial<Record<EngineId, string>>
+type EngineBinaries = Partial<Record<EngineId, string>>
 
 export function createEngine(id: EngineId, binary?: string): Engine {
   void binary
@@ -39,25 +39,6 @@ export function createEngine(id: EngineId, binary?: string): Engine {
     case 'mock':
       return new MockEngine()
   }
-}
-
-// Every engine with what detection actually found — including the state that
-// matters most during setup, "installed but not logged in". detectAvailable
-// collapses that into absence, which left onboarding unable to say "you're one
-// login away" and instead showing nothing at all.
-export async function detectEngineStates(
-  binaries: EngineBinaries = {},
-): Promise<{ id: EngineId; installed: boolean; loggedIn: boolean }[]> {
-  const states = []
-  for (const id of ENGINE_ORDER) {
-    try {
-      const { installed, loggedIn } = await createEngine(id, binaries[id]).detect()
-      states.push({ id, installed, loggedIn })
-    } catch {
-      states.push({ id, installed: false, loggedIn: false })
-    }
-  }
-  return states
 }
 
 // Engines usable right now, default engine first.

@@ -26,7 +26,7 @@ export type DesktopSequenceAction = DesktopAction | DesktopGuardedAction
 // reading or looking at an app is what takes the computer - there is no
 // separate "may I" step. `app` names the window to bring forward, by a word
 // from its title; without it the app already in front is read.
-export interface DesktopCourier {
+interface DesktopCourier {
   windows?(signal?: AbortSignal): Promise<string>
   apps?(signal?: AbortSignal): Promise<string>
   attach?(app: string, signal?: AbortSignal): Promise<string>

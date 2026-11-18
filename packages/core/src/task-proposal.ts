@@ -23,7 +23,7 @@ export function routineDraftTool(offer: (draft: TaskProposal) => void): AgentToo
     },
   }
 }
-export interface TaskProposal {
+interface TaskProposal {
   // What the button says. Short enough to read in a row of them.
   name: string
   // The instruction the button carries: the same job, with this morning's
@@ -33,7 +33,6 @@ export interface TaskProposal {
   does: string
 }
 
-export const PROPOSAL_TOKENS = 450
 export const NAME_CHARS = 32
 const GOAL_CHARS = 1500
 const DOES_CHARS = 160

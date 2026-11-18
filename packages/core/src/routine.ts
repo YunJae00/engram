@@ -20,7 +20,7 @@ import {
 // untouched target failures to a comet; uncertain writes never qualify.
 
 export * from './routine-model.js'
-export { addRoutine, clearRoutinePendingWrite, listRoutines, markRoutineRun, removeRoutine, renameRoutine } from './routine-store.js'
+export { addRoutine, listRoutines, markRoutineRun, removeRoutine, renameRoutine } from './routine-store.js'
 
 // One card body: generous enough for a few portal pages, small enough that
 // review stays readable.

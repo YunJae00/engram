@@ -84,7 +84,7 @@ export interface FileFound {
 }
 export interface FileSearchResult { matches: FileFound[]; limited: boolean }
 
-export interface FileWorkOptions {
+interface FileWorkOptions {
   directory: string
   approveRead(path: string, signal?: AbortSignal): Promise<boolean>
   assertReadable?(path: string): Promise<void>

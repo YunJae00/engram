@@ -12,7 +12,7 @@ import { buildIndex, searchIndex } from './search.js'
 import { traceNote } from './trace.js'
 import { vaultPaths, type VaultPaths } from './vault.js'
 
-export interface McpOptions {
+interface McpOptions {
   // Explicit vault root wins; otherwise the workspace registry (vaults.json,
   // written by the desktop app) names the current vault — re-read per call so
   // a workspace switch in the app is picked up without reconnecting.

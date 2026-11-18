@@ -13,7 +13,7 @@ export function str(args: Record<string, unknown>, key: string): string {
 
 // Which parts of a page hold a word: one call answers "is it here, and
 // where" instead of a page being read part by part in the hope of it.
-export function partsWith(text: string, term: string, parts: number): number[] {
+function partsWith(text: string, term: string, parts: number): number[] {
   const low = text.toLowerCase()
   const word = term.toLowerCase()
   const found: number[] = []
@@ -21,7 +21,7 @@ export function partsWith(text: string, term: string, parts: number): number[] {
   return found
 }
 
-export interface ReadablePage {
+interface ReadablePage {
   observation?: { page: string; document: number; revision: number }
   title: string
   text: string

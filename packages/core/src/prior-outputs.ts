@@ -1,6 +1,6 @@
 import { resolveArtifact } from './file-work.js'
 
-export interface PriorOutput { name: string; path: string }
+interface PriorOutput { name: string; path: string }
 
 const LINK = /\]\(engram-artifact:([A-Za-z0-9%_.-]+)\)/g
 const MAX_OUTPUTS = 40

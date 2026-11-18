@@ -6,12 +6,12 @@ import { guessSchedule, type Schedule } from './schedule.js'
 // asking itself (such as "please") taken off, so differently phrased requests
 // to check the same portal notice are one ask.
 
-export interface PastAsk {
+interface PastAsk {
   text: string
   at: string
 }
 
-export interface RepeatVerdict {
+interface RepeatVerdict {
   // How many times it has been asked, this one included.
   count: number
   times: Date[]

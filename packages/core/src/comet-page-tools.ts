@@ -11,7 +11,7 @@ import { makeMove, pageEachTool } from './page-each.js'
 
 const PAGE_STEPS_MAX = 12
 
-export interface PageToolDeps {
+interface PageToolDeps {
   wallMet?(url: string): void
 }
 

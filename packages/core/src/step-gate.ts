@@ -25,7 +25,7 @@ const NO_GOAL = 0.05
 const DONE_HINT = 0.15
 const TERMINAL = new Set(['done', 'blocked'])
 
-export interface StepGate {
+interface StepGate {
   readonly mode: GateMode
   // A page reached: back on one already left means what was done from it led nowhere.
   arrive(state: string): void

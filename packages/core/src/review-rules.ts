@@ -2,7 +2,7 @@
 // for one operation on one concrete target. Matching is exact; ask-first wins.
 
 export type ReviewRuleKind = 'ask-first' | 'allow'
-export type ReviewDecision = 'ask' | 'allow'
+type ReviewDecision = 'ask' | 'allow'
 
 export interface ReviewAction {
   operation: string
@@ -13,7 +13,7 @@ export interface ReviewRule extends ReviewAction {
   kind: ReviewRuleKind
 }
 
-export const MAX_RULES_PER_KIND = 20
+const MAX_RULES_PER_KIND = 20
 export const ROUTINE_CARD_TTL_MS = 30 * 60_000
 
 const KINDS: readonly ReviewRuleKind[] = ['ask-first', 'allow']

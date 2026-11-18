@@ -18,14 +18,14 @@ import { vaultPaths, type VaultPaths } from './vault.js'
 // A ledger in the target records each source once it is done, with the ids it chose before anything was
 // written, so a run cut short picks up where it stopped and a finished one is never repeated.
 
-export interface MergeSource { root: string; name: string }
+interface MergeSource { root: string; name: string }
 interface MergeOptions {
   // false: the target is shared with other people through git. Notes, inbox and sources still arrive, but each
   // file is first named in the repository's own .git/info/exclude (never committed, never pushed), and alias
   // lines go to a file git ignores. A person's other workspaces must not reach a team's repository unasked.
   tracked?: boolean
 }
-export interface MergeReport {
+interface MergeReport {
   root: string
   name: string
   bots: number

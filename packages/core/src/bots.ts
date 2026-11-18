@@ -80,7 +80,7 @@ export interface BotTurn {
   asked?: string
 }
 
-export interface BotSuggestion {
+interface BotSuggestion {
   name: string
   purpose: string
   reason: string

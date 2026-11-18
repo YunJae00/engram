@@ -12,7 +12,7 @@ import type { VaultPaths } from './vault.js'
 
 // from: the address the visit was reached from, when the browser recorded one.
 export interface TraceVisit { url: string; title: string; at: number; from?: string }
-export interface TraceBookmark { title: string; url: string; folder: string; managed?: boolean }
+interface TraceBookmark { title: string; url: string; folder: string; managed?: boolean }
 
 export interface WorkPlace {
   host: string

@@ -2,7 +2,7 @@ import type { AgentLoopStep, AgentTool } from './agent-loop.js'
 import type { WebPage } from './errand.js'
 import { artifactId } from './file-work.js'
 
-export interface PageCheck {
+interface PageCheck {
   id: string; url: string; ready: string; present?: string[]; absent?: string[]; timeoutMs?: number
 }
 const text = { type: 'string', minLength: 1, maxLength: 2000 }
@@ -45,7 +45,7 @@ export function evidenceFault(steps: AgentLoopStep[]): string | undefined {
   return [...checks.values()].some(passed => !passed) ? 'A requested evidence capture, page check or upload has not been confirmed. Report the failed or inconclusive result; do not claim completion.' : undefined
 }
 
-export interface EvidenceHost {
+interface EvidenceHost {
   read(signal?: AbortSignal): Promise<WebPage>
   capture(args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>
   upload(args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown>

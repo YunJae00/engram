@@ -13,12 +13,6 @@ export interface OfficeTheme {
   fonts: { title: string; body: string }
 }
 
-// What the model sends: two brand colours and the fonts. Everything else is
-// structural and filled in, so the model never dictates greys or white. When a
-// chart needs more than the two brand colours to keep series apart, the model
-// passes the extra hues in chart; otherwise the palette stays on what it gave.
-export interface ThemeInput { field: string; accent: string; fonts: { title: string; body: string }; ink?: string; paper?: string; chart?: string[] }
-
 const HEX = /^#?[0-9A-Fa-f]{6}$/
 const hex = (value: unknown): string | null => (typeof value === 'string' && HEX.test(value) ? value.replace(/^#/, '').toUpperCase() : null)
 
