@@ -65,7 +65,8 @@ it('runs the lane turn on the smart tier with the small menu and no shell, and h
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   // c7: what the lane's searches return is also held (keepRead), for an answer that would otherwise only report a failure.
   // c13b: a lone lookup's search_web is checked where its rows enter (core checkedSearch), inside what is held.
-  expect(ipc).toContain("const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : tool), read), laneRead)) : undefined")
+  // c16a: updated (pinned the old wiring): a team turn's hire_members hands accepted lookups to the team's one writer (mergingHire).
+  expect(ipc).toContain("const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [lookup.ask(), ...steered].join('\\n'), ...(writer ? { write: writer } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined")
   expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? everyTool.filter(tool => deskMenu.has(tool.name)) : everyTool,')
   // c7: the host-run first search counts as one of the lone lookup's calls (searched.calls).
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")

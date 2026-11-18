@@ -799,6 +799,17 @@ const askUp = (members: readonly TeamMember[]): string | undefined => { const as
 // c6 R2: every settled lookup member is accepted by the host, cut short or not (a lookup is never re-run, so a review round only cost time);
 // one that made a file, failed or asked is not.
 const accepted = (m: TeamMember): boolean => m.state === 'done' && (!!m.lookup && !m.files?.length || m.review?.ok === true && m.review.note === AUTO_REVIEW)
+/** c16a (cause M): the hand-back the lead would otherwise turn into a second full answer of its own: every member of the call is a lookup,
+ * already accepted. The team's one writer writes that answer instead (lead-check helperAnswer), and the call closes the turn with it. */
+export function mergeReady(observation: string): boolean {
+  try {
+    const o = JSON.parse(observation) as { note?: unknown; members?: unknown }
+    return typeof o.note === 'string' && o.note.startsWith(ACCEPTED_NOTE) && Array.isArray(o.members) && o.members.length > 0 && o.members.every(m => (m as { accepted?: unknown } | null)?.accepted === true)
+  } catch { return false }
+}
+// c16a (cause M, R2: one helper priced 프로 256GB, another the base model): when the parts compare the same points, each brief carries the
+// one definition every point is measured by, and the writer reads it too. Meaning, never a product list.
+const measured = (brief: string, measure: string): string => measure ? `${brief}\n\nMeasure each compared point exactly this way, the same for every part: ${measure}. A value you can only find on another basis (another model or tier, unit or day) is given labeled with what it is.` : brief
 const view = (m: TeamMember) => ({ id: m.id, role: m.role, state: accepted(m) ? 'released' : m.state, result: m.result ?? '', files: m.files ?? [], ...(m.sources?.length ? { sources: m.sources } : {}), ...(accepted(m) ? { accepted: true } : {}), ...(m.state === 'waiting' ? { ask: `${m.role}: ${m.result ?? ''}` } : {}) })
 const text = (value: unknown, max: number): string => typeof value === 'string' ? value.trim().slice(0, max + 1) : ''
 
@@ -843,12 +854,12 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
   }
   const hire: AgentTool = {
     name: 'hire_members',
-    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about ten seconds, and its result comes back already accepted, with the pages it read in sources; leave it out for a part that makes or changes something. A lookup member also takes query: the search words you would type for its part, in the person's language ("아이폰 18 가격 출시일"); that search is run for it as it starts. notes carries only what you already know that they need. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
+    description: `Hire 1 to ${HIRE_MAX_PER_CALL} hidden team members for separable parts of this job and wait for their results. Each gets role (short name), brief (its whole part, complete on its own, in at most 3 short lines: what to find or make, for where or when; only what the person asked for, no optional "if possible" extras) and deliverable (one line: what it hands back). lookup true for a part that only looks things up and reports (web research, a fact check, reading notes): it runs fast with reading tools in about ten seconds, and its result comes back already accepted, with the pages it read in sources; leave it out for a part that makes or changes something. A lookup member also takes query: the search words you would type for its part, in the person's language ("아이폰 18 가격 출시일"); that search is run for it as it starts, and topic: the thing its part is about in the person's own words ("서울", "아이폰 18"), the name of its row in the answer. When the parts compare the same points (a price, a date, a rate, a score), measure is the one definition of each point that every part uses: the same tier or model, unit and basis ("가격: 기본 모델의 국내 출고가, 원 단위; 출시일: 국내 출시일"), so the values can be compared; every part gets it. notes carries only what you already know that they need. When every member is a lookup, the call returns the one answer to the person, already written from their results: it ends your turn. Never hire for a one-step ask unless the person asked for bots or members. Returns each member's result, files and state; review with review_member each one that is not already accepted.`,
     argsSchema: {
       type: 'object', additionalProperties: false, required: ['members'],
       properties: {
-        members: { type: 'array', maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' }, query: { type: 'string' } } } },
-        notes: { type: 'string' }, big: { type: 'boolean' },
+        members: { type: 'array', maxItems: HIRE_MAX_PER_CALL, items: { type: 'object', additionalProperties: false, required: ['role', 'brief'], properties: { role: { type: 'string' }, brief: { type: 'string' }, deliverable: { type: 'string' }, lookup: { type: 'boolean' }, query: { type: 'string' }, topic: { type: 'string' } } } },
+        notes: { type: 'string' }, big: { type: 'boolean' }, measure: { type: 'string' },
       },
     },
     async run(args, context) {
@@ -856,10 +867,10 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
       // Nobody new: wait for the members an earlier call left working.
       if (!asked.length && (open.size || took.length)) return collect()
       const said = host.personSaid()
-      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: withoutExtras(text(m?.['brief'], 1500), said), deliverable: withoutExtras(text(m?.['deliverable'], 300), said), lookup: m?.['lookup'] === true, query: text(m?.['query'], 120).slice(0, 120) }))
+      const wanted = asked.map(m => ({ role: text(m?.['role'], 40), brief: withoutExtras(text(m?.['brief'], 1500), said), deliverable: withoutExtras(text(m?.['deliverable'], 300), said), lookup: m?.['lookup'] === true, query: text(m?.['query'], 120).slice(0, 120), topic: text(m?.['topic'], 40).replace(/[|()[\]]/g, ' ').trim().slice(0, 40) }))
       if (!wanted.length || wanted.length > HIRE_MAX_PER_CALL) throw new Error(`members needs 1 to ${HIRE_MAX_PER_CALL} entries, each with role, brief and deliverable.`)
       if (wanted.some(m => !m.role || m.role.length > 40 || !m.brief || m.brief.length > 1500 || m.deliverable.length > 300)) throw new Error('Each member needs role (1 to 40 characters), brief (1 to 1500) and deliverable (at most 300).')
-      const notes = text(args['notes'], 1500).slice(0, 1500)
+      const notes = text(args['notes'], 1500).slice(0, 1500), measure = text(args['measure'], 300).slice(0, 300)
       if ((await host.tokensLeft()) < TEAM_TOKEN_RESERVE) return TOKEN_REFUSAL
       const n = wanted.length
       const out = await host.change((task): { refuse: string } | { ids: string[] } => {
@@ -881,7 +892,7 @@ export function teamHireTools(host: TeamHost): AgentTool[] {
         const at = new Date().toISOString()
         const ids = wanted.map(m => {
           const id = `m${team.members.length + 1}`
-          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, ...(m.deliverable ? { deliverable: m.deliverable } : {}), ...(m.lookup ? { lookup: true } : {}), ...(m.lookup && m.query ? { query: datedQuery(m.query, `${m.brief} ${said}`) } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
+          team.members.push({ id, parentId: host.self, depth, role: m.role, brief: measured(notes ? `${m.brief}\n\nNotes from ${parent?.role ?? 'the lead'}:\n${notes}` : m.brief, measure), ...(m.deliverable ? { deliverable: m.deliverable } : {}), ...(m.lookup ? { lookup: true } : {}), ...(m.topic ? { topic: m.topic } : {}), ...(measure ? { measure } : {}), ...(m.lookup && m.query ? { query: datedQuery(m.query, `${m.brief} ${said}`) } : {}), state: 'hired', sessionKey: `team-${task.id}-${id}`, hiredAt: at })
           return id
         })
         team.hires += n

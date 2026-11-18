@@ -209,7 +209,7 @@ export async function runToolSession(deps: AgentLoopDeps, task: string, options:
       const result = notes.length ? `${delivered}\n(${notes.join('; ')})` : delivered
       const said = options.takeSteer?.() ?? []
       if (said.length) renew()
-      if (closing && !composing && !said.length && !observation.startsWith('that did not work')) {
+      if (closing && !composing && !said.length && !observation.startsWith('that did not work') && (tool.closesOn?.(observation) ?? true)) {
         closeLines.push(observation)
         held ??= []
         const mark = startedCalls
