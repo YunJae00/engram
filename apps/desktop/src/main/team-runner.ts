@@ -7,7 +7,7 @@ import { asBackground, inCallerSlot, whileWaitingForPerson } from './worker-pool
 import { flog } from './flog.js'
 import { isKorean } from './task-closing.js'
 import { asides, turnGoals } from './turn-state.js'
-import { assignTool, checkedSearch, ITEM_CHECK_MS, type Proof, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
+import { assignTool, checkedSearch, ITEM_CHECK_MS, judgeTime, setJudgeLog, inAskedPeriod, employeeNote, employeeWriteBack, isSearchPage, itemsPrompt, keptReportPrompt, kindChecked, listingPages, reportData, setReportLog, withItems, firstFound, firstSearches, type FirstSearch, handoffBrief, jobTitle, lateParts, followsLate, logTask, partOutcome, makerFirst, markLate, REPORT_WRITER_MS, WRITER_RULE, writesFromHandover } from 'core'
 
 export const WRITER_HARD_MS = 20_000
 const OPENING_LINE_CHARS = 60
@@ -161,13 +161,13 @@ export function teamRunner(deps: {
         if (me.botId) reserve = setTimeout(answerNow, window - reserveMs)
       }
       const left = (): number => (due - Date.now()) / scale
-      const proof = new Map<string, Proof>(), unproven = new Set<string>()
-      let judged = false
+      // c19a (cause H, C3: each helper's first model step took ~17 s only to ask for pages the host could have opened): every lookup's
+      // searches pass core checkedSearch on its own due less its answer reserve: every row less dead links, and the top rows' pages opened at
+      // once through its own open_page (kept as for any page it opens), so the page text is in its first prompt. A counted part searches on.
       let opener: AgentTool | undefined
-      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup && !me.botId && quick ? checkedSearch(tool, {
-        ask: () => me.brief, write: quick, due: () => due - reserveMs,
+      const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup ? checkedSearch(tool, {
+        ask: () => me.brief, ...(quick ? { write: quick } : {}), due: () => due - reserveMs,
         ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
-        proved: (found, missing) => { judged = true; for (const one of found) proof.set(`${one.point}\n${one.url}`, one); for (const point of missing) unproven.add(point) },
       }) : tool
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
       let tools: AgentTool[] = []
@@ -177,7 +177,8 @@ export function teamRunner(deps: {
         const menu = me.writer ? [] : (await kit.toolsFor(lane, native)).filter(tool => !MEMBER_BLOCKED.test(tool.name) && (!me.lookup || LOOKUP_TOOLS.has(tool.name)))
         const open = menu.find(tool => tool.name === 'open_page')
         if (open) opener = keepRead(keepSources(skipWalls(open), sources), kept)
-        tools = menu.map(tool => screenGuard(me.lookup ? timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left) : tool, taskId, me))
+        const boxed = (tool: AgentTool): AgentTool => timeBoxed(keepRead(keepSources(skipWalls(helperJudged(tool)), sources), kept), left)
+        tools = menu.map(tool => screenGuard(me.lookup ? boxed(tool) : tool, taskId, me))
         let prompt = memberTask(me, goal, redo, helpers)
         const search = me.lookup && me.query && !redo ? tools.find(tool => tool.name === 'search_web') : undefined
         if (search) {
@@ -186,13 +187,14 @@ export function teamRunner(deps: {
           const founds: (FirstSearch & { found: string; own?: boolean })[] = []
           for (const one of firstSearches(me, goal)) {
             const already = held && sameWords(held.query, one.query) ? held.found : undefined, args = { query: one.query, ...(one.news ? { kind: 'news' } : {}) }
-            const found = already !== undefined ? await keepRead(keepSources({ ...search, run: async () => already }, sources), kept).run(args, { task, signal: control.signal }).catch(() => '') : await search.run(args, { task, signal: control.signal }).catch(() => '')
+            const raw = menu.find(tool => tool.name === 'search_web')!, found = await (already !== undefined ? boxed({ ...raw, run: async () => already }) : search).run(args, { task, signal: control.signal }).catch(() => '')
             if (/^results for "/.test(found)) founds.push({ ...one, ...(one.maker ? makerFirst(found, one.maker) : { found }) })
           }
           if (founds.length) { read = true; prompt += firstFound(founds) }
         }
         let priced = false
         for (let round = 0; ; round++) {
+          const stepAt = Date.now()
           const result = await (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools }, prompt, {
             signal: toolRound.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used),
             onStart: begun,
@@ -202,6 +204,8 @@ export function teamRunner(deps: {
             onStep: line => { read = true; deps.step(leadChannel, line) },
             ...(me.lookup ? { modelHint: 'smart' as const, lookup: true, maxCalls: LOOKUP_MAX_CALLS, deadlineMs: soft(), ...drafted } : me.writer ? { modelHint: 'smart' as const, ...drafted } : {}),
           })
+          // c19a: how long the first model step took with the opened pages already in its prompt (C3 measured ~17 s without them).
+          if (!round && me.lookup) flog('team', `first-step role=${role} ms=${Date.now() - stepAt} pages=${(prompt.match(/^The page at /gm) ?? []).length} answered=${!!result.answer.trim()}`)
           const cutShort = !!me.lookup && result.stopped === 'calls' && !result.asked
           outcome = { answer: cutShort ? cutShortAnswer(result.answer) : result.answer, ...(result.asked ? { asked: true } : {}), ...(result.budgetExhausted ? { budgetExhausted: true } : {}), ...(cutShort ? { timedOut: true } : {}) }
           whole = undefined
@@ -219,6 +223,8 @@ export function teamRunner(deps: {
       } catch (error) { outcome = { answer: '', error: error instanceof Error ? error.message : String(error) } }
       const turn = (task: string, roundTools: AgentTool[]) => (deps.run ?? runComet)({ engine: kit.engine, workdir: kit.workdir, tools: roundTools }, task, {
         signal: control.signal, persona, session: me.sessionKey, guided: kit.guided, tokenBudget: Math.max(0, budget - used), modelHint: 'smart' as const, ...drafted,
+        // c19a (C3: 서연's answer-now turn ran at the default effort, 1,425 thinking tokens and 21 s past its due): a lookup's later turns stay light.
+        ...(me.lookup ? { light: true } : {}),
         onUsage: tokens => { used += tokens; if (!(charged && charge(leadChannel, tokens))) inflight.set(taskId, (inflight.get(taskId) ?? 0) + tokens) },
       })
       if (answering && !control.signal.aborted) {
@@ -259,12 +265,10 @@ export function teamRunner(deps: {
         if (me.lookup && !me.botId && outcome.answer && kept.length) outcome = { ...outcome, answer: figurePages(outcome.answer, kept.join('\n')) }
         if (m && m.state !== 'released' && !(control.signal.aborted && !timedOut && halting.has(leadChannel))) {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
-          const proven = [...proof.values()], lacking = [...unproven].filter(point => !proven.some(one => one.point === point))
-          if (judged) m.proof = proven
-          if (lacking.length) m.missing = lacking
+          if (me.lookup && !me.botId) m.shown = [...new Set([...sources, ...kept.flatMap(text => text.match(/https?:\/\/[^\s)\]>"'|]+/g) ?? [])])]
           if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
-            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'proof', 'missing'] as const) delete m[field]
+            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'shown'] as const) delete m[field]
             m.state = 'hired'; retry = true
             looked.set(key, { sources: [...sources], kept: [...kept] })
           }
