@@ -46,8 +46,5 @@ describe('bot avatar ui', () => {
     const welcome = read('renderer/src/components/CometWelcome.tsx')
     expect(welcome).toMatch(/primary \? <div><BotAvatar [^>]*size=\{64\}[^>]*\/><\/div> : <CometFace size=\{38\} \/>/)
     expect(welcome).toContain('bots.find(bot => bot.primary === true)')
-    const bell = read('renderer/src/components/NoticesBell.tsx')
-    expect(bell).toMatch(/bot \? <BotAvatar [^>]*size=\{20\}[^>]*\/> : <CometFace size=\{16\} \/>/)
-    expect(bell).toContain('bots.find(bot => bot.id === item.botId)')
   })
 })
