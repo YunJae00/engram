@@ -82,11 +82,18 @@ const THEME_NOTE = 'theme carries the look: {field:"1F3B5B", accent:"C0603B", fo
 // The model's theme, or the house look; and the tool's result with one sentence added when the house look was used.
 const themeOrHouse = (value: unknown): { theme: typeof HOUSE_THEME; house: boolean } => { const theme = resolveTheme(value); return theme ? { theme, house: false } : { theme: HOUSE_THEME, house: true } }
 function withLook(result: string, house: boolean): string {
-  if (!house) return result
-  // A receipt stays the JSON its readers parse.
-  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, look: THEME_NEEDED }) } catch { /* Not a receipt: the sentence follows it. */ }
-  return `${result}\n${THEME_NEEDED}`
+  return house ? withNote(result, 'look', THEME_NEEDED) : result
 }
+// A receipt stays the JSON its readers parse; anything else gets the sentence after it.
+function withNote(result: string, key: string, note: string): string {
+  try { const receipt = JSON.parse(result) as unknown; if (plain(receipt)) return JSON.stringify({ ...receipt, [key]: note }) } catch { /* Not a receipt: the sentence follows it. */ }
+  return `${result}\n${note}`
+}
+// c18b (D3 stack17: a deck built clean after one refusal was read back with file_read_package after 29 s of model writing, then edited):
+// a built file's result says what the host checked before it was built, as a closed verdict, so nothing is left for the model to verify.
+// Every office build (deck, document) states its own checks; a refusal is never this line.
+export const deckChecked = (slides: readonly DeckSlide[]): string => `Checked before it was built and passed: ${slides.length} slides (${slides.map((slide, at) => `${at + 1}. ${slide.title}`).join(' / ')}), no unfilled slot, no text past a slide's edge, no repeated title, no line about the deck itself. Nothing is left to check: do not read it back or change it; answer now.`
+export const docChecked = (blocks: readonly unknown[]): string => `Built as given: ${blocks.length} blocks, each checked for its kind and length before it was built. Nothing is left to check: do not read it back or change it; answer now.`
 
 function excelArgs(args: unknown, tool: string): Record<string, unknown> {
   if (!plain(args)) throw new Error(`${tool} takes an object.`)
@@ -286,7 +293,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         const title = optionalText(args['title'], 200, 'title'); if (title) out['title'] = title
         const subject = optionalText(args['subject'], 400, 'subject'); if (subject) out['subject'] = subject
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs'); if (saveAs) out['saveAs'] = saveAs
-        return call('word.write', out, context).then(result => withLook(result, house))
+        return call('word.write', out, context).then(result => withNote(withLook(result, house), 'checked', docChecked(clean)))
       },
     },
     {
@@ -359,7 +366,7 @@ export function officeTools(courier: OfficeCourier): AgentTool[] {
         if (findings.length > 0) return describeDeckFindings(findings)
         const saveAs = optionalText(args['saveAs'], NAME_CAP, 'saveAs')
         sending()
-        return withLook(await call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context), house)
+        return withNote(withLook(await call('ppt.build', { slides: clean, theme, ...(saveAs ? { saveAs } : {}) }, context), house), 'checked', deckChecked(clean))
   }
 }
 
