@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest'
-import { handoffBrief, itemsFirst, koreanDates, mergedReport, setReportLog, toldHandoff, valueOf, withEveryone, writtenReport } from '../src/company-tools.js'
+import { handoffBrief, itemsFirst, koreanDates, mergedReport, setReportLog, valueOf, withEveryone, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { deckChecked, officeTools } from '../src/office-tools.js'
 import { runAgentLoop } from '../src/agent-loop.js'
@@ -120,25 +120,21 @@ test('a draft with one contradicting sentence loses only that sentence', async (
   expect(out).toBe(`민지가 찾아보니 12월 20일 성수동 겨울 마켓이 열려요. [이벤트](${SOURCE})`)
 })
 
-// --- attribution is said once per turn ---
-test('the made-from sentence is left out when this turn already named the giver and the receiver', () => {
-  expect(toldHandoff(haneul, ['민지가 찾은 걸 하늘이한테 넘겼어요.'])).toBe(true)
-  expect(toldHandoff(haneul, ['하늘이한테 맡겼어요.'])).toBe(false)
-  const told = mergedReport([minji, haneul], new Map(), [], false, ['민지가 찾은 걸 하늘이한테 넘겼어요.'])
-  expect(told).not.toMatch(/만든 거예요/)
-  expect(told.split('\n').at(-1)).toContain(ITEMS[1])
+// --- stack-18: whose a piece is, is in the answer itself, even after an ack that named giver and receiver (rule 7; H5/C6 in c18b's run) ---
+test('the made-from sentence stays in the answer, said once, whatever the ack said', () => {
+  // The host's rendering no longer reads the turn's earlier lines: whose it is is always said once.
+  const told = mergedReport([minji, haneul])
+  expect(told.match(/하늘이 민지가 찾은 [^\n]*만든 거예요\./g)).toHaveLength(1)
   expect(told).toContain(SOURCE)
-  // With no such line, one sentence says whose it is.
-  expect(mergedReport([minji, haneul]).match(/만든 거예요/g)).toHaveLength(1)
 })
 
-test('with the ack in the turn, a writer draft without a made-from sentence is accepted as it is', async () => {
+test('with the ack in the turn, a writer draft without a made-from sentence gets it by the one repair', async () => {
   const items = `1. ${ITEMS[0]}\n2. ${ITEMS[1]}`
-  const { quick, calls } = model({ write: [json(items)] })
+  const { quick, calls } = model({ write: [json(items)], repair: [JSON.stringify({ insert_after: { 2: ['하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.'] } })] })
   const out = await writtenReport({ ask: '민지 조사 끝나면 하늘한테 문구 뽑게 해', members: [minji, haneul], write: quick, timeoutMs: 15_000, said: ['민지가 찾은 걸 하늘이한테 넘겼어요.'] })
-  expect(out).not.toMatch(/만든 거예요|쓴 거예요/)
-  expect(calls.some(p => p.includes(REPAIR))).toBe(false)
-  expect(calls[0]).toContain('"toldBefore":true')
+  expect(calls.some(p => p.includes(REPAIR))).toBe(true)
+  expect(out).toContain('하늘이 민지가 찾은 겨울 마켓으로 쓴 거예요.')
+  expect(calls[0]).not.toContain('toldBefore')
 })
 
 // --- the host's fallback writes sentences ---

@@ -171,7 +171,7 @@ describe('D1 (stack17: desk-check rewritten kinds=["asks"]; no 할 일 part, the
 describe('C6 (stack17: writer=fallback:items-first>items-first; "서연이 지민이 찾은 … 만든 거예요" right after the ack)', () => {
   const ACK = '지민이 한 걸 서연한테 넘겼어요.'
   const COPY = ['12월 2~4일, 코엑스에서 소프트웨이브 2026이 열려요. 입장료 무료, 일반 참관객은 3일이나 4일 방문을 추천해요.', '12월 서울, ACC 2026에서 생성형 AI 등 최신 IT 기술 트렌드를 만나보세요.', '12월 서울, 네이버클라우드플랫폼 AI Expert 공인교육으로 AI 역량을 키워보세요.']
-  it('C6: with the ack in `said`, no second attribution sentence; the copy lines come from the writer\'s draft', async () => {
+  it('C6: with the ack in `said`, one natural attribution sentence; the copy lines come from the writer\'s draft', async () => {
     const block = (report: Record<string, unknown>): string => `\`\`\`report\n${JSON.stringify(report)}\n\`\`\``
     const settled = (m: TeamMember, report: Record<string, unknown>): TeamMember => { const one = { ...m }, answer = block(report); settleMember(one, { answer, report: reportData(answer, one, [], true) ?? null }, new Date().toISOString(), true); return one }
     const at = new Date().toISOString(), COEX = 'https://coex.example/softwave', ZDNET = 'https://zdnet.example/acc', NCLOUD = 'https://ncloud.example/edu'
@@ -182,7 +182,8 @@ describe('C6 (stack17: writer=fallback:items-first>items-first; "서연이 지�
     const out = await writtenReport({ ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', members: [jimin, seoyeon], said: [ACK], timeoutMs: 15_000,
       write: agreeing(async (p: string) => {  return p.includes('Judge meaning only') ? '{"problems":[]}' : p.includes('You fix a message before a person reads it') ? undefined : JSON.stringify({ message: draft, kept: [] }) }) })
     console.log(`C6 replay (after "${ACK}"):\n${out}`)
-    expect(out).not.toMatch(/만든 거예요|서연이 지민이/)
+    // stack-18: the answer itself says whose it is (rule 7; c18b's "said once per turn" left H5's result naming nobody), once.
+    expect(out.match(/서연이 지민이 찾은 [^\n]*만든 거예요\./g)).toHaveLength(1)
     for (const line of COPY) expect(out).toContain(line)
   })
 })
