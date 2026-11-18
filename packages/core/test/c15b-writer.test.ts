@@ -62,7 +62,8 @@ test('a team draft whose repair breaks the rule again falls to the host renderin
   const members = quietThree(), { write } = model([noSoyoon, noSoyoon], [])
   // c19a: the host writes nothing into the draft (withEveryone is gone): the failed repair leaves the writer's own sentence as it was.
   const kept = await writtenReport({ ask: ASK, members, write, timeoutMs: 6000 })
-  expect(kept).toContain('캔바는 매직 스튜디오 확장이 마지막이에요.')
+  // c19a r2 (rule 7): who found what stays exact: the teammate the failed repair left unnamed is labelled beside their own find.
+  expect(kept).toContain('캔바(소윤)는 매직 스튜디오 확장이 마지막이에요.')
   expect(kept).not.toContain('찾아보니')
   expect(logged).toEqual([expect.stringMatching(/^writer=kept:unnamed /)])
   const everyone = await writtenReport({ ask: ASK, members, write: model([all], []).write, timeoutMs: 6000 })

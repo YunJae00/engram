@@ -553,7 +553,10 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   const good = said(message)
   const asked: string[] = []
   const out = await writtenReport({ ask: stored.c3.goal, members: c3d, topics, write: async text => { asked.push(text); return good } })
-  expect(asked).toHaveLength(2)
+  // c19a r2 (Codex r1 #2): 도윤's second fact (모바일 diff, 11월 4일) is not in the draft: one scoped repair is asked for it, and when it
+  // does not put it in, the host adds it as its own line, labelled with who found it.
+  expect(asked).toHaveLength(3)
+  expect(out).toContain('- 모바일에서 코드 변경 사항을 보는 기능 추가 (11월 4일) (도윤) [리니어](https://linear.app/changelog/2026-11-04-mobile-diffs)')
   expect(asked[0]).toBe(prompt)
   expect(asked[1]).toContain('Judge meaning only')
   expectParts(out, [['지민', bing], ['서연'], ['도윤', byok]])
@@ -586,7 +589,10 @@ test('the writer pass: fixed input, the host checks what comes back, and the hos
   expectParts(plain, [['서연', c3[1]!.sources![0]!]])
   expect(plain).toMatch(/^서연은 이번엔 끝까지 못 봤어요\. 보던 곳은 \[Bing 검색\]\([^)]+\)$/)
   expect(none).not.toHaveBeenCalled()
-  expect(checkedReport(good, c3d)).toBeDefined()
+  // c19a r2: `good` leaves 도윤's second fact unlinked, so it is not taken as is: that fact goes back (see above).
+  expect(checkedReport(good, c3d)).toBeUndefined()
+  const goodAll = reportCheck(good, c3d)
+  expect('text' in goodAll ? goodAll.unlinked.map(f => f.url) : []).toEqual(['https://linear.app/changelog/2026-11-04-mobile-diffs'])
   const cities = [reported(part('m1', '지민', '서울 날씨 조사', { topic: '서울' }), { facts: [{ text: '맑음, 18도', url: 'https://a.example/seoul' }] }), reported(part('m2', '서연', '부산 날씨 조사', { topic: '부산' }), { facts: [{ text: '흐림, 20도', url: 'https://b.example/busan' }] })]
   expect(mergedReport(cities)).not.toMatch(/^\|/m)
   expectParts(mergedReport(cities), [['지민', 'https://a.example/seoul'], ['서연', 'https://b.example/busan']])
@@ -936,7 +942,7 @@ test('c4 C8/C2: taking one teammate off and renaming one is the agents call itse
   expect(await o.run({ remove: ['지우'] })).toBe('지우는 뺐어요. 다시 부르면 돌아와요.')
 })
 
-import { plainSteer, steerSplit } from '../src/company-tools.js'
+import { plainSteer, reportCheck, steerSplit } from '../src/company-tools.js'
 
 test('c4b r2: a teammate cut short with only English search rows shows no English run in the host table; the link stays and the writer is still asked (c11a: structure)', async () => {
   const kim = reported(part('m1', '지민', '노션 신기능 조사', { topic: '노션', sources: ['https://search.example/?q=notion'] }), { facts: [{ text: '에이전트가 더 적은 비용으로 더 많이 하도록 다시 만들어졌고, 워크스페이스 관리 기능이 새로 나왔어요.', url: 'https://www.notion.com/releases' }] })
@@ -960,7 +966,13 @@ test('c4b r2: a written answer that drops a dated item the teammate listed is re
   const one = said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)', ['f1', 'f2', 'f3'])
   expect(checkedReport(one, [kim])).toBeUndefined()
   // c19a: the facts a message uses are the ones it links; a "kept" list shorter than the links refuses nothing.
-  expect(checkedReport(said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)', ['f1']), [kim])).toContain('개발자 행사')
+  // c19a r2 (Codex r1 #2): a part present by two of its three links still has the third: it goes back as its own line, whatever "kept" says.
+  const two = said('지민이 정리했어요.\n\n- 12월 2일 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)', ['f1'])
+  expect(checkedReport(two, [kim])).toBeUndefined()
+  const back = reportCheck(two, [kim])
+  expect('text' in back && back.text).toContain('개발자 행사')
+  expect('text' in back ? back.unlinked.map(f => f.url) : []).toEqual(['https://example.com/c'])
+  for (const kept of [['f1'], []]) expect(await writtenReport({ ask: kim.brief, members: [kim], write: async () => said(JSON.parse(two).message, kept) })).toContain('AI 행사')
   const all = '지민이 정리했어요.\n\n- 12/2 소프트웨이브 [출처](https://example.com/a)\n- 12월 5일 개발자 행사 [출처](https://example.com/b)\n- 2026-12-09 AI 행사 [출처](https://example.com/c)'
   expectParts(checkedReport(said(all, ['f1', 'f2', 'f3']), [kim]), [['지민', 'https://example.com/a', 'https://example.com/b', 'https://example.com/c']])
   const shown = await writtenReport({ ask: kim.brief, members: [kim], write: async () => one })

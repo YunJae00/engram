@@ -83,16 +83,16 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
     }
     // c19a (cause H): a helper's facts are its own cited sentences; no judge decides which stand or which points are "not found". The host
     // checks only what it can tell exactly: a link to a page this helper was never shown (no search row, no page it read) loses its link and
-    // the sentence stays, joined to the fact next to it (with none, cited to the page it read). Whether a part was found is its hand-back.
-    if (m.shown) {
-      const key = (url: string): string => url.replace(/\/$/, ''), shown = new Set([...m.shown, ...(m.sources ?? [])].map(key))
+    // the sentence stays, joined to the fact next to it (with none, it stays with no link: never cited to a page it does not come from).
+    // Whether a part was found is its hand-back. With no record of what it was shown (no row, no page), there is nothing exact to check.
+    const key = (url: string): string => url.replace(/\/$/, ''), shown = new Set([...m.shown ?? [], ...(m.sources ?? [])].map(key))
+    if (m.shown && shown.size) {
       for (let i = facts.length - 1; i >= 0; i--) {
         const f = facts[i]!
         if (shown.has(key(f.url))) continue
         const ok = (one: { url: string }): boolean => shown.has(key(one.url)), before = facts.slice(0, i).reverse().find(ok), near = before ?? facts.slice(i + 1).find(ok)
         if (near) { near.text = before ? `${near.text} ${f.text}` : `${f.text} ${near.text}`; facts.splice(i, 1); continue }
-        const read = (m.sources ?? []).find(one => !isSearchPage(one)) ?? m.sources?.[0] ?? m.shown[0]
-        if (read) facts[i] = { text: f.text, url: read }
+        facts[i] = { text: f.text, url: '' }
       }
     }
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }

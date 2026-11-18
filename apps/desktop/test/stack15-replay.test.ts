@@ -110,7 +110,10 @@ describe('C5 replay', () => {
     console.log(`[replay C5] judges=${judges} days=${JSON.stringify(m.data?.facts.filter(f => !f.listing).map(f => f.date))}\n${answer}`)
     expect(answer).toContain('12월 9일')
     expect(answer).toContain('12월 13일')
-    expect(answer.match(/dev-event\.example\/2026-12\)/g)).toHaveLength(1)
+    // c19a r2 (cause H): this scripted judge's keep never lists the by-name round's last item, which used to drop the dateless DDD entry; a
+    // verdict no longer drops a fact the teammate brought, so that entry stays beside the full-list line (2 links to the list page).
+    expect(answer.match(/dev-event\.example\/2026-12\)/g)).toHaveLength(2)
+    expect(answer).toContain('전체 목록은 여기 있어요. [dev-event.example](https://dev-event.example/2026-12)')
   }, 20_000)
 })
 

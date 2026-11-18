@@ -74,7 +74,10 @@ describe('c17a (B): one due for helpers on the merge path', () => {
     expect(models).toHaveLength(3)
     const rows = tableRows(text)
     expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(TOWNS)
-    for (const row of rows) { expect(row).toMatch(/\]\(https:\/\//); expect(row).toContain('2만 3천') }
+    // c19a r2: each helper cites `/1`, which only the helper whose search was the second one was shown; the others keep their fee with no
+    // link, never an unrelated row's link.
+    const second = searches[1]!.town
+    for (const [i, row] of rows.entries()) { expect(row).toContain('2만 3천'); expect(row.match(/\]\([^)]+\)/g) ?? []).toEqual(TOWNS[i] === second ? [`](${PAGE(second)}/1)`] : []) }
     expect(hire.closesOn!(text)).toBe(true)
     for (const m of (await listTasks(paths))[0]!.team!.members.filter(one => one.lookup)) expect('proof' in m).toBe(false)
   }, 45_000)

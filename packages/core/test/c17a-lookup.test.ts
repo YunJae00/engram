@@ -134,11 +134,13 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
 describe('c17a r2 (c19a): a helper\'s words stand; only a link to a page it was never shown loses its link', () => {
   const at = new Date().toISOString()
   const helper = (said: string, shown?: string[]): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '수원 조사', topic: '수원', brief: '수원 이번 주말 꽃가루 농도 어때?', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, ...(shown ? { shown } : {}) })
-  it('cited prose on a page it was never shown keeps its words, cited to a page it was shown; the part is found, never "못 찾았어요"', () => {
+  // c19a r2 (Codex r1 #5): the words stay with no link, never re-cited to an unrelated page the helper was shown.
+  it('cited prose on a page it was never shown keeps its words with no link; the part is found, never "못 찾았어요"', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루가 낮음이에요. [블로그](https://blog.example/7)', ['https://search.example/?q=pollen'])])
-    expect(m!.data!.facts).toEqual([{ text: '수원은 주말 꽃가루가 낮음이에요.', url: 'https://search.example/?q=pollen', site: expect.any(String) }])
+    expect(m!.data!.facts).toEqual([{ text: '수원은 주말 꽃가루가 낮음이에요.', url: '', site: expect.any(String) }])
     const table = mergedReport([m!], new Map(), [], true)
     expect(table).toContain('낮음')
+    expect(table).not.toMatch(/\]\(|search\.example|blog\.example/)
     expect(table).not.toContain('못 찾았어요')
   })
   it('of two cited facts, the one on a page never shown joins the one before it (a trailing slash aside); nothing is labelled missing', () => {
@@ -197,9 +199,9 @@ describe('c17a r3 (c19a): a helper\'s cell is its own sentences; the host relabe
     const [m] = helperParts([helper('제주 렌터카 하루 요금이랑 보험료', '제주 렌터카는 하루 4만 2천 원, 보험은 1만 5천 원이에요 [업체](https://rent.example/jeju)', { shown: ['https://rent.example/jeju'] })])
     expect(m!.data!.facts.map(f => f.text).join(' ')).toBe('제주 렌터카는 하루 4만 2천 원, 보험은 1만 5천 원이에요')
   })
-  it('prose cited to a page it was never shown stays, cited to what it was shown; the row is found, never said not found', () => {
+  it('prose cited to a page it was never shown stays, with no link (c19a r2: never cited to what it was shown instead); the row is found, never said not found', () => {
     const [m] = helperParts([helper('수원 이번 주말 꽃가루 농도 알려줘', '수원 꽃가루는 낮음이에요. [기사](https://example.com/a)', { shown: ['https://search.example/?q=pollen'] })])
-    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://search.example/?q=pollen'])
+    expect(m!.data!.facts.map(f => f.url)).toEqual([''])
     const table = mergedReport([m!], new Map(), [], true)
     expect(table).toContain('낮음')
     expect(table).not.toContain('못 찾았어요')

@@ -112,10 +112,11 @@ export function checkedSearch(tool: AgentTool, by: CheckedSearchOptions): AgentT
         if (!words || signal?.aborted) break
         tried.push(words)
         const found = await tool.run({ ...args, query: words }, context).catch(() => '')
-        const fresh = /^results for "/.test(found) ? rowsOf(found).filter(row => !seen.has(row.url)) : [], cut = inPeriod(found, fresh.length)
+        // The search marks its own first N rows as in the period: split by that position first, then leave out the rows already seen.
+        const rows = /^results for "/.test(found) ? rowsOf(found) : [], cut = inPeriod(found, rows.length), fresh = rows.filter(row => !seen.has(row.url))
         for (const row of fresh) seen.add(row.url)
         await check(fresh)
-        recent.push(...fresh.slice(0, cut)); older.push(...fresh.slice(cut))
+        recent.push(...rows.slice(0, cut).filter(row => fresh.includes(row))); older.push(...rows.slice(cut).filter(row => fresh.includes(row)))
         roundMs = now() - began
       }
       const shown = live([...recent, ...older]), lines = out.split('\n'), head = lines.findIndex(line => line.startsWith('- '))

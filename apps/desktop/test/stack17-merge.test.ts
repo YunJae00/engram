@@ -186,7 +186,8 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     expect(calls).toHaveLength(3)
     // c19a (cause H): the host writes no sentence into a draft (withEveryone is gone). The repair that would name 로운 lands past the
     // writer's 4 s (1.5 s per call), so the draft is shown as written: every part with its link, no host attribution line.
-    expect(out).toContain('메가커피는 새 메뉴가 없어요.')
+    // c19a r2 (Codex r1 #3, rule 7): the teammate the draft left unnamed gets their name as a label beside their own find, never unnamed.
+    expect(out).toContain('메가커피(로운)는 새 메뉴가 없어요.')
     expect(out).not.toMatch(/로운이 찾아보니|맡아서 했어요/)
     for (const link of ['sb', 'ts', 'mg']) expect(out).toContain(`menu.example/${link}`)
     expect(Date.now() - T0).toBeLessThan(35_000)

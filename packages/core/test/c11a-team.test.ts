@@ -67,7 +67,7 @@ test('a handoff that makes copy: the shown list is exactly the writer\'s items, 
   expect(await writtenReport({ ask: '민준이 찾은 부산 맛집으로 지아가 인스타 문구 2개 써', members: [giver, copy], write: async () => bent, timeoutMs: 500, now: NOW })).toBe(shown)
 })
 
-test('a list job: a search-page-only item never reaches the writer, and the writer drops a wrong-kind item by meaning; links follow kept', async () => {
+test('a list job: a search-page-only item never reaches the writer; a fact the draft leaves out goes back as its own line (c19a r2: no drop by meaning, whatever kept says)', async () => {
   const meetups = settled(member({ id: 'm1', role: '하율', brief: '다음 달 판교 개발자 밋업 일정 정리', topic: '판교 밋업' }), block({ facts: [
     { text: '판교 쿠버네티스 밋업이 열려요.', url: 'https://festa.io/events/5521', site: '페스타', date: '12월 4일' },
     { text: '판교 스탠드업 코미디 쇼가 있어요.', url: 'https://ticket.example.com/show/88', site: '티켓', date: '12월 6일' },
@@ -79,8 +79,12 @@ test('a list job: a search-page-only item never reaches the writer, and the writ
   expect(prompt).not.toMatch(/공연|콘서트|IT 행사/)
   const message = '다음 달 판교 개발자 밋업은 두 개예요. 하율이 찾아 줬어요.\n\n- 12월 4일 판교 쿠버네티스 밋업 [페스타](https://festa.io/events/5521)\n- 12월 15일 판교 AI 엔지니어 밋업 [Meetup](https://www.meetup.com/pangyo-ai/events/77)'
   const shown = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f3'] }), timeoutMs: 500, now: NOW })
-  expect(shown).not.toMatch(/코미디|프런트엔드/)
-  expect(links(shown)).toHaveLength(2)
+  // c19a r2 (USER-NOTES class 2): the writer (the quick model) no longer drops a fact the teammate brought by meaning; whatever "kept"
+  // says, a fact the draft leaves without its link goes back as its own line. The search-page-only item still never reaches anyone.
+  expect(shown).not.toMatch(/프런트엔드/)
+  expect(shown.startsWith(message.split('\n')[0]!)).toBe(true)
+  expect(shown).toContain('- 판교 스탠드업 코미디 쇼가 있어요 (12월 6일). [티켓](https://ticket.example.com/show/88)')
+  expect(links(shown)).toHaveLength(3)
   // c19a: a fact the writer says it kept but left unlinked is not dropped: the draft is not taken as is (checkedReport), and the host adds that fact as its own line.
   expect(checkedReport(JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), [meetups])).toBeUndefined()
   const back = await writtenReport({ ask: '다음 달 판교 개발자 밋업 일정 알려줘', members: [meetups], write: async () => JSON.stringify({ message, kept: ['f1', 'f2', 'f3'] }), timeoutMs: 500, now: NOW })
@@ -163,7 +167,7 @@ test('r2: a hand-off whose receiver brought no data keeps the giver\'s sourced f
   expect(checkedReport(JSON.stringify({ message: '윤서가 문장을 못 끝냈어요.', kept: [] }), [giver, receiver])).toBeUndefined()
 })
 
-test('r2: the kind asked is judged once where the data comes in, so the host\'s own rendering shows only items of that kind', async () => {
+test('r2: the kind asked is judged once where the data comes in (c19a r2: it drops nothing the teammate brought)', async () => {
   const facts = [
     { text: '청담에서 내추럴 와인 시음회가 열려요.', url: 'https://wine.example.kr/e/1', site: '와인나우' },
     { text: '자동차 셀프 정비 강좌가 열려요.', url: 'https://car.example.kr/c/9', site: '카클래스' },
@@ -179,8 +183,11 @@ test('r2: the kind asked is judged once where the data comes in, so the host\'s 
   const text = mergedReport([m])
   expect(text).toContain('내추럴 와인')
   expect(text).toContain('부르고뉴')
-  expect(text).not.toContain('정비')
-  expect((await kindChecked({ facts: facts.slice(1, 2).concat(facts[1]!) }, brief, async () => '{"keep":[]}'))?.nothing).toEqual({})
+  // c19a r2 (Codex r1 #1, cause H): the kind check names, flags and groups; its verdict drops no fact the teammate brought and never turns
+  // a hand-back into "nothing" (keep: [] leaves every fact).
+  expect(text).toContain('정비')
+  const two = facts.slice(1, 2).concat(facts[1]!)
+  expect(await kindChecked({ facts: two }, brief, async () => '{"keep":[]}')).toEqual({ facts: two })
   expect(await kindChecked({ facts }, brief)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, () => new Promise(() => {}), 20)).toEqual({ facts })
   expect(await kindChecked({ facts }, brief, async () => '모르겠어요')).toEqual({ facts })

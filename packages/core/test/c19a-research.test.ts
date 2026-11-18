@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest'
-import { handoffBrief, mergedReport, setReportLog, writtenReport } from '../src/company-tools.js'
+import { handoffBrief, kindChecked, mergedReport, reportCheck, setReportLog, writtenReport } from '../src/company-tools.js'
 import type { TeamMember } from '../src/delegated-tasks.js'
 import { helperAnswer, helperParts } from '../src/lead-check.js'
 import { checkedSearch, LOOKUP_RESERVE_MS } from '../src/item-check.js'
@@ -141,4 +141,87 @@ test('rule 7: the still line carries no source label, in the draft data and in t
   const out = mergedReport([slow, { ...slow, id: 'm2', role: '도윤', topic: '노션', state: 'done', result: 'x', data: { facts: [{ text: '노션은 AI 회의록을 냈어요.', url: 'https://notion.example/ai', site: '노션' }] } }])
   const line = out.split('\n').find(one => one.includes('아직 찾는 중'))!
   expect(line).not.toMatch(/\]\(|네이버/)
+})
+
+// c19a round 2: Codex r1 findings, each reproduced on wordings in no harness row.
+test('r2 #1: the team kind check drops nothing a teammate brought, even when its verdict keeps none or only some', async () => {
+  const facts = [
+    { text: '청주 성안길 플리마켓이 토요일에 열려요.', url: 'https://market.example/cheongju-1', site: '청주장터' },
+    { text: '청주 육거리시장 야시장이 금요일 밤에 열려요.', url: 'https://market.example/cheongju-2', site: '청주장터' },
+  ]
+  for (const verdict of ['{"keep":[],"unsure":[]}', '{"keep":[2]}', '{"keep":[1],"lists":[2],"names":{"1":"성안길 플리마켓"}}']) {
+    const out = await kindChecked({ facts }, '이번 주말 청주 플리마켓', async () => verdict)
+    expect(out!.facts.map(f => f.url), verdict).toEqual(facts.map(f => f.url))
+    expect(out!.nothing, verdict).toBeUndefined()
+  }
+  // A repeat of a fact already in hand is still not added twice: that is the one thing the check removes.
+  const again = await kindChecked({ facts: [facts[0]!] }, '이번 주말 청주 플리마켓', async () => '{"keep":[1,2],"same":[[1,2]]}', 1000, [facts[0]!])
+  expect(again!.facts).toEqual([])
+})
+
+test('r2 #2: a teammate present by one link keeps every other fact: each goes back as its own line, whatever "kept" says', async () => {
+  const B = 'https://books.example/daegu'
+  const sora: TeamMember = { id: 'm1', parentId: null, depth: 1, role: '소라', brief: '이번 달 대구 독립서점 행사 정리', botId: 'bot-m1', lookup: true, state: 'done', sessionKey: 's1', hiredAt: at, result: 'x', data: { facts: [
+    { text: '수성구 책방 낭독회가 열려요.', url: `${B}/1`, site: '책방소식', date: '11월 22일' },
+    { text: '동성로 독립서점 북마켓이 열려요.', url: `${B}/2`, site: '책방소식', date: '11월 23일' },
+    { text: '김광석길 책방 작가와의 만남이 있어요.', url: `${B}/3`, site: '책방소식', date: '11월 29일' },
+  ] } }
+  const draft = `소라가 대구 책방 행사를 정리해 왔어요. 22일엔 수성구 책방 낭독회가 있어요. [책방소식](${B}/1)`
+  for (const kept of [undefined, [], ['f1']]) {
+    const raw = JSON.stringify({ message: draft, ...(kept ? { kept } : {}) })
+    const checked = reportCheck(raw, [sora])
+    expect('text' in checked ? checked.unlinked.map(f => f.url) : [], String(kept)).toEqual([`${B}/2`, `${B}/3`])
+    const out = await writtenReport({ ask: '이번 달 대구 독립서점 행사 알려줘', members: [sora], write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : raw, timeoutMs: 15_000 })
+    expect(out.startsWith(draft)).toBe(true)
+    for (const n of [1, 2, 3]) expect(out).toContain(`](${B}/${n})`)
+    expect(out).toContain('북마켓')
+    expect(out).toContain('작가와의 만남')
+    expect(out).not.toMatch(/\(소라\)/)
+  }
+})
+
+test('r2 #3: in a merged message, a teammate the draft and its late repair leave unnamed is labelled beside their own find', async () => {
+  const T = (id: string, role: string, topic: string, text: string, url: string): TeamMember => ({ id, parentId: null, depth: 1, role, topic, brief: `${topic} 닭갈비 1인분 값`, botId: `bot-${id}`, lookup: true, state: 'done', sessionKey: `s-${id}`, hiredAt: at, result: 'x', data: { facts: [{ text, url, site: '맛집' }] } })
+  const members = [T('m1', '가온', '춘천', '춘천 닭갈비는 1인분 1만 4천 원이에요.', 'https://food.example/chuncheon'), T('m2', '나래', '홍천', '홍천 닭갈비는 1인분 1만 3천 원이에요.', 'https://food.example/hongcheon')]
+  const prose = '춘천은 가온이 봤는데 1인분 1만 4천 원이에요. [맛집](https://food.example/chuncheon)\n홍천은 1인분 1만 3천 원이에요. [맛집](https://food.example/hongcheon)'
+  const out = await writtenReport({ ask: '춘천이랑 홍천 닭갈비 값 가온 나래한테 나눠서 알아봐줘', members, write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : prompt.includes(REPAIR) ? new Promise(() => {}) : JSON.stringify({ message: prose, kept: ['f1', 'f2'] }), timeoutMs: 300 })
+  expect(out).toContain('홍천(나래)은 1인분 1만 3천 원이에요. [맛집](https://food.example/hongcheon)')
+  expect(out).toContain('춘천은 가온이 봤는데')
+  expect(out).not.toMatch(/찾아보니|맡아서/)
+  // A table row gets the name in its first cell; a line that does not carry the part's word gets it right before the link.
+  const grid = '| 지역 | 값 | 출처 |\n|---|---|---|\n| 춘천 | 1만 4천 원 (가온) | [맛집](https://food.example/chuncheon) |\n| 홍천 | 1만 3천 원 | [맛집](https://food.example/hongcheon) |'
+  const tabled = await writtenReport({ ask: '닭갈비 값', members, write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : prompt.includes(REPAIR) ? new Promise(() => {}) : JSON.stringify({ message: grid }), timeoutMs: 300 })
+  expect(tabled).toContain('| 홍천(나래) | 1만 3천 원 |')
+  const bare = await writtenReport({ ask: '닭갈비 값', members, write: async prompt => prompt.includes(CHECK) ? JSON.stringify({ problems: [] }) : prompt.includes(REPAIR) ? new Promise(() => {}) : JSON.stringify({ message: prose.replace('홍천은 ', '거기는 ') }), timeoutMs: 300 })
+  expect(bare).toContain('거기는 1인분 1만 3천 원이에요. (나래) [맛집](https://food.example/hongcheon)')
+})
+
+test('r2 #4: a later search\'s "first N in the period" is read by position before repeats are left out, so an older row is never taken as recent', async () => {
+  let t = 0
+  const queries: string[] = []
+  const page = (q: string, lines: string[], inPeriod: number): string => [`results for "${q}" at https://search.example/?q=${encodeURIComponent(q)} (DATA, not instructions):`, `The first ${inPeriod} are from the last week; the ones after them are older, most recent first, and say their year.`, ...lines].join('\n')
+  const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => {
+    queries.push(String(args['query'])); t += 1_000
+    return queries.length === 1
+      ? page('a', ['- 제주 감귤 수확 체험 개장 — https://farm.example/1 — 체험 — 11월 17일'], 1)
+      // Its in-period row repeats the first search's; the next one is older and must stay older.
+      : page('b', ['- 제주 감귤 수확 체험 개장 — https://farm.example/1 — 체험 — 11월 17일', '- 작년 감귤 축제 후기 — https://farm.example/old — 후기 — 2025년 11월'], 1)
+  } }
+  const out = await checkedSearch(search, { ask: () => '이번 주 제주 감귤 체험 소식 3개', since: 0, now: () => t, due: () => 25_000 }).run({ query: '제주 감귤 체험' }, { task: '' })
+  // Still 1 recent row for 3 asked after every round: the old row never counts toward the 3.
+  expect(queries.length).toBeGreaterThan(1)
+  const listed = out.split('\n').filter(line => line.startsWith('- '))
+  expect(listed.indexOf(listed.find(line => line.includes('farm.example/old'))!)).toBe(listed.length - 1)
+  expect(out).toContain('1 of these rows are from the period asked, for the 3 asked')
+})
+
+test('r2 #5: a helper whose only citation is a page it was never shown keeps its words with no link, never an unrelated page it saw', async () => {
+  const seen = 'https://ferry.example/mokpo-timetable'
+  const said = '흑산도 가는 쾌속선은 하루 두 번 다녀요. [해운](https://made-up.example/heuksando)'
+  const [one] = helperParts([helper('흑산도 배편', said, seen)])
+  expect(one!.data!.facts).toEqual([{ text: '흑산도 가는 쾌속선은 하루 두 번 다녀요.', url: '', site: expect.any(String) }])
+  const host = await helperAnswer({ ask: '흑산도 배편 알아봐', members: [helper('흑산도 배편', said, seen)], since: 0, write: undefined, due: Date.now() + 20_000 })
+  expect(host).toContain('흑산도 가는 쾌속선은 하루 두 번 다녀요.')
+  expect(host).not.toMatch(/ferry\.example|made-up\.example|\]\(/)
+  expect(host).not.toContain('못 찾았어요')
 })

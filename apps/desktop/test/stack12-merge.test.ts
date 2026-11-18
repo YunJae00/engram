@@ -32,7 +32,8 @@ describe('stack-12 merge: one item judge', () => {
     // c19a (cause H): the lone lookup's rows pass no verdict (3 rows for 3 asked: no quick call); the team kind check keeps the one prompt.
     expect(prompts).toHaveLength(1)
     expect(instructions(prompts[0]!)).toContain('Judge each item by what it is')
-    expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://c.example/3', true, '']])
+    // c19a r2 (cause H): the team kind check names and flags; it drops nothing the teammate brought (b, outside "keep", stays).
+    expect(team!.facts.map(f => [f.url, f.listing ?? false, f.name ?? ''])).toEqual([['https://a.example/1', false, '수원 재즈 공연'], ['https://b.example/2', false, ''], ['https://c.example/3', true, '']])
     expect(lone.rows).toEqual(['https://a.example/1', 'https://b.example/2', 'https://c.example/3'])
     expect(lone.out).not.toContain('of these rows are from the period asked')
     expect(src('../../../packages/core/src/company-tools.ts')).not.toMatch(/Keep every item that is the kind of thing/)
