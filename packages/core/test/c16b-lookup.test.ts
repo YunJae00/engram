@@ -7,7 +7,10 @@ import type { AgentTool } from '../src/agent-loop.js'
 // satisfied only by a row that states the value, not by rows about the topic (L2: five stories about a company, no price). Wordings are in
 // no harness row.
 const page = (query: string, rows: string[], words = ''): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows, ...(words ? ['', words] : [])].join('\n')
-const row = (n: number, title: string, host = 'news.example'): string => `- ${title} — https://${host}/${n} — x — 11월 ${n}일`
+// c18a: a snippet that says what its headline says in its own order (as a news row's does), so a kind quote from the headline is also
+// the item's own words beyond its title.
+const row = (n: number, title: string, host = 'news.example', snippet = 'x'): string => `- ${title} — https://${host}/${n} — ${snippet} — 11월 ${n}일`
+const told = (n: number, title: string, host = 'news.example'): string => row(n, title, host, `${title.split(' ').reverse().join(' ')}, 관계자가 밝혔다`)
 function search(outs: string[]): AgentTool & { queries: string[] } {
   const queries: string[] = []
   return { queries, name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } }
@@ -20,8 +23,8 @@ describe('c16b (a): a fit stays a fit', () => {
   const ASK = '요즘 국내 핀테크 인수합병 소식 6건만'
   it('4 fits in round 1; round 2 judges only the new rows with the held ones as context; a judge that "forgets" held rows cannot lower the count', async () => {
     const s = search([
-      page('q', [row(1, '페이원, 송금앱 머니톡 인수'), row(2, '핀뱅크, 결제 대행사 합병'), row(3, '토큰랩, 보안 스타트업 인수'), row(4, '카드사, 간편결제 지분 인수'), row(5, '핀테크 업계 전망')]),
-      page('핀테크 M&A 계약', [row(6, '대출 플랫폼 렌딩원 피인수'), row(7, '자산관리 앱 웰스온 인수 완료'), row(8, '핀뱅크·결제 대행사 합병 승인', 'other.example')]),
+      page('q', [told(1, '페이원, 송금앱 머니톡 인수'), told(2, '핀뱅크, 결제 대행사 합병'), told(3, '토큰랩, 보안 스타트업 인수'), told(4, '카드사, 간편결제 지분 인수'), row(5, '핀테크 업계 전망')]),
+      page('핀테크 M&A 계약', [told(6, '대출 플랫폼 렌딩원 피인수'), told(7, '자산관리 앱 웰스온 인수 완료'), told(8, '핀뱅크·결제 대행사 합병 승인', 'other.example')]),
     ])
     const prompts: string[] = []
     // Round 2's items: 1-4 held, 5-7 the new rows. It leaves held row 1 out of "keep", calls it a listing, and groups new 7 (row 8) with held 2.
@@ -173,7 +176,7 @@ describe('c16b r2: a later search whose page states the value in its own words, 
 // that unchecked prose appended as if it were an item; the list stays the checked rows, short and said so.
 describe('c16b r3: page words never join a counted list', () => {
   it('page words judged to hold an item: only the checked row is listed, the shortfall is data, the page prose is not passed on', async () => {
-    const s = search([page('q', [row(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
+    const s = search([page('q', [told(3, '대전 북토크 하나', 'books.example')], '대전 북토크 둘 12월 4일 저녁')])
     const out = await run(s, '대전 북토크 2개 알려줘', ['{"keep":[1],"kind":"대전 북토크","holds":{"1":{"kind":"대전 북토크 하나"},"2":{"kind":"북토크 둘"}},"asked":2,"search":""}'], [], 30_000)
     expect(urls(out)).toEqual(['https://books.example/3'])
     expect(out).toContain('1 of the 2 asked for were found')

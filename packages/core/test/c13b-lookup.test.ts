@@ -60,9 +60,11 @@ describe('c13b: a counted lookup is judged on its rows, before the model writes'
     const two = [bio[0]!, bio[1]!, bio[4]!]
     const more = ['- 셀젠바이오 250억 투자 유치 후속 보도 — https://h.example/8 — x — 11월 15일', '- 지노믹스허브, 시리즈B 300억 원 — https://i.example/9 — x — 11월 15일']
     const verdicts = ['{"keep":[1,3],"same":[],"listing":[],"outside":[],"search":"바이오 벤처 시리즈 투자"}', '{"keep":[1,2,3,4],"same":[[1,3]],"listing":[],"outside":[],"search":""}']
+    // c18a: a round fits when this lookup's own last measured round does (here the first search and its judgment take WIDEN_MS together).
     const run = async (at: number) => {
+      let t = 1_000 + at - WIDEN_MS
       const s = search([page('바이오 스타트업 투자 유치', two), page('바이오 벤처 시리즈 투자', more)]), answers = [...verdicts]
-      const out = await checkedSearch(s, { ask: () => BIO, write: async () => answers.shift(), since: 1_000, now: () => 1_000 + at }).run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
+      const out = await checkedSearch({ ...s, run: async (args, context) => { t += WIDEN_MS / 2; return s.run(args, context) } }, { ask: () => BIO, write: async () => { t += WIDEN_MS / 2; return answers.shift() }, since: 1_000, now: () => t }).run({ query: '바이오 스타트업 투자 유치' }, { task: BIO })
       return { queries: s.queries, out }
     }
     // Just enough time: the widened search runs on the judge's own words.

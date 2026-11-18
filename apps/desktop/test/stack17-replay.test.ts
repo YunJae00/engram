@@ -62,7 +62,8 @@ describe('R3 (stack16: 7 kept, the loop stopped on keep with 14.6 s left, two of
     let t = 0
     const out = await checkedSearch(s, { ask: () => ask, write: async () => { t += 4000; return verdicts.shift() }, since: 0, now: () => t }).run({ query: 'q' }, { task: ask })
     console.log(`R3 replay: searches ${s.queries.join(' | ')}\n${out}`)
-    expect(s.queries).toEqual(['q', 'AI 스타트업 시리즈 투자 유치'])
+    // c18a: still short with no new words and time left, it searches by its kind line before the due.
+    expect(s.queries).toEqual(['q', 'AI 스타트업 시리즈 투자 유치', kind])
     expect(urls(out)).toEqual(['https://news.example/1', 'https://news.example/3', 'https://news.example/5', 'https://news.example/7'])
     expect(out).toContain('4 of the 5 asked for were found')
     expect(out).not.toContain('펨테크')
