@@ -66,7 +66,7 @@ const members = TOWNS.map(town => ({ role: `${town} 조사`, topic: town, brief:
 describe('c17a (B): one due for helpers on the merge path', () => {
   it('3-part split, no row ever quoted: helpers keep searching to their own due, the answer is still one linked table before 35 s', async () => {
     // Measured sizes (stack16 log): a search ~1.5-2.5 s, a quick judgment ~1.5-2.5 s, a helper's answer ~5 s, a writer draft ~3 s.
-    const { hire, since, searches, quick, models } = await lane('due', { searchMs: 1500, judgeMs: 1500, modelMs: 5000, writeMs: 3000, checkMs: 2500 })
+    const { hire, paths, since, searches, quick, models } = await lane('due', { searchMs: 1500, judgeMs: 1500, modelMs: 5000, writeMs: 3000, checkMs: 2500 })
     const text = await hire.run({ members }, { task: '' })
     const took = Date.now() - since, last = Math.max(...searches.map(s => s.at))
     console.log(`c17a fake split: delivered ${took} ms, searches ${searches.length}, last search start ${last} ms, judge ${quick.filter(q => q.kind === 'judge').length}, writer calls ${quick.filter(q => q.kind !== 'judge').map(q => `${q.kind}@${q.at}`).join(' ')}, helper model calls ${models.length}`)
@@ -81,6 +81,8 @@ describe('c17a (B): one due for helpers on the merge path', () => {
     // says it was not found, with the page looked at, never the unproven value.
     for (const row of rows) { expect(row).toMatch(/\]\(https:\/\//); expect(row).not.toContain('2만 3천') }
     expect(hire.closesOn!(text)).toBe(true)
+    // c17a r3 (review #2): judged with nothing verified is recorded as such (proof []), never left as "never judged".
+    for (const m of (await listTasks(paths))[0]!.team!.members.filter(one => one.lookup)) expect(m.proof).toEqual([])
   }, 45_000)
 
   it('a helper\'s verified quotes reach its member; a quoted fee stops its search at once', async () => {

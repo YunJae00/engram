@@ -112,17 +112,21 @@ export function helperParts(helpers: readonly TeamMember[]): TeamMember[] {
       if (url && tail) facts.push({ text: tail, url })
     }
     // c17a (cause E): a cell comes from evidenced points. With none of its own words left, the words its lookup's judge verified on each page
-    // (m.proof) are its facts; a point no page stated is said as not found on its row, unless its own words already name that point.
+    // (m.proof) are its facts; a point no page stated is said as not found on its row.
     // c17a r2 (review #1: "내일 광주는 좋음이에요" cited to a page whose words verified nothing): when the lookup judged points, a fact
     // stands only on a page with a verified quote, or on a page it opened and read whole itself (m.sources less results pages: open_page /
     // read_pages, never a search row's headline); words cited to any other page are not evidence and leave the row.
-    if (m.proof?.length || m.missing?.length) {
-      const proven = new Set([...(m.proof ?? []).map(one => one.url), ...(m.sources ?? []).filter(url => !isSearchPage(url))].map(url => url.replace(/\/$/, '')))
-      facts.splice(0, facts.length, ...facts.filter(f => proven.has(f.url.replace(/\/$/, ''))))
+    // c17a r3 (review #1: a quote verified for 무게 let "배터리는 90Wh" through on the same page; #2: a judged lookup with no quote kept
+    // all its cited prose): evidence is per point, not per page. A judged lookup (m.proof set, empty too) shows a page's verified quotes,
+    // not the prose cited to it; its own prose stands only on a page it read whole itself and only when it names no point the judge found
+    // stated nowhere; every such point is said as not found.
+    if (m.proof) {
+      const own = new Set((m.sources ?? []).filter(url => !isSearchPage(url)).map(url => url.replace(/\/$/, '')))
+      const unstated = (text: string): boolean => (m.missing ?? []).some(point => text.includes(pointName(point)))
+      facts.splice(0, facts.length, ...facts.filter(f => own.has(f.url.replace(/\/$/, '')) && !unstated(f.text)))
+      for (const one of m.proof) if (one.url && !facts.some(f => f.url === one.url && f.text.includes(one.quote))) facts.push({ text: one.point === 'kind' || one.quote.includes(pointName(one.point)) ? one.quote : `${pointName(one.point)}: ${one.quote}`, url: one.url })
+      if (m.missing?.length && facts.length) { const last = facts[facts.length - 1]!; last.text = `${last.text.replace(/[.!?。]?\s*$/u, '.')} ${m.missing.map(notFoundLine).join(' ')}` }
     }
-    if (!facts.length) for (const one of m.proof ?? []) if (one.url) facts.push({ text: one.quote, url: one.url })
-    const gaps = (m.missing ?? []).filter(point => !facts.some(f => f.text.includes(pointName(point))))
-    if (gaps.length && facts.length) facts[facts.length - 1]!.text += ` ${gaps.map(notFoundLine).join(' ')}`
     return facts.length ? { ...m, topic, data: { facts: facts.map(f => ({ text: clip(f.text, 600), url: f.url, site: siteOf(f.url, f.label, korean) })) } } : { ...m, topic }
   })
 }

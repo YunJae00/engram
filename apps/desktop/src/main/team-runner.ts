@@ -226,11 +226,12 @@ export function teamRunner(deps: {
       // c17a (cause E): when no row it holds states a point, the judge's page is opened through the helper's own open_page (its sources and
       // read text kept as for any page it opens), and what the lookup proved, and the points it did not, go on the member (helperParts).
       const proof = new Map<string, Proof>(), unproven = new Set<string>()
+      let judged = false
       let opener: AgentTool | undefined
       const helperJudged = (tool: AgentTool): AgentTool => tool.name === 'search_web' && me.lookup && !me.botId && quick ? checkedSearch(tool, {
         ask: () => me.brief, write: quick, due: () => due - reserveMs,
         ...(opener ? { read: (url: string, signal?: AbortSignal) => opener!.run({ url }, { task: me.brief, ...(signal ? { signal } : {}) }) } : {}),
-        proved: (found, missing) => { for (const one of found) proof.set(`${one.point}\n${one.url}`, one); for (const point of missing) unproven.add(point) },
+        proved: (found, missing) => { judged = true; for (const one of found) proof.set(`${one.point}\n${one.url}`, one); for (const point of missing) unproven.add(point) },
       }) : tool
       // The soft point: after this share of its window a lookup starts no new tool call and answers from what it has.
       const soft = (): number => { const from = startedAt ?? Date.now(); return Math.max(0, (Math.max(due, from + MIN_PART_MS * scale) - from) * SOFT_SHARE) }
@@ -360,14 +361,15 @@ export function teamRunner(deps: {
           settleMember(m, { ...outcome, ...(sources.size ? { sources: [...sources] } : {}), ...(kept.length ? { read: [...new Set(kept)].join('\n\n') } : {}), ...(report !== undefined ? { report } : {}) }, now(), isKorean(goal))
           // c17a: the quotes its lookup verified, and the points no page it held stated (a point proven by a later search is not missing).
           const proven = [...proof.values()], lacking = [...unproven].filter(point => !proven.some(one => one.point === point))
-          if (proven.length) m.proof = proven
+          // c17a r3: a judged lookup with nothing verified still says so (proof []), so its unverified prose is never shown as evidence.
+          if (judged) m.proof = proven
           if (lacking.length) m.missing = lacking
           // c13a: a teammate that hands back data and ended with none is not finished (status and record read this, never "found nothing").
           if (m.botId && (me.lookup || me.writer) && !m.data && (m.state === 'done' || m.state === 'failed')) m.unfinished = true
           // c14a (cause E): a lookup part that ended with no data, not stopped, with time left, goes back in line for one more run (chain),
           // from the person's own words. The empty run is not recorded; only where it looked is carried.
           if (!redo && me.lookup && !outcome.error && !control.signal.aborted && !halting.has(leadChannel) && (m.state === 'done' || m.state === 'failed') && noData(m) && due - Date.now() >= EMPTY_RETRY_MS * scale) {
-            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt'] as const) delete m[field]
+            for (const field of ['result', 'sources', 'read', 'empty', 'unfinished', 'data', 'review', 'finishedAt', 'proof', 'missing'] as const) delete m[field]
             m.state = 'hired'; retry = true
             // Where it looked stays with it: a part that again finds nothing still links the pages it searched (c5b).
             looked.set(key, { sources: [...sources], kept: [...kept] })

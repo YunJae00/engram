@@ -122,15 +122,15 @@ describe('c17a: two points (맥북 에어 M6 가격이랑 출시일)', () => {
     expect(found!.missing).toEqual(['출시일'])
     const at = new Date().toISOString()
     const helper = (said: string): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '맥북 조사', topic: '맥북 에어 M6', brief: ask, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said || 'x', said, proof: found!.proof, missing: found!.missing })
-    // The helper's own words name the price only: its row also says the date was not found.
+    // c17a r3: the cell is the verified quote, not the helper's prose cited to that page; its row also says the date was not found.
     const [own] = helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)')])
-    expect(own!.data!.facts[0]!.text).toBe('맥북 에어 M6는 179만 원부터예요. 출시일은 못 찾았어요.')
-    // Its words already say the date was not found: nothing is added twice.
+    expect(own!.data!.facts[0]!.text).toBe('가격: 179만 원부터. 출시일은 못 찾았어요.')
+    // Its words already speak of the date: the date is still said once, by the host, never twice.
     const [told] = helperParts([helper('맥북 에어 M6는 179만 원부터예요 [애플](https://apple.example/1). 출시일은 아직 안 나왔어요.')])
     expect(told!.data!.facts[0]!.text.match(/출시일/g)).toHaveLength(1)
     // Nothing of its own (cut before it wrote): the cell is the verified quote, with its page, never a headline.
     const [cut] = helperParts([helper('')])
-    expect(cut!.data!.facts).toEqual([{ text: '179만 원부터 출시일은 못 찾았어요.', url: 'https://apple.example/1', site: expect.any(String) }])
+    expect(cut!.data!.facts).toEqual([{ text: '가격: 179만 원부터. 출시일은 못 찾았어요.', url: 'https://apple.example/1', site: expect.any(String) }])
     // The host's table (a late writer) opens with one answer-first line naming what was not found.
     const galaxy: TeamMember = { ...helper('갤럭시북 6는 159만 원이고 3월 6일 나와요. [삼성](https://samsung.example/1)'), id: 'g', topic: '갤럭시북 6', proof: [{ point: '가격', quote: '159만 원', url: 'https://samsung.example/1' }, { point: '출시일', quote: '3월 6일', url: 'https://samsung.example/1' }], missing: [] }
     const table = mergedReport(helperParts([helper('맥북 에어 M6는 179만 원부터예요. [애플](https://apple.example/1)'), galaxy]), new Map(), [], true)
@@ -152,8 +152,9 @@ describe('c17a r2: a helper\'s words stand only on a page with a verified quote'
   })
   it('of two cited facts, only the one on the verified page stays (a trailing slash aside), and the missing point is labelled', () => {
     const [m] = helperParts([helper('수원은 주말 꽃가루 \'보통\'이에요 [기상청](https://weather.example/pollen/). 일요일엔 비 소식이 있어요 [카페](https://cafe.example/3).', [{ point: '꽃가루 농도', quote: "꽃가루 '보통'", url: 'https://weather.example/pollen' }], ['강수'])])
-    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen/'])
-    expect(m!.data!.facts[0]!.text).toBe("수원은 주말 꽃가루 '보통'이에요 강수는 못 찾았어요.")
+    // c17a r3: the verified page gives its quote (not the prose cited to it); the cafe's line is gone.
+    expect(m!.data!.facts.map(f => f.url)).toEqual(['https://weather.example/pollen'])
+    expect(m!.data!.facts[0]!.text).toBe("꽃가루 농도: 꽃가루 '보통'. 강수는 못 찾았어요.")
   })
   it('a page the helper opened and read itself is first-hand: its words on it stand; a results row it only saw does not', () => {
     const [m] = helperParts([{ ...helper('수원은 주말 꽃가루 \'높음\'이에요 [기상청](https://weather.example/pollen). 토요일이 제일 심해요 [뉴스](https://news.example/9).', [], ['꽃가루 농도']), sources: ['https://weather.example/pollen', 'https://search.example/?q=x'] }])
@@ -190,5 +191,38 @@ describe('c17a r2: a counted ask with several points counts only items that stat
     expect(s.queries).toEqual(['q'])
     expect(out).toContain('They hold the 2 asked for')
     expect(out).not.toContain('not found')
+  })
+})
+
+// c17a r3: evidence is per point, not per page, and "judged, nothing verified" is not "never judged" (wordings in no harness row).
+describe('c17a r3: a helper cell holds only verified points', () => {
+  const at = new Date().toISOString()
+  const helper = (brief: string, said: string, extra: Partial<TeamMember>): TeamMember => ({ id: 'h', parentId: null, depth: 1, role: '조사', topic: '대상', brief, lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's', hiredAt: at, result: said, said, ...extra })
+  it('a quote for one point does not carry an unverified value of another point cited to the same page', () => {
+    const [m] = helperParts([helper('라이트북 무게와 배터리 알려줘', '라이트북은 1.2kg이고 배터리는 90Wh예요. [제품](https://example.com/p)', { proof: [{ point: '무게', quote: '1.2kg', url: 'https://example.com/p' }], missing: ['배터리'] })])
+    const text = m!.data!.facts.map(f => f.text).join(' ')
+    expect(text).not.toContain('90Wh')
+    expect(text).toContain('1.2kg')
+    expect(text).toContain('배터리는 못 찾았어요.')
+  })
+  it('an unnamed invented value next to a verified one on the same page is not shown either', () => {
+    const [m] = helperParts([helper('제주 렌터카 하루 요금이랑 보험료', '제주 렌터카는 하루 4만 2천 원, 보험은 1만 5천 원이에요 [업체](https://rent.example/jeju)', { proof: [{ point: '하루 요금', quote: '하루 4만 2천 원', url: 'https://rent.example/jeju' }], missing: ['보험료'] })])
+    const text = m!.data!.facts.map(f => f.text).join(' ')
+    expect(text).not.toContain('1만 5천')
+    expect(text).toBe('하루 요금: 하루 4만 2천 원. 보험료는 못 찾았어요.')
+  })
+  it('judged with nothing verified and nothing marked missing: the cited prose is no cell, and the row is said not found', () => {
+    const [m] = helperParts([helper('수원 이번 주말 꽃가루 농도 알려줘', '수원 꽃가루는 낮음이에요. [기사](https://example.com/a)', { proof: [] })])
+    expect(m!.data).toBeUndefined()
+    const table = mergedReport([m!], new Map(), [], true)
+    expect(table).not.toContain('낮음')
+    expect(table.split('\n')[0]).toContain('못 찾았어요')
+  })
+  it('on a page it read whole itself, its prose stands unless it speaks of a point the judge found stated nowhere', () => {
+    const [m] = helperParts([helper('부산 해수욕장 수온이랑 파고', '해운대 수온은 22도예요 [해양청](https://sea.example/busan). 파고는 1.5m예요 [해양청](https://sea.example/busan)', { proof: [], missing: ['파고'], sources: ['https://sea.example/busan'] })])
+    const text = m!.data!.facts.map(f => f.text).join(' ')
+    expect(text).toContain('22도')
+    expect(text).not.toContain('1.5m')
+    expect(text).toContain('파고는 못 찾았어요.')
   })
 })
