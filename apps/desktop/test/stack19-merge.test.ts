@@ -9,7 +9,7 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { checkedDesk, closingBuilds, reshapeAsk } from '../src/main/desk-lane.js'
 import { dropWorkingNotes, withTheirWords } from '../src/main/first-line.js'
-import { laneTidy } from '../src/main/fast-lane.js'
+import { laneTidy, laneToday } from '../src/main/fast-lane.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const root = fileURLToPath(new URL('../../../', import.meta.url))
@@ -240,4 +240,24 @@ describe('stack-19: "멈춰" halts within 3 s and nothing posts after', () => {
     expect(out).toBeUndefined()
     expect(read).toBe(0)
   }, 30_000)
+})
+
+describe('stack-19: fixes after the branch results', () => {
+  it('a lone lookup about today is told to label its fact with the date, and still never to narrate how it got the date', () => {
+    const line = laneToday('오늘 청주 미세먼지 어때?', new Date(2026, 10, 19, 8, 0))
+    expect(line).toContain('오늘 = 11월 19일 목요일')
+    expect(line).toContain('labels each fact with the date it is for')
+    expect(line).toContain('never say how a date was worked out')
+    expect(line).not.toContain('never open on today')
+  })
+
+  it('a closing build keeps the model\'s own two-sentence answer, the choice it took and the person\'s own file name included', async () => {
+    const ask = 'fixtures/budget.csv로 월별 지출 엑셀 만들고 차트도 넣어줘'
+    const reply = 'budget.csv 월별 지출 합계를 엑셀로 만들었어요. 추이를 보기 좋게 막대 차트로 넣었어요.'
+    const book: AgentTool = { name: 'file_create_workbook', description: 'book', argsSchema: { type: 'object', properties: {} }, run: async () => JSON.stringify({ markdownLink: '[월별 지출.xlsx](engram-artifact:b1)' }) }
+    const close = async (said: string) => (await runToolSession({ engine: brain(async job => { await job.tools.find(tool => tool.name === 'file_create_workbook')!.run({ name: '월별 지출.xlsx', sheets: [{ sheet: '합계', rows: [['1월', 1]] }], reply }); await wait(400); return { answer: 'late' } }), workdir: WORKDIR, tools: closingBuilds([book], true, said) }, ask)).answer
+    const kept = await close(ask)
+    expect(kept.startsWith(reply), kept).toBe(true)
+    expect((await close('')).split('\n')[0]).toBe('월별 지출 파일을 시트 1개로 만들었어요.')
+  })
 })

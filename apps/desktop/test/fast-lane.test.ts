@@ -55,7 +55,7 @@ it('tells a short question from a short job, so only the question is asked to be
 it('runs the lane turn on the smart tier with the small menu and no shell, and hands mid-turn words to the running turn', () => {
   const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
   expect(ipc).toContain("const laneTools = lane ? everyTool.filter(tool => LANE_TOOLS.has(tool.name)).map(tool => keepRead(keepSources(skipWalls(solo && tool.name === 'search_web' ? checkedSearch(tool, { ask: () => [askedNow(), ...steered].join('\\n'), ...(writer ? { write: writer } : {}), ...(readPage ? { read: (url: string, within?: AbortSignal) => readPage.run({ url }, { task: askedNow(), ...(within ? { signal: within } : {}) }) } : {}), alive, since: nativeSince }) : !solo && writer && tool.name === 'hire_members' ? mergingHire(tool, helpersAnswer) : tool), read), laneRead)) : undefined")
-  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? [])) : everyTool,')
+  expect(ipc).toContain('tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,')
   expect(ipc).toContain("...(lane ? { modelHint: 'smart' as const, lookup: true, ...(solo ? { maxCalls: searched?.calls ?? LANE_SOLO_CALLS, deadlineMs: LANE_SOLO_SOFT_MS } : { maxCalls: LANE_TEAM_CALLS }) } : {}),")
   expect(ipc).toContain('const lane = !company && fastLane(routed, plainAsk)')
   expect(ipc).toContain('...(native && !lane && !company ? { native } : {}),')

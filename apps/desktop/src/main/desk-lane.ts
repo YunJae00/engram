@@ -507,7 +507,7 @@ function withoutLines(lines: readonly string[], gone: Set<number>): string {
 }
 
 const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
-const REPLY_NOTE = 'One short line for the chat, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."), what you made in a few words.'
+const REPLY_NOTE = 'Your answer to the person once this file is made, in their language and polite form, at most two short sentences: what you made and, where the ask left a choice to you, the choice you took (e.g. "월별 합계를 엑셀로 만들고 추이를 보는 막대 차트도 넣었어요.").'
 const MORE_NOTE = 'true only when this ask still needs another file after this one. Otherwise leave it out: a build that passes ends the turn with every file made so far, so nothing is read back after it.'
 const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
 const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply' && key !== 'more'))
@@ -532,7 +532,7 @@ export function buildReply(reply: unknown, korean: boolean, known = ''): string 
   if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
   return korean && (text.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).some(word => !known.toLowerCase().includes(word.toLowerCase())) ? undefined : text
 }
-export function closingBuilds(tools: readonly AgentTool[], korean: boolean): AgentTool[] {
+export function closingBuilds(tools: readonly AgentTool[], korean: boolean, ask = ''): AgentTool[] {
   return tools.map(tool => {
     if (!BUILDS.has(tool.name)) return tool
     const schema = tool.argsSchema as { properties?: Record<string, unknown> }
@@ -544,7 +544,7 @@ export function closingBuilds(tools: readonly AgentTool[], korean: boolean): Age
     return closingTool(given, async (out, args) => {
       if (!receiptOf(out) || args['more'] === true) return undefined
       const built = withoutReply(args)
-      return { said: out, answer: buildReply(args['reply'], korean, ownKorean(built).join(' ')) ?? builtLine(tool.name, built, korean) }
+      return { said: out, answer: buildReply(args['reply'], korean, [...ownKorean(built), ask].join(' ')) ?? builtLine(tool.name, built, korean) }
     })
   })
 }

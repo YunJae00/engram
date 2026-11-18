@@ -377,7 +377,7 @@ describe('desk tool menus', () => {
     for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
-    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? [])) : everyTool,')
+    expect(ipc).toContain(': deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,')
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {

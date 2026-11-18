@@ -2439,7 +2439,7 @@ export function registerIpc(ctx: VaultContext): void {
             engine: team.leadEngine(channel, engine),
             ...(engine.id === 'codex' ? { imagePaths: attachments.imagePaths } : {}),
             workdir: engineCwd(paths),
-            tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? [])) : everyTool,
+            tools: lane ? laneTools! : deskMenu ? closingBuilds(everyTool.filter(tool => deskMenu.has(tool.name)), threadKorean(request.message, request.history ?? []), request.message) : everyTool,
           },
           laneAsk,
           {
