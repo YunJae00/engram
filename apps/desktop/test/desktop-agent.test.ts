@@ -10,7 +10,6 @@ const fake = vi.hoisted(() => ({
 vi.mock('../src/main/work-preview.js', () => ({ showWorkPreview: vi.fn() }))
 vi.mock('../src/main/desktop-permission.js', async () => { const { desktopFailure } = await import('../src/main/desktop-failure.js'); return { permissionFailure: async (error: unknown, _lane: string, options?: Parameters<typeof desktopFailure>[1]) => desktopFailure(error, options) } })
 vi.mock('electron', () => ({ nativeImage: { createFromBitmap: fake.image, createFromBuffer: fake.decode } }))
-// The running-application check (pgrep) answers from officeRunning; every other command is the real one.
 vi.mock('node:child_process', async original => { const real = await original<typeof import('node:child_process')>(); return { ...real, execFile: (...args: unknown[]) => args[0] === '/usr/bin/pgrep' ? (args.at(-1) as (error: Error | null) => void)(fake.officeRunning ? null : new Error('no process')) : (real.execFile as (...all: unknown[]) => unknown)(...args) } })
 vi.mock('../src/main/desktop-access.js', () => ({ catalogHost: () => ({ request: async () => fake.catalog }), bindDesktopForLane: fake.ensure, desktopBinding: fake.lookup, desktopWindows: fake.windows }))
 vi.mock('../src/main/desktop-control.js', () => ({ setDesktopHandoverReset: (_lane: string, reset: () => void) => { fake.resetHandover = reset }, startDesktopControl: fake.start, openDesktopApp: fake.open, assertDesktopTurnNotStopped: fake.assertNotStopped, readControlledDesktop: fake.read, actOnDesktop: fake.act, desktopControlStatus: () => fake.controlReason ? { lane: 'bot-one', state: 'paused', reason: fake.controlReason } : fake.handedOver ? { lane: 'bot-one', state: 'running' } : { state: 'idle' }, withDesktopActivity: (_lane: string, run: () => Promise<unknown>) => run() }))
@@ -402,7 +401,6 @@ it('remaps nearby controls to the fresh post-set snapshot by runtime identity', 
   expect(result.nearby).toEqual([expect.objectContaining({ id: 'c7', snapshot: 'b'.repeat(32), appeared: true })])
 })
 
-// qa142 p2b-r2 #2: any secret field in the window keeps the draft off the card, also one the quiet path cannot set or read.
 it('shows no draft on the app_press send card when the window has a secret field', async () => {
   fake.quietSnapshot.mockReturnValue({ controls: [{ id: 'c3', type: 'Edit', name: 'Message', value: 'Draft', can: { set: true } }, { id: 'c5', type: 'Edit', name: 'Password', secret: true, can: { set: false } }], texts: [] })
   const approveAppAction = vi.fn(async () => false)
@@ -413,7 +411,6 @@ it('shows no draft on the app_press send card when the window has a secret field
   expect(fake.quietPress).not.toHaveBeenCalled()
 })
 
-// qa142 p2b-r1 #4: the quiet app_do send and the foreground send said only `Allow "Send" in "window:…"?`, so the card had no app name and no text.
 describe('send card on the app_do and foreground paths', () => {
   const load = async (nodes: unknown[] = []) => {
     const control = { ...await import('../src/main/desktop-control.js') }
@@ -439,7 +436,6 @@ describe('send card on the app_do and foreground paths', () => {
     const asked = await run('app_do', { app: 'window:42:0', goal: 'Sign in', text: 'hunter2-secret', send: true })
     expect(asked).toHaveBeenCalledWith('window:42:0', 'Send', 'snap', 'scope', { app: 'Fixture', sending: undefined })
   })
-  // qa142 p2b-r2 #2: a secret control the quiet path cannot set had its value dropped, so it passed the secrecy check.
   it.each([
     ['populated but not settable', { value: '••••', can: { set: false } }],
     ['unreadable', { can: { set: false } }],
@@ -461,13 +457,11 @@ describe('send card on the app_do and foreground paths', () => {
   })
 })
 
-// grokbar b5 r2: the Office commands refused a closed application, but open_app still started one the person never asked for.
 it('open_app does not start a closed Office application the person did not ask to open', async () => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform')!, hidden = process.env['ENGRAM_HIDDEN']
   Object.defineProperty(process, 'platform', { value: 'darwin' })
   delete process.env['ENGRAM_HIDDEN']
   try {
-    // Attaching (the fourth argument) finds no open window; a launch answers that it opened.
     fake.open.mockReset().mockImplementation(async (_lane: string, _app: string, _signal: unknown, attachOnly?: boolean) => attachOnly ? '' : JSON.stringify({ opened: true }))
     fake.officeRunning = false
     const launches = () => fake.open.mock.calls.filter(call => !call[3]).length
@@ -475,15 +469,12 @@ it('open_app does not start a closed Office application the person did not ask t
     const refused = await open('Microsoft PowerPoint', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
     expect(refused).toContain('Nothing was changed: the application is not open and is not started for this.')
     expect(JSON.parse(refused)).toMatchObject({ opened: false })
-    // By the ID an earlier answer gave, too.
     expect(await open('e'.repeat(64), 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘')).toContain('is not started for this')
     expect(launches()).toBe(0)
-    // Asked for by the person, it is started; so is any other app.
     await open('Microsoft PowerPoint', '파워포인트 열어줘')
     expect(launches()).toBe(1)
     await open('Calculator', '계산해줘')
     expect(launches()).toBe(2)
-    // A hidden run starts none, whatever the message says.
     process.env['ENGRAM_HIDDEN'] = '1'
     expect(await open('Microsoft PowerPoint', '파워포인트 열어줘')).toContain('is not started for this')
     expect(launches()).toBe(2)

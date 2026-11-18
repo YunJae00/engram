@@ -131,7 +131,6 @@ describe('text runtime desktop isolation boundary', () => {
     expect(events).toEqual([{ type: 'result', text: 'fixture answer' }])
     expect(fixture.options).toHaveBeenCalledWith({ codexPathOverride: 'fixture-codex', env: { PATH: 'fixture-runtime-path' }, configOverrides: ['mcp_servers={"fixture"={command="node",enabled=false}}', ...RUNTIME_TOOLS_OFF] })
     expect(RUNTIME_TOOLS_OFF).toEqual(expect.arrayContaining(['features.shell_tool=false', 'features.unified_exec=false', 'features.apps=false', 'features.plugins=false', 'features.computer_use=false']))
-    // Current models call every tool through the code-mode host; switching it off leaves a tool session with no tools.
     expect(RUNTIME_TOOLS_OFF).not.toContain('features.code_mode_host=false')
     expect(fixture.threadOptions).toHaveBeenCalledWith(expect.objectContaining({ sandboxMode: 'read-only', approvalPolicy: 'never', webSearchMode: 'disabled', networkAccessEnabled: false, model: 'chosen-model' }))
     expect(fixture.run).toHaveBeenCalledWith('Read the provided text', expect.objectContaining({ outputSchema: { type: 'object', properties: { answer: { anyOf: [{ type: 'string' }, { type: 'null' }] } }, required: ['answer'], additionalProperties: false }, signal: expect.any(AbortSignal) }))

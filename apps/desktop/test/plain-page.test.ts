@@ -20,7 +20,6 @@ it('fetches without cookies and keeps a refusal status', async () => {
   await expect(fetchPlainPage('https://weather.example/a.png', undefined, async () => new Response('x', { headers: { 'content-type': 'image/png' } }))).rejects.toThrow(/not a page of text/)
 })
 
-// perf146: a member refused a tab got "wait for it to finish" and slept; now the read is answered here.
 it('answers a read from a plain fetch when there is no room for a tab', async () => {
   const read = { url: 'https://a.example', title: '', text: long }
   expect(await tabOrPlain(async () => { throw noRoom() }, async () => read)).toEqual({ read })
@@ -41,19 +40,16 @@ it('passes on every other failure untouched', async () => {
   expect(plain).not.toHaveBeenCalled()
 })
 
-// perf146 r2 (review B1): the no-tab read passed a robot check or sign-in page on as ordinary page text.
 it('marks a sign-in or robot-check page as a wall, like a tab read', async () => {
   expect(plainPage('<title>Verify you are human</title><p>captcha required</p>', 'https://example.com/check').wall).toBe('captcha')
   expect(plainPage('<title>Sign in</title><form><input type="password" name="p"></form>', 'https://example.com/account').wall).toBe('login')
   expect(plainPage(`<title>서울 날씨</title><p>${long}</p>`, 'https://weather.example/seoul').wall).toBeUndefined()
-  // A wall waits for a tab, where the person can pass it; with none to be had it is still reported as a wall.
   const walled = { url: 'u', title: '', text: long, wall: 'captcha' as const }
   let tries = 0
   expect(await tabOrPlain(async () => { if (++tries < 2) throw noRoom(); return 'tab' }, async () => walled, undefined, 1_000, 5)).toEqual({ tab: 'tab' })
   expect(await tabOrPlain(async () => { throw noRoom() }, async () => ({ ...walled, text: '' }), undefined, 20, 5)).toMatchObject({ read: { wall: 'captcha' } })
 })
 
-// perf146 r2 (review B2): the 2 MB limit was applied after the whole body had been read into memory.
 it('stops reading a page body at the size limit', async () => {
   let pulled = 0
   const chunk = new TextEncoder().encode('가'.repeat(100_000))

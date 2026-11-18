@@ -48,9 +48,7 @@ describe('sidebar bots', () => {
     expect(markParts('…팀 이름은 은하수, 은하수 팀', '은하수')).toEqual([{ text: '…팀 이름은 ', hit: false }, { text: '은하수', hit: true }, { text: ', ', hit: false }, { text: '은하수', hit: true }, { text: ' 팀', hit: false }])
     expect(markParts('Agenda for QX-7731', 'qx-7731')).toEqual([{ text: 'Agenda for ', hit: false }, { text: 'QX-7731', hit: true }])
     expect(markParts('no match here', '은하수')).toEqual([{ text: 'no match here', hit: false }])
-    // The pieces stay plain text: markup in a found line is never trusted.
     expect(markParts('<img src=x onerror=alert(1)> 팀 이름은 은하수 <mark>x</mark>', '은하수')).toEqual([{ text: '<img src=x onerror=alert(1)> 팀 이름은 ', hit: false }, { text: '은하수', hit: true }, { text: ' <mark>x</mark>', hit: false }])
-    // The pinned bot shows its excerpt too: the search hands it the same found text as any row.
     expect(searchExcerpt(bot('main', { primary: true, name: '비서' }), '은하수', new Map([['main', '팀 이름은 은하수']]))).toBe('팀 이름은 은하수')
   })
 

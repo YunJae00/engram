@@ -26,7 +26,6 @@ describe('extractChatCaptures', () => {
   })
 })
 
-// Codex cap (hux r3): a Korean answer ended "✓ Remembered — the librarian is filing it", and a failed save showed the raw error.
 describe('what the answer says about a thing it was asked to keep', () => {
   it('says nothing in a Korean thread when it was kept, and one plain Korean line when it was not', () => {
     expect(captureReceipt(0, 0, null, true)).toBe('')

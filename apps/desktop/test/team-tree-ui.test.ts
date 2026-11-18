@@ -125,8 +125,6 @@ describe('team card and sidebar line', () => {
 
   it('renders nothing without a team', () => {
     expect(summary(undefined)).toBe('')
-    // c4 (R1/R2/H5): with nobody working there is no strip in the thread ("팀 3명 · 모두 끝" read as a status report).
-    // c5: nor a line under the sidebar row; both are there only while someone is working.
     const over = [member('m1', null, 'done'), member('m2', null, 'released'), member('m3', null, 'failed')]
     expect(summary(over)).toBe('')
     expect(line(over)).toBe('')
@@ -149,25 +147,20 @@ describe('team card and sidebar line', () => {
     expect(html).not.toMatch(/<li|<ul|<button/)
   })
 
-  // qa143 S19 (c): after a limit-stop the bot's team tree and team card vanished; only another bot's still-waiting team stayed in the sidebar.
   it('keeps the team of the bot\'s latest team task, while it is live and after it ended', () => {
     const members = [member('m1', null, 'working')]
     for (const state of ['queued', 'running', 'waiting']) expect(activeTeams([task('b', state, members)]).get('b')?.members).toEqual(members)
-    // An ended task has nobody working: its leads stay, shown as released, with what they finished.
     const ended = [member('m1', null, 'working'), member('m2', null, 'released', { result: '끝' }), member('m3', null, 'failed')]
     for (const state of ['done', 'failed', 'stopped']) expect(activeTeams([task('b', state, ended)]).get('b')?.members.map(one => one.state)).toEqual(['released', 'released', 'failed'])
     expect(teamSummaryText(activeTeams([task('b', 'failed', [member('m1', null, 'released'), member('m2', null, 'released')])]).get('b')!.members, 'ko')).toBe(teamSummaryText([member('m1', null, 'released'), member('m2', null, 'released')], 'ko'))
-    // A plain continue after the stop keeps that team on view, while it runs and after it ended; a later team replaces it.
     for (const goal of ['계속', '계속해줘.', '이어서 해 주세요', 'continue', 'Please continue!', 'Go on']) for (const state of ['running', 'done', 'failed']) {
       expect(activeTeams([task('b', 'failed', members, 'old'), task('b', state, undefined, 'new', goal)]).get('b')).toMatchObject({ taskId: 'old', members: [{ id: 'm1', state: 'released' }] })
     }
     expect(activeTeams([task('b', 'failed', members, 'old'), task('b', 'failed', undefined, 'c1', '계속'), task('b', 'running', undefined, 'c2', 'continue')]).get('b')?.taskId).toBe('old')
-    // qa143 p2 r3 #4: a later task of its own that hired no team does not show the ended team, in any state, nor does a continue after it.
     for (const goal of ['내일 날씨 알려줘', 'continue with the sales report for Q3 instead', '계속 미뤄둔 메일 정리해줘']) for (const state of ['running', 'waiting', 'done', 'failed']) {
       expect(activeTeams([task('b', 'failed', members, 'old'), task('b', state, undefined, 'new', goal)]).has('b')).toBe(false)
       expect(activeTeams([task('b', 'done', members, 'old'), task('b', state, undefined, 'new', goal), task('b', 'running', undefined, 'c', '계속')]).has('b')).toBe(false)
     }
-    // Another bot's unrelated task does not touch this bot's team.
     expect(activeTeams([task('b', 'failed', members, 'old'), task('c', 'running', undefined, 'other', '내일 날씨 알려줘')]).get('b')?.taskId).toBe('old')
     expect(activeTeams([task('b', 'done', members, 'old'), task('b', 'running', [member('m7', null, 'working')], 'new')]).get('b')).toMatchObject({ taskId: 'new', members: [{ id: 'm7', state: 'working' }] })
     const two = activeTeams([task('a', 'running', members), task('b', 'running', [member('m9', null, 'done')])])
@@ -276,7 +269,6 @@ describe('team store', () => {
   })
 })
 
-// qa142: the sidebar row of a team bot only had a subtitle; the spec wants its leads under it.
 describe('sidebar team disclosure', () => {
   const render = (members: TeamMemberView[] | undefined) => renderToStaticMarkup(createElement(SidebarTeam, { team: members && { taskId: 't', members }, lang: 'ko' }))
   it('is a collapsed button over the lead rows, each with a name and status, helpers left out', () => {

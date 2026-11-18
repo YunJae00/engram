@@ -33,7 +33,6 @@ describe('bot avatar ui', () => {
     expect(sidebar).toContain(":root:not([data-window-focused='true']) .sidebar-conversation-avatar > .comet-activity-icon { animation-play-state: paused; }")
     const css = read('renderer/src/bot-avatar.css')
     expect(css).toContain(".sidebar-conversation-avatar > .bot-avatar[data-size='36'] { width: 32px; height: 32px; }")
-    // The title pill and its info pane are gone: nothing styles or renders them any more.
     expect(css).not.toContain('.bots-title-pill')
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.bot-avatar, \.bot-avatar \* \{ animation: none !important; \}/)
     expect(css).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-avatar,[^{]*\{ animation-play-state: paused; \}/)

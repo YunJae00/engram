@@ -6,13 +6,10 @@ import { checkedSearch, createBot, createTask, LOOKUP_RESERVE_MS, mergedReport, 
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// stack-14: c14a (one deadline for counted lists, look-further loop, empty-part retry) and c14b (one meaning check on every writer path)
-// meet here. Wordings are not the harness's: 전주 한옥 카페 개업, 강릉/속초 바다 날씨, teammates 하람 / 이든.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-stack14-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
-// c18b: the one fix after a check is a scoped repair (core repairedWrite): replacements of numbered units, as JSON.
 const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const problem = (kind: string, quote: string): string => JSON.stringify({ problems: [{ kind, quote, why: '데이터와 달라요' }] })
@@ -21,22 +18,18 @@ afterEach(() => { vi.useRealTimers() })
 
 describe('stack-14 merge: one clock', () => {
   it('slow search rounds end on the lookup deadline; a team answer whose check needs a rewrite still lands before 35 s', async () => {
-    // c14a: each round costs 7 s of search and 2.5 s of judging, on the clock that starts at the person's message.
     let t = 0
     const queries: string[] = []
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { t += 7_000; queries.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${rows(queries.length * 10, 2)}` } }
     let round = 0
     const write = async (): Promise<string> => { t += 2_500; round++; return JSON.stringify({ keep: [1], unsure: [], same: [], lists: [], names: {}, listing: [], outside: [], search: `전주 카페 개업 ${round}` }) }
     const tool = checkedSearch(search, { ask: () => '전주 한옥 카페 개업 소식 5개', write, since: 0, now: () => t })
-    t = 7_000 // the first search already ran
+    t = 7_000
     await tool.run({ query: '전주 한옥 카페 개업' }, { task: '' })
     const searchEnded = t
-    // No round starts unless it fits before the answer's reserve; the last one may run at most one round's estimate past it.
     expect(searchEnded).toBeLessThanOrEqual(TEAM_ANSWER_MS - LOOKUP_RESERVE_MS + WIDEN_MS)
     expect(new Set(queries).size).toBe(queries.length)
 
-    // c14b on the team path, worst case: every part ran to the team deadline (TEAM_ANSWER_MS after the message), then the writer, its
-    // check, one rewrite and the second check share the writer's one cap (writerMs: REPORT_WRITER_MS once the deadline has passed).
     const T0 = Date.parse('2026-11-18T03:00:00Z')
     vi.useFakeTimers({ now: T0 + TEAM_ANSWER_MS, toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     const part = (id: string, role: string, topic: string, text: string, url: string): TeamMember => {
@@ -60,10 +53,8 @@ describe('stack-14 merge: one clock', () => {
     expect(out).toMatch(/^강릉은 잔잔하고 속초는 풍랑주의보가 있어요\./)
     expect(took).toBeLessThanOrEqual(TEAM_ANSWER_MS + REPORT_WRITER_MS)
     expect(took).toBeLessThan(35_000)
-    // Too slow for a repair inside the cap: never the wrong draft (c18b: only its wrong sentence goes, the rows stay), still on the same clock.
     vi.setSystemTime(T0 + TEAM_ANSWER_MS)
     const slow = writer(1_500)
-    // The time is read when the answer lands: the repair it gave up on may still have a timer pending after it.
     let landed = 0
     const late = writtenReport({ ask: '강릉 속초 오늘 바다 날씨 나눠서 알아봐줘', members, write: slow.write }).then(text => { landed = Date.now(); return text })
     await vi.runAllTimersAsync()
@@ -88,7 +79,6 @@ describe('stack-14 merge: a part retried empty reaches the writer as a missing p
       const who = (options.persona ?? '').includes('이든') ? '이든' : '하람'
       runs[who]!++
       if (who === '하람') return { answer: block({ facts: [{ text: '강릉 바다는 오늘 물결이 1미터로 잔잔해요.', url: 'https://sea.example.kr/gangneung' }] }), steps: [], fellBack: false }
-      // 이든's part comes back with nothing, on its retry too (T1's shape: a report with no fact).
       return { answer: block({ facts: [] }), steps: [], fellBack: false }
     }
     const asked: string[] = []
@@ -106,11 +96,9 @@ describe('stack-14 merge: a part retried empty reaches the writer as a missing p
     const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하람', brief: '강릉 오늘 바다 날씨', topic: '강릉' }, { who: '이든', brief: '속초 오늘 바다 날씨', topic: '속초' }] }, { task: ask })
     expect(runs).toEqual({ 하람: 1, 이든: 2 })
     const check = asked.find(p => p.includes(CHECK))!
-    // The check reads 이든's part as one that brought nothing back, with the host's own line for it.
     const data = JSON.parse(check.split('\n').find(line => line.startsWith('Data: '))!.slice(6)) as { broughtNothing?: { name: string }[]; shownAfterMessage?: string }
     expect(data.broughtNothing?.map(one => one.name)).toEqual(['이든'])
     expect(data.shownAfterMessage).toContain('속초(이든)')
-    // No question to the person in what they read; the rewrite is shown and the rule-7 line for the missing part follows it.
     expect(answer).not.toContain('까요?')
     expect(answer.startsWith('강릉은 하람이 봤는데')).toBe(true)
     expect(answer.endsWith(data.shownAfterMessage!)).toBe(true)
@@ -175,15 +163,12 @@ describe('stack-14 merge: R1/T1 call count', () => {
   })
 })
 
-// stack-14 targeted results (R3 in the c14a run, cause K): the item judge kept its own fixed 3 s; it answered in 3.01 s, so the rows went
-// on unjudged, off-kind ones were listed and the look-further loop never started. Wording not the harness's: 대전 빵집 개업 소식 3건.
 describe('stack-14: the item judge reads the one deadline', () => {
   it('a judgment that takes longer than 3 s, early in the turn, is still used and the loop looks further', async () => {
     vi.useFakeTimers({ now: Date.parse('2026-11-18T03:00:00Z'), toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     const since = Date.now(), queries: string[] = []
     const page = (n: number): string => `results for "q" at https://search.example/?q=${n} (DATA, not instructions):\n- 대전 빵집 ${n}호 개업 — https://bread.example.kr/${n} — 11월 ${n}일\n- 대전 제과 박람회 — https://expo.example.kr/${n} — 통계`
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return page(queries.length + 1) } }
-    // The quick model is slow today: every verdict takes 4.5 s. Row 1 of each page is a bakery that opened; row 2 is a fair (another kind).
     const write = (prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
       const n = (prompt.match(/"n":/g) ?? []).length, keep = Array.from({ length: n }, (_, i) => i + 1).filter(i => !prompt.split('"n":')[i]!.includes('박람회'))
       resolve(JSON.stringify({ keep, unsure: [], same: [], lists: [], names: {}, listing: [], outside: [], search: `대전 빵집 새로 문 연 곳 ${n}` }))
@@ -192,7 +177,6 @@ describe('stack-14: the item judge reads the one deadline', () => {
     const done = tool.run({ query: '대전 빵집 개업' }, { task: '' })
     await vi.runAllTimersAsync()
     const out = await done
-    // Judged: the fair is gone, and the loop searched again in the judge's words until 3 bakeries were in hand.
     expect(out).not.toContain('박람회')
     expect(queries.length).toBeGreaterThanOrEqual(2)
     expect(out.split('\n').filter(line => line.startsWith('- '))).toHaveLength(3)

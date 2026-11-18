@@ -34,7 +34,6 @@ it('keeps provider evidence and handles probe failures without inventing a logou
   expect(await connectionProbe(async () => { throw new Error('runtime busy') })).toEqual({ installed: true, loggedIn: false, conclusive: false })
 })
 
-// qa146: the retry button sat in the sidebar all session, also when filing was fine.
 it('shows the filing retry button only when a filing stopped short or that retry is running', () => {
   expect(filingRetryShown({ paused: false, retrying: false })).toBe(false)
   expect(filingRetryShown({ paused: true, retrying: false })).toBe(true)

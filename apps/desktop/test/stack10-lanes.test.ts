@@ -11,7 +11,6 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
   it('the desk folder sort needs a desk kind, which needs no lane; the lane tidy runs only inside the lane block', () => {
     expect(ipc).toMatch(/const kind = !company && !lane && deskLane\(/)
     expect(ipc).toMatch(/const sorted = !handed && kind === 'tidy'/)
-    // c12b r3: the tidy is one of the lane's shaping steps (shapeLane), run as a lane session's deliver step or inside the lane block.
     expect(ipc).toContain('answer = laneTidy(answer)')
     expect(ipc.indexOf('answer = laneTidy(answer)')).toBeGreaterThan(ipc.indexOf('const shapeLane = async'))
     expect(ipc).toContain('...(lane ? { deliver: shapeLane } : {})')
@@ -33,7 +32,6 @@ describe('stack-10: the c10c desk paths and the c10a lane paths never share a tu
     }
     expect(yes).not.toHaveBeenCalled()
     expect(await reshapeAsk('방금 거 한 문장으로 줄여봐', reply, yes)).toBe('엔비디아는 182.3달러예요.')
-    // A bare word of the old yes/no protocol is no reply.
     expect(await reshapeAsk('방금 거 한 문장으로 줄여봐', reply, async () => 'YES')).toBeUndefined()
   })
   it('"엔비디아 말고 애플" after a lookup is a lane ask or a correction, not a reshape', () => {

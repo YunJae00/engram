@@ -17,7 +17,6 @@ it('keeps each notification once, hides codes, and leaves out apps turned off', 
   setToastAppsOff(['slack'])
   const teams = line('MSTeams_8wekyb3d8bbwe!MSTeams|1|1', 'Microsoft Teams', 'MSTeams_8wekyb3d8bbwe!MSTeams', ['Mina', 'Lunch at noon?'])
   onToastLine(teams)
-  // The system list is read whole each time, so the same notification comes again.
   onToastLine(teams)
   onToastLine(line('Bank|2|2', 'Bank', 'Bank', ['Your verification code is 482913']))
   onToastLine(line('com.squirrel.slack.slack|3|3', 'Slack', 'com.squirrel.slack.slack', ['hi']))
@@ -32,7 +31,6 @@ it('keeps each notification once, hides codes, and leaves out apps turned off', 
   expect(read).toMatch(/^- \[[0-9a-f]{12}\] \d{4}-\d{2}-\d{2} \d{2}:\d{2} Microsoft Teams: Mina - Lunch at noon\?$/)
   expect(await peekToasts({ app: 'ms-teams' })).toHaveLength(1)
   expect(await peekToasts({ app: 'Outlook' })).toEqual([])
-  // A notification-only app may have been disabled under its display name.
   setToastAppsOff(['Microsoft Teams'])
   expect(await peekToasts({ app: 'ms-teams' })).toEqual([])
   expect(await notificationsTool(ctx).run({ app: 'Teams' }, {} as never)).toContain('No notifications')

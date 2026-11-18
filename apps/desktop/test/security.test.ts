@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allowNavigation, isAllowedExternalUrl, RENDERER_CSP } from '../src/main/security.js'
 
-// These lock the Electron navigation / openExternal / CSP hardening. They are
-// pure predicates on purpose so the policy is provable without a BrowserWindow.
-
 describe('isAllowedExternalUrl (shell.openExternal gate)', () => {
   it('allows https github.com and its subdomains', () => {
     expect(isAllowedExternalUrl('https://github.com/new?name=x&visibility=private')).toBe(true)
@@ -54,7 +51,6 @@ describe('RENDERER_CSP', () => {
     expect(RENDERER_CSP).toContain("object-src 'none'")
     expect(RENDERER_CSP).toContain("base-uri 'none'")
     expect(RENDERER_CSP).toContain("form-action 'none'")
-    // no remote script/eval escape hatch
     expect(RENDERER_CSP).not.toContain('unsafe-eval')
     expect(RENDERER_CSP).not.toContain('http://')
     expect(RENDERER_CSP).not.toContain('https://')

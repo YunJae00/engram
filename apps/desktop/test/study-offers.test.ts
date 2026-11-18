@@ -18,6 +18,5 @@ it('invalidates only the old offer check, without losing message recovery or ano
   await pending
   await dismissed
   expect((await readStudies(paths)).map(study => study.state)).toEqual(['declined', 'offered'])
-  // The old result stays superseded even after the new conversation finishes.
   expect(old.superseded).toBe(true)
 })

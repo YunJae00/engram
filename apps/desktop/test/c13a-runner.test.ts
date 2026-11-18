@@ -5,13 +5,10 @@ import { expect, it, vi } from 'vitest'
 import { companyStatus, createBot, createTask, employeesReport, handoffShown, lateShown, listTasks, loadBots, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// c13a (cause T): one deadline per task, from the person's message. The seam answerMs = 280 ms stands for the real 28 s, so 10 ms is 1 s.
-// Wordings are not the harness's: 피그마 / 캔바 / 미로 updates, teammates 하람 / 이든 / 소율.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const MS = 280, S = MS / 28
 const block = (text: string, url: string): string => `\`\`\`report\n${JSON.stringify({ facts: [{ text, url }] })}\n\`\`\``
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-// A teammate that opens a page, then answers after `seconds` of the real clock, or stalls until it is stopped.
 const teammate = (plan: Record<string, number | 'stall'>, calls: string[]): Run => async (deps, _prompt, options = {}) => {
   const who = Object.keys(plan).find(name => (options.persona ?? '').includes(`You are ${name}`))!
   calls.push(who)
@@ -48,7 +45,6 @@ async function world(plan: Record<string, number | 'stall'>, parts: [string, str
 it('deadline: teammates back at 22 s and 26 s of a 28 s deadline are both in the one answer, which goes out when the last is in', async () => {
   const w = await world({ 하람: 22, 이든: 26 }, [['하람', '피그마'], ['이든', '캔바']])
   await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
-  // At ~26 s, inside the deadline: nobody was cut at a fixed 15 s from their own start.
   expect(w.reported[0]! - started).toBeLessThan(MS)
   expect(w.reported[0]! - started).toBeGreaterThanOrEqual(25 * S)
   const text = employeesReport(await w.task())!
@@ -61,21 +57,17 @@ it('deadline: teammates back at 22 s and 26 s of a 28 s deadline are both in the
 it('a slow part (40 s) is labeled working at the deadline with the page it opened, keeps working, and follows once in the same thread', async () => {
   const w = await world({ 하람: 12, 소율: 40 }, [['하람', '피그마'], ['소율', '미로']])
   await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
-  // The answer goes out at the deadline, not when the slow part lands.
   expect(w.reported[0]! - started).toBeGreaterThanOrEqual(MS - 5)
   expect(w.reported[0]! - started).toBeLessThan(35 * S)
   const at = await w.task()
   expect(at.team!.members.map(m => [m.role, m.state, m.late])).toEqual([['하람', 'done', undefined], ['소율', 'working', true]])
   const first = employeesReport(at)!
   expect(first).toContain('하람의 업데이트 소식이에요.')
-  // Rule 7's line, linked to what it has opened so far (stack-12 risk: "a part still at work carries no link").
   expect(first).toMatch(/미로\(소율\): 아직 찾는 중이에요\. 끝나면 이어서 올릴게요\. \[[^\]]+\]\(https:\/\/search\.example\/\?q=/)
-  // "팀 다들 지금 뭐 해?" in the meantime reads the live state: 소율 is at work.
   expect(companyStatus((await loadBots(w.paths)).map(bot => ({ ...bot, label: '조사 담당' })), await listTasks(w.paths), Date.now())).toMatch(/소율은 [^.]*하고 있|소율은 [^.]*찾고 있|소율은 [^.]*조사/)
   await updateTask(w.paths, w.id, lateShown)
   await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })
   expect(w.reported[1]! - started).toBeGreaterThanOrEqual(39 * S)
-  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(employeesReport(await w.task())).toBe(`소율이 찾아보니 소율의 업데이트 소식이에요. [news.example](https://news.example/${encodeURIComponent('소율')})`)
   await wait(60)
   expect(w.reported).toHaveLength(2)
@@ -100,16 +92,12 @@ it('r2: every part still at work at the deadline (34 s and 38 s): none is cut, a
 })
 
 it('r3: a plain part (40 s) at work beside a hand-off at work at the deadline still follows; the hand-off\'s part is labeled and lands in the report after', async () => {
-  // 이든 finds 캔바 news at 10 s and hands on to 소율, who would need 34 s; 하람's 피그마 part needs 40 s.
   const w = await world({ 하람: 40, 이든: 10, 소율: 34 }, [['하람', '피그마'], ['이든', '캔바', '소율']])
-  // 이든's own bubble when they hand on (c9 H5).
   await vi.waitFor(() => expect(w.reported).toHaveLength(1), { timeout: 2_000 })
   await updateTask(w.paths, w.id, handoffShown)
   await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 2_000 })
   expect(w.reported[1]! - started).toBeLessThan(33 * S)
   const at = await w.task()
-  // 하람 keeps working (before, a hand-off at work had 하람 cut with it). 소율 is stopped at the deadline: back before the cap report is
-  // made, it is in it with its result; still at work then, it is labeled and comes in the report after. Either way it is shown once.
   const [haram, soyul] = ['하람', '소율'].map(who => at.team!.members.find(m => m.role === who)!)
   expect(haram.late).toBe(true)
   const first = employeesReport(at)!
@@ -150,10 +138,8 @@ it('a part that never answers stops at its ceiling and is then said once as not 
   expect(employeesReport(await w.task())).not.toContain('끝까지 못 봤어요')
   await updateTask(w.paths, w.id, lateShown)
   await vi.waitFor(() => expect(w.reported).toHaveLength(2), { timeout: 3_000 })
-  // Not before the ceiling: the deadline plus 90 s.
   expect(w.reported[1]! - started).toBeGreaterThanOrEqual(MS + LATE - 5)
   const last = employeesReport(await w.task())!
-  // c17c: alone, whose part it is is the subject, never a "(이든)" tag.
   expect(last).toMatch(/^이든은 이번엔 끝까지 못 봤어요\. 보던 곳은 \[[^\]]+\]\(https:\/\/search\.example\/\?q=/)
   expect((await w.task()).team!.members[1]).toMatchObject({ unfinished: true })
 })
@@ -166,7 +152,6 @@ it('R1/T1 path: anonymous helpers follow the same deadline (6 s before it, for t
   const calls: string[] = [], quick: string[] = []
   const run: Run = async (_deps, prompt, options = {}) => {
     calls.push(prompt.slice(0, 20)); options.onStart?.()
-    // One helper answers at 8 s; the other stalls and is cut at its due time (28 − 6 = 22 s), not at the task's 28 s.
     if ((options.persona ?? '').includes('"대전 공연"')) { await wait(8 * S); return { answer: '대전 공연은 12월 6일에 있어요 https://show.example/1', steps: [], fellBack: false } }
     return new Promise((_, reject) => { options.onToken?.('부산 전시는 12월 12일에 열려요 https://art.example/1'); options.signal!.addEventListener('abort', () => reject(new Error('aborted'))) })
   }
@@ -177,9 +162,7 @@ it('R1/T1 path: anonymous helpers follow the same deadline (6 s before it, for t
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '대전 공연', brief: '다음 달 대전 공연 일정', lookup: true }, { role: '부산 전시', brief: '다음 달 부산 전시 일정', lookup: true }] }, { task: '' }))
   const took = Date.now() - began
   expect(took).toBeGreaterThanOrEqual(21 * S)
-  // Before the task's own deadline (28 s): the lead's merge has its time.
   expect(took).toBeLessThan(27 * S)
-  // One round each: no answer reserve round, no stand-in, no kind check for a nameless helper.
   expect(calls).toHaveLength(2)
   expect(quick).toEqual([])
   expect(out.members[0].state).toBe('released')

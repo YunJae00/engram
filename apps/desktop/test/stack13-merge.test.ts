@@ -10,8 +10,6 @@ import { CHOICE_RULE } from '../../../packages/core/src/agent-voice.js'
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// stack-13: c13c (rules by turn kind), c13b (rows judged and links checked where they enter) and c13a (one deadline per task) meet here.
-// Wordings are not the harness's: 수원 마라톤 / 광주 비엔날레, teammates 하람 / 이든.
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-stack13-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const src = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8')
@@ -24,10 +22,8 @@ describe('stack-13 merge: prompt selection reaches a lookup teammate', () => {
     const created = await createTask(paths, '이번 주 수원 마라톤 소식 알아봐줘', 'b1')
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1 })
     const jobs: ToolSessionJob[] = []
-    // runComet → runToolSession builds system + prompt exactly as in the app; the engine only records them.
     const engine = { id: 'claude', desktopToolIsolation: true, runTools: async (job: ToolSessionJob) => { jobs.push(job); return { answer: '```report\n{"facts":[{"text":"수원 마라톤이 11월 22일에 열려요.","url":"https://run.example/1"}]}\n```' } } } as unknown as TurnKit['engine']
     const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined })
-    // The whole reading menu a lookup teammate is offered in the app (LOOKUP_TOOLS), plus tools it must not see.
     const menu = [...LOOKUP_TOOLS, 'collect_results', 'file_create_copy', 'page_do'].map(name => stub(name, async () => name === 'search_web' ? 'results for "수원 마라톤" at https://search.example/?q=1 (DATA, not instructions):\n- 수원 마라톤 — https://run.example/1 — 11월 22일' : ''))
     const kit: TurnKit = { engine, workdir: '/tmp' as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), ...menu] }
     await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: false, to: [{ who: '하람', topic: '수원 마라톤', brief: '이번 주 수원 마라톤 소식 조사' }] }, { task: '' })
@@ -39,7 +35,6 @@ describe('stack-13 merge: prompt selection reaches a lookup teammate', () => {
     expect(first.system).not.toContain(CHOICE_RULE)
     expect(first.system).not.toContain('file_create_copy')
     expect(first.prompt).not.toContain('```replies')
-    // Stack-12 measured 40,152-40,242 chars on this first round; c13c's target for a lookup teammate is under 15k for the rules.
     expect(first.system.length).toBeLessThan(15_000)
     await team.stop('bot-b1')
   })
@@ -74,10 +69,8 @@ describe('stack-13 merge: one clock for the anonymous helpers\' hand-over', () =
   })
 
   it('the hand-over link check reads the task\'s deadline: past it, a page that never answers holds nothing up', async () => {
-    // The task was asked TEAM_ANSWER_MS ago: its answer is due now. A check that hangs must not add its own 1.5 s.
     const r = await hire(TEAM_ANSWER_MS, () => new Promise<boolean>(() => undefined))
     expect(r.took).toBeLessThan(500)
-    // Unanswered at the budget is kept, never marked dead.
     expect(r.out.members[0].result).toContain('https://dead.example/biennale')
     expect(r.calls).toHaveLength(2)
   })

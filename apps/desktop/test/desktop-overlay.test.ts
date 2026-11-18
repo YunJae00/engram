@@ -131,8 +131,6 @@ describe('control overlay windows', () => {
     overlay.showControlOverlay(running)
     expect(glows()).toHaveLength(2)
     for (const [index, glow] of glows().entries()) {
-      // One row short of the display: the exact size reads as fullscreen and
-      // loses transparency.
       const bounds = fake.screen.displays[index]!.bounds
       expect(glow.options).toMatchObject({
         ...bounds, height: bounds.height - 1,
@@ -149,7 +147,6 @@ describe('control overlay windows', () => {
     expect(pillWin.setIgnoreMouseEvents).not.toHaveBeenCalled()
     expect(pillWin.setContentProtection).toHaveBeenCalledWith(true)
     expect(pillWin.loadFile).toHaveBeenCalledWith(expect.anything(), { hash: 'overlay-pill' })
-    // Top-centre of the display under the pointer (the first one here).
     expect(pillWin.options).toMatchObject({ x: 400, y: 56 })
   })
 
@@ -264,7 +261,6 @@ describe('control overlay lifetime', () => {
     expect(glows()[0]!.options).toMatchObject({ width: 2560, height: 1439 })
     for (const win of windows()) win.emit('ready-to-show')
     for (const win of windows()) expect(win.showInactive).toHaveBeenCalledOnce()
-    // The fresh windows carry the status, and the pointer poll is running again.
     expect(sentEvents(glows()[0]!)).toContainEqual({ type: 'desktop:control', control: running })
     expect(sentEvents(glows()[0]!)).toContainEqual({ type: 'desktop:pointer', x: 10, y: 10 })
   })

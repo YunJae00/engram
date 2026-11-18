@@ -83,7 +83,6 @@ it('waits when the verification retry provides no result check', async () => {
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'waiting', turns: 2, verified: false, verificationIssue: 'The verification turn ended without a result check.' })
 })
 
-// qa142 p2a-r5 #4: a check turn whose checks all pass but that never read a handed-in file's final bytes gets one readback-only turn.
 const unreadReport = { checks: [{ requirement: 'Leads merged', status: 'pass' as const, basis: 'Compared.' }, { requirement: 'No duplicates', status: 'pass' as const, basis: 'Counted.' }], grounding: { status: 'pass' as const, basis: 'Compared.' }, sources: [] }
 const unreadCheck = { report: unreadReport, accepted: false, verified: false, issues: ['Reread every final part of check_merge.py (/artifacts/id-check_merge.py) after its last write: the whole text at one revision.'], readbacks: [{ name: 'check_merge.py', path: '/artifacts/id-check_merge.py' }] }
 const fileRead = { tool: 'file_read', args: { path: '/artifacts/id-check_merge.py' }, observation: '{"path":"/artifacts/id-check_merge.py","sha256":"x","content":"print(0)"}' }
@@ -98,9 +97,7 @@ it('gives a check turn that lacks only handed-in readbacks one readback-only tur
   expect(task).toMatchObject({ state: 'done', turns: 3, verified: true })
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.map(entry => entry.line)).toContain('Reading back the handed-in files once')
-  // The ordinary check retry comes first; the third turn is the readback only.
   expect(t.sent[1]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report })
-  // qa142 p2a-r8 A: it is not held to a requirement list; the check turn's report stands and this turn only adds the reads.
   expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect(t.sent[2]!.request.message).not.toContain('- Leads merged')
   expect(t.sent[2]!.request.message).toContain('The requirement checks you already reported stand as they are')
@@ -109,7 +106,6 @@ it('gives a check turn that lacks only handed-in readbacks one readback-only tur
   expect(prompt).toContain('call report_result_check again')
   expect(prompt).toContain('Do no other work')
   expect(prompt).toContain('Merge the leads')
-  // The report reached the person once; the readback turn that confirms it adds no second message.
   expect(t.delivered).toEqual([report])
 })
 
@@ -121,22 +117,18 @@ it('hands the readback-only turn no requirement list, neither the model\'s own c
   expect(t.sent[2]!.request.message).not.toContain('- Unresolved verification')
 })
 
-// qa142 p2a-r8 A: the readback-only turn does not re-judge requirements. Whatever checks its report restates, the check turn's report is carried over and only the reads decide.
 it.each([[['Leads merged']], [['Leads merged', ' no  duplicates ']], [[]]] as const)('verifies a readback-only turn that adds the reads and restates only %j', async restated => {
   const checks = (names: readonly string[]) => names.map(requirement => ({ requirement, status: 'pass' as const, basis: 'Compared.' }))
   const t = await setup(async (_request, turn) => {
-    // First report: both. Retry: only the first, still lacking the readback. Readback turn: the reads, and a report with fewer checks.
     if (turn < 3) return { ...done(report, 1), check: { ...unreadCheck, report: { ...unreadReport, checks: checks(turn === 1 ? ['Leads merged', 'No duplicates'] : ['Leads merged']) } }, trail: [fileRead] }
     return { ...done(report, 1), check: { accepted: true, verified: true, issues: [], report: { ...unreadReport, checks: checks(restated) }, reportUnchanged: true }, trail: [fileRead] }
   }, false)
   await t.chat('Merge the leads')
   expect(t.sent[2]?.extra?.verification).toEqual({ goal: 'Merge the leads', result: report, readback: true })
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
-  // The carried report passed, so the confirming readback adds no second message.
   expect(t.delivered).toEqual([report])
 })
 
-// A waiting task keeps no requirement list: the person's next instruction starts a normal turn judged by its own report.
 it('demands no earlier requirement when the person instructs a task left waiting after its readback-only turn', async () => {
   const t = await setup(async (_request, turn) => turn <= 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
     : { ...done('Only the count now: 12.', 1), check: { accepted: true, verified: true, issues: [], report: { ...unreadReport, checks: [{ requirement: 'Count reported', status: 'pass' as const, basis: 'Counted.' }] } }, trail: [fileRead] }, false)
@@ -150,13 +142,11 @@ it('demands no earlier requirement when the person instructs a task left waiting
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 4 })
 })
 
-// qa142 p2a-r9 #2: the host, not the prompt, keeps the follow-up to reading: one that changed a result is not accepted, even with every listed file read and a passing check.
 it.each([
   ['writes a file with its own tool', { tool: 'Write', args: { file_path: '/task/check_merge.py', content: 'print(1)' }, observation: 'Native action completed.', committed: true }],
   ['saves a new copy', { tool: 'file_create_copy', args: { name: 'check_merge.py', content: 'print(1)' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y"}' }],
   ['renders a file', { tool: 'render_file', args: { name: 'report.pdf', html: '<p>x</p>' }, observation: '{"path":"/artifacts/id-report.pdf","sha256":"z","completeReadback":true}' }],
   ['changes a task file by command that the host then hands in', { tool: 'file_create_copy', args: { name: 'check_merge.py', fromPath: 'check_merge.py' }, observation: '{"path":"/artifacts/id2-check_merge.py","sha256":"y","handedInFrom":"/task/check_merge.py"}' }],
-  // qa143 p2 r4 #1 (B14): a command that may have written a file is a change here too, by the rule freshness and the post-check list use.
   ['rewrites the file with a script', { tool: 'Bash', args: { command: 'python3 rewrite.py' }, observation: 'ok' }],
   ['rewrites the file with a redirect', { tool: 'Bash', args: { command: 'cat fixed.py > check_merge.py' }, observation: '' }],
   ['edits the file in place by command', { tool: 'Shell', args: { command: 'sed -i s/0/1/ check_merge.py' }, observation: '' }],
@@ -172,7 +162,6 @@ it.each([
   expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
 })
 
-// A write that did not happen changed nothing: the follow-up that then only read is still verified.
 it('verifies a readback-only turn whose only write attempt failed', async () => {
   const failed = { tool: 'Write', args: { file_path: '/task/check_merge.py', content: 'print(1)' }, observation: 'that did not work: Native action did not report success; it may have partly happened.', committed: true }
   const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
@@ -181,7 +170,6 @@ it('verifies a readback-only turn whose only write attempt failed', async () => 
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true, turns: 3 })
 })
 
-// A plain reader command changed nothing: the follow-up that compared and read is still verified.
 it('verifies a readback-only turn that only ran plain reader commands', async () => {
   const readers = [{ tool: 'Bash', args: { command: 'diff merged.md leads.md; cat check_merge.py | wc -l' }, observation: '1' }]
   const t = await setup(async (_request, turn) => turn < 3 ? { ...done(report, 1), check: unreadCheck, trail: [fileRead] }
@@ -209,8 +197,6 @@ it.each([
   expect(t.sent.every(one => !one.extra?.verification?.readback)).toBe(true)
 })
 
-// qa143 B14: two leads' text was merged, compared item by item and checked with every requirement passing, yet the turn ended
-// "작업이 멈췄어요 / 일부를 확인하지 못했어요": the check turn had no readback step, and a report of words alone has nothing to read back.
 const hireLeads = async (paths: Parameters<typeof listTasks>[0]) => {
   const { updateTask } = await import('core')
   const task = (await listTasks(paths))[0]!
@@ -231,14 +217,12 @@ it('ends a self-checked team report of words alone as done', async () => {
   expect(task).toMatchObject({ state: 'done', verified: true, turns: 2 })
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done')
-  // qa143 S31/S32: the merged report was posted, then posted again by its check. It is posted once.
   expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
 })
 
 it.each([
   ['hands over a file', '[보고서](engram-artifact:report.md)', [] as typeof compared],
   ['changed a file earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Write', args: { file_path: '/task/report.md' }, observation: 'Native action completed.' }]],
-  // qa143 p2 r2 #3: a command that wrote a task file is a change like any other write.
   ['wrote a file with a command earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Bash', args: { command: 'cat > report.md <<EOF\n규정 5개\nEOF' }, observation: 'Native action completed.' }]],
   ['ran a script earlier in the task', '규정 5개와 체크리스트 10개예요.', [{ tool: 'Bash', args: { command: 'python3 build_report.py' }, observation: 'Native action completed.' }]],
 ])('still leaves a team report that %s unverified when its check turn read nothing back', async (_why, answer, earlier) => {
@@ -252,11 +236,7 @@ it.each([
   expect(task.log.at(-1)!.line).toBe('The report is recorded, but unresolved checks remain. Waiting for your next instruction.')
 })
 
-// qa143 S19 (b): the report existed and its check had passed every requirement; the automatic re-check then ran out of the task's
-// token budget, and the task ended failed with "작업이 처리 한도에 닿아 끝나지 않았어요" and the budget text as its result.
-// qa143 p2 r3 #1: the production shape. The core returns every budget stop as incomplete, which ipc reports as unfinished with the budget note as its reason.
 const budgetStop = { answer: 'The task token budget (56,032 new tokens available for this turn) was reached. Work so far is preserved; inspect the current state before continuing.', asked: false, unfinished: true, unfinishedReason: 'The task token budget (56,032 new tokens available for this turn) was reached.', steps: 1, budgetExhausted: true, tokensUsed: 56_032 }
-// qa143 p2 r2 #1: only the host's own verdict lets the report stand: the re-check read the files back and its check was accepted before the budget ran out.
 const hostAccepted = { accepted: true, verified: true, issues: [], report: unreadReport }
 it('finishes with the checked report when only its re-check ran out of budget', async () => {
   const t = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), tokensUsed: 240_000, check: unreadCheck, trail: [fileRead] } : { ...budgetStop, check: hostAccepted, trail: [fileRead] }, false)
@@ -267,13 +247,10 @@ it('finishes with the checked report when only its re-check ran out of budget', 
   expect(task).toMatchObject({ state: 'done', result: report, turns: 2, verified: true })
   expect(task.verificationIssue).toBeUndefined()
   expect(task.log.at(-1)!.line).toBe('Done; the re-check stopped at the task token budget.')
-  // The report, which waited for that re-check, is posted once; the budget text is not, and there is no limit-stop closing.
   expect(t.delivered).toEqual([report])
   expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|token budget/)
 })
 
-// qa143 p2 r7 S19b: the re-check made another report.md, read both files in full and stopped at the budget, so the earlier report rightly
-// stood as done; but it was posted with the re-check's steps, and the host pointed its link at the newer report.md (newestRevisions).
 it('posts the report restored at a budget stop with its own file, not a same-name file made in the re-check', async () => {
   const { saveArtifact } = await import('core')
   const { latestResultOutputs } = await import('../src/main/result-check.js')
@@ -295,13 +272,11 @@ it('posts the report restored at a budget stop with its own file, not a same-nam
   await t.chat('Write the report')
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: own, verified: true })
   expect(t.delivered).toEqual([own])
-  // As ipc.ts deliver does with the trail it is handed.
   expect(await newestRevisions(directory, own, since, latestResultOutputs(t.deliveredTrails[0]!, []).map(output => output.path))).toBe(own)
 })
 
 it.each([
   ['its check left a requirement unresolved', { ...unreadCheck, report: { ...unreadReport, checks: [{ requirement: 'Leads merged', status: 'unknown' as const, basis: 'Not compared.' }] } }],
-  // qa143 p2 r2 #1: the model's pass labels alone do not finish a report the host rejected for an unread final file.
   ['the host rejected it for a missing readback and the re-check reported nothing', unreadCheck],
   ['the re-check\'s accepted check read nothing back', unreadCheck, { ...budgetStop, check: hostAccepted, trail: [] }],
   ['the re-check still left the readback open', unreadCheck, { ...budgetStop, check: unreadCheck, trail: [fileRead] }],
@@ -318,9 +293,6 @@ it.each([
   expect(task.log.at(-1)!.line).toBe('Stopped at the task token budget.')
 })
 
-// grokbar cycle 3 cause C (D3): the report was already in the thread when its check ran out of budget, and "한 일: 33단계 진행 … 작업이 처리 한도에
-// 닿아 끝나지 않았어요." was posted under it. An answer the person already has ends the task done, quietly, and stays the result; it is not
-// called verified. (This was a row of the table above, expecting failed.)
 it('ends done on the report already in the thread when its unasked check runs out of budget, with no closing message', async () => {
   const t = await setup(async (_request, turn, extra) => {
     if (turn === 1) { await hireLeads(t.paths); return { ...done(report, 1), tokensUsed: 240_000 } }
@@ -336,16 +308,13 @@ it('ends done on the report already in the thread when its unasked check runs ou
 
 const doubt = 'An Office write has no successful read back of all changed targets. Report incomplete or unverified work; text readback alone does not verify visual layout.'
 const deck = 'PPT 5장 만들었어요.\n\n[3분기 실적 보고 (2026-11-23).pptx](engram-artifact:deck.pptx)'
-// grokbar stack2-d469cddf D3 (309 s, 33 steps, 306,088 tokens), D4 ("작업이 멈췄어요"), H1 (two auto-continuations): an answer in the thread is the end.
 it('ends a plain ask done on its delivered answer whatever the host still doubts: no continuation, no check turn, no closing message', async () => {
   const t = await setup(async () => ({ ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt }))
   await t.chat('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')
   expect(t.sent).toHaveLength(1)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', result: deck, turns: 1 })
-  // The host's turn put the answer in the thread; the runner adds nothing under it.
   expect(t.delivered).toEqual([])
   expect(JSON.stringify(t.events)).not.toMatch(/처리 한도|processing limit|chat:error|한 일:/)
-  // D5: the task is not left waiting, so the edit that follows is a new plain ask (no resumed context) and takes the desk lane.
   await t.chat('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')
   expect(await listTasks(t.paths)).toHaveLength(2)
   expect(t.sent[1]?.extra?.context).toBeUndefined()
@@ -354,16 +323,13 @@ it('ends a plain ask done on its delivered answer whatever the host still doubts
 })
 
 it('still runs the check when the person asked for one', async () => {
-  // Their words ask for it: unfinished work is continued as before...
   const asked = await setup(async (_request, turn) => turn === 1 ? { ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt } : done(deck, 1))
   await asked.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
   expect(asked.sent).toHaveLength(2)
   expect((await listTasks(asked.paths))[0]).toMatchObject({ state: 'done', turns: 2 })
-  // ...and a check that left something open gets its re-check turn.
   const checked = await setup(async (_request, _turn, extra) => extra?.verification ? done(deck, 1) : { ...done(deck, 4), check: { accepted: false, issues: ['Slide 3 total: unknown'] } })
   await checked.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
   expect(checked.sent[1]?.extra?.verification).toMatchObject({ result: deck })
-  // Held for that re-check, the report was posted once, by the runner.
   expect(checked.delivered).toEqual([deck])
 })
 
@@ -371,7 +337,6 @@ it('keeps waiting at a barrier only the person can clear, and keeps continuing w
   const barrier = await setup(async () => ({ ...done('로그인이 필요해서 여기까지만 봤어요.'), delivered: true, unfinished: true, unfinishedReason: 'Blocked by a permission or security screen' }))
   await barrier.chat('사내 게시판 공지 읽어줘')
   expect((await listTasks(barrier.paths))[0]).toMatchObject({ state: 'waiting', turns: 1 })
-  // Cut at a call or time limit: the host does not mark it delivered (ipc.ts), so it continues.
   const cut = await setup(async (_request, turn) => ({ ...done(turn === 1 ? '두 개까지 읽었어요.' : '네 개 다 읽었어요.'), unfinished: turn === 1 }))
   await cut.chat('공지 네 개 다 읽어줘')
   expect((await listTasks(cut.paths))[0]).toMatchObject({ state: 'done', turns: 2 })
@@ -384,7 +349,6 @@ it('still says so when a task ends at its limit with nothing delivered, and says
   await nothing.chat('리드 목록 합쳐줘')
   expect((await listTasks(nothing.paths))[0]).toMatchObject({ state: 'failed' })
   expect(JSON.stringify(nothing.events)).toMatch(/처리 한도에 닿아 끝나지 않았어요/)
-  // The person asked for a check, the answer was delivered, and the continuation ran out: the answer stands, with no limit message.
   const answered = await setup(async (_request, turn) => turn === 1 ? { ...done(deck, 4), delivered: true, unfinished: true, unfinishedReason: doubt, tokensUsed: 240_000 } : budgetStop, false)
   await answered.chat('3분기 실적 PPT 5장 만들고 숫자 맞는지 확인까지 해줘')
   expect((await listTasks(answered.paths))[0]).toMatchObject({ state: 'done', result: deck })
@@ -397,8 +361,6 @@ it('still stops a working turn at the budget', async () => {
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'failed', result: budgetStop.answer })
 })
 
-// perf146: "봇 3개로 서울 부산 제주 날씨" gave a full sourced answer, then its team check hit the task budget and the thread added
-// "작업이 처리 한도에 닿아 끝나지 않았어요". qa146 S19: the same check kept the thread "생각하는 중" for 5-10 minutes after the report.
 const sourced = '서울 12도, 부산 15도, 제주 17도예요.\n출처: https://www.weather.go.kr/w/index.do'
 const hired = [{ tool: 'hire_members', args: {}, observation: '{"members":[]}' }]
 const teamEnd = async (t: Awaited<ReturnType<typeof setup>>) => {
@@ -425,11 +387,8 @@ it('keeps the team check for a report without sources, a member not reviewed, or
   expect(teamCheckDue(reviewed, `${sourced}\n[표](engram-artifact:weather.md)`)).toBe(true)
   expect(teamCheckDue(open, '서울 12도예요.')).toBe(true)
   expect(teamCheckDue(reviewed, '[표](engram-artifact:weather.md)')).toBe(true)
-  // grokbar: sourced lookup members are accepted when they report (no review_member round), so a cited report needs no check turn.
   const auto = { team: { members: ['m1', 'm2', 'm3'].map(id => ({ state: 'released', lookup: true, review: { ok: true, note: 'auto: sourced lookup' }, role: id, id })) } } as never
   expect(teamCheckDue(auto, sourced)).toBe(false)
-  // grokbar B6 r2: no member reached a page, so the report has no address: the 90 s check that followed the answer in R1, R2 and T1 does not run
-  // for a team that only looked things up, reviewed or not. One member that makes something, or a handed-in file, keeps the check.
   const lookups = (patch: object = {}) => ({ team: { members: ['m1', 'm2', 'm3'].map(id => ({ state: 'done', lookup: true, role: id, id, ...patch })) } }) as never
   expect(teamCheckDue(auto, '서울 12도예요.')).toBe(false)
   expect(teamCheckDue(lookups(), '서울: 아직 조사 중이에요.')).toBe(false)
@@ -450,8 +409,6 @@ it('ends done with the delivered report when the team check runs out of the task
   expect(t.delivered).toEqual(['규정 5개와 체크리스트 10개예요.'])
 })
 
-// perf146 r3: with under 45,000 tokens left a source-free report skipped its check and was called done. Little budget is no reason to skip:
-// the check starts, and when it then runs out of the budget the delivered report stands.
 it('still starts the team check of a report without sources when little budget is left', async () => {
   const t = await setup(async (_request, turn) => {
     if (turn === 1) { await hireLeads(t.paths); return { ...done('규정 5개와 체크리스트 10개예요.', 1), tokensUsed: TASK_TOKEN_BUDGET - 10_000, trail: hired } }
@@ -490,7 +447,6 @@ it('still checks a team report whose member was not reviewed when little budget 
   expect((await listTasks(t.paths))[0]!.state).not.toBe('done')
 })
 
-// perf146 r2: the lead reports what its team delivered while one member still needs the person; the report stands and the task waits for the answer.
 it('delivers the lead\'s combined report and waits when a member still needs the person', async () => {
   const { updateTask } = await import('core')
   const report = '부산 15도, 제주 17도예요. 서울은 아직이에요: 어느 계정으로 볼까요?'
@@ -501,7 +457,6 @@ it('delivers the lead\'s combined report and waits when a member still needs the
   expect(t.delivered).toEqual([report])
 })
 
-// perf146 r3: a check started because a member was never reviewed was called done when it ran out of tokens or time, before its verdict was read.
 const unreviewedTeam = async (t: Awaited<ReturnType<typeof setup>>) => {
   const { updateTask } = await import('core')
   await hireLeads(t.paths)

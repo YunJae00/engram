@@ -5,8 +5,6 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { messageUnits } from 'core'
 import { checkedDesk, withPart } from '../src/main/desk-lane.js'
 
-// c18b (cause F, D1: the desk check named a missing "할 일" and its whole-draft rewrite dropped that part, the lead and the register).
-// Wordings are not the harness's: a 영업팀 월간 회의 asked as 주요 결정 and 담당자별 업무.
 const SOURCE = [
   '# 영업팀 11월 월간 회의', '',
   '## 결정', '- 1월 신규 요금제 출시로 확정', '- 대리점 수수료는 동결', '- 지방 순회 설명회는 2월로 미룸', '',
@@ -50,7 +48,6 @@ describe('a missing named part is inserted, never re-sorted', () => {
   })
 })
 
-// c18b r2 (review): the named lines already stood under the wrong part, so the part was never added.
 describe('r2: a missing part whose lines sit under another part is moved, not skipped', () => {
   it('the tasks under 결정 move under 담당자별 업무; the decisions stay; nothing is said twice', () => {
     const misplaced = [...DRAFT.split('\n'), ...TASKS].join('\n')

@@ -53,14 +53,11 @@ it('requires a reviewed goal and per-call consent, refuses duplicates, and abort
   fake.approve.mockResolvedValue({ response: 0 })
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('declined')
   expect(await readdir(paths.inbox)).toHaveLength(0)
-  // QA 0.8.142 B6: always a sheet on Engram's visible window, never an app-modal dialog.
   expect(fake.approve.mock.calls.at(-1)![0]).toBe(shown.window)
   shown.visible = false
   const asked = fake.approve.mock.calls.length
   expect((await request('engram_begin', { goal: 'Remember a test decision' })).error).toContain('not on screen')
   expect(fake.approve.mock.calls.length).toBe(asked)
-  // In the background, the host brings Engram's window forward and asks on it
-  // (the surface returns the window once it is shown).
   const background = { isDestroyed: () => false, isVisible: () => true }
   setDialogSurface(() => background as never)
   fake.approve.mockResolvedValueOnce({ response: 0 })

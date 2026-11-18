@@ -9,7 +9,6 @@ function store(initial: ApprovalRule[]) {
   return { list: async () => rules, forget: async (fingerprint: string) => { rules = rules.filter(one => one.fingerprint !== fingerprint) }, left: () => rules.map(one => one.fingerprint) }
 }
 
-// The chips that took an "always allow" back are gone with the routines screen; chat has to be able to do it.
 it('lists what the person allowed and takes a site back, every rule for it, without adding anything', async () => {
   const kept = store([rule('a', 'www.example.com'), rule('b', 'example.com'), rule('c', 'other.kr')])
   const tool = standingApprovalsTool(kept)

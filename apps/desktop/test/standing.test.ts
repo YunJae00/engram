@@ -23,8 +23,6 @@ async function setPaused(paths: VaultPaths, taskId: string, paused: boolean): Pr
   await writeFile(file, JSON.stringify(stored, null, 2))
 }
 
-// A standing task starts through the routine door when it is due, once a
-// day, and a refusal for the day counts as done.
 describe('standingTick', () => {
   it('a schedule kept on its own conversation runs there, and is tried again when that conversation was busy', async () => {
     const paths = await tempPaths()
@@ -34,7 +32,6 @@ describe('standingTick', () => {
     const calls: (string | undefined)[] = []
     let busy = true
     const deps = { paths, runRoutine: async () => ({ ok: true }), runPrompt: async (_name: string, _goal: string, into?: string) => { calls.push(into); return into && busy ? { ok: false } : { ok: true, botId: into ?? 'new' } }, now: () => new Date(2026, 10, 16, 9, 1) }
-    // Busy thread: the schedule is not marked run, and the tick goes on to the next task.
     expect(await standingTick(deps)).toEqual([fresh.id])
     expect(calls).toEqual([chief.id, undefined])
     busy = false

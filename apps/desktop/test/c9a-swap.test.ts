@@ -18,7 +18,6 @@ test('c9a T2: a replacement names the new thing in the old one\'s place, with th
   for (const [ask, said, want] of cases) expect(swappedAsk(ask, said, now), `${ask} / ${said}`).toBe(want)
 })
 
-// A round that runs until it is stopped, like a model call on the old ask.
 const hanging = (signal: AbortSignal): Promise<string> => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('canceled')), { once: true }))
 test('c9a T2: a replacement said mid-lookup stops the running round and one fresh round runs on the new ask', async () => {
   for (const said of ['그냥 애플로 바꿔', '테슬라 걸로', '그냥 삼성전자로 해줘']) {

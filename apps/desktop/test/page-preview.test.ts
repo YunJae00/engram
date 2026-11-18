@@ -152,8 +152,6 @@ describe('compositor previews', () => {
     frame('first')
     frame('second')
     expect(receive).toHaveBeenCalledTimes(1)
-    // The bitmap carries device pixels; the reported size is the page's CSS
-    // size, because mirror input is scaled by these numbers.
     expect(receive).toHaveBeenCalledWith({ data: 'first', width: 1280, height: 860 })
     await vi.advanceTimersByTimeAsync(40)
     frame('third')

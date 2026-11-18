@@ -5,8 +5,6 @@ import { expect, it } from 'vitest'
 import { createBot, createTask, listTasks, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// c12a A1 (C3: two teammates read their release pages and were cut at the hard limit with nothing written) and B3 (a listing page taken
-// apart in one more round). The limit is shortened through the existing seam: 300 ms stands for 15 s, so the 3 s answer reserve is 60 ms.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const PAGE = 'https://www.example-messenger.kr/notice/2026-11'
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
@@ -41,13 +39,11 @@ it('A1: a teammate that read a page and stalls past its soft limit is told to an
     options.onStep?.('search_web')
     return stall(options)
   })
-  // The answer round has no tools and is the tool path's own "answer now", with what it read.
   expect(prompts.at(-1)).toMatch(/^Call no more tools\. Answer now from what you already have/)
   expect(prompts.at(-1)).toContain(PAGE)
   expect(w.m.data?.facts.map(f => f.url)).toEqual([PAGE])
   expect(w.m.result).not.toBe('')
   expect(w.answer).toContain(`](${PAGE})`)
-  // Inside the hard limit plus the grace: never longer than today's limit.
   expect(w.ms).toBeLessThan(300 + 20 + 400)
 })
 
@@ -66,7 +62,6 @@ it('A1: when the answer round stalls too, the quick model writes the report from
 it('A1: a teammate that read nothing ends as before: no answer round, no stand-in report', async () => {
   const quickAsked: string[] = []
   let rounds = 0
-  // The host's own first search comes back empty too, so nothing at all was read.
   const w = await world(async (_deps, _prompt, options = {}) => { rounds++; options.onStart?.(); return stall(options) }, async prompt => { quickAsked.push(prompt); return undefined }, undefined, () => 'that did not work: no results')
   expect(rounds).toBe(1)
   expect(quickAsked).toEqual([])
@@ -82,7 +77,6 @@ it('B3: a listing page the item check flags is taken apart in one more round whi
     if (prompt.startsWith('Some of what you brought back')) return { answer: block({ facts: [{ text: '12월 6일 둔산동에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1206', date: '12월 6일' }, { text: '12월 20일 유성에서 보드게임 모임이 열려요.', url: 'https://board.example.kr/daejeon/1220', date: '12월 20일' }] }), steps: [], fellBack: false }
     expect(deps.tools.length).toBeGreaterThan(0)
     return { answer: block({ facts: [{ text: '대전 보드게임 카페 일정 페이지에 다음 달 모임이 여러 개 올라와 있어요.', url: LIST }] }), steps: [], fellBack: false }
-  // stack-12 (Codex c12a r3 #2): the round's items go through the same check; the quick model flags only the page, not the dated items.
   }, async prompt => !prompt.includes('"lists"') ? undefined : prompt.includes('일정 페이지') ? '{"keep":[1],"lists":[1],"names":{"1":"보드게임 모임 일정"}}' : '{"keep":[1,2],"lists":[]}', '다음 달 대전 보드게임 모임 일정')
   expect(prompts.at(-1)).toContain(LIST)
   expect(w.m.data?.facts.map(f => f.url)).toEqual(['https://board.example.kr/daejeon/1206', 'https://board.example.kr/daejeon/1220', LIST])

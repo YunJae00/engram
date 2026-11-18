@@ -29,7 +29,6 @@ it('lists every bot in its group by latest activity, ignores old pins, and leave
   const before = JSON.stringify(layout)
   const html = render(layout, { 'filed-normal': 5, 'filed-pin': 3, 'filed-pin-two': 1, 'root-normal': 9, 'root-pin': 2 })
   const order = [...html.matchAll(/data-testid="bot-([^"]+)"/g)].map(match => match[1])
-  // A row pinned before is still there, in the same group, ordered like any other.
   expect(order).toEqual(['filed-normal', 'filed-pin', 'filed-pin-two', 'root-normal', 'root-pin'])
   expect(html.indexOf('bot-filed-normal')).toBeLessThan(html.indexOf('data-testid="sidebar-chats"'))
   expect(html).not.toContain('Pinned conversation')
@@ -40,8 +39,6 @@ it('lists every bot in its group by latest activity, ignores old pins, and leave
 it('offers no menus, rename fields or drag handles: rows open a chat and groups fold, nothing else', () => {
   const html = render({ folders: [{ id: 'empty', name: 'Empty' }], items: [{ id: 'first', folder: null }, { id: 'second', folder: null, pinned: true }] }, {}, ['tucked'])
   for (const gone of ['aria-haspopup', 'draggable', '<input', 'sidebar-more', 'Drop here', 'Move out of folders', 'sidebar-rename']) expect(html).not.toContain(gone)
-  // One button per row and one per group header.
   expect(html.match(/<button/g)).toHaveLength(4)
-  // A bot hidden before is still listed, in its closed group, so nothing is lost with the Show menu gone.
   expect(html).toContain('data-tree-item="hidden"')
 })

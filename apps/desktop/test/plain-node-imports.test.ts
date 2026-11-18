@@ -3,8 +3,6 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 
-// The desktop fixtures (scripts/test-desktop-*.mjs, run by CI's owned-fixture job) import main-process .ts files
-// with plain node and no bundler, so those files must not import other src files: './x.js' does not resolve to x.ts there.
 it('loads every src file a desktop fixture script imports with plain node', () => {
   const scripts = fileURLToPath(new URL('../scripts/', import.meta.url))
   const files = new Set<string>()

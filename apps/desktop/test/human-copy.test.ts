@@ -15,7 +15,6 @@ import { GROUP_KO, KO, KO_STOP, KO_WORDS, WORK_KO } from '../src/renderer/src/li
 (globalThis as { window?: unknown }).window ??= { engram: {} }
 const { CometWork } = await import('../src/renderer/src/components/CometWork.js')
 
-// What a non-developer must never read in a conversation: internal names, ids, paths, raw states, model names, dumps, and the trade's own words.
 const JARGON: [string, RegExp][] = [
   ['tool name', /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b[A-Za-z_$][\w$]*\(\)/],
   ['id', /\b[0-9a-f]{8}-[0-9a-f]{4}-|\b(?:task|bot|lane|channel)[-_:][a-z0-9]/i],
@@ -27,7 +26,6 @@ const JARGON: [string, RegExp][] = [
 ]
 const jargon = (text: string): string[] => JARGON.filter(([, re]) => re.test(text)).map(([kind]) => kind)
 
-// Every string of a table, with a sample argument given to the ones that take one.
 function strings(value: unknown, sample: unknown[] = ['보고서.docx', 2]): string[] {
   if (typeof value === 'string') return [value]
   if (typeof value === 'function') { const fn = value as (...args: unknown[]) => unknown; return strings(fn(...sample.slice(0, Math.max(1, fn.length))), sample) }
@@ -36,7 +34,6 @@ function strings(value: unknown, sample: unknown[] = ['보고서.docx', 2]): str
   return []
 }
 
-// The tools a bot can be given, read from where they are declared, so a tool added later is covered without touching this file.
 function toolNames(): string[] {
   const found = new Set<string>()
   for (const dir of ['packages/core/src', 'apps/desktop/src/main']) for (const file of readdirSync(resolve(dir))) {
@@ -56,7 +53,6 @@ describe('fixed copy a person reads in a conversation', () => {
     const t = threadT('ko'), tools = toolNames()
     expect(tools.length).toBeGreaterThan(60)
     for (const tool of [...tools, 'Bash', 'Read', 'Grep', 'Glob', 'made_up_tool']) {
-      // A file step is given its whole path, the way the loop writes it: only the file's name may be shown.
       const arg = /^(Read|Write|Edit|MultiEdit|Glob|Grep|Bash|file_|artifact_read)/.test(tool) ? '/Users/kim/vault/workspace/tasks/bot-ab12cd34/보고서.docx' : '보고서'
       for (const line of [`${tool}: ${arg}`, `${tool}: `]) {
         const status = stepLabel(t, line), group = workLabel(line, 'ko')
@@ -69,7 +65,6 @@ describe('fixed copy a person reads in a conversation', () => {
     }
     expect(stepLabel(t, 'made_up_tool: x')).toBe('일하는 중')
     expect(pendingStatus(t)).toBe('생각하는 중')
-    // Looking in memory is not announced (memory is silent).
     expect(stepLabel(t, 'search_memory: 민호')).not.toMatch(/기억|메모리/)
   })
 
@@ -79,7 +74,7 @@ describe('fixed copy a person reads in a conversation', () => {
       const { line } = errorLine(text, kind, 'ko')
       expect(jargon(line), line).toEqual([])
       expect(line).toMatch(/[가-힣]/)
-      expect(line).toMatch(/보내 주세요|말씀해 주시면/)          // what happens next
+      expect(line).toMatch(/보내 주세요|말씀해 주시면/)
       expect(line.split(/(?<=[.!?])\s+/).length).toBeLessThanOrEqual(2)
       expect(line).not.toMatch(/[A-Za-z]{4,}/)
     }
@@ -87,9 +82,7 @@ describe('fixed copy a person reads in a conversation', () => {
 
   it('says a model-facing stop note for the person instead of showing it', () => {
     const stop = 'Not verified as complete.\n\nThe last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.'
-    // grokbar cycle 3 cause C: with an answer under it, the answer is shown alone - no note, no "현재까지 확인한 내용".
     expect(displayTaskAnswer(`${stop}\n\nUnverified response:\n엔비디아 주가는 162.85달러예요.`, 'ko')).toBe('엔비디아 주가는 162.85달러예요.')
-    // With nothing under it, the person reads the short note in their language.
     const shown = displayTaskAnswer(stop, 'ko')
     expect(shown).toContain('몇 군데는 끝까지 읽지 못했어요.')
     expect(shown).not.toMatch(/[A-Za-z]{4,}/)
@@ -109,12 +102,10 @@ describe('fixed copy a person reads in a conversation', () => {
 
 describe('how the bot is told to talk', () => {
   it('gives every turn the coworker rule: register, no jargon, memory of the thread, decisions, one next step, team voice, small talk', () => {
-    // c13c: the full work set carries all three parts of it (core, choice, file job); other turn kinds carry the core.
     expect(openRuleLines().join('\n')).toContain(COLLEAGUE_RULE.split('When the ask is loose')[0]!.trim())
     for (const kind of ['short', 'lookup', 'work'] as const) expect(openRuleLines({ kind, tools: [] }).join('\n')).toMatch(/coworker on a messenger/)
     for (const part of [/coworker on a messenger/, /-요 form/, /never switch to -습니다/, /no tool or function names/, /에이전트/, /without asking for it again/, /민호로 고쳤어요/, /without mentioning memory, records or notes/, /아 그거 말고 지난주 걸로/, /never offer a menu of options/, /ONE short offer line of something new/, /document turns in a row carry at most one offer between them/, /지민이가 찾은 날씨를 서연이가 문구로 다듬었어요/, /아 왜 이렇게 느려/, /never a repeated one/, /무엇을 도와드릴까요/])
       expect(COLLEAGUE_RULE).toMatch(part)
-    // The examples it gives are themselves clean: the trade words appear only in the sentence that forbids them.
     for (const example of COLLEAGUE_RULE.match(/\("[^"]+"\)/g) ?? []) expect(jargon(example), example).toEqual([])
   })
 

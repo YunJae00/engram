@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { suggestedReplies, answerBubbles, answerWhole, laterFiles, restatedAnswers, answerFiles, answerHtml, answerReplies, answerText, memorySources } from '../src/renderer/src/markdown.js'
 
-// What the local model actually emits, and what the user must end up seeing.
-
 describe('answerHtml', () => {
   it('renders escaped paragraphs and numbered choices while keeping code escapes literal', () => {
     const text = String.raw`Today is empty.\n\n1) Draft items\n2) Enter actual hours\n\nWhich option?`
@@ -137,7 +135,6 @@ describe('found items and suggested replies', () => {
     expect(answerHtml('| Day | Hours |\n| --- | --- |\n| Mon | 8 |')).toContain('<table>')
   })
 
-  // grokbar B6: the merged table of three cities was drawn as three cards, so the answer had no table and no row to read across.
   it('keeps a comparison of three or more rows as one table, with the source link of every row', () => {
     const html = answerHtml('세 도시 날씨예요.\n\n| 도시 | 날씨 | 기온 | 출처 |\n|---|---|---|---|\n| 서울 | 구름많음 | 13.1°C | [네이버 날씨](https://weather.naver.com/today/09) |\n| 부산 | 비 | 14.0°C | [네이버 날씨](https://weather.naver.com/today/08) |\n| 제주 | 흐림 | 15.6°C | [네이버 날씨](https://weather.naver.com/today/14) |')
     expect(html.match(/<table>/g)).toHaveLength(1)
@@ -152,7 +149,6 @@ describe('found items and suggested replies', () => {
     expect(answerReplies(text)).toEqual(['Show only open ones', 'Add to my calendar', 'Apply to the first'])
     expect(answerText(text)).toBe('Done.')
     expect(answerHtml(text)).not.toContain('Show only open ones')
-    // Mid-stream the block is hidden at once and offers nothing until it closes.
     expect(answerText('Done.\n\n```replies\n- Show')).toBe('Done.')
     expect(answerReplies('Done.\n\n```replies\n- Show')).toEqual([])
   })
@@ -239,7 +235,6 @@ describe('restatedAnswers (qa143 S32)', () => {
   it('keeps a distinct later reply, a correction, another file, and another question', () => {
     expect(restatedAnswers(said(answer, 'Stopped here.'))).toEqual([false, false, false])
     expect(restatedAnswers(said('Reading the sheet first.', answer))).toEqual([false, false, false])
-    // A correction is the later message and stays; the earlier one stays too when most of it changed.
     expect(restatedAnswers(said('The total is 12.', 'Correction: the total is 15, not 12.'))).toEqual([false, false, false])
     const link = (name: string) => `[${name}](engram-artifact:${name})`
     expect(restatedAnswers(said(`${answer}\n\n${link('a.xlsx')}`, `${answer}\n\n${link('b.xlsx')}`))).toEqual([false, false, false])

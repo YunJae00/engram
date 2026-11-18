@@ -10,10 +10,6 @@ import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
-// c18a (cause V) on the anonymous split, as ipc wires it: every judge quote is a paraphrase no search row holds, and every helper cites a
-// page it did not open itself. The host opens the judge's page through the helper's own open_page; the page's text holds the quote, so the
-// fact stands (no "못 찾았어요"). A town whose page does not open keeps only a row it saw, and that fact is dropped and labelled.
-// Wordings in no harness row: 울산/포항/경주/안동 케이블카 요금.
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-c18a-${tag}-`)), '.engram') } as unknown as VaultPaths }
 const TOWNS = ['울산', '포항', '경주', '안동']
@@ -25,7 +21,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
   it('paraphrased quotes, pages the host opened: all opened rows keep their values; a page that did not open leaves its row labelled', async () => {
     const paths = await vault('split'), ask = '울산 포항 경주 안동 케이블카 요금 알려줘'
     const created = await createTask(paths, ask, 'b1')
-    // Four parts is a big plan (shown to the person first); here the person already agreed to it, so the split runs.
     await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1; t.team = { members: [], hires: 0, maxHires: 8, maxDepth: 3, big: true, approvedAt: new Date().toISOString() } })
     const since = Date.now(), opened: string[] = [], judges: string[] = []
     const town = (text: string): string => TOWNS.find(one => text.includes(one)) ?? '울산'
@@ -42,7 +37,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
         await tick(20)
         const items = JSON.parse(prompt.split('\nItems: ')[1]!) as { n: number; text: string; link?: string }[], fee = items.find(item => item.link?.endsWith('/fee'))
         judges.push(town(items[0]?.text ?? ''))
-        // A paraphrase of the fee (never the row's own words), and the fee page as the one to open.
         return JSON.stringify({ keep: items.map(item => item.n), asked: 1, points: ['요금: 원화 금액'], holds: fee ? { [fee.n]: { 요금: '어른 왕복 1만 8천 원' } } : {}, ...(fee ? { open: fee.n } : {}), search: '' })
       }
       if (prompt.includes('Judge meaning only')) return JSON.stringify({ problems: [] })
@@ -56,7 +50,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
       const tool = deps.tools?.find(t => t.name === 'search_web')
       const seen = tool ? await tool.run({ query: `${at} 케이블카 요금` }, { task: prompt, ...(options.signal ? { signal: options.signal } : {}) }) : ''
       await tick(20)
-      // The helper writes from what its search handed back: the fee from the page the host opened for it, else from the row it saw.
       const fee = /어른\(대인\) 왕복 1만 8천 원/.test(seen) ? '어른 왕복 1만 8천 원' : '왕복 1만 8천 원쯤'
       return { answer: `${at} 케이블카는 ${fee}이에요. [${at} 케이블카](${FEE(at)})`, steps: [], fellBack: false }
     }
@@ -67,13 +60,11 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
     const text = await hire.run({ members: TOWNS.map(at => ({ role: `${at} 조사`, topic: at, brief: `${at} 케이블카 어른 왕복 요금`, lookup: true })) }, { task: '' })
     const members = (await listTasks(paths))[0]!.team!.members.filter(m => m.lookup)
     console.log(`c18a split: opened ${opened.length}, judges ${judges.join(',')}\n${text}`)
-    // The host opened each town's fee page for its helper; it is the helper's source.
     for (const at of TOWNS) expect(opened).toContain(FEE(at))
     for (const at of TOWNS.slice(0, 3)) {
       const m = members.find(one => one.topic === at)!
       expect(m.sources).toContain(FEE(at))
       expect(m.proof).toEqual([{ point: '요금: 원화 금액', quote: '어른 왕복 1만 8천 원', url: FEE(at) }])
-      // One judgment each: the page proved the quote with no second call.
       expect(judges.filter(one => one === at)).toHaveLength(1)
     }
     const parts = helperParts(members)
@@ -82,7 +73,6 @@ describe('c18a: a first-hand read is the helper\'s evidence (4-part split)', () 
       expect(cell).toContain('1만 8천 원')
       expect(cell).not.toContain('못 찾았어요')
     }
-    // 안동: its page did not open, so the fee it cites rests on a row it only saw: no data, said as not found.
     expect(parts.find(one => one.topic === '안동')!.data).toBeUndefined()
     expect(members.find(one => one.topic === '안동')!.missing).toEqual(['요금: 원화 금액'])
     for (const at of TOWNS.slice(0, 3)) expect(text).toContain(at)

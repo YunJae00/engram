@@ -19,11 +19,9 @@ test('c10a L3: a weekend answer that lumps the days is written once more from th
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('토요일 and 일요일 each by name')
   expect(prompts[0]).toContain('토 21일 맑음')
-  // A rewrite that still lumps the days, a failure, no writer or no held rows: the first answer stays.
   expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held, write: async () => l3 }, now)).toBe(l3)
   expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held, write: async () => { throw new Error('x') } }, now)).toBe(l3)
   expect(await weekendAnswer(l3, { ask: '이번 주말 부산 비 와?', held: [] }, now)).toBe(l3)
-  // An answer that already goes day by day, or an ask that is not about the weekend's weather, is never redone.
   let called = 0
   const write = async (): Promise<string> => { called++; return fixed }
   expect(await weekendAnswer('21일(토)은 맑고 22일(일)은 흐려요.', { ask: '이번 주말 부산 비 와?', held, write }, now)).toBe('21일(토)은 맑고 22일(일)은 흐려요.')
@@ -32,7 +30,6 @@ test('c10a L3: a weekend answer that lumps the days is written once more from th
   expect(called).toBe(0)
 })
 
-// c10a r2 (Codex r1): naming both days is not saying each. Wordings not in the harness.
 test('c10a r2: a weekend answer counts as day by day only when each day has a clause of its own', () => {
   for (const lumped of ['토요일과 일요일은 대체로 맑아요.', '토요일, 일요일 모두 맑아요.', '토·일요일 모두 비 소식은 없어요.', '이번 토요일이랑 일요일 둘 다 흐리대요.', '토요일 일요일 다 쌀쌀해요.'])
     expect(perDay(lumped), lumped).toBe(false)

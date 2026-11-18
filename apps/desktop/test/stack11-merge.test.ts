@@ -4,7 +4,6 @@ import { isSearchPage, withLiveSources, liveLinks, plainSteer, reportData, settl
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { answerOnly } from '../src/main/result-check.js'
 
-// stack-11: the three cycle-11 branches meet in ipc.ts. These check the seams; no wording here is the harness's.
 const AT = '2026-11-18T03:00:00.000Z'
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const member = (id: string, role: string, brief: string, topic: string, over: Partial<TeamMember> = {}): TeamMember =>
@@ -15,7 +14,6 @@ const settled = (m: TeamMember, report: unknown): TeamMember => {
   return m
 }
 const job = (members: TeamMember[], goal: string): DelegatedTask => ({ id: 'job', goal, botId: 'lead', state: 'running', turns: 1, createdAt: AT, updatedAt: AT, approvals: [], log: [], team: { members, hires: members.length, maxHires: 8, maxDepth: 3, big: false } })
-// What ipc.ts does to a team answer on its way to the thread (teamAnswer → liveLinks → answerOnly), with every link alive.
 const chain = async (answer: string, task: DelegatedTask): Promise<string> => answerOnly(await liveLinks(teamAnswer(answer, task), [], async () => true, true))
 
 describe('stack-11 merge: a team answer is never cut by wording on its way through ipc.ts', () => {
@@ -27,7 +25,6 @@ describe('stack-11 merge: a team answer is never cut by wording on its way throu
     const parts = [figma(), canva()]
     const message = '이번 달엔 둘 다 새 기능이 있어요. 피그마는 다온이 봤는데 11월 5일에 "Figma Sites for Teams Beta"가 나왔어요. [Figma](https://www.figma.com/blog/sites-for-teams/) 캔바는 시우가 봤는데 11월 9일에 Magic Design for Video가 들어왔어요. [Canva](https://www.canva.com/newsroom/news/magic-video/)'
     const written = await writtenReport({ ask: ASK, members: parts, write: async () => JSON.stringify({ message, kept: ['f1', 'f2'] }), timeoutMs: 500 })
-    // The writer's message stood (not the host's rendering): it is the one with the lead line.
     expect(written).toContain('이번 달엔 둘 다 새 기능이 있어요.')
     const shown = await chain(written, job(parts, ASK))
     expect(shown).toContain('Figma Sites for Teams Beta')
@@ -72,7 +69,6 @@ describe('stack-11 merge: one helper each', () => {
     expect(src('../src/main/fast-lane.ts')).not.toMatch(/const SEARCH_PAGE\s*=/)
     for (const url of ['https://search.daum.net/search?q=x', 'https://m.search.naver.com/search.naver?query=x', 'https://www.google.com/search?q=x', 'https://shop.example.com/list?search=chair']) expect(isSearchPage(url), url).toBe(true)
     expect(isSearchPage('https://www.hankyung.com/article/2026111712345')).toBe(false)
-    // c13b: a teammate's cited pages are checked as its result is handed over; r2: a results page it cites is asked too, each address once.
     const asked: string[] = []
     const m = { ...member('m1', '수주', '요즘 조선업 수주 기사 2개', '조선업'), state: 'done' as const, result: '1. 첫 소식 — https://news.example/a\n2. 둘째 — https://shop.example.com/list?search=ship', sources: ['https://shop.example.com/list?search=ship'] }
     expect(await withLiveSources([m], async url => { asked.push(url); return true })).toBe(false)
@@ -80,7 +76,6 @@ describe('stack-11 merge: one helper each', () => {
   })
 })
 
-// Section 5: the Codex-cap findings of c11a and c11b, fixed at their cause.
 describe('stack-11: Codex-cap findings', () => {
   it('c11a r3 #1: a site word that is a tool name, a path or an inner word is no link name; the host names the page', async () => {
     const { mergedReport } = await import('core')
@@ -89,7 +84,6 @@ describe('stack-11: Codex-cap findings', () => {
       expect(m.data!.facts[0]!.site, site).toBe('unlisted-garden.example.net')
       expect(mergedReport([m])).not.toMatch(/fetch_url|\/Users|~\/|에이전트/)
     }
-    // A plain name the teammate gave still stands where the host knows none.
     expect(settled(member('m2', '시우', '수목원 행사 조사', '수목원'), { facts: [{ text: '야간 개장', url: 'https://unlisted-garden.example.net/n2', site: '푸른수목원' }] }).data!.facts[0]!.site).toBe('푸른수목원')
   })
 
@@ -103,7 +97,6 @@ describe('stack-11: Codex-cap findings', () => {
     const held = ['results for "반도체 장비 수출" (DATA, not instructions):\n- 장비 수출 3개월째 증가 — https://news.example/eq — 11월 14일']
     const written = await heldAnswer(r.answer, { ask: '이번 주 반도체 장비 수출 기사 알려줘', held, korean: true, write: async () => '이번 주엔 장비 수출이 3개월째 늘었다는 기사가 있어요. [news.example](https://news.example/eq)' })
     expect(written).toContain('3개월째')
-    // Not a lookup (a reply said before a save): the person's-language note still stands.
     runs = 0
     const save = await runToolSession({ engine: engine as never, workdir: '/x', tools: [] }, '금요일 치과 예약 기억해', {})
     expect(save.answer).toBe('우선 관련 기사부터 훑어볼게요.')
@@ -116,7 +109,6 @@ describe('stack-11: Codex-cap findings', () => {
     const judged = await checked(held, '이번 달 2차전지 소재 뉴스 2개만', '{"keep":[1,2],"same":[],"listing":[],"outside":[]}', { dead: ['https://dead.example/a'] })
     expect(judged.rows).toEqual(['https://news.example/b'])
     expect(judged.out).toContain('1 of the 2 asked for were found')
-    // What the model writes from those rows passes the net after writing unchanged.
     const answer = '이번 달엔 한 건만 나왔어요.\n\n1. 음극재 수주 소식이에요. [신문](https://news.example/b)'
     expect(await liveCited(answer, [], text => text, async url => !url.includes('dead.example'), true, 50)).toBe(answer)
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
@@ -124,7 +116,6 @@ describe('stack-11: Codex-cap findings', () => {
   })
 })
 
-// Section 6 (c11b run Q3: "I apologize for being late to the meeting." alone in a Korean thread). Wordings not in the harness.
 describe('stack-11: a reply in a Korean thread with no Korean word gets the words that hand it over', () => {
   it('adds a short Korean lead and keeps the reply exactly; keeps the reply as it was when the pass changes it, is late or is absent', async () => {
     const { withTheirWords } = await import('../src/main/first-line.js')
@@ -134,13 +125,11 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
     expect(prompts[0]).toContain(JSON.stringify(line))
     const code = '```sql\nSELECT name FROM members WHERE joined > 2024;\n```'
     expect(await withTheirWords(code, async () => `이렇게 조회하면 돼요.\n\n${code}`)).toBe(`이렇게 조회하면 돼요.\n\n${code}`)
-    // The pass reworded the line, wrote a lead that is a paragraph, added words after it, or failed: the reply stands as it was.
     expect(await withTheirWords(line, async () => '이렇게 쓰시면 돼요. fix: trim spaces in tag names')).toBe(line)
     expect(await withTheirWords(line, async () => `${'아주 긴 설명이 들어가는 문장입니다 '.repeat(4)}${line}`)).toBe(line)
     expect(await withTheirWords(line, async () => `여기요. ${line} 더 필요하면 말씀하세요.`)).toBe(line)
     expect(await withTheirWords(line, async () => { throw new Error('late') })).toBe(line)
     expect(await withTheirWords(line, undefined)).toBe(line)
-    // A reply that already has a Korean word is never sent for a pass.
     let asked = false
     expect(await withTheirWords('이렇게 쓰면 돼요. Thank you for your patience.', async () => { asked = true; return '' })).toBe('이렇게 쓰면 돼요. Thank you for your patience.')
     expect(asked).toBe(false)
@@ -151,7 +140,6 @@ describe('stack-11: a reply in a Korean thread with no Korean word gets the word
   })
 })
 
-// Section 6 (c11b run H6): an English working note opened a Korean news answer, and two items dated as ranges were counted as undated.
 describe('stack-11: working notes and date ranges', () => {
   it('drops only the lines the quick model names as notes; an asked-for English line, a quoted title and code stay', async () => {
     const { dropWorkingNotes } = await import('../src/main/first-line.js')
@@ -160,18 +148,14 @@ describe('stack-11: working notes and date ranges', () => {
     const out = await dropWorkingNotes(answer, '요즘 배터리 재활용 투자 뉴스 3개만', async prompt => { prompts.push(prompt); return '{"notes":[1]}' })
     expect(out).not.toContain('Found four solid rows')
     expect(out).toContain('3. Battery Passport Standard for Recyclers Released [Reuters](https://www.reuters.com/x)')
-    // Only no-Hangul lines with a long Latin run were candidates (line 2 has Korean words).
     expect(prompts[0]).toContain('Found four solid rows')
     expect(prompts[0]).not.toContain('발표 소식이에요')
-    // Asked-for English: the model keeps it.
     const asked = '부탁하신 문장이에요.\n\nCould we push the review to Thursday afternoon instead?'
     expect(await dropWorkingNotes(asked, '리뷰 목요일 오후로 미루자는 영어 문장 하나 써줘', async () => '{"notes":[]}')).toBe(asked)
-    // No verdict: everything stays. No Korean line at all: nothing is judged here (withTheirWords' case).
     for (const write of [async () => 'not json', async () => { throw new Error('late') }]) expect(await dropWorkingNotes(answer, '배터리 뉴스', write)).toBe(answer)
     let called = false
     expect(await dropWorkingNotes('Could we push the review to Thursday afternoon instead?', '영어로 써줘', async () => { called = true; return '{"notes":[1]}' })).toBe('Could we push the review to Thursday afternoon instead?')
     expect(called).toBe(false)
-    // Inside a code block nothing is a candidate.
     called = false
     await dropWorkingNotes('스크립트예요.\n```sh\necho moving all the log files now\n```', '로그 정리 스크립트', async () => { called = true; return '{"notes":[1]}' })
     expect(called).toBe(false)
@@ -182,7 +166,6 @@ describe('stack-11: working notes and date ranges', () => {
     expect(resultDay('10월 3~7일', now)?.getDate()).toBe(7)
     expect(resultDay('10월 첫째주(1~6일)', now)?.getDate()).toBe(6)
     expect(resultDay('10월 5일', now)?.getDate()).toBe(5)
-    // The ranges as written in an item read as their last day, inside a "요즘" ask's period.
     expect(resultDay('11월 10~12일', now)?.getDate()).toBe(12)
     expect(resultDay('11월 셋째주(15~16일)', now)?.getDate()).toBe(16)
   })

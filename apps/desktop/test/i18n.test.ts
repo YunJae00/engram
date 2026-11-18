@@ -54,7 +54,6 @@ describe('i18n', () => {
     expect(en['tour.cometsTitle']).toContain('Bots')
   })
 
-  // qa146: copy the person can still reach said comet, cosmos or librarian; the Cosmos tab keeps its name.
   it('copy in use says bot and memory, not comet, cosmos or librarian', () => {
     const live = ['bots.new', 'bots.untitled', 'settingsUi.newComet', 'settingsUi.theComet', 'settingsUi.rememberSessions', 'settingsUi.filingHint', 'settingsUi.learnNoteLong', 'topbar.tabBots', 'sidebar.routineComet', 'sidebar.cometsMode', 'sky.empty', 'sky.emptyHint', 'routines.empty', 'digest.empty', 'errands.hint', 'errand.placeholder', 'sheet.unlinkTitle', 'review.empty', 'inbox.title', 'empty.capture', 'banner.notResponding', 'banner.loginExpired', 'banner.offline'] as const
     for (const key of live) {
@@ -81,7 +80,6 @@ describe('i18n', () => {
     expect(resolveUiLanguage('system', 'eng')).toBe('ko')
     expect(resolveUiLanguage('ko', 'en-US')).toBe('ko')
     expect(resolveUiLanguage('en', 'ko-KR')).toBe('en')
-    // Node has no navigator, so the unset preference resolves as system through the en-US fallback.
     expect(t('mission.new')).toBe(en['mission.new'])
     expect(uiLocale()).toBe('en-US')
   })

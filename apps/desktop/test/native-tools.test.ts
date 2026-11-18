@@ -27,7 +27,6 @@ describe('native tool policy', () => {
     expect((await nativeDecision(policy(), 'Read', { file_path: join(root, 'outside', 'x.txt') })).message).toContain('attach')
   })
 
-  // grokbar D1: "fixtures/meeting-notes.md 요약해줘" was denied here, then asked through a card.
   it('reads what the person keeps in their workspace, but not Engram\'s store or another chat\'s task folder, and writes nothing there', async () => {
     const workspace = join(root, 'ws'), store = join(workspace, '.engram'), mine = join(workspace, 'tasks', 'bot-1')
     await Promise.all([join(workspace, 'fixtures'), store, mine, join(workspace, 'tasks', 'bot-2')].map(path => mkdir(path, { recursive: true })))
@@ -38,12 +37,9 @@ describe('native tool policy', () => {
     expect(await decide('Read', { file_path: join(mine, 'draft.md') })).toBe('allow')
     expect(await decide('Read', { file_path: join(store, 'bots.json') })).toBe('deny')
     expect(await decide('Read', { file_path: join(workspace, 'tasks', 'bot-2', 'theirs.md') })).toBe('deny')
-    // A search from the top would walk the store and every chat's folder.
     expect(await decide('Grep', { pattern: 'x', path: workspace })).toBe('deny')
     expect(await decide('Grep', { pattern: 'x', path: join(workspace, 'tasks') })).toBe('deny')
     expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'new.md'), content: 'x' })).toBe('deny')
-    // grokbar B5 r3: a file the person named and already keeps there is changed in place with no card; nothing new is made there, and the store, the
-    // other chats' folders and the private folder stay closed to writes even for a file they named.
     await Promise.all([join(workspace, 'fixtures', 'meeting-notes.md'), join(store, 'bots.json'), join(workspace, 'tasks', 'bot-2', 'theirs.md'), join(privateDir, 'kept.md')].map(path => writeFile(path, 'x')))
     expect(await decide('Edit', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), old_string: 'x', new_string: 'y' })).toBe('allow')
     expect(await decide('Write', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), content: 'y' })).toBe('allow')
@@ -55,22 +51,18 @@ describe('native tool policy', () => {
     expect(await decide('Read', { file_path: join(root, 'outside', 'x.txt') })).toBe('deny')
   })
 
-  // grokbar cycle 3 item 7 (Codex b5 r3, GROKBOT rule 6): "fixtures/meeting-notes.md 고쳐줘" is done with no card, and nothing wider than that.
   it('changes in place only a workspace file the person named: not one they did not name, not one outside, and never a delete', async () => {
     const workspace = join(root, 'ws'), mine = join(workspace, 'tasks', 'bot-1'), outside = join(root, 'elsewhere')
     await Promise.all([join(workspace, 'fixtures'), mine, outside].map(path => mkdir(path, { recursive: true })))
     await Promise.all([join(workspace, 'fixtures', 'meeting-notes.md'), join(workspace, 'fixtures', '회의록.md'), join(workspace, 'fixtures', 'budget.md'), join(outside, 'meeting-notes.md')].map(path => writeFile(path, 'x')))
     const asked = (named?: string): NativePolicy => ({ cwd: mine, roots: [mine], workspace, privateDir, commands: { allowed: false }, ...(named ? { named } : {}) })
     const edit = async (policy: NativePolicy, path: string) => (await nativeDecision(policy, 'Edit', { file_path: path, old_string: 'x', new_string: 'y' })).behavior
-    // 1. Named in this message, or earlier in the thread (the host passes every message of theirs), whatever case or folder they wrote.
     expect(await edit(asked('fixtures/meeting-notes.md 오타 고쳐줘'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
     expect(await edit(asked('Meeting-Notes.md 좀 봐줘\n거기 3번 항목 고쳐줘'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
     expect(await edit(asked('회의록.md 날짜만 바꿔줘'.normalize('NFD')), join(workspace, 'fixtures', '회의록.md'))).toBe('allow')
     expect((await nativeDecision(asked('fixtures/meeting-notes.md 다시 써줘'), 'Write', { file_path: join(workspace, 'fixtures', 'meeting-notes.md'), content: 'y' })).behavior).toBe('allow')
-    // 2. A file they did not name, and a turn with no words of theirs at all.
     expect(await edit(asked('fixtures/meeting-notes.md 오타 고쳐줘'), join(workspace, 'fixtures', 'budget.md'))).toBe('deny')
     expect(await edit(asked(), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('deny')
-    // c3c r2 (Codex): a folder they wrote names that folder's file only; the same name in another folder is a file they did not name.
     await Promise.all(['a', 'b'].map(folder => mkdir(join(workspace, 'fixtures', folder), { recursive: true })))
     await Promise.all([join(workspace, 'fixtures', 'a', 'report.md'), join(workspace, 'fixtures', 'b', 'report.md'), join(workspace, 'fixtures', 'report.md.bak'), join(workspace, 'fixtures', 'myreport.md')].map(path => writeFile(path, 'x')))
     expect(await edit(asked('fixtures/a/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('allow')
@@ -79,17 +71,14 @@ describe('native tool policy', () => {
     expect(await edit(asked('a/report.md랑 b/notes.md 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('deny')
     expect(await edit(asked('xa/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
     expect(await edit(asked('report.md 고쳐줘'), join(workspace, 'fixtures', 'b', 'report.md'))).toBe('allow')
-    // A longer name that only contains theirs is another file.
     expect(await edit(asked('report.md 고쳐줘'), join(workspace, 'fixtures', 'myreport.md'))).toBe('deny')
     expect(await edit(asked('report.md.bak은 그대로 둬'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
     expect(await edit(asked('myreport.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
-    // c3c review r3 (Codex): a folder name with a space in it is still that file's folder; another folder that only ends the same way is not.
     await Promise.all(['my folder', 'folder', 'our folder'].map(folder => mkdir(join(workspace, 'fixtures', folder), { recursive: true })))
     await Promise.all(['my folder', 'folder', 'our folder'].map(folder => writeFile(join(workspace, 'fixtures', folder, 'report.md'), 'x')))
     expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'my folder', 'report.md'))).toBe('allow')
     expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'our folder', 'report.md'))).toBe('deny')
     expect(await edit(asked('fixtures/my folder/report.md 고쳐줘'), join(workspace, 'fixtures', 'a', 'report.md'))).toBe('deny')
-    // c3c review r3 (Codex): a teammate handed the job is given the same words (ipc.ts nativeFor) and the same gate: the named file, nothing else.
     const member = (named?: string): NativePolicy => ({ ...asked(named), cwd: join(mine, 'team', 'm1'), roots: [join(mine, 'team', 'm1'), mine], member: true })
     await mkdir(join(mine, 'team', 'm1'), { recursive: true })
     expect(await edit(member('fixtures/meeting-notes.md 지민한테 고치라고 해'), join(workspace, 'fixtures', 'meeting-notes.md'))).toBe('allow')
@@ -99,15 +88,12 @@ describe('native tool policy', () => {
     expect((await nativeDecision(member('fixtures/meeting-notes.md 지워줘'), 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('attachedPaths: attachments.paths, ...(input.named ? { named: input.named } : {}), ask: team.askFor(lane,')
-    // 3. Outside the workspace, named or not.
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(outside, 'meeting-notes.md'))).toBe('deny')
     expect(await edit(asked('meeting-notes.md 고쳐줘'), join(workspace, 'fixtures', '..', '..', 'elsewhere', 'meeting-notes.md'))).toBe('deny')
-    // 4. Deleting is no Write or Edit: a command that removes the named file still has to ask, and with nobody to ask it does not run.
     expect((await nativeDecision(asked('fixtures/meeting-notes.md 지워줘'), 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
     const ask = vi.fn(async () => 'cancel' as const)
     expect((await nativeDecision({ ...asked('fixtures/meeting-notes.md 지워줘'), ask }, 'Bash', { command: `rm ${join(workspace, 'fixtures', 'meeting-notes.md')}` })).behavior).toBe('deny')
     expect(ask).toHaveBeenCalledOnce()
-    // The host hands over what the person said in this thread.
     expect(readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')).toContain("const named = [request.message, ...savedHistory.filter(one => one.role === 'user').map(one => one.text)].join('\\n')")
   })
 
@@ -135,7 +121,6 @@ describe('native tool policy', () => {
     expect((await nativeDecision(policy(), 'Bash', { command: ' ' })).behavior).toBe('deny')
   })
 
-  // perf146: members met a busy browser with `sleep 45` and a vm_stat loop.
   it('refuses a team member that waits in a shell, and no one else', async () => {
     const member = { ...policy(), commands: { allowed: true }, member: true }
     for (const command of ['sleep 45', 'for i in 1 2 3; do vm_stat | head -3; sleep 5; done', 'cd x && sleep 10; ls']) expect((await nativeDecision(member, 'Bash', { command })).message).toContain('Do not wait in a shell')
@@ -357,21 +342,16 @@ describe('outputs left in the task folder', () => {
     expect(await mentionedOutputs(join(root, 'missing'), answer, since)).toEqual([])
   })
 
-  // qa143 p2 r11 S19a: a twin is the file a receipt itself placed, not any file with its bytes.
   it('hands in a separately created file whose bytes match a linked receipt of the same name', async () => {
     const { createHash } = await import('node:crypto'), { realpath } = await import('node:fs/promises')
     await mkdir(join(cwd, 'subfolder'), { recursive: true })
     for (const path of ['report.md', join('subfolder', 'report.md')]) await writeFile(join(cwd, path), '# same\n')
     const hash = createHash('sha256').update('# same\n').digest('hex'), names: Record<string, string> = {}
-    // The bare hash is what the old hash-only check matched on: it dropped both files.
     const made = new Set([hash, `${hash}\0${await realpath(join(cwd, 'report.md'))}`])
-    // The receipt's own twin (top-level report.md) is skipped; subfolder/report.md is another source and is handed in under the next free name.
     expect(await mentionedOutputs(cwd, 'Wrote report.md. [report.md](engram-artifact:00000000-0000-4000-8000-000000000000-report.md)', 0, [], join(root, 'artifacts'), names, made)).toEqual([join(cwd, 'subfolder', 'report.md')])
     expect(names).toEqual({ 'subfolder/report.md': 'report-2.md' })
   })
 
-  // qa143 p2 r12 S19a: the inverse. The linked report.md came from subfolder/report.md (on record); a top-level report.md with the same bytes
-  // that no receipt placed is not its twin for sitting at the linked name. The old byte-only shortcut dropped it.
   it('hands in a top-level file whose bytes match the linked copy of a subfolder file of the same name', async () => {
     const id = '00000000-0000-4000-8000-000000000000-report.md', artifacts = join(root, 'artifacts')
     await mkdir(join(cwd, 'subfolder'), { recursive: true })

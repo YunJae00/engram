@@ -6,7 +6,6 @@ import { expect, it, vi } from 'vitest'
 import { createTask, listTasks, mergedReport, reportData, LATE_CEILING_MS, LOOKUP_MAX_CALLS, TEAM_ANSWER_MS, updateTask, type AgentTool, type VaultPaths } from 'core'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// perf146: "봇 3개 생성해서 서울 부산 제주 날씨 조사" ran three opus members with 65 tools each for 118-213 s; the lead waited for the slowest.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 type Seen = { tools: string[]; options: NonNullable<Parameters<Run>[2]> }
 const tool = (name: string): AgentTool => ({ name, description: '', argsSchema: {}, run: async () => name })
@@ -34,29 +33,23 @@ it('runs a lookup member on the faster tier with reading tools only, no shell an
   const [lookup, work] = w.seen
   expect(lookup!.tools.sort()).toEqual(['ask_person', 'look', 'open_page', 'read_pages', 'search_web'])
   expect(lookup!.options).toMatchObject({ modelHint: 'smart', maxCalls: LOOKUP_MAX_CALLS })
-  // c13a: one deadline from the person's message (28 s). A helper whose lead writes after it is due 6 s earlier (22 s); its soft point,
-  // where it starts no new tool call, is half of what is left of that from its start: ~11 s here, since it starts at once.
   expect(lookup!.options.deadlineMs).toBeGreaterThan(10_000)
   expect(lookup!.options.deadlineMs).toBeLessThanOrEqual(11_000)
   expect([TEAM_ANSWER_MS, LATE_CEILING_MS, LOOKUP_MAX_CALLS]).toEqual([28_000, 90_000, 4])
-  // No collection receipts for a member that only reads and reports.
   expect(lookup!.options.lookup).toBe(true)
   expect(lookup!.options.native).toBeUndefined()
   expect(lookup!.options.persona).toContain('You only look things up')
-  // A member that makes something keeps the full set and the work model.
   expect(work!.tools).toEqual(expect.arrayContaining(['excel_write', 'file_read', 'page_steps', 'hire_members']))
   expect(work!.options.modelHint).toBeUndefined()
   expect(work!.options.deadlineMs).toBeUndefined()
   expect(work!.options.native).toBeTruthy()
   expect(w.nativeFor).toHaveBeenCalledTimes(1)
-  // The sourced lookup comes back accepted; the member that made something waits for the lead's review.
   expect(out.members.map((m: { state: string }) => m.state)).toEqual(['released', 'done'])
 })
 
 it('hands the lead what a lookup member had when it stops at its call or time limit', async () => {
   const w = await world(async () => ({ answer: 'Not verified as complete.\n\nThe tool-call or time limit was reached.\n\nUnverified response:\n부산 흐림 15도', steps: [], fellBack: false, stopped: 'calls' }))
   const out = JSON.parse(await w.hire([{ role: '부산 조사', brief: '부산 오늘 날씨', lookup: true }]))
-  // c6: cut short or not, a settled lookup is accepted and released by the host: no review round.
   expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '부산 흐림 15도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)' })
 })
 
@@ -72,7 +65,6 @@ it('stops a lookup member at its hard limit and still delivers what it wrote', a
   expect((await w.members())[0]).toMatchObject({ state: 'released', review: { ok: true } })
 })
 
-// perf146 r3: words streamed before the member read anything ("먼저 기상청부터 확인.") were settled as its finished result.
 it('fails a lookup member stopped at its hard limit before it read anything, whatever it had said', async () => {
   const w = await world(seen => new Promise((_, reject) => {
     seen.options.onStart?.(); seen.options.onToken?.('먼저 기상청부터 확인.')
@@ -82,7 +74,6 @@ it('fails a lookup member stopped at its hard limit before it read anything, wha
   expect(out.members[0]).toMatchObject({ state: 'failed', result: expect.stringMatching(/^Failed: /) })
 })
 
-// perf146 r2: the 80 s limit ran from hire time, so a member still in line for its turn was stopped before it began and "delivered" an English placeholder.
 it('counts a lookup member\'s hard limit from when it starts working, not from when it was hired', async () => {
   const w = await world(async seen => {
     await new Promise(resolve => setTimeout(resolve, 80))
@@ -91,7 +82,6 @@ it('counts a lookup member\'s hard limit from when it starts working, not from w
     return { answer: '제주 비 17도 (https://weather.example)', steps: [], fellBack: false }
   }, 40)
   const out = JSON.parse(await w.hire([{ role: '제주 조사', brief: '제주 오늘 날씨', lookup: true }]))
-  // A sourced lookup that finished on its own comes back accepted: no review round.
   expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, result: '제주 비 17도 (https://weather.example)' })
 })
 
@@ -101,7 +91,6 @@ it('marks a lookup member that timed out with nothing as failed, with no English
   expect(out.members[0]).toMatchObject({ state: 'failed', result: expect.stringMatching(/^Failed: /) })
 })
 
-// perf146 r2: a search page's robot check made one lookup member ask the person to "finish the sign-in" in a tab that closed with it.
 it('a lookup member told a page needs the person reads on instead of ending the team on that question', async () => {
   const wall = 'ASK: {"question":"열린 페이지에서 로그인이나 확인을 마치고 다 되면 알려줘.","options":[]}'
   const said: string[] = []
@@ -119,7 +108,6 @@ it('a lookup member told a page needs the person reads on instead of ending the 
   expect(said[0]).toContain('needs the person')
 })
 
-// grokbar B6: members named their source as "네이버 날씨 검색" and the merged answer had 0 links; the slowest member held the team 22-24 s.
 it('hands the lead each member\'s pages and does not wait for a straggler past the limit; the answer gets a link for every member', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-sources-')), '.engram') } as unknown as VaultPaths
@@ -141,26 +129,20 @@ it('hands the lead each member\'s pages and does not wait for a straggler past t
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => ({ cwd: '/task' }) as never, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const began = Date.now()
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: ['서울', '부산', '제주'].map(city => ({ role: `${city} 날씨`, brief: `${city} 오늘 날씨`, lookup: true })) }, { task: '' }))
-  // All three started together, and the team came back at the limit, not when the slowest would have.
   expect(Math.max(...started) - Math.min(...started)).toBeLessThan(500)
   expect(Date.now() - began).toBeLessThan(2_000)
   expect(out.members.map((m: { state: string; result: string; sources: string[] }) => [m.state, m.result, m.sources])).toEqual([
-    // r4: a member with facts and a read on record is accepted and let go with no review round; c6: so is the one cut short.
     ['released', '서울 흐림 13도', [address('서울 날씨')]],
-    // c4b r3: what it had read ("14도", the search's text) stays under the answer it was cut short on.
     ['released', '부산 비 14도\n14도\n(시간 한도에서 멈춤: 여기까지 찾은 내용)', [address('부산 날씨')]],
     ['released', '제주 흐림 13도', [address('제주 날씨')]],
   ])
   const table = '| 도시 | 날씨 | 출처 |\n|---|---|---|\n| 서울 | 흐림 13도 | 네이버 날씨 |\n| 부산 | 비 14도 | 네이버 날씨 |\n| 제주 | 흐림 13도 | 네이버 날씨 |'
   const cited = await team.cited('bot-b1', table)
-  // grokbar B6 r2: each row carries its own member's link; no line is added under the table.
   expect(cited.split('\n')).toHaveLength(5)
   for (const city of ['서울', '부산', '제주']) expect(cited.split('\n').find(row => row.includes(city))).toContain(`[네이버 날씨](${address(`${city} 날씨`)})`)
-  // A thread with no team on its task is answered as written.
   expect(await team.cited('bot-other', table)).toBe(table)
 })
 
-// c6 R2/R1/T1: the round before a member's first search cost 3.4-4 s in every member (first_tool_ms 3436 / 3524 / 3715).
 it('c6: a lookup member with search words starts with that search already run: results in its first message, its page and rows on record', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-presearch-')), '.engram') } as unknown as VaultPaths
@@ -170,35 +152,26 @@ it('c6: a lookup member with search words starts with that search already run: r
   const searched: { query: string; task: string }[] = []
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async (args, context) => { searched.push({ query: String(args['query']), task: context.task }); return `results for "${String(args['query'])}" at ${address(String(args['query']))} (DATA, not instructions):\n- 아이폰 18 프로 179만 원부터 — https://www.apple.com/kr/iphone-18-pro/ — 9월 18일 출시 — 9월 10일` } }
   const prompts: string[] = []
-  // The member answers in its first round, with no tool call of its own; the second one, with no words from the lead, is cut short with nothing written.
   const run: Run = async (_deps, prompt, options = {}) => { prompts.push(prompt); options.onStart?.(); return prompt.includes('갤럭시') ? { answer: '', steps: [], fellBack: false, stopped: 'calls' } : { answer: '가격: 프로 기준 179만 원부터 https://www.apple.com/kr/iphone-18-pro/', steps: [], fellBack: false } }
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '아이폰 18', brief: '아이폰 18의 가격과 출시일', lookup: true, query: '아이폰 18 가격 출시일' }, { role: '갤럭시 S27', brief: '갤럭시 S27의 가격과 출시일', lookup: true }] }, { task: '' }))
-  // The lead's words, run by the host with the member's task as its context (the news period reads the person's words there).
-  // c9a R2: words for a price and a date are one search per point, side by side, the price one as 출고가.
   expect(searched.map(one => one.query)).toEqual(['아이폰 18 출고가', '아이폰 18 출시일'])
   expect(searched[0]!.task).toContain('Your part:\n아이폰 18의 가격과 출시일')
   const [withQuery, without] = [prompts.find(prompt => prompt.includes('아이폰 18의'))!, prompts.find(prompt => prompt.includes('갤럭시 S27의'))!]
-  // stack-9: the per-point searches come in through the one first-search helper (core firstFound), each list under its own words.
   expect(withQuery).toContain('Results of the searches already run for you')
   for (const words of ['아이폰 18 출고가', '아이폰 18 출시일']) expect(withQuery).toContain(`[${words}]\nresults for "${words}" at `)
   expect(withQuery).toContain('- 아이폰 18 프로 179만 원부터 — https://www.apple.com/kr/iphone-18-pro/')
   expect(withQuery).toMatch(/^Today is \d{4}-\d{2}-\d{2} \(\w+\)\./)
-  // The search page is on record as read (keepSources), as if the member had searched itself.
   expect(out.members[0]).toMatchObject({ state: 'released', accepted: true, sources: [address('아이폰 18 출고가'), address('아이폰 18 출시일')] })
-  // No search words: nothing is run for it and its task is the task alone.
   expect(without).not.toContain('Results of the search already run')
   expect(out.members[1]).toMatchObject({ state: 'failed' })
-  // A member whose pre-run search is all it has (cut short before it wrote) hands back the rows that search gave (keepRead).
   const again = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '갤럭시 S27', brief: '갤럭시 S27의 가격과 출시일', lookup: true, query: '갤럭시 S27 가격 출시일' }] }, { task: '' }))
   expect(again.members[0]).toMatchObject({ state: 'released', accepted: true })
   expect(again.members[0].result).toContain('아이폰 18 프로 179만 원부터: 9월 18일 출시, 9월 10일 https://www.apple.com/kr/iphone-18-pro/')
   expect(again.note).not.toContain('Review each member with review_member')
 })
 
-// c6 R2: results at ~7.2 s, a second search, cut at 15 s with nothing. c13a: the deadline here is 1.65 s for 28 s, so a helper's window
-// (due 6 s before the answer) is ~1.3 s for its real 22 s: the times below are its share of the real clock.
 it('c6: results early leave room for a second search; results late say to answer now, the next call is not run, and the member ends done with its answer', async () => {
   const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
   const outs: string[] = []
@@ -214,7 +187,6 @@ it('c6: results early leave room for a second search; results late say to answer
       const tool = deps.tools.find(t => t.name === 'search_web')!
       await wait(firstAt)
       outs.push(await tool.run({ query: '픽셀 11 가격' }, { task: '' }))
-      // The model takes its time to emit the next call (~3.5 s on the real clock).
       await wait(350)
       outs.push(await tool.run({ query: 'Pixel 11 price' }, { task: '' }))
       return { answer: '가격: 미발표, 예상 999유로 https://ko.vidabytes.com/pixel-11/', steps: [], fellBack: false }
@@ -223,23 +195,18 @@ it('c6: results early leave room for a second search; results late say to answer
     const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
     return JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '픽셀 11', brief: '픽셀 11의 가격', lookup: true }] }, { task: '' }))
   }
-  // Results at ~3.4 s of 22: nothing is added, and the second search runs.
   await make(200)
   expect(outs[0]).not.toContain('No further tool call will run')
   expect(outs[1]).toMatch(/^results for "Pixel 11 price"/)
   expect(ran).toBe(2)
-  // Results at ~14.4 s of 22: the call itself still fits, its result says to answer now, and the call after it is not run.
   outs.length = 0; ran = 0
   const late = await make(850)
   expect(outs[0]).toMatch(/^results for "픽셀 11 가격"[^]*No further tool call will run\. Answer now from what you have/)
   expect(outs[1]).toBe('No further tool call will run. Answer now from what you have, in the person\'s language.')
   expect(ran).toBe(1)
-  // It ended on its own answer, inside its limit: done, accepted, and not marked as cut short.
   expect(late.members[0]).toMatchObject({ state: 'released', accepted: true, result: '가격: 미발표, 예상 999유로 https://ko.vidabytes.com/pixel-11/' })
 })
 
-// stack-6 (c6a + c6b): the search the host ran for a teammate is kept exactly like one it ran itself, so what c6b and c5b do with a
-// found-nothing part and a cut-short answer still holds, and c6a's acceptance needs no review round for either.
 it('stack-6: a pre-run search feeds what was read and where: a found-nothing part links where it looked, a cut-short answer is stored once, both accepted', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-stack6-')), '.engram') } as unknown as VaultPaths
@@ -252,35 +219,27 @@ it('stack-6: a pre-run search feeds what was read and where: a found-nothing par
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   const out = JSON.parse(await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: '도윤', brief: '리니어 신기능 조사', lookup: true, query: '리니어 신기능' }, { role: '서연', brief: '슬랙 신기능 조사', lookup: true, query: '슬랙 신기능' }] }, { task: '' }))
-  // Neither waits for a review: no gate hangs on review_member.
   expect(out.members.map((m: { state: string; accepted?: boolean }) => [m.state, m.accepted])).toEqual([['released', true], ['released', true]])
   expect(out.note).not.toContain('Review each member with review_member')
   const [doyun, seoyeon] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
-  // Found nothing: the rows the host's search gave are kept under it (c5b nothingNew) and the page searched on is its source.
-  // c9 fix 1: a product's updates are also searched on the maker's own page ("Linear changelog"), side by side; the job's own search comes first.
   expect(doyun).toMatchObject({ empty: true, read: true })
   expect(doyun!.sources).toEqual([address('리니어 신기능'), address('Linear changelog 업데이트')])
   expect(doyun!.result).toContain('SMTECHNO PLC Trainer 660,000원')
-  // Cut short with its finding and the address it came from: the answer once, no replies block, nothing it only read (c6b settleMember).
   expect(seoyeon!.result).toBe(`${slack}\n(시간 한도에서 멈춤: 여기까지 찾은 내용)`)
   expect(seoyeon!.read).toBeUndefined()
-  // The host's own table (c11a: from each part's report data): the found-nothing row says so plainly; no bare host anywhere.
   const block = (o: object) => '```report\n' + JSON.stringify(o) + '\n```'
   doyun!.data = reportData(block({ facts: [], nothing_in_period: {} }), doyun!, doyun!.sources, true)!
   seoyeon!.data = reportData(block({ facts: [{ text: '슬랙이 Huddles 요약을 냈어요.', url: 'https://slack.com/blog/huddles' }] }), seoyeon!, seoyeon!.sources, true)!
   const table = mergedReport([doyun!, seoyeon!])
-  // c12a B1: never the job title as a label. c13a (cause H): no part names were given, so each line says whose it is in "(name)".
   expect(table).toContain('이번엔 새로 나온 게 없어요. (도윤) [네이버 검색](')
   expect(table).not.toContain('신기능 조사(')
   expect(table).not.toMatch(/\[(?:[\w-]+\.)+[a-z]{2,}\]\(/)
   expect(table).not.toContain('shopping.naver')
-  // The cut-short part's link is named by its site, never by the host's own "시간 한도" line under the address.
   expect(table).toContain('슬랙이 Huddles 요약을 냈어요. (서연) [슬랙](https://slack.com/blog/huddles)')
   expect(table).not.toContain('한도')
   expect(table).not.toContain('출처')
 })
 
-// c7 R2: m2 reported "가격: 미발표, 전작 S26 시리즈 기준 가격대에서 인상 예상", a price with no figure, and LOOKUP_RULE alone did not hold.
 it('c7 R2: a price reported with no figure gets one host-run search for the previous model\'s launch price and one more round to write it in', async () => {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const paths = { cache: join(await mkdtemp(join(temporary, 'engram-team-c7-')), '.engram') } as unknown as VaultPaths
@@ -299,8 +258,6 @@ it('c7 R2: a price reported with no figure gets one host-run search for the prev
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
   await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'iphone18', brief: '아이폰 18의 가격과 출시일 조사', lookup: true, query: '아이폰 18 가격 출시일' }, { role: 'galaxyS27', brief: '갤럭시 S27의 가격과 출시일 조사', lookup: true, query: '갤럭시 S27 가격 출시일' }] }, { task: '' })
-  // One more search, for the member whose price had no figure only, under the previous model's name.
-  // c9a R2: each member's first search is one per point (출고가, 출시일).
   expect(searched.sort()).toEqual(['갤럭시 S26 출고가', '갤럭시 S27 출고가', '갤럭시 S27 출시일', '아이폰 18 출고가', '아이폰 18 출시일'])
   const again = prompts.filter(prompt => prompt.startsWith('Your price has no figure.'))
   expect(again).toHaveLength(1)
@@ -311,7 +268,6 @@ it('c7 R2: a price reported with no figure gets one host-run search for the prev
   expect(galaxy!.state).toBe('released')
 })
 
-// stack-7: c7a's host-run search for a lone lookup and cycle 6's for a teammate: one turn never runs both for the same words.
 it('stack-7: a teammate hired in a turn whose own first search already ran the same words starts from those results, with no second search', async () => {
   const { laneSearches } = await import('../src/main/team-runner.js')
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -325,22 +281,17 @@ it('stack-7: a teammate hired in a turn whose own first search already ran the s
   const run: Run = async (_deps, prompt, options = {}) => { options.onStart?.(); prompts.push(prompt); return { answer: '가격: 199만 원부터 https://www.etnews.com/a', steps: [], fellBack: false } }
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run })
   const kit: TurnKit = { engine: {} as TurnKit['engine'], workdir: {} as TurnKit['workdir'], guided: false, said: () => '', nativeFor: async () => undefined, toolsFor: async lane => [...team.tools(lane, kit), search] }
-  // What the lead's own turn found at Enter (ipc.ts sets it for a lone lookup).
   laneSearches.set('bot-b1', { query: '아이폰 18 가격', found: rows('아이폰 18 가격') })
   try {
     await team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!.run({ members: [{ role: 'iphone', brief: '아이폰 18의 가격 조사', lookup: true, query: '아이폰  18 가격' }, { role: 'galaxy', brief: '갤럭시 S27의 가격 조사', lookup: true, query: '갤럭시 S27 가격' }] }, { task: '' })
-    // Only the words nobody had searched are searched.
     expect(searched).toEqual(['갤럭시 S27 가격'])
-    // Both start from results, and the one that reused the lead's has its page and rows on record like any search it ran.
     expect(prompts.filter(prompt => prompt.includes('Results of the search already run for you'))).toHaveLength(2)
     const [iphone] = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members
     expect(iphone!.sources).toContain('https://search.naver.com/search.naver?query=%EC%95%84%EC%9D%B4%ED%8F%B0%2018%20%EA%B0%80%EA%B2%A9')
   } finally { laneSearches.delete('bot-b1') }
-  // ipc.ts resets what is held on every turn, so words from an earlier turn are never reused.
   const ipc = readFileSync(fileURLToPath(new URL('../src/main/ipc.ts', import.meta.url)), 'utf8')
   expect(ipc).toContain('if (found.query) laneSearches.set(channel, { query: found.query, found: found.found ?? \'\' }); else laneSearches.delete(channel)')
   expect(ipc).toContain('if (!searched) laneSearches.delete(channel)')
-  // And the lone lookup's own search is never run for an ask that hands work to a team.
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
   expect(ipc).toContain('let searched = solo && routed === request.message && !handed && !fixed ? await searchFor(')
 })

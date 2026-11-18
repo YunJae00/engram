@@ -238,7 +238,7 @@ it('skips snapshot requests and deferred refreshes while streaming and resumes a
   Object.assign(held.host, { request })
   fake.image.mockImplementation(async (binding, signal, preview) => { await binding.host.request('observe', { mode: 'skeleton' }, signal, preview ? { preview: true } : {}); return { image: { data: 'safe' } } })
   showWorkPreview(held); await vi.advanceTimersByTimeAsync(1)
-  showWorkPreview(held) // Queue a refresh during the existing capture cooldown.
+  showWorkPreview(held)
   request.mockClear(); fake.image.mockClear()
   setWorkPreviewStream(held.lane, true)
   showWorkPreview(held)

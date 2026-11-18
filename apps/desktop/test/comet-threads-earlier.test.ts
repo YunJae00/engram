@@ -9,7 +9,6 @@ const history = (n: number): ChatTurnDto[] => {
   for (let i = 0; i < n; i++) turns.push({ role: i % 2 ? 'assistant' : 'user', text: `m${i}`, at: `t${String(i).padStart(5, '0')}` })
   return turns
 }
-// The newest `n` turns of an `all`-turn history, read the way core pages it.
 const newest = (all: ChatTurnDto[], n: number) => all.slice(Math.max(0, all.length - n))
 const pageOf = (all: ChatTurnDto[], before: number, limit: number) => all.slice(Math.max(0, all.length - before - limit), all.length - before)
 const reader = (all: ChatTurnDto[]) => vi.fn((_id: string, before: number, limit: number) => Promise.resolve(pageOf(all, before, limit)))
@@ -167,7 +166,6 @@ describe('cometThreads earlier pages', () => {
     expect(read).toHaveBeenLastCalledWith(BOT, 400, 100)
   })
 
-  // qa142 p2b-r1 #1: an older page gets the same order as a first load.
   it('puts words said mid-turn after the answer they interrupted in an older page, also across the page boundary', async () => {
     const all = history(500)
     all[41] = { role: 'user', text: 'mid', at: 't41', aside: true }
@@ -184,7 +182,6 @@ describe('cometThreads earlier pages', () => {
     expect(texts.slice(40, 44)).toEqual(['m40', 'ans40', 'mid', 'reply-mid'])
     expect(texts.slice(98, 103)).toEqual(['m98', 'ans98', 'edge', 'reply-edge', 'm102'])
     expect(texts).toHaveLength(500)
-    // Messages below the moved one keep their keys, so the scroll anchor holds.
     expect(keyed(store).get('reply-edge')).toBe(before.get('reply-edge'))
     expect(keyed(store).get('m499')).toBe(before.get('m499'))
   })

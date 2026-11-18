@@ -4,7 +4,6 @@ import { sessionRules, WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE } from 'core'
 import { DESK_NOTE, DESK_TOOLS, deskKind, fileGiven, reshapeAsk, reshapePrompt } from '../src/main/desk-lane.js'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 
-// c13c cause P. Wordings here are not the harness's.
 const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
 
 describe('c13c: a short ask has one owner for its reply shape', () => {
@@ -17,7 +16,6 @@ describe('c13c: a short ask has one owner for its reply shape', () => {
     const tools = [...(DESK_TOOLS[kind!] ?? [])]
     const system = sessionRules({ engineId: 'claude', desktop: false, workflow: true, browser: false, planned: true, pageSteps: false, kind: 'short', tools })
     for (const rule of [WORK_REPLY_RULE, REPLIES_RULE, CHOICE_RULE]) expect(system).not.toContain(rule)
-    // Short-ask session + its note, without history or memory.
     expect(system.length + SHORT_QUESTION_NOTE.length).toBeLessThan(10_500)
   })
 })
@@ -35,10 +33,8 @@ describe('c13c: reshape returns the asked form and "shorter" is checked', () => 
   it('commentary does not count as content: an explanation line plus the same sentence is not shorter', async () => {
     const last = `이렇게 쓰면 돼요. ${LAST}\n출시를 도와준 데 감사하는 뜻을 담은 문장이에요.`
     expect(await reshapeAsk('더 간단하게', last, voice({ form: 'shorter', was: LAST, reply: `감사 인사예요.\n${LAST}` }))).toBeUndefined()
-    // A "was" that is not in the last reply cannot be checked.
     expect(await reshapeAsk('더 간단하게', last, voice({ form: 'shorter', was: 'Thanks a lot for everything you did for us all this year.', reply: 'Thanks!' }))).toBeUndefined()
   })
-  // c13c r3 (Codex r2 #1): the voice copied the whole last reply as "was" and dropped only the explanation; not a harness wording.
   it('a reply cut word for word out of the last reply is no shorter form, whatever "was" says', async () => {
     const line = '明日は休みをいただきます。'
     const last = `이렇게 보내면 돼요. "${line}" 내일 휴가라는 뜻을 공손하게 전하는 문장이에요.`
@@ -46,14 +42,11 @@ describe('c13c: reshape returns the asked form and "shorter" is checked', () => 
     expect(await reshapeAsk('조금만 줄여줘', last, voice({ form: 'shorter', was: last, reply: '"明日休みます。"' }))).toBe('"明日休みます。"')
   })
   it('stack-13 (c13c r3 #1): "shorter" is measured against the part of the last reply the new one rewrites, found by the host, not the voice', async () => {
-    // A respelling of the asked line as long as it was, with only the line about it dropped, is not shorter; "was" claims the whole reply.
     const asked = 'Thanks again for covering my shift on Friday.'
     const last = `${asked}\n금요일 근무를 대신해 줘서 고맙다는 뜻이에요.`
     expect(await reshapeAsk('좀 줄여봐', last, voice({ form: 'shorter', was: last, reply: 'Thanks again for covering my shift on Friday!' }))).toBeUndefined()
-    // The same with the line about it in the same line, before or after.
     const inline = `이렇게 쓰면 돼요. "${asked}" 고맙다는 뜻을 담았어요.`
     expect(await reshapeAsk('좀 줄여봐', inline, voice({ form: 'shorter', was: inline, reply: '"Thanks again for covering my shift on Friday!"' }))).toBeUndefined()
-    // A really shorter rewrite of the line passes either way.
     for (const before of [last, inline]) expect(await reshapeAsk('좀 줄여봐', before, voice({ form: 'shorter', was: before, reply: 'Thanks for covering Friday.' }))).toBe('Thanks for covering Friday.')
   })
   it('a table is not length-checked, and an unknown form or plain text is no reshape', async () => {
@@ -71,7 +64,6 @@ describe('c13c: reshape returns the asked form and "shorter" is checked', () => 
 })
 
 describe('c13c: notes separate a decision from an action item by meaning', () => {
-  // A note whose 결정사항 heading lists owner+due items, and a leaning that is no decision.
   const note = ['# 디자인 주간 회의', '', '## 논의', '- 로고 시안 세 개를 봤고 C안 쪽 의견이 많았다.', '', '## 결정사항', '1. 로고 최종 파일 정리 — 담당: 김하늘, 기한: 12월 3일', '2. 브랜드 가이드 초안 공유 — 담당: 이준, 기한: 12월 5일'].join('\n')
   it('the rule the model gets says what each list means, so the host needs no per-line patch', () => {
     const prompt = [DESK_NOTE, fileGiven({ name: 'design-notes.md', text: note })].join('\n\n')

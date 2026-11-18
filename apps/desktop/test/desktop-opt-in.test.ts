@@ -70,7 +70,6 @@ it('never delivers after Stop while a consequential approval is pending', async 
   expect(delivered).not.toHaveBeenCalled()
 })
 
-// qa142 B13: the send gate said `Allow "Send" in "window:85669:0"?` in a Korean thread, and after "no" the bot asked for computer control to do the same thing.
 function gated(answers: ('approve' | 'cancel')[]) {
   const ask = vi.fn<(what: { words: string; url: string }) => Promise<'approve' | 'cancel'>>(async () => answers.shift() ?? 'cancel')
   const seen: boolean[] = []
@@ -113,7 +112,6 @@ it('a command approval card asks once in the conversation language and keeps the
   expect(commandGate(`Run this command outside the sandbox?\n${long}`, 'ko')).toEqual({ title: '제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?', body: long })
   expect(commandGate('Run this command outside the sandbox?\nls\npwd', 'en')).toEqual({ title: 'Run this command outside the sandbox?', body: 'ls\npwd' })
   expect(commandGate('Run this command? pwd && ls', 'ko')).toEqual({ title: '이 명령을 실행할까요?', body: 'pwd && ls' })
-  // A command that quotes the question is still shown whole.
   expect(commandGate('Run this command? echo "x: Run this command outside the sandbox?"', 'ko').body).toBe('echo "x: Run this command outside the sandbox?"')
   expect(commandGate('Researcher: Run this command outside the sandbox?\ncurl example.com', 'ko')).toEqual({ title: 'Researcher: 제 작업 폴더 밖에서 해야 하는 일이에요. 실행해도 될까요?', body: 'curl example.com' })
   const open = commandGate('Allow commands for this comet? They can read or change any accessible file and use the network; not sandboxed.', 'ko')

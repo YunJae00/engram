@@ -10,7 +10,6 @@ import { checkedDesk } from '../src/main/desk-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
-// stack-18 replays: the stack17 threads that failed on cause V (T1, L1, R3) and cause F (D1, C6), their rows and records, through the merged code.
 const page = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
 const row = (url: string, title: string, snippet: string, day = '11월 18일'): string => `- ${title} — ${url} — ${snippet} — ${day}`
 function search(outs: string[], tick?: () => void): AgentTool & { queries: string[] } {
@@ -25,7 +24,6 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
   type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   const vault = async (): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, 'engram-s18-t1-')), '.engram') } as unknown as VaultPaths }
-  // The page each city's helper cites, what it says, and the judge's paraphrase of it (never the row's own words).
   const CITY: Record<string, { page: string; quote: string; said: string }> = {
     서울: { page: '현재 7.2°C, 구름많음. 체감 4.9°C.', quote: '7.2도, 구름많음', said: '서울은 지금 7.2도에 구름이 많아요' },
     부산: { page: '낮 최고 18°C, 온화함. 오늘 밤~내일 새벽까지 비.', quote: '낮 최고 18도, 온화함', said: '부산은 낮 최고 18도로 온화하고 밤부터 비가 와요' },
@@ -42,7 +40,6 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
     const city = (text: string): string => CITIES.find(one => text.includes(one)) ?? '서울'
     const searchTool: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => {
       const q = String(args['query']), at = city(q); await tick(20)
-      // stack17's rows: a weather row whose snippet has no value, and a news row.
       return page(q, [row(WEATHER(at), `${at} 날씨`, `${at} 오늘 날씨 안내`), row(`https://news.example/${encodeURIComponent(at)}`, `${at} 오늘 날씨 요약`, `${at} 지역 소식`)])
     } }
     const open: AgentTool = { name: 'open_page', description: '', argsSchema: {}, run: async args => {
@@ -56,7 +53,6 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
         return JSON.stringify({ keep: items.map(item => item.n), asked: 1, points: ['날씨: 기온이나 하늘 상태'], holds: w ? { [w.n]: { 날씨: CITY[city(decodeURIComponent(w.link!))]!.quote } } : {}, ...(w ? { open: w.n } : {}), search: '' })
       }
       if (prompt.includes('Judge meaning only')) return JSON.stringify({ problems: [] })
-      // The report writer is late: the host's own rendering is what the person reads.
       return undefined
     })
     const run: Run = async (deps, prompt, options = {}) => {
@@ -65,7 +61,6 @@ describe('T1 (stack17: 4 helpers all "found", the judge quotes paraphrased and r
       const tool = deps.tools?.find(t => t.name === 'search_web')
       const seen = tool ? await tool.run({ query: `${at} 오늘 날씨` }, { task: prompt, ...(options.signal ? { signal: options.signal } : {}) }) : ''
       await tick(20)
-      // The helper writes from the page the host opened for it.
       const said = seen.includes(CITY[at]!.page) ? CITY[at]!.said : `${at} 날씨는 못 찾았어요`
       return { answer: `${said}. [${at} 날씨](${WEATHER(at)})`, steps: [], fellBack: false }
     }
@@ -126,7 +121,6 @@ describe('R3 (stack17: round 2 holds=4 asked=5 words=none left=9824 → "5개 �
         else if (/추진/.test(lead!)) holds[item.n] = { kind: lead! }
         else if (!item.text.includes(' — ') && /투자 유치/.test(lead!)) holds[item.n] = { kind: lead! }
       }
-      // Round 1 holds 4 (업스테이지 unquoted, like stack17's 4 of 5); no round gives new words.
       return JSON.stringify({ keep: items.filter(item => !/한눈에|회사 소개/.test(item.text)).map(item => item.n), listing: items.filter(item => item.text.includes('한눈에')).map(item => item.n), asked: 5, holds, search: '', ...(judged.length === 1 ? { kind: '국내 AI 스타트업이 투자를 받았다는 보도' } : {}) })
     })
     const out = await checkedSearch(s, { ask: () => ask, since: 0, now: () => t, write, read: async url => { opened.push(url); return url.endsWith('/5') ? listing : '펨테크 스타트업 기업설명회 안내.' } }).run({ query: 'q' }, { task: ask })
@@ -148,12 +142,10 @@ describe('D1 (stack17: desk-check rewritten kinds=["asks"]; no 할 일 part, the
   ].join('\n')
   const TASKS = ['신규 온보딩 화면 시안 확정 — 담당: 한서연, 기한: 11월 20일', '결제 모듈 교체 일정 수립 — 담당: 오태민, 기한: 11월 24일', '베타 테스터 50명 모집 공지 발송 — 담당: 윤가은, 기한: 11월 27일', '4분기 마케팅 예산안 제출 — 담당: 백도현, 기한: 12월 1일']
   const HANDA = '결제 모듈 후보 두 곳 중 어디로 갈지는 견적을 받은 뒤 다음 회의에서 정한다.'
-  // The stack17 D1 draft as the thread shows it.
   const DRAFT = ['11월 16일 제품팀 주간 회의록을 결정사항과 할 일 중심으로 정리했어요.', '', '결정사항', '', ...TASKS, '', '미결', '', HANDA, '다음 회의: 11월 23일(월) 오전 10시'].join('\n')
   it('D1: a "missing 할 일" finding and the 한다체 line go through the scoped repair: 할 일 is added, the rest stays, no 한다체 line', async () => {
     const units = messageUnits(DRAFT), at = units.findIndex(unit => unit.text.includes('정한다')), last = units.findIndex(unit => unit.text.includes('4분기'))
     const check = [JSON.stringify({ problems: [{ kind: 'missing', quote: '할 일', why: '할 일 부분이 없어요', lines: TASKS.map((task, i) => `${i + 1}. ${task}`) }, { kind: 'register', quote: HANDA, why: '한다체' }] })]
-    // The repair the model gives: 할 일 after the tasks, the 미결 line in 해요체.
     const repair = [JSON.stringify({ replace: { [String(at + 1)]: '결제 모듈 후보 두 곳 중 어디로 갈지는 견적을 받은 뒤 다음 회의에서 정해요.' }, insert_after: { [String(last + 1)]: ['', '할 일', ...TASKS.map(task => `- ${task.replace(/ — 담당: (.+), 기한: (.+)$/, ' — $1, $2까지')}`)] } })]
     const prompts: string[] = [], logged: string[] = []
     const quick = async (p: string): Promise<string | undefined> => { prompts.push(p); return p.includes('Judge meaning only') ? check.shift() ?? '{"problems":[]}' : p.includes('You fix a message before a person reads it') ? repair.shift() : undefined }
@@ -161,7 +153,6 @@ describe('D1 (stack17: desk-check rewritten kinds=["asks"]; no 할 일 part, the
     console.log(`D1 replay (${logged.join(' ')}):\n${out}`)
     expect(out.split('\n')).toContain('할 일')
     for (const task of TASKS) expect(out).toContain(task.split(' — ')[0])
-    // Every draft line but the 한다체 one is still there, byte-equal and in order.
     const kept = DRAFT.split('\n').filter(line => line.trim() && line !== HANDA)
     expect(out.split('\n').filter(line => kept.includes(line))).toEqual(kept)
     expect(out).not.toMatch(/한다\.|정한다/)
@@ -182,7 +173,6 @@ describe('C6 (stack17: writer=fallback:items-first>items-first; "서연이 지�
     const out = await writtenReport({ ask: '지민 조사 끝나면 서연한테 넘겨서 홍보 문구 3개 뽑게 해', members: [jimin, seoyeon], said: [ACK], timeoutMs: 15_000,
       write: agreeing(async (p: string) => {  return p.includes('Judge meaning only') ? '{"problems":[]}' : p.includes('You fix a message before a person reads it') ? undefined : JSON.stringify({ message: draft, kept: [] }) }) })
     console.log(`C6 replay (after "${ACK}"):\n${out}`)
-    // stack-18: the answer itself says whose it is (rule 7; c18b's "said once per turn" left H5's result naming nobody), once.
     expect(out.match(/서연이 지민이 찾은 [^\n]*만든 거예요\./g)).toHaveLength(1)
     for (const line of COPY) expect(out).toContain(line)
   })

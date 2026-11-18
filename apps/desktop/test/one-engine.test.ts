@@ -9,7 +9,6 @@ const fixture = vi.hoisted(() => ({ root: '', query: vi.fn(), binary: vi.fn() })
 vi.mock('electron', () => ({ app: { getPath: () => fixture.root } }))
 vi.mock('react', async original => {
   const actual = await original<typeof import('react')>()
-  // Onboarding's step counter is its only useState(1); start it on step 2.
   return { ...actual, useState: (value: unknown) => actual.useState(value === 1 ? 2 : value) }
 })
 vi.mock('../src/main/brain-connections.js', () => ({ loadBrainConnections: async () => ({}), hasBrainConnection: () => false, probeConnection: vi.fn(), clearBrainConnection: vi.fn(), connectionEnvironment: () => ({}) }))
@@ -51,7 +50,6 @@ afterEach(() => { vi.unstubAllEnvs() })
 describe('one engine, no knobs', () => {
   it('works on the Opus tier the bundled runtime accepts and runs chores on haiku', () => {
     vi.stubEnv('ENGRAM_CLAUDE_MODEL', '')
-    // The bundled runtime (Claude Code 2.1.272) rejects claude-opus-5-5 with a 400; it gets the opus alias.
     expect(chosenModel()).toBe('opus')
     expect(chosenModel(undefined, '0.3.280')).toBe('claude-opus-5-5')
     expect(chosenModel('fast')).toBe('haiku')

@@ -92,11 +92,9 @@ describe('desktop text insertion', () => {
     expect(fake.act).not.toHaveBeenCalled()
     const approve = vi.fn(async () => true)
     await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Enter' }, approve)
-    // B13: the card is given the app's name and the outgoing text; the fixture's field is empty, so there is no text to show.
     expect(approve).toHaveBeenCalledExactlyOnceWith('Fixture', 'Send', 's', undefined, { app: 'Fixture', sending: undefined })
     expect(fake.act).toHaveBeenCalledOnce()
     expect(fake.act.mock.calls[0]![1]).toMatchObject({ key: 'Enter' })
-    // A draft in a plain field is the text the card shows; with a secret field in the window it shows none, and still asks.
     fake.act.mockClear(); approve.mockClear()
     fake.observe.mockImplementationOnce(() => field(HELLO))
     await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Enter' }, approve)
@@ -110,7 +108,6 @@ describe('desktop text insertion', () => {
     expect(typeThenSend).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
     expect(approve).not.toHaveBeenCalled()
     expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'key', key: 'Enter' }] }, decline)).toMatchObject({ error: 'policy_denied' })
-    // A later Enter is refused too: [click, Enter, type, Enter] would send the new text without a read-back or its own approval.
     const enterTypeEnter = await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', element: 'e1' }, { kind: 'key', key: 'Enter' }, { kind: 'type', text: HELLO }, { kind: 'key', key: 'Enter' }] }, approve)
     expect(enterTypeEnter).toMatchObject({ error: 'policy_denied', delivery: 'not_delivered' })
     expect(approve).not.toHaveBeenCalled()
@@ -130,12 +127,10 @@ describe('desktop text insertion', () => {
     expect(fake.sequence).not.toHaveBeenCalled()
     await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
     expect(fake.act).toHaveBeenCalledOnce()
-    // By position or by name, a click on Send asks too.
     fake.act.mockClear(); decline.mockClear()
     fake.observe.mockImplementation(() => ({ ...field(''), captureBounds: { x: 0, y: 0, width: 101, height: 101 }, nodes: [...field('').nodes, { id: 'e2', controlType: 'AXButton', name: 'Send message', bounds: { x: 0, y: 40, width: 20, height: 20 } }] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.1, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', target: { name: 'Send message', controlType: 'AXButton' } }] }, decline)).toMatchObject({ error: 'policy_denied' })
-    // The dispatched pixel is rounded: a point just outside the button's fractional edge still lands on it.
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.204, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(decline).toHaveBeenCalledTimes(3)
     expect(fake.act).not.toHaveBeenCalled()
@@ -147,11 +142,9 @@ describe('desktop text insertion', () => {
     fake.observe.mockImplementation(() => ({ ...field(''), focusedControl: 'b3', nodes: [...field('').nodes, icon] }))
     expect(await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Space' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).not.toHaveBeenCalled()
-    // Before typing, an unnamed button click is an ordinary click.
     await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)
     expect(fake.act).toHaveBeenCalledOnce()
     fake.act.mockClear()
-    // After typing, the same icon-only button may be Send: it asks, while clicking back into the field does not.
     await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
     fake.act.mockClear()
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
@@ -159,7 +152,6 @@ describe('desktop text insertion', () => {
     await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e1' }, decline)
     expect(fake.act).toHaveBeenCalledOnce()
     expect(decline).toHaveBeenCalledTimes(2)
-    // A type whose read-back fails still leaves a draft: the icon button keeps asking, and a new tool set (next turn) remembers it.
     forgetTypedUnsent('bot-one'); fake.act.mockClear(); decline.mockClear()
     fake.read.mockRejectedValueOnce(new Error('read failed'))
     await run('desktop_action', { kind: 'type', snapshot: 's', text: HELLO })
@@ -177,7 +169,6 @@ describe('desktop text insertion', () => {
     fake.observe.mockImplementation(() => ({ ...field(HELLO), nodes: [...field(HELLO).nodes, { ...icon, name: '↑' }] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).not.toHaveBeenCalled()
-    // The draft counts even when another field has focus, and a sequence target by name only still asks.
     fake.observe.mockImplementation(() => ({ ...field(HELLO), focusedControl: 'f9', nodes: [...field(HELLO).nodes, { id: 'e9', runtimeId: 'f9', controlType: 'AXTextField', name: 'Search', value: '' }, { ...icon, name: '↑' }] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(await run('desktop_sequence', { snapshot: 's', actions: [{ kind: 'click', target: { name: '↑', controlType: 'AXButton' } }] }, decline)).toMatchObject({ error: 'policy_denied' })
@@ -190,7 +181,6 @@ describe('desktop text insertion', () => {
     await run('desktop_action', { kind: 'key', snapshot: 's', key: 'Enter' }, vi.fn().mockResolvedValue(true))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', element: 'e3' }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).toHaveBeenCalledOnce()
-    // A position click where an icon button overlaps the field still asks.
     fake.observe.mockImplementation(() => ({ ...field(''), captureBounds: { x: 0, y: 0, width: 101, height: 101 }, nodes: [...field('').nodes.map(node => ({ ...node, bounds: { x: 0, y: 0, width: 100, height: 60 } })), icon] }))
     expect(await run('desktop_action', { kind: 'click', snapshot: 's', x: 0.7, y: 0.5 }, decline)).toMatchObject({ error: 'policy_denied' })
     expect(fake.act).toHaveBeenCalledOnce()

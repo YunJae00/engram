@@ -23,7 +23,6 @@ it('waits until two reads match', async () => {
   await vi.advanceTimersByTimeAsync(200)
   await expect(quick).resolves.toEqual({ view: 'S', settled: true })
   expect(still).toHaveBeenCalledTimes(2)
-  // The view the action was planned on never counts: a change that starts after the first poll is still waited for.
   const late = vi.fn().mockResolvedValueOnce('A').mockResolvedValue('B')
   const delayed = settle(late, key)
   await vi.advanceTimersByTimeAsync(400)

@@ -2,9 +2,6 @@ import { expect, it } from 'vitest'
 import { done, setup } from './task-runner-fixture.js'
 import { askedBefore } from '../src/main/desk-lane.js'
 
-// c14b r2 (Codex r1 #3): a task's answer posted later, after an unrelated question and its answer, answers the task's ask, not the message
-// just before it. The runner hands that ask to every continuation turn and to every delivery, and the transcript turn keeps it (`asked`),
-// so the reshape voice ("더 짧게") keeps the constraints of the ask the reply really answered. Wordings are not the harness's.
 const ASK = '거래처에 보낼 사과 문구를 격식 있게 두 문장으로 써줘'
 
 it('every continuation turn and every delivery of a task carries the task\'s ask', async () => {
@@ -26,7 +23,6 @@ it('the ask of a reply posted after an unrelated exchange is its own ask, not th
     { role: 'assistant', text: '납품이 늦어진 점 깊이 사과드립니다. 다음 주 월요일까지 보내 드리겠습니다.', asked: ASK },
   ]
   expect(askedBefore(history)).toBe(ASK)
-  // A reply with no ask of its own answers the person's message before it, as before.
   expect(askedBefore(history.slice(0, 4))).toBe('오늘 며칠이야?')
 })
 

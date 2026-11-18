@@ -116,7 +116,6 @@ const PINNED_KO: Partial<Record<keyof typeof en, string>> = {
   'sidebar.deleteSectionOnly': '섹션만 삭제',
 }
 
-// Copy of scripts/verify-scenarios/ui-korean.mjs isOffending and its allowlists.
 const ALLOW_PHRASES = ['Claude Code', 'Claude Desktop']
 const ALLOW = new Set([
   'Engram', 'Claude', 'ChatGPT', 'Codex', 'OpenAI', 'Gemini', 'Cosmos', 'Orbit', 'GitHub', 'Obsidian',

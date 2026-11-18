@@ -111,7 +111,6 @@ async function setupPrime(reply: (job: EngineJobInput) => string | Promise<strin
   } } as unknown as Engine
   const ctx = { paths, engines: [engine], store: await NoteStore.open(paths) } as unknown as Parameters<typeof primeWorkMap>[0]
   const filed = vi.fn()
-  // Register the callback without starting background timers in this fixture.
   vi.stubEnv('ENGRAM_USERDATA', 'isolated-test-profile')
   startWorkMap(ctx, filed)
   vi.stubEnv('ENGRAM_USERDATA', '')
@@ -163,7 +162,6 @@ it.each(['opt-out', 'no engine', 'quota', 'isolated profile'])('does not read a 
   if (reason === 'isolated profile') vi.stubEnv('ENGRAM_USERDATA', 'isolated-test-profile')
   const run = vi.fn()
   const ctx = { engines: reason === 'no engine' ? [] : [{ run }] } as unknown as Parameters<typeof primeWorkMap>[0]
-  // No paths are supplied: reading even the stored map would fail this check.
   await primeWorkMap(ctx)
   expect(run).not.toHaveBeenCalled()
   expect(fake.sources).not.toHaveBeenCalled()

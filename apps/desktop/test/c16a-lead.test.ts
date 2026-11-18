@@ -6,9 +6,6 @@ import { createBot, createTask, employeeNote, employeesAnswer, helperAnswer, kin
 vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 
-// c16a (cause M: the helpers' answer had a second writer, the lead model, with no form guarantee and no time for its check; cause F2: the
-// team writer worked to a fixed 8 s and its fallback read like a report). Wordings are not the harness's: 도쿄/오사카/후쿠오카 환율 영향,
-// 오키나와, 갤럭시 탭/아이패드/서피스 가격, 부산 불꽃축제, 피그마/미로/캔바 (c15b r3 #1's repro), teammates 하람 / 이든.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-c16a-${tag}-`)), '.engram') } as unknown as VaultPaths }
@@ -18,7 +15,6 @@ const PAGE: Record<string, string> = { 도쿄: 'https://fx.example.jp/tokyo', �
 const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line)).slice(1)
 afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
 
-/** A quick model that writes the one table the writer is asked for, from the data it is given (one row per part, its fact and link). */
 const tableWriter = (calls: string[], prose = false) => async (prompt: string): Promise<string> => {
   calls.push(prompt)
   if (prompt.includes(CHECK)) return none
@@ -49,7 +45,6 @@ async function lane(tag: string, ask: string, opts: { steer?: number; delay?: nu
   const team = teamRunner({ paths, askFor: () => undefined, waitingForPerson: () => false, closeSession: () => undefined, endLane: () => undefined, step: () => undefined, changed: () => undefined, run, ...(said ? { steered: () => said } : {}) })
   const kit: TurnKit = { engine, workdir: {} as TurnKit['workdir'], guided: false, said: () => ask, nativeFor: async () => undefined, toolsFor: async one => team.tools(one, kit), alive: async () => true }
   const since = Date.now()
-  // The lane's wiring (ipc.ts): hire_members wrapped so its hand-back of accepted lookups is the team writer's answer.
   const hire: AgentTool = mergingHire(team.tools('bot-b1', kit).find(t => t.name === 'hire_members')!, async signal => helperAnswer({ ask, members: (await listTasks(paths)).find(t => t.state === 'running')?.team?.members, since, write: (prompt: string) => write(prompt), due: since + 28_000, signal }))
   return { paths, hire, models, quick, prompts, signals }
 }
@@ -61,12 +56,9 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     const rows = tableRows(out)
     expect(rows).toHaveLength(3)
     for (const [i, city] of ['도쿄', '오사카', '후쿠오카'].entries()) { expect(rows[i]).toContain(city); expect(rows[i]).toContain(`](${PAGE[city]})`) }
-    // No helper's role ("도쿄 조사") and no name: the person named nobody.
     expect(out).not.toContain('조사')
-    // The turn ends on this reply: the lead model writes no second answer turn.
     expect(hire.closes).toBe(true)
     expect(hire.closesOn!(out)).toBe(true)
-    // Model calls: the three helpers only; quick calls: the writer and its meaning check (with the ask's own constraints).
     expect(models).toHaveLength(3)
     expect(quick).toHaveLength(2)
     expect(quick[1]).toContain('"dropped": the person\'s ask says how the work is to be done')
@@ -75,8 +67,6 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
   it('a writer that gives prose twice (no table) leaves the host\'s table: three rows, each linked', async () => {
     const { hire, quick } = await lane('prose', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { prose: true })
     const out = await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })
-    // c18b: the table rule is one of form only: the writer's prose is shown as written (no repair, never the host's rendering), each
-    // part on its own line with its link. Calls: the writer and its meaning check.
     expect(quick).toHaveLength(2)
     expect(quick[1]).toContain(CHECK)
     const lines = out.split('\n').filter(Boolean)
@@ -88,7 +78,6 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
   it('a part added mid-work ("오키나와도 넣어") is a row of the same one table', async () => {
     const { hire } = await lane('steer', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { steer: 10, delay: 80 })
     const first = await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })
-    // The steer comes back to the lead to act on: no answer yet, the turn goes on.
     expect(hire.closesOn!(first)).toBe(false)
     expect(JSON.parse(first).note).toContain('call hire_members now for that part only')
     const out = await hire.run({ members: [{ role: '오키나와', topic: '오키나와', brief: '오키나와 환율 영향', lookup: true }] }, { task: '' })
@@ -101,10 +90,8 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     const { hire, prompts, quick } = await lane('measure', '갤럭시 탭, 아이패드, 서피스 가격 비교 따로 조사시켜')
     const measure = '가격: 와이파이 기본 모델 최저 용량의 국내 출시가, 원 단위'
     await hire.run({ measure, members: ['갤럭시 탭', '아이패드', '서피스'].map(name => ({ role: name, topic: name, brief: `${name} 가격`, lookup: true })) }, { task: '' })
-    // Every part's brief holds the same definition.
     expect(prompts).toHaveLength(3)
     for (const prompt of prompts) expect(prompt).toContain(`the same for every part: ${measure}`)
-    // The writer reads it, and is told a value on another basis is labeled in its cell.
     expect(quick[0]).toContain(`"measure":"${measure}"`)
     expect(quick[0]).toContain('a value on another basis (another model or tier, unit or day) is labeled in its cell')
   })
@@ -119,8 +106,6 @@ describe('c16a: one writer for the helpers\' answer (cause M)', () => {
     const out = await helperAnswer({ ask: '도쿄 오사카 환율 영향', members: helpers, since: at - 5000, write: async prompt => { calls.push(prompt); return new Promise<string>(() => undefined) }, due: at + 20_000, signal: ctl.signal })
     expect(Date.now() - at).toBeLessThan(500)
     expect(calls).toHaveLength(1)
-    // What comes back is the host's rendering (c18b: two parts in sentences, each linked); mergingHire drops it on a stop, and the session
-    // posts nothing after one.
     for (const city of ['도쿄', '오사카']) expect(out).toContain(PAGE[city])
     const hire = mergingHire({ name: 'hire_members', description: '', argsSchema: {}, run: async () => JSON.stringify({ members: [{ accepted: true }], note: 'Members with accepted true are lookups' }) }, async () => { ctl.abort(); return 'written' })
     const stopped = await hire.run({}, { task: '', signal: ctl.signal })
@@ -145,8 +130,6 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
   }
   const good = JSON.stringify({ message: '토요일 강릉은 맑아요. 하람이 봤는데 낮 12도예요. [기상](https://weather.example.kr/gangneung)', kept: ['f1'] })
   const nameless = JSON.stringify({ message: '토요일 강릉은 맑고 낮 12도예요. [기상](https://weather.example.kr/gangneung)', kept: ['f1'] })
-  // The first draft leaves 하람 unnamed (a shape problem); its repair takes 10 s; the check answers at once.
-  // c18b: the repair is scoped: it adds a line naming 하람; the draft's sentence stays.
   const slowRepair = (calls: string[]) => (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes(CHECK) ? Promise.resolve(none) : calls.filter(one => !one.includes(CHECK)).length === 1 ? Promise.resolve(nameless) : new Promise(resolve => setTimeout(() => resolve(JSON.stringify({ insert_after: { 1: ['하람이 봤는데 바람도 잔잔해요.'] } })), 10_000)) }
   void good
 
@@ -159,7 +142,6 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
     expect(calls).toHaveLength(3)
   })
 
-  // c16a r2: updated (review #2: it allowed the 4 s floor past a due 3 s away): the answer is in by the due itself.
   it('with 3 s left the host\'s rendering is shown by the due, and no repair runs past it', async () => {
     vi.useFakeTimers({ now: T0 })
     const calls: string[] = [], m = handed()
@@ -168,8 +150,6 @@ describe('c16a: the writer works to the answer\'s due (cause F2)', () => {
     await vi.advanceTimersByTimeAsync(3000)
     expect(at).toBeDefined()
     expect(at! - T0).toBeLessThanOrEqual(3000)
-    // c18b: the unnamed rule is one of shape: with its repair late, the draft is shown as written (never the host's rendering).
-    // c18b r2 (GROKBOT 7): whose find it was is the host's to guarantee: unrepaired, 하람 is named in the sentence their link closes.
     expect(await out).toMatch(/^하람이 찾아보니 토요일 강릉은 맑고 낮 12도예요\. \[/)
     expect(await out).not.toContain('하람이 봤는데')
     expect(calls).toHaveLength(3)
@@ -194,14 +174,12 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
       { text: '부산 불꽃축제는 11월 15일 토요일 저녁 7시 광안리 해수욕장에서 열려요.', url: GU, site: '수영구청', date: '10월 30일' },
       { text: '유료 관람석 예매는 11월 3일부터 받아요.', url: TICKET, site: '수영구청', date: '10월 28일' },
     ]
-    // The item judge: all three are the kind asked; 1 and 2 are one fact, 1 passes it on second-hand.
     const judge = async () => JSON.stringify({ keep: [1, 2, 3], unsure: [], same: [[1, 2]], lists: [], names: {}, listing: [], outside: [], secondhand: [1] })
     m.data = await kindChecked({ facts }, m.brief, judge)
     const out = mergedReport([m])
     expect(out).toContain(GU)
     expect(out).not.toContain(BLOG)
     expect(out).not.toMatch(/\((?:11월 2일|10월 30일|10월 28일)\)/)
-    // Whose it is is said once (rule 7), as the first row's subject, never a "(이든)" tag on a row (c16a r2, review #4).
     expect(out.match(/이든/g)).toHaveLength(1)
     expect(out).toMatch(/^- 이든이 찾아보니 부산 불꽃축제는 /)
     expect(out).not.toContain('(이든)')
@@ -229,7 +207,6 @@ describe('c16a: the fallback reads like one person (cause F2, c15b r3 #1)', () =
   })
 })
 
-// c16a round 2 (Codex r1 findings #1–#3). Wordings not in the harness: 후쿠오카 → 오키나와 swap, 갤럭시 탭 S11 price and release day.
 describe('c16a r2: review findings', () => {
   it('#3: a part the person replaces mid-work ("후쿠오카 말고 오키나와로") leaves no row; the new part is a row of the one table', async () => {
     const { hire, paths } = await lane('swap', '도쿄 오사카 후쿠오카 환율 영향 각각 알아봐서 정리해줘', { steer: 10, delay: 80 })
@@ -241,7 +218,6 @@ describe('c16a r2: review findings', () => {
     expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['도쿄', '오사카', '오키나와'])
     expect(out).not.toContain('후쿠오카')
     expect(hire.closesOn!(out)).toBe(true)
-    // The record: taken off, released, nothing of it kept as a result (every member still ends reviewed and released).
     const member = (await listTasks(paths))[0]!.team!.members.find(m => m.id === gone)!
     expect(member).toMatchObject({ state: 'released', review: { ok: false, note: TAKEN_OFF } })
     expect(member.result).toBeUndefined()
@@ -252,7 +228,6 @@ describe('c16a r2: review findings', () => {
     const back = JSON.parse(await hire.run({ members: ['도쿄', '오사카', '후쿠오카'].map(city => ({ role: city, topic: city, brief: `${city} 환율 영향`, lookup: true })) }, { task: '' })) as { members: { id: string; role: string }[] }
     expect(signals.get('후쿠오카')?.aborted).toBe(false)
     const out = await hire.run({ stop: [back.members.find(m => m.role === '후쿠오카')!.id], members: [] }, { task: '' })
-    // Its own control was aborted (a part that ends by itself is never aborted, as 도쿄 shows).
     expect(signals.get('후쿠오카')!.aborted).toBe(true)
     expect(signals.get('도쿄')!.aborted).toBe(false)
     expect(tableRows(out).map(row => row.split('|')[1]!.trim())).toEqual(['도쿄', '오사카'])
@@ -277,13 +252,10 @@ describe('c16a r2: review findings', () => {
     expect(tab).toHaveLength(2)
     expect(tab[0]!.text).toContain('119만 9천 원'); expect(tab[0]!.link).toContain(SAM); expect(tab[0]!.text).not.toContain('9월 5일')
     expect(tab[1]!.text).toContain('9월 5일'); expect(tab[1]!.link).toContain(YNA)
-    // The host's table: in that part's row each fact is followed by its own page.
-    // c18b: two things are said in sentences (no table): each fact of that part is a line of its own, followed by its own page.
     expect(tableRows(out!)).toHaveLength(0)
     const lines = out!.split('\n')
     expect(lines.find(line => line.includes('119만 9천 원'))).toMatch(new RegExp(`\\]\\(${SAM.replace(/[.?/]/g, '\\$&')}\\)$`))
     expect(lines.find(line => line.includes('9월 5일'))).toMatch(new RegExp(`\\]\\(${YNA.replace(/[.?/]/g, '\\$&')}\\)$`))
-    // A part with one page keeps the one link.
     expect(out!.match(/apple\.com/g)).toHaveLength(1)
   })
 

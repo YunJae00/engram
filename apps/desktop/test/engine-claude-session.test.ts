@@ -6,9 +6,6 @@ const timingLog = vi.hoisted(() => vi.fn())
 vi.mock('../src/main/flog.js', () => ({ flog: timingLog }))
 import { SessionPool, type SdkUserMessage, type SessionSdk, PRELOADED_TOOLS_MAX } from '../src/main/engine-claude-session.js'
 
-// A stand-in runtime: one process per query, answering every user message
-// it is fed with a call to the first tool and then an answer that names
-// what the tool said. Counts how many processes were started.
 function fakeSdk(log: string[], compact = false) {
   let processes = 0
   let interruptions = 0
@@ -56,7 +53,6 @@ function job(prompt: string, extra: Partial<ToolSessionJob> = {}): ToolSessionJo
 }
 
 describe('a warm session: one process, many turns', () => {
-  // perf146: the members' tools sat behind ToolSearch, a model round per lookup (8 rounds, 3-8 s each).
   it('puts a small tool menu in the prompt whole and leaves a large one to be searched', async () => {
     const { sdk, optionsSeen } = fakeSdk([])
     const pool = new SessionPool(), base = { sdk, binary: 'claude', workdir: 'C:/tmp', model: 'fixture' }
@@ -103,8 +99,6 @@ describe('a warm session: one process, many turns', () => {
       expect(optionsSeen.map(options => options['effort'])).toEqual(['low', 'high', 'medium'])
     } finally { pool.closeAll() }
   })
-  // c5c D1: a note turn runs at low effort and the next turn of the thread (D2 "위 회의록으로 …") does not, so that turn opens a fresh
-  // session. It must still know the thread: a fresh session's first message is the conversation so far and then the task.
   it('gives a session opened by a change of effort the conversation so far', async () => {
     const log: string[] = []
     const { sdk, processes } = fakeSdk(log)
@@ -113,7 +107,6 @@ describe('a warm session: one process, many turns', () => {
     try {
       await pool.run(job('Task: 회의록 요약해줘', { sessionKey: 'bot-1', effort: 'low' }), spec)
       await pool.run(job('Task: 위 회의록으로 워드 보고서 만들어줘', { sessionKey: 'bot-1', opening: 'User: 회의록 요약해줘\nYou: 결정사항은 네 가지예요.' }), spec)
-      // The same effort again: the same session, and the thread is not sent twice.
       await pool.run(job('Task: 표도 넣어줘', { sessionKey: 'bot-1', opening: 'User: …\nYou: …' }), spec)
       expect(processes()).toBe(2)
       expect(log).toEqual(['user: Task: 회의록 요약해줘', 'user: User: 회의록 요약해줘\nYou: 결정사항은 네 가지예요.\n\nTask: 위 회의록으로 워드 보고서 만들어줘', 'user: Task: 표도 넣어줘'])
@@ -284,8 +277,6 @@ describe('a warm session: one process, many turns', () => {
 
 export type { SdkUserMessage }
 
-// A runtime that writes its reply a few words at a time: thinking aloud,
-// then a tool call, then the answer - the pieces a person watches arrive.
 function streamingSdk(beforeReply?: () => AsyncIterable<{ type: string; [key: string]: unknown }>): SessionSdk {
   return {
     createSdkMcpServer: (options) => options,
@@ -345,7 +336,6 @@ describe('the reply streams as it is written', () => {
     const result = await pool.run(job('Task: anything', { sessionKey: 'k', onToken: (text) => pieces.push(text), onReset: (_drop, tool) => resetTools.push(tool) }), spec)
     expect(result.answer).toBe('The answer is 42.')
     expect(pieces).toEqual(['Let me look. ', 'The ', 'answer ', 'is 42.'])
-    // The reset names the tool that starts, so main knows a memory save before its step arrives.
     expect(resetTools).toEqual(['mcp__engram__keep_in_mind'])
     pool.closeAll()
   })

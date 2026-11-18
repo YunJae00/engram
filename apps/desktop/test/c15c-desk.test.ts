@@ -6,7 +6,6 @@ import { checkedDesk, structured, withoutQuoted } from '../src/main/desk-lane.js
 import { readProblems } from 'core'
 import { MEMORY_YIELDS, turnRunning, yielding } from '../src/main/comet-memory.js'
 
-// c15c (cause D). Wordings are not the harness's: a product review split into 장점/단점.
 const SOURCE = '# 무선 이어폰 리뷰\n\n## 써 본 느낌\n- 무게가 4g이라 오래 껴도 귀가 안 아프다.\n- 배터리가 5시간밖에 안 간다.\n- 노이즈 캔슬링이 지하철에서도 잘 된다.\n'
 const ASK = '리뷰 메모 장점이랑 단점으로 나눠서 정리해줘'
 const DRAFT = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요'
@@ -19,13 +18,11 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(structured('| 항목 | 값 |\n| 가 | 1 |')).toBe(true)
     expect(structured('평년 기준으로 31,536,000초예요.')).toBe(false)
     expect(structured('칼국수 어때요? 쌀쌀하니까요.')).toBe(false)
-    // r2: two short sections are parts, however short.
     expect(structured('장점: 가벼워요.\n\n단점: 배터리가 짧아요.')).toBe(true)
     expect(structured('원인: 캐시가 오래됐어요.\n대책: 매일 비워요.')).toBe(true)
   })
   it('parts that say the same thing are found ("overlap") and the answer is rewritten once from the source', async () => {
     const prompts: string[] = []
-    // c18b: the check quotes both copies under 단점; the repair replaces those units only (core repairedWrite), never the whole answer.
     const verdicts = ['{"problems":[{"kind":"overlap","quote":"단점 - 가벼워서 오래 껴도 편해요","why":"장점과 같은 내용"},{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같은 내용"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요', 6: '' } }), '{"problems":[]}']
     const quick = vi.fn(async (prompt: string) => { prompts.push(prompt); return verdicts.shift() })
     const logged: string[] = []
@@ -56,12 +53,10 @@ describe('a structured desk answer is checked against its ask and source (D1 cla
     expect(quick).toHaveBeenCalledTimes(1)
   })
   it('a rewrite that is still wrong never shows the lines the check named: the last text read, without them (r2)', async () => {
-    // The rewrite moved one item but still lists 노이즈 캔슬링 under 단점; its own check quotes that line.
     const STILL = '장점\n\n- 가벼워서 오래 껴도 편해요\n- 노이즈 캔슬링이 좋아요\n\n단점\n\n- 배터리가 5시간밖에 안 가요\n- 노이즈 캔슬링이 좋아요'
     const again = ['{"problems":[{"kind":"overlap","quote":"가벼워서 오래 껴도 편해요","why":"두 번"}]}', JSON.stringify({ replace: { 5: '- 배터리가 5시간밖에 안 가요' } }), '{"problems":[{"kind":"overlap","quote":"단점 - 노이즈 캔슬링이 좋아요","why":"장점과 같음"}]}']
     const logged: string[] = []
     const out = await checkedDesk({ ask: ASK, draft: DRAFT, source: SOURCE, quick: async () => again.shift(), since: Date.now(), log: outcome => logged.push(outcome) })
-    // c18b: the repair stands; the line its own check still names is taken out (withoutQuoted), nothing else.
     expect(logged).toEqual(['repaired'])
     expect(out).not.toBe(DRAFT)
     void STILL
@@ -126,22 +121,17 @@ describe('background memory calls yield to a person\'s starting turn (D3, C5 cla
   })
 })
 
-// c15c r3. Wordings are not the harness's: a team retro note split into 합의한 것 / 각자 할 일.
 describe('the fallback never keeps the wrong copy and never answers empty (r3)', () => {
   const RETRO = '합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기'
   it('a false item repeated in two parts: the copy under the part the quote names goes, the other stays', () => {
-    // The check says the decision is false (the source left the day open); the same line under 할 일 is a task and stays.
-    // stack-15: a wrong row takes its whole list with it (the rows beside it are no longer trusted), under the part the quote names only.
     expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '합의한 것: 배포는 금요일에 하기로 했어요', why: '요일은 안 정했음' }]))
       .toBe('각자 할 일\n- 배포는 금요일에 하기로 했어요\n- 민지: 리뷰 규칙 문서 쓰기')
-    // Named the other way round, the other copy goes: position decides nothing.
     expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '각자 할 일 - 배포는 금요일에 하기로 했어요', why: '' }]))
       .toBe('합의한 것\n- 배포는 금요일에 하기로 했어요\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
   })
   it('a quote that names no part removes every copy: the host cannot tell which one is wrong', () => {
     expect(withoutQuoted(RETRO, [{ kind: 'overlap', quote: '배포는 금요일에 하기로 했어요', why: '' }]))
       .toBe('합의한 것\n- 코드 리뷰는 둘이 봐요\n\n각자 할 일\n- 민지: 리뷰 규칙 문서 쓰기')
-    // stack-15: a wrong row named in no part takes every list it stands in.
     expect(withoutQuoted(RETRO, [{ kind: 'contradicts', quote: '배포는 금요일에 하기로 했어요', why: '' }])).toBe('')
   })
   it('every line quoted and the rewrite failed: never empty, the earlier text read or one plain line', async () => {
@@ -164,9 +154,6 @@ describe('the fallback never keeps the wrong copy and never answers empty (r3)',
   })
 })
 
-// stack-15 (c15c run H2, a regression: the check found one region row and one product row wrong, the fallback cut only those two rows, and the
-// lists under them read as complete with sums that no longer added up; the product rows it did not quote were wrong too). Wording not the
-// harness's: 지점별 방문자 수.
 describe('a list with a wrong row goes whole (H2 class, rule 7)', () => {
   const DRAFT = '10월 방문자는 모두 9,200명이에요.\n\n지점별 방문자:\n\n강남점: 4,100명\n홍대점: 3,000명\n잠실점: 2,100명\n\n요일별 방문자:\n\n토요일: 4,100명\n일요일: 3,000명'
   it('label: value rows are a list; the wrong one takes its list and its heading, the answer line stays', () => {

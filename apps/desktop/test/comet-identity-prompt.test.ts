@@ -5,7 +5,6 @@ const ROLE = 'a colleague who gets the task done'
 const RULE = 'Stay within that charter.'
 
 it('does not name an untitled comet', () => {
-  // qa146: the Korean and the current one-press names are unnamed too.
   for (const name of ['New comet', '', '  New comet ', 'New bot', '새 봇', '새 코멧']) {
     const line = cometIdentity({ name, purpose: '' }, ROLE)
     expect(line).not.toContain('New comet')

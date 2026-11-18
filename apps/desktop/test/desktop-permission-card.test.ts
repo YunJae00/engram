@@ -29,7 +29,6 @@ const NAMES = Object.keys(DENIED) as PermissionName[]
 beforeEach(() => { vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin'); fake.send.mockClear(); fake.open.mockClear(); fake.ax.mockClear(); fake.screen = 'denied' })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
-// The desktop agent's own retry, with its tool call passed through unchanged.
 const blocked = (lane: string, error: unknown, context: { task: string; signal?: AbortSignal }, again: () => Promise<string>): Promise<string> =>
   retryOnPermission(lane, error, context, again, json => json)
 const states = (screen: boolean[], rest = true) => vi.fn(async (method: string) => {
@@ -102,7 +101,6 @@ it('resumes the waiting step once the permission is on', async () => {
   expect(permissionDenied(JSON.parse(JSON.stringify({ error: denial('screenRecording').message })).error)).toBe(true)
   expect(permissionDenied('The next target is missing')).toBe(false)
 
-  // Never turned on: the card leaves after ten minutes and the same turn does not wait again.
   fake.send.mockClear()
   fake.host.request = states([false])
   const off = blocked('bot-b', denial('screenRecording'), { task: 'read it' }, step)
@@ -111,7 +109,6 @@ it('resumes the waiting step once the permission is on', async () => {
   expect(cardsSent().map(call => call[2] && 'card')).toEqual(['card', null])
   expect(await waitForPermission('bot-b', await permissionFailure(denial('screenRecording'), 'bot-b'), { task: 'read it' })).toBe('off')
   expect(cardsSent()).toHaveLength(2)
-  // The turn's end forgets the give-up: a later turn with the same words waits and resumes again.
   forgetPermissionGiveUp('bot-b')
   fake.host.request = states([false, false, true])
   const later = waitForPermission('bot-b', await permissionFailure(denial('screenRecording'), 'bot-b'), { task: 'read it' })
@@ -120,7 +117,6 @@ it('resumes the waiting step once the permission is on', async () => {
   expect(cardsSent().map(call => call[2] && 'card')).toEqual(['card', null, 'card', null])
   fake.host.request = states([false])
 
-  // Stop while waiting clears the card.
   fake.send.mockClear()
   const stop = new AbortController()
   const stopped = waitForPermission('bot-c', await permissionFailure(denial('screenRecording'), 'bot-c'), { task: 'x', signal: stop.signal })
@@ -130,7 +126,6 @@ it('resumes the waiting step once the permission is on', async () => {
   await rejected
   expect(cardsSent().at(-1)).toEqual(['desktop:permissionCardChanged', 'bot-c', null])
 
-  // Two calls share one wait, and a different permission waits its turn.
   fake.send.mockClear()
   fake.host.request = states([false, false, false, true])
   const screen = await permissionFailure(denial('screenRecording'), 'bot-d')
@@ -143,7 +138,6 @@ it('resumes the waiting step once the permission is on', async () => {
   expect([await one, await two, await input]).toEqual(['on', 'on', 'on'])
   expect(cardsSent().map(call => call[2]?.permission ?? null)).toEqual(['screenRecording', null, 'inputMonitoring', null])
 
-  // A hung helper falls back to the no-prompt Electron read.
   fake.host.request = vi.fn((_method: string, _args: unknown, signal: AbortSignal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason))))
   const hung = waitForPermission('bot-e', await permissionFailure(denial('screenRecording'), 'bot-e'), { task: 'z' })
   await vi.advanceTimersByTimeAsync(6100)
@@ -152,7 +146,6 @@ it('resumes the waiting step once the permission is on', async () => {
   expect(await hung).toBe('on')
   expect(fake.ax).not.toHaveBeenCalledWith(true)
 
-  // Input already sent, or not a permission: no card, no wait.
   fake.send.mockClear()
   expect(await waitForPermission('bot-f', await permissionFailure(denial('screenRecording'), 'bot-f', { delivered: true }), {})).toBe('none')
   expect(await waitForPermission('bot-f', await permissionFailure('Read the app before acting', 'bot-f'), {})).toBe('none')

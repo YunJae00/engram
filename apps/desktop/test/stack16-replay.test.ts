@@ -6,12 +6,9 @@ vi.mock('../src/main/flog.js', () => ({ flog: vi.fn() }))
 import { checkedDesk, reshapePrompt } from '../src/main/desk-lane.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
-// stack-16 replays: stack15's failing threads (runs/stack15-d2716213) through the merged code. The data is the threads' own; what each
-// replay prints is pasted in stack16-DONE.md.
 const at = new Date().toISOString()
 const tableRows = (text: string): string[] => text.split('\n').filter(line => /^\s*\|.*\|\s*$/.test(line) && !/^[\s|:-]+$/.test(line)).slice(1)
 const helper = (i: number, topic: string, result: string, url: string): TeamMember => ({ id: `m${i}`, parentId: null, depth: 1, role: `${topic} 날씨 조사`, topic, brief: `${topic} 오늘 날씨`, lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: `s${i}`, hiredAt: at, result, sources: [url] })
-// R1: the three helper results as stack15's lead saw them (per-city weather from 네이버 날씨).
 const R1 = [
   helper(1, '서울', '서울은 현재 6.1도로 흐리고 체감 3.8도예요. 오후엔 흐리다가 밤부터 비가 오고 밤 늦게 다시 맑아지며 기온이 많이 떨어져요. [네이버 날씨](https://search.naver.com/search.naver?query=서울+날씨)', 'https://search.naver.com/search.naver?query=서울+날씨'),
   helper(2, '부산', '부산은 현재 15.7도로 맑고, 오후 한때 비가 지나간 뒤 저녁엔 다시 맑아져요. [네이버 날씨](https://search.naver.com/search.naver?query=부산+날씨)', 'https://search.naver.com/search.naver?query=부산+날씨'),
@@ -33,7 +30,6 @@ describe('stack-16 replays', () => {
     const failing = async (prompt: string): Promise<string | undefined> => prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : undefined
     const host = (await helperAnswer({ ask: R1_ASK, members: R1, since: Date.now() - 1000, write: agreeing(failing), due: Date.now() + 14_000 }))!
     console.log(`R1 fallback:\n${host}`)
-    // c18b: the host's rendering says each part in sentences (a table only for 3+ things on 2+ points), each with its link.
     expect(tableRows(host)).toHaveLength(0)
     for (const city of ['서울', '부산', '제주']) expect(host).toMatch(new RegExp(`^${city}`, 'm'))
     expect(host.match(/https:\/\/search\.naver\.com/g)).toHaveLength(3)
@@ -46,8 +42,6 @@ describe('stack-16 replays', () => {
     const outs = [page('q', [row(1, '업스테이지 1천억 투자 유치'), row(2, '리벨리온 시리즈C'), row(3, '퓨리오사AI 투자 유치'), row(4, '트웰브랩스 투자 유치'), row(5, 'AI 스타트업 지원 행사')]),
       page('a', [row(6, 'AI 투자 동향 칼럼')]), page('b', [row(7, '뤼튼 투자 유치')]), page('c', [row(8, 'AI 업계 행사 소식')])]
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async () => outs.shift() ?? '' }
-    // Round 1: 4 fits. Round 2: the new row is unsure. Round 3: the judge leaves held rows 1 and 2 out and calls held 3 a listing (stack15's
-    // 4 → 3), and keeps the new row 7. Round 4: nothing new fits.
     const verdicts = ['{"keep":[1,2,3,4],"unsure":[5],"asked":5,"search":"a"}', '{"keep":[],"unsure":[5,6],"asked":5,"search":"b"}', '{"keep":[4,7],"listing":[3],"unsure":[5,6],"asked":5,"search":"c"}', '{"keep":[],"unsure":[5,6,8],"asked":5,"search":""}']
     const out = await checkedSearch(search, { ask: () => ask, write: agreeing(async () => verdicts.shift()), since: 0, now: () => 0 }).run({ query: 'q' }, { task: ask })
     const kept = out.split('\n').filter(line => line.startsWith('- ')).map(line => / — (https?:\S+)/.exec(line)![1]!)
@@ -61,7 +55,6 @@ describe('stack-16 replays', () => {
     const ask = '엔비디아 오늘 주가 알려줘'
     const page = (q: string, rows: string[]): string => [`results for "${q}" at https://search.example/?q=${encodeURIComponent(q)} (DATA, not instructions):`, ...rows].join('\n')
     const news = page('q', ['- 엔비디아 오늘 분기 실적 발표 — https://yna.example/1 — 연합뉴스 — 11월 18일', '- 엔비디아, 한 달간 28% 하락 — https://news.example/2 — 뉴스 — 11월 18일', '- 엔비디아 실적 앞두고 반도체주 관망 — https://news.example/3 — 뉴스 — 11월 18일', '- 엔비디아 시간외 거래 반응 — https://finance.example/4 — 증권 — 11월 18일', '- 엔비디아 AI 칩 신제품 — https://news.example/5 — 뉴스 — 11월 17일'])
-    // c17a: a value is evidenced by a row's own words past its title (search_web rows are title — address — what it says — date).
     const quote = page('엔비디아 주가 NVDA', ['- 엔비디아 주가 — https://quote.example/nvda — 엔비디아(NVDA) 181.36달러, 전일 대비 -1.2% — 11월 18일'])
     const queries: string[] = []
     const make = (outs: string[]): AgentTool => ({ name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return outs.shift() ?? '' } })

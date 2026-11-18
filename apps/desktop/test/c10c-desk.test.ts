@@ -6,7 +6,6 @@ import { vaultPaths } from '../../../packages/core/src/vault.js'
 import { DESK_NOTE, deskKind, kindSortAsk, reshapeAsk, sortByKind } from '../src/main/desk-lane.js'
 import { fileMoveTool } from '../src/main/file-move.js'
 
-// The harness fixture tmp/grokbar/fixtures/inbox-dump, by name: 6 PDF, 4 PNG, 3 XLSX, 3 DOCX, 4 TXT.
 const INBOX = ['채용공고_초안.docx', '영수증_사진.png', '출장보고.pdf', '로고_시안.png', '제품소개서.pdf', '할일.txt', '주간보고_44주차.docx', '출장비정산.xlsx', '재고현황.xlsx', '계약서_초안.pdf',
   '좌석배치도.png', '견적서_A사.pdf', '회의자료_1103.pdf', '세금계산서_10월.pdf', '메모.txt', '연락처목록.xlsx', 'wifi_안내.txt', '인사말.docx', '전화메모_1112.txt', '화면캡처_01.png']
 const F1 = 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘'
@@ -25,8 +24,6 @@ describe('c10c F1: the host sorts one folder by kind', () => {
   })
   afterEach(async () => { await rm(root, { recursive: true, force: true }) })
 
-  // c10c r3: the folder, the criterion and the verb are read by their parts in any order, the folder looked up on disk. The reviewer's two
-  // wordings and others not in the harness are sorted; another criterion, a restriction, a second job, two folders or a file are not.
   it('sorts the folder whatever the sentence shape, and leaves other asks to the model', async () => {
     expect(deskKind(F1)).toBe('tidy')
     const yes = [F1, 'fixtures/inbox-dump에 있는 파일을 종류별로 정리해줘', '이 폴더 fixtures/inbox-dump 파일들 종류별로 정리해줘',
@@ -43,7 +40,6 @@ describe('c10c F1: the host sorts one folder by kind', () => {
     const no = ['fixtures/inbox-dump 폴더 날짜별로 정리해줘', 'fixtures/inbox-dump에 있는 파일들 프로젝트별로 정리해줘', 'fixtures/inbox-dump fixtures/other 정리해줘',
       'fixtures/meeting-notes.md 정리해줘', 'fixtures/inbox-dump 폴더 정리하고 오래된 건 지워줘', '폴더 정리해줘', 'fixtures/inbox-dump 폴더 정리해서 민호한테 보내줘',
       'fixtures/inbox-dump에서 PDF만 종류별로 정리해줘', 'fixtures/inbox-dump 정리하지 마', 'fixtures/nowhere 종류별로 정리해줘',
-      // stack-10 (c10c r3, Codex): a criterion named without "-별", or none at all, is not kind: the model decides.
       'fixtures/inbox-dump 파일들을 이름순으로 정리해줘', 'fixtures/inbox-dump 날짜순으로 정리해줘', 'fixtures/inbox-dump 크기대로 나눠줘', 'fixtures/inbox-dump 거래처마다 분류해줘', 'fixtures/inbox-dump 정리해줘']
     for (const ask of no) expect(await sortByKind(ask, workspace, move(), context), ask).toBeUndefined()
     expect((await readdir(inbox)).sort()).toEqual([...INBOX].sort())
@@ -96,13 +92,10 @@ describe('c10c F1: the host sorts one folder by kind', () => {
 })
 
 describe('c10c Q4: reshaping the last reply is quick', () => {
-  // c10c r3: no word list decides it. The quick voice reads the message next to the last reply; the host only keeps out what cannot be a
-  // reshape. Wordings below are not the harness's ("방금 답을 압축해줘" is the reviewer's).
   const LAST = '엔비디아 종가는 135.2달러로, 전일보다 2.1% 올랐어요. [네이버 금융](https://finance.naver.com)'
   it('asks the quick voice with the last reply and the message, and takes the reply it writes', async () => {
     const asked: string[] = []
     const voice = (answer: string) => async (prompt: string): Promise<string> => { asked.push(prompt); return answer }
-    // c13c: the voice answers {form, was, reply}; "shorter" is checked against the asked thing it names.
     const said = (reply: string, form = 'shorter'): string => JSON.stringify({ form, was: '엔비디아 종가는 135.2달러로, 전일보다 2.1% 올랐어요.', reply })
     for (const ask of ['방금 답을 압축해줘', '핵심만 남겨봐', '반말로 해봐', '표로 바꿔줄래', '세 단어로'])
       expect(await reshapeAsk(ask, LAST, voice(said('엔비디아는 135.2달러, 2.1% 올랐어요.'))), ask).toBe('엔비디아는 135.2달러, 2.1% 올랐어요.')
@@ -112,7 +105,6 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
     expect(await reshapeAsk('그럼 애플은?', LAST, voice('NO'))).toBeUndefined()
     expect(await reshapeAsk('그럼 애플은?', LAST, voice('No.'))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice(`YES\n${said('135.2달러, 2.1% 상승이에요.')}`))).toBe('135.2달러, 2.1% 상승이에요.')
-    // Plain text with no form is no reshape: the turn keeps its route.
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('135.2달러, 2.1% 상승이에요.'))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('NONE'))).toBeUndefined()
     expect(await reshapeAsk('방금 답을 압축해줘', LAST, voice('  '))).toBeUndefined()
@@ -131,7 +123,6 @@ describe('c10c Q4: reshaping the last reply is quick', () => {
   it('is the voice\'s own reply: no session, no tools, no shell (stack-10)', () => {
     const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
     expect(ipc).toContain('const reshaped = !company && !lane && plainAsk && !handed && (!kind || short) && !isCorrection(request.message)')
-    // c14b: with the ask the last reply answered (its constraints are kept), and each call given what is left of the reshape's time.
     expect(ipc).toContain('&& await reshapeAsk(request.message, lastReplyOf(savedHistory.filter(one => !one.progress && !one.error)), engine.quick ? (prompt, ms = RESHAPE_MS) => engine.quick!(prompt, { workdir: engineCwd(paths), timeoutMs: ms }) : undefined, askedBefore(savedHistory.filter(one => !one.progress && !one.error)))')
     expect(ipc).toContain(': sorted ? { ...sorted, fellBack: false } : reshaped ? { answer: reshaped, steps: [], fellBack: false } : await lookup.run(')
   })

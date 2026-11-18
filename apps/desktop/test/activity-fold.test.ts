@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { composeWorklog, foldSample, sanitizeTitle, type ActivitySpan, type OpenSpan } from '../src/main/activity-watch.js'
 
-// The desk journal's folding rule: same app+title extends, anything else
-// closes — and a span too short to mean anything is never flushed.
-
 const T = 1_754_900_000_000
 const span = (over: Partial<OpenSpan> = {}): OpenSpan => ({
   app: 'OUTLOOK',

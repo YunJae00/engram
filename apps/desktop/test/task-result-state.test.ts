@@ -23,7 +23,6 @@ const report = async (): Promise<TurnStep> => {
   return { tool: 'report_result_check', args, observation: await resultCheckTool().run(args, { task: 'Finish the task' }) }
 }
 
-// qa143 S19 d: an answer the runner re-checks at once waits for that re-check; anything the person must see now does not.
 it('holds a finished answer only when the runner says its own re-check follows', () => {
   const draft = { answer: 'Report', steps: [read] }
   const open = { accepted: false, issues: ['Row count not read back'] }
@@ -94,11 +93,9 @@ it('checks a result only when something was saved, committed or changed, not aft
   expect(needsResultCheck('Done', [{ ...pressed('Save'), observation: 'that did not work: no such control' }])).toBe(false)
 })
 
-// qa143 p2 r2 #3: a command that may have written a file is a change, so a report of words alone is not exempt from its readback after one.
 it.each([
   ['diff .check/a .check/b', true], ['cat notes.md | wc -l', true], ['cd leads && ls -la; grep -c 규정 a.md', true],
   ['cat > report.md <<EOF\nx\nEOF', false], ['echo done >> report.md', false], ['python3 build.py', false], ['sed -i s/a/b/ report.md', false],
-  // qa143 p2 r9: a reader told to run another program is no reader (ripgrep's preprocessor, hostname and decompressor flags).
   ['rg -n 규정 leads', true], ['rg -i pre-release notes.md', true], ['grep -z x a.md', true],
   ['rg --pre /bin/sh x .', false], ["rg '--pre=/bin/sh' x .", false], ['rg --pre-glob *.md --pre ./p x', false], ['cat a.md | rg --pre ./p x', false],
   ['rg --hostname-bin ./h x', false], ['rg --search-zip x .', false], ['rg -iz x .', false],
@@ -106,7 +103,6 @@ it.each([
 ])('reads command %j as only reading: %s', (command, reads) => {
   expect(commandOnlyReads(command)).toBe(reads)
   for (const tool of ['Bash', 'PowerShell', 'Shell']) expect(nothingToReadBack('Five rules.', [{ tool, args: { command }, observation: 'Native action completed.' }])).toBe(reads)
-  // qa143 p2 r3 #2: the same rule decides whether an earlier readback is still fresh, and whether the result changed after its check.
   const fileRead: TurnStep = { tool: 'file_read', args: { path: 'report.md' }, observation: '{"content":"x","completeReadback":true}' }
   const finding = { status: 'pass', basis: 'Read.' }
   const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report' }], grounding: finding } }) }
@@ -120,13 +116,11 @@ it.each([
     expect(checkResult([fileRead, ran, report], [], [], true).issues.join(' ')).not.toContain('The result changed after report_result_check')
   }
 })
-// qa143 p2 r9 (B14): a native file write has no receipt either. After the check it stales the check; after the last read it stales the readback.
 it.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])('a native %s after the check or the last read stales them', (tool) => {
   const fileRead: TurnStep = { tool: 'file_read', args: { path: 'report.md' }, observation: '{"content":"x","completeReadback":true}' }
   const finding = { status: 'pass', basis: 'Read.' }
   const report: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: [{ ...finding, requirement: 'Report' }], grounding: finding } }) }
   const changed = 'The result changed after report_result_check. Reread the affected result and submit a new report.'
-  // Failed too: it may have partly happened.
   for (const observation of ['Native action completed.', 'that did not work: exit 1']) {
     const wrote: TurnStep = { tool, args: { file_path: 'report.md' }, observation }
     expect(checkResult([fileRead, report, wrote], [], [], true).issues).toContain(changed)
@@ -142,12 +136,10 @@ it.each(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])('a native %s after the c
 it('has nothing to read back only for words, with no file linked and nothing changed', () => {
   expect(nothingToReadBack('Five rules.', [])).toBe(true)
   expect(nothingToReadBack('[Report](engram-artifact:report.md)', [])).toBe(false)
-  // A failed command may have partly happened; a seeded step is not this task's work.
   expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'that did not work: exit 1' }])).toBe(false)
   expect(nothingToReadBack('Five rules.', [{ tool: 'Bash', args: { command: 'python3 build.py' }, observation: 'Native action completed.', seeded: true }])).toBe(true)
 })
 
-// grokbar b5 r1: file_move was in none of the lists, so a move counted as no change and a readback-only turn that moved files was accepted.
 it('counts a file move as a change to the result, read back by its own receipt', () => {
   const moved = { tool: 'file_move', args: { moves: [{ from: 'a.pdf', to: 'PDF/a.pdf' }] }, observation: '{"moved":1}' }
   expect(changedResult([moved])).toBe(true)

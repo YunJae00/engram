@@ -4,14 +4,11 @@ import { expect, it } from 'vitest'
 
 const src = (path: string) => readFile(resolve('apps/desktop/src', path), 'utf8')
 
-// Settings is one page of five things. This reads the page's own source: a sixth row, a section switcher or a
-// save footer coming back fails here before any window is opened (e2e/appearance.spec.ts checks the built page).
 it('the settings page holds theme, shortcut, AI account, start fresh and version, and nothing else', async () => {
   const page = await src('renderer/src/views/SettingsView.tsx')
   const body = page.slice(page.indexOf('<DialogHeader'))
   const mounted = [...body.matchAll(/<([A-Z]\w+)[\s/>]/g)].map(match => match[1]).filter(name => !['DialogHeader', 'SettingsGroup', 'SettingsItem', 'Sparkles'].includes(name!))
   expect(mounted).toEqual(['AppearanceSettings', 'Keys', 'EngineSettings', 'ResetSettings', 'SettingsStatus', 'DeveloperSettings'])
-  // The developer rows exist only under the developer fixture flag, which is off in the product.
   expect(body).toMatch(/\{api\.developerUiEnabled && <section[^\n]*<DeveloperSettings \/>/)
   expect([...body.matchAll(/testId="([\w-]+)"/g)].map(match => match[1])).toEqual(['settings-theme', 'settings-shortcut', 'settings-start-fresh', 'settings-about'])
   for (const gone of ['SettingsNavigation', 'setting-autostart', 'setting-desk-journal', 'audit-open', 'settings-github-backup', 'settings-export-logs', 'uiLanguage', 'semantic', 'settingsUi.saved', 'settingsUi.done', 'dialog-actions', 'ComputerSettings', 'ReviewRulesSettings', 'WorkMapSettings', 'WorkHabitsSettings']) expect(page, gone).not.toContain(gone)
@@ -32,8 +29,6 @@ it('nothing in the window creates, switches, joins or deletes a workspace, and t
   expect(components.filter(name => /WorkspaceSwitcher|TourOverlay|SettingsNavigation|ComputerSettings|ReviewRulesSettings|WorkMapSettings|WorkHabitsSettings/.test(name))).toEqual([])
   const preload = await src('preload/index.ts')
   expect(preload).not.toMatch(/workspace:|tourEligible|audit:open|semantic:status|reviewRules:(add|remove)|apps:set|habits:scan|workMap:refresh/)
-  // Review round 2: the command palette still opened the join-a-team form and the GitHub backup form; both are chat sentences.
-  // The palette itself is gone too (human-ux), so neither form has anywhere to open from.
   expect(components.filter(name => /ActionDialog|GithubConnect|^Palette\./.test(name))).toEqual([])
   expect(preload).not.toMatch(/team:join|github:(connect|openNew)/)
   expect(await src('renderer/src/App.tsx')).not.toMatch(/ActionDialog|GithubConnect|open-github/)

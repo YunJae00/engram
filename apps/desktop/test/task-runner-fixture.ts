@@ -14,7 +14,6 @@ import { dropHeldDraft, holdTaskResult } from '../src/main/task-result-state.js'
 
 type Script = (request: ChatRequestDto, turn: number, extra: TaskTurn | undefined, runner: ReturnType<typeof taskRunner>) => Promise<TurnOutcome | undefined>
 export const done = (answer: string, steps = 0): TurnOutcome => ({ answer, asked: false, unfinished: false, steps })
-// at: the vault of an earlier setup, for a runner made again over the same tasks (an app restart).
 export async function setup(script: Script, mockAcceptedCheck = true, checkBudgetMs?: number, offered?: (channel: string) => boolean, at?: VaultPaths) {
   const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(temporary, { recursive: true })
@@ -28,13 +27,9 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     paths,
     send: async (request, extra) => {
       sent.push({ request, extra }); last = await script(request, sent.length, extra, runner)
-      // These tests isolate task transitions; result-check.test.ts exercises
-      // the real structured report and evidence validation.
       if (!last) return
       if (extra?.verification && mockAcceptedCheck) last.check ??= { accepted: true, issues: [] }
-      // The host keeps checked work and the check itself out of the thread; the runner delivers once.
       last.held = holdTaskResult({ answer: last.answer, steps: last.trail ?? [], asked: last.asked, ...(last.unfinished ? { incomplete: 'The turn needs continuation.' } : {}) }, extra, last.check)
-      // As ipc.ts does: the held answer is saved before its draft is dropped. hooks.afterDrop stands in for whatever the app does next (or a quit there).
       if (last.held) { await dropHeldDraft(extra, last.answer, () => events.push({ type: 'chat:token', channel: request.channel ?? '', text: '', reset: true, drop: true })); await hooks.afterDrop?.() }
     },
     outcome: () => { const o = last; last = undefined; return o },
@@ -42,7 +37,6 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
     broadcast: (event) => events.push(event),
     ...(checkBudgetMs ? { checkBudgetMs } : {}),
     ...(offered ? { offered } : {}),
-    // Mirrors the ipc.ts wiring so the capture lands in the inbox file the librarian files.
     remember: async (text) => { remembered.push(text); await writeCapture(paths.inbox, text) },
     notify: (task) => notified.push(`${task.state}: ${task.goal}`),
     learn: (question, answer) => learned.push([question, answer]),
@@ -60,7 +54,6 @@ export async function setup(script: Script, mockAcceptedCheck = true, checkBudge
   return { paths, runner, hooks, sent, events, remembered, notified, learned, delivered, deliveredTrails, deliveredAsked, evidences, aborted, call, chat, settle }
 }
 
-// A press that commits something, as an approved Save or Submit does; a plain navigation press carries no `committed`.
 export const pressed = (target: string, committed = true) => ({ tool: 'press', args: { target }, observation: `pressed "${target}"`, ...(committed ? { committed: true } : {}) })
 export const readback = (answer: string): TurnOutcome => ({ ...done(answer, 1), trail: [{ tool: 'read_open_page', args: {}, observation: 'Current saved fields read back' }] })
 

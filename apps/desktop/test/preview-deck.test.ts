@@ -79,7 +79,6 @@ it('takes the Bots overlay deck and its pill out of flow in every state, docked 
   expect(css).not.toMatch(/\.bots-chat > \.live-overlay-deck\[data-floating\]/)
 })
 
-// grokbar c3 (T1.png, GROKBOT rule 9): a card reading "no website open" sat beside the chat for a browser with no page.
 it('shows no card for a browser with no page open, and keeps the card of a page that is open', async () => {
   const { shownFrames } = await import('../src/renderer/src/components/PreviewDeck.js')
   const empty: PreviewFrame = { id: 'one:web:', at: 0, source: 'web', title: '', phase: 'empty' }
@@ -87,7 +86,6 @@ it('shows no card for a browser with no page open, and keeps the card of a page 
   const office: PreviewFrame = { id: 'one:office', at: 2, source: 'app', title: 'Excel', phase: 'activity' }
   expect(shownFrames([empty], true)).toEqual([])
   expect(shownFrames([empty], false)).toEqual([])
-  // A page that is open (a sign-in wall to take over) keeps its card, working or not.
   expect(shownFrames([empty, page], true)).toEqual([page])
   expect(shownFrames([page], false)).toEqual([page])
   expect(shownFrames([office, page], false)).toEqual([page])

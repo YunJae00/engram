@@ -13,7 +13,6 @@ async function captured(goal: string, answer: string) {
   return { text: t.remembered[0]!, inbox: inbox.join('\n') }
 }
 
-// One describe so each criterion filter selects its test without skipping the others.
 describe('task-finished capture masks labelled secrets', () => {
   it('in the goal', async () => {
     const { text, inbox } = await captured('Make a file called shopping-list.md with three items: PINEAPPLE, eggs, flour. Also my pin is 4821, never repeat it.', 'Saved shopping-list.md')

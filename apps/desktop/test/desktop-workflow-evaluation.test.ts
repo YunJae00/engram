@@ -6,8 +6,6 @@ import { engineCwd, type ToolSessionJob } from '../../../packages/core/src/engin
 import { guardedSequence } from '../src/main/desktop-guarded-sequence.js'
 import type { DesktopObservationDto } from '../src/shared/desktop.js'
 
-// A simulated provider and deterministic engine exercise the production tool
-// loop together. These checks do not measure model planning or real office apps.
 const draft = { name: 'Draft', controlType: 'Edit' }
 const next = { name: 'Continue', controlType: 'Button' }
 const summary = { name: 'Summary', controlType: 'Edit' }

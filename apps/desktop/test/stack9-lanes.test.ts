@@ -7,18 +7,13 @@ import { swapRounds, swappedAsk, teamAsk } from '../src/main/fast-lane.js'
 const source = (file: string) => readFileSync(fileURLToPath(new URL(`../src/main/${file}`, import.meta.url)), 'utf8')
 const ipc = source('ipc.ts'), runner = source('team-runner.ts')
 
-// stack-9 section 1: c9a's abort-on-replace acts on a solo lookup only, never on a team job (C3, the T1 add) or a desk turn.
 it('stack-9: a replacement aborts only a solo lookup', async () => {
-  // The lane exists only outside the team lane (company), a desk kind only outside the lane, and the swap hook only for a solo lane.
   expect(ipc).toContain("const lane = !company && fastLane(routed, plainAsk) && everyTool.some(tool => tool.name === 'search_web')")
   expect(ipc).toContain('solo = lane && !teamAsk(request.message)')
   expect(ipc).toContain('if (solo && !handed && !fixed) laneChanges.set(channel, said => {')
   expect(ipc.match(/laneChanges\.set\(/g)).toHaveLength(1)
-  // T1 and C3-shaped asks are team asks: no swap hook.
   for (const ask of ['봇 3개 생성해서 서울 부산 제주 날씨 조사해서 취합해줘', '아이폰 18, 갤럭시 S27 가격이랑 출시일 비교해줘. 각각 따로 조사시켜']) expect(teamAsk(ask), ask).toBe(true)
-  // An addition is never a replacement, so even a solo lane keeps its round.
   expect(swappedAsk('서울 날씨 알려줘', '아 대구도 추가해')).toBeUndefined()
-  // A stop of the whole turn wins over a change said in the same moment (rule 4).
   const turn = new AbortController(), lookup = swapRounds('엔비디아 오늘 주가 알려줘', turn.signal)
   const asks: string[] = []
   const done = lookup.run((ask, signal) => { asks.push(ask); return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))) })
@@ -28,8 +23,6 @@ it('stack-9: a replacement aborts only a solo lookup', async () => {
   expect(asks).toEqual(['엔비디아 오늘 주가 알려줘'])
 })
 
-// One way to run a job's first searches: core firstSearches chooses them (c9b maker/list searches, c9a price-and-date points), and
-// team-runner runs them one after the other in the member's one tab. Never the same words twice, never more than three.
 it('stack-9: one first-search helper, at most three searches, no words twice, run in sequence', () => {
   const firsts = (brief: string, query = searchWords(brief, new Date(), brief)) => firstSearches({ brief, query }, brief)
   expect(firsts('구글 픽셀 11 가격과 출시일', '구글 픽셀 11 가격 출시일').map(one => one.query)).toEqual(['구글 픽셀 11 출고가', '구글 픽셀 11 출시일'])
@@ -45,10 +38,8 @@ it('stack-9: one first-search helper, at most three searches, no words twice, ru
   expect(runner).not.toContain('pointQueries(')
 })
 
-// One search-page test: company-tools' page picking uses c9a's isSearchPage.
 it('stack-9: one search-page test', () => {
   const tools = readFileSync(fileURLToPath(new URL('../../../packages/core/src/company-tools.ts', import.meta.url)), 'utf8')
-  // c11a: a fact's page and a part's sources are told apart from search pages by that one test.
   expect(tools).toMatch(/import \{[^}]*\bisSearchPage\b[^}]*\} from '\.\/team-hire-tools\.js'/)
   expect(tools).toContain('!isSearchPage(f.url)')
   expect(tools).not.toMatch(/\[\?&\]\(q\|query\)=/)
@@ -56,12 +47,10 @@ it('stack-9: one search-page test', () => {
   expect(isSearchPage('https://linear.app/changelog')).toBe(false)
 })
 
-// A teammate's own bubble is posted early only when they hand on (then): a split stays one bubble.
 it('stack-9: an early bubble only for a hand-off', () => {
   expect(runner).toContain('if (next?.background && !halting.has(leadChannel)) report?.(leadChannel, taskId)')
 })
 
-// stack-9 (c9b run C3, C10): the maker's search stays on the person's own engine, and a part that saw no notice or article is found-nothing.
 it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 확인이 안 됐어요" found nothing', async () => {
   const { foundNothing, firstSearches: firsts } = await import('core')
   const maker = firsts({ brief: '이번 주 리니어 신기능 조사', query: '리니어 신기능' }, '이번 주 리니어 신기능 조사').find(one => one.maker)
@@ -70,8 +59,6 @@ it('stack-9: the maker search carries a Korean word; "기사가 안 보여서 �
   expect(foundNothing('12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.')).toBe(false)
 })
 
-// stack-9, c9a Codex r3: five rounds held and four written is no "확실한 건 4건"; a word of surprise first names nobody.
-// c11b: the host adds no held round to the list and writes no count. c13b: which rows fit is the quick model's verdict before writing.
 it('stack-9 (c9a Codex r3, c13b): the statistic is left out before writing by the verdict, never by a headline word; the host adds nothing after', async () => {
   const { checked } = await import('./checked-rows.js')
   const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', names = ['메디인테크', '업스테이지', '뤼튼', '리벨리온', '아크']
@@ -84,25 +71,20 @@ it('stack-9 (c9a Codex r3, c13b): the statistic is left out before writing by th
   const judged = await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[6],"outside":[]}')
   expect(judged.rows).toEqual(names.map((_, i) => `https://news.example/${i}`))
   expect(judged.out).toContain('They hold the 5 asked for')
-  // A verdict that keeps the statistic keeps it: the host never reads the headline itself.
   expect((await checked(held, ask, '{"keep":[1,2,3,4,5,6],"same":[],"listing":[],"outside":[]}')).rows).toContain('https://news.example/bg')
 })
 
-// stack-9 (c9b run C5-C10, H5, every judge quoted it): "12월 서울 IT 행사는 두 개 있어요." over one event; the teammate's own count line was an item.
 it('stack-9: a teammate\'s line on how many there are is no item and is not shown again under the opener', async () => {
   const { mergedReport, reportData } = await import('core')
   const m = { id: 'm1', parentId: null, depth: 1, role: '지민', brief: '다음 달 서울 IT 행사 일정 정리', botId: 'bot-1', voice: '차분하고 또박또박', title: '다음 달 서울 IT 행사 일정 정리', lookup: true as const, query: '2026년 12월 서울 IT 행사 일정', background: true as const, state: 'released' as const, sessionKey: 's', hiredAt: '2026-11-17T07:55:08.846Z', finishedAt: '2026-11-17T07:55:17.834Z',
     result: '12월 2일~4일: 소프트웨이브 2026(제11회 대한민국 소프트웨어 대전) - COEX Hall A, AI·SW 비즈니스 전시회 — https://www.coex.co.kr/exhibitions/sw-2026/\n\n확실한 일정은 이거 하나예요. 나머지 검색 결과는 날짜가 2026년 12월로 명시되지 않거나 서울 IT 행사와 직접 관련이 없었어요.',
     sources: ['https://search.naver.com/search.naver?query=x'], review: { ok: true, note: 'auto' } }
-  // c11a: the teammate hands back one fact and their remark on the count as their note; the host shows the one fact, never the note as an item.
   const data = reportData('```report\n' + JSON.stringify({ facts: [{ text: '12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요.', url: 'https://www.coex.co.kr/exhibitions/sw-2026/', date: '12월 2일' }], note: '확실한 일정은 이거 하나예요.' }) + '\n```', m, m.sources, true)
   expect(data?.facts).toHaveLength(1)
   const out = mergedReport([{ ...m, data: data! }])
   expect(out).not.toMatch(/두 개|2개/)
   expect(out).not.toContain('확실한 일정은 이거 하나예요')
   expect(out.split('\n')).toHaveLength(1)
-  // c12a B1: never the job title as a label (this member was built without a part name). c13a (cause H): the find leads, then "(지민)".
-  // c16a r2: updated (pinned the old "(name)" tag on a one-part line): whose it is is the first line's subject, "<name>이/가 찾아보니 …".
   expect(out).toMatch(/^지민이 찾아보니 12월 2일~4일 코엑스에서 소프트웨이브 2026이 열려요\. \[[^\]]+\]\(https:\/\/www\.coex\.co\.kr\/exhibitions\/sw-2026\/\)$/)
   expect(out).not.toContain('[출처]')
 })

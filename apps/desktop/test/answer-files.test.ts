@@ -14,12 +14,10 @@ const cards = () => renderToStaticMarkup(createElement(AnswerFiles, { files: [{ 
 afterEach(() => { vi.unstubAllGlobals() })
 
 it('links a remade file only to a version on record that this chat linked (qa146 2a)', () => {
-  // The reviewer's case: two tasks in one chat each make plan.md. The chat alone says nothing about versions.
   const A = '11111111-1111-1111-1111-111111111111-plan.md', B = '22222222-2222-2222-2222-222222222222-plan.md'
   const chat = linkedFiles([{ role: 'user', text: 'Task A' }, { role: 'assistant', text: link(A) }, { role: 'user', text: 'Separate Task B, use same filename' }, { role: 'assistant', text: link(B) }, { role: 'user', text: link(OTHER) }])
   expect(chat).toBe(`${A}\n${B}`)
   expect(previousOf([], chat)).toBeUndefined()
-  // On record: the nearest earlier version the chat showed, past a draft it never linked; never a file of another chat.
   expect(previousOf([V1, A], chat)).toBe(A)
   expect(previousOf([V1], chat)).toBeUndefined()
 })

@@ -10,8 +10,6 @@ import { checkedDesk } from '../src/main/desk-lane.js'
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
-// stack-16 merge checks: c16b (held rows, holds) + c16a (one writer for helpers, writer time from the due) + c16c (missing kind) meet on
-// the anonymous hire_members path. Wordings are in no harness row: 강릉/속초/양양 서핑 파도, 대구 미세먼지, 판교 카페 영업시간.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-s16-${tag}-`)), '.engram') } as unknown as VaultPaths }
@@ -23,13 +21,11 @@ const results = (query: string, rows: string[]): string => [`results for "${quer
 afterEach(() => { vi.useRealTimers(); setReportLog(() => undefined) })
 const tick = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
-/** The quick model: the item judge (c16b), the meaning check (c16c's lines in it) and the writer (c16a), each with its own delay. */
 function quickModel(log: { kind: string; at: number; prompt: string }[], opts: { judgeMs?: number; writeMs?: number; checkMs?: number; prose?: number; missing?: number } = {}) {
   let prose = opts.prose ?? 0, missing = opts.missing ?? 0
   return async (prompt: string): Promise<string> => {
     if (prompt.includes(JUDGE)) {
       log.push({ kind: 'judge', at: Date.now(), prompt }); await tick(opts.judgeMs ?? 0)
-      // Round 1: the first row is about the town, the second states the wave height; round 2 (held row as context) adds the new row.
       const held = /Items 1 to (\d+) were already judged/.exec(prompt)
       return held ? JSON.stringify({ keep: [Number(held[1]) + 1], holds: { [Number(held[1]) + 1]: { '파도 높이': '파도 0.8~1.2m' } }, asked: 1, search: '' }) : JSON.stringify({ keep: [1, 2], holds: {}, points: ['파도 높이'], asked: 1, search: '파도 높이 예보', open: 2 })
     }
@@ -46,7 +42,6 @@ function quickModel(log: { kind: string; at: number; prompt: string }[], opts: {
   }
 }
 
-/** The lane as ipc wires it: hire_members wrapped by mergingHire; each helper's search_web passes the one item judge (team-runner). */
 async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel>[1] & { searchMs?: number; modelMs?: number; steer?: number; stopAt?: number; answerMs?: number } = {}) {
   const paths = await vault(tag)
   const created = await createTask(paths, ask, 'b1')
@@ -61,7 +56,6 @@ async function lane(tag: string, ask: string, opts: Parameters<typeof quickModel
     options.onStart?.(); models.push(prompt.slice(0, 20))
     const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', town = Object.keys(PAGE).find(name => part.includes(name)) ?? '강릉'
     const tool = deps.tools?.find(t => t.name === 'search_web')
-    // Two rounds of the helper's own search, each through the item judge, then the model's answer.
     if (tool) { await tool.run({ query: `${town} 서핑 파도` }, { task: prompt, ...(options.signal ? { signal: options.signal } : {}) }) }
     await tick(opts.modelMs ?? 0)
     if (options.signal?.aborted) throw new Error('aborted')
@@ -92,7 +86,6 @@ describe('stack-16: judge fields reach the writer (c16b → c16a)', () => {
     const prompt = reportPrompt('대구 미세먼지랑 판교 카페 소식', parts, new Map(), { helpers: true })
     const data = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { facts?: { link: string }[]; nothing?: { latest: { text: string } } }[]
     expect(data[0]!.facts![0]!.link).toContain('air.example')
-    // c16b added no `latest` short name: c16a's latestName (the first clause) is what the writer reads.
     expect(data[1]!.nothing!.latest.text).toContain('판교 카페 거리 새 매장 오픈 소식')
     expect(data[1]!.nothing!.latest.text).not.toContain('영업시간')
     const fallback = mergedReport(parts, new Map(), [], true)
@@ -106,8 +99,6 @@ describe('stack-16: missing on the team path (c16c inside c16a)', () => {
     const at = new Date().toISOString()
     const helpers: TeamMember[] = ['강릉', '속초', '고성'].map((town, i) => ({ id: `m${i}`, parentId: null, depth: 1, role: town, topic: town, brief: `${town} 파도`, lookup: true, state: 'released', review: { ok: true, note: 'auto: sourced lookup' }, sessionKey: `s${i}`, hiredAt: at, result: `${town}은 파도 1m예요. [예보](${PAGE[town]})`, sources: [PAGE[town]!] }))
     const out = await helperAnswer({ ask: '강릉 속초 고성 파도 각각', members: helpers, since: Date.now() - 1000, write: agreeing(quickModel(log, { missing: 2 })), due: Date.now() + 20_000 })
-    // c18b: write, check, the one scoped repair (a missing part is added, never re-sorted); this repair is unreadable, so the draft stands
-    // (a missing part is never a reason to withhold it), with every part a row.
     expect(log.map(l => l.kind)).toEqual(['write', 'check', 'write'])
     expect(log[2]!.prompt).toContain('You fix a message')
     expect(log[1]!.prompt).toContain('"missing": the person\'s ask names parts')
@@ -119,19 +110,14 @@ describe('stack-16: missing on the team path (c16c inside c16a)', () => {
 
 describe('stack-16: one clock, steer, stop and call counts on the anonymous split', () => {
   it('helper search rounds (held rows) + deadline writer + one repair answer a 3-part split before 35 s (real clock: the item judge\'s round sizes are real-time constants)', async () => {
-    // Measured stack15 sizes: a search ~2.5 s, a quick judgment ~2.5 s, a helper's answer ~6 s, a writer draft ~3 s.
     const { hire, quick, models, searches, since } = await lane('clock', '강릉 속초 양양 이번 주말 서핑 파도 비교해줘', { searchMs: 2500, judgeMs: 2500, modelMs: 6000, writeMs: 3000, checkMs: 2500, prose: 1 })
     const text = await hire.run({ members: members(['강릉', '속초', '양양']) }, { task: '' })
     expect(Date.now() - since).toBeLessThan(35_000)
-    // c18b: the table rule is one of form only: the writer's prose is shown as written, every part in it.
     expect(tableRows(text)).toHaveLength(0)
     for (const town of ['강릉', '속초', '양양']) expect(text).toContain(town)
     expect(hire.closesOn!(text)).toBe(true)
-    // Every helper's search went through the item judge; its verdict (no row holds the height) ran a second round with the held rows as context.
     expect(searches.filter(q => q.includes('예보'))).toHaveLength(3)
     expect(quick.filter(l => l.kind === 'judge' && l.prompt.includes('were already judged'))).toHaveLength(3)
-    // Call count on this C3-shape answer: 3 helper model calls, no lead write; quick: 6 judge + the writer and its meaning check (c18b: a
-    // rule of form goes to no repair).
     expect(models).toHaveLength(3)
     expect(quick.filter(l => l.kind !== 'judge').map(l => l.kind)).toEqual(['write', 'check'])
   }, 45_000)
@@ -180,17 +166,13 @@ describe('stack-16: one clock, steer, stop and call counts on the anonymous spli
   })
 })
 
-// stack-16 fix (c16a regression in its own run, T1/R2: the host table showed "(시간 한도에서 멈춤: 여기까지 찾은 내용)", "(no live source)"
-// and raw search rows): a helper's record is for the lead; the person reads only the helper's own words. Wording in no harness row.
 describe('stack-16: the person reads only a helper\'s own words', () => {
   it('a helper stopped at its limit mid-sentence, with rows it read and a page that did not open: its row has its whole sentences only', async () => {
     const m: TeamMember = { id: 'h1', parentId: null, depth: 1, role: '여수 조사', topic: '여수', brief: '여수 밤바다 유람선 요금', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
     const answer = '여수 밤바다 유람선은 성인 2만 원이에요. [여수관광](https://yeosu.example/cruise) 주말엔 저녁 7시와 9시에 출항하고, 예약은 전화로'
     const read = '여수 유람선 후기 모음: 블로그 글, 2026.10.02 https://blog.example/yeosu\n여수 가볼 만한 곳 TOP 10: 여행 앱 https://app.example/yeosu'
     settleMember(m, { answer, timedOut: true, read, sources: ['https://yeosu.example/cruise', 'https://blog.example/yeosu'] }, new Date().toISOString(), true)
-    // The lead's record keeps everything (what it read, the cut-short note), as before.
     expect(m.result).toContain('한도에서 멈춤')
-    // The page it cited no longer opens: no other page holds the figure, so the value is marked unconfirmed in the person's words.
     await withLiveSources([m], async url => !url.includes('yeosu.example'))
     const [part] = helperParts([{ ...m, state: 'released', review: { ok: true, note: 'auto' } }])
     const text = JSON.stringify(part!.data ?? {})
@@ -205,7 +187,6 @@ describe('stack-16: the person reads only a helper\'s own words', () => {
     const m: TeamMember = { id: 'h2', parentId: null, depth: 1, role: '통영 조사', topic: '통영', brief: '통영 케이블카 요금', lookup: true, state: 'working', sessionKey: 's', hiredAt: new Date().toISOString() }
     settleMember(m, { answer: '', timedOut: true, read: '통영 케이블카 요금 안내: 공식, 2026.11.01 https://tongyeong.example/fare', sources: ['https://tongyeong.example/fare'] }, new Date().toISOString(), true)
     const table = mergedReport(helperParts([{ ...m, state: 'released', review: { ok: true, note: 'auto' } }]), new Map(), [], true)
-    // c18b: one part is said in a sentence (no table), plainly.
     expect(tableRows(table)).toHaveLength(0)
     expect(table).toMatch(/^통영은 /m)
     expect(table).not.toContain('요금 안내')

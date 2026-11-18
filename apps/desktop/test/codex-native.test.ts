@@ -5,7 +5,6 @@ import { claimCodexWorkFolder, closeCodexSessions, runCodexNative, warmCodexSess
 import { NATIVE_TOOLS_OFF, RUNTIME_TOOLS_OFF } from '../src/main/engine-codex.js'
 type Data = Record<string, unknown>
 type Script = (server: { notify(method: string, params: Data): void; request(method: string, params: Data): Promise<unknown> }) => Promise<void>
-// An app server played from a script: what the runtime would send, in order.
 function fakeServer(script: Script, sent: { method: string; params: Data }[] = []): CodexRpcFactory {
   return (_options, notify, request) => {
     let turns = 0
@@ -202,7 +201,6 @@ describe('a comet keeps its ChatGPT runtime between turns', () => {
       expect(sent.filter(one => one.method === 'turn/start').map(one => (one.params['input'] as { text: string }[])[0]!.text)).toEqual(['Earlier: hello\n\nSum the column', 'Next'])
       expect((await runCodexNative({ ...base, prompt: 'Again' }, { ...spec(rpc), instructions: 'other rules' })).answer).toBe('answer from process 2')
       expect(processes).toBe(2)
-      // A job with no session key gets a process of its own, closed after the turn.
       await runCodexNative(job(hands), spec(rpc))
       await runCodexNative(job(hands), spec(rpc))
       expect(processes).toBe(4)
@@ -249,7 +247,6 @@ describe('a spare ChatGPT session for the next comet', () => {
       expect(processes).toBe(1)
       expect(sent.filter(one => one.method === 'thread/start')).toHaveLength(1)
       expect((sent.find(one => one.method === 'turn/start')!.params['input'] as { text: string }[])[0]!.text).toBe('Earlier: hi\n\nSum the column')
-      // Taken: the next comet gets its own folder until another spare is warm.
       expect(claimCodexWorkFolder('bot-10', 'C:/work/bot-10')).toBe('C:/work/bot-10')
     } finally { closeCodexSessions() }
     expect(claimCodexWorkFolder('bot-9', 'C:/work/bot-9')).toBe('C:/work/bot-9')

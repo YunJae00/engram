@@ -11,7 +11,6 @@ import type { WebCourier } from '../../../packages/core/src/errand.js'
 import { CodexAccount } from '../src/main/codex-account.js'
 vi.mock('electron', () => ({ app: { getPath: () => `${process.cwd()}/tmp/runtime-test-missing` }, net: {} }))
 
-// The runtimes speak for themselves; these pin down how their words are read.
 it('disables inherited MCP connections only through safely quoted invocation overrides', () => {
   expect(disableMcpOverrides(JSON.stringify([{ name: 'a.b', transport: { url: 'https://example.com' } }, { name: 'quoted"name', transport: { command: 'node' } }]))).toEqual(['mcp_servers={"a.b"={url="https://example.com",enabled=false},"quoted\\"name"={command="node",enabled=false}}'])
   expect(() => disableMcpOverrides('{}')).toThrow()
@@ -63,7 +62,6 @@ describe('cloudErrorKind', () => {
   })
 })
 
-// Only the bundled runtime is available before the user chooses installation.
 describe('bundled runtimes', () => {
   it('finds Codex but does not silently fall back to a bundled Claude', () => {
     expect(claudeBinary()).toBeNull()
@@ -80,7 +78,6 @@ describe('bundled runtimes', () => {
   }, 35000)
 })
 
-// Conclusive account probes are shared until expiry or sign-in invalidation.
 describe('StatusCache', () => {
   it('does not reuse or cache an old account probe after sign-in changes', async () => {
     const cache = new StatusCache()

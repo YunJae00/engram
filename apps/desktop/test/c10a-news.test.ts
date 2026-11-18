@@ -5,7 +5,6 @@ import { checked } from './checked-rows.js'
 const ask = '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘'
 const article = (title: string, url: string, date: string) => [{ text: title, url }, { text: date, url }]
 const body = (rows: { text: string }[]) => rows.map(row => row.text).join('\n').padEnd(500, ' .')
-// The first pass as the stack-9 run saw it: one round (메디인테크) and a statistic in the month, nothing more over the year.
 const period = [...article('메디인테크, 338억 원 규모 시리즈C 투자 유치', 'https://www.asiae.co.kr/1', '1일 전'), ...article('올해 1~3분기 국내 벤처투자 12조6248억 원 역대 최대', 'https://news.mt.co.kr/2', '1일 전')]
 const quarter = [...article('리벨리온, AI 반도체 620억 원 투자 유치', 'https://www.hankyung.com/3', '2026.09.20.'), ...article('퓨리오사AI, 시리즈D 800억 원 유치', 'https://www.etnews.com/4', '2026.10.01.')]
 const roundUpList = article('스타트업 투자 동향 주간 리포트 11월 셋째 주', 'https://platum.kr/weekly/47', '2일 전')
@@ -32,8 +31,6 @@ async function search(second: boolean) {
   return { out, asked, metrics }
 }
 
-// c11b: the second pass (three months, a round-up search and page) is gone: the search hands over what the period and the year hold,
-// c13b: and its rows are judged before the model writes (core checkedSearch); a short list is said to the model as data, with no extra round.
 test('c10a R3 (c13b): a counted ask loads the period page and the year page only; both period rows reach the check; the count is logged; the statistic never reaches the model', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
@@ -64,7 +61,6 @@ test('c10a R3 (c13b): with nothing more to find, the host writes no count lead: 
     const data = judged.out.split('\n').find(line => line.startsWith('These rows were checked'))!
     expect(data).toContain('2 of the 5 asked for were found')
     expect(data).not.toMatch(/확실한|[가-힣]/)
-    // Too late for a widened search: none ran.
     expect(judged.queries).toEqual(['q'])
   } finally { vi.useRealTimers() }
 })
@@ -95,8 +91,6 @@ test('c10a R3 (c13b): a plan word in a headline is the quick model\'s to weigh, 
   expect(judged.out).toContain('They hold the 4 asked for')
 })
 
-// c10a r2 (Codex r1): a weekly round-up's own date is no article's date. Wordings not in the harness. c11b: the host reads no round-up.
-// c13b: a round-up row is a listing to the verdict, and a row with no day of its own is one the ask cannot use (lists): neither is shown.
 test('c10a r2 (c13b): a round-up row and a row without its own day never reach the model; an item dated in its own words does', async () => {
   const page = ['results for "AI 스타트업 투자" at https://search.naver.com/search.naver?where=news&query=x (DATA, not instructions):', '- [2026.11.10] 클로바랩, 생성형 AI 검색으로 200억 원 시리즈B 투자 유치 — https://example.kr/a/1 — x', '- 딥노트, AI 회의록 서비스 90억 원 프리A 투자 유치 — https://example.kr/a/2 — x', '- 11월 둘째 주 스타트업 투자 동향 — https://example.kr/weekly — x — 11월 14일'].join('\n')
   const judged = await checked(page, 'AI 스타트업 투자 뉴스 4건 알려줘', '{"keep":[1,2,3],"same":[],"lists":[2,3],"listing":[3],"outside":[]}')
@@ -104,13 +98,11 @@ test('c10a r2 (c13b): a round-up row and a row without its own day never reach t
   expect(judged.out).toContain('1 of the 4 asked for were found')
 })
 
-// c10a r3 (Codex r2): nothing dated an undated round as recent but inPeriod. Any source, any wording: a round with no date is no counted item.
 test('c10a r3 (c13b): an undated round still reaches the check, after the dated one; the verdict that it lacks a day keeps it from the model', async () => {
   vi.useFakeTimers({ now: new Date(2026, 10, 17, 9, 30), toFake: ['Date'] })
   try {
     const asked2 = '바이오 스타트업 투자 유치 소식 두 건만 링크 달아서 알려줘'
     const rows = [...article('지놈랩, 신약 플랫폼으로 120억 원 시리즈B 투자 유치', 'https://www.example-news.kr/a', '3일 전'), { text: '하모니셀, 세포치료제 80억 원 투자 유치', url: 'https://www.other-daily.kr/b' }]
-    // The undated round stands far from any date on the page, as a row whose date the page never printed.
     const text = ['지놈랩, 신약 플랫폼으로 120억 원 시리즈B 투자 유치', '3일 전', ' .'.repeat(200), '하모니셀, 세포치료제 80억 원 투자 유치', ' .'.repeat(200)].join('\n')
     const fetchPage = async (url: string) => ({ url, text, links: rows })
     const tool = cometTools({ paths: {} as never, retrieve: async () => [], courier: { fetchPage } as never }).find(one => one.name === 'search_web')!

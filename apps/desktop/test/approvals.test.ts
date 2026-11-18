@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import { ruleFor } from 'core'
 import { approvalsStore, reviewRuleInput } from '../src/main/approvals.js'
 
-// Standing approvals live in one small file; a rule leaves with its routine.
 describe('approvalsStore', () => {
   it('keeps a rule across reads, forgets one, and retires a routine', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'engram-approvals-'))

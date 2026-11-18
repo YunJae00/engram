@@ -54,7 +54,6 @@ describe('result check receipt', () => {
     expect(verifyResult([read(), verdict, read(source)], outputs, [], true).issues.join(' ')).toContain('No usable source evidence')
   })
 
-  // qa145 B14 (S31/S32): a finished team report stopped as "일부를 확인하지 못했어요" on a guide rule that had nothing to apply to, reported unknown.
   const guide = 'How this person works, in their own words.\n## Rules\n- 합계는 SUM 수식으로 입력\n- 온보딩 목록은 표로 정리'
   const standing = { guide, request: '규정 초안을 써 줘' }
   const rule = { requirement: '합계는 SUM 수식으로 입력', status: 'not_applicable', basis: '합계나 스프레드시트가 없어 적용 대상이 없음.' }
@@ -65,7 +64,6 @@ describe('result check receipt', () => {
     const step = await recorded(withRule())
     expect(gate(step)).toEqual({ accepted: true, verified: true, issues: [] })
     expect(checkReport([read(), step])!.checks.map(check => [check.requirement, check.status])).toEqual([['Complete proposal', 'pass'], [rule.requirement, 'not_applicable']])
-    // The same rule reported unknown, a missing outcome, an unsure grounding, and a report that set every requirement aside still stop the turn.
     expect(gate(await recorded(withRule(payload().checks[0], { ...rule, status: 'unknown' }))).verified).toBe(false)
     expect(gate(await recorded(withRule({ ...payload().checks[0], status: 'fail' }, rule))).verified).toBe(false)
     expect(gate(await recorded(withRule(rule))).issues.join(' ')).toContain('No requirement was checked')
@@ -73,24 +71,19 @@ describe('result check receipt', () => {
     expect(resultCheckTool().description).toContain('a mismatch you corrected and confirmed is pass')
   })
 
-  // qa145 r2: one passing check let a requested deliverable be set aside as not_applicable, and the turn ended verified with that item gone from the report.
   it('stops the turn when anything but an exact work-guide line the request does not state is set aside', async () => {
     const dropped = async (requirement: string, held?: typeof standing) => {
       const step = await recorded(withRule(payload().checks[0], { ...rule, requirement }))
       return { result: gate(step, held ?? standing), step }
     }
-    // A requested deliverable, in the reviewer's words.
     const asked = await dropped('요청된 온보딩 목록')
     expect(asked.result).toMatchObject({ accepted: false, verified: false })
     expect(asked.result.issues.join(' ')).toContain('"요청된 온보딩 목록" cannot be not_applicable')
     expect(checkReport([read(), asked.step])!.checks).toContainEqual({ requirement: '요청된 온보딩 목록', status: 'not_applicable', basis: rule.basis })
-    // A guide line the request itself asks for is a requirement of this request.
     expect((await dropped('온보딩 목록은 표로 정리', { guide, request: '규정 초안이랑, 온보딩 목록은 표로 정리해 줘' })).result.verified).toBe(false)
-    // A guide line with a requested outcome attached, a fragment of a line, and a host that has no guide to hold it to.
     expect((await dropped('합계는 SUM 수식으로 입력, 요청된 온보딩 목록')).result.verified).toBe(false)
     expect((await dropped('온보딩 목록')).result.verified).toBe(false)
     expect(checkResult([read(), await recorded(withRule())], outputs, [source]).verified).toBe(false)
-    // The tool tells the model at once, so it can correct the report in the same turn.
     const told = JSON.parse(await resultCheckTool({ outputs: [], sources: [], standing }).run(withRule(payload().checks[0], { ...rule, requirement: '요청된 온보딩 목록' }), { task: 'x' }))
     expect(told.validation).toMatchObject({ accepted: false, verified: false })
     expect(JSON.parse(await resultCheckTool({ outputs: [], sources: [], standing }).run(withRule(), { task: 'x' })).validation).toMatchObject({ accepted: true, verified: true })
@@ -291,7 +284,6 @@ it('uses successful structured batch pages as sources but rejects a wholly faile
   }
 })
 
-// qa142 p2b-r2 #1: the re-check's word that the delivered report stands is carried only when it is literally true.
 it('carries reportUnchanged only when the report says true', async () => {
   expect(checkReport([await recorded({ ...payload(), reportUnchanged: true })])?.reportUnchanged).toBe(true)
   expect(checkReport([await recorded({ ...payload(), reportUnchanged: false })])).not.toHaveProperty('reportUnchanged')
@@ -299,7 +291,6 @@ it('carries reportUnchanged only when the report says true', async () => {
   await expect(resultCheckTool().run({ ...payload(), reportUnchanged: 'yes' }, { task: 'Prepare a proposal' })).rejects.toThrow()
 })
 
-// qa142 p2a-r4 #3: a script is a text deliverable; only real media skip the final-bytes check.
 it('holds a script output to its final bytes: a full read, or the whole content the model wrote with its own write tool', async () => {
   const { createHash } = await import('node:crypto')
   const code = 'print("audited")\n', sha256 = createHash('sha256').update(code).digest('hex'), script = 'C:/artifacts/id-audit.py', task = 'C:/task/audit.py'
@@ -307,27 +298,20 @@ it('holds a script output to its final bytes: a full read, or the whole content 
   const wrote = (content: string, observation = 'Native action completed.'): TurnStep => ({ tool: 'Write', args: { file_path: task, content }, observation })
   const judge = async (before: TurnStep[]) => { const steps = [...before, await recorded(), handIn]; return verifyResult(steps, latestResultOutputs(steps, []), []) }
   const reread = 'Reread every final part of audit.py'
-  // Written by nothing the host saw whole (a command, a patch without content): the bytes were never in front of the model.
   expect((await judge([])).issues.join(' ')).toContain(reread)
   expect((await judge([{ tool: 'Write', args: { file_path: task }, observation: 'Native action completed.' }])).issues.join(' ')).toContain(reread)
-  // A command that printed or wrote the same text is not the model's write.
   expect((await judge([{ tool: 'Bash', args: { command: `cat > audit.py <<'X'\n${code}X`, content: code }, observation: code }])).issues.join(' ')).toContain(reread)
-  // Its own write of exactly these bytes is the evidence; a write of other bytes, or one that did not land, is not.
   expect(await judge([wrote(code)])).toEqual({ accepted: true, verified: true, issues: [] })
   expect((await judge([wrote('print("draft")\n')])).issues.join(' ')).toContain(reread)
-  // The same content written to another path, with a command writing the script itself: that write is not of this file.
   const elsewhere: TurnStep = { tool: 'Write', args: { file_path: 'C:/task/notes/audit-copy.py', content: code }, observation: 'Native action completed.' }
   const byCommand: TurnStep = { tool: 'Bash', args: { command: 'cp notes/audit-copy.py audit.py' }, observation: '' }
   expect((await judge([elsewhere, byCommand])).issues.join(' ')).toContain(reread)
   expect((await judge([{ tool: 'file_create_copy', args: { name: 'other.py', content: code }, observation: JSON.stringify({ path: 'C:/artifacts/id-other.py', taskPath: 'C:/task/other.py', sha256, completeReadback: true }) }, byCommand])).issues.join(' ')).toContain(reread)
-  // Its own copy from content whose task-folder twin is the file handed in is a write of this file.
   expect((await judge([{ tool: 'file_create_copy', args: { name: 'audit.py', content: code }, observation: JSON.stringify({ path: 'C:/artifacts/id0-audit.py', taskPath: task, sha256, completeReadback: true }) }])).issues).toEqual([])
   expect((await judge([wrote(code, 'that did not work: Native action did not report success; it may have partly happened. Inspect the current state and do not repeat it.')])).issues.join(' ')).toContain(reread)
   expect((await judge([{ ...wrote(code), seeded: true }])).issues.join(' ')).toContain(reread)
-  // The existing readback rule: the task file read in full at the handed-in hash.
   expect(await judge([read(task, { sha256, content: code })])).toEqual({ accepted: true, verified: true, issues: [] })
   expect((await judge([read(task, { content: code })])).issues.join(' ')).toContain(reread)
-  // A script the model saved itself from content is the same proof; real media still need no text readback.
   const saved: TurnStep = { tool: 'file_create_copy', args: { name: 'audit.py', content: code }, observation: JSON.stringify({ path: script, sha256, completeReadback: true }) }
   expect(verifyResult([saved, await recorded()], latestResultOutputs([saved], []), [])).toEqual({ accepted: true, verified: true, issues: [] })
   const copied: TurnStep = { ...saved, args: { name: 'audit.py', fromPath: task } }

@@ -15,7 +15,6 @@ beforeEach(async () => {
   await writeFile(file, 'owned fixture bytes')
   fake.open = true
   fake.exec.mockImplementation((command: string, args: string[], options: unknown, done: (error: Error | null, stdout: string, stderr: string) => void) => {
-    // The running-application check: pgrep exits non-zero when nothing matches.
     if (command === '/usr/bin/pgrep') { (options as (error: Error | null) => void)(fake.open ? null : new Error('no process')); return { kill: vi.fn() } }
     void readFile(args.at(-1)!, 'utf8').then(text => {
       const request = JSON.parse(text)

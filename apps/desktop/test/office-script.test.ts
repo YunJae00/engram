@@ -6,7 +6,6 @@ import { expect, it } from 'vitest'
 import { OFFICE_HOST_SCRIPT } from '../src/main/office-script.js'
 
 it.skipIf(process.platform !== 'win32')('checks native range size before reading COM values and refuses implicit targets', async () => {
-  // Real PowerShell, fake application objects: no installed Office app is touched.
   const functions = OFFICE_HOST_SCRIPT.split("Send @{ type = 'ready'; protocol = 1 }")[0]!
   const checks = String.raw`
 $range = [pscustomobject]@{ CountLarge = 17179869184 }
@@ -40,8 +39,6 @@ try { EditDocument ([pscustomobject]@{revision='missing';file='C:\\missing.docx'
   const dir = await mkdtemp(resolve('tmp/office-script-'))
   const script = join(dir, 'check.ps1')
   await writeFile(script, '\uFEFF' + functions + checks, 'utf8')
-  // Allow cold PowerShell startup on hosted Windows; the checks below enforce
-  // bounded reads and explicit targets, not process startup latency.
   const { stdout } = await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], { windowsHide: true, timeout: 90_000 })
   expect(stdout).toContain('BOUNDED_BEFORE_VALUE')
 })

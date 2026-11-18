@@ -75,7 +75,6 @@ describe('control pill copy', () => {
     deliver({ type: 'desktop:control', control: { state: 'running', engineLabel: 'Claude' } })
     expect(changed).toHaveBeenCalledOnce()
     expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Comets using your computer')
-    // The older answer arrives after the event and must not roll it back.
     resolve({ state: 'idle' })
     await priming
     expect(renderToStaticMarkup(createElement(ControlPill))).toContain('Comets using your computer')

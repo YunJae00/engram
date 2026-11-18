@@ -17,36 +17,29 @@ const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, imp
 const core = (name: string) => readFileSync(new URL(`../../../packages/core/src/${name}`, import.meta.url), 'utf8')
 const COLLEAGUE_RULE = core('agent-voice.ts')
 
-// grokbar cycle 5 (stack4-5e3ab16e), rows D1, D3-D5, M2, Q1, Q3, H1, H4.
 describe('a document ask makes the document (D3, D4, D5)', () => {
   it('gives the document kind no way to ask, and leaves the real gates where they are', () => {
     expect(deskKind('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).toBe('deck')
-    // r2: Word and Excel asks ran with every tool, ask_person among them. They take the same menu, which still has what D2 and D4 used.
     for (const ask of ['위 회의록으로 워드 보고서 만들어줘', 'fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', '회의록 요약해서 워드로 만들어줘', '서울 날씨 조사해서 엑셀로 만들어줘', 'Make an Excel sheet of monthly totals from fixtures/sales.csv', 'fixtures/meeting-notes.md에서 할 일 뽑아서 워드로 만들어줘']) {
       expect(deskKind(ask), ask).toBe('deck')
       expect(DESK_TOOLS[deskKind(ask)!]!.has('ask_person'), ask).toBe(false)
     }
     for (const tool of ['word_write', 'file_create_workbook', 'file_read', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
-    // Sent somewhere, a how-to question, a question about a named file, or only a file's name: not this menu.
     for (const ask of ['회의록 워드로 만들어서 민호한테 메일로 보내줘', '엑셀에서 행 추가하는 법 알려줘', '엑셀 표 만드는 방법이 뭐야?', 'fixtures/budget.xlsx에서 합계 알려줘', 'fixtures/word.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
-    // stack-5: a document ask that also sends, posts, deletes or buys keeps every tool (the question tool and the page tools, where those gates are); a plain one keeps the menu.
     for (const ask of ['3분기 실적 PPT 만들어서 민호한테 메일로 보내줘', 'PPT 5장 만들고 슬랙에 게시해줘', '새 PPT 만들고 예전 발표 자료는 삭제해줘', '발표 자료 만들고 템플릿도 결제해줘', 'Make a deck and send it to Minho', '월별 합계 엑셀 만들고 원본은 지워줘']) {
       expect(deskKind(ask), ask).not.toBe('deck')
       expect(DESK_TOOLS[deskKind(ask)!]?.has('ask_person') ?? true, ask).toBe(true)
     }
     for (const ask of ['다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', '팀원들한테 보여줄 PPT 만들어줘', '결제 모듈 교체 일정 PPT 만들어줘', '방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘']) expect(deskKind(ask), ask).toBe('deck')
-    // r3: a Word or Excel file named only by its file name, and a request that ends in "?", still had ask_person.
     for (const ask of ['fixtures/budget.xlsx 수정해줘', 'report.docx 고쳐줘', 'fixtures/budget.xlsx에 12월 행 추가해줘', 'notes.doc 제목 바꿔줘', 'Fix the totals in budget.xlsx',
       '분기 매출 엑셀로 만들어 줄래?', '회의록으로 워드 보고서 만들어 줄 수 있어?', 'report.docx 좀 고쳐주실래요?', 'Can you make an Excel sheet of monthly totals?']) {
       expect(deskKind(ask), ask).toBe('deck')
       expect(DESK_TOOLS[deskKind(ask)!]!.has('ask_person'), ask).toBe(false)
     }
     for (const tool of ['file_read_package', 'file_edit_package']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
-    // Still not this menu: a question about the file, a how-to that names a file, a file that is sent, an extension that only looks alike.
     for (const ask of ['budget.xlsx 합계 수정됐어?', '엑셀로 차트도 만들 수 있어?', 'budget.xlsx에 행 추가하는 법 알려줘', 'report.docx 고쳐서 민호한테 보내줘', 'fixtures/notes.docs.md 수정할 부분 알려줘']) expect(deskKind(ask), ask).not.toBe('deck')
     expect(DESK_TOOLS.deck!.has('ask_person')).toBe(false)
     for (const tool of ['ppt_build', 'word_write', 'file_create_workbook', 'find_files']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
-    // Sending, saving outside and buying stop in the app itself; a sign-in ask comes from the page tools, which the deck menu does not hold.
     expect(core('agent-prompt.ts')).toContain('A control that would submit, save, send or buy is pressed like any other - the app stops there itself')
     expect(core('comet-page-tools.ts')).toContain('The page needs the person to sign in or pass a check.')
     for (const tool of ['open_page', 'press', 'type_text']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(false)
@@ -60,7 +53,6 @@ describe('a document ask makes the document (D3, D4, D5)', () => {
     expect(deskKind('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')).toBe('deck')
     for (const tool of ['file_read_package', 'file_edit_package']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     expect(DESK_NOTE).toContain('change that same file, the one in the list of files you saved earlier: never make a second copy')
-    // The thread's own files are found from the links in its earlier answers and listed for every turn, a desk turn included (core priorOutputs: prior-outputs.test.ts).
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const earlierOutputs = bot ? await linkedOutputs(artifactDirectory(paths), [...savedHistory')
     expect(ipc).toMatch(/attachmentContext: \[company, attachments\.context, recovery, turn\?\.context, team\.note\(channel\), priorOutputLines\(earlierOutputs\)/)
@@ -83,14 +75,11 @@ describe('a kept fact is corrected by the host (M2)', () => {
     expect(keptFix('아니, 김민준 말고 박서준이야', ['담당자는 김민준입니다'])?.answer).toBe('박서준으로 고쳤어요.')
   })
   it('never changes a word that only sits inside another, and leaves the rest to the model', () => {
-    // 민호 is inside 지민호: no "지수" for half a name, no "지민민호".
     expect(keptFix('아 민호 말고 수야', kept)).toBeUndefined()
-    // No kept fact holds it; two do; nothing changes; not this shape.
     expect(keptFix('아 박지성 말고 민호야', kept)).toBeUndefined()
     expect(keptFix('아 지민호 말고 민호야', [...kept, '지민호 님 생일은 3월이다'])).toBeUndefined()
     expect(keptFix('아 민호 말고 민호야', ['민호랑 같이 일한다'])).toBeUndefined()
     for (const said of ['지민호 말고 민호한테 메일 보내줘', '민호야', '아 그거 말고 11월 걸로 해줘']) expect(keptFix(said, kept), said).toBeUndefined()
-    // A particle that follows the old word's final consonant would read wrong after the new one.
     expect(keptFix('지민호 말고 수진이야', ['지민호와 같이 일한다'])).toBeUndefined()
   })
   it('stores it through keep_in_mind, and the old value is gone from memory and from the note', async () => {
@@ -105,13 +94,11 @@ describe('a kept fact is corrected by the host (M2)', () => {
     await keep.run({ facts: [fix.fact], replaces: [fix.old], scope: 'everyone' }, { task: '아 지민호 말고 민호야' })
     const now = (await loadBotMemory(paths, PERSON_MEMORY)).facts.map(fact => fact.text)
     expect(now).toEqual(['이름은 권윤재다', '민호랑 같이 일한다'])
-    // What a new thread reads (M3).
     const note = profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8'))
     expect(note.join('\n')).not.toContain('지민호')
     expect(note).toContain('민호랑 같이 일한다')
     expect(fix.answer).not.toMatch(/저장|기억/)
   })
-  // r2: M1 kept the fact for everyone and the teammate held its own copy; the correction changed one, and a new thread read both names.
   it('takes the old value out of the person\'s memory and the teammate\'s own, whichever scope the correction names', async () => {
     for (const scope of ['everyone', 'this bot']) {
       const root = await mkdtemp(resolve('tmp/c5c-both-'))
@@ -147,7 +134,6 @@ describe('small talk never sounds like a help desk (Q1)', () => {
       ['안녕하세요! 뭘 도와드릴까요.', '안녕하세요!'], ['안녕하세요! 오늘은 무엇을 도와드릴까요?', '안녕하세요!'], ['좋은 아침이에요. 뭐 도와드릴까요?', '좋은 아침이에요.'],
       ['안녕하세요! 도와드릴 일 있으면 말씀하세요.', '안녕하세요!'], ['반가워요. 필요하신 게 있으면 말씀해 주세요.', '반가워요.'], ['Hi there! How can I help you today?', 'Hi there!'],
     ] as const) { expect(withoutHelpDesk(said), said).toBe(left); expect(cleanLine(said), said).toBe(left) }
-    // Nothing but the help-desk sentence: no line at all (the small-talk path then says a plain greeting: model-tiers.test.ts).
     expect(cleanLine('무엇을 도와드릴까요?')).toBeUndefined()
   })
   it('leaves a colleague\'s line as it is', () => {
@@ -158,7 +144,6 @@ describe('small talk never sounds like a help desk (Q1)', () => {
     for (const text of [smallTalkPrompt('안녕', true), SMALL_TALK_NOTE, COLLEAGUE_RULE]) { expect(text).toMatch(/help in any wording/); expect(text).toContain('뭘 도와드릴까요') }
     expect(smallTalkPrompt('안녕', true)).toContain('안녕하세요! 좋은 아침이에요.')
     expect(source('ipc.ts')).toContain('if (plainAsk && plainReply(request.message) && !result.asked) result.answer = talkOnly(request.message, result.answer, threadKorean(request.message, request.history ?? []))')
-    // r2: the main model's reply was only the help-desk question and `|| result.answer` put it back. The host's plain line is said instead.
     for (const said of ['뭘 도와드릴까요?', '무엇을 도와드릴까요?', '도움이 필요하시면 말씀해 주세요.']) {
       expect(talkOnly('안녕', said, true), said).toBe('안녕하세요!')
       expect(talkOnly('고마워 수고했어', said, true), said).toBe('별말씀을요.')
@@ -170,14 +155,11 @@ describe('small talk never sounds like a help desk (Q1)', () => {
   })
 })
 
-// c11b: koreanLead went (it rewrote the model's answer by its wording). The Korean lead is the model's, asked for in SHORT_QUESTION_NOTE;
-// the host passes a foreign line through untouched.
 describe('a line in another language is led by a few Korean words (Q3, c11b)', () => {
   const ask = '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', line = 'I apologize for being late to the meeting.'
   it('puts the lead on the same line when the answer has no Hangul (c11b: asked of the model)', () => {
     expect(SHORT_QUESTION_NOTE).toContain('A line they asked for in another language is led by those few words in their own language, on the same line')
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
-    // Whatever the model wrote stays: no host lead is glued on, nothing is cut.
     for (const answer of [line, `${line}\n\n\`\`\`replies\n더 짧게\n\`\`\``, 'Hi Minho,\n\nSorry for the delay.']) {
       expect(answerAlone(answer), answer).toBe(answer)
       expect(talkOnly(ask, answer, true), answer).toBe(answer)
@@ -194,7 +176,6 @@ describe('a line in another language is led by a few Korean words (Q3, c11b)', (
   })
 })
 
-// stack-5 (c5c run, D3 64.3 s of 60): the first ppt_build was refused for "내용 입력" blanks (deck-audit.ts) and the deck was written twice.
 describe('a marked blank is one the deck check lets through (D3)', () => {
   it('names the wording that passes, and the check agrees', async () => {
     const { auditDeck } = await import('../../../packages/core/src/deck-audit.js')
@@ -222,20 +203,16 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
     const out = withOffer(ask, answer, [], true)
     expect(out).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.`)
     expect([...out.split('\n').at(-1)!].length).toBeLessThanOrEqual(60)
-    // Once: the result is left alone.
     expect(withOffer(ask, out, [], true)).toBe(out)
-    // c8c: an offer is the next step, never the same lines in another shape: nothing follows bare figures, dated lines get a timeline.
     expect(withOffer('notes.md에서 숫자만 추려줘', '- 38%\n- 12명', [], true)).toBe('- 38%\n- 12명')
     expect(withOffer('notes.md에서 마감만 추려줘', '- 시안 확정: 11월 20일\n- 공지 발송: 11/27', [], true)).toMatch(/\n\n원하시면 기한 순으로 일정표도 만들어 드릴게요\.$/)
     expect(withOffer(ask, '| 담당 | 할 일 |\n|---|---|\n| 한서연 | 시안 확정 |', [], true)).toMatch(/\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
     expect(withOffer('Extract the action items from notes.md', '- Seoyeon: finalize the screen', [], false)).toMatch(/\n\nI can draft a reminder for each owner if you'd like\.$/)
-    // Above the reply suggestions, not under them.
     expect(withOffer(ask, `${answer}\n\n\`\`\`replies\n표로\n\`\`\``, [], true)).toBe(`${answer}\n\n원하시면 담당자별로 보낼 알림 문구도 써 드릴게요.\n\n\`\`\`replies\n표로\n\`\`\``)
   })
   it('adds nothing when the answer already offers, or an earlier reply in the thread did', () => {
     for (const closing of ['원하시면 담당자별로도 나눠 드릴게요.', '표로도 정리해 드릴까요?']) expect(withOffer(ask, `${answer}\n\n${closing}`, [], true)).toBe(`${answer}\n\n${closing}`)
     expect(withOffer(ask, answer, [{ role: 'user', text: '회의록 요약해줘' }, { role: 'assistant', text: '요약했어요.\n\n원하시면 워드 파일로도 만들어 드릴게요.' }], true)).toBe(answer)
-    // A first line, a kept fact's reply or the person's own words are not an earlier offer.
     expect(withOffer(ask, answer, [{ role: 'assistant', text: '회의록부터 읽어볼게요.\n\n', progress: true }, { role: 'assistant', text: '기억해 둘게요.' }, { role: 'user', text: '원하시면 말해요' }], true)).not.toBe(answer)
   })
   it('never adds one to another kind of turn', () => {
@@ -248,7 +225,6 @@ describe('an extraction ends with one short offer, once per thread (H4)', () => 
 
 describe('a note the host read is answered without long thinking (D1)', () => {
   it('keeps decisions and to-dos apart when the notes\' decisions are all tasks', () => {
-    // c13c: one principle by meaning replaced the "all tasks" special case; every owner and date still stays.
     for (const part of ['an item with an owner and a due date is an action item', 'The content decides, not the notes\' own headings', 'Every owner and due date of the file is still in the answer'])
       expect(DESK_NOTE, part).toContain(part)
   })

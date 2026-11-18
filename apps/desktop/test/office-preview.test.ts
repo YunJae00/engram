@@ -14,7 +14,6 @@ it.each([['outlook.mail', 'Outlook', undefined], ['excel.workbooks', 'Excel', un
   expect(fake.bind).toHaveBeenLastCalledWith('one', { app })
   expect(fake.show).toHaveBeenLastCalledWith(binding)
 })
-// QA145 S02: "do not open Word" still showed a live card of the person's own Word window.
 it.each(['word.read', 'word.edit', 'ppt.read', 'excel.read'] as const)('%s attaches no window until the command names the one it works in', async (op) => {
   fake.bind.mockClear(); fake.show.mockClear()
   await showOfficePreview('one', op)

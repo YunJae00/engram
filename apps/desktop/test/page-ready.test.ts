@@ -85,7 +85,6 @@ it('bounds empty page recovery and never declares missing content as a fact', as
 
 it('keeps waiting past the first limit while the page is still fetching its own parts, and no longer once they stop', async () => {
   const page = clockPage()
-  // Parts keep arriving until 17s, the words land at 18s.
   Object.assign(page, { evaluate: async () => Math.floor(Math.min(Date.now(), 17_000) / 500) })
   const slow = await readWhenReady(page, async () => ({ url: 'https://app.test', title: 'App', text: Date.now() < 18_000 ? '' : 'Popular this week' }))
   expect(slow.text).toBe('Popular this week')

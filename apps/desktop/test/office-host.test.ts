@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ spawn: vi.fn() }))
 vi.mock('electron', () => ({ app: { getPath: () => 'unused' } }))
 vi.mock('node:fs/promises', () => ({ mkdir: vi.fn(), writeFile: vi.fn() }))
-// execFile: the Mac side of the host now loads core, whose modules bind it on import; nothing here calls it.
 vi.mock('node:child_process', () => ({ spawn: fake.spawn, execFile: vi.fn() }))
 vi.mock('../src/main/process-client.js', () => ({ ProcessClient: class { constructor(...args: unknown[]) { return fake.spawn(...args) } } }))
 
@@ -44,7 +43,6 @@ it('does not dispatch when aborted while starting', async () => {
   const controller = new AbortController()
   const result = host.officeRequest('excel.write', {}, controller.signal).catch((e: Error) => e)
   controller.abort()
-  // A queued abort may prevent startup altogether.
   const error = await result
   expect(error).toBeInstanceOf(Error)
   expect(proc.stdin.write).not.toHaveBeenCalled()
@@ -98,8 +96,6 @@ it('stops the worker on a desktop turn stop', async () => {
 it('terminates the worker on request timeout', async () => {
   const result = host.officeRequest('excel.write', {}).catch((e: Error) => e)
   await ready()
-  // The write timer must be created under the fake clock.
-  // This request is already running, so complete it and time the next one.
   await vi.waitFor(() => expect(proc.stdin.write).toHaveBeenCalledOnce())
   const first = JSON.parse(proc.stdin.write.mock.calls[0]![0])
   proc.stdout.write(JSON.stringify({ id: first.id, ok: true, result: {} }) + '\n')

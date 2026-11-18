@@ -21,7 +21,6 @@ async function tempPaths(): Promise<VaultPaths> {
   return paths
 }
 const engineSaying = (text: string) => ({ id: 'claude', async *run() { yield { type: 'result', text } } }) as unknown as Engine
-// The person said what the extractor wrote down, unless a test gives another message.
 const remember = (paths: VaultPaths, text: string, message = text) => rememberTurn({ engine: engineSaying(text), workdir: paths.workspace as never, paths, botId: 'atlas', channel: 'bot-atlas', message, answer: '목요일 오후입니다.' })
 const texts = async (paths: VaultPaths, id: string) => (await loadBotMemory(paths, id)).facts.map((f) => f.text)
 const noteLines = async (paths: VaultPaths) => profileLines(await readFile(join(paths.notes, `${PROFILE_NOTE_ID}.md`), 'utf8'))
@@ -95,7 +94,6 @@ it('qa146 r2: keep_in_mind with "replaces" takes the old line out of memory and 
   expect(await noteLines(paths)).toEqual(left)
 })
 
-// qa142 p2b-r1 #3: a saved error card is never handed to a model as something the bot said.
 it('search_chats leaves a saved error turn out of what earlier conversations said', async () => {
   const paths = await tempPaths()
   const bot = await createBot(paths, { name: 'Minutes' })

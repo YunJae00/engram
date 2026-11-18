@@ -64,7 +64,6 @@ it('finds conversations by any message text, caches by file stamp, and ignores p
   await utimes(file, 1_700_000_000, 1_700_000_000)
   for (const query of ['QX-7731', 'qx-7731', '회의코드', '  qx-7731 ', long, long.slice(0, 201)]) expect(await found(paths, [a, b], query)).toEqual([a.id])
   expect(await found(paths, [a, b], '')).toEqual([])
-  // S17: a hit carries the words around it in their own case, so the row can show why it is listed.
   expect(await botSearch(paths, [a, b], '견적서')).toEqual([{ id: a.id, excerpt: '…ted the 견적서' }])
   expect(await botSearch(paths, [a, b], 'qx-7731 drafted')).toEqual([{ id: a.id, excerpt: '…nda for QX-7731 drafted' }])
   expect(await found(paths, [a, b], 'Add budget\nUpdated')).toEqual([])
@@ -207,11 +206,9 @@ it('qa146: a search excerpt ends with the matched sentence and never shows a val
   await appendBotTurn(paths, memo.id, { role: 'assistant', text: '팀 이름이랑 마감, 기억하는 그대로 알려드릴게요.\n\n---\n\n팀 이름은 **은하수**, 다음 스프린트 마감은 **11월 25일**이에요.\n\n---\n\n참고로 기억에 "TeStCode"라는 이름과 11월 20일 마감이 남아 있는데, 둘 다 쓰지 않는 값이에요.', at })
   const [hit] = await botSearch(paths, [memo], '은하수')
   expect(hit?.excerpt).toBe('…팀 이름은 **은하수**, 다음 스프린트 마감은 **11월 25일**이에요.')
-  // The matched sentence itself carries the old value: only the clause with the match is shown.
   const fix = await createBot(paths, { name: '정정' })
   await appendBotTurn(paths, fix.id, { role: 'assistant', text: '정식 팀 이름은 은하수이고, 이전 초안에 적힌 "TeStCode"는 오타입니다. 다음에 봬요.', at })
   expect((await botSearch(paths, [fix], '은하수'))[0]?.excerpt).toBe('…식 팀 이름은 은하수이다')
-  // A turn whose only match sits in the leftover clause still lists the chat, with the match alone.
   const old = await createBot(paths, { name: '옛 값' })
   await appendBotTurn(paths, old.id, { role: 'assistant', text: '어떤 메모에 적힌 TeStCode는 예전 값입니다', at })
   expect((await botSearch(paths, [old], 'testcode'))[0]?.excerpt).toBe('… 메모에 적힌 TeStCode')

@@ -74,7 +74,6 @@ it('ships transparent rounded-square artwork at every declared desktop size', ()
   }
 })
 
-// S29: the bundle's AppIcon.icns stopped at 256. iconutil ships with macOS only.
 it.skipIf(process.platform !== 'darwin')('builds AppIcon.icns as a complete set, 16 through 1024, from the catalog artwork', () => {
   const set = fileURLToPath(new URL('../build/Engram.xcassets/AppIcon.appiconset/', import.meta.url))
   const tmp = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -84,14 +83,12 @@ it.skipIf(process.platform !== 'darwin')('builds AppIcon.icns as a complete set,
   writeFullIcns(set, out, work)
   const icns = readFileSync(out)
   expect(icns.toString('ascii', 0, 4)).toBe('icns')
-  // icns entry types: ic04/ic05 are 16/32 (packed ARGB), ic07–ic10 are 128–1024, ic11–ic14 the @2x of 16/32/128/256.
   const files: Record<string, string> = { ic07: '128x128', ic08: '256x256', ic09: '512x512', ic10: '512x512@2x', ic11: '16x16@2x', ic12: '32x32@2x', ic13: '128x128@2x', ic14: '256x256@2x' }
   const types: string[] = []
   for (let offset = 8; offset < icns.length; offset += icns.readUInt32BE(offset + 4)) {
     const type = icns.toString('ascii', offset, offset + 4)
     types.push(type)
     if (!files[type]) continue
-    // iconutil may re-encode, so the pixels are compared, not the bytes.
     const file = `icon_${files[type]}.png`
     expect(decodePng(icns.subarray(offset + 8, offset + icns.readUInt32BE(offset + 4)), type).data.equals(decodePng(readFileSync(join(set, file)), file).data), `${type} is ${file}`).toBe(true)
   }

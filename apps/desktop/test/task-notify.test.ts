@@ -16,7 +16,6 @@ import { notifyTask, setTaskSurface } from '../src/main/task-notify.js'
 beforeEach(() => {
   mocks.supported = true; mocks.focused = false; mocks.click = undefined; mocks.show.mockClear()
   vi.unstubAllEnvs()
-  // The orchestrator or a hidden app run may export ENGRAM_HIDDEN=1; these tests choose it themselves.
   vi.stubEnv('ENGRAM_HIDDEN', undefined)
 })
 

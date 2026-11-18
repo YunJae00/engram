@@ -21,7 +21,6 @@ afterAll(() => rm(paths.cache, { recursive: true, force: true }))
 
 const deferred = () => { let open!: () => void; const done = new Promise<void>(resolve => { open = resolve }); return { done, open } }
 
-// Mirrors the bot branch of sendChat: user row, engine, assistant row, acknowledge, then afterTurn.
 async function harness() {
   const aside = await import('../src/main/aside-ipc.js')
   const follow = await import('../src/main/midstream-followup.js')
@@ -64,7 +63,6 @@ it('follow-up gets its own reply when no tool step takes it', async () => {
   await turn
   await h.idle('bot-one')
   expect(h.requests).toEqual(['First', 'And what is 3 times 7?'])
-  // grokbar c3: the host's one-line reply sits under the words; with no quick voice here it is the fixed line.
   expect(await rows('one')).toEqual(['user First', 'user And what is 3 times 7?', 'assistant Covering that too.', 'assistant Reply: First', 'assistant Reply: And what is 3 times 7?'])
 })
 
@@ -130,7 +128,6 @@ it('an answered follow-up is not answered again after relaunch', async () => {
   expect(checkpointResume(stored, await readBotTranscript(paths, 'five'))).not.toContain('User messages saved')
 })
 
-// grokbar T1/T2: words the running turn took with a tool result are answered inside it; they get no turn of their own.
 it('gives the running turn the words said to it, wakes a lead waiting on its team, and starts no follow-up turn for them', async () => {
   const follow = await import('../src/main/midstream-followup.js')
   const ran: string[] = []
@@ -146,7 +143,6 @@ it('gives the running turn the words said to it, wakes a lead waiting on its tea
   follow.followUpFor('bot-steer')('아 대구도 추가해')
   await Promise.resolve()
   expect([woke, late]).toEqual([1, 0])
-  // Words already waiting wake the next waiter at once.
   await follow.followUpSaid('bot-steer', new AbortController().signal)
   expect(follow.takeFollowUps('bot-steer')).toEqual(['아 대구도 추가해'])
   expect(follow.takeFollowUps('bot-steer')).toEqual([])
@@ -154,7 +150,6 @@ it('gives the running turn the words said to it, wakes a lead waiting on its tea
   follow.afterTurn('bot-steer')
   await new Promise(resolve => setTimeout(resolve, 10))
   expect(ran).toEqual([])
-  // Words nobody took are still answered as their own turn.
   busy = true
   follow.followUpFor('bot-steer')('그리고 광주도')
   busy = false

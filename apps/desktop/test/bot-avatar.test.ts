@@ -40,7 +40,6 @@ function spy() {
   return fn
 }
 
-// Seeds a photo the way an old vault stored it, since new uploads are refused.
 async function seedPhoto(paths: VaultPaths, id: string, data: Uint8Array, ext: 'png' | 'jpg') {
   await mkdir(join(paths.cache, 'bot-avatars'), { recursive: true })
   await writeFile(join(paths.cache, 'bot-avatars', `${id}.${ext}`), data)

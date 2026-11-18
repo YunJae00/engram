@@ -5,7 +5,6 @@ import { createBot, initVault, loadBots } from 'core'
 import { expect, it } from 'vitest'
 import { teammateSettingsTool } from '../src/main/teammate-tools.js'
 
-// The info pane that edited these is gone; chat has to be able to do it.
 it('changes a teammate\'s instructions and notifications from chat, for itself or a named teammate, and nothing else', async () => {
   const dir = fileURLToPath(new URL('../../../tmp/', import.meta.url))
   await mkdir(dir, { recursive: true })

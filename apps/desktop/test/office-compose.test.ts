@@ -3,10 +3,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { vaultPaths } from '../../../packages/core/src/vault.js'
 
-// QA 0.8.142 B5/B11: Word and PowerPoint output went to the person's real
-// ~/Documents/Engram whatever the workspace, and generation opened Word or
-// PowerPoint on the real screen (also in hidden mode). A composed document is
-// built headlessly, handed in with the task's outputs and linked in the chat.
 const fake = vi.hoisted(() => ({ home: '', request: vi.fn(), openPath: vi.fn(), bind: vi.fn(), preview: vi.fn() }))
 vi.mock('electron', () => ({ app: { getPath: () => fake.home }, shell: { openPath: fake.openPath }, screen: { getCursorScreenPoint: () => ({ x: 0, y: 0 }), getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }) }, ipcMain: { removeHandler: vi.fn(), handle: vi.fn() }, nativeImage: {} }))
 vi.mock('../src/main/office-host.js', () => ({ officeApps: () => ({ word: true, powerpoint: true, excel: true, outlook: true }), officeSupported: () => true, officeRequest: fake.request }))
@@ -44,7 +40,6 @@ it('builds a deck headlessly into the task outputs, linked in the chat, without 
   expect(fake.request).not.toHaveBeenCalled()
   expect(fake.openPath).not.toHaveBeenCalled()
   expect(fake.bind).not.toHaveBeenCalled()
-  // Nothing lands in the person's own folders.
   await expect(stat(join(fake.home, 'Engram'))).rejects.toMatchObject({ code: 'ENOENT' })
   await expect(stat('/Users/someone/Documents/Engram/plan.pptx')).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -61,8 +56,6 @@ it('writes a Word document the same way, without opening Word', async () => {
   await expect(stat(join(fake.home, 'Engram'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
 
-// qa143 p2 r3 #3 said two inputs under one name in a turn were two files (report, report-2). grokbar D3 (stack9) showed what that does: one
-// deck rebuilt twice became three cards. The same name in one turn is now that turn's own file made again: one file, one card, the last one.
 it('replaces this turn\'s own file when a second input is built under its name, and shows only the last', async () => {
   const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
   for (const [name, ext, input] of [['word_write', 'docx', (text: string) => ({ title: 'report', blocks: [{ kind: 'paragraph', text }], theme: THEME })], ['ppt_build', 'pptx', (text: string) => ({ slides: [{ title: text }], saveAs: 'report.pptx', theme: THEME })]] as const) {
@@ -73,7 +66,6 @@ it('replaces this turn\'s own file when a second input is built under its name, 
     expect(costs.receipt.markdownLink).toMatch(new RegExp(`^\\[report\\.${ext}\\]\\(engram-artifact:`))
     expect(costs.receipt.taskPath).toBe(sales.receipt.taskPath)
     expect((await readdir(task)).filter(file => file.endsWith(`.${ext}`))).toEqual([`report.${ext}`])
-    // The draft's saved output is gone; the last one holds the task file's bytes.
     await expect(stat(sales.receipt.path)).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await readFile(costs.receipt.path)).equals(await readFile(costs.receipt.taskPath))).toBe(true)
     const steps = [sales.step, costs.step] as unknown as Parameters<typeof outputLinks>[0]
@@ -83,15 +75,11 @@ it('replaces this turn\'s own file when a second input is built under its name, 
       expect(answer).not.toContain(sales.receipt.artifact)
     }
     expect(outputLinks(steps, '다 만들었어요.').match(/engram-artifact:/g)).toHaveLength(1)
-    // The same input again after another replaced it is built again, not handed back as the draft that is gone.
     const again = await run('sales')
     expect((await readFile(again.receipt.path)).equals(await readFile(again.receipt.taskPath))).toBe(true)
   }
 })
 
-// A turn that only names the file an earlier turn made does not touch it (c10c review r1: the brief's "a name taken by an earlier turn still
-// gets -2"): a new turn's build under that name is saved as "-2", the earlier task file keeps its bytes, and the earlier saved output stays.
-// Built twice in that later turn, the "-2" file is that turn's own draft, replaced in place.
 it('keeps the file an earlier turn made when a later turn builds under its name', async () => {
   const first = JSON.parse(await officeAgentTools('bot-one', taskOutputs(vaultPaths(root), async () => task, undefined, 'turn-1')).find(t => t.name === 'ppt_build')!.run({ slides: [{ title: '3분기 실적' }], saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT' }))
   const before = await readFile(first.taskPath)
@@ -109,9 +97,6 @@ it('keeps the file an earlier turn made when a later turn builds under its name'
   expect((await readFile(first.taskPath)).equals(before)).toBe(true)
 })
 
-// grokbar D3 (stack9): the first deck the model built read "수시 입력", "대믱", "변류̈은", "거실론" (the stored 3분기 실적 보고.pptx); with only
-// "saved" in the receipt it read the deck back, built it again ("수지", "결맠") and once more. The receipt now lists the slides, says not to
-// read it back; a garbled build is refused before it is saved, naming the words with their slide (c11c).
 it('says a built deck is done and lists its slides; refuses the garbled stored stack-9 deck before saving it', async () => {
   const stored = [
     { title: '3분기 실적 보고', subtitle: '팀 회의 자리' },
@@ -120,20 +105,17 @@ it('says a built deck is done and lists its slides; refuses the garbled stored s
     { title: '변류\u0308은 달성 요인과 고전 요인', bullets: ['달성 요인: 내역 입력', '고전 요인: 내역 입력', '거실론: 내역 입력'] },
     { title: '4분기 개선 계획', bullets: ['다음 분기 목표: 수시 입력'] },
   ]
-  // c11c: the garbled build is refused before any file exists, naming the words, so the fix is one rebuild (not a saved file and edit rounds).
   const build = tools().find(t => t.name === 'ppt_build')!
   const refusal = await build.run({ slides: stored, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }).then(() => '', (error: Error) => error.message)
   expect(refusal).toContain('대믱 (slide 2)')
   expect(refusal).toContain('변류\u0308은 (slide 4)')
   expect(refusal).toContain('ppt_build again')
   expect(await readdir(task)).toEqual([])
-  // c15c: the refusal says nothing was built, so it is no write left unread (core office-verification NOTHING_BUILT).
   expect(refusal).toMatch(/^Nothing was built/)
   const fixed = stored.map(slide => JSON.parse(JSON.stringify(slide).replaceAll('대믱', '대비').replaceAll('변류\u0308은', '분류')) as typeof slide)
   const receipt = JSON.parse(await build.run({ slides: fixed, saveAs: '3분기 실적 보고.pptx', theme: THEME }, { task: 'PPT 5장' }))
   expect(receipt.verification).toContain('do not read it back or build it again')
   expect(receipt.verification).toContain('1. 3분기 실적 보고 / 2. 3분기 요약 / 3. 주요 지표')
-  // c15c (D3): what the host verified is said, so the model does not read the deck back.
   expect(receipt.verification).toContain('Verified in the file: 5 slides')
   expect(receipt.titles).toHaveLength(5)
   expect(receipt.mistyped).toBeUndefined()
@@ -142,8 +124,6 @@ it('says a built deck is done and lists its slides; refuses the garbled stored s
   expect(clean.mistyped).toBeUndefined()
 })
 
-// c10c r3 (D3): garble made of syllables people do type ("거실론", "수시 입력" in stack 9) passed the syllable check. The quick voice now
-// reads the text before the build and the host puts the meant words in, so the one file built is clean. Words below are not the harness's.
 it('builds a deck with the garbled words the proofreader names already fixed, in one file', async () => {
   const asked: string[] = []
   const proofread = async (prompt: string): Promise<string> => { asked.push(prompt); return '회으록 => 회의록\n- "담당쟈" → 담당자\n없는말 => 아무말\n2023년 => 2024년\n예산 => 이번 분기 전체 예산 계획' }

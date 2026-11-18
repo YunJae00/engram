@@ -11,17 +11,14 @@ import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 import { ACK_MAX, answerAlone, fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-line.js'
 
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
-// What ipc.ts does to a desk note answer, in its order.
 const noteAnswer = (ask: string, answer: string) => withOffer(ask, onlyAsked(ask, answerAlone(shareReady(ask, withoutSameDecisions(ask, answer)))), [], true)
 
-// grokbar cycle 7 (stack6-50519116), rows D5, D1, D4, M3, H1.
 describe('the words of a slide are changed without XML (D5)', () => {
   it('tells the deck kind to use the outline and the slide edits, inside the same menu', () => {
     expect(DESK_NOTE).toContain('never read or write slide XML')
     expect(DESK_NOTE).toContain('file_read_package outline:true')
     expect(DESK_NOTE).toContain('{slide, with} for a title or {slide, text, with} for another text')
     expect(DESK_NOTE).toContain('Only a change to the structure')
-    // No new tool: the outline and the slide edit are forms of the two the menu already holds, so the preload limit is untouched.
     for (const tool of ['file_read_package', 'file_edit_package']) expect(DESK_TOOLS.deck!.has(tool)).toBe(true)
     expect(DESK_TOOLS.deck!.size).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX)
   })
@@ -29,7 +26,6 @@ describe('the words of a slide are changed without XML (D5)', () => {
 
 describe('decisions and tasks are said once (D1)', () => {
   const D1_ASK = 'fixtures/meeting-notes.md 회의록 요약해서 결정사항이랑 할 일 정리해줘'
-  // The stored answer (runs/stack6-50519116/D1.txt).
   const D1 = ['회의록 요약해서 정리해볼게요.', '', '결정사항', '', '신규 온보딩 화면은 B안으로 확정 — 담당: 한서연, 기한: 11월 20일', '결제 모듈 교체 일정 수립 — 담당: 오태민, 기한: 11월 24일', '베타 테스터 50명 모집 공지 발송 — 담당: 윤가은, 기한: 11월 27일', '4분기 마케팅 예산안 제출 — 담당: 백도현, 기한: 12월 1일', '',
     '할 일', '', '한서연: 온보딩 화면 시안 확정 (11/20까지)', '오태민: 결제 모듈 교체 일정 수립 (11/24까지)', '윤가은: 베타 테스터 50명 모집 공지 발송 (11/27까지)', '백도현: 광고비·행사비 나눠서 마케팅 예산안 재정리 후 제출 (12/1까지)', '', '미결', '', '결제 모듈 후보 두 곳 중 어디로 갈지는 견적 받은 뒤 다음 회의(11/23)에서 결정'].join('\n')
 
@@ -39,7 +35,6 @@ describe('decisions and tasks are said once (D1)', () => {
     expect(out).not.toContain('게요')
     expect(out).not.toMatch(/담당|기한/)
     for (const kept of ['신규 온보딩 화면은 B안으로 확정\n', '결제 모듈 교체 일정 수립\n', '베타 테스터 50명 모집 공지 발송\n', '4분기 마케팅 예산안 제출\n', '한서연: 온보딩 화면 시안 확정 (11/20까지)', '오태민: 결제 모듈 교체 일정 수립 (11/24까지)', '윤가은: 베타 테스터 50명 모집 공지 발송 (11/27까지)', '백도현: 광고비·행사비 나눠서 마케팅 예산안 재정리 후 제출 (12/1까지)', '미결', '다음 회의(11/23)에서 결정']) expect(out, kept).toContain(kept)
-    // The list-marked form too.
     const marked = D1.replace(/^(결정사항|할 일|미결)$/gm, '**$1**').replace(/^(?!\*\*|회의록 요약|$)(.+)$/gm, '- $1')
     const listed = noteAnswer(D1_ASK, marked)
     expect(listed).toContain('- 신규 온보딩 화면은 B안으로 확정\n')
@@ -48,32 +43,26 @@ describe('decisions and tasks are said once (D1)', () => {
   })
 
   it('keeps a tail whose owner or date no 할 일 line carries, and an ask for the decisions alone', () => {
-    // 한서연's date differs under 할 일, and 정하윤 has no task: both lines stay whole.
     const other = D1.replace('(11/20까지)', '(11/21까지)').replace('— 담당: 오태민,', '— 담당: 정하윤,')
     const out = withoutSameDecisions(D1_ASK, other)
     expect(out).toContain('신규 온보딩 화면은 B안으로 확정 — 담당: 한서연, 기한: 11월 20일')
     expect(out).toContain('결제 모듈 교체 일정 수립 — 담당: 정하윤, 기한: 11월 24일')
     expect(out).toContain('베타 테스터 50명 모집 공지 발송\n')
     expect(withoutSameDecisions('fixtures/meeting-notes.md 회의록에서 결정사항만 뽑아줘', D1)).toBe(D1)
-    // No 할 일 block to hold the owners: nothing is cut.
     const alone = D1.slice(0, D1.indexOf('할 일'))
     expect(withoutSameDecisions(D1_ASK, alone)).toBe(alone)
-    // A line that is nothing but its tail is not emptied.
     const bare = '결정사항\n- 담당: 한서연, 기한: 11월 20일\n\n할 일\n- 한서연: 시안 확정 (11/20까지)'
     expect(withoutSameDecisions(D1_ASK, bare)).toBe(bare)
   })
 
   it('leaves H3 and H4 of this run as their own corrections make them', () => {
-    // runs/stack6-50519116/H3.txt: the promise goes, the past-tense lead and everything under it stay.
     const H3_ASK = 'fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘'
     const H3 = ['할 일 위주로 짧게 정리했고, 결정사항과 미결을 나눠서 담았어요.', '', '결정사항 (11/16 회의)', '', '온보딩 화면은 B안으로 가는 쪽에 의견이 모였어요 — 한서연, 11/20', '결제 모듈 교체 일정 수립 — 오태민, 11/24', '베타 테스터 50명 모집 공지 — 윤가은, 11/27', '4분기 마케팅 예산안 제출 — 백도현, 12/1', '', '미결', '', '결제 모듈 후보 두 곳 중 선택은 견적 받은 뒤 다음 회의(11/23)에서 결정'].join('\n')
     expect(noteAnswer(H3_ASK, H3)).toBe(H3)
     expect(noteAnswer(H3_ASK, `팀에 공유하기 좋게 정리할게요.\n\n${H3}`)).toBe(H3)
-    // runs/stack6-50519116/H4.txt: a past-tense lead and a closing offer, unchanged.
     const H4_ASK = 'fixtures/meeting-notes.md 회의록에서 할 일만 뽑아줘'
     const H4 = ['회의록에서 할 일을 뽑았어요.', '', '한서연: 신규 온보딩 화면 시안 확정 — 11월 20일', '오태민: 결제 모듈 교체 일정 수립 — 11월 24일', '윤가은: 베타 테스터 50명 모집 공지 발송 — 11월 27일', '백도현: 4분기 마케팅 예산안 제출 — 12월 1일', '', '원하시면 담당자별로 표로 정리해 드릴게요.'].join('\n')
     expect(noteAnswer(H4_ASK, H4)).toBe(H4)
-    // A note answer that is only one line is never emptied.
     expect(noteAnswer(D1_ASK, '지금 정리해볼게요.')).toBe('지금 정리해볼게요.')
   })
 
@@ -90,10 +79,8 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
     expect(saidBefore('슬라이드 흐름부터 짜볼게요.', ['보고서 구성부터 잡을게요.'])).toBe(true)
     expect(saidBefore('엑셀로 바로 묶어 볼게요.', ['보고서 구성부터 잡을게요.'])).toBe(false)
     expect(saidBefore('3번 슬라이드 제목 바꿀게요.', ['보고서 구성부터 잡을게요.', '엑셀로 바로 묶어 볼게요.'])).toBe(false)
-    // The same closing verb twice in a row, but not with a line in between.
     expect(saidBefore('차트까지 넣어 볼게요.', ['엑셀로 바로 묶어 볼게요.'])).toBe(true)
     expect(saidBefore('차트까지 넣어 볼게요.', ['엑셀로 바로 묶어 볼게요.', '3번 슬라이드 제목 바꿀게요.'])).toBe(false)
-    // A fresh thread is unaffected.
     expect(saidBefore('보고서 구성부터 잡을게요.', [])).toBe(false)
     expect(saidBefore('매출 데이터부터 정리할게요.', ['지금 시세 확인할게요.'])).toBe(false)
   })
@@ -106,7 +93,6 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
       expect(saidBefore(line, said), `${ask}: ${line}`).toBe(false)
       expect([...line].length).toBeLessThanOrEqual(ACK_MAX)
     }
-    // With nothing said the line is the one it always was.
     expect(fallbackLine('fixtures/sales.csv로 월별 합계 엑셀 만들고 차트도 넣어줘', true)).toBe('파일부터 확인할게요.')
   })
 
@@ -125,8 +111,6 @@ describe('first lines in a thread do not share a frame (D4, D3, D5)', () => {
   })
 })
 
-// c11b: asState went (it rewrote "…하세요." into "…하고 계세요." and made M3's stiff phrase). How to say a fact about the person is the
-// model's, asked in SHORT_QUESTION_NOTE with no template phrase to copy; the host passes the model's wording through.
 describe('a fact about the person is a state, not an instruction (M3, c11b)', () => {
   it('turns a closing -하세요 on a who / what / where question about them into -하고 계세요 (c11b: asked of the model, no host rewrite)', () => {
     expect(SHORT_QUESTION_NOTE).toContain('never with an ending that reads as telling them to do it')

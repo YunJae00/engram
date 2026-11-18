@@ -16,7 +16,6 @@ import { fallbackLine, firstLinePrompt, saidBefore } from '../src/main/first-lin
 import { buildDeck } from '../src/main/deck-render.js'
 import { learningTools } from '../src/main/learning-wiring.js'
 
-// grokbar cycle 8 (stack7-b3ddda26), rows D5, M1, H1, H4, D2, F1.
 const require = createRequire(resolve('packages/core/package.json'))
 const JSZip = require('jszip') as typeof import('../../../packages/core/node_modules/jszip')
 const ipc = readFileSync(new URL('../src/main/ipc.ts', import.meta.url), 'utf8')
@@ -29,7 +28,6 @@ describe('a slide title by number is changed by the host (D5)', () => {
   it('reads the shape: a slide number, 제목, the new words in quotes, a change word', () => {
     expect(slideTitleFix('방금 만든 PPT 3번 슬라이드 제목 "핵심 지표"로 바꿔줘')).toEqual({ slide: 3, title: '핵심 지표' })
     expect(slideTitleFix('2번 장 제목을 \'일정\'으로 고쳐')).toEqual({ slide: 2, title: '일정' })
-    // Other wordings of the same kind of ask.
     expect(slideTitleFix('그 PPT 4번째 슬라이드의 제목을 “다음 분기 계획”으로 수정해 주세요.')).toEqual({ slide: 4, title: '다음 분기 계획' })
     expect(slideTitleFix('plan.pptx에서 슬라이드 5번 제목 "마무리"로 변경해줘')).toEqual({ slide: 5, title: '마무리', file: 'plan.pptx' })
     expect(slideTitleFix('Change the title of slide 2 to "Key metrics"')).toEqual({ slide: 2, title: 'Key metrics' })
@@ -37,15 +35,15 @@ describe('a slide title by number is changed by the host (D5)', () => {
   })
   it('refuses anything that is not exactly that', () => {
     for (const ask of [
-      '방금 만든 PPT 3번 슬라이드 제목 핵심 지표로 바꿔줘', // no quotes
-      '3번 슬라이드 "핵심 지표"로 바꿔줘', // 제목 missing
-      '3번 슬라이드 본문 "매출: 수치 입력"을 "매출 12억"으로 바꿔줘', // a body text, two quotes
+      '방금 만든 PPT 3번 슬라이드 제목 핵심 지표로 바꿔줘',
+      '3번 슬라이드 "핵심 지표"로 바꿔줘',
+      '3번 슬라이드 본문 "매출: 수치 입력"을 "매출 12억"으로 바꿔줘',
       '3번 슬라이드 제목 아래 문구를 "핵심 지표"로 바꿔줘',
-      '3번 슬라이드 제목 "핵심 지표"로 바꾸고 민호한테 메일로 보내줘', // other work after it
+      '3번 슬라이드 제목 "핵심 지표"로 바꾸고 민호한테 메일로 보내줘',
       '3번 슬라이드 제목 "핵심 지표"로 바꾸면 어떨까?',
-      '3분기 보고 PPT 2번 슬라이드 제목 "일정"으로 바꿔줘', // words before it that are not a pointer at the deck
+      '3분기 보고 PPT 2번 슬라이드 제목 "일정"으로 바꿔줘',
       'a.pptx랑 b.pptx 3번 슬라이드 제목 "핵심 지표"로 바꿔줘',
-      '제목 "핵심 지표"로 바꿔줘', // no slide number
+      '제목 "핵심 지표"로 바꿔줘',
     ]) expect(slideTitleFix(ask), ask).toBeUndefined()
   })
   it('routes such an ask as document work even with no deck word in it', () => {
@@ -76,9 +74,7 @@ describe('a slide title by number is changed by the host (D5)', () => {
     expect(xml).toContain('<a:t>핵심 지표</a:t>')
     expect(xml).not.toContain('주요 지표')
     expect(xml).toContain('전년 대비 성장률: 수치 입력')
-    // One file under the deck's own name.
     expect(await readdir(join(root, 'outputs'))).toHaveLength(1)
-    // A final consonant takes 으로.
     expect((await fixSlideTitle({ slide: 2, title: '일정' }, made, tools(), { task: '' }))!.answer).toBe('2번 슬라이드 제목을 "일정"으로 바꿨어요.')
   })
   it('writes nothing and leaves the turn to the model on a slide past the end, a refused read or a missing tool', async () => {
@@ -106,7 +102,6 @@ describe('which desk turns think briefly (D5, F1)', () => {
     expect(deskLight('deck', '다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적', { made: true })).toBe(false)
     expect(deskLight('deck', '위 회의록으로 워드 보고서 만들어줘', {})).toBe(false)
     expect(deskLight('deck', '차트 추가해서 PPT 새로 만들어줘', { made: true })).toBe(false)
-    // A change with no document in the thread and none named has nothing that exists to change.
     expect(deskLight('deck', '슬라이드 제목 바꿔줘', {})).toBe(false)
     expect(deskLight('tidy', 'fixtures/inbox-dump 폴더 파일들 종류별로 정리해줘', {})).toBe(true)
     expect(deskLight('keep', '이거 기억해?', {})).toBe(true)
@@ -125,7 +120,6 @@ describe('a plain "기억해" is kept by the host (M1), and M2, M3 hold on what 
     expect(plainKeep('우리 팀 회의는 목요일 오후 2시야! 꼭 잊지 마')?.fact).toBe('우리 팀 회의는 목요일 오후 2시야')
     expect(plainKeep('기억해 둬: 내 생일은 3월 2일이야')?.fact).toBe('내 생일은 3월 2일이야')
     expect(plainKeep('Remember that I work with Minho.', '', false)).toEqual({ fact: 'I work with Minho', answer: 'Got it, I\'ll remember that.' })
-    // Said just before: another wording, once.
     expect(plainKeep('나는 판교에 살아. 기억해', '기억해 둘게요.')?.answer).toBe('이것도 기억해 둘게요.')
     expect(plainKeep('나는 판교에 살아. 기억해')!.answer).not.toMatch(/저장|메모리|기억에/)
   })
@@ -161,12 +155,10 @@ describe('recommendations name the trip and are things of that place (H1)', () =
     expect(SHORT_QUESTION_NOTE).toContain('the answer opens with one sentence that names it in the conversation\'s own words and, for picks, says what you went by ("제주 가시면 아버님 무릎 생각해서 덜 걷는 걸로 골랐어요."')
     expect(SHORT_QUESTION_NOTE).toContain('each a thing of that place a person would name (a road, a museum, a market, a dish: "애월 해안도로 드라이브", "오설록 티뮤지엄")')
     expect(SHORT_QUESTION_NOTE).toContain('each with half a clause of why it fits what they told you ("차에서 내려 조금만 걸으면 돼요")')
-    // The competing openers are gone: no example opens without the name.
     expect(SHORT_QUESTION_NOTE).not.toContain('open with what you went by')
     expect(SHORT_QUESTION_NOTE).not.toContain('아버님 무릎 생각해서 많이 안 걷는 걸로 골랐어요.')
     expect(SHORT_QUESTION_NOTE).not.toContain('제주 가시면 이런 게 좋아요.')
     expect(SHORT_QUESTION_NOTE.match(/제주 가시면/g)).toHaveLength(1)
-    // c15c: when a told fact belongs is the general rule in every prompt's conversation and memory lines (core RELEVANCE_RULE), not a trip/lunch line.
     expect(SHORT_QUESTION_NOTE).not.toContain('never a lunch pick')
     for (const held of ['still no question back', 'you never ask which one they mean', 'fitting what they told you earlier about the thing asked', 'asked for three, give three', 'in Korean words only ("드라이브", never "drive-through 느낌")']) expect(SHORT_QUESTION_NOTE, held).toContain(held)
   })
@@ -198,7 +190,6 @@ describe('first lines across a document thread (D5, F1)', () => {
     expect(saidBefore('3번 슬라이드 제목 수정할게요.', said)).toBe(true)
     expect(saidBefore('3번 슬라이드 제목 바꿔 볼게요.', said)).toBe(false)
     expect(saidBefore('금방 돼요.', said)).toBe(false)
-    // Two different endings before it: a "…할게요." line is still fine.
     expect(saidBefore('제목 수정할게요.', ['회의록 내용 정리할게요.', '장표 흐름 짜볼게요.'])).toBe(false)
     expect(saidBefore('제목 수정할게요.', ['회의록 내용 정리할게요.'])).toBe(false)
   })
@@ -221,11 +212,9 @@ describe('a deck carries its Korean text unchanged, in a face that has Korean (D
       const built = await buildDeck({ theme, slides: [{ title: '3분기 실적 보고', subtitle: '다음 주 팀 회의용' }, { title: '3분기 핵심 지표', bullets: lines, table: { rows: [['구분', '7월'], ['매출', '수치 입력']] } }, { title: 'Summary', bullets: ['Revenue up'] }] })
       const zip = await JSZip.loadAsync(built.data), xml = await zip.file('ppt/slides/slide2.xml')!.async('string')
       for (const line of [...lines, '3분기 핵심 지표', '구분', '수치 입력']) expect(xml, line).toContain(`<a:t>${line}</a:t>`)
-      // Every run that holds Hangul names the Korean face (the page number, "2 / 3", keeps the theme's).
       const korean = xml.split('<a:r>').slice(1).filter(run => /<a:t>[^<]*[가-힣]/.test(run))
       expect(korean.length).toBeGreaterThanOrEqual(lines.length + 3)
       for (const run of korean) expect(run).toContain('<a:ea typeface="Malgun Gothic"')
-      // Text without Hangul keeps the theme's own face.
       expect(await zip.file('ppt/slides/slide3.xml')!.async('string')).toContain(`<a:latin typeface="${theme.fonts.title}"`)
     }
   })

@@ -11,9 +11,9 @@ it('does not add a check turn to an answer that changed nothing', async () => {
 })
 
 it.each([
-  ['2026-11-08T20:40:00.000Z', '2026-11-09'], // 05:40 KST
-  ['2026-11-08T16:59:10.588Z', '2026-11-09'], // 01:59 KST, the tester's run
-  ['2026-11-08T14:59:59.999Z', '2026-11-08'], // 23:59 KST, last ms of the previous local day
+  ['2026-11-08T20:40:00.000Z', '2026-11-09'],
+  ['2026-11-08T16:59:10.588Z', '2026-11-09'],
+  ['2026-11-08T14:59:59.999Z', '2026-11-08'],
 ])('files the finished-task capture under the local Asia/Seoul day, not the UTC day (%s)', async (now, day) => {
   const zone = process.env.TZ
   process.env.TZ = 'Asia/Seoul'; vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) })
@@ -410,26 +410,21 @@ it.each(['approve-task', 'approve'] as const)('after %s on a member\'s read card
   })
   const waiting = await t.chat('Plan the launch with a team').then(() => t.settle('waiting'))
   await t.call('tasks:decide', waiting.id, waiting.approvals[0]!.id, answer)
-  // Allowed for the task: every member and the orchestrator read that file with no new card; another file still asks. Allowed once: only that one read.
   await vi.waitFor(async () => expect((await listTasks(t.paths)).at(-1)!.result).toBe(answer === 'approve-task' ? 'approve approve approve later' : 'approve later later later'), { timeout: 5000 })
   const after = await t.settle('waiting')
   expect(after.approvals.filter(a => !a.answer).map(a => a.words)).toEqual([...(answer === 'approve-task' ? [] : [read('Schedule lead: ').words]), read('', 'other.txt').words])
   await t.runner.stopChannel('bot-bot-1')
-  // Another task asks again for the same file.
   await t.chat('Another task')
   const next = await t.settle('waiting')
   expect([next.id === waiting.id, next.approvals.map(a => [a.url, a.answer])]).toEqual([false, [[read('').url, undefined]]])
   await t.runner.stopChannel('bot-bot-1')
 })
 
-// grokbar c5 (stack-4 risk 6): resume() runs 15 s after launch. A task this run of the app had worked on, found running at that moment with
-// its turn between two steps, was closed with the restart question as a leftover of the last run.
 it('the after-launch resume closes leftovers of the last run and never work begun in this one', async () => {
   const t = await setup(async () => done('끝냈어요'))
   await t.chat('이번 주 일정 정리해줘')
   const own = await t.settle('done')
   const left = await createTask(t.paths, '어제 하던 일', 'bot-2')
-  // Both are stored as running with no turn holding their thread.
   await updateTask(t.paths, own.id, x => { x.state = 'running' })
   await updateTask(t.paths, left.id, x => { x.state = 'running'; x.turns = 1 })
   await t.runner.resume()

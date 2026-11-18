@@ -8,7 +8,6 @@ import type { CometMessage } from '../src/renderer/src/lib/cometThreads.js'
 
 const shown = (messages: CometMessage[]) => renderToStaticMarkup(createElement(CometMessages, { messages, busy: false, status: '', workLines: [], keptWork: [] }))
 
-// Suggested-reply chips are gone: the person answers in their own words, in any language.
 it('an answer offers no reply chips, in a Korean thread or an English one', () => {
   const korean = shown([
     { role: 'user', text: '봇 세 개 만들어서 앱 테스트하게 해줘' },

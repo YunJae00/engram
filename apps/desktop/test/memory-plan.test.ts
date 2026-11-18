@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EMBEDDER_FOOTPRINT, EMBEDDER_MIN_FREE, reserveRoom, ROOM_FOR_EMBEDDER, roomNow } from '../src/main/memory-plan.js'
 
-// A heavyweight is admitted against the memory it is about to spend, not the
-// memory it has spent; until it is handed back, that room is not there for
-// anything else to be planned into.
 describe('reserveRoom', () => {
   it('takes spoken-for room out of the plan until it is released', () => {
     const release = reserveRoom(1e15)

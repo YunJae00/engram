@@ -94,7 +94,6 @@ describe('quiet app access', () => {
     const { request } = binding({ foreground: true, idleMs: 100 })
     const result = await quietScan('bot-one', 'Claude', 'Send')
     expect(result.snapshot).toBe('f'.repeat(32))
-    // The window already bound for this chat is reused; another title binds anew.
     expect(deps.bind).not.toHaveBeenCalled()
     await quietScan('bot-one', 'Notes', undefined)
     expect(deps.bind).toHaveBeenCalledWith('bot-one', { app: 'Notes' })

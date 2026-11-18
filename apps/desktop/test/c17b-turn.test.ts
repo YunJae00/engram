@@ -13,12 +13,9 @@ import { checkPrompt } from '../../../packages/core/src/written-check.js'
 
 const ipc = readFileSync(join(__dirname, '../src/main/ipc.ts'), 'utf8')
 
-// c17b (cause C, H2 class): a correction takes the earlier ask's route, but every check reads what the person wants now.
-// Wordings are not the harness's: an inventory quarter, a branch city.
 describe('a correction is checked against the ask as the person changed it', () => {
   const earlier = [{ role: 'user', text: 'inventory.csv에서 3분기 입고 수량 알려줘' }, { role: 'assistant', text: '3분기 입고 수량은 1,240개예요.' }]
   const message = '아니 그거 말고 2분기로'
-  // A stand-in check model that reads the ask the way the prompt says: the later words hold where the two differ.
   const quarterAsked = (prompt: string): string => {
     const asked = /The person asked: (.*)/.exec(prompt)![1]!
     const later = /changed it: \\"([^\\]*)\\"/.exec(asked)?.[1] ?? asked
@@ -33,7 +30,6 @@ describe('a correction is checked against the ask as the person changed it', () 
     const meant = askNow(message, earlier)
     expect(meant).toContain('inventory.csv에서 3분기 입고 수량 알려줘')
     expect(meant).toContain('The person then changed it: "아니 그거 말고 2분기로". Where the two differ, the later words hold.')
-    // Not a correction: the message itself.
     expect(askNow('inventory.csv 품목 수 알려줘', earlier)).toBe('inventory.csv 품목 수 알려줘')
   })
   it('a 2분기 draft is not called "contradicts", and is delivered as written', async () => {
@@ -43,7 +39,6 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(out).toBe(draft)
     expect(prompts).toHaveLength(1)
     expect(prompts[0]).toContain('2분기')
-    // The route text alone (the H2 bug) makes the same check call the right draft wrong.
     expect(fakeCheck(checkPrompt({ data: {}, ask: routeAsk(message, earlier), parts: true }, draft))).toContain('contradicts')
   })
   it('a check rewrite reads the later words too, so it cannot put 3분기 back', async () => {
@@ -51,8 +46,6 @@ describe('a correction is checked against the ask as the person changed it', () 
     const said = [JSON.stringify({ problems: [{ kind: 'missing', quote: '입고 수량', why: '' }] })]
     const out = await checkedDesk({
       ask: askNow(message, earlier), draft: '2분기는 980개예요.', source: '분기,입고\n2,980\n3,1240', fromSource: true, since: Date.now(),
-      // The rewriter writes the quarter its prompt says the person wants now.
-      // c18b: the one repair is scoped (core repairedWrite): a missing part is added as a line, from the quarter its prompt says is wanted now.
       quick: async p => { prompts.push(p); return p.startsWith('You fix a message') ? JSON.stringify({ insert_after: { 1: [`${quarterAsked(p)}분기 입고 수량은 ${quarterAsked(p) === '2' ? '980' : '1,240'}개예요.`] } }) : said.shift() ?? fakeCheck(p) },
     })
     expect(out).toContain('2분기 입고 수량은 980개예요.')
@@ -64,21 +57,16 @@ describe('a correction is checked against the ask as the person changed it', () 
     const meant = askNow('그냥 부산 걸로 바꿔', before)
     expect(meant).toContain('"그냥 부산 걸로 바꿔"')
     const answer = '할 일\n- 이도윤: 매장 점검 — 12월 3일\n- 정수아: 발주 정리 — 12월 5일\n\n미결\n- 휴무일 조정'
-    // r2: the host cannot tell which earlier words a correction withdrew, so its cut runs only on the correction's own words; the model keeps the rest.
     expect(onlyAsked(meant, answer)).toBe(answer)
     expect(withOffer(meant, '- 이도윤: 매장 점검 — 12월 3일', [], true)).toMatch(/원하시면 담당자별로 보낼 알림 문구도 써 드릴게요\.$/)
   })
-  // c17b r2 (Codex r1): wordings not in the harness: a branch's open questions, a reading list.
   it('a correction that widens the ask keeps what the earlier narrowing word would have cut', () => {
     const before = [{ role: 'user', text: 'docs/branch-week.md에서 할 일만 추려줘' }, { role: 'assistant', text: '- 재고 점검' }]
     const answer = '할 일\n- 재고 점검\n\n미결\n- 휴무일 조정'
     for (const widen of ['아니 그거 말고 다 보여줘', '음 그거 말고 미결까지 같이']) expect(onlyAsked(askNow(widen, before), answer)).toBe(answer)
-    // A correction that narrows in its own words still cuts.
     expect(onlyAsked(askNow('아 그거 말고 할 일만 다시', [{ role: 'user', text: 'docs/branch-week.md 요약해줘' }]), answer)).toBe('- 재고 점검')
-    // Not a correction: unchanged behavior.
     expect(onlyAsked('docs/branch-week.md에서 할 일만 추려줘', answer)).toBe('- 재고 점검')
   })
-  // c17b r3 (Codex r2): a later correction withdraws an earlier correction's narrowing. Wordings not in the harness.
   it('along a chain, only the latest correction narrows', () => {
     const answer = '할 일\n- 발주 확인\n\n미결\n- 회식 날짜'
     const chain = [{ role: 'user', text: 'memo/store-plan.md 정리해줘' }, { role: 'user', text: '아 그거 말고 할 일만' }]
@@ -86,9 +74,7 @@ describe('a correction is checked against the ask as the person changed it', () 
       expect(onlyAsked(askNow(widen, chain), answer)).toBe(answer)
       expect(onlyAsked(askNow('그거 말고 다 줘', [...chain, { role: 'user', text: widen }]), answer)).toBe(answer)
     }
-    // Narrowing said again last still cuts, whatever came between.
     expect(onlyAsked(askNow('아니 그거 말고 할 일만 줘', [...chain, { role: 'user', text: '음 그거 말고 전체로' }]), answer)).toBe('- 발주 확인')
-    // shareReady follows the same rule: an earlier "공유하기 좋게" withdrawn by a later correction no longer trims.
     const notes = '일시: 12월 1일\n\n할 일\n- 발주 확인'
     expect(shareReady(askNow('그거 말고 원래대로', [{ role: 'user', text: 'memo/a.md 요약해줘' }, { role: 'user', text: '아 그거 말고 공유하기 좋게' }]), notes)).toBe(notes)
   })
@@ -102,7 +88,6 @@ describe('a correction is checked against the ask as the person changed it', () 
     expect(routeAsk(third, turns)).toBe('reading/list.md에서 이번 달 읽을 책만 골라줘')
     const meant = askNow(third, turns)
     expect(meant).toContain('changed it: "아 그거 말고 전부로", then "아니 그거 말고 저자별로", then "음 그거 말고 출판연도순으로". Where they differ, the later words hold.')
-    // An ask after the chain that is not a correction starts a new route.
     expect(routeAsk('아 그거 말고 장르별로', [...turns, { role: 'user', text: 'notes/plan.md 요약해줘' }])).toBe('notes/plan.md 요약해줘')
   })
   it('every check, rewrite, filter and offer in the turn reads the meaning; the route alone decides the lane', () => {
@@ -117,14 +102,12 @@ describe('a correction is checked against the ask as the person changed it', () 
   })
 })
 
-// c17b (cause W a, D2/D3 class): background memory waits for the whole person's turn, not only its start.
 describe('memory waits while a person\'s turn runs', () => {
   const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms))
   it('a slow memory call queued between the turn\'s tools does not run next to the turn, and completes after release', async () => {
     const release = turnRunning()
     let started = 0
     const memory = yielding(async () => { started = Date.now(); await tick(30); return 'kept' }, undefined, true)
-    // The turn's next step: it is not slowed and nothing runs beside it.
     const t0 = Date.now()
     await tick(20)
     expect(Date.now() - t0).toBeLessThan(200)
@@ -152,7 +135,6 @@ describe('memory waits while a person\'s turn runs', () => {
   })
 })
 
-// c17b (cause W b, D2 class): a step that streams nothing is cut and asked again once; slow thinking and long tools are not cut.
 type Script = (turn: { content: string; tool: (args: unknown) => Promise<unknown>; interrupted: Promise<void> }) => AsyncGenerator<Record<string, unknown>>
 function scriptedSdk(scripts: Script[]) {
   let interruptions = 0

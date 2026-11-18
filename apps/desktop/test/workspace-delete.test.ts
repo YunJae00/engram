@@ -16,7 +16,6 @@ import { currentWorkspaceRoot, finishWorkspaceDeletion, registerWorkspace, valid
 
 const registry = () => join(fixture.base, 'userData/vaults.json')
 const readRegistry = async () => JSON.parse(await readFile(registry(), 'utf8'))
-// A deletion the person confirmed in a version that still had the switcher: the mark it left in the registry.
 const remove = async (id: string) => { await writeFile(registry(), JSON.stringify({ ...await readRegistry(), pendingDelete: id })) }
 async function vault(name: string) {
   const root = join(fixture.base, name)
@@ -37,7 +36,6 @@ it('offers no way to create, switch to, join or delete a workspace', async () =>
   const first = await vault('first'), second = await vault('second')
   expect(Object.keys(workspaces).filter(name => /ipc|create|switch|join|delete(?!.*Deletion)/i.test(name))).toEqual([])
   expect(fixture.handlers.size).toBe(0)
-  // The one that was open stays the one that opens; the other is still on record and on disk.
   expect(await currentWorkspaceRoot()).toBe(second.root)
   expect((await readRegistry()).vaults.map((one: { id: string }) => one.id)).toEqual([first.id, second.id])
   expect(fixture.trash).not.toHaveBeenCalled()
@@ -47,7 +45,6 @@ it('offers no way to create, switch to, join or delete a workspace', async () =>
 it('lists every other workspace for the merge, and says when the open one is a team\'s', async () => {
   const first = await vault('first'), second = await vault('second'), third = await vault('third')
   expect(await workspacesToMerge()).toEqual({ sources: [{ root: first.root, name: 'first' }, { root: second.root, name: 'second' }], shared: false })
-  // One the person had already asked to delete is not brought back.
   await remove(first.id)
   expect((await workspacesToMerge()).sources).toEqual([{ root: second.root, name: 'second' }])
   const team = await registerWorkspace({ name: 'team', root: join(fixture.base, 'team'), kind: 'team' })
@@ -89,7 +86,6 @@ it('never recycles an unknown id, a broad folder, a mixed folder or a linked vau
   await remove(broad.id)
   await finishWorkspaceDeletion()
   expect(fixture.error).toHaveBeenLastCalledWith('Workspace deletion did not finish', expect.stringContaining('protected app data'))
-  // Start fresh checks every folder the same way before it names one.
   await expect(validatedWorkspaceRoots()).rejects.toThrow('protected app data')
   await writeFile(registry(), JSON.stringify({ ...await readRegistry(), vaults: (await readRegistry()).vaults.filter((one: { id: string }) => one.id !== broad.id), current: kept.id }))
   const mixed = await vault('mixed')

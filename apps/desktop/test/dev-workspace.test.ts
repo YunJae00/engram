@@ -69,7 +69,6 @@ it('isolates work and commits only selected changes without consuming unrelated 
   const root = await mkdtemp(resolve('tmp/dev-git-')), repo = join(root, 'repo'), hooks = join(root, 'empty-hooks')
   await mkdir(repo); await mkdir(hooks)
   const git = (args: string[]) => runDevGit(repo, args, hooks)
-  // The fixture process ceiling prevents discovery of the user's parent repository.
   const plain = join(root, 'plain')
   await mkdir(plain)
   await expect(devWorktree({ id: 'plain', name: 'plain', path: plain }, join(root, 'worktrees'), hooks)).rejects.toThrow('needs a Git repository')

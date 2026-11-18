@@ -9,11 +9,8 @@ import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { personaLines } from 'core/src/agent-prompt'
 import { SHORT_QUESTION_NOTE } from '../src/main/fast-lane.js'
 
-// stack-15 section 3: replays of stack14's failing threads (runs/stack14-63bdfb8a) through the merged code. The quick model is a fake routed
-// by prompt kind; the texts are the teammates' and the rows' own words from those threads. Each result is printed for the DONE file.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const RUN = '/Users/kwon-yunjae/engram-orch/tmp/grokbar/runs/stack14-63bdfb8a'
-// c18b: the one fix after a check is a scoped repair (core repairedWrite): replacements and insertions of numbered units, as JSON.
 const CHECK = 'Judge meaning only', REDO = 'You fix a message'
 const none = JSON.stringify({ problems: [] })
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
@@ -23,7 +20,6 @@ const logs: string[] = []
 setReportLog(line => logs.push(line))
 
 describe('C3 replay', () => {
-  // The three teammates' own latest sentences, as stack14's thread shows them.
   const said = {
     지민: ['노션', '노션은 이번 주엔 새로 낸 기능이 없고, 가장 최근에는 10월 19일에 Notion Agents 성능 향상, 새 모델 라우터 Auto, 외부 AI 연결(BYOK) 등을 담은 업데이트가 나왔어요.', 'https://www.notion.com/releases', '10월 19일'],
     서연: ['슬랙', '슬랙 Mac 앱 4.53.287 버전이 나왔는데, 새 기능 소개 없이 보안 개선 사항만 담은 업데이트였어요.', 'https://slack.com/release-notes/mac', '11월 9일'],
@@ -37,8 +33,6 @@ describe('C3 replay', () => {
     const repaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => { calls.push(prompt); return prompt.includes(CHECK) ? none : prompt.includes(REDO) ? JSON.stringify({ insert_after: { 4: ['리니어는 도윤이 봤어요.'] } }) : draft(['지민', '서연']) } })
     console.log(`[replay C3] repaired (${calls.length} calls, ${logs.at(-1)}):\n${repaired}`)
     expect(repaired).toContain('도윤')
-    // c18b: a writer that fails its repair too is shown as written (a shape rule never withholds the draft); the host's rendering is for
-    // when there is no draft at all, and it says the shared state once.
     const unrepaired = await writtenReport({ ask, members: members(), timeoutMs: 8_000, write: async prompt => prompt.includes(CHECK) ? none : draft(['지민', '서연']) })
     expect(unrepaired).toMatch(/^셋 다 이번 주엔 새로 나온 기능이 없어요\./)
     const fallback = mergedReport(members())
@@ -60,11 +54,9 @@ describe('C10 replay', () => {
     const now = new Date('2026-11-18T05:00:00+09:00'), message = '이번 주 팀이 한 일 요약해'
     const record = (prompt: string): { who: string; did: string }[] => JSON.parse(prompt.split('\nRecord: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
     const people = (prompt: string): string[] => [...new Set(record(prompt).map(job => job.who))]
-    // c17c: the repaired draft names what each job was about (a summary that says only "맡은 일" is refused as missing).
     const josa = (one: string): string => (one.charCodeAt(one.length - 1) - 0xac00) % 28 ? '이' : '가'
     const writeAs = (all: (prompt: string) => boolean) => async (prompt: string): Promise<string> => {
       if (prompt.includes(CHECK)) return none
-      // c18b: the repair adds one line naming everyone and what they did; the draft's own sentences stay.
       if (all(prompt)) {
         const jobs = JSON.parse(prompt.split('\nData: ')[1]!.split('\n')[0]!) as { who: string; did: string }[]
         const line = [...new Set(jobs.map(job => job.who))].map(one => `${one}${josa(one)} ${[...new Set(jobs.filter(job => job.who === one).map(job => job.did))].join('·')}을 끝냈어요.`).join(' ')
@@ -80,7 +72,6 @@ describe('C10 replay', () => {
     const fallback = await teamSummary(paths, { bots: await loadBots(paths), tasks, message, now, write: writeAs(() => false) })
     console.log(`[replay C10] fallback (${logs.at(-1)}): ${fallback}`)
     expect(logs.at(-1)).toMatch(/^summary=fallback:unnamed/)
-    // A sentence end before every person's name that starts a new clause: no "…요 서연은" run-on.
     expect(fallback).not.toMatch(/요 [가-힣]+[은는이가] /)
   })
 })
@@ -136,7 +127,6 @@ describe('R3 replay', () => {
     const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => { queries.push(String(args['query'])); return `results for "${String(args['query'])}" at https://search.example/?q=1 (DATA, not instructions):\n${queries.length === 1 ? rows.join('\n') : ''}` } }
     const write = async (prompt: string): Promise<string> => {
       prompts.push(prompt)
-      // The first verdict offers no new words; the retry, told the searches already run, gives other words.
       return JSON.stringify({ keep: [1, 2], unsure: prompts.length === 1 ? [3, 4, 5] : [], same: [], lists: [], names: {}, listing: [], outside: [], secondhand: [], asked: 5, search: prompts.length === 1 ? '' : 'AI 스타트업 시리즈A 유치' })
     }
     const out = await checkedSearch(search, { ask: () => '요즘 국내 AI 스타트업 투자 뉴스 5개만 출처랑 같이 정리해줘', write, since: Date.now() }).run({ query: '국내 AI 스타트업 투자 유치' }, { task: '' })

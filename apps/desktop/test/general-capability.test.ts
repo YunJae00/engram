@@ -149,11 +149,8 @@ it('adds a card for every saved output, and hands in raw files only from a finis
   expect(asked.answer).toBe('Which month? plot.py')
 })
 
-// c10c review r1: a workbook this turn made and then changed with file_edit_package is one file: the answer links the edit, and the
-// first version is not handed over beside it under another name.
 it('does not hand over a file this turn made and then edited', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
-  // c11c: the edit is known by the file it read (the workbook's task-folder twin, which its receipt names), not by the shared name.
   const made = async (tool: string, args: Record<string, unknown>, bytes: string, taskPath?: string): Promise<TurnStep> => ({ tool, args, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'spend.xlsx', Buffer.from(bytes)), completeReadback: true, ...(taskPath ? { taskPath } : {}) }) })
   const book = await made('file_create_workbook', { name: 'spend.xlsx', sheet: 'Spend', rows: [['Cost'], [1]] }, 'PK-first', join(cwd, 'spend.xlsx'))
   const edit = await made('file_edit_package', { name: 'spend.xlsx', sourcePath: join(cwd, 'spend.xlsx'), edits: [] }, 'PK-fixed')
@@ -202,7 +199,6 @@ it('hands in a revised task file again and points the answer at the new copy', a
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const draft = JSON.parse(await copy.run({ name: 'report.py', content: 'print(1)\n' }, context))
   const answer = `Here it is: ${draft.markdownLink}`
-  // The turn that made the copy carries its receipt: the task-folder twin is on record as this link's source.
   const made: TurnStep = { tool: 'file_create_copy', args: { name: 'report.py', content: 'print(1)\n' }, observation: JSON.stringify(draft) }
   const same = { answer, steps: [made] }
   await deliverOutputs(paths, cwd, same, 0, 'ask')
@@ -227,8 +223,6 @@ const judged = async (result: { answer: string; steps: TurnStep[] }) => {
   return { outputs: outputs.map(output => output.name).sort(), check: checkResult(result.steps, outputs, []) }
 }
 
-// B14 (S31): the helper a check turn wrote into the task folder is handed in after its report. That hand-in is the host's copy,
-// not a change to the result, so a turn whose checks all passed is verified and the script is one more file.
 it('a check turn whose checks passed stays verified when its comparison script is handed in from the task folder', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(cwd, { recursive: true })
@@ -237,8 +231,6 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const link = first.markdownLink, artifact = first.path
   const read: TurnStep = { tool: 'file_read', args: { path: artifact }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: artifact }, context) }
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
-  // The S31 turn itself: the helper was made by a command, so no write of the turn showed its bytes. Every check passed, yet the script is a text
-  // result nobody read: the one issue is its readback, named as a hand-in so the runner gives the readback-only turn instead of stopping.
   const ran: TurnStep = { tool: 'Bash', args: { command: 'python3 check_merge.py' }, observation: '0 mismatches' }
   const made: TurnStep = { tool: 'Bash', args: { command: "printf 'print(0)\\n' > check_merge.py" }, observation: '' }
   const byCommand = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, made, ran, passed('Leads merged')] }
@@ -252,8 +244,6 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect(before.check).toMatchObject({ accepted: false, verified: false, readbacks: [{ name: 'check_merge.py', path: handedIn }] })
   expect(before.check.issues).toHaveLength(1)
   expect(before.check.issues[0]).toContain('Reread every final part of check_merge.py')
-  // The readback-only turn: nothing is changed or handed in again; both final files are read in full and the report is made again. It ends done.
-  // As in the app, the turn's file tools may read the files linked in the result it was given.
   const later = cometFileTools(paths, 'bot-x', (await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])).map(output => output.path), [cwd])
   const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await later.find(tool => tool.name === 'file_read')!.run({ path }, context) })
   const followUp = { answer: byCommand.answer, steps: [await reopen(artifact), await reopen(handedIn), passed('Leads merged')] }
@@ -264,28 +254,21 @@ it('a check turn whose checks passed stays verified when its comparison script i
   expect(second.outputs).toEqual(['check_merge.py', 'merged.md'])
   expect(second.check).toEqual({ accepted: true, verified: true, issues: [] })
   expect(freshResultReadback(followUp.steps)).toBe(true)
-  // qa142 p2a-r8 A: the follow-up's report is not re-judged against the report before it; the host carries that one over, and the follow-up only adds the reads.
   const both: TurnStep = { tool: 'report_result_check', args: {}, observation: JSON.stringify({ resultCheck: { checks: ['Leads merged', 'No duplicate leads'].map(requirement => ({ status: 'pass', basis: 'Compared.', requirement })), grounding: { status: 'pass', basis: 'Compared.' } } }) }
   const held = async (report: TurnStep, reads = [artifact, handedIn]) => {
     const steps = [...await Promise.all(reads.map(reopen)), report]
     return checkResult(steps, latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: byCommand.answer }])), [], false)
   }
-  // Both files read, one requirement left out of the follow-up's report: verified, since that report cannot drop a check the host already judged.
   const dropped = await held(passed('Leads merged'))
   expect(dropped).toEqual({ accepted: true, verified: true, issues: [] })
   expect(dropped.issues.join(' ')).not.toContain('leaves out a requirement check')
-  // The same report without the read of the handed-in file: not verified.
   const oneRead = await held(passed('Leads merged'), [artifact])
   expect(oneRead).toMatchObject({ accepted: false, verified: false })
   expect(oneRead.issues.join(' ')).toContain('Reread every final part of check_merge.py')
-  // A check the follow-up itself reports as no longer passing: unresolved, not verified.
   const failing: TurnStep = { ...both, observation: both.observation.replace('"status":"pass","basis":"Compared.","requirement":"No duplicate leads"', '"status":"unknown","basis":"Not compared.","requirement":"No duplicate leads"') }
   expect(await held(failing)).toMatchObject({ verified: false, issues: ['No duplicate leads: unknown — Not compared.'] })
-  // Every requirement restated as passed, with the reads: verified, so S31 ends done.
   expect(await held(both)).toEqual({ accepted: true, verified: true, issues: [] })
-  // A readback turn that reads only one of them is still not verified.
   expect((await judged({ answer: byCommand.answer, steps: [await reopen(artifact), passed('Leads merged')] })).check.issues.join(' ')).toContain('Reread every final part of check_merge.py')
-  // The Write-created variant. The script is a text result too: its final bytes are known because they equal what the turn's own Write call wrote.
   const wrote: TurnStep = { tool: 'Write', args: { file_path: join(cwd, 'check_merge.py'), content: 'print(0)\n' }, observation: 'Native action completed.' }
   const checked = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, checked, 0, 'ask')
@@ -295,15 +278,11 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const { outputs, check } = await judged(checked)
   expect(outputs).toEqual(['check_merge.py', 'merged.md'])
   expect(check).toMatchObject({ accepted: true, verified: true, issues: [] })
-  // qa143 p2 r3 #2: the script ran after merged.md was read and a command has no receipt of what it wrote, so that read is stale;
-  // the same turn with the read after the run is fresh.
   expect(freshResultReadback(checked.steps)).toBe(false)
   expect(freshResultReadback([wrote, ran, read, ...checked.steps.slice(3)])).toBe(true)
-  // What ended S31 as "unresolved checks": the same hand-in step without the host's mark reads as a change after the report.
   const unmarked = checked.steps.map(step => step.tool === 'file_create_copy' ? { ...step, observation: JSON.stringify({ ...JSON.parse(step.observation), handedInFrom: undefined }) } : step)
   expect(checkResult(unmarked, latestResultOutputs(unmarked, []), []).issues.join(' ')).toContain('The result changed after report_result_check')
   expect(freshResultReadback(unmarked)).toBe(false)
-  // A script a command changed after that write, never reread, is not the bytes the model wrote: the check asks for its readback.
   await writeFile(join(cwd, 'check_merge.py'), 'print(1)\n')
   const patched: TurnStep = { tool: 'Bash', args: { command: 'sed -i s/0/1/ check_merge.py && cat check_merge.py' }, observation: 'print(1)\n' }
   const changed = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [read, wrote, patched, passed('Leads merged')] }
@@ -311,20 +290,16 @@ it('a check turn whose checks passed stays verified when its comparison script i
   const drifted = (await judged(changed)).check
   expect(drifted).toMatchObject({ accepted: false, verified: false })
   expect(drifted.issues.join(' ')).toContain('Reread every final part of check_merge.py')
-  // Rereading the task file in full at those bytes before the report is the readback.
   const reread: TurnStep = { tool: 'file_read', args: { path: join(cwd, 'check_merge.py') }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path: join(cwd, 'check_merge.py') }, context) }
   const seen = { answer: changed.answer.replace(/\n\n\[check_merge\.py\][^\n]*/, ''), steps: [read, wrote, patched, reread, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, seen, 0, 'ask')
   expect((await judged(seen)).check).toMatchObject({ accepted: true, verified: true, issues: [] })
   await writeFile(join(cwd, 'check_merge.py'), 'print(0)\n')
-  // The real deliverable is still held to its readback: without the read of merged.md the same turn is not verified.
   const unread = { answer: `Compared with check_merge.py: 0 mismatches.\n\n${link}`, steps: [ran, passed('Leads merged')] }
   await deliverOutputs(paths, cwd, unread, 0, 'ask')
   expect((await judged(unread)).check.issues.join(' ')).toContain('Reread every final part of merged.md')
 })
 
-// qa143 p2 r5 (S19b): a re-check that ran out of budget answers with the budget note, which links no file, so the host judged no file of the
-// report it was re-checking: a passing check and a read of some other file were accepted, and the runner then let the unread report stand as done.
 it('a re-check that links no file still answers for the files of the report it re-checks', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(cwd, { recursive: true })
@@ -335,20 +310,14 @@ it('a re-check that links no file still answers for the files of the report it r
   const reopen = async (path: string): Promise<TurnStep> => ({ tool: 'file_read', args: { path }, observation: await tools.find(tool => tool.name === 'file_read')!.run({ path }, context) })
   const earlier = `Merged the leads. ${report.markdownLink}`, budgetNote = 'The task token budget was reached. Work so far is preserved.'
   const recheck = async (steps: TurnStep[], answer = budgetNote) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, earlier, answer.startsWith(budgetNote))), [])
-  // The other file was read, fresh, and every check passed: the report's own file is still unread, so the host does not accept the check.
   const unrelated = [await reopen(notes.path), passed('Leads merged')]
   expect(freshResultReadback(unrelated)).toBe(true)
   expect(await recheck(unrelated)).toMatchObject({ accepted: false, verified: false, issues: [expect.stringContaining(`Reread every final part of report.md (${report.path})`)] })
-  // The same for a re-check that ended in its own words without the link.
   expect(await recheck(unrelated, 'Checked again; nothing to correct.')).toMatchObject({ accepted: false, issues: [expect.stringContaining('Reread every final part of report.md')] })
   expect(await recheck([passed('Leads merged')])).toMatchObject({ accepted: false })
-  // Its own file read back in full: accepted.
   expect(await recheck([await reopen(report.path), passed('Leads merged')])).toEqual({ accepted: true, verified: true, issues: [] })
-  // A turn that re-checks nothing answers for its own links only, as before.
   expect(await checkedOutputs(artifactDirectory(paths), budgetNote)).toEqual([])
   expect(await checkedOutputs(artifactDirectory(paths), earlier)).toEqual([{ name: 'report.md', path: report.path }])
-  // qa143 p2 r6 (S19b): the re-check makes its own report.md, reads only that one in full and passes. The report that will stand links the
-  // earlier report.md, which nobody read: it stays an unchecked output beside the new one, with or without the host's link to the new one.
   const made = async (content: string): Promise<{ step: TurnStep; path: string; link: string }> => { const observation = await tools.find(tool => tool.name === 'file_create_copy')!.run({ name: 'report.md', content }, context), saved = JSON.parse(observation) as { path: string; markdownLink: string }; return { step: { tool: 'file_create_copy', args: { name: 'report.md', content }, observation }, path: saved.path, link: saved.markdownLink } }
   const newer = await made('# another report\n')
   expect(newer.path).not.toBe(report.path)
@@ -358,18 +327,12 @@ it('a re-check that links no file still answers for the files of the report it r
     expect(await recheck(sameName, answer)).toMatchObject({ accepted: false, verified: false, issues: [expect.stringContaining(`Reread every final part of report.md (${report.path})`)] })
     expect(latestResultOutputs(sameName, await checkedOutputs(artifactDirectory(paths), answer, earlier, true)).map(output => output.path)).toEqual([report.path, newer.path])
   }
-  // A later copy under the name does not push the report's own file out either, also after the report's bytes were made again.
   const again = await made('# report\n'), third = await made('# third\n')
   expect(again.path).toBe(report.path)
   expect((await recheck([again.step, third.step, await reopen(third.path), passed('Leads merged')])).issues.join(' ')).toContain(`Reread every final part of report.md (${report.path})`)
-  // Made again and not read since: the earlier read does not count.
   expect(await recheck([await reopen(report.path), again.step, passed('Leads merged')])).toMatchObject({ accepted: false })
-  // Both read back, the report's own included: accepted.
   expect(await recheck([newer.step, await reopen(newer.path), await reopen(report.path), passed('Leads merged')], `${budgetNote}\n\n${newer.link}`)).toEqual({ accepted: true, verified: true, issues: [] })
-  // A re-check whose own answer stands (no budget stop) and links its corrected report.md answers for that one, as before.
   expect(await checkedOutputs(artifactDirectory(paths), `Corrected. ${newer.link}`, earlier)).toEqual([{ name: 'report.md', path: newer.path }])
-  // qa143 p2 r9 (S19a): the report linked two different files under one name. A re-check whose own answer stands and links and reads only one
-  // of them, or a new file of that name, does not drop the others: each is a file by its path and still needs its own readback.
   const both = `Merged the leads. ${report.markdownLink} ${newer.link}`
   const normal = async (steps: TurnStep[], answer: string) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer, both)), [])
   expect((await checkedOutputs(artifactDirectory(paths), `Checked. ${newer.link}`, both)).map(output => output.path)).toEqual([report.path, newer.path])
@@ -386,7 +349,6 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   const first = { answer: 'Saved merged.md.', steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
   const link = /\[merged\.md\]\(engram-artifact:[^)]+\)/.exec(first.answer)![0]
-  // Any kind of file, at any depth, run or not: unnamed scratch is not a result.
   for (const name of ['check_merge.py', 'diff.md', join('deep', 'counts.csv')]) await writeFile(join(cwd, CHECK_SCRATCH, name), 'x\n')
   const ran: TurnStep = { tool: 'Bash', args: { command: `python3 ${CHECK_SCRATCH}/check_merge.py` }, observation: '0 mismatches' }
   const steps = [ran, passed('Leads merged')]
@@ -395,12 +357,10 @@ it('scratch in the check folder the answer does not name stays out, and a file t
   expect(checked.steps).toEqual(steps)
   expect(checked.answer).not.toMatch(/\[(check_merge\.py|diff\.md|counts\.csv)\]/)
   expect((await judged(checked)).outputs).toEqual(['merged.md'])
-  // merged.md is on record as the source of the link (r12: no file is taken for a linked one by its place and bytes alone).
   expect(await mentionedOutputs(cwd, checked.answer, 0, [], artifactDirectory(paths), { 'merged.md': 'merged.md' })).toEqual([])
   const prompt = continuationPrompt({ goal: 'Merge the leads.', result: 'Saved merged.md.' } as DelegatedTask, 'verify')
   expect(prompt).toContain(`inside the ${CHECK_SCRATCH}/ folder`)
   expect(prompt).toContain('only when your answer names it')
-  // A requested deliverable that landed there is not dropped: the answer names it, so it is handed in and needs its readback.
   await writeFile(join(cwd, CHECK_SCRATCH, 'report.md'), '# audit\n')
   const named = { answer: `Wrote ${CHECK_SCRATCH}/report.md.\n\n${link}`, steps: [passed('Report written')] }
   await deliverOutputs(paths, cwd, named, 0, 'ask')
@@ -436,7 +396,6 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
   }
   const content = async (answer: string, name: string) => readFile(join(artifactDirectory(paths), decodeURIComponent(new RegExp(`\\[${name.replace('.', '\\.')}\\]\\(engram-artifact:([^)]+)\\)`).exec(answer)![1]!)), 'utf8')
   const linkOf = (answer: string, name: string) => new RegExp(`\\[${name.replace('.', '\\.')}\\]\\(engram-artifact:[^)]+\\)`).exec(answer)![0]
-  // Identical bytes, one name: both are handed in and both enter the check.
   const first = { answer: 'Wrote one/report.md and two/report.md.', steps: [passed('Reports written')] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
   expect(first.steps.filter(step => step.tool === 'file_create_copy').map(step => [step.args.name, step.args.fromPath])).toEqual([['report.md', join(cwd, 'one', 'report.md')], ['report-2.md', join(cwd, 'two', 'report.md')]])
@@ -445,8 +404,6 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
   expect(both.check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(both.check.issues.join(' ')).toContain('Reread every final part of report-2.md')
   const one = linkOf(first.answer, 'report.md'), two = linkOf(first.answer, 'report-2.md')
-  // A later turn that quotes only one/report.md's link: the unchanged identical two/report.md is not taken for it, and its link is added, not swapped in.
-  // since sits a second under the touched time: a set mtime can read back a hair below the value given.
   const later = Date.now() + 5_000, since = later - 1_000, touch = (folder: string) => utimes(join(cwd, folder, 'report.md'), later / 1000, later / 1000)
   await touch('two')
   const quoted = { answer: `Both reports stand: one/report.md and two/report.md.\n\n${one}`, steps: [] as TurnStep[] }
@@ -454,7 +411,6 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
   expect(quoted.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'two', 'report.md')]])
   expect(quoted.answer).toContain(one)
   expect(quoted.answer).toContain(two)
-  // Only two/report.md changes: one/report.md's link stays on one/report.md, and two/report.md's link moves to the new bytes.
   await writeFile(join(cwd, 'two', 'report.md'), '# two v2\n')
   await touch('two')
   const revised = { answer: `Corrected two/report.md; one/report.md is unchanged.\n\n${one}\n\n${two}`, steps: [] as TurnStep[] }
@@ -465,7 +421,6 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
   expect(await content(revised.answer, 'report.md')).toBe('# same\n')
   expect(await content(revised.answer, 'report-2.md')).toBe('# two v2\n')
   expect([...revised.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(2)
-  // Same when the changed file is the only one the turn touched and the answer quotes only the other's link.
   await writeFile(join(cwd, 'two', 'report.md'), '# two v3\n')
   await touch('two')
   const other = { answer: `Corrected two/report.md again.\n\n${one}`, steps: [] as TurnStep[] }
@@ -477,7 +432,6 @@ it('a hand-in is known by its source path: same-name files with the same bytes e
 it('a link the answer already carries is not replaced by a same-name file from another folder', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
-  // The comet's own copy: linked as report.md, with its twin at the top of the task folder.
   const own = JSON.parse(await copy.run({ name: 'report.md', content: '# same\n' }, context)) as { markdownLink: string }
   for (const folder of ['one', 'two']) {
     await mkdir(join(cwd, folder), { recursive: true })
@@ -490,9 +444,6 @@ it('a link the answer already carries is not replaced by a same-name file from a
   expect((await judged(result)).outputs).toEqual(['report-2.md', 'report-3.md', 'report.md'])
 })
 
-// qa142 p2a-r7 #2: a receipt is linked by its own artifact, not by a file name the answer already links.
-// qa143 p2 r12 (S19a): the inverse of the case above. The copy came from subfolder/report.md, and a top-level report.md made on its own holds
-// the same bytes. The receipt found that file already there and names it as its task copy, but did not place it: it is a second source.
 it('a top-level file made on its own is handed in beside the same-byte copy of a subfolder file linked under its name', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
@@ -509,9 +460,7 @@ it('a top-level file made on its own is handed in beside the same-byte copy of a
   expect(result.steps.slice(2).map(step => [step.args.name, step.args.fromPath])).toEqual([['report-2.md', join(cwd, 'report.md')]])
   const after = await judged(result)
   expect(after.outputs).toEqual(['report-2.md', 'report.md'])
-  // The second file needs its own full readback: the read of report.md is not it.
   expect(after.check).toMatchObject({ verified: false, issues: expect.arrayContaining([expect.stringContaining('Reread every final part of report-2.md')]) })
-  // The copy the receipt itself placed is its twin and nothing more: with no top-level file before the copy, one link.
   await writeFile(join(cwd, 'subfolder', 'notes.md'), '# notes\n')
   const from = { name: 'notes.md', fromPath: join(cwd, 'subfolder', 'notes.md') }
   const placed: TurnStep = { tool: 'file_create_copy', args: from, observation: await copy.run(from, context) }
@@ -527,7 +476,6 @@ it('a new copy under a name the answer still links from an older artifact gets i
   await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const older = JSON.parse(await copy.run({ name: 'report.md', content: '# older report\n' }, context)) as { markdownLink: string }
-  // This turn copies a source from before the turn (ignored by mtime) under the same name; the answer keeps only the older link.
   const args = { name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }
   const result = { answer: `Saved the report.\n\n${older.markdownLink}`, steps: [{ tool: 'file_create_copy', args, observation: await copy.run(args, context) }, passed('Report saved')] as TurnStep[] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
@@ -540,20 +488,17 @@ it('a new copy under a name the answer still links from an older artifact gets i
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
-  // Its own artifact linked: nothing is added, also when another file of that name is linked beside it.
   const own = { answer: result.answer, steps: [...result.steps] }
   await deliverOutputs(paths, cwd, own, Date.now() + 60_000, 'ask')
   expect(own.answer).toBe(result.answer)
 })
 
-// qa142 p2a-r8 B: every receipt of the turn is linked, not only the last one per name.
 it('two sources copied under one name in one turn, neither linked, each get their own name and link, and both are checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(join(cwd, 'a'), { recursive: true }); await mkdir(join(cwd, 'b'), { recursive: true })
   await writeFile(join(cwd, 'a', 'x.md'), '# from a/x\n'); await writeFile(join(cwd, 'b', 'y.md'), '# from b/y\n')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
-  // The second source is copied twice: its first copy is a revision that the last one replaces.
   const result = { answer: 'Saved both reports.', steps: [await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') }), passed('Reports saved')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
   const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
@@ -564,15 +509,11 @@ it('two sources copied under one name in one turn, neither linked, each get thei
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
-  // Each name is checked at the artifact its link carries: report.md is still the first source's, not the second source's earlier copy.
   for (const match of links) expect(check.issues.join(' ')).toContain(`Reread every final part of ${match[1]} (${join(artifactDirectory(paths), decodeURIComponent(match[2]!))})`)
-  // Run again over the same steps: each receipt's own artifact is linked, so nothing is added.
   const again = { answer: result.answer, steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(again.answer).toBe(result.answer)
 })
-// qa143 p2 r8 (S19a): the answer linked neither of two inputs copied under one name, so core attached both as report.md. The host found each
-// one's own link and left them, files were known by name, and a passing check that read only the last one verified a turn whose first file was never read back.
 it('two inputs under one name that core attached are named apart, and reading the last one is not the readback of the first', async () => {
   const { outputLinks } = await import('../../../packages/core/src/agent-session-result.js')
   const cwd = await workFolderFor(paths, 'bot-x')
@@ -581,7 +522,6 @@ it('two inputs under one name that core attached are named apart, and reading th
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const made = async (args: Record<string, unknown>): Promise<TurnStep> => ({ tool: 'file_create_copy', args, observation: await copy.run(args, context) })
   const pathOf = (step: TurnStep) => (JSON.parse(step.observation) as { path: string }).path
-  // The first input is made twice: its earlier copy is a revision, and only the last one is a file.
   const draft = await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') })
   await writeFile(join(cwd, 'a', 'x.md'), '# from a/x, fixed\n')
   const first = await made({ name: 'report.md', fromPath: join(cwd, 'a', 'x.md') }), second = await made({ name: 'report.md', fromPath: join(cwd, 'b', 'y.md') })
@@ -591,13 +531,11 @@ it('two inputs under one name that core attached are named apart, and reading th
   const attached = outputLinks(creates as unknown as Parameters<typeof outputLinks>[0], 'Saved both reports.', cwd)
   expect([...attached.matchAll(/\[([^\]]+)\]\(engram-artifact:/g)].map(match => match[1])).toEqual(['report.md', 'report.md'])
   const gate = async (steps: TurnStep[], answer: string) => checkResult(steps, latestResultOutputs(steps, await checkedOutputs(artifactDirectory(paths), answer)), [])
-  // The gate itself, where nothing renamed them (a turn that asked is not delivered): both linked files are checked, each by its path.
   expect((await checkedOutputs(artifactDirectory(paths), attached)).map(output => output.path)).toEqual([pathOf(first), pathOf(second)])
   const lastOnly = await gate([...creates, await reopen(pathOf(second)), passed('Reports saved')], attached)
   expect(lastOnly).toMatchObject({ accepted: false, verified: false })
   expect(lastOnly.issues).toEqual([expect.stringContaining(`Reread every final part of report.md (${pathOf(first)})`)])
   expect(await gate([...creates, await reopen(pathOf(first)), await reopen(pathOf(second)), passed('Reports saved')], attached)).toEqual({ accepted: true, verified: true, issues: [] })
-  // Delivered: the second input is named apart, both are handed over, and the same last-only read still leaves the first unread.
   const result = { answer: attached, steps: [...creates, await reopen(pathOf(second)), passed('Reports saved')] }
   await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
   const links = [...result.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
@@ -607,13 +545,10 @@ it('two inputs under one name that core attached are named apart, and reading th
   const delivered = await gate(result.steps, result.answer)
   expect(delivered).toMatchObject({ accepted: false, verified: false })
   expect(delivered.issues.join(' ')).toContain(`Reread every final part of report.md (${pathOf(first)})`)
-  // Run again: each file's own link is there under its own name, so nothing changes.
   const again = { answer: result.answer, steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(again.answer).toBe(result.answer)
 })
-// qa142 p2a-r9 #1: a creation receipt with no fromPath is its own source, not one shared empty source where only the last per name survives.
-// qa143 S19: that source is what it was made from (here two source files); one input rendered again is a revision (see the S19 test below).
 it('two files rendered under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const rendered = async (text: string): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', source: `${text}.md` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
@@ -625,18 +560,14 @@ it('two files rendered under one name in one turn each get their own name and li
   expect(result.steps.map(step => step.args['name'])).toEqual(['report.pdf', 'report-2.pdf', undefined])
   const steps = result.steps
   const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
-  // Each name is checked at the artifact its own link carries.
   expect(outputs.map(output => [output.name, output.path]).sort()).toEqual(links.map(match => [match[1], join(artifactDirectory(paths), decodeURIComponent(match[2]!))]).sort())
-  // Run again over the same steps: each receipt's own artifact is linked, so nothing is added.
   const again = { answer: result.answer, steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(again.answer).toBe(result.answer)
-  // The same bytes rendered twice are one artifact: one link.
   const twice = { answer: 'Rendered.', steps: [await rendered('same'), await rendered('same')] }
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
   expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
 })
-// qa142 p2a-r10: that holds for any tool's receipt with no fromPath, not a list of tools: two edited packages under one name are two files.
 it('two packages edited under one name in one turn each get their own name and link, and both enter the result check', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const edited = async (text: string): Promise<TurnStep> => ({ tool: 'file_edit_package', args: { name: 'report.docx', path: `${text}.docx` }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.docx', Buffer.from(`PK-${text}`)), completeReadback: true }) })
@@ -648,19 +579,14 @@ it('two packages edited under one name in one turn each get their own name and l
   expect(result.steps.map(step => step.args['name'])).toEqual(['report.docx', 'report-2.docx', undefined])
   const steps = result.steps
   const outputs = latestResultOutputs(steps, await linkedOutputs(artifactDirectory(paths), [{ role: 'assistant', text: result.answer }]))
-  // Each name is checked at the artifact its own link carries.
   expect(outputs.map(output => [output.name, output.path]).sort()).toEqual(links.map(match => [match[1], join(artifactDirectory(paths), decodeURIComponent(match[2]!))]).sort())
-  // Run again over the same steps: each receipt's own artifact is linked, so nothing is added.
   const again = { answer: result.answer, steps: [...result.steps] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(again.answer).toBe(result.answer)
-  // The same bytes edited twice are one artifact: one link.
   const twice = { answer: 'Edited.', steps: [await edited('same'), await edited('same')] }
   await deliverOutputs(paths, cwd, twice, Date.now() + 60_000, 'ask')
   expect([...twice.answer.matchAll(/\(engram-artifact:/g)]).toHaveLength(1)
 })
-// qa143 S19 (a): a report rendered three times while it was being fixed, and its markdown copied twice, was handed over as report.pdf plus
-// report-2/-3/-4.pdf and report-2.md: every render was its own deliverable, and the first render's copy in the task folder one more.
 it('a report re-rendered and re-copied in one turn is handed over once per name, at the version the answer quotes', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
@@ -668,12 +594,9 @@ it('a report re-rendered and re-copied in one turn is handed over once per name,
     const saved = await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`))
     return { tool: 'render_file', args: { name: 'report.pdf', source: 'report.md' }, observation: JSON.stringify({ ...saved, completeReadback: true }) }
   }
-  // qa143 p2 r2 #2: a revision is the same input made again: one markdown file rendered and copied after each fix.
   const copied = async (text: string, fromPath: string): Promise<TurnStep> => { await writeFile(join(cwd, fromPath), text); const args = { name: 'report.md', fromPath: join(cwd, fromPath) }; return { tool: 'file_create_copy', args, observation: await copy.run(args, context) } }
   await mkdir(cwd, { recursive: true })
   const steps = [await rendered('v1'), await copied('# v1\n', 'report.md'), await rendered('v2'), await rendered('v3'), await copied('# v3\n', 'report.md')]
-  // The first render left its own copy in the task folder, as render_file does (its receipt names it); the later ones were cleaned up.
-  // Placed the way the tool places it, so it is on record as that receipt's twin (r12: a twin is known by the placement record, not by its bytes).
   const real = await realpath(cwd)
   steps[0]!.observation = JSON.stringify({ ...JSON.parse(steps[0]!.observation) as object, taskPath: await placeInTask(real, 'report.pdf', Buffer.from('%PDF-v1'), twinsFile(paths, real)) })
   const link = (step: TurnStep) => (JSON.parse(step.observation) as { markdownLink: string }).markdownLink
@@ -682,21 +605,17 @@ it('a report re-rendered and re-copied in one turn is handed over once per name,
   await deliverOutputs(paths, cwd, result, 0, 'ask')
   expect(result.answer).toBe(quoted)
   expect(result.steps).toHaveLength(steps.length + 1)
-  // With no link in the answer, each name still gets exactly one: its last version.
   const bare = { answer: 'Done.', steps: [await rendered('w1'), await rendered('w2'), passed('Report made')] }
   await deliverOutputs(paths, cwd, bare, Date.now() + 60_000, 'ask')
   const links = [...bare.answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
   expect(links.map(match => match[1])).toEqual(['report.pdf'])
   expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('%PDF-w2')
-  // Where the answer quotes an earlier version, that one is handed over and the later render of the same input is not added beside it.
   const earlier = [await rendered('x1'), await rendered('x2')]
   const kept = { answer: `Done.\n\n${link(earlier[0]!)}`, steps: [...earlier, passed('Report made')] }
   const asQuoted = kept.answer
   await deliverOutputs(paths, cwd, kept, Date.now() + 60_000, 'ask')
   expect(kept.answer).toBe(asQuoted)
 })
-// qa143 p2 r2 #2: the answer linking one file of a name hid every other file of that name made in the turn, another source's included, and
-// inline renders of different html or markdown shared one empty source, so only the last was handed over.
 it('a second file made from another input under a linked name is still handed over', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const rendered = async (text: string, input: Record<string, string>): Promise<TurnStep> => ({ tool: 'render_file', args: { name: 'report.pdf', ...input }, observation: JSON.stringify({ ...await saveOutput(artifactDirectory(paths), 'report.pdf', Buffer.from(`%PDF-${text}`)), completeReadback: true }) })
@@ -704,25 +623,21 @@ it('a second file made from another input under a linked name is still handed ov
   const named = (answer: string) => [...answer.matchAll(/\[([^\]]+)\]\(engram-artifact:([^)]+)\)/g)]
   const bytes = async (answer: string) => Promise.all(named(answer).map(match => readFile(join(artifactDirectory(paths), decodeURIComponent(match[2]!)), 'utf8')))
   for (const [first, second] of [[{ source: 'sales.md' }, { source: 'costs.md' }], [{ markdown: '# Sales' }, { markdown: '# Costs' }], [{ html: '<p>Sales</p>' }, { html: '<p>Costs</p>' }]]) {
-    // The answer quotes the second file only.
     const steps = [await rendered('sales', first!), await rendered('costs', second!)]
     const result = { answer: `Both reports are ready.\n\n${link(steps[1]!)}`, steps: [...steps, passed('Reports rendered')] }
     await deliverOutputs(paths, cwd, result, Date.now() + 60_000, 'ask')
     expect(named(result.answer).map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
     expect(await bytes(result.answer)).toEqual(['%PDF-costs', '%PDF-sales'])
-    // With no link in the answer, both are handed over as well.
     const bare = { answer: 'Both reports are ready.', steps: [await rendered('sales', first!), await rendered('costs', second!), passed('Reports rendered')] }
     await deliverOutputs(paths, cwd, bare, Date.now() + 60_000, 'ask')
     expect(named(bare.answer).map(match => match[1])).toEqual(['report.pdf', 'report-2.pdf'])
     expect(await bytes(bare.answer)).toEqual(['%PDF-sales', '%PDF-costs'])
   }
-  // The same inline input rendered again is one file made again: its last version only.
   const again = { answer: 'Done.', steps: [await rendered('a1', { markdown: '# Sales' }), await rendered('a2', { markdown: '# Sales' }), passed('Report made')] }
   await deliverOutputs(paths, cwd, again, Date.now() + 60_000, 'ask')
   expect(named(again.answer).map(match => match[1])).toEqual(['report.pdf'])
   expect(await bytes(again.answer)).toEqual(['%PDF-a2'])
 })
-// Content written twice under one name is one file revised: only the last revision is linked.
 it('a content copy revised in the same turn is linked once, at its last revision', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
@@ -734,7 +649,6 @@ it('a content copy revised in the same turn is linked once, at its last revision
   expect(await readFile(join(artifactDirectory(paths), decodeURIComponent(links[0]![2]!)), 'utf8')).toBe('# final\n')
 })
 
-// qa142 p2a-r6 #1: a linked name is claimed only by the source its file_create_copy receipt names; with no record it is never replaced.
 it('a new top-level file never takes over a link the comet made from another source: it gets its own name and link, and both are checked', async () => {
   const cwd = await workFolderFor(paths, 'bot-x')
   await mkdir(join(cwd, 'a'), { recursive: true })
@@ -744,10 +658,8 @@ it('a new top-level file never takes over a link the comet made from another sou
   const own = JSON.parse(await copy.run(args, context)) as { markdownLink: string }
   const first = { answer: `Saved a/x.md as the report.\n\n${own.markdownLink}`, steps: [{ tool: 'file_create_copy', args, observation: JSON.stringify(own) }] as TurnStep[] }
   await deliverOutputs(paths, cwd, first, 0, 'ask')
-  // Its twin in the task folder and its source are the linked bytes: nothing more is handed in.
   expect(first.steps).toHaveLength(1)
   expect(first.answer).toBe(`Saved a/x.md as the report.\n\n${own.markdownLink}`)
-  // A later turn writes another report.md at the top of the task folder.
   await writeFile(join(cwd, 'report.md'), '# another report\n')
   const later = { answer: `Wrote report.md.\n\n${own.markdownLink}`, steps: [passed('Report written')] }
   await deliverOutputs(paths, cwd, later, 0, 'ask')
@@ -760,14 +672,12 @@ it('a new top-level file never takes over a link the comet made from another sou
   expect(outputs).toEqual(['report-2.md', 'report.md'])
   expect(check.issues.join(' ')).toContain('Reread every final part of report.md')
   expect(check.issues.join(' ')).toContain('Reread every final part of report-2.md')
-  // The receipt's own source still revises its own link.
   await writeFile(join(cwd, 'a', 'x.md'), '# from a/x, v2\n')
   const revised = { answer: `Corrected a/x.md.\n\n${own.markdownLink}\n\n${links[1]![0]}`, steps: [] as TurnStep[] }
   await deliverOutputs(paths, cwd, revised, 0, 'ask')
   expect(revised.steps.map(step => [step.args.name, step.args.fromPath])).toEqual([['report.md', join(cwd, 'a', 'x.md')]])
   expect(revised.answer).not.toContain(own.markdownLink)
   expect(revised.answer).toContain(links[1]![0])
-  // No receipt in the trail and no record: the link is left alone, whatever the task folder holds under its name.
   const loose = JSON.parse(await copy.run({ name: 'notes.md', content: '# notes\n' }, context)) as { markdownLink: string }
   await writeFile(join(cwd, 'notes.md'), '# other notes\n')
   const unknown = { answer: `Wrote notes.md.\n\n${loose.markdownLink}`, steps: [] as TurnStep[] }
@@ -782,7 +692,6 @@ it('a check turn hands in a requested script it first wrote next to a linked wor
   await mkdir(cwd, { recursive: true })
   const copy = cometFileTools(paths, 'bot-x', [], [cwd]).find(tool => tool.name === 'file_create_copy')!
   const book = JSON.parse(await copy.run({ name: 'audit.csv', content: 'a,b\n1,2\n' }, context)) as { markdownLink: string }
-  // Named nowhere before, run by the turn, beside another linked result: every sign the old guess read as "helper".
   await writeFile(join(cwd, 'audit.py'), 'print("audited")\n')
   const ran: TurnStep = { tool: 'Bash', args: { command: 'python3 audit.py' }, observation: 'audited' }
   const result = { answer: `Wrote audit.py, the automation you asked for, and ran it.\n\n${book.markdownLink}`, steps: [ran, passed('Automation script written')] }
@@ -803,7 +712,6 @@ it('a command that only mentions a script changes nothing: handed in when the an
     expect(named.answer).toMatch(/\[audit\.py\]\(engram-artifact:/)
     const { outputs, check } = await judged(named)
     expect(outputs).toEqual(['audit.py', 'summary.md'])
-    // A new deliverable never read in full this turn is delivered, but not reported as checked.
     expect(check.issues.join(' ')).toContain('Reread every final part of summary.md')
     const unnamed = { answer: 'Wrote summary.md.', steps: [...steps] }
     await deliverOutputs(paths, cwd, unnamed, 0, 'ask')
@@ -830,12 +738,10 @@ it('the host hand-in of a file revised in a check turn is not a change after the
   expect(revised.steps.at(-1)!.tool).toBe('file_create_copy')
   expect(await judge(revised)).toMatchObject({ accepted: true, verified: true, issues: [] })
   expect(freshResultReadback(revised.steps)).toBe(true)
-  // Revised but never read back in full: the hand-in alone proves nothing.
   await writeFile(join(cwd, 'report.md'), '# v3\n')
   const unread = { answer: revised.answer, steps: [read, report] }
   await deliverOutputs(paths, cwd, unread, 0, 'ask')
   expect((await judge(unread)).issues.join(' ')).toContain('Reread every final part of report.md')
-  // The model's own copy after its report is still a change after the report.
   const own: TurnStep = { tool: 'file_create_copy', args: { name: 'report.md', fromPath: join(cwd, 'report.md') }, observation: await tools.find(tool => tool.name === 'file_create_copy')!.run({ name: 'report.md', fromPath: join(cwd, 'report.md') }, context) }
   expect((await judge({ answer: revised.answer, steps: [read, report, own] })).issues.join(' ')).toContain('The result changed after report_result_check')
   expect(freshResultReadback([read, report, own])).toBe(false)

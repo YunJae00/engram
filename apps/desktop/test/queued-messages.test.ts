@@ -37,7 +37,6 @@ it('keeps a recorded late follow-up out of automatic resend and preserves the ne
   expect(store.thread('one').draft).toBe('Still typing')
 })
 
-// grokbar c3 T1: the words were drawn under the answer and the reply was a work line; both now sit where they were said, above the answer to come.
 it('shows words sent mid-reply at once, with the host\'s reply under them and above the answer still to come', async () => {
   const store = createCometThreads()
   const chatSay = vi.fn(async () => ({ ok: true, reply: 'I will look at Seoul only.', action: 'relay' as const, instruction: 'Only Seoul' }))
@@ -50,7 +49,6 @@ it('shows words sent mid-reply at once, with the host\'s reply under them and ab
   expect(store.thread('one').workLines).toEqual([])
   expect(store.thread('one').messages.map(m => [m.role, m.text])).toEqual([['user', 'Find the postings'], ['user', 'Only Seoul please'], ['assistant', 'I will look at Seoul only.'], ['assistant', '']])
   expect(store.thread('one').messages[2]).toMatchObject({ progress: true, aside: true })
-  // The answer lands under the reply, in the bubble that was waiting for it.
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'Seoul postings: 3.' })
   expect(store.thread('one').messages.map(m => m.text)).toEqual(['Find the postings', 'Only Seoul please', 'I will look at Seoul only.', 'Seoul postings: 3.'])
   expect(store.thread('one').queued).toEqual([])
@@ -146,7 +144,6 @@ it('reports attachment queues to the host and clears them after the continuation
   expect(client.chatQueued).toHaveBeenLastCalledWith('one', true)
 })
 
-// qa146 S26: after a short "I'll remember that." the turn only saves the memory; main refuses the relay then.
 it('sends words said after a finished short answer as their own turn once that turn ends, and still relays words said while it streams', async () => {
   const store = createCometThreads()
   let wrappingUp = false

@@ -88,7 +88,6 @@ describe('avatar picker logic', () => {
     await tick()
     expect(done).toEqual([])
     expect(saver.idle()).toBe(true)
-    // The info pane that held one saver per bot is gone; the icon is picked once, when the bot is made.
     expect(existsSync(join(__dirname, '../src/renderer/src/components/BotInfoPane.tsx'))).toBe(false)
     expect(readFileSync(join(__dirname, '../src/renderer/src/components/CreateBotDialog.tsx'), 'utf8')).toContain('AvatarPicker')
   })

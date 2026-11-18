@@ -80,8 +80,6 @@ it.each(['docx', 'pptx'])('checks real %s copies from full content-part reads, n
   expect(await readFile(source)).toEqual(bytes)
 })
 
-// c7c round 2 (Codex r1): a slide's words are changed through the outline with no XML, and the check of that deck has to be the outline too,
-// or the XML read the change removed comes back in the check turn. The outline counts only when the host marked it the whole deck.
 it('checks a deck changed by slide number from one outline read, with no XML part read', async () => {
   const source = join(root, 'deck.pptx'), directory = join(root, 'outputs')
   const slides = new PptxGenJS()
@@ -102,18 +100,15 @@ it('checks a deck changed by slide number from one outline read, with no XML par
   expect(read.completeReadback).toBe(true)
   expect(read.slides[0].title).toBe('3분기 실적 보고')
   expect(JSON.stringify(read.otherTexts)).toContain('발표 전 확인')
-  // Most decks the team builds hold a chart: its labels and values are in the outline too, so it is still the whole deck.
   expect(JSON.stringify(read.otherTexts)).toContain('"7월","8월"')
   expect(JSON.stringify(read.otherTexts)).toContain('3402')
   expect(before.observation).not.toContain('<a:')
   const made = await call('file_edit_package', { sourcePath: source, expectedSha256: read.sha256, name: 'deck.pptx', edits: [{ slide: 1, with: '3분기 실적 요약' }] })
-  // The read from before the write is not the readback of what was written.
   expect(verify([before, made]).accepted).toBe(false)
   const after = await call('file_read_package', { path: JSON.parse(made.observation).path, outline: true })
   expect(JSON.parse(after.observation).slides[0].title).toBe('3분기 실적 요약')
   expect(verify([before, made, after])).toEqual({ accepted: true, verified: true, issues: [] })
   expect(verify([before, made, { ...after, seeded: true }]).accepted).toBe(false)
-  // An outline the host did not mark complete (text it cannot show, e.g. a chart's values) proves nothing: the parts are read as before.
   const partly = JSON.parse(after.observation) as Record<string, unknown>
   delete partly['completeReadback']
   expect(verify([before, made, { ...after, observation: JSON.stringify(partly) }]).accepted).toBe(false)

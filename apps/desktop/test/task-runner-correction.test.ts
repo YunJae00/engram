@@ -12,10 +12,6 @@ it('preserves the engine answer and reported limitations through one verificatio
   expect((await listTasks(t.paths))[0]?.result).toBe(answer)
 })
 
-// qa142: every finished task was reported twice (the answer, then the re-check repeating it).
-// p2b-r7: only the report again is silent; any other answer is posted, once.
-// p2b-r8: whitespace aside only. Emphasis markers and a saved copy's id are part of the text.
-// p2b-r9: the same text only; line endings and whitespace around the whole text aside. Line wrapping is part of the text.
 const unchanged = (report: string, answer: string) => setup(async (_request, turn) => turn === 1
   ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }
   : { ...done(answer, 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'read_open_page', args: {}, observation: 'Read back' }] })
@@ -25,7 +21,6 @@ it('reports once when the re-check passes and repeats the report', async () => {
   await t.chat('Save the report')
   expect(t.sent).toHaveLength(2)
   expect((await listTasks(t.paths))[0]).toMatchObject({ state: 'done', verified: true })
-  // qa143 S19 d: the report waited for its re-check instead of being posted before it, so the runner posts it, once.
   expect(t.delivered).toEqual([report])
 })
 it('posts once a re-check that confirms in words the report lacks', async () => {
@@ -54,7 +49,6 @@ it('still reports what a re-check changed', async () => {
   expect(t.delivered).toEqual([fixed])
 })
 
-// qa142 p2b-r1 #2: silence is only for a re-check that confirms the report; a correction is posted, once.
 it('posts a re-check that passes a requirement the delivered report had left failed, though it changed no file', async () => {
   const corrected = 'The total is 14, not 12 as I said. [Report](engram-artifact:report.md)'
   const verdict = (status: 'pass' | 'fail') => ({ checks: [{ requirement: 'Total matches the source', status, basis: 'Compared with the source' }], grounding: { status: 'pass' as const, basis: 'Read the source' }, sources: [] })
@@ -86,8 +80,6 @@ it('posts a re-check that repeats the report with the file under its saved-copy 
   expect(t.delivered).toEqual([answer])
 })
 
-// qa142 p2b-r2 #1: a readback can correct a statement of a report whose own check passed, without touching a file;
-// only the re-check's own word that the report stands keeps it out of the thread.
 const passed = { checks: [{ requirement: 'Total matches the source', status: 'pass' as const, basis: 'Compared with the source' }], grounding: { status: 'pass' as const, basis: 'Read the source' }, sources: [] }
 const readback = [{ tool: 'read_open_page', args: {}, observation: 'Read back' }]
 const recheck = (answer: string, reportUnchanged?: boolean) => setup(async (_request, turn) => turn === 1
@@ -139,7 +131,6 @@ it('posts once a re-check that repeats the report, rewrapped and emphasised, tho
   expect(t.delivered).toEqual([emphasised])
 })
 
-// qa142 p2b-r3: reportUnchanged is necessary, not sufficient; the host reads the re-check answer itself and posts what corrects or adds.
 it.each([
   ['an English correction', 'The total is 14, not 12 as I said. [Report](engram-artifact:report.md)'],
   ['a Korean correction', '합계는 12가 아니라 14야. [Report](engram-artifact:report.md)'],
@@ -165,7 +156,6 @@ it('reads whether a re-check answer adds anything to the delivered report', () =
   expect(recheckAddsNothing('The total is 12. See https://example.com/a', report)).toBe(false)
   expect(recheckAddsNothing('I corrected the wording; the total is 12.', report)).toBe(false)
 })
-// qa142 p2b-r4: values are compared where they stand, not as a bag; a swap or a unit change of values the report already has is posted.
 it('posts a re-check that swaps values or changes a unit the delivered report already has', () => {
   expect(recheckAddsNothing('A: 14; B: 12.', 'A: 12; B: 14.')).toBe(false)
   expect(recheckAddsNothing('Total: 12 kg.', 'Total: 12 lb.')).toBe(false)
@@ -179,9 +169,6 @@ it('stays silent on the same values repeated and posts a restatement of part of 
   expect(recheckAddsNothing('A: 12; B: 14.', 'Saved. A: 12; B: 14.')).toBe(false)
   expect(recheckAddsNothing('합계 12건, 오류 14건', '저장함. 합계 12건, 오류 14건')).toBe(false)
 })
-// qa142 p2b-r7: the report again is silent whatever its line wrapping; case, punctuation and wording are kept.
-// p2b-r8: so are emphasis markers and a saved copy's id.
-// p2b-r9: line wrapping and full-width forms are kept too; only CRLF/CR and whitespace around the whole text are set aside.
 it('stays silent only when a re-check repeats the report verbatim and posts one with other line wrapping, width or emphasis', () => {
   const report = 'Saved. A: 12; B: 14.\nStatus: passed. [Report](engram-artifact:report.md)'
   expect(recheckAddsNothing(report, report)).toBe(true)
@@ -212,7 +199,6 @@ it('posts a re-check that links another saved copy of the same file name', () =>
   expect(recheckAddsNothing(`Saved.\n[Report](engram-artifact:0a1b2c3d-1111-2222-3333-444455556666-report.md)\n`, first)).toBe(false)
   expect(recheckAddsNothing(`${first}\n`, first)).toBe(true)
 })
-// qa142 p2b-r9: folding characters or whitespace can change what a report says.
 it('posts a re-check whose text differs from the report only by a compatibility form or a line break', () => {
   expect(recheckAddsNothing('The table has 106 rows.', 'The table has 10⁶ rows.')).toBe(false)
   expect(recheckAddsNothing('The table has 10⁶ rows.', 'The table has 106 rows.')).toBe(false)
@@ -252,7 +238,6 @@ it('posts through the runner a swap the re-check calls unchanged', async () => {
   expect(t.delivered).toEqual([swapped])
 })
 
-// qa142 p2b-r5: a correction can carry no value at all; every word is compared in its place.
 it('posts a re-check that changes a status word the delivered report has', () => {
   expect(recheckAddsNothing('Status: failed.', 'Status: passed.')).toBe(false)
   expect(recheckAddsNothing('테스트 실패', '테스트 통과')).toBe(false)
@@ -260,7 +245,6 @@ it('posts a re-check that changes a status word the delivered report has', () =>
   expect(recheckAddsNothing('No errors found.', 'Errors found.')).toBe(false)
   expect(recheckAddsNothing('오류 없음', '오류 있음')).toBe(false)
   expect(recheckAddsNothing('변경 있음', '저장함. 테스트 통과')).toBe(false)
-  // p2b-r6: a word that confirms one report corrects another, so none is taken as a confirmation.
   expect(recheckAddsNothing('Rows match.', 'Rows differ.')).toBe(false)
   expect(recheckAddsNothing('No changes.', 'Changes were made.')).toBe(false)
 })
@@ -284,8 +268,6 @@ it('posts through the runner a status change the re-check calls unchanged', asyn
   expect(t.delivered).toEqual([failed])
 })
 
-// qa143 S19 (d), S31, S32: the answer was posted, then its re-check (told the person had not seen it) answered in full again, a word or two apart.
-// The answer now waits for the re-check the runner starts at once, and only one of the two is posted.
 it('posts only the re-check\'s answer when it rewords a report that was waiting for it', async () => {
   const draft = '보고서 최종본, 검수까지 끝났어요.\n\n[Report](engram-artifact:report.md)', final = '보고서 최종본, 검수까지 마쳐서 그대로 드려요.\n\n[Report](engram-artifact:report.md)'
   const t = await unchanged(draft, final)
@@ -304,8 +286,6 @@ it('still posts the waiting report when its re-check ends without an answer', as
   expect(t.delivered).toEqual([report])
 })
 
-// qa143 p2 r4 #3 (S19d): the waiting report lived only in the runner's memory, with the thread's draft already dropped, so a quit or crash
-// during its re-check lost it. It is saved on the task, and the runner made after the restart posts it, once, before asking how to go on.
 it('posts a report whose re-check the app never finished, from the task, after a restart', async () => {
   const report = 'Saved 12 rows. [Report](engram-artifact:report.md)'
   const first = await setup(async (_request, turn) => turn === 1 ? { ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } } : new Promise<never>(() => {}), false)
@@ -313,7 +293,6 @@ it('posts a report whose re-check the app never finished, from the task, after a
   await vi.waitFor(() => expect(first.sent).toHaveLength(2))
   expect(first.delivered).toEqual([])
   expect((await listTasks(first.paths))[0]).toMatchObject({ state: 'running', unshown: report })
-  // The app quits here: the next runner knows only what is on disk.
   const next = await setup(async () => undefined, false, undefined, undefined, first.paths)
   await next.runner.resume()
   expect(next.delivered).toEqual([report])
@@ -324,12 +303,9 @@ it('posts a report whose re-check the app never finished, from the task, after a
   expect(next.delivered).toEqual([report])
 })
 
-// qa143 p2 r5 (S19d): the host dropped the held answer's visible draft before the runner saved it on the task, so a quit between the two left
-// the report neither on screen, in the thread, nor on disk. It is saved first: a quit right at the drop still leaves it for resume to post.
 it('posts a held report after a restart when the app quit right as its draft was dropped', async () => {
   const report = 'Saved 12 rows. [Report](engram-artifact:report.md)'
   const first = await setup(async () => ({ ...done(report, 1), check: { accepted: false, issues: ['Row count not read back'] } }), false)
-  // The app quits here: the turn never returns to the runner, so nothing after the drop runs.
   first.hooks.afterDrop = () => new Promise<never>(() => {})
   void first.chat('Save the report').catch(() => undefined)
   await vi.waitFor(() => expect(first.events).toContainEqual(expect.objectContaining({ type: 'chat:token', drop: true })))
@@ -347,7 +323,6 @@ it('saves a held answer before its draft leaves the screen, and drops a draft no
   await dropHeldDraft(undefined, 're-check', () => order.push('dropped'))
   expect(order).toEqual(['saved report', 'dropped', 'dropped'])
 })
-// A held answer that is not re-checked after all (the task waits on a card) is posted once and nothing stays saved.
 it('posts once a held answer whose task then waits, and keeps none of it saved', async () => {
   const report = 'Merged both leads.'
   const t = await setup(async (request, _turn, _extra, runner) => {
@@ -360,7 +335,6 @@ it('posts once a held answer whose task then waits, and keeps none of it saved',
   expect((await listTasks(t.paths))[0]!.unshown).toBeUndefined()
 })
 
-// Whatever the re-check then does, nothing stays saved as unshown once the thread has the report or the answer that replaced it.
 it.each([
   ['confirms it', { ...done('Saved 12 rows. [Report](engram-artifact:report.md)', 1), check: { accepted: true, issues: [], reportUnchanged: true }, trail: [{ tool: 'file_read', args: {}, observation: '{}' }] }, 'done'],
   ['leaves its check unresolved', { ...done('I could not verify it.', 1), check: { accepted: false, issues: ['Row count not read back'] } }, 'waiting'],
@@ -374,7 +348,6 @@ it.each([
   expect(t.delivered).toHaveLength(state === 'done' ? 1 : 2)
 })
 
-// qa143 p2 r2 #4: a re-check that did not confirm the waiting report replaced it, so "I could not verify it" was all the thread kept.
 it.each([
   ['reports no result check', (note: string) => done(note, 2), 'The verification turn ended without a result check.'],
   ['leaves its check unresolved', (note: string) => ({ ...done(note, 2), check: { accepted: false, issues: ['Row count not read back'] } }), 'Row count not read back'],

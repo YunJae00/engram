@@ -67,11 +67,9 @@ describe('bot avatar', () => {
         const motion = state === 'working' ? 'working' : size <= 32 ? 'static' : 'idle'
         const html = render({ override: { character: '04-lobe' }, size, state })
         expect(html).toContain(`data-orb="orb-green" data-motion="${motion}" data-master="${size <= 32 ? 'small' : 'full'}"`)
-        // The ripple is redrawn per frame only from 64px; a small working orb shows its work with css alone.
         expect(html.includes('data-ripple="true"'), `${size} ${state}`).toBe(size >= 64)
       }
     }
-    // An orb with no size given (the team tree's 16px orb) is the small master.
     const bare = renderToStaticMarkup(createElement(BotOrb, { orb: 'orb-teal', motion: 'static' }))
     expect(bare).toContain('data-orb="orb-teal" data-motion="static" data-master="small"')
     expect(bare).not.toContain('data-ripple')
@@ -86,7 +84,6 @@ describe('bot avatar', () => {
     for (const part of ['shade', 'mist', 'floor', 'warm', 'cool', 'warm-haze', 'cool-haze', 'rim', 'caustic']) expect(css, part).toMatch(new RegExp(`--${part}: color-mix\\([^;]*var\\(--orb\\) var\\(--tint-(rim|glow|mist)\\)`))
     expect(css).toContain(".bot-orb[data-orb='orb-silver'] { --tint-rim: 0%; --tint-glow: 0%; --tint-mist: 0%; }")
     expect(css.match(/--tint-rim: 0%/g)).toHaveLength(1)
-    // The ball is the same on a light and a dark surface.
     expect(css).not.toMatch(/data-theme/)
   })
 
@@ -102,7 +99,6 @@ describe('bot avatar', () => {
       expect(orbPaths(master, 0.5)).not.toEqual(still)
       expect(orbPaths(master, 0.25)).not.toEqual(orbPaths(master, 0.75))
     }
-    // Thickness of a ribbon at the middle of the ball: its first half runs left to right along the top edge, its second half back along the bottom.
     const thick = (d: string) => {
       const ys = d.slice(1, -1).split('L').map(point => Number(point.split(' ')[1]))
       const mid = Math.floor(ys.length / 4)
@@ -113,9 +109,7 @@ describe('bot avatar', () => {
     expect(ratio).toBeGreaterThan(1.45)
     expect(ratio).toBeLessThan(1.65)
     expect(thick(small[5]!)).toBeGreaterThan(thick(full[5]!) * 2)
-    // The haze widens with the work too.
     expect(thick(full[6]!)).toBeGreaterThan(thick(full[1]!) * 1.3)
-    // The small master has no hooks: its line is lower at the left glass and higher at the right than the full master's, which runs up and down the glass.
     const edge = (d: string, i: number) => Number(d.slice(1).split('L')[i]!.split(' ')[1])
     expect(edge(small[5]!, 0)).toBeGreaterThan(edge(full[5]!, 0))
     expect(edge(small[5]!, 40)).toBeLessThan(edge(full[5]!, 40))
@@ -125,7 +119,6 @@ describe('bot avatar', () => {
     for (const size of SIZES) {
       const html = render({ size, state: 'attention', primary: true })
       expect(html).not.toMatch(/<img|<image|<canvas|url\(|<foreignObject|<text|<filter|<linearGradient|<radialGradient| id=/)
-      // Two svgs: the wave (the dark upper half, two hazes, two fringes, the core) and the working overlay (two hazes, a thicker core).
       expect(html.match(/<svg /g)).toHaveLength(2)
       expect(html.match(/<path /g)).toHaveLength(9)
       expect(html).not.toMatch(/<circle |<rect /)
@@ -135,9 +128,7 @@ describe('bot avatar', () => {
     }
     batch()
     const times = [0, 1, 2].map(() => { const t = performance.now(); batch(); return performance.now() - t })
-    // Shared CI runners (notably macos-26-intel) are several times slower than a dev Mac; the budget guards against regressions, not runner speed.
     expect(Math.min(...times)).toBeLessThan(process.env['CI'] ? 300 : 50)
-    // One frame of the ripple is nine short strings; the shared ticker builds them once for every orb on screen.
     const t = performance.now()
     for (let i = 0; i < 360; i++) orbPaths('full', i / 360)
     expect(performance.now() - t).toBeLessThan(process.env['CI'] ? 1500 : 300)
@@ -149,7 +140,6 @@ describe('bot avatar', () => {
     expect(avatar.startsWith("@import './bot-orb.css';")).toBe(true)
     const css = orb + avatar
     const keyframes = [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\n\}/g)]
-    // The breathe of the light layer under 64px, and the working overlay's pulse.
     expect(keyframes).toHaveLength(2)
     for (const [, body] of keyframes) {
       const props = [...body!.matchAll(/\{\s*([^}]*)\}/g)].flatMap(m => [...m[1]!.matchAll(/(?:^|;)\s*([\w-]+)\s*:/g)].map(p => p[1]!))
@@ -162,13 +152,11 @@ describe('bot avatar', () => {
       for (const one of selector.split(',')) expect(one.trim()).toMatch(/^\.bot-orb\[data-motion='(idle|working)'\]/)
       const [, name, time] = /animation:\s*([\w-]+) (\d+(?:\.\d+)?)s ease-in-out infinite/.exec(body) ?? []
       expect(Number(time)).toBe(12)
-      // The breathe never runs on the small master or on an orb whose wave the ticker redraws; the pulse belongs to working alone.
       if (name === 'bot-orb-breathe') for (const one of selector.split(',')) expect(one).toMatch(/\[data-master='full'\]:not\(\[data-ripple\]\) \.bot-orb-light$/)
       else expect([name, selector]).toEqual(['bot-orb-pulse', ".bot-orb[data-motion='working'] .bot-orb-work"])
     }
     expect(css).not.toMatch(/data-motion='static'/)
     expect(css).not.toMatch(/mix-blend-mode/)
-    // Work begins and ends as one fade of the overlay, not a jump.
     expect(css.match(/transition\s*:[^;]*/g)).toEqual(['transition: opacity 0.9s ease-in-out', 'transition: none !important'])
     expect(orb).toMatch(/\.bot-orb-work \{ opacity: 0; transition: opacity 0\.9s ease-in-out; \}/)
     expect(orb).toMatch(/\.bot-orb\[data-motion='working'\] \.bot-orb-work \{ opacity: 1;/)
@@ -176,10 +164,8 @@ describe('bot avatar', () => {
       expect(sheet).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.bot-(avatar|orb)[^{]*\{ animation: none !important;( transition: none !important;)? \}/)
       expect(sheet).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-(avatar|orb)[^{]*\{ animation-play-state: paused( !important)?; \}/)
     }
-    // The orb's pause has to beat the more specific breathe rule, whose shorthand sets the play state back to running.
     expect(orb).toMatch(/:root:not\(\[data-window-focused='true'\]\) \.bot-orb \* \{ animation-play-state: paused !important; \}/)
     expect(avatar).not.toMatch(/#2F6FEB|#4C86F0|blue/i)
-    // The avatar is the ball alone: a circle that clips its light, with no plate behind it.
     const body = blocks(orb).find(block => block.selector.endsWith('.bot-orb'))!.body
     expect(body).toMatch(/border-radius: 50%; overflow: hidden;/)
     expect([...orb.matchAll(/border-radius:\s*([^;]+);/g)].map(m => m[1])).toEqual(['50%', '50%'])
@@ -188,13 +174,11 @@ describe('bot avatar', () => {
 
   it('redraws the wave from one shared, pausable ticker and nowhere else', () => {
     const orbSource = readFileSync(join(SRC, 'components/BotOrb.tsx'), 'utf8')
-    // One loop for every orb: it is started from sync() and re-armed from inside itself only while an orb is on screen in a visible, focused window.
     expect(orbSource.match(/requestAnimationFrame\(/g)).toHaveLength(2)
     expect(orbSource).toContain('frame = awake() ? requestAnimationFrame(tick) : 0')
     expect(orbSource).toContain('} else if (frame === 0) frame = requestAnimationFrame(tick)')
     expect(orbSource.match(/new IntersectionObserver\(/g)).toHaveLength(1)
     expect(orbSource).toContain("live.size > 0 && !reduced?.matches && !document.hidden && document.documentElement.dataset['windowFocused'] === 'true'")
-    // Reduced motion is read from one media query object, whose change event runs sync(); the tick itself never asks.
     expect(orbSource.match(/matchMedia\(/g)).toHaveLength(1)
     expect(orbSource).toContain("reduced = matchMedia('(prefers-reduced-motion: reduce)')")
     expect(orbSource).toContain("reduced.addEventListener('change', sync)")
@@ -206,7 +190,6 @@ describe('bot avatar', () => {
   })
 
   it('requests no frame while blurred, hidden, under reduced motion or with no orb on screen, and lets go of its observers after the last orb', () => {
-    // A hand-driven frame queue, so every requestAnimationFrame call is counted.
     let requested = 0
     let pending = new Map<number, (now: number) => void>()
     const run = (now: number) => { const due = pending; pending = new Map(); for (const callback of due.values()) callback(now) }
@@ -233,7 +216,6 @@ describe('bot avatar', () => {
       const visible = (value: boolean) => { doc.hidden = !value; for (const fn of listeners) fn() }
 
       const stop = ripple(orb)
-      // Mounted but not on screen yet: no frame.
       expect([requested, pending.size]).toEqual([0, 0])
       observers[0]!.seen([{ target: orb, isIntersecting: true }])
       expect([requested, pending.size]).toEqual([1, 1])
@@ -241,7 +223,6 @@ describe('bot avatar', () => {
       expect([requested, pending.size]).toEqual([6, 1])
       expect(paths[0]!.d).toBe(orbPaths('full', (Math.floor(1160 / (1000 / 30)) * (1000 / 30)) / ORB_LOOP_MS)[0])
 
-      // Blur cancels the pending frame and nothing is requested until focus returns.
       focus(false)
       expect(pending.size).toBe(0)
       const held = paths[0]!.d
@@ -252,7 +233,6 @@ describe('bot avatar', () => {
       frames(3000, 3)
       expect(requested).toBe(10)
 
-      // A hidden document: the same.
       visible(false)
       expect(pending.size).toBe(0)
       frames(4000, 5)
@@ -262,13 +242,11 @@ describe('bot avatar', () => {
       visible(true)
       expect([requested, pending.size]).toEqual([11, 1])
 
-      // Scrolled off screen, then back.
       observers[0]!.seen([{ target: orb, isIntersecting: false }])
       expect(pending.size).toBe(0)
       observers[0]!.seen([{ target: orb, isIntersecting: true }])
       expect([requested, pending.size]).toEqual([12, 1])
 
-      // Reduced motion: the pending frame is cancelled, the orb shows the still wave and no frame is requested, whatever else changes; the ripple restarts on the query's change event.
       frames(4500, 2)
       expect([requested, pending.size]).toEqual([14, 1])
       expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))
@@ -289,7 +267,6 @@ describe('bot avatar', () => {
       frames(4800, 2)
       expect([requested, pending.size]).toEqual([17, 1])
       expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))
-      // An orb that mounts while motion is reduced asks for nothing either.
       reduce(true)
       const late = { querySelectorAll: () => [], getAttribute: () => 'full' } as unknown as Element
       const calm = ripple(late)
@@ -299,7 +276,6 @@ describe('bot avatar', () => {
       reduce(false)
       expect([requested, pending.size]).toEqual([18, 1])
 
-      // A second orb shares the loop and the observer; the loop outlives the first orb and ends with the last.
       const other = { querySelectorAll: () => [], getAttribute: () => 'full' } as unknown as Element
       const stopOther = ripple(other)
       observers[0]!.seen([{ target: other, isIntersecting: true }])
@@ -313,11 +289,9 @@ describe('bot avatar', () => {
       frames(5000, 5)
       expect(requested).toBe(18)
 
-      // A later orb starts again with a fresh observer.
       const again = ripple(orb)
       expect([observers.length, observers[1]!.connected, listeners.size]).toEqual([2, true, 1])
       expect([queries, motion.listeners.size]).toEqual([2, 1])
-      // An orb that stops rippling because it shrank to the small master is left with the small still wave, not the full one.
       observers[1]!.seen([{ target: orb, isIntersecting: true }])
       frames(6000, 3)
       expect(paths.map(path => path.d)).not.toEqual(orbPaths('full', 0))

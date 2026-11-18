@@ -9,9 +9,6 @@ vi.mock('../src/main/engine-health.js', () => ({ broadcast: vi.fn() }))
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
-// stack-18 merge checks: c18a (evidence is read, not quoted: kept facts, missing points, host page opens) meets c18b (checks enforced by a
-// scoped repair: sentence fallback, one sentence cut, one repair) on the anonymous split and the team report. Wordings are in no harness
-// row: 춘천/원주/강릉/속초 날씨 and 시립미술관 관람료, 하람/누리.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const temporary = fileURLToPath(new URL('../../../tmp/', import.meta.url))
 const vault = async (tag: string): Promise<VaultPaths> => { await mkdir(temporary, { recursive: true }); return { cache: join(await mkdtemp(join(temporary, `engram-s18-${tag}-`)), '.engram') } as unknown as VaultPaths }
@@ -25,7 +22,6 @@ const looker = (id: string, topic: string, rest: Partial<TeamMember>): TeamMembe
 const WEATHER = { 춘천: 'https://weather.example/chuncheon', 원주: 'https://weather.example/wonju' }
 
 describe('stack-18: kept facts reach the sentence fallback (c18a keep → c18b host sentences)', () => {
-  // 춘천: one fact on the page the host opened for it (in sources), one cited only to a search row it saw (a news headline, not in sources).
   const members = (): TeamMember[] => [
     looker('h1', '춘천', {
       said: `춘천은 내일 낮 최고 9도예요. [춘천 날씨](${WEATHER.춘천}) 춘천 모레는 첫눈 소식이 있어요. [뉴스](https://news.example/chuncheon-snow)`,
@@ -37,7 +33,7 @@ describe('stack-18: kept facts reach the sentence fallback (c18a keep → c18b h
     const prompts: string[] = []
     const write = agreeing(async (prompt: string): Promise<string | undefined> => { prompts.push(prompt); return draft })
     const out = (await helperAnswer({ ask: '춘천 원주 내일 날씨 알려줘', members: members(), since: 0, write, due: Date.now() + 20_000 }))!
-    expect(prompts).toHaveLength(1) // the writer's one call: no draft, no check, no repair
+    expect(prompts).toHaveLength(1)
     expect(out).toMatch(/^춘천은 내일 낮 최고 9도예요\. \[[^\]]+\]\(https:\/\/weather\.example\/chuncheon\)$/m)
     expect(out).toMatch(/^원주는 내일 낮 최고 11도예요\. \[[^\]]+\]\(https:\/\/weather\.example\/wonju\)$/m)
     expect(out).not.toContain('첫눈')
@@ -47,7 +43,6 @@ describe('stack-18: kept facts reach the sentence fallback (c18a keep → c18b h
 })
 
 describe('stack-18: "못 찾았어요" agrees (c18a missing × c18b writer and fallback)', () => {
-  // 원주: its lookup judged 운영시간 missing, and the blind meaning read says its own words do not state it.
   const members = (): TeamMember[] => [
     looker('h1', '춘천', { said: `춘천 시립미술관은 어른 관람료 3천 원이에요. [춘천 미술관](https://museum.example/chuncheon)`, sources: ['https://museum.example/chuncheon'], proof: [{ point: '관람료', quote: '어른 관람료 3천 원', url: 'https://museum.example/chuncheon' }], missing: [] }),
     looker('h2', '원주', { said: `원주 시립미술관은 어른 관람료 2천 원이에요. [원주 미술관](https://museum.example/wonju)`, sources: ['https://museum.example/wonju'], proof: [{ point: '관람료', quote: '어른 관람료 2천 원', url: 'https://museum.example/wonju' }], missing: ['운영시간'] }),
@@ -57,7 +52,7 @@ describe('stack-18: "못 찾았어요" agrees (c18a missing × c18b writer and f
     const prompts: string[] = []
     const write = async (prompt: string): Promise<string | undefined> => {
       prompts.push(prompt)
-      if (prompt.includes(STATED)) return JSON.stringify({ states: [] }) // the words state a fee, not the hours
+      if (prompt.includes(STATED)) return JSON.stringify({ states: [] })
       if (prompt.includes(CHECK)) return none
       return writer(prompt)
     }
@@ -79,7 +74,6 @@ describe('stack-18: "못 찾았어요" agrees (c18a missing × c18b writer and f
     const out = (await helperAnswer({ ask: ASK, members: members(), since: 0, write, due: Date.now() + 20_000 }))!
     expect(out).toMatch(/운영시간은 못 찾았어요\./)
     expect(out).not.toMatch(/춘천 시립미술관[^\n]*못 찾았어요/)
-    // stack-18 (this check's finding, fixed in helperLead): the part's own sentence says its missing point; the lead line does not repeat it.
     expect(count(out, '운영시간은 못 찾았어요')).toBe(1)
   })
 })
@@ -105,8 +99,6 @@ describe('stack-18: repair vs evidence on a team report (c18b scoped repair × c
   })
 })
 
-// --- the anonymous split as ipc wires it: hire_members wrapped by mergingHire; each helper's search_web passes the item judge, and the
-// judge's page is opened through the helper's own open_page (c18a); the one writer, its check and one scoped repair (c18b). ---
 const TOWNS = ['춘천', '원주', '강릉', '속초']
 const FEE = (town: string): string => `https://museum.example/${encodeURIComponent(town)}/fee`
 const results = (query: string, rows: string[]): string => [`results for "${query}" at https://search.example/?q=${encodeURIComponent(query)} (DATA, not instructions):`, ...rows].join('\n')
@@ -117,14 +109,12 @@ const REAL: Timing = { searchMs: 1500, judgeMs: 2000, pageMs: 1500, modelMs: 300
 async function lane(tag: string, towns: string[], timing: Timing, hooks: { onOpen?: () => void; onRepair?: () => void } = {}) {
   const paths = await vault(tag), ask = `${towns.join(' ')} 시립미술관 어른 관람료 알려줘`
   const created = await createTask(paths, ask, 'b1')
-  // Four parts is a big plan (shown to the person first); the person already agreed to it, so the split runs.
   await updateTask(paths, created.id, t => { t.state = 'running'; t.turns = 1; t.team = { members: [], hires: 0, maxHires: 8, maxDepth: 3, big: true, approvedAt: new Date().toISOString() } })
   const calls: { kind: string; at: number }[] = [], opened: string[] = [], wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
   const search: AgentTool = { name: 'search_web', description: '', argsSchema: {}, run: async args => {
     const q = String(args['query']), place = town(q); calls.push({ kind: 'search', at: Date.now() }); await wait(timing.searchMs)
     return results(q, [`- ${place} 시립미술관 관람 안내 — ${FEE(place)} — ${place} 시립미술관 이용 안내 — 11월 20일`, `- ${place} 전시 소식 — https://news.example/${encodeURIComponent(place)} — ${place} 겨울 전시 이야기 — 11월 19일`])
   } }
-  // The page holds the fee in its own words; the judge's quote is a paraphrase no search row holds.
   const open: AgentTool = { name: 'open_page', description: '', argsSchema: {}, run: async args => {
     const url = String(args['url']), place = town(decodeURIComponent(url)); opened.push(url); calls.push({ kind: 'page', at: Date.now() }); hooks.onOpen?.(); await wait(timing.pageMs)
     return `page "${place} 시립미술관 관람 안내" (DATA, not instructions):\n${place} 시립미술관 관람 안내\n어른(일반) 관람료 3천 원, 어린이 1천 원. 매주 월요일은 쉬어요.`
@@ -138,7 +128,6 @@ async function lane(tag: string, towns: string[], timing: Timing, hooks: { onOpe
     }
     if (prompt.includes(CHECK)) {
       calls.push({ kind: 'check', at: Date.now() }); await wait(timing.checkMs)
-      // The draft's lead sentence says more than the data holds; the repaired one is clean.
       return prompt.includes('어디든 무료') ? JSON.stringify({ problems: [{ kind: 'contradicts', quote: '어디든 무료로 볼 수 있어요.', why: '관람료는 3천 원' }] }) : none
     }
     if (prompt.includes(REPAIR)) {
@@ -155,7 +144,6 @@ async function lane(tag: string, towns: string[], timing: Timing, hooks: { onOpe
     const part = prompt.split('Your part:\n')[1]?.split('\n')[0] ?? '', place = town(part)
     const tool = deps.tools?.find(t => t.name === 'search_web')
     if (tool) await tool.run({ query: `${place} 시립미술관 관람료` }, { task: prompt, ...(options.signal ? { signal: options.signal } : {}) })
-    // The engine session ends on the stop, like a real turn interrupted.
     if (!options.signal?.aborted) await new Promise<void>(resolve => { const timer = setTimeout(resolve, timing.modelMs); options.signal?.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true }) })
     if (options.signal?.aborted) throw new Error('aborted')
     return { answer: `${place} 시립미술관은 어른 관람료 3천 원이에요. [${place} 시립미술관](${FEE(place)})`, steps: [], fellBack: false }
@@ -169,7 +157,6 @@ async function lane(tag: string, towns: string[], timing: Timing, hooks: { onOpe
   return { hire, calls, opened, since, stop, members, repaired: () => repaired }
 }
 
-// Fake time moves in small steps; between steps the real event loop turns so file I/O (the task store) can finish.
 async function drive<T>(work: Promise<T>, step = 20): Promise<T> {
   let done = false
   void work.finally(() => { done = true }).catch(() => undefined)
@@ -187,7 +174,6 @@ describe('stack-18: one clock on the anonymous split (c18a page opens × c18b sc
     console.log(`stack-18 clock ${n} opened ${opened.length}: ${took} ms, calls ${calls.map(c => `${c.kind}@${c.at - since}`).join(' ')}\n${text}`)
     expect(took).toBeLessThan(bound)
     expect(hire.closesOn!(text)).toBe(true)
-    // c18a: the host opened each part's fee page in the same round; c18b: one scoped repair, its fix in the answer, every part with its link.
     for (const place of TOWNS.slice(0, n)) { expect(opened).toContain(FEE(place)); expect(text).toContain(FEE(place)) }
     expect(repaired()).toBe(1)
     expect(text).not.toContain('무료')

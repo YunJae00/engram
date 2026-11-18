@@ -11,9 +11,6 @@ import { SessionPool, STEP_IDLE_MS, type SdkUserMessage, type SessionSdk } from 
 import { tmpVaultRoot } from '../../../packages/core/test/helpers.js'
 import { agreeing } from '../../../packages/core/test/agreeing.js'
 
-// stack-17 merge checks: c17b (route vs meaning of a correction, memory waits for the whole turn, step idle bound) + c17a (evidenced points,
-// host-side page open, one helper due) + c17c (summary keeps job subjects, made-from in a sentence). Wordings are in no harness row:
-// 청주 → 춘천 날씨, 목동/잠실 수영장 요금, 하윤/다인/로운.
 const src = (file: string): string => readFileSync(join(__dirname, '../src/main', file), 'utf8')
 const ipc = src('ipc.ts')
 const tick = (ms = 0): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
@@ -24,7 +21,6 @@ afterEach(() => { vi.useRealTimers() })
 describe('stack-17: a correction after a lookup reaches the item judge as its meaning (c17b askNow × c17a points)', () => {
   const history = [{ role: 'user', text: '청주 내일 날씨 어때?' }, { role: 'assistant', text: '청주는 내일 맑고 낮 최고 13도예요.' }]
   const message = '아니 그거 말고 춘천으로'
-  // A stand-in judge that reads its Ask the way the prompt says: points from what is asked, the place from the later words.
   const judge = (prompts: string[]) => agreeing(async (prompt: string): Promise<string> => {
     prompts.push(prompt)
     const ask = JSON.parse(prompt.split('\n').find(line => line.startsWith('Ask: '))!.slice(5)) as string
@@ -60,8 +56,6 @@ describe('stack-17: a correction after a lookup reaches the item judge as its me
 
 describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenReport data → c17c fallback)', () => {
   const at = new Date().toISOString()
-  // 목동: its own words are a headline it cited to a search row it never opened; the judge verified the fee on the pool's page.
-  // 잠실: the judge verified the fee and found no hours anywhere.
   const parts = (): TeamMember[] => helperParts([
     { id: 'h1', parentId: null, depth: 1, role: '목동 조사', topic: '목동', brief: '목동 수영장 자유수영 요금', lookup: true, state: 'released', review: { ok: true, note: 'auto' }, sessionKey: 's1', hiredAt: at, result: 'x',
       said: '목동 수영장 11월 이용 안내 총정리예요. [블로그](https://blog.example/mokdong)', sources: ['https://search.example/?q=1'],
@@ -79,13 +73,11 @@ describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenRepo
     expect(text).not.toContain('이용 안내 총정리')
     expect(text).not.toContain('blog.example')
     const table = mergedReport(parts(), new Map(), [], true)
-    // c18b: two parts are said in sentences (a table only for 3+ things on 2+ points); the verified value and the missing point are said.
     expect(tableRows(table)).toHaveLength(0)
     expect(table).toContain('자유수영 성인 4,500원')
     expect(table).toContain('pool.example/mokdong')
     expect(table).toContain('운영시간은 못 찾았어요')
     expect(table).not.toContain('총정리')
-    // c17c: no "(name, …)" metadata tag in the host rendering.
     expect(table).not.toMatch(/\((목동|잠실) 조사/)
   })
   it('one helper alone: its row is its quote, not its headline', () => {
@@ -96,8 +88,6 @@ describe('stack-17: evidence reaches the writer (c17a proof → c16a writtenRepo
   })
 })
 
-// The engine session's handler bracket (c17b) is what keeps the idle clock off while a host tool runs: c17a's page open runs inside
-// search_web's own run, so it is a tool, not a model stall.
 function hostToolSdk(script: (tool: (args: unknown) => Promise<unknown>) => AsyncGenerator<Record<string, unknown>>) {
   let interruptions = 0
   const sdk: SessionSdk = {
@@ -133,7 +123,7 @@ describe('stack-17: the step idle bound never cuts a lookup waiting on a host-si
       yield { type: 'assistant', message: { content: [{ type: 'text', text: '목동은 4,500원이에요.' }] } }
       yield { type: 'result', subtype: 'success', result: '목동은 4,500원이에요.' }
     })
-    const job: ToolSessionJob = { workdir: '/tmp' as EngineCwd, system: 'rules', prompt: '목동 수영장 요금', maxCalls: 4, tools: [{ ...tool, run: args => tool.run(args, { task: '목동 수영장 요금' }) }] } // as agent-session's sessionCalls hand it over, with the turn's context
+    const job: ToolSessionJob = { workdir: '/tmp' as EngineCwd, system: 'rules', prompt: '목동 수영장 요금', maxCalls: 4, tools: [{ ...tool, run: args => tool.run(args, { task: '목동 수영장 요금' }) }] }
     const pool = new SessionPool()
     try {
       const turn = pool.run(job, { sdk, binary: 'claude', workdir: '/tmp', model: 'fixture' })
@@ -156,12 +146,11 @@ describe('stack-17: memory waits for a person\'s turn, never for background team
     const release = turnRunning()
     let ran = 0
     const held = yielding(async () => { ran = Date.now(); return 'kept' })
-    const helpers = tick(40) // the turn's helper team, awaited inside the turn
+    const helpers = tick(40)
     await helpers
     expect(ran).toBe(0)
     release()
     expect(await held).toBe('kept')
-    // A teammate working in the background after its ack: no turn is held, so memory does not wait for it.
     const background = tick(10_000)
     const t0 = Date.now()
     expect(await yielding(async () => 'now')).toBe('now')
@@ -186,14 +175,12 @@ describe('stack-17: one clock on a C3-shape split of three teammates (c17a due �
     const calls: string[] = []
     const write = agreeing((prompt: string): Promise<string> => new Promise(resolve => setTimeout(() => {
       calls.push(prompt)
-      // c18b: the one repair is scoped: it adds a line naming 로운; the draft's sentences stay.
       resolve(prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : prompt.includes('You fix a message') ? JSON.stringify({ insert_after: { 4: ['메가커피는 로운이 봤어요.'] } }) : JSON.stringify({ message: `스타벅스랑 투썸은 신메뉴가 나왔고 메가커피는 없어요.\n\n${body(['하윤', '다인'])}`, kept: ['f1', 'f2', 'f3'] }))
     }, 1_500)))
     const pending = writtenReport({ ask: '스타벅스 투썸 메가커피 이번 주 신메뉴 하윤 다인 로운한테 나눠서 알아봐줘', members, write })
     await vi.runAllTimersAsync()
     const out = await pending
-    expect(calls).toHaveLength(3) // draft, its meaning check, the one repair (a shape problem only: no second check)
-    // c18b r2: the repair answers after the writer's 4 s (1.5 s a call, three calls): 로운 is still named, by the host (withEveryone).
+    expect(calls).toHaveLength(3)
     expect(out).toContain('로운')
     for (const link of ['sb', 'ts', 'mg']) expect(out).toContain(`menu.example/${link}`)
     expect(Date.now() - T0).toBeLessThan(35_000)
@@ -222,8 +209,6 @@ describe('stack-17: "멈춰" during a summary repair (c17c) ends it at once', ()
   })
 })
 
-// c17b r3 #2 (Codex): yielding awaited a resolved "no turn" and started without looking again, so a turn that started in the same tick
-// had a memory call running beside it that it never cut.
 describe('stack-17: a turn that starts in the same tick as a memory call holds it back', () => {
   it('the memory call does not start while the turn runs, and runs once it is released', async () => {
     let started = 0
@@ -237,7 +222,6 @@ describe('stack-17: a turn that starts in the same tick as a memory call holds i
   })
 })
 
-// c17c r3 #1 (Codex): a job whose every word is filler ("주말 소식 조사") had no words to check, so a summary that left it out passed.
 describe('stack-17: a job said only in filler words is still checked in the summary', () => {
   it('a draft that leaves out the 주말 소식 job is refused as missing and repaired', async () => {
     const logged: string[] = []
@@ -247,7 +231,6 @@ describe('stack-17: a job said only in filler words is still checked in the summ
       await createBot(paths, { name: '엔그램' })
       await staffTool(paths, () => undefined).run({ add: [{ name: '하윤', role: '리서치 담당' }, { name: '다인', role: '리서치 담당' }] }, { task: '' })
       await recordFacts(paths, TEAM_MEMORY, ['주말 소식 조사 → 성수 팝업 두 곳 (하윤, 2026-11-18)', '스타벅스 신메뉴 조사 → 겨울 딸기 라떼 (다인, 2026-11-18)'], new Date('2026-11-18T01:00:00.000Z'))
-      // c18b: the subject is not in any sentence of the draft, so the scoped repair adds it as a line; the draft's sentences stay.
       const left = '오늘은 하윤이랑 다인이 일했어요. 다인은 스타벅스 신메뉴를 봤어요.', added = '하윤은 주말 소식을 찾았어요.', fixed = `${left}\n${added}`
       const drafts = [left, JSON.stringify({ insert_after: { 1: [added] } })], calls: string[] = []
       const write = agreeing(async (prompt: string): Promise<string> => { calls.push(prompt); return prompt.includes('Judge meaning only') ? JSON.stringify({ problems: [] }) : drafts.shift() ?? '' })
@@ -259,8 +242,6 @@ describe('stack-17: a job said only in filler words is still checked in the summ
   })
 })
 
-// Q3/Q4 in c17b's run ("여기 있습니다!" over the English line; first-line.ts had not changed since stack16): the words put before a reply
-// in another form were asked in "-요 form" without the -습니다 rule every other line has. Wording in no harness row.
 describe('stack-17: the words before a reply in another form keep the 해요체 register', () => {
   it('the hand-over prompt rules out -습니다, and the reply is kept whole', async () => {
     const { withTheirWords } = await import('../src/main/first-line.js')

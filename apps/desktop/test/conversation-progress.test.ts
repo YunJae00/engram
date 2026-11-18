@@ -13,7 +13,6 @@ it('keeps progress and steering in chronological order through completion, reloa
   store.noteUser('one', 'Include the dates', [], true)
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'All four items and their dates are confirmed.' })
   store.handleEvent({ type: 'chat:done', channel: 'bot-one', text: 'All four items and their dates are confirmed.' })
-  // grokbar c3 T1: words said before the answer shows are taken in by the running turn, so they stay above the answer that covers them.
   const expected = ['Read all four items', 'Two items are confirmed; checking the remaining two.', 'Include the dates', 'All four items and their dates are confirmed.']
   expect(store.thread('one').messages.map(m => m.text)).toEqual(expected)
   const disk = store.thread('one').messages
@@ -82,7 +81,6 @@ it('writes no outcome for a turn the person stopped', async () => {
   expect((await readBotTranscript(t.paths, 'bot-1')).map(turn => turn.role)).toEqual(['user'])
 })
 
-// grokbar c3 T1: "아 대구도 추가해" was drawn under the four-city table. Words the running turn took in stay where they were said.
 it('keeps words the running turn absorbed in place after reload, with the host\'s reply under them', () => {
   const store = createCometThreads()
   store.load('one', [
@@ -93,14 +91,12 @@ it('keeps words the running turn absorbed in place after reload, with the host\'
   expect(store.thread('one').messages.map(m => m.text)).toEqual(['봇 3개로 서울 부산 제주 날씨 조사해줘', '봇들한테 나눠 맡길게요.', '아 대구도 추가해', '대구도 넣을게요.', '네 도시 날씨예요.\n\n| 도시 | 날씨 |'])
 })
 
-// Words for a later turn (a file attached, or the running turn's answer already out) keep waiting below the answer.
 it('keeps words that are not handed to the running turn below its answer', () => {
   const store = createCometThreads()
   store.begin('one', 'Read the items')
   store.noteUser('one', 'Then look at this file')
   store.handleEvent({ type: 'chat:token', channel: 'bot-one', text: 'The items are A and B.' })
   expect(store.thread('one').messages.map(m => m.text)).toEqual(['Read the items', 'The items are A and B.', 'Then look at this file'])
-  // Handed over, then refused by the turn: the words go back below the answer to come.
   const other = createCometThreads()
   other.begin('one', 'Read the items')
   other.noteUser('one', 'Only titles', [], true)

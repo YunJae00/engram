@@ -22,9 +22,6 @@ import { displayTaskAnswer } from '../src/renderer/src/lib/threadLang.js'
 const source = (name: string) => readFileSync(new URL(`../src/main/${name}`, import.meta.url), 'utf8')
 const WORKDIR = { kind: 'vault' as const, path: 'C:/vault' } as never
 
-// grokbar cycle 3 cause A (stack2-d469cddf): Q3 "바로 처리할게요.\n\nI apologize for being late to the meeting.", M3 "바로 확인해 볼게요.\n\n민호 님과 같이
-// 일하세요.", F2 "파일부터 확인할게요.\n\nPDF 폴더에는 파일이 6개 있어요." - the host's waiting line was saved as the answer's first paragraph,
-// or frozen into a bubble of its own by a tool call (M1, M2).
 describe('the first line is a waiting line, not part of the answer', () => {
   const ask = (patch: Partial<FirstLineAsk> = {}): FirstLineAsk => ({ channel: 'bot-1', message: '"회의 늦어서 죄송합니다"를 정중한 영어 이메일 한 줄로 써줘', korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false, ...patch })
   const later = (text: string, ms: number) => () => new Promise<string>(done => setTimeout(() => done(text), ms))
@@ -48,13 +45,10 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(firstLineCarried('bot-1')).toBeUndefined()
     firstLineSpoke('bot-1')
     expect(hide).toHaveBeenCalledOnce()
-    // Nothing puts it back in front of the saved answer.
     expect(source('ipc.ts')).toContain('extractChatCaptures(finishProgress(channel, rawText))')
     expect(source('first-line.ts')).not.toContain('export function withFirstLine')
   })
 
-  // stack-3: the three branches meet on the first line. c3c: a canned line is a waiting line. c3b: an ask the host answers shows none, even
-  // though it now also carries c3c's fallback and "told" reply. c3a: a lookup's own line is shown at once and stays as its acknowledgement.
   it('stack-3: a host-answered ask shows no line, a lookup shows its own line at once and keeps it, and no round of either hold is aloud', async () => {
     const hosted = start('NONE', { message: '지우가 누구야?', host: true }, { told: true })
     await vi.advanceTimersByTimeAsync(2000)
@@ -68,21 +62,19 @@ describe('the first line is a waiting line, not part of the answer', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(show).toHaveBeenCalledExactlyOnceWith('지금 시세 확인할게요.')
     expect(quick).not.toHaveBeenCalled()
-    // It names a step, so it is not the host's waiting line: the search's reset freezes it as the acknowledgement, and the fallback never replaces it.
     expect(firstLineWaiting('bot-1')).toBe(false)
     await vi.advanceTimersByTimeAsync(2000)
     expect(show).toHaveBeenCalledOnce()
     firstLineSaw({ type: 'chat:token', channel: 'bot-1', reset: true })
     firstLineSpoke('bot-1')
     expect(hide).not.toHaveBeenCalled()
-    // ipc.ts: held words never take a line down, no round is aloud (the host answers mid-work words itself, aside-ipc.ts), and that reply does not pass through the hold.
     const ipc = source('ipc.ts')
     expect(ipc).toContain('beginFirstLine({ host: hostAnswers, channel: entry.channel,')
     expect(ipc).toContain('onToken: (text) => { if (!quiet) firstLineSpoke(channel);')
     expect(ipc).toContain("if (quiet) quiet.token(text, false); else broadcast({ type: 'chat:token', channel, text })")
     expect(ipc).not.toContain('replying')
     const aside = source('aside-ipc.ts')
-    expect(aside).toContain('asideVoice(') // c11b r2: asideReply now wraps asideVoice (line + verdict)
+    expect(aside).toContain('asideVoice(')
     expect(aside).not.toContain('heldRounds')
   })
 
@@ -96,13 +88,11 @@ describe('the first line is a waiting line, not part of the answer', () => {
       await vi.advanceTimersByTimeAsync(500)
       progress.observe({ type: 'chat:token', channel, text: '바로 적어 둘게요.\n\n' })
       progress.observe({ type: 'comet:step', channel, line: 'keep_in_mind: 지민호' } as never)
-      // No reset was sent for the step, so the renderer keeps the line as live text.
       expect(bus.sent.filter(event => event.type === 'chat:token' && event.reset)).toEqual([])
       progress.observe({ type: 'chat:done', channel, text: '기억해 둘게요.' })
       await progress.flush(channel)
       vi.useRealTimers()
       expect((await readBotTranscript(paths, '1')).map(turn => turn.text)).toEqual(['내 이름은 권윤재고 지민호랑 같이 일해. 기억해'])
-      // ipc.ts: the model's own tool-call reset is held back the same way.
       expect(source('ipc.ts')).toContain('onReset: (drop, tool) => { if (firstLineWaiting(channel)) return; broadcast(')
     } finally { turnGoals.delete('bot-1'); await rm(root, { recursive: true, force: true }) }
   })
@@ -120,7 +110,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
       progress.observe({ type: 'chat:token', channel, text: '회의록부터 읽어볼게요.\n\n' })
       progress.observe({ type: 'comet:step', channel, line: 'Read: meeting-notes.md' } as never)
       expect(bus.sent.filter(event => event.type === 'chat:token' && event.reset && !event.drop)).toHaveLength(1)
-      // That reset reaches every listener: the line is frozen, so the answer that follows does not take it down.
       firstLineSaw({ type: 'chat:token', channel, reset: true })
       progress.observe({ type: 'chat:token', channel, text: '', reset: true })
       firstLineSpoke('bot-1')
@@ -138,8 +127,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(hide).toHaveBeenCalledOnce()
   })
 
-  // grokbar cycle 4 Q3 (c3c-37bc057e): "회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요.\n\nI apologize for being late to the meeting."
-  // The waiting line was the host's; the sentence above the answer was the answer's own first paragraph.
   it('a short ask answered with no tool call leaves no line above the answer, still shows a waiting line at once, and a turn with a tool keeps its line', async () => {
     const { show, hide } = start('NONE')
     await vi.advanceTimersByTimeAsync(500)
@@ -152,18 +139,11 @@ describe('the first line is a waiting line, not part of the answer', () => {
     store.handleEvent({ type: 'chat:done', channel: 'bot-1', text: answer })
     expect(store.thread('1').messages.map(message => message.text)).toEqual([ask().message, 'I apologize for being late to the meeting.'])
     expect(hide).not.toHaveBeenCalled()
-    // Split by the message rule, or followed by suggested replies: the same.
     expect(answerAlone('바로 써 볼게요.\n---\nI apologize for being late.\n\n```replies\n더 짧게\n```')).toBe('I apologize for being late.\n\n```replies\n더 짧게\n```')
-    // An answer that is itself one line, a lead-in that announces nothing, and a reply that is only the promise all stay as written.
     for (const kept of ['I apologize for being late.', '이렇게 쓰면 돼요.\n\nI apologize for being late.', '내일 아침에 다시 알려 드릴게요.', '기억해 둘게요.\n\n```replies\n고마워\n```', '세 가지 골라 봤어요.\n\n1. 해안도로 드라이브\n2. 카페\n3. 미술관'])
       expect(answerAlone(kept), kept).toBe(kept)
-    // Only a short ask that ran no tool: a turn with a tool keeps its line as the acknowledgement (the test above this one's pair).
     expect(source('ipc.ts')).toContain('if (short && !result.steps.length && !result.asked) result.answer = answerAlone(result.answer)')
-    // stack-4 (c4c run, Q3): the reply was the English line alone; a few Korean words lead it (GROKBOT rule 12's own example).
     expect(SHORT_QUESTION_NOTE).toContain('so the reply is never the foreign line alone')
-    // stack-4 (c4a run, H6): an English working note opened a Korean answer. c11b: the engines take the model's last message as the
-    // answer (a later message replaces an earlier one; c11b-answers.test.ts runs it), and the lane note keeps every line in the person's
-    // language, so the host cuts nothing by wording and an asked-for English line stays (Q3).
     expect(answerAlone('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')).toBe('I sincerely apologize for being late.\n\n---\n\n회의 늦으신 걸 사과하는 정중한 한 줄이에요.')
     expect(source('engine-claude-session.ts')).toContain('if (text && this.turn) this.turn.answer = text')
     expect(source('codex-native.ts')).toContain("if (type === 'agentMessage') turn.answer = text(item['text']) || turn.answer")
@@ -177,7 +157,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
     store.begin('1', '나 누구랑 일하지?')
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '바로 확인해 볼게요.\n\n' })
     expect(store.thread('1').messages.at(-1)?.text).toBe('바로 확인해 볼게요.\n\n')
-    // hide(), then the answer's first words; or hide() and the finished answer at once.
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '', reset: true, drop: true })
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '민호 님이랑 ' })
     expect(store.thread('1').messages.at(-1)?.text).toBe('민호 님이랑 ')
@@ -193,8 +172,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(firstLineNote('bot-1')).toContain('Your next words to the person are the answer itself.')
   })
 
-  // grokbar H6: "고마워 수고했어" got "바로 처리할게요." and five sentences from the work model.
-  // c3c r3 (Codex r2): M1 got NONE from the quick voice and the host said "바로 처리할게요.", which names no step (GROKBOT rule 1).
   it('names a concrete first step in the host line for every bar ask, and for an ask with no known verb', async () => {
     const lines: [string, string][] = [
       ['내 이름은 권윤재고 지민호랑 같이 일해. 기억해', '바로 적어 둘게요.'],
@@ -209,13 +186,11 @@ describe('the first line is a waiting line, not part of the answer', () => {
       ['이걸로 해', '말씀하신 내용부터 읽어 볼게요.'],
     ]
     for (const [message, line] of lines) expect(fallbackLine(message, true), message).toBe(line)
-    // No line is the stepless one, in either language, and each is one short Korean sentence.
     for (const message of [...lines.map(([message]) => message), '', 'ㅁㄴㅇㄹ', 'do the thing']) {
       expect(fallbackLine(message, true), message).not.toMatch(/처리|알겠|[A-Za-z]/)
       expect([...fallbackLine(message, true)].length).toBeLessThanOrEqual(60)
       expect(fallbackLine(message, false), message).not.toMatch(/^On it|[가-힣]/)
     }
-    // The reproduction: the quick voice says NONE on M1 and the first visible text names the step.
     const { show } = start('NONE', { message: '내 이름은 권윤재고 지민호랑 같이 일해. 기억해' })
     await vi.advanceTimersByTimeAsync(500)
     expect(show).toHaveBeenCalledExactlyOnceWith('바로 적어 둘게요.')
@@ -228,11 +203,9 @@ describe('the first line is a waiting line, not part of the answer', () => {
       expect(wantsFirstLine({ channel: 'bot-1', message, korean: true, interactive: true, studying: false, limited: false, followUp: false, secret: false }), message).toBe('chit-chat')
     }
     for (const message of ['고마워 이제 보고서 정리해줘', '수고했어 다음은 메일 써줘', '최고 매출 알려줘', '잘했어 근데 3번 바꿔줘', '고생했어 그리고 서연한테도 맡겨', '메일 써줘']) expect(plainReply(message), message).toBe(false)
-    // "네 좋아" may answer what the assistant asked: it stays with the main turn.
     expect(greeting('네 좋아')).toBe(false)
   })
 
-  // grokbar H1: the opening statement of the trip started 47 steps of web research.
   it('answers something the person only told with one line from the quick voice, with the conversation in view', async () => {
     const said = '다음 주 목요일에 부모님 모시고 제주도 가. 아빠가 무릎이 안 좋으셔서 많이 걷는 건 힘들어'
     const { show, quick } = start('부모님이랑 제주 가시는군요, 좋으시겠어요.', { message: said }, { told: true, context: async () => 'Person: 안녕\nYou: 안녕하세요!' })
@@ -242,7 +215,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(show).not.toHaveBeenCalled()
     expect(quick.mock.calls[0]![0]).toContain('it asks for nothing')
     expect(quick.mock.calls[0]![0]).toContain('Conversation so far:\nPerson: 안녕')
-    // The voice declines anything that wants work: the normal turn answers, with the waiting line up.
     endFirstLine('bot-1')
     const declined = start('NONE', { message: said }, { told: true })
     const none = smallTalkAnswer('bot-1')
@@ -251,7 +223,6 @@ describe('the first line is a waiting line, not part of the answer', () => {
     expect(declined.show).toHaveBeenCalledOnce()
     expect(toldPrompt(said, true)).toContain('reply with exactly NONE')
     expect(toldPrompt(said, true)).toContain('do not say you saved or noted anything')
-    // Both the statement and the reply are saved like any turn (deliverAnswer), so "그 여행" resolves later.
     const ipc = source('ipc.ts')
     expect(ipc).toContain('told: onlyTells(request.message,')
     expect(ipc).toContain('if (greeted) { turnOutcomes.set(channel, { answer: greeted, asked: false, unfinished: false, steps: 0 }); await deliverAnswer(greeted); return }')
@@ -262,7 +233,6 @@ describe('nothing is said before or between tool calls once the host has spoken'
   it('holds a round that ends in a tool call on any turn with a first line, not only on a lookup', () => {
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const quiet = lane ? quietRounds(shown) : firstSaid ? heldRounds(shown) : undefined')
-    // A desk turn and a general turn alike: the words before the tool call never reach the thread.
     for (const narration of ['I\'ll read the file first.', 'I\'ll read the sales data and build the monthly summary workbook with a chart.', '3번 슬라이드 제목이 "지역별 실적"으로 되어 있네요. 그 부분만 바꿔요.']) {
       const shown: string[] = [], quiet = quietRounds(text => shown.push(text))
       quiet.token(narration, false)
@@ -271,7 +241,6 @@ describe('nothing is said before or between tool calls once the host has spoken'
     }
   })
 
-  // c3c r2 (Codex): past 200 characters the lookup hold lets a round through, so a long English note before a tool call reached a Korean thread.
   it('shows no round of a general turn as it comes, however long, and still shows a reply to words said mid-turn', () => {
     for (const narration of ['I will read the sales data first, then build the monthly summary workbook with a chart, and after that I will double-check every total against the source rows before writing the final answer. '.repeat(2), '먼저 파일을 읽고, 그다음 표를 만들고, 마지막으로 합계를 하나씩 맞춰 본 다음에 정리해서 올릴게요. '.repeat(6)]) {
       expect([...narration].length).toBeGreaterThan(200)
@@ -279,7 +248,6 @@ describe('nothing is said before or between tool calls once the host has spoken'
       for (const piece of narration.match(/.{1,40}/g)!) held.token(piece, false)
       held.reset()
       expect(shown, narration.slice(0, 30)).toEqual([])
-      // stack-3: the lookup hold lost its 200-character rule too (c3a r3), so neither hold lets a round through.
       const leaked: string[] = [], lookup = quietRounds(text => leaked.push(text))
       lookup.token(narration, false)
       expect(leaked).toEqual([])
@@ -297,7 +265,6 @@ describe('nothing is said before or between tool calls once the host has spoken'
     store.handleEvent({ type: 'chat:token', channel: 'bot-1', text: '결정사항이랑 할 일 위주로 정리했어요.' })
     store.handleEvent({ type: 'chat:done', channel: 'bot-1', text: '결정사항이랑 할 일 위주로 정리했어요.' })
     expect(store.thread('1').messages.map(message => message.text)).toEqual(['fixtures/meeting-notes.md 팀에 공유하기 좋게 정리해줘', '결정사항이랑 할 일 위주로 정리했어요.'])
-    // A Korean milestone is kept, and an English thread keeps its English one.
     store.begin('2', '도시 네 곳 날씨 정리해줘')
     store.handleEvent({ type: 'chat:token', channel: 'bot-2', text: '셋 중 둘은 끝났어요.' })
     store.handleEvent({ type: 'chat:token', channel: 'bot-2', text: '', reset: true })
@@ -328,18 +295,15 @@ describe('short asks, statements and corrections', () => {
       '팀 회식 건배사 한 줄 지어줘', '좀 더 정중하게 바꿔줘', '강아지 이름 세 개만 추천해줘', '더 쉽게 설명해줘', 'Rewrite that in one line', 'Suggest three names for a cat',
     ]) { expect(shortAsk(message), message).toBe(true); expect(deskKind(message), message).toBe('ask'); expect(deskLane(message, true), message).toBe(true) }
     for (const message of [
-      // a file, a lookup, a hand-off, sending, a schedule, a memory, a long ask, two lines
       'fixtures/sales.csv에서 12월 매출 합계 알려줘', '회의록 파일 요약해서 써줘', '엔비디아 주가 검색해줘', '요즘 AI 뉴스 찾아줘', '오늘 서울 날씨 알려줘', '지민한테 문구 써달라고 해줘',
       '이 내용 민호한테 메일로 보내줘', '매주 월요일 9시에 요약해줘', '보고서 써줘', '내 이름 기억해줘',
       '지난 분기 실적을 지역별로 나눠서 왜 서울만 떨어졌는지 원인까지 붙여 가지고 경영진이 읽기 좋게 길게 풀어서 써줘', '첫 줄\n한 줄로 써줘', 'Write a report on Q3 sales',
     ]) expect(shortAsk(message), message).toBe(false)
-    // A question keeps its own kind, with every tool.
     expect(deskKind('나 누구랑 일하지?')).toBe('question')
     expect(shortQuestion('방금 말한 거 더 짧게')).toBe(false)
     expect(SHORT_QUESTION_NOTE).toContain('Asked for one thing, give exactly one; asked for three, give three')
     expect(SHORT_QUESTION_NOTE).toContain('No other variants, background or tips unless they ask')
     expect(SHORT_QUESTION_NOTE).toContain('look something up only when they ask for current facts')
-    // No browser on a short ask: none of its tools opens a page.
     for (const tool of ['search_web', 'open_page', 'read_pages', 'read_open_page', 'page_steps']) expect(DESK_TOOLS.ask!.has(tool), tool).toBe(false)
   })
 
@@ -349,14 +313,11 @@ describe('short asks, statements and corrections', () => {
       '오늘 발표 생각보다 잘 끝났어. 다들 반응이 좋았어', '요즘 야근이 많아서 너무 피곤해요', '어제 면접 봤는데 느낌이 나쁘지 않았어', "I'm moving to Busan next month for work",
     ]) expect(onlyTells(message), message).toBe(true)
     for (const message of [
-      // requests and questions
       '다음 주 제주도 가는데 갈 만한 곳 추천해줘', '아빠 무릎이 안 좋은데 어디가 좋을까?', '제주도 날씨 알려줘', '부모님 모시고 갈 식당 찾아봐', '회의록 정리해서 팀에 공유해', '이 일정 어때',
       '지민한테 다음 주 행사 조사 맡겨', '서연은 이번 주부터 디자인 담당이야', '매주 월요일 아침에 요약해서 올려 놔',
-      // a correction, something to remember, a file, a command, small talk, too short to tell
       '아 그 사람 이름은 지민호 말고 김민호 대리야', '내 생일은 3월 12일이야 기억해', 'fixtures/notes.md는 지난주 회의 내용이야', '방금 만든 표에서 대구는 빼고 다시 해', '고마워 수고했어', '제주도 가', '안녕',
       "I'm going to Jeju, can you find a hotel?",
     ]) expect(onlyTells(message), message).toBe(false)
-    // An answer to the assistant's own question belongs to the turn that asked.
     expect(onlyTells('다음 주 목요일 오전 열 시 비행기로 가려고 해', '몇 시 비행기로 가세요?')).toBe(false)
     expect(TOLD_NOTE).toContain('use no tools')
     expect(source('ipc.ts')).toContain('short ? SHORT_QUESTION_NOTE : onlyTells(request.message) ? TOLD_NOTE : \'\'')
@@ -369,7 +330,6 @@ describe('short asks, statements and corrections', () => {
     expect(routeAsk('그냥 애플로 바꿔', earlier)).toBe('엔비디아 오늘 주가 알려줘')
     expect(fastLane(routeAsk('그냥 애플로 바꿔', earlier), true)).toBe(true)
     const file = [{ role: 'user', text: 'fixtures/sales.csv에서 12월 매출 합계 알려줘' }, { role: 'assistant', text: '12월 합계는 1,310만 원이에요.' }]
-    // c4c: a figure asked of a named file is desk work now (H2 ran 21.4 s on the general path), and its correction goes with it, never as a short ask of its own.
     expect(deskKind(routeAsk('아 그거 말고 11월 걸로', file))).toBe('file')
     expect(routeAsk('아 그거 말고 11월 걸로', [])).toBe('아 그거 말고 11월 걸로')
     expect(routeAsk('아 지민호 말고 민호야', earlier)).toBe('아 지민호 말고 민호야')
@@ -379,12 +339,9 @@ describe('short asks, statements and corrections', () => {
   })
 })
 
-// grokbar cycle 3 M1, M2, F1, D3: above the preload limit the model spent a round finding each tool.
 describe('desk tool menus', () => {
-  // c3c r2 (Codex): a deck ask that asks for a check took the deck menu, which filtered the check tool out.
   it('keeps the check tool on every menu, so a check the person asked for can run on a desk turn', () => {
     const offered = (message: string): string[] => {
-      // The host's own two steps (ipc.ts): the check tool is among the tools only when asked for, then the kind's menu filters them.
       const every = ['ppt_build', 'file_read', 'file_move', 'keep_in_mind', 'open_page', ...(asksForCheck(message) ? ['report_result_check'] : [])]
       const menu = DESK_TOOLS[deskKind(message) as keyof typeof DESK_TOOLS]!
       return every.filter(tool => menu.has(tool))
@@ -393,7 +350,6 @@ describe('desk tool menus', () => {
       expect(deskKind(message), message).toBe(kind)
       expect(offered(message), message).toContain('report_result_check')
     }
-    // Not asked for, not offered: the menu does not bring it back.
     expect(offered('다음 주 팀 회의용 PPT 5장 만들어줘. 주제는 3분기 실적')).not.toContain('report_result_check')
     for (const menu of Object.values(DESK_TOOLS)) { expect(menu.has('report_result_check')).toBe(true); expect(menu.size).toBeLessThanOrEqual(PRELOADED_TOOLS_MAX) }
     expect(source('ipc.ts')).toContain("...(!turn?.verification && !asksForCheck(turnGoals.get(channel) ?? '') ? [] : [resultCheckTool(")
@@ -415,12 +371,9 @@ describe('desk tool menus', () => {
     }
     expect([...DESK_TOOLS.keep!].sort()).toEqual(['keep_in_mind', 'read_note', 'report_result_check', 'search_chats', 'search_memory'])
     expect([...DESK_TOOLS.tidy!].sort()).toEqual(['file_move', 'file_read', 'find_files', 'report_result_check'])
-    // Every tool the document rows used (audit of stack2-d469cddf, D2-D5) is still there; open_page, which turns on the browser rules, is not.
     for (const tool of ['word_write', 'ppt_build', 'file_read', 'file_read_package', 'file_edit_package', 'file_create_workbook', 'file_read_workbook']) expect(DESK_TOOLS.deck!.has(tool), tool).toBe(true)
     expect(DESK_TOOLS.deck!.has('open_page')).toBe(false)
-    // A short question keeps every tool, and so does a turn that is no desk turn.
     expect(DESK_TOOLS.question).toBeUndefined()
-    // c5c r2: a Word or Excel ask takes the document menu (c5c-voice-docs.test.ts); one that is also sent somewhere keeps every tool.
     for (const message of ['회의록 요약해서 워드로 만들어서 민호한테 메일로 보내줘', '경쟁사 분석 자료 조사해서 정리해줘', '회의록 정리해서 민호한테 메일로 보내줘']) expect(deskKind(message), message).toBeUndefined()
     const ipc = source('ipc.ts')
     expect(ipc).toContain('const desk = !!kind, deskMenu = kind && DESK_TOOLS[kind]')
@@ -428,11 +381,8 @@ describe('desk tool menus', () => {
   })
 
   it('ends a tidy-up with counts per kind and answers a note in the chat', () => {
-    // stack-3 (c3c run): F1 "정리했어요. PDF 6개, 이미지 4개, …" failed BAR's "summary list" and the judge could not tell where the files went;
-    // H4 closed on "(참고: …)" with no offer; Q3 opened with "회의에 늦어 죄송하다는 정중한 영어 이메일 한 줄 써드릴게요."
     expect(DESK_NOTE).toContain('how many files went into each folder')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them')
-    // c5c H4: the desk note asks for the one offer after an extraction (the model did not follow COLLEAGUE_RULE alone), and never a list of offers.
     expect(DESK_NOTE.match(/exactly one short offer line/g)).toHaveLength(1)
     expect(SHORT_QUESTION_NOTE).toContain('never a sentence that restates the ask or says what you are about to write')
     expect(DESK_NOTE).toContain('File names are given only when they ask for them')
@@ -449,7 +399,6 @@ describe('a delivered answer is shown alone', () => {
     expect(answerOnly(wrapped)).toBe('덜 걷는 곳으로 세 군데 골랐어요.\n\n1. 해안도로 드라이브')
     expect(displayTaskAnswer(wrapped, 'ko')).toBe('덜 걷는 곳으로 세 군데 골랐어요.\n\n1. 해안도로 드라이브')
     expect(displayTaskAnswer(wrapped, 'ko')).not.toMatch(/Unverified|확인하지 못한|현재까지/)
-    // Nothing under the wrapper: the wrapper stays, and the person reads the short note in their language.
     const empty = 'Not verified as complete.\n\nThe last batch stopped before all pages were read. Inspect the current state and continue only unfinished reads.'
     expect(answerOnly(empty)).toBe(empty)
     expect(displayTaskAnswer(empty, 'ko')).not.toMatch(/[A-Za-z]{4,}/)

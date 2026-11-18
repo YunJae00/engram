@@ -49,8 +49,6 @@ beforeEach(() => {
   setDesktopReleaseHook(fake.release)
 })
 
-// The comet chooses the window. The app in front is the default; a word from a
-// title names another; the person is never shown a list to pick from.
 describe('binding the app the comet needs', () => {
   it('turning an app off releases existing access and rejects both selection paths', async () => {
     await bindDesktopForLane(lane, { app: 'Excel' })

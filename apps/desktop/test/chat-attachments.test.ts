@@ -197,7 +197,6 @@ it('puts a draft back again when only its files changed since the last put-back'
   expect(store.thread('first').restored).toBe(false)
   await sendCometMessage(api, store, 'first', 'Read this', [newFile])
   expect(store.thread('first')).toMatchObject({ draft: 'Read this', attachments: [newFile], restored: true })
-  // Unchanged text and files: put back only once.
   await sendCometMessage(api, store, 'first', 'Read this', [newFile])
   expect(store.thread('first')).toMatchObject({ draft: '', attachments: [], restored: false })
 })

@@ -9,7 +9,6 @@ import { renderDeck } from '../src/main/deck-render.js'
 import { renderDoc } from '../src/main/doc-render.js'
 import { resolveTheme } from 'core'
 
-// The renderers hold no look of their own; the caller supplies one.
 const THEME = resolveTheme({ field: '1F3B5B', accent: 'C0603B', fonts: { title: 'Georgia', body: 'Segoe UI' } })!
 
 const require = createRequire(resolve('packages/core/package.json'))
@@ -39,7 +38,6 @@ it('allocates a larger bullet box and rejects overflowing tables without creatin
   const zip = await JSZip.loadAsync(await readFile(result.path))
   const xml = await zip.file('ppt/slides/slide1.xml')!.async('string')
   expect(xml.match(/One short point/g)).toHaveLength(7)
-  // Seven points receive 3.22 inches instead of the old 1.3-inch text box.
   expect(xml).toContain('cy="2944368"')
   const before = await readdir(join(fake.directory, 'Engram'))
   await expect(renderDeck({ slides: [{ title: 'Rows', table: { rows: Array.from({ length: 30 }, () => ['Item', 1]) } }], theme: THEME }, false)).rejects.toThrow('slide area')
@@ -47,8 +45,6 @@ it('allocates a larger bullet box and rejects overflowing tables without creatin
 })
 
 it('renders in the brand the caller passes, not a look of its own', async () => {
-  // Two unrelated brands; each file must carry its own colours and neither the
-  // other's - proof the design is data the caller supplies, not baked in here.
   const brand = resolveTheme({ field: '7A1F3B', accent: '2FA98C', paper: 'FAF7F0', fonts: { title: 'Cambria', body: 'Verdana' } })!
   const deck = await renderDeck({ slides: [{ title: 'Plan', subtitle: 'Q4' }, { title: 'Steps', bullets: ['Ship', 'Measure'] }], theme: brand, saveAs: join(fake.directory, 'branded.pptx') }, false)
   const deckZip = await JSZip.loadAsync(await readFile(deck.path))

@@ -21,9 +21,6 @@ it('persists concurrent requests and checkpoints without losing either, and clea
   } finally { await rm(cache, { recursive: true, force: true }) }
 })
 
-// QA 0.8.142 B9: a team request naming "the token …" was redacted after
-// JSON.stringify, which could eat a quote or escape and leave invalid JSON;
-// every later turn then failed with "Expected double-quoted property name".
 it('keeps the checkpoint valid JSON when a labelled secret ends in a character JSON escapes', async () => {
   const cache = await mkdtemp(join(tmpdir(), 'engram-checkpoint-'))
   const paths = { cache } as VaultPaths

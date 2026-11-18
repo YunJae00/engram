@@ -75,7 +75,6 @@ it('a hold taken after its task finished does not block background calls', async
   vi.useFakeTimers()
   let held = false
   await withModelCallContext({ channel: 'bot-x', purpose: 'task' }, async () => {
-    // Fake timers drop async context, so the callback is bound to the task's context as a real timer would be.
     setTimeout(AsyncResource.bind(() => { holdModelTaskEngine('gate-late'); held = true }), 10)
   })
   await vi.advanceTimersByTimeAsync(10)

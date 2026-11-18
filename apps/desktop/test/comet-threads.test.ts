@@ -142,7 +142,6 @@ describe('cometThreads', () => {
     expect(store.thread(BOT).busy).toBe(true)
     expect(store.thread(BOT).draft).toBe('')
     store.handleEvent({ type: 'chat:token', channel, text: 'par' })
-    // What the tab reads back from disk while the answer is still coming.
     store.load(BOT, [{ role: 'user', text: 'old' }, { role: 'assistant', text: 'older answer' }])
     const { messages } = store.thread(BOT)
     expect(messages.map((m) => m.text)).toEqual(['old', 'older answer', 'new question', 'par'])
@@ -161,7 +160,6 @@ describe('cometThreads', () => {
     expect(thread.busy).toBe(false)
     expect(thread.workLines).toEqual([])
     expect(thread.offer).toEqual({ kind: 'teach' })
-    // The finished answer keeps the work that led to it, so the turn still reads the same after the next one starts.
     expect(thread.messages.at(-1)).toEqual({ role: 'assistant', text: 'ab!', streaming: false, work: ['searching'] })
   })
 
@@ -228,9 +226,6 @@ describe('cometThreads', () => {
   })
 })
 
-// Pressing Stop settles the thread by itself; the abort's own done event
-// arrives afterwards, and disk holds nothing of the exchange. The store has
-// to say so, or a reload on that event erases the question just asked.
 describe('stop leaves a mark the abort echo can read', () => {
   it('marks the thread stopped, ignores the echo as news, and keeps the mark until an explicit new request', () => {
     const store = createCometThreads('a')
@@ -239,7 +234,6 @@ describe('stop leaves a mark the abort echo can read', () => {
     expect(store.thread('a').busy).toBe(false)
     expect(store.thread('a').stopped).toBe(true)
     expect(store.thread('a').startedAt).toBe(null)
-    // The echo: a done for a thread that is no longer waiting is nobody's.
     expect(store.handleEvent({ type: 'chat:done', channel: 'bot-a', text: '' })).toBe(null)
     expect(store.thread('a').messages.map((m) => m.text)).toEqual(['what was decided?', 'Stopped.'])
     store.begin('a', 'A new request')
@@ -262,7 +256,6 @@ describe('what the turn did stays readable', () => {
     store.begin(BOT, 'what did I do last week?')
     store.handleEvent({ type: 'comet:step', channel, line: 'open_page: https://one.example' })
     store.handleEvent({ type: 'comet:step', channel, line: 'press: #12' })
-    // The answer arriving does not take the steps away with it.
     store.handleEvent({ type: 'chat:token', channel, text: 'Last week you' })
     expect(store.thread(BOT).workLines).toEqual(['open_page: https://one.example', 'press: #12'])
     store.handleEvent({ type: 'chat:done', channel, text: 'Last week you fixed bugs.' })
@@ -292,7 +285,6 @@ describe('words written before an action', () => {
     expect(thread.messages.at(-1)?.text).toBe('')
     expect(thread.messages.at(-2)).toMatchObject({ text: 'Let me check the page.', progress: true, streaming: false })
     expect(thread.workLines).toEqual([])
-    // Nothing said, nothing noted.
     store.handleEvent({ type: 'chat:token', channel, text: '', reset: true })
     expect(store.thread(BOT).messages.filter(message => message.progress)).toHaveLength(1)
   })
@@ -322,7 +314,6 @@ describe('a draft held for its check', () => {
     store.carryOn(BOT)
     store.handleEvent({ type: 'comet:step', channel, line: 'note: Checking the result against your request' })
     store.handleEvent({ type: 'chat:token', channel, text: '', reset: true, drop: true })
-    // The held draft stays on screen, marked as being checked, until the checked answer replaces it.
     expect(store.thread(BOT).messages.at(-1)).toEqual({ role: 'assistant', text: 'Draft total: 58 hr', streaming: true, checking: true })
     expect(store.thread(BOT).workLines).toEqual(['note: Checking the result against your request'])
     store.handleEvent({ type: 'chat:done', channel, text: 'Checked total: 58 hr' })
@@ -399,7 +390,6 @@ it('keeps the full answer suggestions as chips under a mid-stream tail', () => {
   expect([answerText(last), suggestedReplies(last)]).toEqual(['A B', ['X', 'Y']])
 })
 
-// qa142 B7/B8: an answer stays whole in its own bubble under its own question.
 it('keeps each reply under its own question when three messages are sent back to back', () => {
   const store = createCometThreads(BOT)
   store.begin(BOT, 'Q1')
@@ -409,7 +399,6 @@ it('keeps each reply under its own question when three messages are sent back to
   store.noteUser(BOT, 'Q3')
   store.handleEvent({ type: 'chat:done', channel, text: '2예요.' })
   expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Q1', '2예요.', 'Q2', 'Q3'])
-  // The follow-up's own turn starts under the oldest message still waiting.
   store.handleEvent({ type: 'comet:working', channel, working: true })
   store.handleEvent({ type: 'chat:token', channel, text: '4예요.' })
   expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['Q1', '2예요.', 'Q2', '4예요.', 'Q3'])
@@ -422,7 +411,6 @@ it('does not cut a streaming table at a follow-up, live or after a reload', () =
   store.noteUser(BOT, 'If it rains?')
   store.handleEvent({ type: 'chat:token', channel, text: table.slice(30) })
   expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?'])
-  // Switching away and back mid-answer reads disk: the words said are there once, after the running answer.
   store.load(BOT, [{ role: 'user', text: 'List', at: '2026-11-15T00:00:00Z' }, { role: 'user', text: 'If it rains?', aside: true }])
   expect(store.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?'])
   const saved = createCometThreads(BOT)
@@ -437,7 +425,6 @@ it('does not cut a streaming table at a follow-up, live or after a reload', () =
   expect(saved.thread(BOT).messages.map(m => m.text)).toEqual(['List', table, 'If it rains?', 'Rain list.', 'And snow?', 'Snow list.'])
 })
 
-// qa142 B2 follow-up: a failed turn saved on disk comes back as its error card, not as a question with no reply.
 it('shows a saved failed turn as an error after a reload and keeps it out of the next request', () => {
   const store = createCometThreads(BOT)
   store.load(BOT, [{ role: 'user', text: '회의록 정리해줘' }, { role: 'assistant', text: 'Invalid model', error: true, errorKind: 'unknown', provider: 'Claude' }])

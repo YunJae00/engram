@@ -6,8 +6,6 @@ import { createBot, createTask, listTasks, updateTask, type AgentTool, type Vaul
 import { teamRunner, type TurnKit } from '../src/main/team-runner.js'
 import { asides, turnGoals } from '../src/main/turn-state.js'
 
-// c15a (cause K, C5: a judge slower than the fixed 3 s gave no verdict, so no by-name round ran and entries were shown with no day). Every
-// item-judge call on the team path now takes its time from the part's deadline. Wordings are in no harness row.
 type Run = NonNullable<Parameters<typeof teamRunner>[0]['run']>
 const block = (json: unknown): string => `\`\`\`report\n${JSON.stringify(json)}\n\`\`\``
 const temporary = async (tag: string): Promise<VaultPaths> => {
@@ -30,7 +28,6 @@ it('C5 class: a judge that answers in 4.5 s still gets its verdict, so two datel
     return { answer: block({ facts: [{ text: '부산 디자인 페어가 12월에 열려요.', url: PAGE }, { text: '광주 메이커 위크가 12월에 열려요.', url: PAGE }] }), steps: [], fellBack: false }
   }
   const given: number[] = []
-  // The first judgment takes 4.5 s (past the old fixed 3 s, well inside the part's deadline); the later ones 0.2 s. Real time: a fake clock races the task file's real writes.
   const quick = (prompt: string, opts: { timeoutMs?: number }): Promise<string | undefined> => {
     if (!prompt.includes('"lists"')) return Promise.resolve(undefined)
     given.push(opts.timeoutMs ?? 0)
@@ -43,7 +40,6 @@ it('C5 class: a judge that answers in 4.5 s still gets its verdict, so two datel
   const answer = await team.tools('bot-b1', kit, () => undefined).find(t => t.name === 'assign')!.run({ wait: true, to: [{ who: '하윤', brief, topic: '메이커 행사' }] }, { task: '' })
   const m = (await listTasks(paths)).find(t => t.id === created.id)!.team!.members[0]!
   expect(given.length).toBeGreaterThanOrEqual(2)
-  // Each call's time is what is left of the part's deadline, never the fixed 3 s.
   expect(given[0]).toBeGreaterThan(4_500)
   for (const ms of given) expect(ms).toBeGreaterThan(3_000)
   expect(m.data?.facts.filter(f => !f.listing).map(f => f.date)).toEqual(['12월 4일', '12월 11일'])

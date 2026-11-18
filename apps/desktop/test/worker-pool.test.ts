@@ -174,7 +174,6 @@ describe('WorkerPool', () => {
     expect(order).toEqual(['D', 'B', 'C'])
   })
 
-  // as-e1cf9bfd C2/C10: at target 1 the person's next message sat 21 s and 24 s behind the last turn's memory note.
   it('a person\'s turn never waits behind work nobody is watching: one slot past the target is theirs', async () => {
     const { p } = pool(1)
     const memory = track(withTurnPriority({ interactive: true }, () => asBackground(() => p.acquire())))
@@ -184,7 +183,6 @@ describe('WorkerPool', () => {
     await flush()
     expect(turn.settled).toBe(true)
     expect(p.running).toBe(2)
-    // Only one: a second turn of theirs, and more background work, wait as before.
     const second = track(withTurnPriority({ interactive: true }, () => p.acquire()))
     const chore = track(p.acquire())
     await flush()
@@ -204,7 +202,6 @@ describe('WorkerPool', () => {
     expect(p.running).toBe(0)
   })
 
-  // grokbar F1: at target 1 a memory chore held the only slot and the person's message waited 25 s for it.
   it('the person\'s turn does not wait behind background work alone, and a second one of theirs waits as before', async () => {
     const { p } = pool(1)
     const chore = track(p.acquire())
@@ -220,7 +217,6 @@ describe('WorkerPool', () => {
     expect([second.settled, later.settled]).toEqual([false, false])
     chore.release?.()
     await flush()
-    // Still at the target: the chore's slot is not handed on while the turn that went over it runs.
     expect([second.settled, later.settled, p.running]).toEqual([false, false, 1])
     first.release?.()
     await flush()
@@ -234,7 +230,6 @@ describe('WorkerPool', () => {
 
   it('drops a waiter aborted while queued without running it', async () => {
     const { p } = pool(1)
-    // The slot is held by another conversation's turn of the person's: a turn of theirs waits only behind one of their own.
     const a = track(withTurnPriority({ interactive: true }, () => p.acquire()))
     await flush()
     const say = vi.fn()
@@ -312,7 +307,6 @@ describe('WorkerPool', () => {
   it('a waiting interactive turn says once after 2 s, in the thread language', async () => {
     for (const korean of [true, false]) {
       const { p } = pool(1)
-      // Behind another turn of the person's own; behind background work alone it does not wait at all.
       const a = track(withTurnPriority({ interactive: true }, () => p.acquire()))
       await flush()
       const say = vi.fn()
@@ -490,7 +484,6 @@ describe('borrowed leases', () => {
 })
 
 describe('leases through a warm session', () => {
-  // A stand-in runtime whose tool pump lives as long as the session, like the real one.
   const sdk: SessionSdk = {
     createSdkMcpServer: (options) => options,
     tool: (name, description, shape, handler) => ({ name, description, shape, handler }),

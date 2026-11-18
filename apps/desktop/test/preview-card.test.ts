@@ -100,7 +100,6 @@ it('renders Outlook and Excel activity cards with their own chrome whichever is 
   expect(outlook).not.toContain('Excel')
 })
 
-// QA145 S11: a card for a window that never showed a frame sat on the thread as "connecting" / "reconnecting" for good.
 it('a window that never showed a frame is no card once its stream has given up', () => {
   const waiting = { phase: 'waiting' as const }
   expect(previewGaveUp(waiting, { exhausted: true, live: false })).toBe(true)
