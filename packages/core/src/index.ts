@@ -95,6 +95,7 @@ export * from './company-tools.js'
 export * from './item-check.js'
 export * from './written-check.js'
 export * from './lead-check.js'
+export * from './closing-tool.js'
 export { backgroundOpen } from './delegated-tasks.js'
 export { askKey } from './repeat.js'
 export {

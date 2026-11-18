@@ -1,4 +1,5 @@
 import type { AgentTool } from './agent-loop.js'
+import { closingTool } from './closing-tool.js'
 import type { TeamMember } from './delegated-tasks.js'
 import { CUT_SHORT, writtenReport } from './company-tools.js'
 import { isSearchPage, mergeReady, NO_LIVE_SOURCE, siteOf, TAKEN_OFF } from './team-hire-tools.js'
@@ -100,16 +101,5 @@ export async function helperAnswer(input: {
 }
 
 export function mergingHire(tool: AgentTool, answer: (signal: AbortSignal | undefined) => Promise<string | undefined>): AgentTool {
-  const written = new Set<string>()
-  const run = async (args: Record<string, unknown>, context: Parameters<AgentTool['run']>[1]): Promise<string> => {
-    const out = await tool.run(args, context)
-    if (!mergeReady(out) || context.signal?.aborted) return out
-    const text = await answer(context.signal)
-    if (!text?.trim() || context.signal?.aborted) return out
-    written.add(text)
-    return text
-  }
-  const rest: AgentTool = { ...tool }
-  delete rest.runRich
-  return { ...rest, closes: true, closesOn: observation => written.has(observation), run }
+  return closingTool(tool, async (out, _args, context) => mergeReady(out) ? answer(context.signal) : undefined)
 }

@@ -63,7 +63,7 @@ const within = async <T>(work: Promise<T>, ms: number, signal?: AbortSignal): Pr
 }
 
 async function writtenProblems(check: QuickText, input: CheckInput, draft: string, ms: number, signal?: AbortSignal): Promise<WrittenProblem[] | undefined> {
-  return readProblems(await within(check(checkPrompt(input, draft), ms), ms, signal), input.rewrite || input.askConstraints)
+  return readProblems(await within(check(checkPrompt(input, proseOf(draft)), ms), ms, signal), input.rewrite || input.askConstraints)
 }
 
 export type CheckOutcome = 'unchecked' | 'clean' | 'repaired' | 'kept' | 'refused'
@@ -73,9 +73,32 @@ const SOFT: ReadonlySet<string> = new Set(['register', 'shape'])
 const ROW = /^\s*(?:[-*•·#>|]|\d+[.)]\s)/
 const words = (text: string): string => text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s*(?:[-*•·#>|]+|\d+[.)])\s*/, '').replace(/[\s*_`"'“”‘’|:：·—–-]/g, '')
 const LEADING_LINKS = /^(?:\[[^\]\n]*\]\([^)\s]*\)[\s·,]*)+/u
+const FENCE = /^[ \t]*(`{3,}|~{3,})/
+/** The fenced blocks of a text (```replies, code, any fence), by line: an unclosed fence runs to the end. */
+function fencedBlocks(text: string): { from: number; to: number; closed: boolean; empty: boolean }[] {
+  const lines = text.split('\n'), out: { from: number; to: number; closed: boolean; empty: boolean }[] = []
+  for (let at = 0; at < lines.length; at++) {
+    const mark = FENCE.exec(lines[at]!)?.[1]
+    if (!mark) continue
+    const close = lines.findIndex((line, j) => j > at && line.trim().startsWith(mark[0]!.repeat(mark.length)) && !line.trim().replace(/^[`~]+/, '').trim())
+    const to = close < 0 ? lines.length - 1 : close
+    out.push({ from: at, to, closed: close >= 0, empty: lines.slice(at + 1, close < 0 ? lines.length : close).every(line => !line.trim()) })
+    at = to
+  }
+  return out
+}
+/** Lines that belong to a fenced block, fence lines included: machine blocks, never prose. */
+export const fencedLines = (text: string): Set<number> => new Set(fencedBlocks(text).flatMap(b => Array.from({ length: b.to - b.from + 1 }, (_, k) => b.from + k)))
+/** Every fence is closed and holds something. */
+export const wellFormed = (text: string): boolean => fencedBlocks(text).every(b => b.closed && !b.empty)
+/** The text without its fenced blocks: what a check reads. */
+export const proseOf = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((_, at) => !fenced.has(at)).join('\n').replace(/\n{3,}/g, '\n\n').trim() }
+/** Blank-line runs outside fenced blocks shrink to one; a block's own lines (its blank lines too) stay byte-identical. */
+export const tidied = (text: string): string => { const fenced = fencedLines(text); return text.split('\n').filter((line, at, all) => line !== '' || at === 0 || all[at - 1] !== '' || fenced.has(at) || fenced.has(at - 1)).join('\n').trim() }
 export function messageUnits(text: string): { line: number; text: string }[] {
+  const fenced = fencedLines(text)
   return text.split('\n').flatMap((line, at) => {
-    if (!line.trim()) return []
+    if (!line.trim() || fenced.has(at)) return []
     if (ROW.test(line)) return [{ line: at, text: line }]
     const sentences: string[] = []
     for (const one of line.trim().split(/(?<=[.!?。！？])\s+(?=\S)/u)) {
@@ -112,7 +135,9 @@ const ENGLISH_RUN = /(?:[A-Za-z][A-Za-z'’-]*[\s,]+){3,}[A-Za-z][A-Za-z'’-]*/
 const HANGUL = /[\uac00-\ud7a3]/
 export const foreignRun = (draft: string, text: string, known: string): string | undefined => !HANGUL.test(draft) ? undefined
   : [...text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/`[^`]*`/g, ' ').matchAll(ENGLISH_RUN)].map(run => run[0].trim()).find(run => !known.toLowerCase().includes(run.toLowerCase()))
-export function spliced(draft: string, raw: string | undefined, allowed: ReadonlySet<number>, insert = true, known = ''): string | undefined {
+/** The last Korean syllable of a sentence: where its register is said (정한다 / 정해요 / 정함). */
+const lastSyllable = (text: string): string => /([\uac00-\ud7a3])[^\uac00-\ud7a3]*$/u.exec(text.replace(/\[([^\]]*)\]\([^)]*\)/g, ''))?.[1] ?? ''
+export function spliced(draft: string, raw: string | undefined, allowed: ReadonlySet<number>, insert = true, known = '', register: ReadonlySet<number> = new Set()): string | undefined {
   let said: unknown
   try { said = JSON.parse((raw ?? '').slice((raw ?? '').indexOf('{'), (raw ?? '').lastIndexOf('}') + 1)) } catch { return undefined }
   const out = said && typeof said === 'object' ? said as Record<string, unknown> : {}
@@ -122,6 +147,8 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     const at = Number(key) - 1
     if (!Number.isInteger(at) || typeof value !== 'string' || !allowed.has(at) || at >= units.length) return undefined
     if (value.trim() !== units[at]!.text.trim()) replace.set(at, value.replace(/\s*\n+\s*/g, ' ').trim())
+    // A register repair that ends its sentence the way the flagged one ended has not changed the register: refused, whatever the re-check would say.
+    if (register.has(at) && value.trim() && lastSyllable(value) && lastSyllable(value) === lastSyllable(units[at]!.text)) return undefined
   }
   const kept = new Set(units.filter((_, i) => !replace.has(i)).map(u => words(u.text)))
   for (const [key, value] of Object.entries(record(out['insert_after']))) {
@@ -148,26 +175,38 @@ export function spliced(draft: string, raw: string | undefined, allowed: Readonl
     if (texts.length) shown.push(own.some(({ i }) => replace.has(i)) ? lead + texts.join(' ') : line)
     for (const { i } of own) shown.push(...(inserts.get(i) ?? []))
   })
-  const text = noEmptyFences(shown.join('\n')).replace(/\n{3,}/g, '\n\n').trim()
-  return text && text !== draft.trim() ? text : undefined
+  const text = tidied(shown.join('\n'))
+  return text && text !== draft.trim() && (!wellFormed(draft) || wellFormed(text)) ? text : undefined
 }
 async function scopedRepair(quick: QuickText, input: CheckInput, draft: string, problems: readonly Problem[], ms: number, signal?: AbortSignal): Promise<string | undefined> {
   const units = messageUnits(draft), allowed = new Set(problems.flatMap(p => p.kind === 'missing' ? [] : quotedUnits(units, p.quote)))
-  return spliced(draft, await within(quick(repairPrompt(input, units, problems, allowed), ms), ms, signal), allowed, problems.some(p => ADDS.has(p.kind)), JSON.stringify(input.data))
+  const register = new Set(problems.flatMap(p => p.kind === 'register' ? quotedUnits(units, p.quote) : []))
+  return spliced(draft, await within(quick(repairPrompt(input, units, problems, allowed), ms), ms, signal), allowed, problems.some(p => ADDS.has(p.kind)), JSON.stringify(input.data), register)
 }
 export function withoutSentences(text: string, problems: readonly Problem[]): string {
   const units = messageUnits(text), gone = new Set(problems.flatMap(p => quotedUnits(units, p.quote)))
   if (!gone.size) return text
-  const out = text.split('\n').flatMap((line, at) => {
+  const out = tidied(text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.length) return [line]
     const left = own.filter(({ i }) => !gone.has(i))
     return !left.length ? [] : left.length === own.length ? [line] : [/^\s*/.exec(line)![0] + left.map(({ u }) => u.text).join(' ')]
-  }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
-  return noEmptyFences(out)
+  }).join('\n'))
+  return out
 }
-const noEmptyFences = (text: string): string => text.replace(/^[ \t]*```[^\n`]*\n(?:[ \t]*\n)*[ \t]*```[ \t]*$\n?/gm, '').replace(/\n{3,}/g, '\n\n').trim()
 
+const SYLLABLE = /[\uac00-\ud7a3]/
+const final = (syllable: string): number => (syllable.charCodeAt(0) - 0xac00) % 28
+const withFinal = (syllable: string, jong: number): string => String.fromCharCode(syllable.charCodeAt(0) - final(syllable) + jong)
+const NIEUN = 4, MIEUM = 16
+/** A plain-form statement (…다) as its noun phrase (…ㅁ/음): 정한다 → 정함, 먹는다 → 먹음, 끝났다 → 끝났음. Anything else: undefined. */
+export function nounPhrase(sentence: string): string | undefined {
+  const stem = sentence.endsWith('다') ? sentence.slice(0, -1) : '', last = stem.at(-1) ?? '', before = stem.at(-2) ?? ''
+  if (!SYLLABLE.test(last)) return undefined
+  if (last === '는' && SYLLABLE.test(before) && final(before)) return `${stem.slice(0, -1)}음`
+  if (final(last) === NIEUN) return stem.slice(0, -1) + withFinal(last, MIEUM)
+  return final(last) ? `${stem}음` : stem.slice(0, -1) + withFinal(last, MIEUM)
+}
 function inOneRegister(text: string, problems: readonly Problem[], data: unknown): string {
   const units = messageUnits(text), flagged = new Set(problems.filter(p => p.kind === 'register').flatMap(p => quotedUnits(units, p.quote)))
   if (!flagged.size) return text
@@ -180,13 +219,19 @@ function inOneRegister(text: string, problems: readonly Problem[], data: unknown
     if (words(core).length >= 2 && held.includes(words(core))) framed.set(i, `${marker}"${core}"라고 적혀 있어요.${links ? ` ${links.trim()}` : ''}`)
     else cut.add(i)
   }
-  if (cut.size && cut.size === units.length) cut.clear()
-  return text.split('\n').flatMap((line, at) => {
+  // The only sentence is never dropped: it is said as a noun phrase of its own words (the note form a heading or label takes).
+  if (cut.size && cut.size === units.length) for (const i of [...cut]) {
+    const unit = units[i]!.text, marker = /^\s*(?:[-*•·>]|\d+[.)])\s*/.exec(unit)?.[0] ?? '', links = /(?:\s*\[[^\]]*\]\([^)\s]*\))+\s*$/.exec(unit)?.[0] ?? ''
+    const said = nounPhrase(unit.slice(marker.length, unit.length - links.length).trim().replace(/[.。!]+$/u, ''))
+    cut.delete(i)
+    if (said) framed.set(i, `${marker}${said}${links ? ` ${links.trim()}` : ''}`)
+  }
+  return tidied(text.split('\n').flatMap((line, at) => {
     const own = units.map((u, i) => ({ u, i })).filter(({ u }) => u.line === at)
     if (!own.some(({ i }) => cut.has(i) || framed.has(i))) return [line]
     const left = own.filter(({ i }) => !cut.has(i)).map(({ u, i }) => framed.get(i) ?? u.text)
     return left.length ? [/^\s*/.exec(line)![0] + left.join(' ')] : []
-  }).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  }).join('\n'))
 }
 
 interface Written {
@@ -219,10 +264,17 @@ export async function repairedWrite(input: CheckInput & {
     if (ok !== undefined) { text = ok; repaired = true }
   }
   let still: readonly WrittenProblem[] = problems
-  if (repaired) still = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? (await writtenProblems(input.check, input, text, time(), signal))?.filter(p => !SOFT.has(p.kind)) ?? [] : []
+  if (repaired) {
+    const again = problems.some(p => !SOFT.has(p.kind)) && time() >= CHECK_MIN_MS ? await writtenProblems(input.check, input, text, time(), signal) : []
+    // A repair never loses a property its draft had: one that writes a sentence in another register the draft did not have is refused.
+    const drafted = words(proseOf(input.draft))
+    if (again?.some(p => p.kind === 'register' && words(p.quote).length >= 2 && !drafted.includes(words(p.quote)))) { text = input.draft; repaired = false }
+    else still = again?.filter(p => !SOFT.has(p.kind)) ?? []
+  }
   const gone = still.filter(p => REMOVABLE.has(p.kind)), left = still.filter(p => !REMOVABLE.has(p.kind) && !SOFT.has(p.kind))
   if (gone.length) text = (input.cut ?? withoutSentences)(text, gone)
   text = inOneRegister(text, problems, input.data)
+  if (wellFormed(input.draft) && !wellFormed(text)) text = input.draft
   return done(text, !text.trim() || left.length ? 'refused' : repaired ? 'repaired' : 'kept', all, left)
 }
 export async function checkedWrite(input: Parameters<typeof repairedWrite>[0] & {

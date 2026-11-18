@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { shortAsk, shortQuestion, teamAsk } from './fast-lane.js'
-import { checkedWrite, isOutsideAsk, repairedWrite, type WrittenProblem } from 'core'
+import { checkedWrite, closingTool, fencedLines, tidied, isOutsideAsk, messageUnits, plainWords, repairedWrite, type AgentTool, type WrittenProblem } from 'core'
 import { readsKorean } from '../shared/reads-korean.js'
 
 const KEEP = /기억\s*해|잊지\s*마|외워\s*(둬|줘)|(말고|아니고|아니라)\s*\S+(이야|야|이에요|예요|입니다)|\bremember (that|this|my|i)\b/i
@@ -190,7 +190,7 @@ export function withoutSameDecisions(ask: string, answer: string): string {
   const tasks = todo.items.map(line => line.replace(/\s/g, ''))
   const again = (line: string): boolean => { const words = wordsOf(line); return words.length >= 2 && tasks.some(task => words.filter(word => task.includes(word)).length >= Math.ceil(words.length * 0.8)) }
   if (!decided.items.every(again)) return answer
-  return [...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied([...lines.slice(0, decided.at), ...lines.slice(decided.end)].join('\n'))
 }
 
 const OPEN_FORM = /(공유|보기|읽기|전달)\s*(하기)?\s*(좋게|쉽게|편하게)|깔끔하게|\b(easy to (share|read)|share-?ready)\b/i
@@ -215,7 +215,7 @@ export function shareReady(ask: string, answer: string): string {
   if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!) && next !== undefined && !head(next) && /[했았었]어요[.!~]?\s*$/.test(next)) lines.splice(first, 1)
   else if (/게요[.!~]?\s*$/.test(lines[first]!) && !head(lines[first]!)) lines[first] = lead
   else if (head(lines[first]!)) lines.splice(first, 0, lead, '')
-  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
+  return `${tidied(lines.join('\n'))}${replies < 0 ? '' : answer.slice(replies)}`
 }
 
 const ONLY_TODO = /할\s*일만|액션\s*아이템만|\b(?:only|just) the (?:to-?dos?|action items?)\b/i
@@ -228,7 +228,7 @@ export function onlyAsked(ask: string, answer: string): string {
   lines.splice(open.at, open.end - open.at)
   const todo = lines.findIndex(line => TASKS.test(line))
   if (todo >= 0) lines.splice(todo, 1)
-  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}${replies < 0 ? '' : answer.slice(replies)}`
+  return `${tidied(lines.join('\n'))}${replies < 0 ? '' : answer.slice(replies)}`
 }
 
 const WANTS_NAMES = /이름|파일명|목록|리스트|어떤\s*파일|뭐가|무엇이|\b(names?|list|which files?)\b/i
@@ -255,7 +255,7 @@ export function tidyCounts(ask: string, answer: string): string {
   }
   if (run.length) close()
   const listed = out.flatMap(line => { const said = COUNT_SENTENCE.exec(line); return said ? [...(said[1]?.trim() ? [said[1].trim(), ''] : []), ...said[2]!.split(/,\s*/).map(one => `- ${one.trim()}`)] : [line] })
-  return listed.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied(listed.join('\n'))
 }
 
 const REMEMBER = '(?:기억\\s*해(?:\\s*(?:둬\\s*줘|둬|줘|놔|두세요|주세요))?|잊지\\s*마(?:세요)?|외워\\s*(?:둬|줘))요?'
@@ -402,12 +402,15 @@ export const RESHAPE_DUE_MS = 2 * RESHAPE_MS
 export async function reshapeAsk(message: string, lastReply: string | undefined, quick: ((prompt: string, ms?: number) => Promise<string>) | undefined, ask?: string, now: () => number = Date.now): Promise<string | undefined> {
   if (!quick || !reshapeCandidate(message, lastReply)) return undefined
   const due = now() + RESHAPE_DUE_MS, prompt = reshapePrompt(message, lastReply!, ask)
-  const draft = reshaped(await quick(prompt, RESHAPE_MS).catch(() => ''), lastReply!)
+  const raw = await quick(prompt, RESHAPE_MS).catch(() => ''), draft = reshaped(raw, lastReply!)
   if (!draft) return undefined
   return checkedWrite({
     data: { earlierAsk: ask?.trim() ?? '', earlierReply: lastReply! }, ask: message, rewrite: true, draft, check: quick, due, now,
+    accept: text => reshaped(withReply(raw, text), lastReply!),
   })
 }
+const said = (raw: string): Record<string, unknown> => { try { const one: unknown = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)); return one && typeof one === 'object' ? one as Record<string, unknown> : {} } catch { return {} } }
+const withReply = (raw: string, reply: string): string => JSON.stringify({ ...said(raw), reply })
 function reshaped(raw: string, lastReply: string): string | undefined {
   let said: { form?: unknown; was?: unknown; reply?: unknown }
   try { said = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) } catch { return undefined }
@@ -434,6 +437,8 @@ export async function checkedDesk(input: { ask: string; draft: string; source: s
   if (!input.quick || !input.draft.trim() || !(input.fromSource || structured(input.draft))) return input.draft
   const out = await repairedWrite({
     data: { source: input.source.slice(0, SOURCE_CHARS) }, ask: input.ask, parts: true, draft: input.draft, check: input.quick, cut: withoutQuoted,
+    // A repair never loses a property its draft had: each source line under one part (a missing part is moved by withPart, never copied).
+    accept: text => !onceEach(input.draft, input.source) || onceEach(text, input.source) ? text : undefined,
     due: input.since + DESK_CHECK_DUE_MS, ...(input.signal ? { signal: input.signal } : {}), ...(input.now ? { now: input.now } : {}),
     log: (outcome, problems) => input.log?.(outcome, problems.map(problem => problem.kind)),
   })
@@ -448,10 +453,27 @@ export function withPart(text: string, problem: Pick<WrittenProblem, 'quote' | '
   if (!lines.length || !name) return text
   const wanted = lines.map(flat)
   const same = (line: string): boolean => { const f = flat(line); return f.length >= 2 && wanted.some(w => w === f || (row(line) && f.length >= 4 && (f.includes(w) || w.includes(f)))) }
-  const at = text.split('\n'), gone = new Set(at.flatMap((line, i) => same(line) ? [i] : []))
-  const rest = withoutLines(at, gone)
-  return `${rest ? `${rest}\n\n` : ''}${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`
+  const all = text.split('\n'), fenced = fencedLines(text)
+  let end = all.length
+  while (end > 0 && (fenced.has(end - 1) || !all[end - 1]!.trim())) end--
+  const at = all.slice(0, end), tail = all.slice(end).join('\n').trim(), gone = new Set(at.flatMap((line, i) => !fenced.has(i) && same(line) ? [i] : []))
+  return [withoutLines(at, gone), `${name}\n${lines.map(line => ITEM.test(line) ? line : `- ${line}`).join('\n')}`, tail].filter(Boolean).join('\n\n')
 }
+/** No source line stands on two rows of the answer, however reworded: each row counts for the source line it is closest to. */
+export function onceEach(text: string, source: string): boolean {
+  const from = source.split('\n').map(line => bare(line).replace(/[.,]/g, '')).filter(line => line.length >= 4).map(line => pairs(line))
+  if (!from.length) return true
+  const fenced = fencedLines(text), taken = new Set<number>()
+  return text.split('\n').every((line, i) => {
+    if (fenced.has(i) || !ITEM.test(line)) return true
+    const own = pairs(bare(line).replace(/[.,]/g, '')), score = from.map(one => shared(own, one)), best = score.indexOf(Math.max(...score))
+    if (score[best]! < ONE_LINE) return true
+    if (taken.has(best)) return false
+    taken.add(best)
+    return true
+  })
+}
+const ONE_LINE = 0.5
 const ITEM = /^\s*(?:[-*•·]|\d+[.)]|\|)\s*/
 const bare = (line: string): string => line.replace(ITEM, '').replace(/[*_`:：\-–—]/g, '').replace(/\s+/g, '')
 const row = (line: string): boolean => ITEM.test(line) || /\S\s*[:：—–]\s*\S/.test(line)
@@ -464,23 +486,75 @@ const runOf = (lines: readonly string[], at: number): number[] => {
   return Array.from({ length: b - a + 1 }, (_, k) => a + k)
 }
 export function withoutQuoted(text: string, problems: readonly WrittenProblem[]): string {
-  const lines = text.split('\n'), gone = new Set<number>()
+  const lines = text.split('\n'), gone = new Set<number>(), fenced = fencedLines(text)
   for (const { quote, kind } of problems) {
     const q = kind === 'missing' ? '' : bare(quote)
     if (!q) continue
-    const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
+    const at = lines.map((line, i) => ({ i, b: bare(line) })).filter(({ i, b }) => !gone.has(i) && !fenced.has(i) && b.length >= 2 && (b.includes(q) || q.includes(b)))
     const whole = at.filter(({ b }) => b.includes(q)), cands = whole.length ? whole : at
     const named = cands.filter(({ i, b }) => { const ctx = bare(heading(lines, i)) + b; return ctx.length > b.length && (ctx.includes(q) || q.includes(ctx)) })
-    for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) gone.add(j)
+    for (const { i } of named.length ? named : cands) for (const j of kind === 'overlap' ? [i] : runOf(lines, i)) if (!fenced.has(j)) gone.add(j)
   }
   return withoutLines(lines, gone)
 }
 function withoutLines(lines: readonly string[], gone: Set<number>): string {
+  const fenced = fencedLines(lines.join('\n'))
   lines.forEach((line, i) => {
-    if (!line.trim() || row(line) || gone.has(i)) return
+    if (!line.trim() || row(line) || gone.has(i) || fenced.has(i)) return
     const under: number[] = []
     for (let j = i + 1; j < lines.length && (!lines[j]!.trim() || row(lines[j]!)); j++) if (lines[j]!.trim()) under.push(j)
     if (under.length && under.every(j => gone.has(j))) gone.add(i)
   })
-  return lines.filter((_, i) => !gone.has(i)).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  return tidied(lines.filter((_, i) => !gone.has(i)).join('\n'))
+}
+
+const BUILDS: ReadonlySet<string> = new Set(['ppt_build', 'word_write', 'file_create_workbook'])
+const REPLY_NOTE = 'One short line for the chat, in the person\'s language and polite form (e.g. "3분기 실적 발표 자료 5장으로 만들었어요."), what you made in a few words.'
+const MORE_NOTE = 'true only when this ask still needs another file after this one. Otherwise leave it out: a build that passes ends the turn with every file made so far, so nothing is read back after it.'
+const receiptOf = (out: string): Record<string, unknown> | undefined => { try { const one: unknown = JSON.parse(out); return one && typeof one === 'object' && typeof (one as Record<string, unknown>)['markdownLink'] === 'string' ? one as Record<string, unknown> : undefined } catch { return undefined } }
+const withoutReply = (args: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'reply' && key !== 'more'))
+const textOf = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
+/** The build's own text that may stand in a Korean line: a string that is Korean itself, so its Latin words are names inside it, not English. */
+const ownKorean = (value: unknown): string[] => typeof value === 'string' ? (/[가-힣]/.test(value) ? [value] : []) : value && typeof value === 'object' ? Object.values(value).flatMap(ownKorean) : []
+/** The plain line the host says for a build, from the build itself: its title and its slide or sheet count. */
+export function builtLine(tool: string, args: Record<string, unknown>, korean: boolean): string {
+  // A title the model wrote in English ("Club Introduction") is not said in a Korean thread: the line goes without it.
+  const said = (title: string): string => !korean || (ownKorean(title).length && plainWords(title) === title) ? title : ''
+  const list = (key: string): Record<string, unknown>[] => Array.isArray(args[key]) ? (args[key] as unknown[]).filter((one): one is Record<string, unknown> => !!one && typeof one === 'object') : []
+  if (tool === 'ppt_build') {
+    const slides = list('slides'), title = said(textOf(slides[0]?.['title']) || textOf(args['saveAs']).replace(/\.pptx$/i, ''))
+    return korean ? `${title ? `${title}, ` : '발표 자료를 '}${slides.length}장으로 만들었어요.` : `Made ${title ? `"${title}", ` : 'the deck, '}${slides.length} slides.`
+  }
+  if (tool === 'word_write') {
+    const title = said(textOf(args['title']) || textOf(list('blocks').find(block => block['kind'] === 'title')?.['text']) || textOf(args['saveAs']).replace(/\.docx$/i, ''))
+    return korean ? `${title ? `${title} ` : ''}문서로 만들었어요.` : `Made the document${title ? ` "${title}"` : ''}.`
+  }
+  const sheets = list('sheets').length || 1, title = said(textOf(args['name']).replace(/\.xlsx$/i, ''))
+  return korean ? `${title ? `${title} ` : ''}파일을 시트 ${sheets}개로 만들었어요.` : `Made ${title ? `"${title}"` : 'the workbook'} with ${sheets} sheet${sheets > 1 ? 's' : ''}.`
+}
+/** The model's own reply when it reads right in this thread (its language, at most two sentences, no technical words); else none. */
+export function buildReply(reply: unknown, korean: boolean, known = ''): string | undefined {
+  const text = textOf(reply).replace(/\s+/g, ' ')
+  if (!text || /[가-힣]/.test(text) !== korean || messageUnits(text).length > 2 || plainWords(text) !== text) return undefined
+  // In a Korean thread a Latin word is only the build's own (a title, a name, a file name): any other is English the person did not ask for.
+  return korean && (text.match(/[A-Za-z][A-Za-z'’-]*/g) ?? []).some(word => !known.toLowerCase().includes(word.toLowerCase())) ? undefined : text
+}
+/** The desk lane's build tools: a build that passed the host's audit (a receipt with its file) is final and ends the turn on one short line,
+ * so the model never reads its own file back. An audit refusal or an error goes back to the model as before. */
+export function closingBuilds(tools: readonly AgentTool[], korean: boolean): AgentTool[] {
+  return tools.map(tool => {
+    if (!BUILDS.has(tool.name)) return tool
+    const schema = tool.argsSchema as { properties?: Record<string, unknown> }
+    const given: AgentTool = {
+      ...tool,
+      argsSchema: { ...schema, properties: { ...schema.properties, reply: { type: 'string', description: REPLY_NOTE }, more: { type: 'boolean', description: MORE_NOTE } } },
+      run: (args, context) => tool.run(withoutReply(args), context),
+    }
+    return closingTool(given, async (out, args) => {
+      // A passed build closes by default, so a fast finish never hangs on an optional argument; only an explicit `more` keeps the turn open.
+      if (!receiptOf(out) || args['more'] === true) return undefined
+      const built = withoutReply(args)
+      return { said: out, answer: buildReply(args['reply'], korean, ownKorean(built).join(' ')) ?? builtLine(tool.name, built, korean) }
+    })
+  })
 }
